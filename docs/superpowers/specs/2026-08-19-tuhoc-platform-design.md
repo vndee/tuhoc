@@ -110,7 +110,8 @@ POST /ai/chat                                           # P3: SSE stream, proxy 
 **Giao thức sync (LWW):**
 - Client giữ hàng đợi mutation trong IndexedDB; mỗi row có `updated_at` do client sinh tại thời điểm sửa.
 - `POST /sync` upsert theo quy tắc: ghi đè nếu `incoming.updated_at > existing.updated_at` (xóa = tombstone `deleted_at`, so sánh cùng quy tắc).
-- `GET /sync?since=` trả mọi row có `updated_at > cursor` (kể cả tombstone); client merge cùng quy tắc → hai chiều hội tụ.
+- `GET /sync?since=` trả mọi row có `updated_at > since` (kể cả tombstone); client merge cùng quy tắc → hai chiều hội tụ.
+- **Cursor có độ trễ an toàn (sửa 2026-08-19 sau review T7).** Server KHÔNG trả `max(updated_at)` làm cursor, mà trả `max(maxUpdatedAt − 60s, since)`. Lý do: thứ tự commit không trùng thứ tự `updated_at` — máy A bắt đầu push (`T1`) nhưng commit chậm, máy B push (`T2 > T1`) commit trước, client poll xen giữa sẽ đẩy watermark lên `T2` và row của A **vĩnh viễn** không còn thỏa `updated_at > T2` → mất dữ liệu âm thầm. Độ trễ 60s khiến row commit muộn được gửi lại ở lần poll sau; merge LWW vốn idempotent nên gửi lại vô hại. Giới hạn còn lại: transaction sống lâu hơn 60s (workload này là mili-giây). Cursor là **giá trị đục** với client — client dùng nguyên văn, không tự trừ lề (nếu đúng/sai phụ thuộc kỷ luật của client thì một bug client sẽ thành mất dữ liệu).
 - Xung đột thực tế (sửa cùng annotation trên 2 máy trong cùng giây) chấp nhận mất một bên — dữ liệu cá nhân, rủi ro thấp.
 
 **Bảo mật P1:** rate-limit auth endpoints; CORS chỉ cho origin của Pages; không log nội dung note.

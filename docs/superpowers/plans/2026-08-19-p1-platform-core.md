@@ -429,6 +429,10 @@ db.meta: { key, value }                                          // 'syncCursor'
 setProgress(courseId, chapterId, status, done): Promise<void>    // ghi local + outbox, updatedAt = new Date().toISOString()
 // engine.ts
 startSync(): void   // loop: khi online + đăng nhập → flush outbox (POST /sync, POST /events/batch) → GET /sync?since=cursor → merge LWW vào Dexie → cursor = resp.cursor; chạy mỗi 15s + khi 'online' event
+// QUAN TRỌNG (ruling sau review T7): `cursor` là GIÁ TRỊ ĐỤC do server cấp, đã có sẵn độ trễ an toàn 60s.
+// Client lưu và gửi lại NGUYÊN VĂN — không parse, không tự trừ lề, không thay bằng max(updatedAt) của mình.
+// Hệ quả: mỗi lần poll sẽ nhận lại vài row trong cửa sổ 60s. Đó là CHỦ ĐÍCH; mergeRow idempotent nên vô hại.
+// Test bắt buộc: nhận lại row đã có (cùng updatedAt) không được tạo bản ghi trùng hay đảo ngược trạng thái.
 mergeRow(local, incoming): Row                                   // pure: updatedAt lớn hơn thắng — export để test
 ```
 
