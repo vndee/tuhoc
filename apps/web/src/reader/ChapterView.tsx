@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { describeCourseError, loadChapter } from '../course/loader';
 import type { Chapter } from '../course/types';
+import { startHeartbeat } from '../progress/heartbeat';
 import { useProgress } from '../progress/useProgress';
 import { useThemeContext } from '../theme/ThemeContext';
 import { setChapterContextSource } from './getContext';
@@ -63,6 +64,32 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
     queryKey: ['course-chapter', courseId, chapter.file],
     queryFn: () => loadChapter(courseId, chapter.file),
   });
+
+  // Kept current on every render (not inside an effect — a plain
+  // assignment during render is enough, since `startHeartbeat`'s tick
+  // only ever reads this ref asynchronously, well after React has
+  // committed) so the mount effect below can hand `startHeartbeat` a
+  // getter that always answers "whichever chapter is open right now,"
+  // never a value frozen at mount time.
+  const heartbeatCtxRef = useRef<{ courseId: string; chapterId: string } | null>(null);
+  heartbeatCtxRef.current = { courseId, chapterId: chapter.id };
+
+  // Task 15: the study heartbeat. Started ONCE per mount (`[]` deps), not
+  // re-started on every chapter change — `ChapterView` is reused across
+  // in-course navigation rather than remounted (see
+  // ChapterView.test.tsx's "navigating between chapters does not
+  // accumulate REDRAWS entries" test, which proves this via `rerender`),
+  // so restarting the interval on every chapter would reset the 30s
+  // cadence and the 60s activity window on every navigation for no
+  // reason. `getCtx` reads `heartbeatCtxRef` above instead, so each tick
+  // still gets attributed to whatever chapter is open AT THAT TICK.
+  // Teardown on unmount is what stops heartbeats once the reader is left
+  // entirely (navigating to `/`, `/login`, ...) — without it, a stale
+  // heartbeat would keep attributing study time to a chapter nobody is
+  // reading anymore.
+  useEffect(() => {
+    return startHeartbeat(() => heartbeatCtxRef.current);
+  }, []);
 
   // `#rail` and `#crumb` are rendered by <Shell>/<Topbar> (Task 9), siblings
   // of the routed content this component lives in — not DOM nodes reachable
