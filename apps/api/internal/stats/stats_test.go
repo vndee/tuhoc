@@ -392,15 +392,20 @@ func TestStatsFlows(t *testing.T) {
 		}
 	})
 
-	// Pins the literal reading of the brief's Vietnamese text ("streak =
-	// số ngày liên tiếp TÍNH TỪ HÔM NAY có >=1 heartbeat" — "counting FROM
-	// TODAY"): the streak requires activity on the current day to be
-	// nonzero. Studying yesterday but not yet today does not keep a
-	// streak "alive" — it reads as 0 until today itself has a heartbeat.
-	// This is a stricter rule than a duolingo-style streak-freeze; chosen
-	// because the brief's own wording anchors the count AT today, not at
-	// "the most recent active day".
-	t.Run("streak requires activity today: studied yesterday only reads as streak=0", func(t *testing.T) {
+	// Controller ruling (fix round 1, superseding the original literal
+	// reading of "streak = số ngày liên tiếp TÍNH TỪ HÔM NAY"): a user who
+	// studied last night and opens the dashboard before studying again
+	// today must not see their streak reset to 0 — that makes a number
+	// meant to motivate into something demotivating. The rule is now:
+	//   - today has activity  -> count the consecutive run ending today.
+	//   - today has none, but yesterday does -> count the consecutive run
+	//     ending yesterday (the streak survives until a full day passes
+	//     with NO activity at all, not merely until the calendar rolls
+	//     over).
+	//   - neither today nor yesterday has activity -> 0.
+	// This subtest pins the middle case: nothing today yet, a heartbeat
+	// yesterday -> streak must read 1, not 0.
+	t.Run("streak stays alive through yesterday: studied yesterday, nothing today yet, reads as streak=1", func(t *testing.T) {
 		app := newTestApp(pool)
 		cookie, _ := registerUser(t, app, "yesterdayonly")
 
@@ -413,18 +418,51 @@ func TestStatsFlows(t *testing.T) {
 		}
 
 		got := getStats(t, app, cookie)
-		if got.StreakDays != 0 {
-			t.Fatalf("studied yesterday, nothing today yet: want streakDays=0 got %d", got.StreakDays)
+		if got.StreakDays != 1 {
+			t.Fatalf("studied yesterday, nothing today yet: want streakDays=1 (streak survives until today ENDS with no activity, not merely until the calendar rolls over) got %d", got.StreakDays)
 		}
 		// Yesterday's minutes must still show up in the chart and total —
-		// only the *streak* rule is strict about "today"; totals and the
-		// day chart are not.
+		// this was never in question, only the streak anchor changed.
 		d, ok := findDay(got.Days, yesterday.Format(dateLayout))
 		if !ok || d.Minutes != 0.5 {
 			t.Fatalf("yesterday's heartbeat must still appear in days[] with minutes=0.5, got %+v (found=%v)", d, ok)
 		}
 		if got.TotalMinutes != 0.5 {
 			t.Fatalf("want totalMinutes=0.5 got %v", got.TotalMinutes)
+		}
+	})
+
+	// Pins the third branch of the same rule: once a full day has passed
+	// with NO activity at all (neither today nor yesterday), the streak is
+	// really 0 — this is what actually distinguishes "streak survives
+	// through yesterday" from "streak is broken by anything other than
+	// today". A fixture with zero events anywhere (as the brand-new-user
+	// test uses) cannot tell these apart, because an empty byDay map
+	// trivially yields 0 under either interpretation; this fixture seeds
+	// genuine older history (3 and 4 days ago) so the "yesterday" check
+	// actually has to look at real data and correctly find nothing.
+	t.Run("streak resets to 0 once a full day passes with no activity: older history alone does not keep it alive", func(t *testing.T) {
+		app := newTestApp(pool)
+		cookie, _ := registerUser(t, app, "olderhistory")
+
+		threeDaysAgo := todayICT().AddDate(0, 0, -3)
+		fourDaysAgo := todayICT().AddDate(0, 0, -4)
+		resp, _ := postEvents(t, app, cookie, []map[string]any{
+			heartbeatItem("c1", "ch1", threeDaysAgo.Add(9*time.Hour)),
+			heartbeatItem("c1", "ch1", fourDaysAgo.Add(9*time.Hour)),
+		})
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("seed older-history heartbeats: want 200 got %d", resp.StatusCode)
+		}
+
+		got := getStats(t, app, cookie)
+		if got.StreakDays != 0 {
+			t.Fatalf("activity only 3-4 days ago (nothing today or yesterday): want streakDays=0 got %d", got.StreakDays)
+		}
+		// Confirm this isn't vacuously passing on an empty dataset: the
+		// older history must still be visible elsewhere in the response.
+		if got.TotalMinutes != 1.0 {
+			t.Fatalf("older history must still count toward totalMinutes: want 1.0 got %v", got.TotalMinutes)
 		}
 	})
 

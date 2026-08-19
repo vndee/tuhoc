@@ -20,17 +20,34 @@ import (
 // convention of each handler package owning its own copy.
 const timeLayout = time.RFC3339Nano
 
-// icTZ is Vietnam's fixed UTC+7 offset. It is the single day-boundary
-// definition this whole package uses for "today", "the last 30 days", and
-// "streak" — see Stats's doc comment for the reasoning behind choosing
-// Vietnam-local time over UTC or the server host's own local time, and
-// repo.go's dayBucketExpr for why this is a fixed offset
-// (time.FixedZone), not a named zone (time.LoadLocation): the API's
-// runtime image is FROM scratch (see apps/api/Dockerfile) and ships no
-// tzdata, so a named-zone lookup would work in dev/CI and fail in
-// production. Must stay numerically identical to dayBucketExpr's SQL-side
-// +7h shift.
-var icTZ = time.FixedZone("ICT", 7*3600)
+// icTZOffset is Vietnam's fixed UTC+7 offset, expressed as a Duration.
+// This is the SINGLE source of truth for the day-boundary shift used
+// throughout this package and in repo.go: icTZ (below) derives from it on
+// the Go side, and Stats passes it to repo.go's HeartbeatDayCounts as a
+// bound query parameter so the SQL-side bucketing derives from this exact
+// same value instead of duplicating "7 hours" as an independent,
+// hand-maintained literal — see repo.go's HeartbeatDayCounts doc comment
+// for why that duplication was a real risk (the two would silently drift
+// apart near midnight with no error, corrupting both the streak and the
+// chart) and why a bound parameter, not a second hardcoded constant, is
+// the fix.
+//
+// See Stats's doc comment for the reasoning behind choosing Vietnam-local
+// time over UTC or the server host's own local time, and this package
+// ships no tzdata dependency: the API's runtime image is FROM scratch
+// (see apps/api/Dockerfile), so a named-zone lookup
+// (time.LoadLocation("Asia/Ho_Chi_Minh"), or Postgres's
+// "AT TIME ZONE 'Asia/Ho_Chi_Minh'") would work in dev/CI (where a system
+// zoneinfo database happens to exist) and fail in production. Vietnam has
+// used a constant UTC+7 offset with no DST since 1975, so a fixed 7-hour
+// shift is exactly correct for every instant, with zero external
+// dependency, in every environment including FROM scratch.
+const icTZOffset = 7 * time.Hour
+
+// icTZ is Vietnam's fixed UTC+7 offset as a time.Location, derived from
+// icTZOffset. It is the single day-boundary definition this whole package
+// uses for "today", "the last 30 days", and "streak".
+var icTZ = time.FixedZone("ICT", int(icTZOffset.Seconds()))
 
 // dateLayout is the wire format for every date in GET /stats's response
 // (days[].date): a plain calendar date, no time component, matching the
@@ -185,14 +202,16 @@ type statsResponse struct {
 //     day under UTC bucketing (UTC trails Vietnam by 7 hours) — see
 //     stats_test.go's "timezone" case, which actually proves this rather
 //     than merely asserting it.
-//   - Streak: counts consecutive days with >=1 heartbeat, walking
-//     backward starting AT today (per the brief's own wording: "streak =
-//     số ngày liên tiếp TÍNH TỪ HÔM NAY" — "counting FROM today"). If
-//     today itself has no heartbeat yet, the streak reads as 0
-//     immediately, even if yesterday was studied — a stricter rule than a
-//     duolingo-style streak-freeze, chosen because the brief anchors the
-//     count at today, not at "the most recently active day". See
-//     stats_test.go's "streak requires activity today" case.
+//   - Streak (controller ruling, fix round 1 — supersedes the original
+//     literal "counting FROM today" reading, which made a number meant to
+//     motivate into something demotivating: a user who studied last night
+//     and opened the dashboard before studying again today would have
+//     seen a 0-day streak): if today has activity, count the consecutive
+//     run ending today; else if yesterday has activity, count the
+//     consecutive run ending yesterday (the streak survives until a FULL
+//     day passes with no activity at all, not merely until the calendar
+//     rolls over); else 0. See streakAnchor and stats_test.go's two
+//     "streak stays alive" / "streak resets to 0" cases.
 //   - days[]: always exactly statsWindowDays (30) entries, zero-filled,
 //     ascending (oldest first, today last) — a chart consuming this would
 //     misrender gaps as missing data points rather than zero-height bars
@@ -207,7 +226,7 @@ func (h *Handler) Stats(c *fiber.Ctx) error {
 	userID := auth.UID(c)
 	ctx := c.Context()
 
-	dayCounts, err := h.repo.HeartbeatDayCounts(ctx, userID)
+	dayCounts, err := h.repo.HeartbeatDayCounts(ctx, userID, icTZOffset)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "stats failed"})
 	}
@@ -237,8 +256,10 @@ func (h *Handler) Stats(c *fiber.Ctx) error {
 	}
 
 	streak := 0
-	for d := today; byDay[d.Format(dateLayout)] > 0; d = d.AddDate(0, 0, -1) {
-		streak++
+	if anchor, ok := streakAnchor(today, byDay); ok {
+		for d := anchor; byDay[d.Format(dateLayout)] > 0; d = d.AddDate(0, 0, -1) {
+			streak++
+		}
 	}
 
 	return c.Status(fiber.StatusOK).JSON(statsResponse{
@@ -263,6 +284,28 @@ func minutesFromHeartbeats(n int64) float64 {
 func todayICT() time.Time {
 	now := time.Now().In(icTZ)
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, icTZ)
+}
+
+// streakAnchor picks the day the streak's consecutive run should be
+// counted backward from, per the controller's fix-round-1 ruling: today,
+// if today already has activity; otherwise yesterday, if yesterday has
+// activity — a user who studied last night and checks the dashboard
+// before studying again today should not see their streak reset to 0 the
+// instant the calendar rolls over. It stays alive through yesterday's
+// count until a FULL day passes with no activity at all. If neither today
+// nor yesterday has any activity, there is no active streak (ok=false,
+// and the caller must not enter the walk-back loop at all — anchoring on
+// some older active day would incorrectly resurrect a streak that has, in
+// fact, already been broken by the gap between it and today).
+func streakAnchor(today time.Time, byDay map[string]int64) (anchor time.Time, ok bool) {
+	if byDay[today.Format(dateLayout)] > 0 {
+		return today, true
+	}
+	yesterday := today.AddDate(0, 0, -1)
+	if byDay[yesterday.Format(dateLayout)] > 0 {
+		return yesterday, true
+	}
+	return time.Time{}, false
 }
 
 // buildCourseStats merges heartbeat-derived minutes and completed-chapter

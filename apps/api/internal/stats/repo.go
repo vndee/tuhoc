@@ -59,21 +59,29 @@ func NewRepo(pool *pgxpool.Pool) *Repo {
 	return &Repo{pool: pool}
 }
 
-// dayBucketExpr shifts a timestamptz by Vietnam's fixed UTC+7 offset
-// before truncating to a calendar day, expressed only via interval
-// arithmetic and the always-available "UTC" zone name — deliberately
-// never a named zone like "Asia/Ho_Chi_Minh". This matters because the
-// API's runtime image is FROM scratch (see apps/api/Dockerfile): it ships
-// no tzdata at all, so a named-zone lookup would work in local dev/CI
-// (where a system zoneinfo database happens to be present) and then
-// either fail or silently misbehave in production, where none exists.
-// Vietnam has used a constant UTC+7 offset with no DST since 1975, so a
-// fixed 7-hour shift is not an approximation — it is exactly correct for
-// every instant, with zero external dependency. This must stay
-// numerically identical to handler.go's icTZ (time.FixedZone(7h)), which
-// performs the equivalent shift on the Go side when computing "today" and
-// the streak.
-const dayBucketExpr = `date_trunc('day', (at + interval '7 hours') AT TIME ZONE 'UTC')::date`
+// dayBucketExpr shifts a timestamptz by a caller-supplied offset (bound as
+// $2, in seconds — see HeartbeatDayCounts) before truncating to a
+// calendar day, expressed only via interval arithmetic and the
+// always-available "UTC" zone name — deliberately never a named zone like
+// "Asia/Ho_Chi_Minh". This matters because the API's runtime image is
+// FROM scratch (see apps/api/Dockerfile): it ships no tzdata at all, so a
+// named-zone lookup would work in local dev/CI (where a system zoneinfo
+// database happens to be present) and then either fail or silently
+// misbehave in production, where none exists.
+//
+// The offset itself is NOT hardcoded here as a second "7 hours" literal.
+// Fix round 1 replaced an earlier version of this file that duplicated
+// handler.go's icTZOffset as an independent `interval '7 hours'` text
+// literal: two hand-maintained copies of the same number with nothing
+// forcing them to agree is exactly the kind of thing that drifts apart
+// silently — no error, just the SQL-bucketed date keys and the
+// Go-computed date keys (handler.go's todayICT/streakAnchor) quietly
+// disagreeing near midnight, corrupting both the streak and the 30-day
+// chart with no test able to catch it until someone thinks to look.
+// make_interval(secs => $2) takes the shift as a bound parameter instead,
+// so handler.go's icTZOffset constant is the ONLY place the value "7
+// hours" is written down; this query merely consumes it.
+const dayBucketExpr = `date_trunc('day', (at + make_interval(secs => $2)) AT TIME ZONE 'UTC')::date`
 
 // insertEventSQL is idempotent by construction against the scenario this
 // task's binding requirements name — a client outbox retrying a batch that
@@ -140,24 +148,29 @@ func (r *Repo) InsertEvents(ctx context.Context, userID uuid.UUID, events []Even
 }
 
 // HeartbeatDayCounts returns, for every Vietnam calendar day (bucketed per
-// dayBucketExpr) on which userID has at least one kind='heartbeat' event,
-// the number of heartbeats recorded that day. It is deliberately
-// unbounded in time, not just the last 30 days: handler.go's streak
-// computation needs to walk arbitrarily far back to find the break, and
-// this single query serves both that and the 30-day chart (handler.go
-// zero-fills and truncates to the last 30 days from this same result).
-// Only kind='heartbeat' events are counted — heartbeats are the only
-// event kind this task's binding requirements define a minutes conversion
-// for; other kinds (should any exist in the future) are stored via
-// InsertEvents but do not contribute to study time here.
-func (r *Repo) HeartbeatDayCounts(ctx context.Context, userID uuid.UUID) ([]DayCount, error) {
+// dayBucketExpr, shifted by tzOffset) on which userID has at least one
+// kind='heartbeat' event, the number of heartbeats recorded that day. It
+// is deliberately unbounded in time, not just the last 30 days: handler.go's
+// streak computation needs to walk arbitrarily far back to find the
+// break, and this single query serves both that and the 30-day chart
+// (handler.go zero-fills and truncates to the last 30 days from this same
+// result). Only kind='heartbeat' events are counted — heartbeats are the
+// only event kind this task's binding requirements define a minutes
+// conversion for; other kinds (should any exist in the future) are stored
+// via InsertEvents but do not contribute to study time here.
+//
+// tzOffset is bound as a query parameter (seconds) rather than baked into
+// dayBucketExpr as a literal — see that constant's doc comment for why:
+// callers always pass handler.go's icTZOffset, the single source of truth
+// for the day-boundary shift.
+func (r *Repo) HeartbeatDayCounts(ctx context.Context, userID uuid.UUID, tzOffset time.Duration) ([]DayCount, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT `+dayBucketExpr+` AS day, count(*) AS n
 		 FROM events
 		 WHERE user_id = $1 AND kind = 'heartbeat'
 		 GROUP BY 1
 		 ORDER BY 1`,
-		userID,
+		userID, tzOffset.Seconds(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("stats: heartbeat day counts: %w", err)
