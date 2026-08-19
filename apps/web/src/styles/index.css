@@ -1,0 +1,7 @@
+/* Bundled through Vite's normal CSS pipeline (imported as JS modules, so
+   Vite hashes + code-splits them like any other asset). This is deliberately
+   different from runtime.js / vendor/*.js / viz.js, which are classic
+   scripts that attach globals and must be loaded by URL instead — see
+   vite-plugins/courseAssets.ts and the task report for why. */
+@import '@course-kit/vendor/katex.css';
+@import '@course-kit/reader.css';
