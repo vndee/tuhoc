@@ -3,10 +3,14 @@
 # Build context is apps/api itself (not the repo root):
 #   docker build -t tuhoc-api apps/api
 #
-# This task (P1 T4) ships config + healthz only, so the image contains just
-# the binary. Task 5 adds a migrations/ directory and a COPY line for it
-# once internal/store exists (ruling F6 — apps/api/migrations/ does not
-# exist yet, so copying it here would break this task's docker build gate).
+# Migrations (ruling F6): internal/store embeds apps/api/migrations/*.sql
+# via embed.FS (see migrations/migrations.go), and golang-migrate reads them
+# from that embedded fs.FS at runtime — not from disk. So the *running*
+# binary needs nothing under /migrations in the final image, and there is
+# deliberately no COPY for it there. The build stage below still needs
+# `COPY migrations ./migrations` — that copy is for `go build` itself,
+# which requires the *.sql files on disk to satisfy the go:embed directive
+# at compile time; it has nothing to do with runtime.
 #
 # Cross-compile: the build stage runs on the *build* platform natively
 # (--platform=$BUILDPLATFORM) and cross-compiles the Go binary for the
@@ -28,6 +32,7 @@ RUN go mod download
 
 COPY cmd ./cmd
 COPY internal ./internal
+COPY migrations ./migrations
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o /out/tuhoc-api ./cmd/api
 
