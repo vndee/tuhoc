@@ -162,9 +162,47 @@ func TestAuthFlows(t *testing.T) {
 		// cover for their own routes; pinned directly here since /me is
 		// the first consumer of Require.
 		app := newTestApp(pool, false, nil)
-		resp, _, _ := doJSON(t, app, http.MethodGet, "/me", nil, nil)
+		resp, body, _ := doJSON(t, app, http.MethodGet, "/me", nil, nil)
 		if resp.StatusCode != http.StatusUnauthorized {
 			t.Fatalf("me without cookie: want 401 got %d", resp.StatusCode)
+		}
+		if body.Error != "unauthenticated" {
+			t.Fatalf("me without cookie: want error=%q got %q", "unauthenticated", body.Error)
+		}
+	})
+
+	t.Run("expired session is rejected with 401, not treated as valid", func(t *testing.T) {
+		// FindValidSession's "expires_at > now()" clause is the only
+		// thing preventing replay of a stale session id, and it is the
+		// exact boundary every route in Tasks 7-8 will depend on via
+		// Require. This backdates a real session row's expires_at
+		// directly (rather than waiting 30 days) to exercise that
+		// boundary specifically, distinct from the "no such row at all"
+		// case the other 401 tests cover.
+		app := newTestApp(pool, false, nil)
+		email := uniqueEmail("expired")
+
+		regResp, _, _ := doJSON(t, app, http.MethodPost, "/auth/register",
+			map[string]string{"email": email, "password": "expired-session-password-1", "name": "Expired"}, nil)
+		cookie := sessionCookie(regResp)
+		if cookie == nil {
+			t.Fatalf("register: no cookie")
+		}
+
+		if _, err := pool.Exec(context.Background(),
+			`UPDATE sessions SET expires_at = now() - interval '1 hour' WHERE id = $1`, cookie.Value); err != nil {
+			t.Fatalf("backdate session expiry: %v", err)
+		}
+
+		resp, body, _ := doJSON(t, app, http.MethodGet, "/me", nil, cookie)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("expired session: want 401 got %d", resp.StatusCode)
+		}
+		// Pin the exact body, not just the status: a future refactor
+		// that turns this into a 401 for a different, wrong reason (or
+		// starts leaking detail about why) must fail this test.
+		if body.Error != "unauthenticated" {
+			t.Fatalf("expired session: want error=%q got %q", "unauthenticated", body.Error)
 		}
 	})
 
@@ -408,4 +446,57 @@ func TestAuthFlows(t *testing.T) {
 			t.Fatalf("11th /auth request in a minute: want 429 got %d", last.StatusCode)
 		}
 	})
+}
+
+// TestRequire_InternalErrorReturns500NotUnauthorized is its own top-level
+// test (own store.TestPool container) rather than a subtest of
+// TestAuthFlows, because it deliberately closes the pool partway through
+// — sharing that pool with any other subtest would break them once
+// closed. It proves Require distinguishes "no valid session" (401) from
+// a genuine internal failure while validating one (500): with a real,
+// currently-valid session cookie in hand, closing the pool out from
+// under Require turns the exact same ValidateSession call into a real
+// repo-level error (not ErrNotFound), which must surface as 500 with a
+// generic body — never silently downgraded to the same 401 an expired or
+// missing session gets, since that would make a database outage
+// indistinguishable from "everyone's session expired" to any client of
+// this API.
+func TestRequire_InternalErrorReturns500NotUnauthorized(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool, false, nil)
+
+	email := uniqueEmail("pool-closed")
+	regResp, _, _ := doJSON(t, app, http.MethodPost, "/auth/register",
+		map[string]string{"email": email, "password": "pool-closed-password-1", "name": "PoolClosed"}, nil)
+	if regResp.StatusCode != http.StatusOK {
+		t.Fatalf("register: want 200 got %d", regResp.StatusCode)
+	}
+	cookie := sessionCookie(regResp)
+	if cookie == nil {
+		t.Fatalf("register: no cookie")
+	}
+
+	// Sanity check: the cookie is genuinely valid before we break
+	// anything, so the 500 below can only be attributed to the induced
+	// failure, not to some other bug in cookie/session issuance.
+	sanity, _, _ := doJSON(t, app, http.MethodGet, "/me", nil, cookie)
+	if sanity.StatusCode != http.StatusOK {
+		t.Fatalf("sanity check before closing pool: want 200 got %d", sanity.StatusCode)
+	}
+
+	// pool.Close is safe to call again from TestPool's own t.Cleanup
+	// (pgxpool.Pool.Close is a sync.Once under the hood), so this does
+	// not need to be undone.
+	pool.Close()
+
+	resp, body, _ := doJSON(t, app, http.MethodGet, "/me", nil, cookie)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("me with a valid cookie but a closed pool: want 500 got %d", resp.StatusCode)
+	}
+	if body.Error == "" {
+		t.Fatalf("want a non-empty error body, got %+v", body)
+	}
+	if body.Error == "unauthenticated" {
+		t.Fatalf("500 body must not reuse the 401 (\"unauthenticated\") body — the two failure modes must stay distinguishable")
+	}
 }

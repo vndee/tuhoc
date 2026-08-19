@@ -177,18 +177,43 @@ func (h *Handler) clearSessionCookie(c *fiber.Ctx) {
 // routes behind, and the one GET /me is mounted behind here. It reads
 // the tuhoc_session cookie, validates that the session exists and has
 // not expired, and stores the owning user's id in c.Locals — read it
-// back with UID, never the raw "uid" key. Any failure (missing cookie,
-// malformed value, unknown or expired session) rejects with 401 and
-// never calls the next handler; Require does not distinguish these
-// cases in its response, since none of them should get more or less
-// access than another.
+// back with UID, never the raw "uid" key.
+//
+// It distinguishes two failure modes, and never calls the next handler
+// on either:
+//   - no cookie, a malformed value, or a session that is genuinely
+//     unknown/expired (ErrNotFound from ValidateSession) — these are all
+//     "not authenticated" and get an identical 401, on purpose (see
+//     ErrNotFound's own doc comment: expired and nonexistent must not be
+//     distinguishable to the caller either).
+//   - any other error — a real failure (e.g. the database is
+//     unreachable) surfacing from ValidateSession — gets a 500 with a
+//     fixed, generic body (never err.Error()). Collapsing this into 401
+//     too would make a database outage indistinguishable from "every
+//     session expired," which is a worse, misleading signal for anyone
+//     consuming this API (including the web client built in Task 9+, and
+//     anyone operating the service). Failing closed (never calling
+//     c.Next()) and reporting an accurate status code are orthogonal —
+//     Login and Logout in this same file already draw exactly this
+//     distinction between their own expected-error and unexpected-error
+//     cases.
 //
 // It takes the pool directly (not a pre-built Usecase) so callers like
-// server.New can mount it with nothing more than the *pgxpool.Pool they
-// already have — matching the interface named in the task brief.
+// Task 7/8's route setup can mount it with nothing more than the
+// *pgxpool.Pool they already have — matching the interface named in the
+// task brief. server.New, which already builds a Usecase for the auth
+// handlers, uses RequireWithUsecase instead to avoid constructing a
+// second, equivalent Repo/Usecase pair over the same pool.
 func Require(pool *pgxpool.Pool) fiber.Handler {
-	uc := NewUsecase(NewRepo(pool))
+	return RequireWithUsecase(NewUsecase(NewRepo(pool)))
+}
 
+// RequireWithUsecase is Require's implementation, parameterized on an
+// already-built Usecase. Require(pool) is (and must stay) the stable,
+// documented entry point for callers that only have a pool; this exists
+// solely so a caller that already has a Usecase in hand doesn't have to
+// build a redundant one just to get the same middleware.
+func RequireWithUsecase(uc *Usecase) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		raw := c.Cookies(CookieName)
 		if raw == "" {
@@ -202,7 +227,12 @@ func Require(pool *pgxpool.Pool) fiber.Handler {
 
 		uid, err := uc.ValidateSession(c.Context(), sessionID)
 		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthenticated"})
+			if errors.Is(err, ErrNotFound) {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthenticated"})
+			}
+			// A real failure, not "no such session" — see the doc
+			// comment above for why this must not also come back as 401.
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "session validation failed"})
 		}
 
 		c.Locals(localsUIDKey, uid)

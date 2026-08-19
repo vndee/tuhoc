@@ -74,7 +74,13 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// unset (see main.go / ruling F1) — that only matters once a request
 	// actually reaches one of these handlers; wiring them up here is
 	// always safe.
-	authHandler := auth.NewHandler(auth.NewUsecase(auth.NewRepo(deps.Pool)), cfg.CookieSecure)
+	//
+	// authUsecase is built once and shared between authHandler and the
+	// /me route's middleware below (via auth.RequireWithUsecase) so the
+	// two don't each construct their own, equivalent Repo/Usecase pair
+	// over the same pool.
+	authUsecase := auth.NewUsecase(auth.NewRepo(deps.Pool))
+	authHandler := auth.NewHandler(authUsecase, cfg.CookieSecure)
 
 	authGroup := app.Group("/auth", limiter.New(limiter.Config{
 		Max:        authRateLimitMax,
@@ -87,7 +93,7 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// GET /me is the first (and simplest) consumer of auth.Require —
 	// mounting it behind the middleware here proves Require works end to
 	// end, ahead of Task 7/8's routes depending on the same pattern.
-	app.Get("/me", auth.Require(deps.Pool), authHandler.Me)
+	app.Get("/me", auth.RequireWithUsecase(authUsecase), authHandler.Me)
 
 	return app
 }
