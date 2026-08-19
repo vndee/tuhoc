@@ -16,6 +16,7 @@ import (
 
 	"github.com/vndee/tuhoc-api/internal/auth"
 	"github.com/vndee/tuhoc-api/internal/config"
+	"github.com/vndee/tuhoc-api/internal/stats"
 	// appsync is internal/sync under an explicit alias, not its default
 	// package name ("sync"): that name collides with the standard
 	// library's own "sync" package (sync.Mutex etc.), and this file is
@@ -114,6 +115,13 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	syncHandler := appsync.NewHandler(appsync.NewUsecase(appsync.NewRepo(deps.Pool)))
 	app.Get("/sync", auth.Require(deps.Pool), syncHandler.Pull)
 	app.Post("/sync", auth.Require(deps.Pool), syncHandler.Push)
+
+	// Stats routes (Task 8). Mounted behind auth.Require(deps.Pool) — the
+	// same brief-mandated entry point and ruling (F3) as sync's routes
+	// above, exercised directly by stats_test.go's own 401 case.
+	statsHandler := stats.NewHandler(stats.NewRepo(deps.Pool))
+	app.Post("/events/batch", auth.Require(deps.Pool), statsHandler.EventsBatch)
+	app.Get("/stats", auth.Require(deps.Pool), statsHandler.Stats)
 
 	return app
 }
