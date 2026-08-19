@@ -9,9 +9,12 @@
 // NOT collide with the standard library's "sync" package — nothing here
 // needs to import stdlib "sync" at all, but if it did, there would be no
 // conflict, since this file's own package name is "sync_test", not
-// "sync". The real (and only) collision risk is inside
-// internal/server/server.go, which imports the internal/sync package under
-// an explicit alias ("appsync") for exactly this reason — see that file.
+// "sync". This file does import internal/sync itself (aliased "appsync",
+// matching server.go's own convention) purely to reference
+// appsync.SyncSafetyLag by name rather than duplicating its value as a
+// magic number — that alias is the real (and only) collision-avoidance
+// mechanism in this package; see internal/server/server.go for the fuller
+// reasoning.
 package sync_test
 
 import (
@@ -32,6 +35,7 @@ import (
 	"github.com/vndee/tuhoc-api/internal/config"
 	"github.com/vndee/tuhoc-api/internal/server"
 	"github.com/vndee/tuhoc-api/internal/store"
+	appsync "github.com/vndee/tuhoc-api/internal/sync"
 )
 
 const testTimeoutMS = 10000
@@ -524,7 +528,7 @@ func TestSyncFlows(t *testing.T) {
 		}
 	})
 
-	t.Run("cursor echoes since when nothing changed, advances to max updated_at otherwise", func(t *testing.T) {
+	t.Run("cursor is safety-lagged behind max updated_at; echoes since when nothing changed", func(t *testing.T) {
 		app := newTestApp(pool)
 		cookie, _ := registerUser(t, app, "cursor")
 
@@ -558,14 +562,24 @@ func TestSyncFlows(t *testing.T) {
 		if err != nil {
 			t.Fatalf("cursor not parseable as RFC3339Nano: %v", err)
 		}
-		if !cursorTime.Equal(t1) {
-			t.Fatalf("cursor: want %v got %v", t1, cursorTime)
+		// The cursor must trail t1 by exactly SyncSafetyLag, not equal it —
+		// this is the fix's whole point: a raw max(updated_at) cursor is
+		// unsafe (see the regression test right below this one).
+		wantCursor := t1.Add(-appsync.SyncSafetyLag)
+		if !cursorTime.Equal(wantCursor) {
+			t.Fatalf("cursor: want t1-SyncSafetyLag=%v got %v", wantCursor, cursorTime)
+		}
+		if !cursorTime.Before(t1) {
+			t.Fatalf("cursor must lag strictly behind t1, got cursor=%v t1=%v", cursorTime, t1)
 		}
 
-		// Poll again using the returned cursor as since: nothing new
-		// happened, so the result must be empty AND the cursor must be
-		// echoed back unchanged — proving a client can safely loop
-		// `since = cursor` forever without ever losing its place.
+		// Poll again using the lagged cursor as since: t1 falls INSIDE the
+		// trailing SyncSafetyLag window behind that cursor (by
+		// construction — the cursor is t1-lag), so the row is deliberately
+		// re-delivered. This is the intentional, harmless re-delivery
+		// behavior the fix's doc comment calls out: a client re-applying
+		// the same row under the same LWW rule is a no-op (see
+		// TestSyncFlows/replaying_an_identical_batch_is_idempotent).
 		nextURL := "/sync?" + url.Values{"since": {pull1.Cursor}}.Encode()
 		getResp2, getRaw2 := doRequest(t, app, http.MethodGet, nextURL, nil, cookie)
 		if getResp2.StatusCode != http.StatusOK {
@@ -573,11 +587,108 @@ func TestSyncFlows(t *testing.T) {
 		}
 		var pull2 pullOut
 		mustUnmarshal(t, getRaw2, &pull2)
-		if len(pull2.Progress) != 0 || len(pull2.Annotations) != 0 {
-			t.Fatalf("polling again with since=cursor and no new writes: want empty result, got %+v", pull2)
+		if len(pull2.Progress) != 1 {
+			t.Fatalf("polling again with since=<lagged cursor>: want the row re-delivered (still inside the lag window), got %d progress rows", len(pull2.Progress))
 		}
 		if pull2.Cursor != pull1.Cursor {
-			t.Fatalf("polling again with since=cursor and no new writes: want cursor echoed back as %q, got %q", pull1.Cursor, pull2.Cursor)
+			t.Fatalf("polling again with the same data and no new writes: want cursor to stay put at %q, got %q", pull1.Cursor, pull2.Cursor)
+		}
+
+		// Poll with a since far beyond any row and beyond the lag window
+		// entirely (simulating a client that has fully caught up): nothing
+		// new is found, and the cursor is echoed back exactly as sent,
+		// proving the "nothing changed -> unchanged, non-blank cursor"
+		// property still holds under the new formula (the `since` floor).
+		future := t1.Add(2 * appsync.SyncSafetyLag)
+		futureURL := "/sync?" + url.Values{"since": {future.Format(time.RFC3339Nano)}}.Encode()
+		getResp3, getRaw3 := doRequest(t, app, http.MethodGet, futureURL, nil, cookie)
+		if getResp3.StatusCode != http.StatusOK {
+			t.Fatalf("get with since=<far future>: want 200 got %d body=%s", getResp3.StatusCode, getRaw3)
+		}
+		var pull3 pullOut
+		mustUnmarshal(t, getRaw3, &pull3)
+		if len(pull3.Progress) != 0 || len(pull3.Annotations) != 0 {
+			t.Fatalf("polling with since beyond every row: want empty result, got %+v", pull3)
+		}
+		cursor3, err := time.Parse(time.RFC3339Nano, pull3.Cursor)
+		if err != nil {
+			t.Fatalf("cursor not parseable as RFC3339Nano: %v", err)
+		}
+		if !cursor3.Equal(future) {
+			t.Fatalf("polling with since beyond every row: want cursor echoed back as %v, got %v", future, cursor3)
+		}
+	})
+
+	// This is the fix's real acceptance test — it reproduces the exact
+	// commit-ordering race described in Usecase.Pull's doc comment and
+	// proves the safety-lagged cursor closes it. It is deliberately
+	// written so it would fail against the pre-fix cursor formula
+	// (cursor = raw max(updated_at) of the returned rows): see this task's
+	// report for the before/after run confirming that.
+	t.Run("a late-committing row with an older updated_at survives the safety-lagged cursor", func(t *testing.T) {
+		app := newTestApp(pool)
+		cookie, _ := registerUser(t, app, "latecommit")
+
+		// Step 1: device B pushes "now" and its transaction commits first.
+		tB := nowUTC()
+		respB, rawB := doRequest(t, app, http.MethodPost, "/sync",
+			pushBody([]map[string]any{progressPushItem("c1", "chB", "read", true, tB)}, nil), cookie)
+		if respB.StatusCode != http.StatusOK {
+			t.Fatalf("device B push: want 200 got %d body=%s", respB.StatusCode, rawB)
+		}
+
+		// Step 2: a poller captures the cursor right after B's row lands —
+		// this models the poll that happens *between* device A's push
+		// beginning and it committing.
+		pollResp, pollRaw := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
+		if pollResp.StatusCode != http.StatusOK {
+			t.Fatalf("poll after B: want 200 got %d body=%s", pollResp.StatusCode, pollRaw)
+		}
+		var poll pullOut
+		mustUnmarshal(t, pollRaw, &poll)
+		if poll.Cursor == "" {
+			t.Fatalf("want a non-empty cursor after B's push")
+		}
+
+		// Step 3: device A's push lands now, but carries an updated_at
+		// strictly OLDER than B's — modeling a transaction that started
+		// before B's but committed after this poll captured its cursor.
+		// Critically, tA is older than the RAW max the poller already
+		// observed (tB), which is exactly the scenario a naive
+		// max(updated_at) cursor cannot handle.
+		tA := tB.Add(-5 * time.Second)
+		respA, rawA := doRequest(t, app, http.MethodPost, "/sync",
+			pushBody([]map[string]any{progressPushItem("c1", "chA", "read", true, tA)}, nil), cookie)
+		if respA.StatusCode != http.StatusOK {
+			t.Fatalf("device A push: want 200 got %d body=%s", respA.StatusCode, rawA)
+		}
+		var outA pushOut
+		mustUnmarshal(t, rawA, &outA)
+		if outA.Applied != 1 {
+			t.Fatalf("device A's push is a fresh row (different chapter), not a conflict: want applied=1 got %d", outA.Applied)
+		}
+
+		// Step 4: resume from the cursor captured in step 2, BEFORE A
+		// committed. A's row must still be visible: its updated_at
+		// (tB-5s) is inside the trailing SyncSafetyLag window behind the
+		// cursor (tB-lag, since B was the only row seen at that point), so
+		// tA > cursor holds and the row is returned.
+		resumeURL := "/sync?" + url.Values{"since": {poll.Cursor}}.Encode()
+		resumeResp, resumeRaw := doRequest(t, app, http.MethodGet, resumeURL, nil, cookie)
+		if resumeResp.StatusCode != http.StatusOK {
+			t.Fatalf("resume from captured cursor: want 200 got %d body=%s", resumeResp.StatusCode, resumeRaw)
+		}
+		var resume pullOut
+		mustUnmarshal(t, resumeRaw, &resume)
+
+		found := false
+		for _, p := range resume.Progress {
+			if p.ChapterID == "chA" {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("device A's late-committing row (updated_at=%v) was lost: resuming from the cursor captured before it committed (cursor=%s) did not return it — got %+v", tA, poll.Cursor, resume.Progress)
 		}
 	})
 
