@@ -23,3 +23,15 @@ def test_manifest_shape():
     assert chapters[0]["id"] == "p0-1" and chapters[-1]["id"] == "appx"
     for c in chapters:
         assert c["file"] == f"chapters/{c['id']}.html"
+
+def test_runtime_and_viz_split(tmp_path):
+    from extract import extract_runtime
+    out = extract_runtime(SRC)
+    assert out["viz"].count("defineViz('") == 59
+    assert "class Plot" in out["runtime"] and "function initViz" in out["runtime"]
+    assert "window.CourseKit" in out["runtime"]
+    assert "defineViz('" not in out["runtime"].replace("function defineViz", "")
+    assert out["reader_css"].lstrip().startswith("/*") and "--s1:" in out["reader_css"]
+    assert "@font-face" in out["katex_css"]
+    for js in (out["runtime"], out["viz"]):
+        assert "</script" not in js
