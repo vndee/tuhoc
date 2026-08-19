@@ -202,6 +202,28 @@ async function pull(): Promise<void> {
  * 401, which this function uses to skip `pull` entirely rather than
  * firing (and redirect-triggering) a second, redundant request while
  * navigation is already underway.
+ *
+ * Unexpected-failure containment: `flushOutbox` and `pull` each catch
+ * their own network/HTTP failures internally (see their doc comments) —
+ * but neither wraps EVERY line in a try/catch, specifically the Dexie
+ * calls that aren't expected to fail in ordinary operation
+ * (`db.outbox.toArray()` at the top of `flushOutbox`, and the merge
+ * `db.transaction(...)` block in `pull`). IndexedDB can still throw
+ * there for reasons this engine's network/auth handling was never meant
+ * to anticipate — quota exceeded, a blocked version upgrade, an aborted
+ * transaction. The `catch` below exists for exactly that residual case:
+ * this function is invoked from a bare `setInterval` callback and a bare
+ * `online` listener (see `startSync`), neither of which attaches a
+ * `.catch()`, so anything that escapes past this point becomes an
+ * unhandled promise rejection in a component whose entire job is to run
+ * unattended for hours. Swallowing (and logging) it here is the same
+ * defensive posture already applied to the 401 case, generalized to
+ * "any" failure instead of just the one this engine specifically knows
+ * how to interpret. Crucially, nothing is deleted from the outbox and no
+ * cursor is written unless the corresponding network call already
+ * succeeded (see `flushOutbox`/`pull`), so a cycle that fails here
+ * leaves the outbox and cursor exactly as they were — the next cycle
+ * retries cleanly, same as any other failure mode this engine tolerates.
  */
 async function runCycle(): Promise<void> {
   if (inFlight) return;
@@ -212,6 +234,8 @@ async function runCycle(): Promise<void> {
     const flushedWithoutAuthFailure = await flushOutbox();
     if (!flushedWithoutAuthFailure) return;
     await pull();
+  } catch (err) {
+    console.error('tuhoc sync: cycle failed unexpectedly', err);
   } finally {
     inFlight = false;
   }

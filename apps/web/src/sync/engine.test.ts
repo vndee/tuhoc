@@ -171,6 +171,27 @@ describe('syncOnce — pulling from the server', () => {
     expect(seenSince).toBe('2026-08-20T09:59:00.000Z');
   });
 
+  it('the very first sync (no stored cursor) sends GET /sync with the `since` param OMITTED entirely — not an empty string', async () => {
+    // db.meta is intentionally left empty here (fresh device / never synced before).
+    let seenUrl = '';
+    server.use(
+      http.post('/sync', () => HttpResponse.json({ applied: 0 })),
+      http.get('/sync', ({ request }) => {
+        seenUrl = request.url;
+        return HttpResponse.json({ progress: [], annotations: [], cursor: '2026-08-20T09:59:00.000Z' });
+      }),
+    );
+
+    await syncOnce();
+
+    // The server treats an absent `since` as "beginning of time" but
+    // rejects a present-but-unparseable one with 400 (see
+    // apps/api/internal/sync/handler.go's Pull) — an empty string would
+    // fail to parse as RFC3339Nano, so omitting the param entirely (not
+    // sending `?since=`) is the only correct wire shape for a first sync.
+    expect(new URL(seenUrl).searchParams.has('since')).toBe(false);
+  });
+
   it('re-delivery of an already-applied row (identical updatedAt) is a genuine no-op: no duplicate row, no state change', async () => {
     const settled: ProgressRow = { courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: '2026-08-20T10:00:00.000Z' };
     await db.progress.put(settled);
@@ -313,6 +334,50 @@ describe('failure mode: a 401 mid-loop', () => {
     server.use(http.post('/sync', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
 
     await expect(syncOnce()).resolves.toBeUndefined();
+  });
+});
+
+describe('failure mode: an unexpected local-storage failure must not crash the loop', () => {
+  it('an IndexedDB failure (e.g. db.outbox.toArray() rejecting) does not reject syncOnce(), releases inFlight, and leaves the outbox/cursor untouched', async () => {
+    await db.outbox.add({ table: 'progress', row: { courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: '2026-08-20T10:00:00.000Z' } });
+    await db.meta.put({ key: 'syncCursor', value: '2026-08-20T09:59:00.000Z' });
+
+    let syncPosted = false;
+    server.use(
+      http.post('/sync', () => {
+        syncPosted = true;
+        return HttpResponse.json({ applied: 1 });
+      }),
+      emptySyncPull(),
+    );
+
+    // Simulates the class of failure this finding is about: not a
+    // network/HTTP error (those are already handled inside
+    // flushOutbox/pull), but IndexedDB itself throwing — quota exceeded,
+    // a blocked version upgrade, an aborted transaction, etc. — from a
+    // call site neither of those functions wraps in its own try/catch.
+    const toArraySpy = vi.spyOn(db.outbox, 'toArray').mockRejectedValueOnce(new Error('simulated IndexedDB failure'));
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(syncOnce()).resolves.toBeUndefined();
+    toArraySpy.mockRestore();
+
+    // The failure happened before any request could even be built — no
+    // network call went out this cycle.
+    expect(syncPosted).toBe(false);
+    // Nothing changed: the outbox entry and the stored cursor are exactly
+    // as they were before the failed cycle — safe to retry next time.
+    expect(await db.outbox.count()).toBe(1);
+    expect((await db.meta.get('syncCursor'))?.value).toBe('2026-08-20T09:59:00.000Z');
+    // The failure was not silently discarded — it was logged.
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+
+    // inFlight was released in the `finally`, so the NEXT cycle runs
+    // normally rather than being permanently blocked by the failed one.
+    await syncOnce();
+    expect(syncPosted).toBe(true);
+    expect(await db.outbox.count()).toBe(0);
   });
 });
 
