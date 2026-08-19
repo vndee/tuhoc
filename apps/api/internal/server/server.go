@@ -5,20 +5,37 @@ package server
 
 import (
 	"io"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/vndee/tuhoc-api/internal/auth"
 	"github.com/vndee/tuhoc-api/internal/config"
+)
+
+// authRateLimitMax and authRateLimitExpiration together define the
+// request budget applied to every /auth/* route (register/login/logout),
+// per the task 6 binding requirement. Deliberately not applied to /me:
+// rate-limiting login/register specifically defends against credential-
+// guessing and account-enumeration, and Require already gates /me behind
+// a valid session.
+const (
+	authRateLimitMax        = 10
+	authRateLimitExpiration = time.Minute
 )
 
 // Deps carries the shared dependencies handlers need.
 type Deps struct {
-	// Pool is nil in this task (no package owns a store yet); Task 5
-	// wires it in.
+	// Pool is the shared database pool auth (and later sync/stats)
+	// handlers query through. It is nil when DATABASE_URL is unset (see
+	// main.go / ruling F1) — /healthz keeps working without one, but any
+	// route that touches the database, including all of /auth/* and
+	// /me, needs it set.
 	Pool *pgxpool.Pool
 	// LogOutput is where the access logger writes. Nil means the
 	// logger's own default (stdout) — the production behavior. Callers
@@ -52,6 +69,25 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	app.Get("/healthz", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"ok": true})
 	})
+
+	// Auth routes (Task 6). deps.Pool may be nil when DATABASE_URL is
+	// unset (see main.go / ruling F1) — that only matters once a request
+	// actually reaches one of these handlers; wiring them up here is
+	// always safe.
+	authHandler := auth.NewHandler(auth.NewUsecase(auth.NewRepo(deps.Pool)), cfg.CookieSecure)
+
+	authGroup := app.Group("/auth", limiter.New(limiter.Config{
+		Max:        authRateLimitMax,
+		Expiration: authRateLimitExpiration,
+	}))
+	authGroup.Post("/register", authHandler.Register)
+	authGroup.Post("/login", authHandler.Login)
+	authGroup.Post("/logout", authHandler.Logout)
+
+	// GET /me is the first (and simplest) consumer of auth.Require —
+	// mounting it behind the middleware here proves Require works end to
+	// end, ahead of Task 7/8's routes depending on the same pattern.
+	app.Get("/me", auth.Require(deps.Pool), authHandler.Me)
 
 	return app
 }
