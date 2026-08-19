@@ -4,7 +4,7 @@
 package server
 
 import (
-	"testing"
+	"io"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -15,36 +15,35 @@ import (
 	"github.com/vndee/tuhoc-api/internal/config"
 )
 
-// Deps carries the shared dependencies handlers need. Pool is nil in this
-// task (no package owns a store yet); Task 5 wires it in.
+// Deps carries the shared dependencies handlers need.
 type Deps struct {
+	// Pool is nil in this task (no package owns a store yet); Task 5
+	// wires it in.
 	Pool *pgxpool.Pool
+	// LogOutput is where the access logger writes. Nil means the
+	// logger's own default (stdout) — the production behavior. Callers
+	// that don't want request logs on stdout (tests) pass io.Discard
+	// explicitly; the middleware stack itself is identical either way.
+	LogOutput io.Writer
 }
-
-// defaultCORSOrigin is used when cfg.CORSOrigin is unset. Fiber's CORS
-// middleware treats an empty AllowOrigins as the wildcard "*", which it
-// refuses to combine with AllowCredentials — so New cannot pass an empty
-// origin through untouched (config.Load already defaults it, but New must
-// stay safe for callers, e.g. tests, that construct config.Config directly).
-const defaultCORSOrigin = "http://localhost:5173"
 
 // New builds a Fiber app with the standard middleware stack (recover,
 // logger, CORS) and the health check route.
 func New(cfg config.Config, deps Deps) *fiber.App {
 	app := fiber.New()
 
+	// Fiber's CORS middleware treats an empty AllowOrigins as the
+	// wildcard "*", which it refuses to combine with AllowCredentials —
+	// so a zero-value Config (as callers such as tests may construct
+	// directly, bypassing config.Load's own defaulting) must still get a
+	// safe, concrete origin here.
 	corsOrigin := cfg.CORSOrigin
 	if corsOrigin == "" {
-		corsOrigin = defaultCORSOrigin
+		corsOrigin = config.DefaultCORSOrigin
 	}
 
 	app.Use(recover.New())
-	// The access logger writes straight to stdout on every request; under
-	// `go test` that pollutes test output, so it's skipped there. It stays
-	// mounted for every real (non-test) run of the binary.
-	if !testing.Testing() {
-		app.Use(logger.New())
-	}
+	app.Use(logger.New(logger.Config{Output: deps.LogOutput}))
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     corsOrigin,
 		AllowCredentials: true,
