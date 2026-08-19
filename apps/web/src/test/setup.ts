@@ -3,6 +3,21 @@ import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
 
 /**
+ * jsdom (this project's `test.environment`) implements no IndexedDB at all
+ * — `window.indexedDB` is simply `undefined` — but Task 13's local store
+ * (`src/db/local.ts`) is a Dexie database, and Dexie throws synchronously
+ * at `new Dexie(...)` time if the global is missing. `fake-indexeddb/auto`
+ * installs a spec-compliant in-memory IndexedDB implementation onto
+ * `globalThis` as a side effect of being imported; it must run before any
+ * test file's `import { db } from '../db/local'` does, which is exactly
+ * what a shared `setupFiles` entry (run once, before every test file is
+ * loaded) guarantees. Real browsers all have IndexedDB natively, so this
+ * is a test-runtime-only shim, same rationale as the MemoryStorage patch
+ * below for localStorage.
+ */
+import 'fake-indexeddb/auto';
+
+/**
  * Bun ships its own global `localStorage` (backed by SQLite, gated behind
  * `--localstorage-file`), and when vitest's jsdom environment runs inside a
  * Bun-spawned worker (`bun run test`), that global leaks onto
