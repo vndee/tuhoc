@@ -12,9 +12,10 @@ import type { Manifest } from '../course/types';
 // itself, so ChapterView is stubbed out here (its own behavior is covered
 // by ChapterView.test.tsx).
 vi.mock('../reader/ChapterView', () => ({
-  ChapterView: ({ chapter, prevChapter, nextChapter }: any) => (
+  ChapterView: ({ chapter, partTitle, prevChapter, nextChapter }: any) => (
     <div data-testid="chapter-view">
       <span data-testid="current">{chapter.id}</span>
+      <span data-testid="part">{partTitle}</span>
       <span data-testid="prev">{prevChapter?.id ?? 'none'}</span>
       <span data-testid="next">{nextChapter?.id ?? 'none'}</span>
     </div>
@@ -74,6 +75,7 @@ describe('Reader', () => {
     await waitFor(() => expect(screen.getByTestId('current').textContent).toBe('c2'));
     expect(screen.getByTestId('prev').textContent).toBe('c1');
     expect(screen.getByTestId('next').textContent).toBe('c3'); // next part, flattened in order
+    expect(screen.getByTestId('part').textContent).toBe('Phần 1');
   });
 
   it('the first chapter has no prev', async () => {
@@ -82,14 +84,16 @@ describe('Reader', () => {
     await waitFor(() => expect(screen.getByTestId('current').textContent).toBe('c1'));
     expect(screen.getByTestId('prev').textContent).toBe('none');
     expect(screen.getByTestId('next').textContent).toBe('c2');
+    expect(screen.getByTestId('part').textContent).toBe('Phần 1');
   });
 
-  it('the last chapter has no next', async () => {
+  it('the last chapter has no next, and carries ITS OWN part title (not the previous chapter\'s Part 1)', async () => {
     renderAt('/c/demo/c3');
 
     await waitFor(() => expect(screen.getByTestId('current').textContent).toBe('c3'));
     expect(screen.getByTestId('prev').textContent).toBe('c2');
     expect(screen.getByTestId('next').textContent).toBe('none');
+    expect(screen.getByTestId('part').textContent).toBe('Phần 2');
   });
 
   it('shows a Vietnamese message for a chapterId not present in the manifest', async () => {

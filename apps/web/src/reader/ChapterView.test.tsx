@@ -62,6 +62,7 @@ function renderChapterView(
         <ChapterView
           courseId="demo"
           courseTitle="Khóa học demo"
+          partTitle="Phần 1"
           chapter={chapter1}
           prevChapter={null}
           nextChapter={chapter2}
@@ -92,7 +93,7 @@ describe('ChapterView', () => {
     });
     window.CourseKit = { renderKatex, initViz, REDRAWS: [], VIZ: {} };
     document.body.innerHTML =
-      '<aside id="rail"></aside><button id="prev-btn" type="button"></button><button id="next-btn" type="button"></button>';
+      '<div id="crumb"></div><aside id="rail"></aside><button id="prev-btn" type="button"></button><button id="next-btn" type="button"></button>';
   });
 
   it('calls renderKatex then initViz exactly once, with the element containing the fragment', async () => {
@@ -131,6 +132,17 @@ describe('ChapterView', () => {
     expect(links.map((a) => a.textContent)).toEqual(['Phần A', 'Tiểu mục', 'Phần B']);
     expect(links[1].className).toContain('lvl3');
     expect(links[0].className).not.toContain('lvl3');
+  });
+
+  it('portals the breadcrumb into #crumb as span.crumb-part (the part) + b (num + chapter title)', async () => {
+    renderChapterView();
+    await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
+
+    const crumb = document.getElementById('crumb')!;
+    const part = crumb.querySelector('span.crumb-part');
+    const title = crumb.querySelector('b');
+    expect(part?.textContent).toContain('Phần 1');
+    expect(title?.textContent).toBe('1.1 Chương một');
   });
 
   it('renders the in-content pager with only a next link when there is no prev chapter', async () => {
@@ -182,22 +194,39 @@ describe('ChapterView', () => {
     expect((document.getElementById('next-btn') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('navigating between chapters does not accumulate REDRAWS entries (no leak across chapters)', async () => {
+  it('navigating between chapters does not accumulate REDRAWS entries (no leak across chapters), and the crumb updates', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { rerender } = render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={['/c/demo/c1']}>
-          <ChapterView courseId="demo" courseTitle="Khóa học demo" chapter={chapter1} prevChapter={null} nextChapter={chapter2} />
+          <ChapterView
+            courseId="demo"
+            courseTitle="Khóa học demo"
+            partTitle="Phần 1"
+            chapter={chapter1}
+            prevChapter={null}
+            nextChapter={chapter2}
+          />
         </MemoryRouter>
       </QueryClientProvider>,
     );
     await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
     expect(window.CourseKit?.REDRAWS).toHaveLength(1);
+    expect(document.getElementById('crumb')!.textContent).toBe(
+      'Phần 1' + '\u00A0\u203a\u00A0' + '1.1 Chương một',
+    );
 
     rerender(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={['/c/demo/c1']}>
-          <ChapterView courseId="demo" courseTitle="Khóa học demo" chapter={chapter2} prevChapter={chapter1} nextChapter={null} />
+          <ChapterView
+            courseId="demo"
+            courseTitle="Khóa học demo"
+            partTitle="Phần 2"
+            chapter={chapter2}
+            prevChapter={chapter1}
+            nextChapter={null}
+          />
         </MemoryRouter>
       </QueryClientProvider>,
     );
@@ -206,6 +235,10 @@ describe('ChapterView', () => {
     // Still exactly 1 — chapter 1's entry was spliced out when chapter 2's
     // effect ran, not left behind to redraw a detached canvas forever.
     expect(window.CourseKit?.REDRAWS).toHaveLength(1);
+    // Crumb reflects the new chapter's part, not a leftover from chapter 1.
+    expect(document.getElementById('crumb')!.textContent).toBe(
+      'Phần 2' + '\u00A0\u203a\u00A0' + '1.2 Chương hai',
+    );
   });
 
   it('sets document.title from the chapter and course titles', async () => {

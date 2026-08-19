@@ -30,8 +30,14 @@ export function Reader() {
     return <p className="ch-lede">{describeCourseError(manifestQuery.error)}</p>;
   }
 
-  const chapters = manifestQuery.data.parts.flatMap((part) => part.chapters);
-  const index = chapters.findIndex((c) => c.id === chapterId);
+  // Keep the part title alongside each chapter only long enough to find the
+  // current one's — prevChapter/nextChapter stay plain Chapters (all the
+  // pager needs), so ChapterView's pager logic doesn't have to care about
+  // parts at all. Only the breadcrumb (current chapter only) needs it.
+  const chaptersWithPart = manifestQuery.data.parts.flatMap((part) =>
+    part.chapters.map((chapter) => ({ chapter, partTitle: part.title })),
+  );
+  const index = chaptersWithPart.findIndex((c) => c.chapter.id === chapterId);
   if (index === -1) {
     return <p className="ch-lede">Không tìm thấy chương này trong khóa học.</p>;
   }
@@ -40,9 +46,10 @@ export function Reader() {
     <ChapterView
       courseId={courseId}
       courseTitle={manifestQuery.data.title}
-      chapter={chapters[index]}
-      prevChapter={chapters[index - 1] ?? null}
-      nextChapter={chapters[index + 1] ?? null}
+      chapter={chaptersWithPart[index].chapter}
+      partTitle={chaptersWithPart[index].partTitle}
+      prevChapter={chaptersWithPart[index - 1]?.chapter ?? null}
+      nextChapter={chaptersWithPart[index + 1]?.chapter ?? null}
     />
   );
 }

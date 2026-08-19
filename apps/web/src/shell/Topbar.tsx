@@ -1,3 +1,4 @@
+import { useLocation } from 'react-router-dom';
 import type { Theme } from '../theme/useTheme';
 
 export interface TopbarProps {
@@ -7,6 +8,12 @@ export interface TopbarProps {
   onMenuClick: () => void;
 }
 
+// Matches the `/c/:courseId/:chapterId` route — same pathname-only check
+// (not `useParams`) as Sidebar's `courseIdFromPathname` and Rail's
+// `CHAPTER_ROUTE`, for the same reason: <Topbar> is chrome rendered by
+// <AppShell> alongside <AppRoutes>, not inside a matched <Route>.
+const CHAPTER_ROUTE = /^\/c\/[^/]+\/[^/]+/;
+
 /**
  * Topbar chrome: `#menu-btn`, `#crumb`, `#mark-btn`, `#theme-btn`,
  * `#prev-btn`, `#next-btn` — ids/classes match reader.css exactly.
@@ -14,17 +21,27 @@ export interface TopbarProps {
  * `#theme-btn` and `#menu-btn` are wired: theme is this task's own
  * `useTheme()` toggle, and menu-btn drives `useMobileNav()` (Ruling
  * #menu-btn — Task 9 left it inert because no task owned it; Task 10
- * does). `#mark-btn`/`#prev-btn`/`#next-btn` depend on data Tasks 11/14
- * own (chapter pager, progress) and are intentionally inert placeholders
- * here — wiring them now would mean guessing at those tasks' interfaces.
+ * does). `#mark-btn` depends on progress data Task 14 owns and is an
+ * intentionally inert placeholder here. `#prev-btn`/`#next-btn` are wired
+ * by `ChapterView` (Task 11) directly against these DOM nodes (chapter
+ * pager data lives there, not here).
+ *
+ * `#crumb` on chapter routes: same recipe as `Rail.tsx` for `#rail` —
+ * `ChapterView` portals the real `part › chapter` breadcrumb directly into
+ * this DOM node, so rendering the static "Tuhoc" text here too would
+ * concatenate both. This component only needs to know *whether* it's a
+ * chapter route (via the pathname), not what the breadcrumb actually says.
  */
 export function Topbar({ theme, onToggleTheme, onMenuClick }: TopbarProps) {
+  const location = useLocation();
+  const isChapterRoute = CHAPTER_ROUTE.test(location.pathname);
+
   return (
     <>
       <button id="menu-btn" type="button" className="tb-btn" aria-label="Mở menu" onClick={onMenuClick}>
         ☰
       </button>
-      <div id="crumb">Tuhoc</div>
+      <div id="crumb">{!isChapterRoute && 'Tuhoc'}</div>
       <button id="mark-btn" type="button" className="tb-btn" aria-label="Đánh dấu đã học">
         <span className="mk-ico">○</span>
         <span className="mk-lbl">Đã học</span>

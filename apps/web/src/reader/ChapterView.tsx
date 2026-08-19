@@ -11,6 +11,8 @@ export interface ChapterViewProps {
   courseId: string;
   /** The course's own title — used to build `document.title`, same shape as v1's own "<chapter> — <course>". */
   courseTitle: string;
+  /** The title of the part (manifest.parts[].title) this chapter belongs to — used for the `#crumb` breadcrumb only; `prevChapter`/`nextChapter` deliberately don't carry this. */
+  partTitle: string;
   chapter: Chapter;
   prevChapter: Chapter | null;
   nextChapter: Chapter | null;
@@ -39,9 +41,10 @@ interface HeadingEntry {
  * would fight both the re-render replacement and script tags not
  * executing; a plain ref'd node sidesteps both).
  */
-export function ChapterView({ courseId, courseTitle, chapter, prevChapter, nextChapter }: ChapterViewProps) {
+export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevChapter, nextChapter }: ChapterViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [railEl, setRailEl] = useState<HTMLElement | null>(null);
+  const [crumbEl, setCrumbEl] = useState<HTMLElement | null>(null);
   const [headings, setHeadings] = useState<HeadingEntry[]>([]);
   const [currentHeadingId, setCurrentHeadingId] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -52,12 +55,12 @@ export function ChapterView({ courseId, courseTitle, chapter, prevChapter, nextC
     queryFn: () => loadChapter(courseId, chapter.file),
   });
 
-  // `#rail` is rendered by <Shell> (Task 9), a sibling of the routed
-  // content this component lives in — not a DOM node we can reach via
-  // ref. It always exists in the DOM by the time any effect runs (React
-  // commits the whole tree before running effects), but NOT yet during
-  // this component's own first render, so the portal target is picked up
-  // post-commit and stashed in state. This is the standard
+  // `#rail` and `#crumb` are rendered by <Shell>/<Topbar> (Task 9), siblings
+  // of the routed content this component lives in — not DOM nodes reachable
+  // via ref. Both always exist in the DOM by the time any effect runs
+  // (React commits the whole tree before running effects), but NOT yet
+  // during this component's own first render, so the portal targets are
+  // picked up post-commit and stashed in state. This is the standard
   // portal-into-an-externally-owned-node pattern — the lint warning below
   // ("setState in effect can cascade") is the expected/necessary shape of
   // that pattern here: the effect has no dependencies (runs once per
@@ -66,6 +69,7 @@ export function ChapterView({ courseId, courseTitle, chapter, prevChapter, nextC
   // portal target discovery always needs.
   useEffect(() => {
     setRailEl(document.getElementById('rail'));
+    setCrumbEl(document.getElementById('crumb'));
   }, []);
 
   // Prev/next chapter navigation: topbar `#prev-btn`/`#next-btn` (Task 9
@@ -187,19 +191,42 @@ export function ChapterView({ courseId, courseTitle, chapter, prevChapter, nextC
     };
   }, [courseKit.ready, chapterQuery.data, courseId, chapter.id, chapter.num, chapter.title, courseTitle]);
 
+  // Error checks come before the pending check: `!courseKit.ready` is true
+  // for the whole time scripts are loading, so if it were checked first, a
+  // chapter fetch that fails *while* scripts are still loading would show
+  // "Đang tải chương…" instead of the real error until courseKit happened
+  // to settle too — silently hiding a genuine failure behind a loading spinner.
   if (courseKit.error) {
     console.error('useCourseKit failed to load the course runtime', courseKit.error);
     return <p className="ch-lede">Không tải được công cụ đọc (KaTeX/mô phỏng). Hãy thử tải lại trang.</p>;
   }
-  if (!courseKit.ready || chapterQuery.isPending) {
-    return <p className="ch-lede">Đang tải chương…</p>;
-  }
   if (chapterQuery.isError) {
     return <p className="ch-lede">{describeCourseError(chapterQuery.error)}</p>;
+  }
+  if (!courseKit.ready || chapterQuery.isPending) {
+    return <p className="ch-lede">Đang tải chương…</p>;
   }
 
   return (
     <>
+      {crumbEl &&
+        createPortal(
+          // Markup ported from v1's own show(): '<span class="crumb-part">'+c.part+' › </span><b>'+num+title+'</b>'.
+          // reader.css hides .crumb-part on narrow screens (#crumb .crumb-part{display:none})
+          // so the chapter title alone survives on mobile — kept as a real
+          // element here, not folded into the <b>, for that rule to keep working.
+          <>
+            <span className="crumb-part">
+              {partTitle}
+              {' › '}
+            </span>
+            <b>
+              {chapter.num ? `${chapter.num} ` : ''}
+              {chapter.title}
+            </b>
+          </>,
+          crumbEl,
+        )}
       <div ref={containerRef} />
       {(prevChapter || nextChapter) && (
         <div className="pager">

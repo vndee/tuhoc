@@ -31,53 +31,83 @@ function loadScript(src: string): Promise<void> {
 }
 
 // Module-level, not component state: these scripts attach GLOBALS
-// (window.katex, window.renderMathInElement, window.CourseKit), and
-// loading the course's viz.js registers all 59 defineViz() calls into a
-// freshly-created window.CourseKit.VIZ/REDRAWS. Injecting the four scripts
-// a second time — from a second <ChapterView> mount, or React 18
-// StrictMode's dev-only mount->cleanup->mount cycle — would not just be
-// wasted network requests: runtime.js would re-run and silently replace
-// window.CourseKit.REDRAWS with a brand-new empty array, orphaning every
-// canvas already registered against the old one (they would stop
+// (window.katex, window.renderMathInElement, window.CourseKit). Injecting
+// the shared trio a second time — from a second <ChapterView> mount, or
+// React 18 StrictMode's dev-only mount->cleanup->mount cycle — would not
+// just be wasted network requests: runtime.js would re-run and silently
+// replace window.CourseKit.REDRAWS with a brand-new empty array, orphaning
+// every canvas already registered against the old one (they would stop
 // repainting on the next theme toggle). A promise cached at module scope,
 // not per-render state, is what survives that: every caller across the
 // app's lifetime awaits the SAME promise instead of re-triggering the
-// injection — this is what "once per app lifetime" (not "once per
-// component instance") requires.
-let injectPromise: Promise<void> | null = null;
+// injection.
+let runtimeTrioPromise: Promise<void> | null = null;
 
-function injectCourseKit(courseId: string): Promise<void> {
-  if (injectPromise) return injectPromise;
+function injectRuntimeTrio(): Promise<void> {
+  if (runtimeTrioPromise) return runtimeTrioPromise;
 
-  injectPromise = (async () => {
+  runtimeTrioPromise = (async () => {
     for (const src of RUNTIME_SCRIPT_URLS) {
       await loadScript(src);
     }
-    await loadScript(vizScriptUrl(courseId));
   })();
 
   // A failed load must not wedge the whole app forever on a rejected
   // singleton — reset it so a *later* mount (e.g. after a transient
-  // network blip, or a route revisit) gets a clean retry. This call's own
-  // caller still observes the rejection via the promise it already holds.
-  injectPromise.catch(() => {
-    injectPromise = null;
+  // network blip, or a route revisit) gets a clean retry.
+  runtimeTrioPromise.catch(() => {
+    runtimeTrioPromise = null;
   });
 
-  return injectPromise;
+  return runtimeTrioPromise;
+}
+
+// Unlike the trio above, a course's viz.js is course-SPECIFIC — it calls
+// defineViz() 59 times for THIS course's simulations. Caching it in a
+// single bare variable (as an earlier version of this file did) meant
+// that once any course's viz.js had loaded, `useCourseKit('some-other-
+// course')` would resolve `ready: true` immediately without ever
+// requesting that course's own viz.js — silently wiring up the WRONG
+// visualizations (or none) with no error surfaced. The platform is
+// designed to host many courses (spec §1), so this isn't hypothetical.
+// Keyed by courseId instead: each course's viz.js loads exactly once,
+// and loading is chained after the shared trio (not raced against it) so
+// viz.js — which references `Plot`/`defineViz`/etc. as globals at its own
+// top level — never starts executing before runtime.js has defined them,
+// even when two different courses' viz.js are first requested concurrently.
+const vizPromisesByCourseId = new Map<string, Promise<void>>();
+
+function injectCourseViz(courseId: string): Promise<void> {
+  const cached = vizPromisesByCourseId.get(courseId);
+  if (cached) return cached;
+
+  // injectRuntimeTrio() must be called synchronously here (not inside the
+  // .then below) so a second synchronous call for the same courseId — the
+  // StrictMode double-invoke case — sees this Map entry already set
+  // before either promise has had a chance to settle.
+  const promise = injectRuntimeTrio().then(() => loadScript(vizScriptUrl(courseId)));
+
+  promise.catch(() => {
+    vizPromisesByCourseId.delete(courseId);
+  });
+
+  vizPromisesByCourseId.set(courseId, promise);
+  return promise;
 }
 
 export interface UseCourseKitResult {
-  /** True once katex.js, auto-render.js, runtime.js and the course's viz.js have all loaded and attached their globals. */
+  /** True once katex.js, auto-render.js, runtime.js and this course's viz.js have all loaded and attached their globals. */
   ready: boolean;
   /** Set if any of the four failed to load. `ready` stays false forever in that case — surface this rather than hanging silently. */
   error: Error | null;
 }
 
 /**
- * Loads the course-kit runtime for `courseId`, once per app lifetime (see
- * `injectCourseKit` above), and reports readiness. `ChapterView` must not
- * touch `window.CourseKit` until `ready` is true.
+ * Loads the course-kit runtime for `courseId`: the shared katex/auto-
+ * render/runtime trio once per app lifetime, plus `courseId`'s own viz.js
+ * once per distinct courseId (see `injectCourseViz` above), and reports
+ * readiness. `ChapterView` must not touch `window.CourseKit` until `ready`
+ * is true.
  */
 export function useCourseKit(courseId: string): UseCourseKitResult {
   const [result, setResult] = useState<UseCourseKitResult>({ ready: false, error: null });
@@ -85,7 +115,7 @@ export function useCourseKit(courseId: string): UseCourseKitResult {
   useEffect(() => {
     let cancelled = false;
 
-    injectCourseKit(courseId).then(
+    injectCourseViz(courseId).then(
       () => {
         if (!cancelled) setResult({ ready: true, error: null });
       },
@@ -102,7 +132,8 @@ export function useCourseKit(courseId: string): UseCourseKitResult {
   return result;
 }
 
-/** Test-only: reset the module-level singleton between test files/cases. Not exported for app code. */
+/** Test-only: reset the module-level singleton/map between test files/cases. Not exported for app code. */
 export function __resetCourseKitForTests(): void {
-  injectPromise = null;
+  runtimeTrioPromise = null;
+  vizPromisesByCourseId.clear();
 }

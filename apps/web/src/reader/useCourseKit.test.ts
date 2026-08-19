@@ -85,4 +85,76 @@ describe('useCourseKit', () => {
     await waitFor(() => expect(retry.result.current.ready).toBe(true));
     expect(secondAttempt).toHaveLength(4);
   });
+
+  // Regression coverage for the bug a review caught: the singleton used to
+  // be a single bare `injectPromise` that ignored `courseId` entirely, so
+  // once ONE course's viz.js had loaded, useCourseKit('some-other-course')
+  // resolved ready:true immediately without ever requesting that course's
+  // own viz.js — silently wiring up the wrong (or no) visualizations, with
+  // no error surfaced. These mount sequentially and concurrently to prove
+  // that can't happen anymore.
+  it('mounting for a second, different course requests that course own viz.js, without re-requesting the shared runtime trio', async () => {
+    const { requestedSrcs } = mockScriptLoading();
+
+    const courseA = renderHook(() => useCourseKit('course-a'));
+    await waitFor(() => expect(courseA.result.current.ready).toBe(true));
+    expect(requestedSrcs).toEqual([
+      '/course-kit/vendor/katex.js',
+      '/course-kit/vendor/auto-render.js',
+      '/course-kit/runtime.js',
+      '/courses/course-a/viz.js',
+    ]);
+
+    const courseB = renderHook(() => useCourseKit('course-b'));
+    await waitFor(() => expect(courseB.result.current.ready).toBe(true));
+
+    // Exactly one new request — course-b's own viz.js. The shared trio,
+    // already loaded for course A, is not re-requested.
+    expect(requestedSrcs).toEqual([
+      '/course-kit/vendor/katex.js',
+      '/course-kit/vendor/auto-render.js',
+      '/course-kit/runtime.js',
+      '/courses/course-a/viz.js',
+      '/courses/course-b/viz.js',
+    ]);
+  });
+
+  it('two different courses mounted concurrently (before the shared trio has even loaded) both still get their own viz.js, and the trio loads exactly once and first', async () => {
+    const { requestedSrcs } = mockScriptLoading();
+
+    const courseA = renderHook(() => useCourseKit('course-a'));
+    const courseB = renderHook(() => useCourseKit('course-b'));
+
+    await waitFor(() => expect(courseA.result.current.ready).toBe(true));
+    await waitFor(() => expect(courseB.result.current.ready).toBe(true));
+
+    expect(requestedSrcs.slice(0, 3)).toEqual([
+      '/course-kit/vendor/katex.js',
+      '/course-kit/vendor/auto-render.js',
+      '/course-kit/runtime.js',
+    ]);
+    // Each course's viz.js was requested exactly once, both after the trio.
+    expect(requestedSrcs.slice(3).sort()).toEqual(['/courses/course-a/viz.js', '/courses/course-b/viz.js']);
+  });
+
+  it('a courseId-specific viz.js failure does not force the shared (already-succeeded) runtime trio to reload, and only that course retries', async () => {
+    const { requestedSrcs: attempt1 } = mockScriptLoading((src) => src.endsWith('viz.js'));
+    const failing = renderHook(() => useCourseKit('course-a'));
+    await waitFor(() => expect(failing.result.current.error).not.toBeNull());
+    expect(attempt1).toEqual([
+      '/course-kit/vendor/katex.js',
+      '/course-kit/vendor/auto-render.js',
+      '/course-kit/runtime.js',
+      '/courses/course-a/viz.js',
+    ]);
+
+    vi.restoreAllMocks();
+    const { requestedSrcs: attempt2 } = mockScriptLoading();
+    const retry = renderHook(() => useCourseKit('course-a'));
+    await waitFor(() => expect(retry.result.current.ready).toBe(true));
+
+    // Only the failed viz.js is re-requested — the trio, which succeeded
+    // on the first attempt, is not reloaded.
+    expect(attempt2).toEqual(['/courses/course-a/viz.js']);
+  });
 });
