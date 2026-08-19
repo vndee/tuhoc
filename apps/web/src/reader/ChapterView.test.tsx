@@ -7,6 +7,8 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import type { Chapter } from '../course/types';
+import { db } from '../db/local';
+import { ThemeProvider } from '../theme/ThemeContext';
 import { ChapterView } from './ChapterView';
 
 // ChapterView's own script injection is useCourseKit's job (covered by
@@ -29,6 +31,8 @@ const FRAGMENT = `
 <div class="fig-body"><div data-viz="aep"></div></div>
 <h2>Phần B</h2>
 <p>Nội dung B</p>
+<div class="box ex"><div class="box-h">Bài 1</div><p>Đề 1</p></div>
+<div class="box ex"><div class="box-h">Bài 2</div><p>Đề 2</p></div>
 `;
 
 const CHAPTER_2_HTML = '<h1 class="ch-title">Chương hai</h1><p>nội dung khác</p>';
@@ -57,18 +61,20 @@ function renderChapterView(
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const body = (
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/c/demo/c1']}>
-        {withProbe && <LocationProbe />}
-        <ChapterView
-          courseId="demo"
-          courseTitle="Khóa học demo"
-          partTitle="Phần 1"
-          chapter={chapter1}
-          prevChapter={null}
-          nextChapter={chapter2}
-          {...props}
-        />
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/c/demo/c1']}>
+          {withProbe && <LocationProbe />}
+          <ChapterView
+            courseId="demo"
+            courseTitle="Khóa học demo"
+            partTitle="Phần 1"
+            chapter={chapter1}
+            prevChapter={null}
+            nextChapter={chapter2}
+            {...props}
+          />
+        </MemoryRouter>
+      </ThemeProvider>
     </QueryClientProvider>
   );
   return render(strict ? <StrictMode>{body}</StrictMode> : body);
@@ -93,7 +99,15 @@ describe('ChapterView', () => {
     });
     window.CourseKit = { renderKatex, initViz, REDRAWS: [], VIZ: {} };
     document.body.innerHTML =
-      '<div id="crumb"></div><aside id="rail"></aside><button id="prev-btn" type="button"></button><button id="next-btn" type="button"></button>';
+      '<div id="crumb"></div><aside id="rail"></aside>' +
+      '<button id="prev-btn" type="button"></button><button id="next-btn" type="button"></button>' +
+      '<button id="mark-btn" type="button"><span class="mk-ico">○</span><span class="mk-lbl">Đã học</span></button>';
+  });
+
+  afterEach(async () => {
+    await Promise.all([db.progress.clear(), db.annotations.clear(), db.outbox.clear(), db.meta.clear()]);
+    delete document.documentElement.dataset.theme;
+    window.localStorage.clear();
   });
 
   it('calls renderKatex then initViz exactly once, with the element containing the fragment', async () => {
@@ -198,16 +212,18 @@ describe('ChapterView', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { rerender } = render(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={['/c/demo/c1']}>
-          <ChapterView
-            courseId="demo"
-            courseTitle="Khóa học demo"
-            partTitle="Phần 1"
-            chapter={chapter1}
-            prevChapter={null}
-            nextChapter={chapter2}
-          />
-        </MemoryRouter>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/c/demo/c1']}>
+            <ChapterView
+              courseId="demo"
+              courseTitle="Khóa học demo"
+              partTitle="Phần 1"
+              chapter={chapter1}
+              prevChapter={null}
+              nextChapter={chapter2}
+            />
+          </MemoryRouter>
+        </ThemeProvider>
       </QueryClientProvider>,
     );
     await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
@@ -218,16 +234,18 @@ describe('ChapterView', () => {
 
     rerender(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={['/c/demo/c1']}>
-          <ChapterView
-            courseId="demo"
-            courseTitle="Khóa học demo"
-            partTitle="Phần 2"
-            chapter={chapter2}
-            prevChapter={chapter1}
-            nextChapter={null}
-          />
-        </MemoryRouter>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/c/demo/c1']}>
+            <ChapterView
+              courseId="demo"
+              courseTitle="Khóa học demo"
+              partTitle="Phần 2"
+              chapter={chapter2}
+              prevChapter={chapter1}
+              nextChapter={null}
+            />
+          </MemoryRouter>
+        </ThemeProvider>
       </QueryClientProvider>,
     );
 
@@ -255,5 +273,136 @@ describe('ChapterView', () => {
 
     expect(await screen.findByText(/không tải được|not found|lỗi/i)).toBeInTheDocument();
     expect(initViz).not.toHaveBeenCalled();
+  });
+
+  describe('#mark-btn (debt #5 — Ruling F4, wired to real progress)', () => {
+    it('starts unmarked (○ / "Đánh dấu đã học") when the chapter has no progress row', async () => {
+      renderChapterView();
+      await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
+
+      const markBtn = document.getElementById('mark-btn')!;
+      expect(markBtn.classList.contains('on')).toBe(false);
+      expect(markBtn.querySelector('.mk-ico')!.textContent).toBe('○');
+      expect(markBtn.querySelector('.mk-lbl')!.textContent).toBe('Đánh dấu đã học');
+    });
+
+    it('clicking #mark-btn marks the chapter read: flips icon/label/class AND writes local progress + outbox', async () => {
+      renderChapterView();
+      await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
+
+      const markBtn = document.getElementById('mark-btn')!;
+      fireEvent.click(markBtn);
+
+      await waitFor(() => expect(markBtn.classList.contains('on')).toBe(true));
+      expect(markBtn.querySelector('.mk-ico')!.textContent).toBe('✓');
+      expect(markBtn.querySelector('.mk-lbl')!.textContent).toBe('Đã học');
+      // aria-label (not just visible text) must also flip — Topbar sets a
+      // static aria-label that would otherwise win over .mk-lbl's text for
+      // the button's accessible name.
+      expect(markBtn.getAttribute('aria-label')).toBe('Bỏ đánh dấu đã học');
+
+      const row = await db.progress.get(['demo', 'c1', 'read']);
+      expect(row).toMatchObject({ courseId: 'demo', chapterId: 'c1', status: 'read', done: true });
+      expect(await db.outbox.count()).toBe(1);
+    });
+
+    it('clicking #mark-btn a second time unmarks it again', async () => {
+      renderChapterView();
+      await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
+
+      const markBtn = document.getElementById('mark-btn')!;
+      fireEvent.click(markBtn);
+      await waitFor(() => expect(markBtn.classList.contains('on')).toBe(true));
+
+      fireEvent.click(markBtn);
+      await waitFor(() => expect(markBtn.classList.contains('on')).toBe(false));
+      expect(markBtn.querySelector('.mk-ico')!.textContent).toBe('○');
+    });
+
+    it('reflects a chapter already marked read before this component mounted', async () => {
+      await db.progress.put({ courseId: 'demo', chapterId: 'c1', status: 'read', done: true, updatedAt: new Date().toISOString() });
+
+      renderChapterView();
+      await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
+
+      await waitFor(() => expect(document.getElementById('mark-btn')!.classList.contains('on')).toBe(true));
+    });
+
+    it('resets to the neutral ○/"Đánh dấu đã học" default on unmount, so it never shows a stale ✓ from a chapter that is no longer open', async () => {
+      const { unmount } = renderChapterView();
+      await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
+
+      const markBtn = document.getElementById('mark-btn')!;
+      fireEvent.click(markBtn);
+      await waitFor(() => expect(markBtn.classList.contains('on')).toBe(true));
+
+      unmount();
+
+      expect(markBtn.classList.contains('on')).toBe(false);
+      expect(markBtn.querySelector('.mk-ico')!.textContent).toBe('○');
+      expect(markBtn.querySelector('.mk-lbl')!.textContent).toBe('Đánh dấu đã học');
+      expect(markBtn.getAttribute('aria-label')).toBe('Đánh dấu đã học');
+    });
+  });
+
+  describe('t/T theme shortcut (debt #2 — shared ThemeContext, no topbar desync)', () => {
+    it('pressing "t" toggles <html data-theme> via the same toggle the topbar would use', async () => {
+      renderChapterView();
+      await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
+
+      expect(document.documentElement.dataset.theme).toBe('light');
+      fireEvent.keyDown(document, { key: 't' });
+      expect(document.documentElement.dataset.theme).toBe('dark');
+    });
+
+    it('pressing "T" (shift) also toggles', async () => {
+      renderChapterView();
+      await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
+
+      fireEvent.keyDown(document, { key: 'T' });
+      expect(document.documentElement.dataset.theme).toBe('dark');
+    });
+
+    it('does not toggle while typing in a form field, same guard as ArrowLeft/ArrowRight', async () => {
+      const input = document.createElement('input');
+      document.body.appendChild(input);
+      renderChapterView();
+      await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
+
+      fireEvent.keyDown(input, { key: 't' });
+
+      expect(document.documentElement.dataset.theme).toBe('light');
+      document.body.removeChild(input);
+    });
+  });
+
+  describe('exercise checkboxes (injected into every .box.ex .box-h)', () => {
+    it('injects exactly one checkbox per .box.ex once the chapter renders', async () => {
+      renderChapterView();
+      await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
+
+      const checkboxes = document.querySelectorAll('.box.ex .box-h input[type="checkbox"]');
+      expect(checkboxes).toHaveLength(2);
+    });
+
+    it('checking a box writes "ex:<index>" progress (0-based, DOM order) to local storage + outbox', async () => {
+      renderChapterView();
+      await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
+
+      const checkboxes = Array.from(document.querySelectorAll<HTMLInputElement>('.box.ex .box-h input[type="checkbox"]'));
+      fireEvent.click(checkboxes[1]);
+
+      await waitFor(async () => {
+        const row = await db.progress.get(['demo', 'c1', 'ex:1']);
+        expect(row).toMatchObject({ status: 'ex:1', done: true });
+      });
+    });
+
+    it('does not double-inject across a StrictMode double-mount', async () => {
+      renderChapterView({}, { strict: true });
+      await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
+
+      expect(document.querySelectorAll('.box.ex .box-h input[type="checkbox"]')).toHaveLength(2);
+    });
   });
 });

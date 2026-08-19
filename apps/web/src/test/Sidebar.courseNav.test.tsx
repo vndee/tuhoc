@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { MemoryRouter } from 'react-router-dom';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Sidebar } from '../shell/Sidebar';
 import type { Manifest } from '../course/types';
+import { db } from '../db/local';
 
 const manifest: Manifest = {
   id: 'demo',
@@ -28,15 +29,18 @@ const manifest: Manifest = {
 const server = setupServer();
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+beforeEach(async () => {
+  await Promise.all([db.progress.clear(), db.annotations.clear(), db.outbox.clear(), db.meta.clear()]);
+});
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-function renderSidebar(initialPath: string, doneChapterIds?: ReadonlySet<string>) {
+function renderSidebar(initialPath: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialPath]}>
-        <Sidebar doneChapterIds={doneChapterIds} />
+        <Sidebar />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -79,14 +83,17 @@ describe('Sidebar real course outline', () => {
     }
   });
 
-  it('marks chapters in doneChapterIds with the done class inside #nav', async () => {
+  it('marks chapters read in local progress with the done class inside #nav (Ruling F4 / debt #1)', async () => {
     server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(manifest)));
-    renderSidebar('/c/demo', new Set(['c2']));
+    await db.progress.put({ courseId: 'demo', chapterId: 'c2', status: 'read', done: true, updatedAt: new Date().toISOString() });
+    renderSidebar('/c/demo');
 
     const nav = document.getElementById('nav')!;
     const links = await within(nav).findAllByRole('link');
+    await waitFor(() => {
+      expect(links.find((a) => a.getAttribute('data-ch') === 'c2')?.className).toContain('done');
+    });
     expect(links.find((a) => a.getAttribute('data-ch') === 'c1')?.className).not.toContain('done');
-    expect(links.find((a) => a.getAttribute('data-ch') === 'c2')?.className).toContain('done');
   });
 
   it('shows a visible failure message in #nav — not silence — when the manifest 404s', async () => {

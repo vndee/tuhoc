@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { CourseHome } from '../pages/CourseHome';
 import type { Chapter, Manifest } from '../course/types';
+import { db } from '../db/local';
 
 function buildManifest(chapterCount: number): Manifest {
   const chapters: Chapter[] = Array.from({ length: chapterCount }, (_, i) => ({
@@ -33,16 +34,19 @@ function buildManifest(chapterCount: number): Manifest {
 const server = setupServer();
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+beforeEach(async () => {
+  await Promise.all([db.progress.clear(), db.annotations.clear(), db.outbox.clear(), db.meta.clear()]);
+});
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-function renderCourseHome(doneChapterIds?: ReadonlySet<string>, initialPath = '/c/demo') {
+function renderCourseHome(initialPath = '/c/demo') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialPath]}>
         <Routes>
-          <Route path="/c/:courseId" element={<CourseHome doneChapterIds={doneChapterIds} />} />
+          <Route path="/c/:courseId" element={<CourseHome />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -83,15 +87,28 @@ describe('CourseHome', () => {
     }
   });
 
-  it('marks chapters in doneChapterIds with the "done" class, and leaves others without it', async () => {
+  it('marks chapters read in LOCAL progress (Ruling F4 / debt #1 — real data, not a prop) with the "done" class', async () => {
     server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(buildManifest(3))));
+    await db.progress.put({ courseId: 'demo', chapterId: 'ch-2', status: 'read', done: true, updatedAt: new Date().toISOString() });
 
-    renderCourseHome(new Set(['ch-2']));
+    renderCourseHome();
 
     const links = await screen.findAllByRole('link');
+    await waitFor(() => {
+      expect(links.find((a) => a.getAttribute('data-ch') === 'ch-2')?.className).toContain('done');
+    });
     expect(links.find((a) => a.getAttribute('data-ch') === 'ch-1')?.className).not.toContain('done');
-    expect(links.find((a) => a.getAttribute('data-ch') === 'ch-2')?.className).toContain('done');
     expect(links.find((a) => a.getAttribute('data-ch') === 'ch-3')?.className).not.toContain('done');
+  });
+
+  it('does NOT mark a chapter done from a DIFFERENT course\'s local progress row (courseId scoping)', async () => {
+    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(buildManifest(3))));
+    await db.progress.put({ courseId: 'other-course', chapterId: 'ch-2', status: 'read', done: true, updatedAt: new Date().toISOString() });
+
+    renderCourseHome();
+
+    const links = await screen.findAllByRole('link');
+    expect(links.find((a) => a.getAttribute('data-ch') === 'ch-2')?.className).not.toContain('done');
   });
 
   it('renders every part title as a .nav-part heading', async () => {

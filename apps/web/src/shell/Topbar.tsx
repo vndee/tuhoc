@@ -18,13 +18,17 @@ const CHAPTER_ROUTE = /^\/c\/[^/]+\/[^/]+/;
  * Topbar chrome: `#menu-btn`, `#crumb`, `#mark-btn`, `#theme-btn`,
  * `#prev-btn`, `#next-btn` — ids/classes match reader.css exactly.
  *
- * `#theme-btn` and `#menu-btn` are wired: theme is this task's own
- * `useTheme()` toggle, and menu-btn drives `useMobileNav()` (Ruling
- * #menu-btn — Task 9 left it inert because no task owned it; Task 10
- * does). `#mark-btn` depends on progress data Task 14 owns and is an
- * intentionally inert placeholder here. `#prev-btn`/`#next-btn` are wired
- * by `ChapterView` (Task 11) directly against these DOM nodes (chapter
- * pager data lives there, not here).
+ * `#theme-btn` and `#menu-btn` are wired here: theme is `AppShell`'s
+ * `useThemeContext()` toggle (Task 14 promoted the original per-component
+ * `useTheme()` call into a shared Context — see `theme/ThemeContext.tsx`
+ * — so the reader's `t`/`T` shortcut can call the exact same toggle
+ * without a second, desyncing theme state), and menu-btn drives
+ * `useMobileNav()` (Ruling #menu-btn — Task 9 left it inert because no
+ * task owned it; Task 10 does). `#mark-btn`, like `#prev-btn`/`#next-btn`,
+ * is wired by `ChapterView` (Task 11's pattern, Task 14's data) directly
+ * against these DOM nodes rather than through props here — chapter/
+ * progress data lives there, not here, and this component only ever
+ * renders the static markup + starting ○/"Đánh dấu đã học" state.
  *
  * `#crumb` on chapter routes: same recipe as `Rail.tsx` for `#rail` —
  * `ChapterView` portals the real `part › chapter` breadcrumb directly into
@@ -44,7 +48,7 @@ export function Topbar({ theme, onToggleTheme, onMenuClick }: TopbarProps) {
       <div id="crumb">{!isChapterRoute && 'Tuhoc'}</div>
       <button id="mark-btn" type="button" className="tb-btn" aria-label="Đánh dấu đã học">
         <span className="mk-ico">○</span>
-        <span className="mk-lbl">Đã học</span>
+        <span className="mk-lbl">Đánh dấu đã học</span>
       </button>
       <button
         id="theme-btn"

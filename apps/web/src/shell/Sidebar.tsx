@@ -2,11 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import { CourseNav } from '../course/CourseNav';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
-
-export interface SidebarProps {
-  /** Chapter ids the learner has marked as read. Empty until Task 14 wires real progress. */
-  doneChapterIds?: ReadonlySet<string>;
-}
+import { useProgress } from '../progress/useProgress';
 
 // `/c/:courseId` and `/c/:courseId/:chapterId` both carry a course outline
 // in the sidebar — pulled from the pathname directly (not `useParams`,
@@ -26,9 +22,12 @@ function courseIdFromPathname(pathname: string): string | undefined {
  * still loading, or failed — a failed/loading fetch must not render as
  * silent emptiness, which is indistinguishable from "still loading forever"
  * and disagrees with `CourseHome` showing a real error right next to it.
- * Live progress numbers and working search are still Task 13's job.
+ * Live progress numbers and working search are still a later task's job.
+ * `doneChapterIds` (Ruling F4 / debt #1) comes from `useProgress`, called
+ * unconditionally with `courseId ?? ''` for the same reason `CourseHome`
+ * does — see that component's doc comment.
  */
-export function Sidebar({ doneChapterIds }: SidebarProps) {
+export function Sidebar() {
   const location = useLocation();
   const courseId = courseIdFromPathname(location.pathname);
 
@@ -37,6 +36,7 @@ export function Sidebar({ doneChapterIds }: SidebarProps) {
     queryFn: () => loadManifest(courseId as string),
     enabled: courseId != null,
   });
+  const { doneChapterIds } = useProgress(courseId ?? '');
 
   return (
     <>

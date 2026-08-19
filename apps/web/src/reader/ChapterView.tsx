@@ -4,7 +4,10 @@ import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { describeCourseError, loadChapter } from '../course/loader';
 import type { Chapter } from '../course/types';
+import { useProgress } from '../progress/useProgress';
+import { useThemeContext } from '../theme/ThemeContext';
 import { setChapterContextSource } from './getContext';
+import { injectExerciseCheckboxes } from './injectExerciseCheckboxes';
 import { useCourseKit } from './useCourseKit';
 
 export interface ChapterViewProps {
@@ -49,6 +52,12 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
   const [currentHeadingId, setCurrentHeadingId] = useState<string | null>(null);
   const navigate = useNavigate();
   const courseKit = useCourseKit(courseId);
+  const progress = useProgress(courseId);
+  // Only `toggle` is needed here — the reader never displays the theme
+  // icon itself, that's `#theme-btn`'s job (Topbar, via AppShell). Reading
+  // this through the shared context (not a second `useTheme()` call) is
+  // debt #2's whole point — see ThemeContext.tsx's doc comment.
+  const { toggle: toggleTheme } = useThemeContext();
 
   const chapterQuery = useQuery({
     queryKey: ['course-chapter', courseId, chapter.file],
@@ -77,6 +86,15 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
   // v1's ArrowLeft/ArrowRight shortcuts. Both live here, together, since
   // both need the same prev/next targets and both must stop working the
   // moment this chapter is no longer on screen.
+  //
+  // The `t`/`T` theme shortcut (debt #2, v1 parity —
+  // `***REMOVED***.html:11170`) rides the SAME keydown handler and
+  // the SAME "not while typing in a form field" guard, rather than a
+  // second global listener: v1 itself has exactly one keydown handler for
+  // all of these shortcuts, and `toggleTheme` here is the identical
+  // function `#theme-btn` calls (via `useThemeContext()`, not a second
+  // `useTheme()` instance — see ThemeContext.tsx), so the topbar icon can
+  // never desync from a shortcut pressed while a chapter is open.
   useEffect(() => {
     const prevBtn = document.getElementById('prev-btn') as HTMLButtonElement | null;
     const nextBtn = document.getElementById('next-btn') as HTMLButtonElement | null;
@@ -99,12 +117,13 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
 
     function onKeydown(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement | null)?.tagName;
-      // v1's own guard: don't hijack arrow keys while the reader is typing
+      // v1's own guard: don't hijack shortcuts while the reader is typing
       // somewhere (a form field), only Escape gets special treatment there
       // — and Escape/mobile-nav is already useMobileNav's job (Task 10).
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       if (e.key === 'ArrowRight') goNext();
       else if (e.key === 'ArrowLeft') goPrev();
+      else if (e.key === 't' || e.key === 'T') toggleTheme();
     }
     document.addEventListener('keydown', onKeydown);
 
@@ -115,7 +134,69 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
       if (nextBtn) nextBtn.disabled = false;
       document.removeEventListener('keydown', onKeydown);
     };
-  }, [courseId, prevChapter, nextChapter, navigate]);
+  }, [courseId, prevChapter, nextChapter, navigate, toggleTheme]);
+
+  // `#mark-btn` (topbar chrome, Task 9 left it an inert placeholder naming
+  // this task as its owner — Ruling F4/debt #5): same
+  // portal-into-externally-owned-node recipe as `#prev-btn`/`#next-btn`
+  // above, since `#mark-btn` is sibling chrome rendered by `<Topbar>`, not
+  // a node this component's own JSX ever produces. Visual state (`.on`
+  // class, ○/✓ icon, label) mirrors v1's `syncMark()` exactly
+  // (`***REMOVED***.html`'s own mark-btn wiring) and is re-applied
+  // whenever `isRead` for THIS chapter changes — including a change that
+  // did not originate from this button (e.g. a remote sync pull marking
+  // the chapter read from another device while it's open here).
+  const isChapterRead = progress.isRead(chapter.id);
+  useEffect(() => {
+    const markBtn = document.getElementById('mark-btn');
+    if (!markBtn) return;
+
+    markBtn.classList.toggle('on', isChapterRead);
+    markBtn.title = isChapterRead ? 'Bỏ đánh dấu đã học' : 'Đánh dấu đã học';
+    // `<Topbar>` sets a static `aria-label` on this button, which — per
+    // the accessible-name computation rules — takes precedence over its
+    // visible text content. Updating only `.mk-lbl`'s text below without
+    // also updating `aria-label` here would leave a screen reader
+    // announcing "Đánh dấu đã học" (mark as read) forever, even once the
+    // chapter IS marked read and the button's real action has flipped to
+    // unmark it — so this mirrors `title`'s update exactly.
+    markBtn.setAttribute('aria-label', isChapterRead ? 'Bỏ đánh dấu đã học' : 'Đánh dấu đã học');
+    const icon = markBtn.querySelector('.mk-ico');
+    if (icon) icon.textContent = isChapterRead ? '✓' : '○';
+    const label = markBtn.querySelector('.mk-lbl');
+    if (label) label.textContent = isChapterRead ? 'Đã học' : 'Đánh dấu đã học';
+
+    const handleClick = () => progress.toggleRead(chapter.id);
+    markBtn.addEventListener('click', handleClick);
+    return () => {
+      markBtn.removeEventListener('click', handleClick);
+      // Reset to the neutral "off" default — same discipline as
+      // `#prev-btn`/`#next-btn`'s cleanup re-enabling themselves above.
+      // This cleanup also runs between chapters (not only on true
+      // unmount), but that is harmless: if a NEW chapter is mounting
+      // right after, its own effect run sets the correct state for that
+      // chapter in the same commit, before the browser paints. If nothing
+      // is mounting next (navigated away to `/` or `/login`, where this
+      // button isn't wired to anything), this is what stops the button
+      // from indefinitely showing a stale "✓ Đã học" from whatever
+      // chapter was last open.
+      markBtn.classList.remove('on');
+      markBtn.title = 'Đánh dấu đã học';
+      markBtn.setAttribute('aria-label', 'Đánh dấu đã học');
+      const iconEl = markBtn.querySelector('.mk-ico');
+      if (iconEl) iconEl.textContent = '○';
+      const labelEl = markBtn.querySelector('.mk-lbl');
+      if (labelEl) labelEl.textContent = 'Đánh dấu đã học';
+    };
+    // Deliberately depends on `isChapterRead` (the specific boolean this
+    // effect cares about) and `progress.toggleRead` (stable — see
+    // useProgress.ts) rather than the whole `progress` object: `progress`
+    // also carries `partStats`/`doneChapterIds`, which change on every
+    // EXERCISE toggle too — including the whole object here would re-run
+    // this effect (tearing down and re-attaching the click listener) on
+    // every exercise checkbox click in this chapter, not just on an actual
+    // change to whether THIS chapter is marked read.
+  }, [chapter.id, isChapterRead, progress.toggleRead]);
 
   // The main render pipeline: set the fragment's HTML, then
   // renderKatex -> initViz IN THAT ORDER (KaTeX must lay out its DOM
@@ -190,6 +271,43 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
       setChapterContextSource(null);
     };
   }, [courseKit.ready, chapterQuery.data, courseId, chapter.id, chapter.num, chapter.title, courseTitle]);
+
+  // Exercise checkboxes (this task's own deliverable): inject into every
+  // `.box.ex .box-h` and keep their `checked` state in sync with progress
+  // — WITHOUT ever touching `innerHTML` here (that is the main content
+  // effect's job, above, and re-running it on every checkbox toggle would
+  // tear down and rebuild everything `initViz`/`renderKatex` already set
+  // up, including live canvas/slider state completely unrelated to any
+  // exercise). This effect only ever mutates nodes inside `.box.ex
+  // .box-h`, the same restraint `initViz` applies to `[data-viz]` nodes,
+  // so the two can never fight over the same element.
+  //
+  // Declared AFTER the main content effect above on purpose: React runs
+  // passive effects in declaration order within one commit, so by the
+  // time this one runs, `containerRef.current` already holds the fragment
+  // that effect just set — including on first mount and on every chapter
+  // change (`chapter.id` is in this effect's own deps too).
+  //
+  // `progress.partStats` changes identity on every underlying progress
+  // write (see useProgress.ts), which is what lets this effect re-sync
+  // `checked` after a remote change without re-injecting anything —
+  // `injectExerciseCheckboxes` only ever CREATES a checkbox that doesn't
+  // exist yet; every other call just refreshes `checked` on the same node.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    injectExerciseCheckboxes(container, {
+      isDone: (n) => progress.exDone(chapter.id, n),
+      toggle: (n) => progress.toggleEx(chapter.id, n),
+    });
+    // `progress.exDone`/`progress.toggleEx` (stable — see useProgress.ts)
+    // plus `progress.partStats` (the change SIGNAL — see the paragraph
+    // above) rather than the whole `progress` object: `progress` also
+    // carries `isRead`/`doneChapterIds`/`toggleRead`, and including it
+    // whole would re-run this effect (and re-walk every `.box.ex` in the
+    // chapter) on every chapter-level `isRead` change too, not just an
+    // exercise change.
+  }, [chapter.id, progress.partStats, progress.exDone, progress.toggleEx, chapterQuery.data]);
 
   // Error checks come before the pending check: `!courseKit.ready` is true
   // for the whole time scripts are loading, so if it were checked first, a
