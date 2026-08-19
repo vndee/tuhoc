@@ -24,7 +24,13 @@ services:
     plan: free
     region: singapore # closest Render region to Vietnam-based users;
                        # allowed values: oregon, ohio, virginia, frankfurt,
-                       # singapore.
+                       # singapore. Free-plan availability of non-US
+                       # regions is unconfirmed (see docs/deploy.md §4a) —
+                       # if Blueprint creation rejects "singapore" with a
+                       # region-availability error, change this to
+                       # "oregon" (Render's original/default region, the
+                       # safest bet for zero-friction free-plan approval)
+                       # and redeploy.
     dockerfilePath: apps/api/Dockerfile
     dockerContext: apps/api
     healthCheckPath: /healthz

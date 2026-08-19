@@ -3,8 +3,18 @@
 # This file lives next to the Dockerfile it builds
 # (apps/api/Dockerfile) — run flyctl commands from apps/api/, e.g.:
 #   cd apps/api && flyctl deploy
-# or from the repo root with -c:
-#   flyctl deploy -c apps/api/fly.toml --dockerfile apps/api/Dockerfile
+# or from the repo root, passing apps/api as the WORKING_DIRECTORY
+# positional (this is what sets the Docker build context — NOT -c/--config,
+# which only says which config file to read):
+#   flyctl deploy apps/api -c apps/api/fly.toml
+# [unverified — needs a live Fly account; `flyctl deploy --help` documents
+# `deploy [WORKING_DIRECTORY]` as the build-context argument, and this repo
+# has no way to exercise it end-to-end without deploying]. Do NOT run
+# `flyctl deploy -c apps/api/fly.toml --dockerfile apps/api/Dockerfile` from
+# the repo root: -c/--dockerfile only relocate which config/Dockerfile are
+# read, not the build context, which stays the repo root (cwd) — the
+# Dockerfile's `COPY go.mod go.sum ./` then fails, since go.mod/go.sum live
+# in apps/api, not the repo root (the repo root only has go.work).
 #
 # Task 16 note on image architecture (see apps/api/Dockerfile's own header
 # comment for the full explanation): `flyctl deploy` with no --local-only

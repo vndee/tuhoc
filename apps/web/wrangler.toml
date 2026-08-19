@@ -3,10 +3,14 @@
 # Deploy paths (both covered in docs/deploy.md):
 #   1. Git integration (dashboard): Workers & Pages -> Create -> Connect to
 #      Git. Build command `cd apps/web && bun run build`, build output
-#      directory `apps/web/dist`. Cloudflare's own build runs `bun run
-#      build`, so this file's `pages_build_output_dir` isn't consulted on
-#      that path — the dashboard's own build-output-directory setting is
-#      what matters there. It's kept in sync with this file's value anyway.
+#      directory `apps/web/dist`. Set the dashboard's own build-output-
+#      directory field explicitly to `apps/web/dist` regardless of this
+#      file's `pages_build_output_dir` below — [unverified, no live account
+#      to confirm either way] whether a git-connected build actually reads
+#      `pages_build_output_dir` from a wrangler.toml in the repo, or only
+#      honors the dashboard's own setting; Cloudflare's docs don't say
+#      either way as of writing. Keeping both set to the same value (as
+#      they are here) makes the ambiguity harmless.
 #   2. Wrangler CLI (direct upload), from apps/web/:
 #        bun run build
 #        bunx wrangler pages deploy dist --project-name=<your-project-name>
