@@ -273,4 +273,80 @@ describe('useLogout', () => {
     },
     10_000,
   );
+
+  // Fix-round-2: the 5s timeout bound (Minor finding, fix-round-1) only
+  // stops `useLogout` from WAITING any longer — it does not cancel the
+  // underlying `fetch` (no `AbortController` is wired through
+  // `api/client.ts`'s `request()`). If `bestEffortFinalFlush()`'s OWN
+  // cycle times out, it is ABANDONED, not cancelled: it keeps running in
+  // the background and still holds the epoch the FIRST `stopSync()` call
+  // set. Without a second `stopSync()` call after the timeout race
+  // settles (this hook's step 3), that straggler's late response would
+  // still pass its epoch check and write straight into the database
+  // logout just cleared.
+  //
+  // This test deliberately does NOT render `<App/>` or use `useMe()` —
+  // only `useLogout()` in isolation via the local `wrapper()` above. That
+  // matters: `App.tsx`'s `useSyncLifecycle` would otherwise ALSO call
+  // `stopSync()` in reaction to this hook's own `setQueryData(meQueryKey,
+  // null)`, incidentally closing the same gap and masking a regression in
+  // `useLogout.ts` itself. Isolated like this, the only thing that can
+  // close the gap is `useLogout.ts`'s own second `stopSync()` call.
+  //
+  // Runs for real (not mocked) — it needs the ACTUAL bounded timeout to
+  // fire, so it takes just over 5s; given a generous per-test timeout so
+  // it doesn't race vitest's own default.
+  it(
+    "bestEffortFinalFlush()'s own cycle, abandoned once the timeout fires, must not write once its late response arrives (fix-round-2)",
+    async () => {
+      await db.progress.put({ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: new Date().toISOString() });
+
+      let releasePull: (() => void) | undefined;
+      const pullGate = new Promise<void>((resolve) => {
+        releasePull = resolve;
+      });
+      let pullRequested = false;
+
+      server.use(
+        http.post('/sync', () => HttpResponse.json({ applied: 0 })),
+        http.get('/sync', async () => {
+          pullRequested = true;
+          await pullGate;
+          return HttpResponse.json({
+            progress: [{ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: new Date().toISOString() }],
+            annotations: [],
+            cursor: 'sometoken',
+          });
+        }),
+        http.post('/auth/logout', () => new HttpResponse(null, { status: 200 })),
+      );
+
+      const queryClient = new QueryClient();
+      const { result } = renderHook(() => useLogout(), { wrapper: wrapper(queryClient) });
+
+      const logoutPromise = result.current();
+
+      await vi.waitFor(() => expect(pullRequested).toBe(true));
+
+      // Do NOT release the gate here — let the real 5s bound inside
+      // useLogout actually elapse and give up on this cycle.
+      await act(async () => {
+        await logoutPromise;
+      });
+
+      // Logout has fully finished: it hit the bound, moved on, logged
+      // out, and cleared local state. The abandoned cycle is STILL
+      // pending on pullGate at this point.
+      expect(await db.progress.count()).toBe(0);
+      await waitFor(() => expect(currentPath()).toBe('/login'));
+
+      // Now let the abandoned cycle's response arrive late.
+      releasePull!();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const row = await db.progress.get(['c1', 'ch1', 'read']);
+      expect(row).toBeUndefined();
+    },
+    10_000,
+  );
 });

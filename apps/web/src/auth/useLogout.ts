@@ -73,28 +73,37 @@ async function bestEffortFinalFlush(): Promise<void> {
  *     else touches local state, so a scheduled tick can't fire concurrently
  *     with the flush/clear below and race it. As of fix-round-1, this ALSO
  *     bumps a module-level epoch in `sync/engine.ts` that makes any cycle
- *     still in flight at this exact moment (see step 2) discard its
- *     eventual local write rather than apply it — see the paragraph below
- *     ("The race this hook used to have") for why that matters on its own,
- *     independent of step 2's best-effort wait.
+ *     already in flight at this exact moment (see step 2) discard its
+ *     eventual local write rather than apply it — see "The race this hook
+ *     used to have" below for why that matters on its own, independent of
+ *     step 2's best-effort wait.
  *  2. `bestEffortFinalFlush()` — waits for anything already in flight, then
  *     attempts its own push+pull, bounded to `LOGOUT_SYNC_TIMEOUT_MS` total
  *     (Minor finding: a hung connection must not hold the logout UI
  *     hostage). A normal failure (network down, 5xx, or simply timing out)
  *     is swallowed by `withTimeout`/`syncOnce`'s own existing swallowing —
  *     local state is still cleared unconditionally afterward regardless.
- *  3. `POST /auth/logout` — invalidates the session server-side and clears
+ *  3. `stopSync()` AGAIN — fix-round-2, see "The abandoned-cycle gap"
+ *     below. This is not a redundant repeat of step 1 (`stopSync` is
+ *     idempotent w.r.t. its timer/listener side, but its epoch bump is
+ *     NOT a no-op the second time): it exists specifically to invalidate
+ *     step 2's OWN cycle if `withTimeout` gave up on it before it
+ *     finished — that cycle is abandoned, not cancelled (there is no
+ *     `AbortController` wired through `api/client.ts`), so it is still
+ *     running and still holds the epoch from step 1 unless something
+ *     bumps it again.
+ *  4. `POST /auth/logout` — invalidates the session server-side and clears
  *     the cookie. A failure here (network error; the endpoint itself is
  *     designed to always return 200 even for an already-dead session — see
  *     `Logout`'s own doc comment) does NOT stop the steps below: the one
  *     outcome this function must never allow is leaving another account's
  *     data behind in this browser's IndexedDB just because the network
  *     blipped on the way out.
- *  4. Clear every local table (`progress`, `annotations`, `outbox`,
- *     `meta`) — unconditionally, regardless of whether steps 2 or 3
+ *  5. Clear every local table (`progress`, `annotations`, `outbox`,
+ *     `meta`) — unconditionally, regardless of whether steps 2 or 4
  *     succeeded. See the paragraph below for why this is the right
  *     trade-off, not just the safe-looking one.
- *  5. Reset the shared `me` query to `null` and navigate to `/login`.
+ *  6. Reset the shared `me` query to `null` and navigate to `/login`.
  *
  * **The race this hook used to have (fix-round-1, Finding 2):** `stopSync()`
  * on its own only prevents FUTURE ticks — it cannot un-schedule a network
@@ -111,6 +120,29 @@ async function bestEffortFinalFlush(): Promise<void> {
  * this hook's own flush genuinely run (or be genuinely subsumed) instead
  * of silently skipping. See `engine.ts`'s own doc comments for the full
  * mechanism.
+ *
+ * **The abandoned-cycle gap (fix-round-2):** the `LOGOUT_SYNC_TIMEOUT_MS`
+ * bound (step 2) only stops THIS function from waiting any longer — it
+ * does not cancel the underlying `fetch` (no `AbortController` is wired
+ * through `api/client.ts`'s `request()`), so a flush cycle that times out
+ * keeps running in the background. That cycle captured the epoch step 1
+ * set, and nothing bumps the epoch again between the timeout firing and
+ * step 5's clear — so if its response lands in that window, its epoch
+ * check would still pass, and it would write straight into the database
+ * step 5 is about to declare clean, the exact failure mode fix-round-1
+ * closed, reopened through a different door. Step 3's second `stopSync()`
+ * call closes it BY CONSTRUCTION: it bumps the epoch again regardless of
+ * whether step 2 finished, finished late, or is still abandoned and
+ * running, so an abandoned cycle's captured epoch can never match by the
+ * time step 5 runs — independent of what any other part of the app
+ * happens to do. (Before this fix, the gap was closed only as an
+ * INCIDENTAL side effect of `App.tsx`'s `useSyncLifecycle`, which
+ * reactively calls `stopSync()` again once `useMe()`'s cached user
+ * becomes `null` — which THIS hook's own `setQueryData(meQueryKey, null)`
+ * triggers. That happened to work, but it was another task's wiring
+ * accidentally providing a guarantee this hook never established or
+ * documented itself — a future refactor of that lifecycle effect could
+ * have silently reopened the hole with nothing failing to say so.)
  *
  * **The core judgment call (debt #3's "think about it carefully" ask):**
  * `src/db/local.ts`'s own doc comment already states the local database
@@ -142,6 +174,16 @@ export function useLogout(): () => Promise<void> {
     stopSync();
 
     await withTimeout(bestEffortFinalFlush(), LOGOUT_SYNC_TIMEOUT_MS);
+
+    // Second call, not a redundant repeat of the one above — see "The
+    // abandoned-cycle gap" in this hook's own doc comment. If
+    // `withTimeout` gave up on `bestEffortFinalFlush()` above, that
+    // flush's OWN cycle is still running (abandoned, not cancelled) and
+    // still holds the epoch the first `stopSync()` call set. Bumping the
+    // epoch again HERE, unconditionally, invalidates that straggler by
+    // construction — regardless of whether it actually finished, is still
+    // running, or never gets a response at all.
+    stopSync();
 
     try {
       await api.post('/auth/logout', undefined, { redirectOn401: false });
