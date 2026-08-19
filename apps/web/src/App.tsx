@@ -5,6 +5,7 @@ import { Rail } from './shell/Rail';
 import { Shell } from './shell/Shell';
 import { Sidebar } from './shell/Sidebar';
 import { Topbar } from './shell/Topbar';
+import { useMobileNav } from './shell/useMobileNav';
 import './styles/index.css';
 import { useTheme } from './theme/useTheme';
 
@@ -14,15 +15,31 @@ import { useTheme } from './theme/useTheme';
 const queryClient = new QueryClient();
 
 export default function App() {
-  const { theme, toggle } = useTheme();
-
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Shell sidebar={<Sidebar />} topbar={<Topbar theme={theme} onToggleTheme={toggle} />} rail={<Rail />}>
-          <AppRoutes />
-        </Shell>
+        <AppShell />
       </BrowserRouter>
     </QueryClientProvider>
+  );
+}
+
+/**
+ * Split out from `App` so hooks that need Router context — `useMobileNav`
+ * reads the current location to close the drawer on navigation — run
+ * *inside* `<BrowserRouter>` rather than above it.
+ */
+function AppShell() {
+  const { theme, toggle: toggleTheme } = useTheme();
+  const { toggle: toggleMobileNav } = useMobileNav();
+
+  return (
+    <Shell
+      sidebar={<Sidebar />}
+      topbar={<Topbar theme={theme} onToggleTheme={toggleTheme} onMenuClick={toggleMobileNav} />}
+      rail={<Rail />}
+    >
+      <AppRoutes />
+    </Shell>
   );
 }

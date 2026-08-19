@@ -1,11 +1,40 @@
+import { useQuery } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
+import { CourseNav } from '../course/CourseNav';
+import { loadManifest, manifestQueryKey } from '../course/loader';
+
+export interface SidebarProps {
+  /** Chapter ids the learner has marked as read. Empty until Task 14 wires real progress. */
+  doneChapterIds?: ReadonlySet<string>;
+}
+
+// `/c/:courseId` and `/c/:courseId/:chapterId` both carry a course outline
+// in the sidebar — pulled from the pathname directly (not `useParams`,
+// which only sees params of a *matched* <Route>, and Sidebar is chrome
+// rendered alongside <AppRoutes>, not inside it).
+function courseIdFromPathname(pathname: string): string | undefined {
+  return /^\/c\/([^/]+)/.exec(pathname)?.[1];
+}
+
 /**
- * Sidebar chrome for the v1 skeleton: `.sb-head` (title/subtitle/search),
- * `.sb-prog`, and `nav#nav`. This task only builds the shape — a real course
- * outline, live progress numbers, and working search are Task 10/13's job.
- * `nav#nav` renders reader.css's own `.nav-empty` state, which exists in the
- * original stylesheet for exactly this "nothing loaded yet" case.
+ * Sidebar chrome: `.sb-head` (title/subtitle/search), `.sb-prog`, and
+ * `nav#nav`. `nav#nav` shows the real course outline (Task 10) — the same
+ * `CourseNav` markup CourseHome uses, sharing its TanStack Query cache key
+ * so visiting a course only fetches its manifest once — while on any route
+ * without a course (e.g. "/", "/login") it falls back to reader.css's own
+ * `.nav-empty` state. Live progress numbers and working search are still
+ * Task 13's job.
  */
-export function Sidebar() {
+export function Sidebar({ doneChapterIds }: SidebarProps) {
+  const location = useLocation();
+  const courseId = courseIdFromPathname(location.pathname);
+
+  const manifestQuery = useQuery({
+    queryKey: manifestQueryKey(courseId ?? ''),
+    queryFn: () => loadManifest(courseId as string),
+    enabled: courseId != null,
+  });
+
   return (
     <>
       <div className="sb-head">
@@ -33,7 +62,10 @@ export function Sidebar() {
       </div>
       <div className="sb-prog">Tiến độ sẽ hiện ở đây</div>
       <nav id="nav">
-        <p className="nav-empty">Chưa có khóa học nào được tải.</p>
+        {courseId == null && <p className="nav-empty">Chưa có khóa học nào được tải.</p>}
+        {courseId != null && manifestQuery.data && (
+          <CourseNav courseId={courseId} parts={manifestQuery.data.parts} doneChapterIds={doneChapterIds} />
+        )}
       </nav>
     </>
   );

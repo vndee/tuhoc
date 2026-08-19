@@ -3,22 +3,25 @@ import type { Theme } from '../theme/useTheme';
 export interface TopbarProps {
   theme: Theme;
   onToggleTheme: () => void;
+  /** Toggles the mobile TOC drawer (`body.nav-open`) — see `useMobileNav`. */
+  onMenuClick: () => void;
 }
 
 /**
  * Topbar chrome: `#menu-btn`, `#crumb`, `#mark-btn`, `#theme-btn`,
  * `#prev-btn`, `#next-btn` — ids/classes match reader.css exactly.
  *
- * Only `#theme-btn` does anything in this task: it is this task's own
- * `useTheme()` toggle. The rest (mobile nav, mark-as-read, chapter pager)
- * depend on data Tasks 10/11/13/14 own (course nav, progress) and are
- * intentionally inert placeholders here — wiring them now would mean
- * guessing at those tasks' interfaces.
+ * `#theme-btn` and `#menu-btn` are wired: theme is this task's own
+ * `useTheme()` toggle, and menu-btn drives `useMobileNav()` (Ruling
+ * #menu-btn — Task 9 left it inert because no task owned it; Task 10
+ * does). `#mark-btn`/`#prev-btn`/`#next-btn` depend on data Tasks 11/14
+ * own (chapter pager, progress) and are intentionally inert placeholders
+ * here — wiring them now would mean guessing at those tasks' interfaces.
  */
-export function Topbar({ theme, onToggleTheme }: TopbarProps) {
+export function Topbar({ theme, onToggleTheme, onMenuClick }: TopbarProps) {
   return (
     <>
-      <button id="menu-btn" type="button" className="tb-btn" aria-label="Mở menu">
+      <button id="menu-btn" type="button" className="tb-btn" aria-label="Mở menu" onClick={onMenuClick}>
         ☰
       </button>
       <div id="crumb">Tuhoc</div>
