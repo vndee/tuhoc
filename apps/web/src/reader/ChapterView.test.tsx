@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import { StrictMode } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
@@ -12,13 +12,44 @@ import { ThemeProvider } from '../theme/ThemeContext';
 import { ChapterView } from './ChapterView';
 
 // ChapterView's own script injection is useCourseKit's job (covered by
-// useCourseKit.test.ts) — here we stub it as always-ready so these tests
-// can focus on what ChapterView does once the runtime is available:
-// render order, rail/pager wiring, idempotency, and teardown. This is the
-// "mock window.CourseKit, don't try to render real visualizations in
-// jsdom" trap from the task brief.
+// useCourseKit.test.ts) — here we stub it so these tests can focus on
+// what ChapterView does once the runtime is available: render order,
+// rail/pager wiring, idempotency, teardown, and (fix-round-1, Finding 1)
+// what happens when `ready` flips true AFTER the chapter fragment has
+// already resolved. This is the "mock window.CourseKit, don't try to
+// render real visualizations in jsdom" trap from the task brief.
+//
+// `courseKitMockState.gate` (via `vi.hoisted` — required so this plain
+// object is visible both inside the hoisted `vi.mock` factory below AND
+// in ordinary test bodies, regardless of hoisting order) controls
+// readiness: `null` (the default every test but one leaves it at) means
+// "always ready," matching every test's ORIGINAL expectation. Set to a
+// pending promise before rendering to make `ready` start `false` and
+// only flip `true` once that promise resolves — reproducing the real
+// ordering `useCourseKit` can produce (four sequential script loads vs.
+// one small chapter fetch — see useCourseKit.ts's own doc comment).
+const courseKitMockState = vi.hoisted(() => ({ gate: null as Promise<void> | null }));
+
 vi.mock('./useCourseKit', () => ({
-  useCourseKit: () => ({ ready: true, error: null }),
+  useCourseKit: () => {
+    const [ready, setReady] = useState(courseKitMockState.gate === null);
+    useEffect(() => {
+      const gate = courseKitMockState.gate;
+      if (gate === null) return;
+      let cancelled = false;
+      void gate.then(() => {
+        if (!cancelled) setReady(true);
+      });
+      return () => {
+        cancelled = true;
+      };
+      // Deliberately empty deps: this mock only ever reads ONE gate per
+      // render of a given ChapterView instance — tests that need a
+      // different gate re-render a fresh instance.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    return { ready, error: null };
+  },
 }));
 
 const FRAGMENT = `
@@ -108,6 +139,7 @@ describe('ChapterView', () => {
     await Promise.all([db.progress.clear(), db.annotations.clear(), db.outbox.clear(), db.meta.clear()]);
     delete document.documentElement.dataset.theme;
     window.localStorage.clear();
+    courseKitMockState.gate = null;
   });
 
   it('calls renderKatex then initViz exactly once, with the element containing the fragment', async () => {
@@ -403,6 +435,40 @@ describe('ChapterView', () => {
       await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
 
       expect(document.querySelectorAll('.box.ex .box-h input[type="checkbox"]')).toHaveLength(2);
+    });
+
+    // Fix-round-1, Finding 1: the checkbox effect's dependency array was
+    // missing `courseKit.ready`. In every OTHER test in this file,
+    // `useCourseKit` is mocked to report `ready: true` synchronously, so
+    // the chapter fragment and the "runtime ready" signal always arrive
+    // in the same render pass — the exact ordering this bug depends on
+    // never occurs there. This test reproduces the real, plausible
+    // ordering directly: the chapter fragment (one small fetch) resolves
+    // WHILE `courseKit.ready` is still false (still "loading" four
+    // scripts in sequence — see useCourseKit.ts), and only flips true
+    // afterward.
+    it('still injects exercise checkboxes when courseKit.ready flips true AFTER the chapter fragment has already resolved', async () => {
+      let releaseCourseKitReady: (() => void) | undefined;
+      courseKitMockState.gate = new Promise<void>((resolve) => {
+        releaseCourseKitReady = resolve;
+      });
+
+      renderChapterView();
+
+      // Give the (fast, single) chapter fragment fetch time to resolve
+      // while courseKit is still gated — confirms this test is actually
+      // exercising the "chapter data arrived first" ordering, not just
+      // racing it.
+      await waitFor(() => expect(screen.getByText('Đang tải chương…')).toBeInTheDocument());
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(initViz).not.toHaveBeenCalled();
+
+      releaseCourseKitReady!();
+
+      await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
+
+      const checkboxes = document.querySelectorAll('.box.ex .box-h input[type="checkbox"]');
+      expect(checkboxes).toHaveLength(2);
     });
   });
 });

@@ -21,16 +21,57 @@ interface PushResponse {
 
 // ---------------------------------------------------------------------------
 // Module-level state for the timer + listener startSync()/stopSync() own,
-// and the in-flight guard that prevents two overlapping cycles from
-// double-sending the outbox (see runCycle's doc comment). All three are
-// intentionally plain module state, not a class: this engine has exactly
-// one instance for the whole app (one IndexedDB database, one session),
-// so there is nothing a class would buy beyond what a module already
-// gives for free.
+// the in-flight guard that prevents two overlapping cycles from
+// double-sending the outbox (see runCycle's doc comment), and the epoch
+// counter + promise handle that make a cycle's local-database WRITES
+// discardable after the fact (see stopSync's, flushOutbox's, and pull's
+// own doc comments — this is the fix for the Task 14 fix-round-1 finding
+// that stopSync() alone only stops FUTURE ticks: it cannot un-schedule a
+// network request a cycle is already awaiting, and that cycle's write
+// landing AFTER something like logout has cleared the local database
+// would silently repopulate it with the departing user's rows). All of
+// this is intentionally plain module state, not a class: this engine has
+// exactly one instance for the whole app (one IndexedDB database, one
+// session), so there is nothing a class would buy beyond what a module
+// already gives for free.
 // ---------------------------------------------------------------------------
 let timer: ReturnType<typeof setInterval> | undefined;
 let onlineListener: (() => void) | undefined;
 let inFlight = false;
+
+/**
+ * Bumped by `stopSync()`. A cycle captures the CURRENT value once, at the
+ * moment it starts (`runCycle`'s own `const epoch = syncEpoch`), and
+ * `flushOutbox`/`pull` compare that captured value against the CURRENT
+ * `syncEpoch` immediately before performing a local Dexie write — not
+ * before the network call, which is harmless to let finish (idempotent,
+ * per those functions' own doc comments). If the two differ, `stopSync()`
+ * was called while this cycle's request was still in flight, and the
+ * result is discarded rather than written.
+ *
+ * This is a stronger guarantee than merely awaiting "the" in-flight cycle
+ * (see `waitForInFlight` below) would give on its own: it also covers a
+ * cycle that resolves late for any other reason — a second `stopSync()`
+ * racing the first, a caller that doesn't await `waitForInFlight`, a
+ * future call site nobody's written yet — not just the one specific cycle
+ * that happened to be running at the exact moment `stopSync()` was
+ * called.
+ */
+let syncEpoch = 0;
+
+/**
+ * The currently-running cycle's promise, or `null` when none is in
+ * flight. Exposed via `waitForInFlight()` for `src/auth/useLogout.ts`'s
+ * best-effort final flush: without this, logout's own `syncOnce()` call
+ * would silently no-op against `runCycle`'s `inFlight` guard whenever a
+ * cycle from BEFORE logout was clicked happens to still be running —
+ * defeating the "flush pending work before clearing" intent entirely,
+ * not just narrowing it. `runCycle` itself never lets this promise
+ * reject (see its own try/catch), but `waitForInFlight` still guards
+ * against it defensively so a caller awaiting it can never hang on an
+ * unexpected rejection.
+ */
+let currentCycle: Promise<void> | null = null;
 
 function isAuthError(err: unknown): boolean {
   return err instanceof ApiError && err.status === 401;
@@ -68,8 +109,23 @@ function isAuthError(err: unknown): boolean {
  * response got lost in transit) always converges to the same state; see
  * `mergeRow`'s doc comment and apps/api/internal/sync/usecase.go's
  * `Push` for the server-side half of that guarantee.
+ *
+ * `epoch` is the value of module-level `syncEpoch` this cycle captured
+ * when it started (see `runCycle`) — passed through so each
+ * `db.outbox.bulkDelete(...)` below can check, immediately before
+ * writing, whether `stopSync()` (e.g. from a logout mid-flight — see
+ * `syncEpoch`'s own doc comment) has bumped `syncEpoch` since. The
+ * network request itself is always allowed to complete either way
+ * (harmless — the server already durably applied or didn't; nothing
+ * local depends on this response existing), only the LOCAL deletion is
+ * conditional. Skipping a stale deletion is always safe, never a data
+ * loss risk of its own: the corresponding outbox rows either still exist
+ * (if nothing else cleared them) and get retried by a later cycle, or
+ * they were already cleared by whatever bumped the epoch (e.g. logout's
+ * own unconditional clear), in which case there is nothing left to
+ * delete and the `bulkDelete` would have been a no-op anyway.
  */
-async function flushOutbox(): Promise<boolean> {
+async function flushOutbox(epoch: number): Promise<boolean> {
   const rows = await db.outbox.toArray();
 
   const isProgressOrAnnotation = (r: OutboxEntry) => r.table === 'progress' || r.table === 'annotations';
@@ -80,8 +136,10 @@ async function flushOutbox(): Promise<boolean> {
   if (progressRows.length > 0 || annotationRows.length > 0) {
     try {
       await api.post<PushResponse>('/sync', { progress: progressRows, annotations: annotationRows });
-      const seqs = rows.filter(isProgressOrAnnotation).map((r) => r.seq as number);
-      await db.outbox.bulkDelete(seqs);
+      if (epoch === syncEpoch) {
+        const seqs = rows.filter(isProgressOrAnnotation).map((r) => r.seq as number);
+        await db.outbox.bulkDelete(seqs);
+      }
     } catch (err) {
       if (isAuthError(err)) return false;
       // network failure / 5xx / 429 — leave these entries queued, retry next cycle.
@@ -91,8 +149,10 @@ async function flushOutbox(): Promise<boolean> {
   if (eventRows.length > 0) {
     try {
       await api.post<{ accepted: number }>('/events/batch', { events: eventRows });
-      const seqs = rows.filter((r) => r.table === 'events').map((r) => r.seq as number);
-      await db.outbox.bulkDelete(seqs);
+      if (epoch === syncEpoch) {
+        const seqs = rows.filter((r) => r.table === 'events').map((r) => r.seq as number);
+        await db.outbox.bulkDelete(seqs);
+      }
     } catch (err) {
       if (isAuthError(err)) return false;
     }
@@ -126,8 +186,21 @@ async function flushOutbox(): Promise<boolean> {
  * Swallows a 401 or any other failure the same way `flushOutbox` does —
  * the cursor and local state are simply left as they were, retried next
  * cycle.
+ *
+ * `epoch` — see `flushOutbox`'s matching doc comment for the general
+ * mechanism. Here the check gates the ENTIRE merge transaction (progress
+ * + annotations + cursor), immediately after the network response
+ * arrives and before any of it is written: a `GET /sync` response that
+ * arrives after `stopSync()` bumped `syncEpoch` (e.g. logout mid-flight)
+ * is discarded in full rather than partially or fully applied to a local
+ * database something else (logout's own clear) has already declared
+ * clean for whoever's signed in next. This is the fix for the Task 14
+ * fix-round-1 finding: without it, a `pull()` that was already awaiting
+ * this fetch when logout ran would land its write AFTER logout's
+ * `Promise.all([db.progress.clear(), ...])`, silently repopulating the
+ * departing user's rows.
  */
-async function pull(): Promise<void> {
+async function pull(epoch: number): Promise<void> {
   const cursorRow = await db.meta.get(CURSOR_KEY);
   const since = cursorRow?.value ?? '';
   const query = since === '' ? '' : `?since=${encodeURIComponent(since)}`;
@@ -138,6 +211,8 @@ async function pull(): Promise<void> {
   } catch {
     return;
   }
+
+  if (epoch !== syncEpoch) return;
 
   await db.transaction('rw', db.progress, db.annotations, db.meta, async () => {
     for (const incoming of resp.progress) {
@@ -224,21 +299,35 @@ async function pull(): Promise<void> {
  * succeeded (see `flushOutbox`/`pull`), so a cycle that fails here
  * leaves the outbox and cursor exactly as they were — the next cycle
  * retries cleanly, same as any other failure mode this engine tolerates.
+ *
+ * Epoch capture: `syncEpoch` is read into a local `epoch` constant HERE,
+ * once, before either `flushOutbox`/`pull` runs — that captured value,
+ * not a live read of `syncEpoch`, is what those two functions compare
+ * against immediately before their own local writes (see `syncEpoch`'s
+ * own doc comment for why this exists). `currentCycle` is set to this
+ * whole cycle's promise for the same span `inFlight` is true, so
+ * `waitForInFlight()` always has an accurate handle on "the cycle
+ * running right now, if any."
  */
 async function runCycle(): Promise<void> {
   if (inFlight) return;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
 
+  const epoch = syncEpoch;
   inFlight = true;
-  try {
-    const flushedWithoutAuthFailure = await flushOutbox();
-    if (!flushedWithoutAuthFailure) return;
-    await pull();
-  } catch (err) {
-    console.error('tuhoc sync: cycle failed unexpectedly', err);
-  } finally {
-    inFlight = false;
-  }
+  currentCycle = (async () => {
+    try {
+      const flushedWithoutAuthFailure = await flushOutbox(epoch);
+      if (!flushedWithoutAuthFailure) return;
+      await pull(epoch);
+    } catch (err) {
+      console.error('tuhoc sync: cycle failed unexpectedly', err);
+    } finally {
+      inFlight = false;
+      currentCycle = null;
+    }
+  })();
+  await currentCycle;
 }
 
 /**
@@ -249,6 +338,24 @@ async function runCycle(): Promise<void> {
  */
 export async function syncOnce(): Promise<void> {
   await runCycle();
+}
+
+/**
+ * Resolves once whatever cycle is CURRENTLY in flight (if any) has
+ * settled — immediately if none is running. See `currentCycle`'s own doc
+ * comment for why this exists: `src/auth/useLogout.ts`'s best-effort
+ * final flush calls this BEFORE its own `syncOnce()`, so that flush is
+ * never silently skipped by `runCycle`'s `inFlight` guard just because a
+ * cycle from before logout was clicked happened to still be running.
+ *
+ * Never rejects — `runCycle` itself already contains every failure it
+ * can produce (see its own doc comment), and the `.catch(() => {})` here
+ * is a second, defensive line against that invariant ever being
+ * violated, so a caller awaiting this can never hang on an unexpected
+ * rejection.
+ */
+export async function waitForInFlight(): Promise<void> {
+  await currentCycle?.catch(() => {});
 }
 
 /**
@@ -291,8 +398,22 @@ export function startSync(): void {
  * is running (both branches are no-ops if their target is already
  * unset), so callers never need to track whether `startSync` actually
  * ran first.
+ *
+ * Also bumps `syncEpoch` (Task 14 fix-round-1) — unconditionally, even
+ * when `timer`/`onlineListener` are already unset: this is what stops a
+ * cycle that is CURRENTLY in flight (started before this call) from
+ * writing to the local database once it eventually resolves. Clearing
+ * the timer/listener only prevents FUTURE ticks; it cannot un-schedule a
+ * network request a cycle is already awaiting. Bumping the epoch here
+ * unconditionally is safe in the ordinary case too (nothing in flight,
+ * or a caller who genuinely wants to keep syncing again right after —
+ * e.g. `useLogout`'s own follow-up `waitForInFlight()` + `syncOnce()`):
+ * the NEXT cycle to start simply captures whatever `syncEpoch` is at
+ * that moment, so there is nothing for a fresh, legitimate cycle to
+ * collide with.
  */
 export function stopSync(): void {
+  syncEpoch++;
   if (timer !== undefined) {
     clearInterval(timer);
     timer = undefined;

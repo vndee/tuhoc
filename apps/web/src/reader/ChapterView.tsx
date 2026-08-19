@@ -288,6 +288,29 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
   // that effect just set — including on first mount and on every chapter
   // change (`chapter.id` is in this effect's own deps too).
   //
+  // `courseKit.ready` MUST be in this effect's own deps too (fix-round-1,
+  // Finding 1) — it is not enough that the main content effect above
+  // already depends on it. `useCourseKit` loads four scripts in sequence
+  // (see useCourseKit.ts's own doc comment) while the chapter's HTML
+  // fragment is one small fetch; it is entirely plausible for
+  // `chapterQuery.data` to resolve BEFORE `courseKit.ready` flips true.
+  // When that happens, this effect fires once (because `chapterQuery.data`
+  // changed) while `courseKit.ready` is still false — the component is
+  // still rendering "Đang tải chương…", so `containerRef.current` is
+  // null, and this effect is a no-op. Once `courseKit.ready` finally
+  // flips true, the main content effect re-runs (its own deps include
+  // `courseKit.ready`) and sets `innerHTML` for the first time — but
+  // WITHOUT `courseKit.ready` also listed here, NONE of this effect's
+  // OTHER deps would have changed on that render (same `chapter.id`,
+  // same already-resolved `chapterQuery.data`, unchanged progress), so
+  // React would never re-run it, and the exercise checkboxes would
+  // silently never appear for that chapter. No test in this file caught
+  // this before fix-round-1 because `useCourseKit` is mocked to return
+  // `ready: true` synchronously everywhere else in this suite — see the
+  // dedicated "ready flips true only after chapter data has resolved"
+  // test below, which mocks the two independently to reproduce the real
+  // ordering.
+  //
   // `progress.partStats` changes identity on every underlying progress
   // write (see useProgress.ts), which is what lets this effect re-sync
   // `checked` after a remote change without re-injecting anything —
@@ -307,7 +330,7 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
     // whole would re-run this effect (and re-walk every `.box.ex` in the
     // chapter) on every chapter-level `isRead` change too, not just an
     // exercise change.
-  }, [chapter.id, progress.partStats, progress.exDone, progress.toggleEx, chapterQuery.data]);
+  }, [chapter.id, courseKit.ready, progress.partStats, progress.exDone, progress.toggleEx, chapterQuery.data]);
 
   // Error checks come before the pending check: `!courseKit.ready` is true
   // for the whole time scripts are loading, so if it were checked first, a

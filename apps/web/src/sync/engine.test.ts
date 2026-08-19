@@ -12,7 +12,7 @@ vi.mock('../api/navigation', () => ({
 
 import { db, type AnnotationRow, type ProgressRow } from '../db/local';
 import { redirectToLogin } from '../api/navigation';
-import { startSync, stopSync, syncOnce } from './engine';
+import { startSync, stopSync, syncOnce, waitForInFlight } from './engine';
 
 const server = setupServer();
 
@@ -513,5 +513,129 @@ describe('failure mode: online gating', () => {
     await syncOnce();
 
     expect(called).toBe(false);
+  });
+});
+
+describe('failure mode: a stale cycle must not write after stopSync() (Task 14 fix-round-1)', () => {
+  // Reproduces the exact scenario the finding named: `stopSync()` only
+  // prevents FUTURE ticks — it cannot un-schedule a `GET /sync` request a
+  // cycle already sent. `useLogout` (src/auth/useLogout.ts) calls
+  // `stopSync()` and then unconditionally clears the local database; if a
+  // cycle from BEFORE that call is still awaiting its response, its write
+  // landing afterward would silently repopulate a database that's
+  // supposed to be clean for whoever signs in next.
+  //
+  // The `GET /sync` response is gated behind a manually-controlled
+  // promise (not a real-time `delay()`) so this test can deterministically
+  // put the cycle in a known "request sent, response not yet received"
+  // state, call `stopSync()` at exactly that point, and only THEN let the
+  // response resolve — no timing guesswork.
+  it('a pull() already in flight when stopSync() is called does not write to db.progress or db.meta once its late response arrives', async () => {
+    let releasePull: (() => void) | undefined;
+    const pullGate = new Promise<void>((resolve) => {
+      releasePull = resolve;
+    });
+    let pullRequested = false;
+
+    server.use(
+      http.post('/sync', () => HttpResponse.json({ applied: 0 })),
+      http.get('/sync', async () => {
+        pullRequested = true;
+        await pullGate;
+        return HttpResponse.json({
+          progress: [{ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: '2026-08-20T10:00:00.000Z' }],
+          annotations: [],
+          cursor: 'sometoken',
+        });
+      }),
+    );
+
+    const cyclePromise = syncOnce(); // empty outbox -> flushOutbox is a fast no-op -> pull() issues GET /sync
+
+    await vi.waitFor(() => expect(pullRequested).toBe(true));
+
+    // Simulate what useLogout.ts does: stop the engine WHILE the request
+    // above is still in flight, awaiting `pullGate`.
+    stopSync();
+
+    releasePull!(); // now let the stale response resolve
+    await cyclePromise;
+
+    expect(await db.progress.get(['c1', 'ch1', 'read'])).toBeUndefined();
+    expect(await db.meta.get('syncCursor')).toBeUndefined();
+  });
+
+  it('a flushOutbox() push already in flight when stopSync() is called does not delete the outbox entries once its late response arrives', async () => {
+    await db.outbox.add({ table: 'progress', row: { courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: '2026-08-20T10:00:00.000Z' } });
+
+    let releasePush: (() => void) | undefined;
+    const pushGate = new Promise<void>((resolve) => {
+      releasePush = resolve;
+    });
+    let pushRequested = false;
+
+    server.use(
+      http.post('/sync', async () => {
+        pushRequested = true;
+        await pushGate;
+        return HttpResponse.json({ applied: 1 });
+      }),
+      emptySyncPull(),
+    );
+
+    const cyclePromise = syncOnce();
+
+    await vi.waitFor(() => expect(pushRequested).toBe(true));
+
+    stopSync();
+
+    releasePush!();
+    await cyclePromise;
+
+    // The push itself succeeded server-side (applied:1), but the LOCAL
+    // deletion must be skipped for a stale epoch — the entry stays
+    // queued (harmless: the server call is idempotent, a later cycle's
+    // retry just re-confirms applied:0).
+    expect(await db.outbox.count()).toBe(1);
+  });
+
+  describe('waitForInFlight()', () => {
+    it('resolves immediately when nothing is in flight', async () => {
+      await expect(waitForInFlight()).resolves.toBeUndefined();
+    });
+
+    it('resolves only once the currently-running cycle has settled', async () => {
+      let releasePull: (() => void) | undefined;
+      const pullGate = new Promise<void>((resolve) => {
+        releasePull = resolve;
+      });
+      let pullRequested = false;
+
+      server.use(
+        http.post('/sync', () => HttpResponse.json({ applied: 0 })),
+        http.get('/sync', async () => {
+          pullRequested = true;
+          await pullGate;
+          return HttpResponse.json({ progress: [], annotations: [], cursor: '' });
+        }),
+      );
+
+      const cyclePromise = syncOnce();
+      await vi.waitFor(() => expect(pullRequested).toBe(true));
+
+      let waitResolved = false;
+      const waitPromise = waitForInFlight().then(() => {
+        waitResolved = true;
+      });
+
+      // Give the microtask queue a chance to settle prematurely if it were
+      // going to — it must not, the cycle is still gated on `pullGate`.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(waitResolved).toBe(false);
+
+      releasePull!();
+      await Promise.all([cyclePromise, waitPromise]);
+      expect(waitResolved).toBe(true);
+    });
   });
 });
