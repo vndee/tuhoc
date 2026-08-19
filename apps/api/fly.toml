@@ -1,0 +1,76 @@
+# Fly.io app configuration for the tuhoc API (apps/api).
+#
+# This file lives next to the Dockerfile it builds
+# (apps/api/Dockerfile) — run flyctl commands from apps/api/, e.g.:
+#   cd apps/api && flyctl deploy
+# or from the repo root with -c:
+#   flyctl deploy -c apps/api/fly.toml --dockerfile apps/api/Dockerfile
+#
+# Task 16 note on image architecture (see apps/api/Dockerfile's own header
+# comment for the full explanation): `flyctl deploy` with no --local-only
+# builds on Fly's own remote amd64 builders by default, which already
+# targets the right platform for a shared-cpu-1x (amd64) machine — you do
+# not need to pass --platform yourself in that path. The risk only shows up
+# if you ever build locally and push instead
+# (`flyctl deploy --local-only`, or a manual `docker build` + `flyctl
+# deploy --image ...`): in that case you MUST run
+#   docker build --platform linux/amd64 -t <tag> apps/api
+# yourself first, or a plain build on an Apple Silicon machine ships an
+# arm64 binary that dies with "exec format error" on Fly's amd64 hosts.
+# docs/deploy.md's deploy steps use the remote-builder path specifically to
+# sidestep this trap by default.
+
+app = "tuhoc-api" # placeholder: Fly app names are globally unique across
+                   # all Fly customers. `flyctl launch` (interactive) or
+                   # `flyctl apps create <your-unique-name>` picks the real
+                   # one — replace this before first deploy.
+primary_region = "sin" # Singapore. Closest Fly region to Vietnam-based
+                        # users; change to whatever region is actually
+                        # closest to your audience (`flyctl platform
+                        # regions` lists all of them).
+
+[build]
+  dockerfile = "Dockerfile"
+
+# Plain (non-secret) runtime config — see .env.example for what each var
+# means. DATABASE_URL is NOT here on purpose: it is a secret, set via
+# `fly secrets set DATABASE_URL=...` (docs/deploy.md), and [env] values in
+# fly.toml are committed to git, so no secret may live here.
+#
+# CORS_ORIGIN below is a placeholder: it must be replaced with the exact
+# origin the Cloudflare Pages site is served from (scheme + host, no
+# trailing slash, no path) before the first real deploy — see
+# docs/deploy.md's cross-origin cookie analysis for why an exact origin
+# (not a wildcard) is required here.
+[env]
+  PORT = "8080"
+  CORS_ORIGIN = "https://REPLACE-WITH-PAGES-ORIGIN"
+  COOKIE_SECURE = "true"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  # 0 = allow the single machine to scale to zero when idle (this is what
+  # makes the free allowance stretch). The cost is a cold start on the next
+  # request — see docs/deploy.md's "free-tier realities" section for how
+  # that interacts with Neon's own autosuspend and the API's 10s DB-connect
+  # timeout.
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 250
+    soft_limit = 200
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/healthz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

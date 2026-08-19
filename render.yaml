@@ -1,0 +1,49 @@
+# Render Blueprint for the tuhoc API (apps/api).
+#
+# Deploy: connect this repo in the Render dashboard as a Blueprint
+# (New -> Blueprint), pointing at the repo root so this file is picked up
+# automatically. See docs/deploy.md for the full first-deploy walkthrough.
+#
+# Why Docker instead of Render's native Go runtime: apps/api already ships
+# a production Dockerfile (see apps/api/Dockerfile) built around a scratch
+# base image and an embedded-migrations binary; reusing it here means the
+# artifact that runs on Render is byte-for-byte the same build path used
+# for Fly.io (apps/api/fly.toml) and local `docker build`, instead of a
+# third, Render-specific build.
+#
+# Postgres: deliberately NOT declared under a top-level `databases:` block.
+# Render's own free Postgres expires 30 days after creation (a real trap
+# for a side project meant to run indefinitely) — this platform uses Neon's
+# free tier instead (see docs/deploy.md), so DATABASE_URL below is a plain
+# secret env var pointing at a Neon connection string, not a Render-managed
+# database reference.
+services:
+  - type: web
+    name: tuhoc-api
+    runtime: docker
+    plan: free
+    region: singapore # closest Render region to Vietnam-based users;
+                       # allowed values: oregon, ohio, virginia, frankfurt,
+                       # singapore.
+    dockerfilePath: apps/api/Dockerfile
+    dockerContext: apps/api
+    healthCheckPath: /healthz
+    envVars:
+      - key: PORT
+        value: "8080"
+      # CORS_ORIGIN is a placeholder: replace with the exact Cloudflare
+      # Pages origin (scheme + host, no trailing slash, no path) before the
+      # first real deploy. It must be an exact origin, never "*" — the API
+      # sends AllowCredentials:true (see apps/api/internal/server/server.go),
+      # and Fiber's CORS middleware refuses to combine a wildcard origin
+      # with credentials.
+      - key: CORS_ORIGIN
+        value: https://REPLACE-WITH-PAGES-ORIGIN
+      - key: COOKIE_SECURE
+        value: "true"
+      # DATABASE_URL is a secret: `sync: false` means Render prompts for
+      # the value once (Blueprint creation, or Environment tab afterward)
+      # and never reads it back from this file — it is never committed.
+      # Paste in the Neon pooled connection string (see docs/deploy.md).
+      - key: DATABASE_URL
+        sync: false
