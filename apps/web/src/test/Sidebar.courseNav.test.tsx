@@ -88,4 +88,34 @@ describe('Sidebar real course outline', () => {
     expect(links.find((a) => a.getAttribute('data-ch') === 'c1')?.className).not.toContain('done');
     expect(links.find((a) => a.getAttribute('data-ch') === 'c2')?.className).toContain('done');
   });
+
+  it('shows a visible failure message in #nav — not silence — when the manifest 404s', async () => {
+    server.use(http.get('/courses/demo/manifest.json', () => new HttpResponse(null, { status: 404 })));
+    renderSidebar('/c/demo');
+
+    const nav = document.getElementById('nav')!;
+    // User-visible outcome, not an internal query flag: some text shows up
+    // in #nav once the fetch settles, and it must not be empty and must
+    // not be mistaken for "no course loaded" (a different, wrong message —
+    // a course *was* selected, it just failed to load).
+    await within(nav).findByText(/không tải được/i);
+    expect(within(nav).queryByText('Chưa có khóa học nào được tải.')).not.toBeInTheDocument();
+    expect(within(nav).queryAllByRole('link')).toHaveLength(0);
+  });
+
+  it('shows a distinct loading message in #nav while the manifest is pending, before it resolves', async () => {
+    server.use(
+      http.get('/courses/demo/manifest.json', async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return HttpResponse.json(manifest);
+      }),
+    );
+    renderSidebar('/c/demo');
+
+    const nav = document.getElementById('nav')!;
+    expect(within(nav).getByText('Đang tải khóa học…')).toBeInTheDocument();
+    expect(within(nav).queryByText('Chưa có khóa học nào được tải.')).not.toBeInTheDocument();
+
+    expect(await within(nav).findAllByRole('link')).toHaveLength(2);
+  });
 });

@@ -87,6 +87,29 @@ export function manifestQueryKey(courseId: string): readonly [string, string] {
 }
 
 /**
+ * Vietnamese, human-readable summary of a course-loading failure, for
+ * surfaces that show it directly to a learner (`CourseHome`, `Sidebar`).
+ * The error classes' own `.message` is an English technical string (kept
+ * on the error/console for debugging, alongside each class's own fields —
+ * `url`, `status`, `cause`, `required`/`got`) — not something to put in
+ * front of a Vietnamese-language UI.
+ */
+export function describeCourseError(error: unknown): string {
+  if (error instanceof RuntimeMismatchError) {
+    return `Không tải được khóa học: phiên bản không tương thích (ứng dụng cần ${error.required}, khóa học khai báo "${error.got}").`;
+  }
+  if (error instanceof CourseFetchError) {
+    return error.status === 404
+      ? 'Không tải được khóa học: không tìm thấy trên máy chủ.'
+      : `Không tải được khóa học: máy chủ báo lỗi (HTTP ${error.status}).`;
+  }
+  if (error instanceof ManifestParseError) {
+    return 'Không tải được khóa học: dữ liệu khóa học bị lỗi định dạng.';
+  }
+  return 'Không tải được khóa học: đã xảy ra lỗi không xác định.';
+}
+
+/**
  * Fetches `/courses/<courseId>/manifest.json` and validates it before
  * handing it back: a non-2xx response throws `CourseFetchError`, a body
  * that isn't parseable/shaped JSON throws `ManifestParseError`, and a

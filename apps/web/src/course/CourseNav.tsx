@@ -19,8 +19,9 @@ const EMPTY_DONE: ReadonlySet<string> = new Set();
  * without either caller having to restructure its markup.
  *
  * Every chapter link carries `data-ch="<chapterId>"` and gets the `done`
- * class when its id is in `doneChapterIds` — Ruling F4: Task 17's e2e test
- * depends on this exact attribute/class pair.
+ * class when its id is in `doneChapterIds` — Ruling F4: the markup contract
+ * is this task's (Task 10), the real progress data is Task 14's, and
+ * Task 17's e2e test is what asserts the two line up end-to-end.
  *
  * `border-bottom:none` is not repeated here: reader.css's own
  * `a.nav-item{...border-bottom:none}` rule (it already beats the later
@@ -30,8 +31,10 @@ const EMPTY_DONE: ReadonlySet<string> = new Set();
 export function CourseNav({ courseId, parts, doneChapterIds = EMPTY_DONE }: CourseNavProps) {
   return (
     <>
-      {parts.map((part) => (
-        <Fragment key={part.title}>
+      {parts.map((part, partIndex) => (
+        // Index + title, not title alone: two parts sharing a title (an
+        // empty/duplicate section, say) would otherwise collide on key.
+        <Fragment key={`${partIndex}-${part.title}`}>
           <div className="nav-part">{part.title}</div>
           {part.chapters.map((chapter) => (
             <Link

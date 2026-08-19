@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { CourseNav } from '../course/CourseNav';
-import { loadManifest, manifestQueryKey } from '../course/loader';
+import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
 
 export interface CourseHomeProps {
   /** Chapter ids the learner has marked as read. Empty until Task 14 wires real progress. */
@@ -33,7 +33,7 @@ export function CourseHome({ doneChapterIds }: CourseHomeProps) {
   }
 
   if (manifestQuery.isError) {
-    return <p className="ch-lede">Không tải được khóa học: {manifestQuery.error.message}</p>;
+    return <p className="ch-lede">{describeCourseError(manifestQuery.error)}</p>;
   }
 
   const manifest = manifestQuery.data;

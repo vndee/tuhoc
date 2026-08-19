@@ -1,7 +1,14 @@
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { CourseFetchError, loadChapter, loadManifest, ManifestParseError, RuntimeMismatchError } from './loader';
+import {
+  CourseFetchError,
+  describeCourseError,
+  loadChapter,
+  loadManifest,
+  ManifestParseError,
+  RuntimeMismatchError,
+} from './loader';
 import type { Manifest } from './types';
 
 const COURSE_ID = 'demo';
@@ -83,6 +90,35 @@ describe('loadManifest', () => {
     server.use(http.get('/courses/:courseId/manifest.json', () => HttpResponse.json({ ok: true })));
 
     await expect(loadManifest(COURSE_ID)).rejects.toBeInstanceOf(ManifestParseError);
+  });
+});
+
+describe('describeCourseError', () => {
+  it('describes a RuntimeMismatchError in Vietnamese, not the raw English Error#message', () => {
+    const error = new RuntimeMismatchError('^2');
+    const description = describeCourseError(error);
+    expect(description).toMatch(/^Không tải được khóa học/);
+    expect(description).not.toBe(error.message);
+  });
+
+  it('describes a 404 CourseFetchError distinctly from other HTTP statuses', () => {
+    const notFound = describeCourseError(new CourseFetchError('https://x/manifest.json', 404));
+    const serverError = describeCourseError(new CourseFetchError('https://x/manifest.json', 500));
+    expect(notFound).toMatch(/^Không tải được khóa học/);
+    expect(serverError).toMatch(/^Không tải được khóa học/);
+    expect(notFound).not.toBe(serverError);
+  });
+
+  it('describes a ManifestParseError in Vietnamese, not the raw English Error#message', () => {
+    const error = new ManifestParseError('https://x/manifest.json', new SyntaxError('Unexpected token <'));
+    const description = describeCourseError(error);
+    expect(description).toMatch(/^Không tải được khóa học/);
+    expect(description).not.toBe(error.message);
+  });
+
+  it('falls back to a generic Vietnamese message for anything else (e.g. a plain thrown value)', () => {
+    expect(describeCourseError('boom')).toMatch(/^Không tải được khóa học/);
+    expect(describeCourseError(new Error('some unrelated failure'))).toMatch(/^Không tải được khóa học/);
   });
 });
 
