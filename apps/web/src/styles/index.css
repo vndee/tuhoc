@@ -5,3 +5,63 @@
    vite-plugins/courseAssets.ts and the task report for why. */
 @import '@course-kit/vendor/katex.css';
 @import '@course-kit/reader.css';
+
+/* Task 12 — /login. Not part of the ported v1 stylesheet (v1 had no auth
+   UI), so it lives here rather than in packages/course-kit/reader.css,
+   but reuses that file's own tokens/components (--ink*, --surface-1,
+   --rule-strong, --accent, .seg, .btn/.btn.primary) so it reads as the
+   same app rather than a bolted-on page. */
+.auth-page {
+  max-width: 380px;
+}
+
+.auth-tabs.seg {
+  margin: 4px 0 20px;
+}
+
+.auth-tabs.seg button {
+  flex: 1;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-form label {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-top: 10px;
+}
+
+.auth-form input {
+  font-family: var(--sans);
+  font-size: 13px;
+  padding: 7px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--ink);
+}
+
+.auth-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.auth-form .btn.primary {
+  margin-top: 18px;
+  padding: 8px 14px;
+  font-size: 13px;
+  align-self: flex-start;
+}
+
+.auth-error {
+  margin: 10px 0 0;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: #e0453c;
+}

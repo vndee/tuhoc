@@ -46,6 +46,10 @@ const manifest = {
 };
 
 const server = setupServer(
+  // Every route this file exercises is behind <RequireAuth> (Task 12) —
+  // an authenticated GET /me is what lets App render the real page
+  // instead of bouncing to /login, same as any signed-in reader.
+  http.get('/me', () => HttpResponse.json({ id: 'test-user', email: 'test@example.com', name: 'Test User' })),
   http.get('/courses/demo/manifest.json', () => HttpResponse.json(manifest)),
   http.get('/courses/demo/chapters/c1.html', () => HttpResponse.text(CHAPTER_1_HTML)),
   http.get('/courses/demo/chapters/c3.html', () => HttpResponse.text(CHAPTER_3_HTML)),
