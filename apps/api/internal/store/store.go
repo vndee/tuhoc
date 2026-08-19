@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"testing"
 	"time"
@@ -53,7 +54,15 @@ func MigrateUp(databaseURL string) error {
 	if err != nil {
 		return fmt.Errorf("store: init migrator: %w", err)
 	}
-	defer m.Close()
+	defer func() {
+		// Close returns (source error, database error) independently; both
+		// are worth knowing about even though neither should change
+		// MigrateUp's own result (the Up() error above, if any, is already
+		// the actionable one).
+		if srcErr, dbErr := m.Close(); srcErr != nil || dbErr != nil {
+			log.Printf("store: close migrator: source=%v database=%v", srcErr, dbErr)
+		}
+	}()
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("store: migrate up: %w", err)
