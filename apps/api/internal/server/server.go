@@ -16,6 +16,14 @@ import (
 
 	"github.com/vndee/tuhoc-api/internal/auth"
 	"github.com/vndee/tuhoc-api/internal/config"
+	// appsync is internal/sync under an explicit alias, not its default
+	// package name ("sync"): that name collides with the standard
+	// library's own "sync" package (sync.Mutex etc.), and this file is
+	// exactly the kind of place a future change could add a stdlib sync
+	// import (e.g. for a WaitGroup) alongside it. Aliasing here means that
+	// future addition can never silently collide — see internal/sync's
+	// package doc comment for the full reasoning.
+	appsync "github.com/vndee/tuhoc-api/internal/sync"
 )
 
 // authRateLimitMax and authRateLimitExpiration together define the
@@ -94,6 +102,18 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// mounting it behind the middleware here proves Require works end to
 	// end, ahead of Task 7/8's routes depending on the same pattern.
 	app.Get("/me", auth.RequireWithUsecase(authUsecase), authHandler.Me)
+
+	// Sync routes (Task 7). These deliberately mount behind
+	// auth.Require(deps.Pool) — the brief-mandated entry point named in
+	// ruling F3 — rather than auth.RequireWithUsecase(authUsecase) as /me
+	// does above: the task brief names auth.Require(pool) specifically as
+	// the interface Task 7 depends on, so these routes are what actually
+	// exercises that exact entry point (RequireWithUsecase is only an
+	// internal optimization /me's own wiring uses to avoid building a
+	// second, equivalent auth Usecase/Repo pair over the same pool).
+	syncHandler := appsync.NewHandler(appsync.NewUsecase(appsync.NewRepo(deps.Pool)))
+	app.Get("/sync", auth.Require(deps.Pool), syncHandler.Pull)
+	app.Post("/sync", auth.Require(deps.Pool), syncHandler.Push)
 
 	return app
 }
