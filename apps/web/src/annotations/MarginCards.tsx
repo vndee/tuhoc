@@ -1,0 +1,637 @@
+/**
+ * The margin cards (P2 Task 6) — the shape the whole phase was asked for, in
+ * the user's own first sentence: *"tôi cũng cần phần highlight comment 1 đoạn
+ * văn bản, tận dụng phần khoảng trống phía bên phải màn hình để hiển thị
+ * comment"*. Tasks 1–5 built a flattener, an anchor, a painter, a store and a
+ * toolbar; none of them put a single word of a reader's note on the screen.
+ * This does.
+ *
+ * ---------------------------------------------------------------------
+ * 1. Where this component lives, and why not in `shell/Rail.tsx`
+ * ---------------------------------------------------------------------
+ * `shell/Rail.tsx` returns `null` on a chapter route (ruling P2-F1): on those
+ * routes `ChapterView` portals its own rail content into `#rail`, because the
+ * rail's contents are derived from the chapter's own DOM, which `<Rail>` has
+ * no access to. So the two tabs ("Trong chương" / "Ghi chú") are built inside
+ * ChapterView's portal, and this component is rendered there — building them
+ * in `Rail.tsx` would render the rail twice, which is the exact bug P1's Task
+ * 11 hit and solved by making the rail route-aware.
+ *
+ * ---------------------------------------------------------------------
+ * 2. Document coordinates, measured imperatively, never in React state
+ * ---------------------------------------------------------------------
+ * `highlightRects` answers in DOCUMENT coordinates (Task 3's ruling, and its
+ * own doc explains why: a viewport-coordinate card is correct at exactly one
+ * scroll offset and drifts at every other). Everything here stays in that
+ * space: a card's `top` is `rect.top - originY`, where `originY` is the card
+ * column's own document Y. Scrolling therefore changes nothing and is NOT a
+ * re-measure trigger — the plan's "resize/scroll → re-measure" is half right,
+ * and re-measuring on scroll would be pure cost plus a chance to desynchronise
+ * from the coordinate space. What DOES move a highlight is a re-layout:
+ * window resize, a `<details>` opening or closing, a font or image arriving.
+ * Those are the triggers below, throttled to one animation frame.
+ *
+ * The measured positions are written straight onto the DOM (`el.style.top`)
+ * instead of going through React state, and that is deliberate: measuring a
+ * card's height requires it to be rendered, so a state-based version is a
+ * render → measure → render loop by construction, and the guard against it
+ * ("only setState when the numbers changed") is the kind of thing that works
+ * until a fractional pixel makes it oscillate. Nothing here can loop: the
+ * measure pass reads layout and writes `style.top`, and `style.top` on an
+ * absolutely-positioned card cannot change what it measured.
+ *
+ * ---------------------------------------------------------------------
+ * 3. A note inside a collapsed "Chứng minh" block is ORDINARY
+ * ---------------------------------------------------------------------
+ * `highlightRects` returns an EMPTY ARRAY for a highlight that exists but is
+ * not drawn, and the corpus makes that the common case rather than a corner:
+ * 255 `<details class="deriv">` blocks, not one of them `open` on load, and
+ * 19 of p1-5's 48 paragraphs inside one. Those are the "Chứng minh"/"Lời
+ * giải" bodies — where a reader annotates most.
+ *
+ * So a card gets one of three anchors, recorded on the element as
+ * `data-anchor-kind` so the CSS (and a person debugging in the inspector) can
+ * see which:
+ *
+ *   - `rect`    — the highlight is drawn; the card aligns to its first line.
+ *   - `details` — the highlight is inside a collapsed block; the card aligns
+ *                 to the COLLAPSED BLOCK's own box, which is what the reader
+ *                 sees at that spot, and says "Đang thu gọn". Clicking it
+ *                 opens the block and scrolls to the highlight.
+ *   - `none`    — painted, but with no box anywhere (a highlight over the
+ *                 whitespace between two blocks). It keeps its place in the
+ *                 column, directly under the previous card, rather than
+ *                 disappearing: a note the reader cannot find is a note they
+ *                 have lost.
+ *
+ * Aligning to the collapsed block rather than dropping the card is the whole
+ * decision here. The alternative — a separate "hidden notes" list at the
+ * bottom — was rejected because it splits one column into two places to look,
+ * and because the block's own box IS the right position: it is where that
+ * text is on the page right now.
+ */
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { type CardMeasure, DEFAULT_GAP, layoutCards } from './layout';
+import { highlightElements, highlightRects } from './painter';
+import { PENDING_ID_PREFIX } from './SelectionToolbar';
+import { type Ann, type ChapterContent, colorOf, type UseAnnotationsResult } from './useAnnotations';
+
+/**
+ * The card the reader currently has open, and whether the keyboard should be
+ * put in it.
+ *
+ * `edit: true` means "the reader asked for the editor" — the toolbar's "Ghi
+ * chú" button, or a click on the card itself — and the note field takes focus.
+ * `edit: false` is a click on the HIGHLIGHT: the card opens and scrolls into
+ * view, but focus stays in the page, because stealing it from someone who was
+ * reading is a way to lose their place.
+ *
+ * Owned by `ChapterView` rather than by this component, because Task 5's
+ * toolbar has to be able to open a card for a note it just created, and that
+ * callback (`onRequestNote`) arrives at the parent.
+ */
+export interface CardFocus {
+  readonly id: string;
+  readonly edit: boolean;
+}
+
+/** The part of `useAnnotations`'s result this component needs — a `Pick` for
+ * the same reason `ToolbarStore` is one: the dependency stays legible, and
+ * `ChapterView` satisfies it with THE one store instance it already holds. A
+ * second `useAnnotations` would paint every annotation twice. */
+export type MarginCardsStore = Pick<UseAnnotationsResult, 'list' | 'updateNote' | 'remove'>;
+
+export interface MarginCardsProps {
+  /** The chapter DOM, exactly as `useAnnotations` receives it. */
+  readonly content: ChapterContent;
+  readonly store: MarginCardsStore;
+  /** Whether the rail is currently showing the "Ghi chú" tab. When false the
+   * column is not built — but this component stays mounted, because a click
+   * on a highlight still has to be able to open a card (and, on a narrow
+   * screen, the sheet), and the rail's tab has nothing to do with that. */
+  readonly visible: boolean;
+  readonly focus: CardFocus | null;
+  readonly onFocusChange: (focus: CardFocus | null) => void;
+}
+
+/**
+ * Below this width `reader.css` hides `#rail` outright
+ * (`@media (max-width:1240px){#rail{display:none}}`), so there is no column to
+ * put cards in and the bottom sheet takes over.
+ *
+ * 1241, not 1240, and the extra pixel is not a rounding error: `max-width:
+ * 1240px` MATCHES at exactly 1240, so a JS check of `>= 1240` would claim a
+ * column at the one width where the CSS has already taken it away — one pixel
+ * wide, and the reader gets neither cards nor sheet.
+ */
+export const WIDE_MIN_PX = 1241;
+const WIDE_QUERY = `(min-width: ${WIDE_MIN_PX}px)`;
+
+/** How long after the last keystroke the note is written. Long enough that
+ * typing a sentence is one write and one outbox row rather than forty; short
+ * enough that a reader who closes the tab mid-thought loses nothing they
+ * would notice. Blur, closing the card and unmounting all flush immediately,
+ * so this is a ceiling on the delay, not the delay. */
+const WRITE_DEBOUNCE_MS = 600;
+
+/** How much of the highlighted text a card shows above the note. */
+const QUOTE_MAX = 120;
+
+/** Two formatters rather than one with four fields, because ICU's vi-VN
+ * pattern for the combined form puts the CLOCK first ("02:58 21-08", measured
+ * in Chromium) — which reads as a time somebody typed wrong. Date then time,
+ * explicitly. The machine-readable value is on the `<time datetime>`
+ * attribute either way. */
+const DAY_FORMAT = new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit' });
+const CLOCK_FORMAT = new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+type AnchorKind = 'rect' | 'details' | 'none';
+
+interface AnchorPoint {
+  /** Y in the card column's own coordinate space (px below its top). */
+  readonly y: number;
+  readonly kind: AnchorKind;
+}
+
+/** `Anchor.exact`, read defensively: `AnnotationRow.anchor` is `unknown` all
+ * the way from the server's `json.RawMessage`, so a card must survive a row
+ * whose anchor is a number, `null`, or a shape from a future version. */
+function quoteOf(anchor: unknown): string {
+  const value = (anchor as { exact?: unknown } | null | undefined)?.exact;
+  if (typeof value !== 'string') return '';
+  const flat = value.replace(/\s+/g, ' ').trim();
+  return flat.length > QUOTE_MAX ? `${flat.slice(0, QUOTE_MAX - 1)}…` : flat;
+}
+
+function shortTime(iso: string): string {
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return '';
+  const when = new Date(at);
+  return `${DAY_FORMAT.format(when)} · ${CLOCK_FORMAT.format(when)}`;
+}
+
+/**
+ * Where one annotation's card should point, in the column's coordinates.
+ *
+ * The `highlightRects` / `highlightElements` PAIR is what distinguishes the
+ * three states — that pairing is the documented way to tell "not drawn right
+ * now" from "no such annotation", and it is why this is not simply
+ * `rects[0]?.top ?? fallback`.
+ */
+function anchorFor(id: string, root: HTMLElement, originY: number, scrollY: number, fallbackY: number): AnchorPoint {
+  const rects = highlightRects(id, root);
+  if (rects.length > 0) return { y: rects[0].top - originY, kind: 'rect' };
+
+  const first = highlightElements(id, root)[0];
+  const collapsed = first?.closest('details:not([open])') ?? null;
+  if (collapsed) {
+    return { y: collapsed.getBoundingClientRect().top + scrollY - originY, kind: 'details' };
+  }
+  return { y: fallbackY, kind: 'none' };
+}
+
+function sameKinds(a: ReadonlyMap<string, AnchorKind>, b: ReadonlyMap<string, AnchorKind>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [id, kind] of a) if (b.get(id) !== kind) return false;
+  return true;
+}
+
+/** Opens every collapsed block around `el`, innermost first, so the highlight
+ * inside it can actually be looked at. Returns `el` for chaining. */
+function revealBlocks(el: Element): Element {
+  let block: Element | null = el.closest('details:not([open])');
+  while (block) {
+    (block as HTMLDetailsElement).open = true;
+    block = block.parentElement?.closest('details:not([open])') ?? null;
+  }
+  return el;
+}
+
+/** True while the rail column exists at all. Falls back to `innerWidth` where
+ * `matchMedia` does not exist — jsdom 30 is one such place, and the fallback
+ * is what lets the mobile branch be tested at all. */
+function isWide(view: Window): boolean {
+  if (typeof view.matchMedia === 'function') return view.matchMedia(WIDE_QUERY).matches;
+  return view.innerWidth >= WIDE_MIN_PX;
+}
+
+function useWideRail(): boolean {
+  const [wide, setWide] = useState(() => (typeof window === 'undefined' ? true : isWide(window)));
+  useEffect(() => {
+    const update = (): void => setWide(isWide(window));
+    update();
+    window.addEventListener('resize', update);
+    const query = typeof window.matchMedia === 'function' ? window.matchMedia(WIDE_QUERY) : null;
+    query?.addEventListener?.('change', update);
+    return () => {
+      window.removeEventListener('resize', update);
+      query?.removeEventListener?.('change', update);
+    };
+  }, []);
+  return wide;
+}
+
+export function MarginCards({ content, store, visible, focus, onFocusChange }: MarginCardsProps) {
+  const { list, updateNote, remove } = store;
+  const root = content.root;
+  const revision = content.revision;
+  const wide = useWideRail();
+  const focusId = focus?.id ?? null;
+
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const cardRefs = useRef(new Map<string, HTMLElement>());
+  const tieRefs = useRef(new Map<string, HTMLElement>());
+  const editorRef = useRef<HTMLTextAreaElement | null>(null);
+
+  /** The rows, readable from callbacks that must not be re-created on every
+   * store emission (the same plain-assignment-during-render pattern
+   * `ChapterView` uses for its heartbeat context). */
+  const rowsRef = useRef<readonly Ann[]>(list);
+  rowsRef.current = list;
+
+  const byId = useMemo(() => new Map(list.map((row) => [row.id, row] as const)), [list]);
+
+  /** How each card is anchored, published by the measure pass. Empty until
+   * the first one runs; `rect` is the default because it is the quiet one —
+   * a card that flashed "Đang thu gọn" for one frame on every chapter open
+   * would be worse than one that shows the badge one frame late. */
+  const [kinds, setKinds] = useState<ReadonlyMap<string, AnchorKind>>(() => new Map());
+
+  // ---- the note being edited ----------------------------------------------
+  const [draft, setDraft] = useState<{ id: string; text: string } | null>(null);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flush = useCallback((): void => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const pending = draftRef.current;
+    if (!pending) return;
+    const row = rowsRef.current.find((r) => r.id === pending.id);
+    // Nothing to write when the text is unchanged — `updateNote` would still
+    // stamp `updatedAt` and queue an outbox row, i.e. a sync round trip for
+    // opening a card and closing it again.
+    if (!row || row.note === pending.text) return;
+    void updateNote(pending.id, pending.text).catch((error: unknown) => {
+      console.error('MarginCards: could not store the note', error);
+    });
+  }, [updateNote]);
+
+  // A card opening (or closing) loads the draft from the row. Deliberately
+  // keyed on the id ALONE: re-reading it whenever `list` emits would throw
+  // away what the reader is typing every time the store publishes — including
+  // on the store's own write of this very note.
+  useEffect(() => {
+    if (!focusId) {
+      setDraft(null);
+      return;
+    }
+    setDraft({ id: focusId, text: rowsRef.current.find((row) => row.id === focusId)?.note ?? '' });
+  }, [focusId]);
+
+  // Leaving the card, and unmounting, both write immediately.
+  useEffect(() => {
+    return () => flush();
+  }, [focusId, flush]);
+
+  // The reader asked for the editor (toolbar "Ghi chú", or a click on the
+  // card). `focus` is a fresh object on every request, so asking twice for the
+  // same card focuses it twice — which is what a second click should do.
+  //
+  // `list` is in the deps and `honoured` is what makes that safe. The toolbar
+  // path arrives EARLY: "Ghi chú" creates the row and asks for its card in the
+  // same tick, but that card cannot exist until the row has travelled through
+  // Dexie's live query and been resolved and painted — several commits later.
+  // A focus effect keyed on `focus` alone runs once, finds no textarea, and
+  // the reader is handed an editor they then have to click. Re-running it on
+  // every store emission fixes that and introduces the opposite bug — focus
+  // yanked back into the note while they are typing somewhere else — so each
+  // request is honoured exactly once.
+  const honouredRef = useRef<CardFocus | null>(null);
+  useEffect(() => {
+    if (!focus?.edit || honouredRef.current === focus) return;
+    const box = editorRef.current;
+    if (!box) return;
+    honouredRef.current = focus;
+    box.focus();
+    const end = box.value.length;
+    box.setSelectionRange?.(end, end);
+  }, [focus, list]);
+
+  // ---- the highlight ↔ card link (both directions) ------------------------
+  const reveal = useCallback(
+    (id: string): void => {
+      if (!root) return;
+      const first = highlightElements(id, root)[0];
+      if (!first) return;
+      revealBlocks(first).scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    },
+    [root],
+  );
+
+  useEffect(() => {
+    if (!root) return;
+    const onClick = (event: Event): void => {
+      const target = event.target as Element | null;
+      const painted = target?.closest?.('[data-ann-id], [data-ann-ids]') ?? null;
+      if (!painted) return;
+      const single = painted.getAttribute('data-ann-id');
+      // A formula covered by several notes keeps every id in one attribute and
+      // shows the LAST one's colour, so the last one is the note the reader
+      // just clicked on.
+      const id = single ?? (painted.getAttribute('data-ann-ids') ?? '').split(' ').filter(Boolean).pop() ?? '';
+      // The toolbar's optimistic paint has no row and no card yet.
+      if (!id || id.startsWith(PENDING_ID_PREFIX) || !byId.has(id)) return;
+      onFocusChange({ id, edit: false });
+    };
+    root.addEventListener('click', onClick);
+    return () => root.removeEventListener('click', onClick);
+  }, [root, byId, onFocusChange]);
+
+  // The focused annotation is outlined in the text. Re-applied when the store
+  // repaints (`list` identity changes), because an unpaint/repaint replaces
+  // the very elements this class was put on.
+  useEffect(() => {
+    if (!root || !focusId) return;
+    const els = highlightElements(focusId, root);
+    for (const el of els) el.classList.add('focus');
+    return () => {
+      for (const el of els) el.classList.remove('focus');
+    };
+  }, [root, focusId, list, revision]);
+
+  // ---- measurement --------------------------------------------------------
+  const measure = useCallback((): void => {
+    const host = hostRef.current;
+    if (!host || !root) return;
+    const view = root.ownerDocument?.defaultView ?? window;
+    const scrollY = view.scrollY ?? 0;
+    const originY = host.getBoundingClientRect().top + scrollY;
+
+    const measures: CardMeasure[] = [];
+    const anchors: AnchorPoint[] = [];
+    const nextKinds = new Map<string, AnchorKind>();
+    let previousY = 0;
+    for (const row of rowsRef.current) {
+      const card = cardRefs.current.get(row.id);
+      if (!card) continue;
+      const anchor = anchorFor(row.id, root, originY, scrollY, previousY);
+      previousY = anchor.y;
+      nextKinds.set(row.id, anchor.kind);
+      anchors.push(anchor);
+      measures.push({ id: row.id, y: anchor.y, height: card.getBoundingClientRect().height });
+    }
+
+    const placed = layoutCards(measures, DEFAULT_GAP);
+    let bottom = 0;
+    for (let i = 0; i < placed.length; i++) {
+      const card = cardRefs.current.get(placed[i].id);
+      if (card) card.style.top = `${placed[i].top}px`;
+      const tie = tieRefs.current.get(placed[i].id);
+      if (tie) {
+        tie.style.top = `${anchors[i].y}px`;
+        // +1 so a card sitting exactly at its anchor still draws the
+        // horizontal hairline rather than a zero-height box.
+        tie.style.height = `${Math.max(1, placed[i].top - anchors[i].y + 1)}px`;
+      }
+      bottom = Math.max(bottom, placed[i].top + measures[i].height);
+    }
+
+    // The one measurement that goes back into React, because it is the one a
+    // card RENDERS from: an anchor kind decides whether the card carries the
+    // "Đang thu gọn" badge (and the dashed tie), and a badge changes the
+    // card's height.
+    //
+    // This is not the render → measure → render loop the file doc rejects for
+    // positions. A kind is discrete and cannot be changed by anything this
+    // pass does: moving a card inside the rail cannot make a `<mark>` in the
+    // content gain or lose a rect (the rail is a flex SIBLING of `#content`,
+    // so it does not reflow it). The pass therefore converges in exactly one
+    // extra round — measure, publish kinds, measure again, publish nothing —
+    // and `sameKinds` is what makes "publish nothing" true rather than
+    // merely likely.
+    setKinds((previous) => (sameKinds(previous, nextKinds) ? previous : nextKinds));
+    // The column is a stack of absolutely-positioned cards, so it has no
+    // height of its own — and `#rail` is `align-self:flex-start`, so without
+    // this the aside collapses and its own sticky tab bar has no box to stick
+    // inside. Cleared when there are no cards, so the empty-state paragraph
+    // is not squeezed into a 0px box.
+    host.style.height = placed.length > 0 ? `${bottom}px` : '';
+  }, [root]);
+
+  // Runs on every commit that could have changed either input: the note list,
+  // which card is open (the editor makes a card taller), and the chapter
+  // itself. `useLayoutEffect` so the browser never paints a frame with the
+  // cards stacked at the top of the column.
+  useLayoutEffect(() => {
+    measure();
+  }, [measure, list, focusId, draft, visible, wide, revision, kinds]);
+
+  // Re-measure when the PAGE moves under the cards. Not on scroll — see the
+  // file doc, section 2.
+  useEffect(() => {
+    if (!root || !visible || !wide) return;
+    const view = root.ownerDocument?.defaultView ?? window;
+    let frame = 0;
+    const schedule = (): void => {
+      if (frame) return;
+      frame = view.requestAnimationFrame(() => {
+        frame = 0;
+        measure();
+      });
+    };
+    view.addEventListener('resize', schedule);
+    // `toggle` (a <details> opening) and `load` (an image or a figure
+    // arriving) do not BUBBLE — the capture phase is the only way to hear
+    // them from the chapter root.
+    root.addEventListener('toggle', schedule, true);
+    root.addEventListener('load', schedule, true);
+    const fonts = (root.ownerDocument as Document & { fonts?: { ready?: Promise<unknown> } }).fonts;
+    void fonts?.ready?.then(schedule).catch(() => {});
+    return () => {
+      view.removeEventListener('resize', schedule);
+      root.removeEventListener('toggle', schedule, true);
+      root.removeEventListener('load', schedule, true);
+      if (frame) view.cancelAnimationFrame(frame);
+    };
+  }, [root, measure, visible, wide]);
+
+  // A card opened from a click on its highlight has to be brought into view;
+  // one opened by clicking the card itself is already there, and `nearest`
+  // makes that a no-op rather than a jump.
+  useEffect(() => {
+    if (!focusId || !visible || !wide) return;
+    cardRefs.current.get(focusId)?.scrollIntoView?.({ block: 'nearest' });
+  }, [focusId, visible, wide]);
+
+  const setCardRef = useCallback((id: string, el: HTMLElement | null): void => {
+    if (el) cardRefs.current.set(id, el);
+    else cardRefs.current.delete(id);
+  }, []);
+
+  const setTieRef = useCallback((id: string, el: HTMLElement | null): void => {
+    if (el) tieRefs.current.set(id, el);
+    else tieRefs.current.delete(id);
+  }, []);
+
+  const openCard = useCallback(
+    (id: string): void => {
+      onFocusChange({ id, edit: true });
+      reveal(id);
+    },
+    [onFocusChange, reveal],
+  );
+
+  const onDraftChange = useCallback(
+    (id: string, text: string): void => {
+      setDraft({ id, text });
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        flush();
+      }, WRITE_DEBOUNCE_MS);
+    },
+    [flush],
+  );
+
+  const onDelete = useCallback(
+    (id: string): void => {
+      // Drop the draft first: flushing it on the way out would resurrect the
+      // note text onto a row that is being tombstoned.
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      draftRef.current = null;
+      setDraft(null);
+      onFocusChange(null);
+      void remove(id).catch((error: unknown) => {
+        console.error('MarginCards: could not delete the note', error);
+      });
+    },
+    [onFocusChange, remove],
+  );
+
+  const body = (row: Ann) => {
+    const open = focusId === row.id;
+    const note = open && draft?.id === row.id ? draft.text : row.note;
+    const quote = quoteOf(row.anchor);
+    const kind = kinds.get(row.id) ?? 'rect';
+    return (
+      <>
+        <button type="button" className="ann-card-open" onClick={() => openCard(row.id)}>
+          <span className="ann-card-quote">{quote}</span>
+          <time className="ann-card-time" dateTime={row.updatedAt}>
+            {shortTime(row.updatedAt)}
+          </time>
+          {kind !== 'rect' && (
+            // The highlight exists but is not drawn anywhere on the page —
+            // almost always because it is inside a "Chứng minh" block the
+            // reader has not opened. Saying so is the difference between a
+            // card that looks misplaced and one that explains itself; the
+            // click that opens the card opens the block too.
+            <span className="ann-card-badge">
+              {kind === 'details' ? '▸ Đang thu gọn' : '▸ Không hiện trên trang'}
+            </span>
+          )}
+          {!open && (
+            <span className={note ? 'ann-card-note' : 'ann-card-note ann-card-note-empty'}>
+              {note || '(chưa có nội dung)'}
+            </span>
+          )}
+        </button>
+        {open && (
+          <>
+            <textarea
+              // Exactly one card is open at a time, and either the column or
+              // the sheet renders it — never both — so one ref is enough.
+              ref={editorRef}
+              className="ann-card-input"
+              aria-label="Nội dung ghi chú"
+              rows={3}
+              value={draft?.id === row.id ? draft.text : row.note}
+              onChange={(event) => onDraftChange(row.id, event.target.value)}
+              onBlur={flush}
+            />
+            <div className="ann-card-actions">
+              <button type="button" className="ann-card-del" onClick={() => onDelete(row.id)}>
+                Xóa ghi chú
+              </button>
+              <button type="button" className="ann-card-done" onClick={() => onFocusChange(null)}>
+                Xong
+              </button>
+            </div>
+          </>
+        )}
+      </>
+    );
+  };
+
+  if (!root) return null;
+
+  const doc = root.ownerDocument ?? document;
+  const sheetRow = !wide && focusId ? (byId.get(focusId) ?? null) : null;
+
+  return (
+    <>
+      {visible && wide && (
+        <div className="ann-cards" ref={hostRef}>
+          {list.length === 0 && <p className="ann-cards-empty muted">Chưa có ghi chú nào trong chương này.</p>}
+          {list.map((row) => (
+            <Fragment key={row.id}>
+              <span
+                className="ann-tie"
+                aria-hidden="true"
+                data-anchor-kind={kinds.get(row.id) ?? 'rect'}
+                ref={(el) => setTieRef(row.id, el)}
+              />
+              <article
+                className={`ann-card ann-card-${colorOf(row.anchor)}`}
+                data-ann-card={row.id}
+                data-anchor-kind={kinds.get(row.id) ?? 'rect'}
+                data-open={focusId === row.id ? 'true' : undefined}
+                ref={(el) => setCardRef(row.id, el)}
+              >
+                {body(row)}
+              </article>
+            </Fragment>
+          ))}
+        </div>
+      )}
+      {sheetRow &&
+        createPortal(
+          <>
+            <div
+              className="ann-sheet-scrim"
+              // Presentation only: the sheet itself carries the dialog role,
+              // and Escape/"Đóng" are the keyboard ways out.
+              aria-hidden="true"
+              onClick={() => onFocusChange(null)}
+            />
+            <div
+              className={`ann-sheet ann-card-${colorOf(sheetRow.anchor)}`}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Ghi chú"
+              data-ann-card={sheetRow.id}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') onFocusChange(null);
+              }}
+            >
+              <button type="button" className="ann-sheet-close" aria-label="Đóng ghi chú" onClick={() => onFocusChange(null)}>
+                ×
+              </button>
+              {body(sheetRow)}
+            </div>
+          </>,
+          doc.body,
+        )}
+    </>
+  );
+}
+
+export default MarginCards;

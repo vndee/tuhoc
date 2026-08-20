@@ -258,8 +258,14 @@ function nowMs(): number {
  * falls back to yellow rather than reaching `paintAll` as a class name nobody
  * styled — a highlight in the wrong colour is a cosmetic problem, an unstyled
  * one is invisible.
+ *
+ * Exported for `./MarginCards`, which needs the SAME answer to colour a card's
+ * left border: a card that disagreed with its own highlight about the note's
+ * colour would be worse than either choice on its own, and a second private
+ * copy of a defensive read is exactly the drift this codebase has already paid
+ * to avoid elsewhere.
  */
-function colorOf(anchor: unknown): AnchorColor {
+export function colorOf(anchor: unknown): AnchorColor {
   const value = (anchor as { color?: unknown } | null | undefined)?.color;
   return typeof value === 'string' && COLORS.has(value) ? (value as AnchorColor) : 'y';
 }

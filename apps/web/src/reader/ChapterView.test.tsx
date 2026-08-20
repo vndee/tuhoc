@@ -223,6 +223,57 @@ describe('ChapterView', () => {
     return view;
   }
 
+  // The two selection helpers below live here, at the top level of this
+  // describe, rather than inside the Task 5 block that first needed them:
+  // Task 6's own block needs the SAME action ("select prose, get a toolbar")
+  // to reach the "Ghi chú" button, and a second copy of a helper whose retry
+  // shape is load-bearing (see `selectAndOpenToolbar`'s doc) is a copy that
+  // drifts. Moved verbatim, not rewritten.
+
+  function selectInChapter(text: string): HTMLElement {
+    const container = document.querySelector('.fade-in') as HTMLElement;
+    const paragraph = Array.from(container.querySelectorAll('p')).find((p) => p.textContent === text);
+    if (!paragraph?.firstChild) throw new Error(`no <p> reading ${JSON.stringify(text)} in the chapter`);
+    const range = document.createRange();
+    range.setStart(paragraph.firstChild, 0);
+    range.setEnd(paragraph.firstChild, text.length);
+    act(() => {
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      // jsdom does not fire this for a programmatic selection; a real drag or
+      // a Shift+Arrow does.
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+    return container;
+  }
+
+  /**
+   * Selects `text` and returns the chapter container once the toolbar it
+   * must open is on the page.
+   *
+   * The retry is the point. `selectionchange` is a ONE-SHOT event: a
+   * listener that attaches after the dispatch never hears it, and no amount
+   * of polling for the toolbar afterwards will conjure one — which is why
+   * `findByRole('toolbar')` would be the wrong tool and `getByRole` alone
+   * was the flaky one. So each attempt re-creates the whole user action
+   * (select, then look) instead of looking again at the result of a single
+   * dispatch. `renderChapterAndSettle` should already make the first attempt
+   * enough; this is what makes that "should" unable to matter.
+   */
+  async function selectAndOpenToolbar(text: string): Promise<HTMLElement> {
+    const deadline = Date.now() + 1000;
+    let container = selectInChapter(text);
+    while (!screen.queryByRole('toolbar') && Date.now() < deadline) {
+      await act(async () => {});
+      container = selectInChapter(text);
+    }
+    // `getByRole`, not `queryByRole`: when this genuinely breaks the failure
+    // should carry testing-library's own report, not a bare boolean.
+    expect(screen.getByRole('toolbar')).toBeInTheDocument();
+    return container;
+  }
+
   it('calls renderKatex then initViz exactly once, with the element containing the fragment', async () => {
     await renderChapterAndSettle();
 
@@ -467,50 +518,6 @@ describe('ChapterView', () => {
   // paint every annotation twice), and that a colour click reaches the real
   // local store with this chapter's own course/chapter ids.
   describe('selection toolbar (P2 Task 5)', () => {
-    function selectInChapter(text: string): HTMLElement {
-      const container = document.querySelector('.fade-in') as HTMLElement;
-      const paragraph = Array.from(container.querySelectorAll('p')).find((p) => p.textContent === text);
-      if (!paragraph?.firstChild) throw new Error(`no <p> reading ${JSON.stringify(text)} in the chapter`);
-      const range = document.createRange();
-      range.setStart(paragraph.firstChild, 0);
-      range.setEnd(paragraph.firstChild, text.length);
-      act(() => {
-        const selection = window.getSelection()!;
-        selection.removeAllRanges();
-        selection.addRange(range);
-        // jsdom does not fire this for a programmatic selection; a real drag or
-        // a Shift+Arrow does.
-        document.dispatchEvent(new Event('selectionchange'));
-      });
-      return container;
-    }
-
-    /**
-     * Selects `text` and returns the chapter container once the toolbar it
-     * must open is on the page.
-     *
-     * The retry is the point. `selectionchange` is a ONE-SHOT event: a
-     * listener that attaches after the dispatch never hears it, and no amount
-     * of polling for the toolbar afterwards will conjure one — which is why
-     * `findByRole('toolbar')` would be the wrong tool and `getByRole` alone
-     * was the flaky one. So each attempt re-creates the whole user action
-     * (select, then look) instead of looking again at the result of a single
-     * dispatch. `renderChapterAndSettle` should already make the first attempt
-     * enough; this is what makes that "should" unable to matter.
-     */
-    async function selectAndOpenToolbar(text: string): Promise<HTMLElement> {
-      const deadline = Date.now() + 1000;
-      let container = selectInChapter(text);
-      while (!screen.queryByRole('toolbar') && Date.now() < deadline) {
-        await act(async () => {});
-        container = selectInChapter(text);
-      }
-      // `getByRole`, not `queryByRole`: when this genuinely breaks the failure
-      // should carry testing-library's own report, not a bare boolean.
-      expect(screen.getByRole('toolbar')).toBeInTheDocument();
-      return container;
-    }
-
     it('selecting chapter prose opens the toolbar; a colour click paints immediately and stores the annotation', async () => {
       await renderChapterAndSettle();
 
@@ -578,6 +585,110 @@ describe('ChapterView', () => {
       // Stronger than it looks now: the toolbar that WAS open had to be taken
       // down by the outside selection, rather than never having existed.
       expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
+    });
+  });
+
+  // P2 Task 6. `MarginCards` has its own suite
+  // (src/annotations/MarginCards.test.tsx); what is tested HERE is the wiring
+  // this file owns and no test over there can see: that the rail becomes two
+  // tabs INSIDE ChapterView's own portal (ruling P2-F1 — `shell/Rail.tsx`
+  // returns null on a chapter route, and building the tabs there instead
+  // would duplicate the whole rail), that the TOC tab is still the default
+  // and still portals the same links, and that Task 5's "Ghi chú" button —
+  // which until now only painted yellow and called a callback nobody had
+  // wired — opens a real note editor.
+  describe('rail tabs + margin cards (P2 Task 6)', () => {
+    /** `reader.css` hides `#rail` under `@media (max-width:1240px)`, and
+     * jsdom's own default width is 1024 — i.e. the MOBILE branch, where the
+     * cards deliberately do not exist. */
+    function setViewportWidth(px: number): void {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: px });
+    }
+
+    beforeEach(() => setViewportWidth(1400));
+    afterEach(() => setViewportWidth(1024));
+
+    function rail(): HTMLElement {
+      return document.getElementById('rail')!;
+    }
+
+    it('portals a two-tab rail into #rail, TOC selected by default, with the chapter TOC untouched', async () => {
+      await renderChapterAndSettle();
+
+      const tabs = within(rail()).getAllByRole('tab');
+      expect(tabs.map((t) => t.textContent)).toEqual(['Trong chương', 'Ghi chú (0)']);
+      expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+      expect(tabs[1]).toHaveAttribute('aria-selected', 'false');
+      // Still exactly the three headings, still `<a>`s, still in #rail: the
+      // tabs are an addition to the portal, not a replacement of it. A second
+      // copy anywhere (the P1 Task 11 duplicate-rail bug, which ruling P2-F1
+      // exists to prevent) would show up here as six.
+      expect(rail().querySelectorAll('a')).toHaveLength(3);
+      expect(document.querySelectorAll('.rail-tabs')).toHaveLength(1);
+    });
+
+    it('switching to the "Ghi chú" tab swaps the TOC for the cards panel, and back', async () => {
+      await renderChapterAndSettle();
+
+      fireEvent.click(within(rail()).getByRole('tab', { name: /^Ghi chú/ }));
+
+      await waitFor(() => expect(rail().querySelectorAll('a')).toHaveLength(0));
+      expect(within(rail()).getByRole('tab', { name: /^Ghi chú/ })).toHaveAttribute('aria-selected', 'true');
+      // An empty chapter says so, rather than showing an empty column.
+      expect(within(rail()).getByText(/chưa có ghi chú/i)).toBeInTheDocument();
+
+      fireEvent.click(within(rail()).getByRole('tab', { name: 'Trong chương' }));
+      await waitFor(() => expect(rail().querySelectorAll('a')).toHaveLength(3));
+    });
+
+    it('the toolbar\'s "Ghi chú" button opens a margin card for the new note, focused, and what is typed there is stored', async () => {
+      await renderChapterAndSettle();
+
+      await selectAndOpenToolbar('Nội dung A');
+      fireEvent.click(within(screen.getByRole('toolbar')).getByRole('button', { name: 'Ghi chú' }));
+
+      // The rail flips to the notes tab on its own — a note editor the reader
+      // has to go find is not an editor.
+      const box = await screen.findByRole('textbox', { name: /ghi chú/i });
+      expect(within(rail()).getByRole('tab', { name: /^Ghi chú/ })).toHaveAttribute('aria-selected', 'true');
+      expect(document.activeElement).toBe(box);
+      expect(rail().querySelectorAll('[data-ann-card]')).toHaveLength(1);
+
+      fireEvent.change(box, { target: { value: 'xem lại chỗ này' } });
+      fireEvent.blur(box);
+
+      await waitFor(async () => {
+        const [row] = await db.annotations.toArray();
+        expect(row.note).toBe('xem lại chỗ này');
+      });
+      // One row for the create, one for the note edit — the note reaches the
+      // other device the same way the highlight does.
+      expect(await db.outbox.count()).toBe(2);
+      expect(within(rail()).getByRole('tab', { name: 'Ghi chú (1)' })).toBeInTheDocument();
+    });
+
+    it('two notes give two cards in document order (a chapter with one note proves nothing — ruling P2-F8)', async () => {
+      await renderChapterAndSettle();
+
+      // Created in REVERSE document order, through the real toolbar, so the
+      // order asserted below can only come from the store's own placement —
+      // and so the second paint happens against a map the first paint expired.
+      await selectAndOpenToolbar('Nội dung B');
+      fireEvent.click(within(screen.getByRole('toolbar')).getByRole('button', { name: /vàng/i }));
+      await waitFor(async () => expect(await db.annotations.count()).toBe(1));
+
+      await selectAndOpenToolbar('Nội dung A');
+      fireEvent.click(within(screen.getByRole('toolbar')).getByRole('button', { name: /xanh lá/i }));
+      await waitFor(async () => expect(await db.annotations.count()).toBe(2));
+
+      fireEvent.click(within(rail()).getByRole('tab', { name: /^Ghi chú/ }));
+      await waitFor(() => expect(rail().querySelectorAll('[data-ann-card]')).toHaveLength(2));
+
+      const container = document.querySelector('.fade-in') as HTMLElement;
+      const ids = Array.from(rail().querySelectorAll<HTMLElement>('[data-ann-card]')).map((c) => c.dataset.annCard);
+      const painted = Array.from(container.querySelectorAll<HTMLElement>('mark.ann')).map((m) => m.dataset.annId);
+      expect(ids).toEqual(painted);
+      expect(within(rail()).getByRole('tab', { name: 'Ghi chú (2)' })).toBeInTheDocument();
     });
   });
 

@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
+import { type CardFocus, MarginCards } from '../annotations/MarginCards';
 import { SelectionToolbar } from '../annotations/SelectionToolbar';
 import { type ChapterContent, useAnnotations } from '../annotations/useAnnotations';
 import { describeCourseError, loadChapter } from '../course/loader';
@@ -78,6 +79,31 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
   const [annotationContent, setAnnotationContent] = useState<ChapterContent>({ root: null, revision: 0 });
   const annotations = useAnnotations(courseId, chapter.id, annotationContent);
 
+  // P2 Task 6. The right rail becomes two tabs, and BOTH are built here,
+  // inside this component's own portal into `#rail` — ruling P2-F1.
+  // `shell/Rail.tsx` returns null on a chapter route precisely because the
+  // rail's content is derived from the chapter DOM, which that component
+  // cannot see; adding the tabs there would render the rail twice (the P1
+  // Task 11 bug that route-awareness was introduced to fix).
+  //
+  // `cardFocus` is which note card is open. It lives here rather than inside
+  // `<MarginCards>` because Task 5's toolbar is what opens one: "Ghi chú"
+  // creates the annotation and calls `onRequestNote(id)` — a callback that,
+  // until this task, nothing was listening to, so the button highlighted in
+  // yellow and offered no way to write anything.
+  const [railTab, setRailTab] = useState<'toc' | 'notes'>('toc');
+  const [cardFocus, setCardFocus] = useState<CardFocus | null>(null);
+
+  // A card being opened from the CHAPTER (a click on a highlight) has to
+  // bring its tab forward with it, or the reader clicks their own highlight
+  // and nothing appears to happen.
+  const focusCard = useCallback((next: CardFocus | null) => {
+    setCardFocus(next);
+    if (next) setRailTab('notes');
+  }, []);
+
+  const requestNote = useCallback((id: string) => focusCard({ id, edit: true }), [focusCard]);
+
   const chapterQuery = useQuery({
     queryKey: ['course-chapter', courseId, chapter.file],
     queryFn: () => loadChapter(courseId, chapter.file),
@@ -125,6 +151,33 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
     setRailEl(document.getElementById('rail'));
     setCrumbEl(document.getElementById('crumb'));
   }, []);
+
+  // The rail is a STICKY, self-scrolling box (`reader.css`: `position:sticky`,
+  // `max-height:calc(100vh - 100px)`, `overflow-y:auto`) — the right shape for
+  // a short table of contents and the wrong one for a column of cards pinned
+  // to document coordinates, which have to scroll WITH the chapter and must
+  // not be clipped at the viewport's height. `.rail-notes` (src/styles/
+  // index.css) turns those three properties off and widens the rail to fit a
+  // card.
+  //
+  // Applied from here, imperatively, for the same reason `#mark-btn` and
+  // `#prev-btn` are driven from here: `#rail` is chrome `<Shell>` renders,
+  // and teaching `shell/Rail.tsx` about chapter state is exactly what ruling
+  // P2-F1 forbids. The cleanup is what keeps a rail on `/` or `/c/:courseId`
+  // from inheriting a chapter's layout after the reader navigates away.
+  useEffect(() => {
+    if (!railEl) return;
+    railEl.classList.toggle('rail-notes', railTab === 'notes');
+    return () => railEl.classList.remove('rail-notes');
+  }, [railEl, railTab]);
+
+  // A new chapter has none of the previous chapter's notes, so an open card
+  // there refers to an annotation that is no longer on the page. The tab
+  // itself is deliberately NOT reset: which of the two the reader is using is
+  // a preference, and resetting it every chapter would fight them.
+  useEffect(() => {
+    setCardFocus(null);
+  }, [chapter.id]);
 
   // Prev/next chapter navigation: topbar `#prev-btn`/`#next-btn` (Task 9
   // left them inert — its own comment names this task as the owner) plus
@@ -427,7 +480,7 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
           element the store above resolves against and only exists once that
           effect has run. It portals itself into `document.body`, so its
           position in this JSX is about ownership, not layout. */}
-      <SelectionToolbar content={annotationContent} store={annotations} />
+      <SelectionToolbar content={annotationContent} store={annotations} onRequestNote={requestNote} />
       {(prevChapter || nextChapter) && (
         <div className="pager">
           {prevChapter && (
@@ -453,23 +506,71 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
       {railEl &&
         createPortal(
           <>
-            {headings.length > 0 && <p className="rail-h">Trong chương này</p>}
-            {headings.map((h) => (
-              <a
-                key={h.id}
-                href={`#${h.id}`}
-                className={
-                  [h.level === 3 ? 'lvl3' : '', h.id === currentHeadingId ? 'cur' : ''].filter(Boolean).join(' ') ||
-                  undefined
-                }
-                onClick={(e) => {
-                  e.preventDefault();
-                  document.getElementById(h.id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-                }}
+            {/* The rail's own heading used to be a `<p class="rail-h">Trong
+                chương này</p>`; the "Trong chương" tab now IS that heading,
+                and two of them one above the other is one too many. */}
+            <div className="rail-tabs" role="tablist" aria-label="Nội dung rãnh phải">
+              <button
+                type="button"
+                role="tab"
+                id="rail-tab-toc"
+                aria-controls="rail-panel-toc"
+                aria-selected={railTab === 'toc'}
+                onClick={() => setRailTab('toc')}
               >
-                {h.text}
-              </a>
-            ))}
+                Trong chương
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="rail-tab-notes"
+                aria-controls="rail-panel-notes"
+                aria-selected={railTab === 'notes'}
+                onClick={() => setRailTab('notes')}
+              >
+                {`Ghi chú (${annotations.list.length})`}
+              </button>
+            </div>
+            {railTab === 'toc' && (
+              <div role="tabpanel" id="rail-panel-toc" aria-labelledby="rail-tab-toc">
+                {headings.map((h) => (
+                  <a
+                    key={h.id}
+                    href={`#${h.id}`}
+                    className={
+                      [h.level === 3 ? 'lvl3' : '', h.id === currentHeadingId ? 'cur' : ''].filter(Boolean).join(' ') ||
+                      undefined
+                    }
+                    onClick={(e) => {
+                      e.preventDefault();
+                      document.getElementById(h.id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+                    }}
+                  >
+                    {h.text}
+                  </a>
+                ))}
+              </div>
+            )}
+            {/* Always mounted, `hidden` while the TOC tab is up: a click on a
+                highlight has to be able to open its card (and, below 1241px
+                where the rail does not exist at all, the bottom sheet)
+                whatever the rail happens to be showing. `visible` is what
+                decides whether the COLUMN is built; the component itself has
+                work to do either way. */}
+            <div
+              role="tabpanel"
+              id="rail-panel-notes"
+              aria-labelledby="rail-tab-notes"
+              hidden={railTab !== 'notes'}
+            >
+              <MarginCards
+                content={annotationContent}
+                store={annotations}
+                visible={railTab === 'notes'}
+                focus={cardFocus}
+                onFocusChange={focusCard}
+              />
+            </div>
           </>,
           railEl,
         )}
