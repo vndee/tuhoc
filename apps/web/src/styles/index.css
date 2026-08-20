@@ -277,7 +277,44 @@ mark.ann {
 /* Formulas are tinted, never wrapped — see painter.ts, section 2. The class
    is ADDED to the .katex/.katex-display element, so every one of KaTeX's own
    `.katex …` rules still matches; vendor/katex.css sets no background
-   anywhere, so nothing inside paints over this. */
+   anywhere, so nothing inside paints over this.
+
+   The tint sits on the .katex INLINE box on purpose, and three rounds have now
+   argued about it, so here is the measurement — please do not re-open it
+   without new numbers. Chromium, 44/44 chapters, viewport 1280x900, real
+   katex.css + reader.css + this file, 10.538 inline formulas (10.182 of them
+   on a single line):
+
+   - As written: how far a glyph box sticks out of the tint is 0px at p50,
+     0,63/2,47px at p90, 4,61/4,31px at p99 (top/bottom), 17,77/20,03px at the
+     extreme; 7,07% of formulas exceed 4px and 0,39% exceed 8px. The
+     16,5/23,6px in ruling P2-F10 came from `\dfrac` and `\displaystyle\sum`
+     written INLINE — 17 and 1 occurrences in this corpus, against 1.355 plain
+     `\frac` — so it measured the two rarest shapes, not the common one.
+   - `display: inline-block` (what P2-F10 prescribed) makes the formula an
+     atomic box that can no longer break across lines, and 3,38% of inline
+     formulas currently do break. Painting ONE formula re-flows its paragraph
+     in 250/10.538 = 2,37% of cases; painting a whole chapter moves
+     5.738/10.538 = 54,4% of them. Withdrawn.
+   - Tinting `.katex-html > .base` instead covers nearly everything (uncovered
+     by more than 2px falls from 13,83% to 0,64%; zero horizontal gaps across
+     6.756 adjacent base pairs; zero layout change) and its coverage is
+     IDENTICAL to inline-block's, because an inline-block .katex box is exactly
+     the union of its bases. But it also makes the tint 32,44px tall against
+     the 24px band of the prose around it, so the stroke steps 4,00px up and
+     4,44px down at 100,00% of 9.172 measured formulas — 82,45% of them by more
+     than 4px, against 0,01% today. That trades a tail into a ragged stroke at
+     every formula in a mathematics textbook. Screenshots in both themes agree
+     with the numbers.
+   - Padding both bands by 2px keeps the stroke flush (still 0,01% steps) and
+     cuts >4px overflow from 7,07% to 0,67% with no layout change, but it grows
+     the prose band from 24px to 28px, closing the gap between highlighted
+     lines from 6,1px to 2,1px — 0,4px in .ch-lede — so a multi-line highlight
+     becomes a slab. Also rejected.
+
+   A uniform stroke with the tips of tall glyphs outside it is what a
+   highlighter pen looks like, and it beats full coverage bought with a stroke
+   that changes height 10.538 times per book. */
 .ann-hl {
   border-radius: 2px;
   cursor: pointer;
