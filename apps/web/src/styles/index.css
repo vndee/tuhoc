@@ -844,6 +844,241 @@ mark.ann {
   cursor: pointer;
 }
 
+/* ---------------------------------------------------------------------------
+   The orphan panel (P2 Task 7): the notes this build of the chapter could not
+   place. It sits UNDER the card column inside the same rail panel, which is
+   why the margin above is generous — the column has no height of its own and
+   MarginCards sets one imperatively, so this section is the first thing in the
+   panel with an ordinary flow box, and the gap is what keeps it from reading
+   as the last card. */
+.ann-orphans {
+  margin-top: 26px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--sans);
+}
+
+/* …unless there is no column above it to be separated FROM. A chapter whose
+   every note is orphaned renders an empty `.ann-cards` (or, on the TOC tab and
+   below 1241px, none at all), and the rule above then draws a divider with
+   nothing on one side of it — a stray line across the rail. Seen on the real
+   page; no test in the suite reads a border. */
+.ann-cards:empty + .ann-orphans,
+.ann-orphans:first-child {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.ann-orphans-h {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.ann-orphans-lede {
+  margin: 5px 0 8px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+
+.ann-orphan-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Same border language as `.ann-card`, and the same colour rule (a solid
+   palette token, not the 28%-alpha highlight mix — a 3px rule at 28% reads as
+   grey), because a rescued note becomes one of those cards. What is different
+   is `position: static`: an orphan has no coordinate on the page to align to,
+   which is the whole reason it is in a list instead of the column. */
+.ann-orphan {
+  position: relative;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--surface-1);
+}
+
+.ann-orphan[data-waiting='true'] {
+  border-color: var(--accent);
+}
+
+.ann-orphan-quote {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--ink-3);
+  /* The words are gone from the page — say so with the type, not with a
+     second badge competing with the note itself. */
+  font-style: italic;
+}
+
+.ann-orphan-note {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ann-orphan-note-empty {
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+.ann-orphan-wait {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--accent);
+}
+
+.ann-orphan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ann-orphan-act {
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  padding: 3px 9px;
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.ann-orphan-act:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ann-orphan-act:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.ann-orphan-source {
+  margin-top: 8px;
+}
+
+/* A real, focusable, selectable field rather than a `<code>` block: "copyable"
+   has to mean something a reader can do with no permission prompt and no
+   Clipboard API, and selecting a textarea then pressing Ctrl/Cmd+C is that
+   thing everywhere. The "Sao chép" button is a shortcut layered on top. */
+.ann-orphan-exact {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--ink-2);
+  /* `--sans`, not `--mono`: this is a sentence out of a maths textbook that
+     the reader is about to search the page for, not a code fragment. */
+  font-family: var(--sans);
+  font-size: 11.5px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+/* The reattach bar. Fixed to the viewport rather than positioned in document
+   coordinates like `.ann-tb`, and the difference is deliberate: the toolbar
+   points AT a selection that already exists, while this bar is up before there
+   is one and has to stay reachable while the reader scrolls the chapter
+   looking for the right paragraph. Anchoring it to a selection would need a
+   re-measure on every scroll, and would leave the reader's only way out of the
+   mode somewhere off screen.
+
+   Bottom centre, so it never covers the line being selected. z-index 78: above
+   the sticky topbar (40), `.ann-tb` (50) and the mobile nav (60/70), below the
+   note sheet (79/80), which is modal. */
+.ann-reattach {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 78;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: min(560px, calc(100vw - 24px));
+  padding: 8px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.ann-reattach-what b {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ann-reattach-hint {
+  color: var(--ink-3);
+}
+
+.ann-reattach-preview {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+
+.ann-reattach-error {
+  color: #e0453c;
+}
+
+.ann-reattach-ok,
+.ann-reattach-cancel {
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  padding: 3px 10px;
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ann-reattach-ok {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.ann-reattach-ok:focus-visible,
+.ann-reattach-cancel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* Belt and braces: `#rail` is already hidden here, so this only matters if
    something ever renders the column outside the rail. */
 @media (max-width: 1240px) {
@@ -855,6 +1090,8 @@ mark.ann {
 @media print {
   .rail-tabs,
   .ann-cards,
+  .ann-orphans,
+  .ann-reattach,
   .ann-sheet,
   .ann-sheet-scrim {
     display: none;

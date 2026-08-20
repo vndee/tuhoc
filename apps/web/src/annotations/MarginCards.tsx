@@ -82,7 +82,7 @@ import { type LocalStorageKey, readLocalStorage, writeLocalStorage } from '../db
 import { type CardMeasure, DEFAULT_GAP, layoutCards } from './layout';
 import { highlightElements, highlightRects } from './painter';
 import { PENDING_ID_PREFIX } from './SelectionToolbar';
-import { type Ann, type ChapterContent, colorOf, type UseAnnotationsResult } from './useAnnotations';
+import { type Ann, type ChapterContent, colorOf, quoteOf, type UseAnnotationsResult } from './useAnnotations';
 
 /**
  * The card the reader currently has open, and whether the keyboard should be
@@ -106,8 +106,16 @@ export interface CardFocus {
 /** The part of `useAnnotations`'s result this component needs — a `Pick` for
  * the same reason `ToolbarStore` is one: the dependency stays legible, and
  * `ChapterView` satisfies it with THE one store instance it already holds. A
- * second `useAnnotations` would paint every annotation twice. */
-export type MarginCardsStore = Pick<UseAnnotationsResult, 'list' | 'updateNote' | 'remove'>;
+ * second `useAnnotations` would paint every annotation twice.
+ *
+ * `orphans` is in here for exactly one line of output, and it earns its place:
+ * the empty state below says "Chưa có ghi chú nào trong chương này", which is
+ * a claim about the CHAPTER, not about this column. Task 7 put an orphan list
+ * directly underneath, so without this the reader can be told they have no
+ * notes with two of their own notes printed an inch below. Seen on the real
+ * page, not in a test — every fixture that had orphans also had this component
+ * out of frame. */
+export type MarginCardsStore = Pick<UseAnnotationsResult, 'list' | 'orphans' | 'updateNote' | 'remove'>;
 
 export interface MarginCardsProps {
   /** The chapter DOM, exactly as `useAnnotations` receives it. */
@@ -237,7 +245,9 @@ const TIE_REACH = 18;
 const TIE_LANE_PX = 4;
 const TIE_LANES = 4;
 
-/** How much of the highlighted text a card shows above the note. */
+/** How much of the highlighted text a card shows above the note. The cut
+ * itself lives in `./useAnnotations`'s `quoteOf`, shared with the orphan
+ * panel — this is only this surface's budget. */
 const QUOTE_MAX = 120;
 
 /** Two formatters rather than one with four fields, because ICU's vi-VN
@@ -254,16 +264,6 @@ interface AnchorPoint {
   /** Y in the card column's own coordinate space (px below its top). */
   readonly y: number;
   readonly kind: AnchorKind;
-}
-
-/** `Anchor.exact`, read defensively: `AnnotationRow.anchor` is `unknown` all
- * the way from the server's `json.RawMessage`, so a card must survive a row
- * whose anchor is a number, `null`, or a shape from a future version. */
-function quoteOf(anchor: unknown): string {
-  const value = (anchor as { exact?: unknown } | null | undefined)?.exact;
-  if (typeof value !== 'string') return '';
-  const flat = value.replace(/\s+/g, ' ').trim();
-  return flat.length > QUOTE_MAX ? `${flat.slice(0, QUOTE_MAX - 1)}…` : flat;
 }
 
 function shortTime(iso: string): string {
@@ -335,7 +335,7 @@ function useWideRail(): boolean {
 }
 
 export function MarginCards({ content, store, visible, focus, onFocusChange }: MarginCardsProps) {
-  const { list, updateNote, remove } = store;
+  const { list, orphans, updateNote, remove } = store;
   const root = content.root;
   const revision = content.revision;
   const wide = useWideRail();
@@ -794,7 +794,7 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
   const body = (row: Ann) => {
     const open = focusId === row.id;
     const note = open && draft?.id === row.id ? draft.text : row.note;
-    const quote = quoteOf(row.anchor);
+    const quote = quoteOf(row.anchor, QUOTE_MAX);
     const kind = kinds.get(row.id) ?? 'rect';
     return (
       <>
@@ -855,7 +855,9 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
     <>
       {visible && wide && (
         <div className="ann-cards" ref={hostRef}>
-          {list.length === 0 && <p className="ann-cards-empty muted">Chưa có ghi chú nào trong chương này.</p>}
+          {list.length === 0 && orphans.length === 0 && (
+            <p className="ann-cards-empty muted">Chưa có ghi chú nào trong chương này.</p>
+          )}
           {list.map((row) => (
             <Fragment key={row.id}>
               <span

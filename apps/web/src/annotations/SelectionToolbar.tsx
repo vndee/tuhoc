@@ -107,6 +107,24 @@ export interface SelectionToolbarProps {
    * tell me which one" and this callback is where the two tasks meet.
    */
   readonly onRequestNote?: (id: string) => void;
+  /**
+   * True while somebody ELSE owns what a selection means.
+   *
+   * There is exactly one such owner, Task 7's `./OrphanPanel`: while the
+   * reader is putting an orphaned note back, dragging across a paragraph means
+   * "the note goes here", not "make a new note". Both components listen to
+   * `selectionchange` on the same document, so without this they both answer,
+   * and the reader gets a colour picker on top of the thing they were trying
+   * to re-anchor — with the two answers racing over the same `NormMap`.
+   *
+   * Reattach mode wins, and it wins here rather than in the panel, because
+   * "offer nothing" is a state this component can be in safely and "ignore the
+   * toolbar the reader can see" is not: a swatch that does nothing when
+   * clicked is worse than no swatch. A toolbar already open when the mode
+   * starts is taken down (the effect below runs its cleanup and re-runs), so
+   * there is no window in which a stale toolbar can still be clicked.
+   */
+  readonly suspended?: boolean;
 }
 
 /** Colours in the order they are offered, matching `AnchorColor`'s own order.
@@ -250,8 +268,14 @@ interface Handover {
 
 /** The current selection, if it is one this chapter can anchor. `null` for a
  * caret, for a selection that starts or ends outside the chapter, and for no
- * selection at all. */
-function selectionRange(root: HTMLElement): Range | null {
+ * selection at all.
+ *
+ * Exported for `./OrphanPanel`, which has to ask the SAME question about the
+ * SAME selection — its "Gắn vào đây" and this file's swatches are two answers
+ * to one drag, and a second private copy of "is this selection inside the
+ * chapter" is exactly the drift the sibling modules here have already paid to
+ * avoid (see `colorOf` in `./useAnnotations`). */
+export function selectionRange(root: HTMLElement): Range | null {
   const selection = root.ownerDocument?.defaultView?.getSelection?.() ?? null;
   if (!selection || selection.rangeCount === 0) return null;
   const range = selection.getRangeAt(0);
@@ -283,7 +307,7 @@ function rectsOf(range: Range): RectLike[] {
  * happens to have — and would put reader-owned DOM inside the element
  * `./painter` and `./normalize` walk.
  */
-export function SelectionToolbar({ content, store, onRequestNote }: SelectionToolbarProps) {
+export function SelectionToolbar({ content, store, onRequestNote, suspended = false }: SelectionToolbarProps) {
   const { create, list, orphans } = store;
   const root = content.root;
   const revision = content.revision;
@@ -314,7 +338,12 @@ export function SelectionToolbar({ content, store, onRequestNote }: SelectionToo
 
   // ---- watch the selection ------------------------------------------------
   useEffect(() => {
-    if (!root) {
+    // `suspended` alongside `!root`, in the same branch, on purpose: both mean
+    // "this component has no business answering a selection right now", and
+    // both have to take down whatever is already on screen. Because the
+    // listener is never attached in that state, there is no path by which a
+    // drag made during reattach mode can leave a toolbar behind afterwards.
+    if (!root || suspended) {
       setSpot(null);
       return;
     }
@@ -339,7 +368,7 @@ export function SelectionToolbar({ content, store, onRequestNote }: SelectionToo
     const doc = root.ownerDocument ?? document;
     doc.addEventListener('selectionchange', onSelectionChange);
     return () => doc.removeEventListener('selectionchange', onSelectionChange);
-  }, [root, mapFor]);
+  }, [root, mapFor, suspended]);
 
   // ---- Esc, and clicking away --------------------------------------------
   useEffect(() => {

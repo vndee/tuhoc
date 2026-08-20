@@ -271,6 +271,41 @@ export function colorOf(anchor: unknown): AnchorColor {
 }
 
 /**
+ * `Anchor.exact` — the words the note was written about — read with the same
+ * defensiveness as `colorOf`, and for the same reason: this field arrives as
+ * `unknown` from the server's `json.RawMessage`, so a row whose anchor is a
+ * number, `null`, or a shape from a future version must render as an empty
+ * quote rather than take a chapter's render down.
+ *
+ * Exported because two very different surfaces show it and MUST agree:
+ * `./MarginCards` puts a 120-character version above a note, and
+ * `./OrphanPanel` puts an 80-character version in the orphan list AND the
+ * untruncated original in the "Xem exact gốc" box — where the reader copies it
+ * to go hunting through the rebuilt chapter themselves. If those two disagreed
+ * about what `exact` even is, the string the reader searches for would not be
+ * the string that was stored.
+ */
+export function exactOf(anchor: unknown): string {
+  const value = (anchor as { exact?: unknown } | null | undefined)?.exact;
+  return typeof value === 'string' ? value : '';
+}
+
+/**
+ * `exactOf`, collapsed to one line and cut to `max` characters (ellipsis
+ * included in the count, so the result is never longer than `max`).
+ *
+ * `max` is a parameter rather than a constant here because the two callers
+ * have genuinely different budgets — a margin card is 260px wide and a rail
+ * list row is narrower still — while the whitespace rule and the cut must stay
+ * identical. That is the split this codebase has already paid for twice: one
+ * shared answer, per-caller sizing.
+ */
+export function quoteOf(anchor: unknown, max: number): string {
+  const flat = exactOf(anchor).replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+/**
  * Everything about an anchor that changes where and how it is painted.
  *
  * Deliberately NOT `JSON.stringify(anchor)`: an anchor written here and the

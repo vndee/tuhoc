@@ -719,6 +719,171 @@ describe('ChapterView', () => {
     });
   });
 
+  // P2 Task 7. The panel has its own suite
+  // (src/annotations/OrphanPanel.test.tsx); what is tested HERE is the thing
+  // no test over there can see, because it is a property of two SIBLINGS: Task
+  // 5's toolbar and Task 7's reattach mode both listen to `selectionchange` on
+  // this document, and while a rescue is in progress only one of them may
+  // answer. A stub of either component in the other's suite would only prove
+  // the stub behaves.
+  describe('orphan panel + reattach mode (P2 Task 7)', () => {
+    /**
+     * A note whose quote occurs nowhere in `FRAGMENT` — the shape every note
+     * takes when the course content it was written against is rebuilt.
+     *
+     * Hand-written rather than built through `selectionToAnchor`, and that is
+     * safe HERE for a reason worth stating: nothing about the collapsed
+     * projection matters to a quote that is absent in every space at once. The
+     * real-anchor fixtures live in `../annotations/OrphanPanel.test.tsx`,
+     * where the projection is load-bearing.
+     */
+    const LOST = {
+      id: 'orphan-1',
+      courseId: 'demo',
+      chapterId: 'c1',
+      anchor: {
+        exact: 'Định lý mã hoá kênh của Shannon phát biểu rằng mọi kênh rời rạc không nhớ đều có dung lượng',
+        prefix: 'Ở chương trước ta đã thấy ',
+        suffix: ' và phần chứng minh đi kèm.',
+        color: 'p',
+      },
+      note: 'ghi chú cần cứu',
+      createdAt: '2026-08-19T09:30:00.000Z',
+      updatedAt: '2026-08-19T09:30:00.000Z',
+      deletedAt: null,
+    };
+
+    // The margin-card column only exists above 1240px (`reader.css` hides
+    // `#rail` below it), and jsdom's own default is 1024 — the MOBILE branch.
+    // Without this the "the column must not claim the chapter is empty" test
+    // below would be green because there is no column at all.
+    beforeEach(() => Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1400 }));
+    afterEach(() => Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 }));
+
+    function rail(): HTMLElement {
+      return document.getElementById('rail')!;
+    }
+
+    /** The rail's notes tab, with the orphan row on it. Returns once the
+     * store has published the orphan — the row is what the store publishes,
+     * not what the chapter paints, so nothing here may wait on the DOM of the
+     * chapter itself (ruling P2-F15). */
+    async function openOrphanList(): Promise<HTMLElement> {
+      fireEvent.click(within(rail()).getByRole('tab', { name: /^Ghi chú/ }));
+      return await within(rail()).findByRole('button', { name: 'Gắn lại' });
+    }
+
+    it('mồ côi hiện trong tab "Ghi chú" của rãnh — đúng MỘT bản, trong portal của ChapterView (P2-F1)', async () => {
+      await db.annotations.put(LOST);
+      await renderChapterAndSettle();
+      await openOrphanList();
+
+      const sections = document.querySelectorAll('.ann-orphans');
+      // One copy, and it is inside `#rail`. Building this in `shell/Rail.tsx`
+      // instead — which returns null on a chapter route — is the duplicate-rail
+      // bug ruling P2-F1 exists to prevent, and it would show up here as two.
+      expect(sections).toHaveLength(1);
+      expect(rail().contains(sections[0])).toBe(true);
+      expect(within(rail()).getByRole('heading', { name: 'Mồ côi (1)' })).toBeInTheDocument();
+      expect(within(rail()).getByText('ghi chú cần cứu')).toBeInTheDocument();
+    });
+
+    it('cột thẻ KHÔNG nói "chưa có ghi chú nào" khi ngay dưới nó có ghi chú mồ côi', async () => {
+      await db.annotations.put(LOST);
+      await renderChapterAndSettle();
+      await openOrphanList();
+
+      // Two statements one above the other, one of them false. The column's
+      // empty line is a claim about the CHAPTER; the orphan list underneath is
+      // two of the reader's own notes. Seen on the real page in dark mode —
+      // no fixture in the 498 tests had both components in frame at once.
+      expect(within(rail()).queryByText(/chưa có ghi chú/i)).not.toBeInTheDocument();
+      expect(within(rail()).getByText('ghi chú cần cứu')).toBeInTheDocument();
+    });
+
+    it('tab đếm cả ghi chú mồ côi — nếu không, cánh cửa duy nhất dẫn tới chúng lại đề "(0)"', async () => {
+      await db.annotations.put(LOST);
+      await renderChapterAndSettle();
+
+      // The reader has exactly one note in this chapter. It could not be
+      // placed, so nothing is painted and there is no card — but it exists,
+      // it is theirs, and the tab is the only thing that will tell them so.
+      // Counting only `list` here reads "Ghi chú (0)" over a panel holding
+      // their note, and makes a content rebuild look like their notes
+      // vanished. Found by opening the real page, not by a test.
+      expect(await within(rail()).findByRole('tab', { name: 'Ghi chú (1)' })).toBeInTheDocument();
+      expect(document.querySelectorAll('mark.ann')).toHaveLength(0);
+    });
+
+    it('trong chế độ "Gắn lại", bôi chọn KHÔNG mở thanh công cụ tạo ghi chú mới — và mở lại được sau khi hủy', async () => {
+      await db.annotations.put(LOST);
+      await renderChapterAndSettle();
+
+      // The positive precondition first, exactly as the pager test above does
+      // it and for the same reason: a negative claim about the toolbar proves
+      // nothing until something has proved a toolbar CAN open here. Without
+      // it this test also passes against a component that never heard a thing.
+      await selectAndOpenToolbar('Nội dung A');
+
+      fireEvent.click(await openOrphanList());
+
+      // Entering the mode takes down a toolbar that was ALREADY open. Leaving
+      // it up would give the reader a swatch that writes a second note into
+      // the selection they meant to rescue the first one into.
+      await waitFor(() => expect(screen.queryByRole('toolbar')).not.toBeInTheDocument());
+
+      selectInChapter('Nội dung B');
+      await act(async () => {});
+
+      // The whole point of this test: one drag, one answer.
+      expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Gắn vào đây' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Hủy' }));
+
+      // And the veto is temporary: `selectAndOpenToolbar` fails loudly if no
+      // toolbar can be opened within a second, so this line is the proof that
+      // suspending it did not leave it deaf.
+      await selectAndOpenToolbar('Nội dung B');
+      expect(await db.outbox.count()).toBe(0);
+    });
+
+    it('gắn lại qua giao diện thật: ghi chú về đúng chỗ mới, giữ nguyên chữ và màu, và rời khỏi mục mồ côi', async () => {
+      await db.annotations.put(LOST);
+      await renderChapterAndSettle();
+
+      fireEvent.click(await openOrphanList());
+      selectInChapter('Nội dung A');
+      fireEvent.click(await screen.findByRole('button', { name: 'Gắn vào đây' }));
+
+      // The witness has to be one that CHANGES on the reattach and comes from
+      // STATE. The tab already read "Ghi chú (1)" while the note was an orphan
+      // (that is the point of the test above), so waiting on it would return
+      // before anything happened; a margin card is no good either, because
+      // jsdom's 1024px is the narrow branch where the column deliberately does
+      // not exist. The orphan section disappearing is exactly the store
+      // publishing an empty `orphans`, and it can only happen after the new
+      // anchor resolved and was painted.
+      await waitFor(() => expect(document.querySelectorAll('.ann-orphans')).toHaveLength(0));
+      expect(within(rail()).getByRole('tab', { name: 'Ghi chú (1)' })).toBeInTheDocument();
+
+      const container = document.querySelector('.fade-in') as HTMLElement;
+      const mark = container.querySelector<HTMLElement>('mark.ann[data-ann-id="orphan-1"]')!;
+      expect(mark.textContent).toBe('Nội dung A');
+      // The rescued note keeps its own colour, not the toolbar's default.
+      expect(mark.className).toContain('ann-p');
+
+      const row = await db.annotations.get('orphan-1');
+      expect(row!.note).toBe('ghi chú cần cứu');
+      expect(row!.deletedAt).toBeNull();
+      expect((row!.anchor as { exact: string; color: string }).exact).toBe('Nội dung A');
+      expect((row!.anchor as { exact: string; color: string }).color).toBe('p');
+      // One outbox row for the reattach, and only that: nothing about an
+      // orphan is written until the reader asks for it.
+      expect(await db.outbox.count()).toBe(1);
+    });
+  });
+
   describe('t/T theme shortcut (debt #2 — shared ThemeContext, no topbar desync)', () => {
     it('pressing "t" toggles <html data-theme> via the same toggle the topbar would use', async () => {
       await renderChapterAndSettle();

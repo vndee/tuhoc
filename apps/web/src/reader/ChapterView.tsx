@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { type CardFocus, MarginCards } from '../annotations/MarginCards';
+import { OrphanPanel } from '../annotations/OrphanPanel';
 import { SelectionToolbar } from '../annotations/SelectionToolbar';
 import { type ChapterContent, useAnnotations } from '../annotations/useAnnotations';
 import { describeCourseError, loadChapter } from '../course/loader';
@@ -94,6 +95,17 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
   const [railTab, setRailTab] = useState<'toc' | 'notes'>('toc');
   const [cardFocus, setCardFocus] = useState<CardFocus | null>(null);
 
+  // P2 Task 7. Which orphaned note is waiting for the reader to select its new
+  // home, or null. It lives HERE, not inside `<OrphanPanel>`, because it is the
+  // one piece of state two siblings disagree about: while it is set, dragging
+  // across a paragraph means "put the note here", so Task 5's toolbar must not
+  // offer to create a NEW note from the same drag. Both components listen to
+  // `selectionchange` on the same document; without a shared owner they both
+  // answer, and the reader gets a colour picker on top of the paragraph they
+  // were trying to re-anchor. Reattach mode wins — see `OrphanPanel.tsx`'s doc,
+  // section 1.
+  const [reattaching, setReattaching] = useState<string | null>(null);
+
   // A card being opened from the CHAPTER (a click on a highlight) has to
   // bring its tab forward with it, or the reader clicks their own highlight
   // and nothing appears to happen.
@@ -172,11 +184,15 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
   }, [railEl, railTab]);
 
   // A new chapter has none of the previous chapter's notes, so an open card
-  // there refers to an annotation that is no longer on the page. The tab
-  // itself is deliberately NOT reset: which of the two the reader is using is
-  // a preference, and resetting it every chapter would fight them.
+  // there refers to an annotation that is no longer on the page. The same goes
+  // for a rescue in progress: the paragraph the reader was about to select is
+  // gone, and leaving the mode on would keep the toolbar suspended in a
+  // chapter where nothing can be reattached. The tab itself is deliberately
+  // NOT reset: which of the two the reader is using is a preference, and
+  // resetting it every chapter would fight them.
   useEffect(() => {
     setCardFocus(null);
+    setReattaching(null);
   }, [chapter.id]);
 
   // Prev/next chapter navigation: topbar `#prev-btn`/`#next-btn` (Task 9
@@ -480,7 +496,12 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
           element the store above resolves against and only exists once that
           effect has run. It portals itself into `document.body`, so its
           position in this JSX is about ownership, not layout. */}
-      <SelectionToolbar content={annotationContent} store={annotations} onRequestNote={requestNote} />
+      <SelectionToolbar
+        content={annotationContent}
+        store={annotations}
+        onRequestNote={requestNote}
+        suspended={reattaching !== null}
+      />
       {(prevChapter || nextChapter) && (
         <div className="pager">
           {prevChapter && (
@@ -528,7 +549,31 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
                 aria-selected={railTab === 'notes'}
                 onClick={() => setRailTab('notes')}
               >
-                {`Ghi chú (${annotations.list.length})`}
+                {/* `list` PLUS `orphans`, and the plus is Task 7's, found by
+                    looking at the real page rather than at a test. Counting
+                    only what got painted has two bad consequences and no good
+                    one:
+
+                      - A chapter whose content was rebuilt shows a note count
+                        that has silently DROPPED — which looks exactly like the
+                        data loss this whole phase exists to prevent, while the
+                        notes are in fact all still there.
+                      - The orphan panel is reachable only through this tab, so
+                        a reader whose only notes are orphaned is invited in by
+                        a label reading "Ghi chú (0)". Measured on the real
+                        reader with two orphans seeded: the tab said (0) with
+                        both of them one click behind it.
+
+                    A note that could not be placed is still a note in this
+                    chapter. The panel behind the tab is where the difference
+                    between the two kinds is explained; the count's job is to
+                    say how much of the reader's work is in here. Notes still
+                    awaiting the deferred fuzzy pass are in neither list and so
+                    are not counted yet — that is the existing, deliberate
+                    behaviour (see `useAnnotations`, section 2): reporting a
+                    note before it has been looked for is what the store goes
+                    out of its way not to do. */}
+                {`Ghi chú (${annotations.list.length + annotations.orphans.length})`}
               </button>
             </div>
             {railTab === 'toc' && (
@@ -569,6 +614,20 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
                 visible={railTab === 'notes'}
                 focus={cardFocus}
                 onFocusChange={focusCard}
+              />
+              {/* Last in the panel, under the card column, because that is
+                  what it is: the notes this chapter could NOT place, after the
+                  ones it could. Same one store instance — a second
+                  `useAnnotations` here would paint every annotation twice.
+                  Mounted unconditionally, like `<MarginCards>`: a rescue
+                  started here has a bar portalled into `document.body`, and a
+                  reader who flips back to the TOC tab mid-rescue must not lose
+                  the only way out of the mode. */}
+              <OrphanPanel
+                content={annotationContent}
+                store={annotations}
+                reattaching={reattaching}
+                onReattachingChange={setReattaching}
               />
             </div>
           </>,
