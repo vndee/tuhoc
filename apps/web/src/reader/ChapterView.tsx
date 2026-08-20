@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
+import { SelectionToolbar } from '../annotations/SelectionToolbar';
 import { type ChapterContent, useAnnotations } from '../annotations/useAnnotations';
 import { describeCourseError, loadChapter } from '../course/loader';
 import type { Chapter } from '../course/types';
@@ -68,14 +69,14 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
   // counter bumped by that effect is the only honest signal that every
   // `<mark>` is gone and every anchor needs resolving again.
   //
-  // The result is deliberately not consumed here: the toolbar (T5), the margin
-  // cards (T6) and the orphan panel (T7) are the UI for it and are not built
-  // yet. Painting is useful on its own in the meantime — a note taken on
-  // another device shows up on this one as soon as it syncs. When those tasks
-  // land they must take this ONE result as a prop rather than call the hook
-  // again; a second live instance would paint every annotation twice.
+  // Task 5 consumes the result: `<SelectionToolbar>` below is what lets a
+  // reader CREATE an annotation, and it takes THIS one hook result as a prop.
+  // Calling `useAnnotations` again from inside the toolbar would give the
+  // chapter two live instances, each painting every annotation — the trap the
+  // hook's own doc names. The margin cards (T6) and the orphan panel (T7) join
+  // the same way, through `list`/`orphans` on this same object.
   const [annotationContent, setAnnotationContent] = useState<ChapterContent>({ root: null, revision: 0 });
-  useAnnotations(courseId, chapter.id, annotationContent);
+  const annotations = useAnnotations(courseId, chapter.id, annotationContent);
 
   const chapterQuery = useQuery({
     queryKey: ['course-chapter', courseId, chapter.file],
@@ -419,6 +420,14 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
           crumbEl,
         )}
       <div ref={containerRef} />
+      {/* Last in the chapter pipeline (innerHTML → renderKatex → initViz →
+          injectExerciseCheckboxes → normalize/resolve/paint → toolbar): it
+          watches `selectionchange` and does nothing at all until the reader
+          selects something inside `annotationContent.root`, which is the same
+          element the store above resolves against and only exists once that
+          effect has run. It portals itself into `document.body`, so its
+          position in this JSX is about ownership, not layout. */}
+      <SelectionToolbar content={annotationContent} store={annotations} />
       {(prevChapter || nextChapter) && (
         <div className="pager">
           {prevChapter && (

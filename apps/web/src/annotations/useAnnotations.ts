@@ -93,7 +93,7 @@ import { liveQuery } from 'dexie';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type AnnotationRow, db } from '../db/local';
 import { type Anchor, type AnchorColor, anchorToRange } from './anchor';
-import { type NormMap, normalizeContainer, rangeToFlat } from './normalize';
+import { isMapStale, type NormMap, normalizeContainer, rangeToFlat } from './normalize';
 import { type PaintItem, paintAll, unpaint } from './painter';
 
 /** One stored annotation, exactly as it lives in Dexie and on the wire.
@@ -431,7 +431,34 @@ export function useAnnotations(
       setPlacements((prev) => (samePlacements(prev, next) ? prev : next));
     };
 
+    /**
+     * The map for this batch, built once and kept until something invalidates
+     * it.
+     *
+     * The `isMapStale` check is there for a mutation this pass did not make.
+     * This hook drops its own map after every batch that painted (see
+     * `resolveBatch`), so the only way a kept map can be stale is that someone
+     * ELSE changed the chapter — and from Task 5 on, someone else does:
+     * `./SelectionToolbar` paints the reader's new highlight the instant they
+     * click a colour, BEFORE the row it created has travelled through Dexie
+     * back to this pass. The map kept from a batch that painted nothing (every
+     * annotation an orphan — an ordinary state, with an orphan panel shipping
+     * in Task 7) then describes a tree that no longer exists, and
+     * `anchorToRange` is documented to THROW rather than answer wrongly. That
+     * throw is not caught anywhere in this file, on purpose, so it would leave
+     * the reader's page dead in a passive effect. Reproduced as a test in
+     * `SelectionToolbar.test.tsx` ("chương đang có ghi chú MỒ CÔI…"), which
+     * fails with `StaleNormMapError` without this line.
+     *
+     * `isMapStale` rather than `try`/`catch` is what ruling P2-F8 prescribes for
+     * a caller holding a map across possible mutations. It costs one property
+     * read per segment, once per batch: measured in Chromium on the real p1-5
+     * (756 segments), 0,016 ms against 0,685 ms to rebuild the map — so asking
+     * is ~40× cheaper than rebuilding blindly, and both are far below the ~12 ms
+     * this file's `DEFERRED_CHUNK_MAX` doc quotes for the same rebuild in jsdom.
+     */
     const mapOf = (): NormMap => {
+      if (pass.map && isMapStale(pass.map)) pass.map = null;
       if (!pass.map) pass.map = normalizeContainer(pass.root);
       return pass.map;
     };

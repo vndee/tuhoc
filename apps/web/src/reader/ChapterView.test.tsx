@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { StrictMode, useEffect, useState } from 'react';
@@ -407,6 +407,82 @@ describe('ChapterView', () => {
       expect(markBtn.querySelector('.mk-ico')!.textContent).toBe('○');
       expect(markBtn.querySelector('.mk-lbl')!.textContent).toBe('Đánh dấu đã học');
       expect(markBtn.getAttribute('aria-label')).toBe('Đánh dấu đã học');
+    });
+  });
+
+  // P2 Task 5. The toolbar has its own suite
+  // (src/annotations/SelectionToolbar.test.tsx); what is tested HERE is the
+  // wiring this file owns, which no test over there can see: that the toolbar
+  // is mounted over the same element the chapter pipeline just filled, that it
+  // shares ChapterView's ONE `useAnnotations` instance (a second one would
+  // paint every annotation twice), and that a colour click reaches the real
+  // local store with this chapter's own course/chapter ids.
+  describe('selection toolbar (P2 Task 5)', () => {
+    function selectInChapter(text: string): HTMLElement {
+      const container = document.querySelector('.fade-in') as HTMLElement;
+      const paragraph = Array.from(container.querySelectorAll('p')).find((p) => p.textContent === text);
+      if (!paragraph?.firstChild) throw new Error(`no <p> reading ${JSON.stringify(text)} in the chapter`);
+      const range = document.createRange();
+      range.setStart(paragraph.firstChild, 0);
+      range.setEnd(paragraph.firstChild, text.length);
+      act(() => {
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+        // jsdom does not fire this for a programmatic selection; a real drag or
+        // a Shift+Arrow does.
+        document.dispatchEvent(new Event('selectionchange'));
+      });
+      return container;
+    }
+
+    it('selecting chapter prose opens the toolbar; a colour click paints immediately and stores the annotation', async () => {
+      renderChapterView();
+      await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
+
+      const container = selectInChapter('Nội dung A');
+      const toolbar = screen.getByRole('toolbar');
+      fireEvent.click(within(toolbar).getByRole('button', { name: /vàng/i }));
+
+      // Painted on the click, before anything has been read back out of Dexie.
+      expect(container.querySelectorAll('mark.ann').length).toBeGreaterThan(0);
+      expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
+
+      await waitFor(async () => expect(await db.annotations.count()).toBe(1));
+      const [row] = await db.annotations.toArray();
+      expect(row).toMatchObject({ courseId: 'demo', chapterId: 'c1', note: '', deletedAt: null });
+      expect((row.anchor as { exact: string; color: string }).exact).toBe('Nội dung A');
+      expect((row.anchor as { exact: string; color: string }).color).toBe('y');
+      // The outbox entry is what carries it to the other device — Task 4 writes
+      // both in one transaction, and this is the first caller to prove it from
+      // the UI side.
+      expect(await db.outbox.count()).toBe(1);
+
+      // The store takes the highlight over, and there is exactly ONE mark left:
+      // no double paint from a second hook instance, no orphaned optimistic
+      // layer from the handover.
+      await waitFor(() =>
+        expect(container.querySelectorAll(`mark.ann[data-ann-id="${row.id}"]`).length).toBeGreaterThan(0),
+      );
+      expect(container.querySelectorAll('mark.ann')).toHaveLength(1);
+    });
+
+    it('a selection outside the chapter (the pager) gets no toolbar', async () => {
+      renderChapterView();
+      await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
+
+      const pagerLink = screen.getByText('Chương sau →');
+      const range = document.createRange();
+      range.setStart(pagerLink.firstChild!, 0);
+      range.setEnd(pagerLink.firstChild!, 6);
+      act(() => {
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+        document.dispatchEvent(new Event('selectionchange'));
+      });
+
+      expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
     });
   });
 

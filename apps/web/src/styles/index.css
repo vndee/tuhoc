@@ -358,3 +358,140 @@ mark.ann {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* P2 Task 5 — the selection toolbar (src/annotations/SelectionToolbar.tsx).
+   Same placement rationale as the painter block above: reader.css stays the
+   ported v1 stylesheet, and everything P1/P2 adds lives here reusing v1's own
+   tokens (--surface-1, --rule-strong, --ink*, --accent, --shadow, --sans).
+
+   POSITIONING CONTRACT, and it is split across two files on purpose:
+   `toolbarSpot()` computes a point in DOCUMENT coordinates — the middle of the
+   selection's first line (or its last, when it had to flip below) — and this
+   file turns that point into a box. Centring is `translateX(-50%)` so the
+   component never has to measure its own width, and the 8px in the transforms
+   below is the same gap `GAP` names in the .tsx: that constant decides whether
+   there is ROOM above the selection, this transform decides where the box is
+   actually drawn. Change one and change the other.
+
+   Document coordinates (not `position: fixed`) are what make a scroll during an
+   open toolbar a non-event: the bar scrolls with the words it belongs to,
+   exactly as the margin cards will (see `highlightRects`'s own doc for why that
+   coordinate space was chosen for this engine).
+
+   z-index 50 sits above the sticky topbar (z-index 40 in reader.css) — a
+   selection near the top of the viewport puts the toolbar over the topbar — and
+   below the mobile nav drawer and its overlay (70/60), which are modal and must
+   stay on top. */
+.ann-tb {
+  position: absolute;
+  z-index: 50;
+  transform: translate(-50%, calc(-100% - 8px));
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  font-family: var(--sans);
+  /* The bar must never become the thing that ends a drag or eats a tap on the
+     text under it while it is animating into place. */
+  user-select: none;
+}
+
+.ann-tb-below {
+  transform: translate(-50%, 8px);
+}
+
+/* The swatch carries the very tint the highlight will get (`.ann-y` … are the
+   painter's own colour classes, reused rather than re-declared), so what the
+   reader picks is what they see. The border is what keeps a 28%-alpha tint
+   legible as a control on a light surface. */
+.ann-tb-swatch {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ann-tb-swatch:hover,
+.ann-tb-note:hover {
+  border-color: var(--accent);
+}
+
+.ann-tb-swatch:focus-visible,
+.ann-tb-note:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.ann-tb-note {
+  height: 24px;
+  padding: 0 9px;
+  margin-left: 2px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Fingers, not mice: 24px is a comfortable click target and an uncomfortable
+   tap target, and this toolbar appears exactly where a finger already is. */
+@media (pointer: coarse) {
+  .ann-tb-swatch,
+  .ann-tb-note {
+    width: 32px;
+    height: 32px;
+  }
+
+  .ann-tb-note {
+    width: auto;
+    padding: 0 12px;
+  }
+}
+
+/* Shown when the local write failed, in place of the toolbar that was there.
+   Saying nothing would leave a highlight that quietly disappears on the next
+   page load; the colour itself is removed by the component. */
+.ann-tb-error {
+  position: absolute;
+  z-index: 50;
+  transform: translate(-50%, calc(-100% - 8px));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 280px;
+  padding: 7px 9px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: #e0453c;
+}
+
+.ann-tb-error button {
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* v1's print stylesheet keeps the reading experience; a floating toolbar is
+   screen chrome and has no business on paper. */
+@media print {
+  .ann-tb,
+  .ann-tb-error {
+    display: none;
+  }
+}
