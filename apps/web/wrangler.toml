@@ -1,0 +1,39 @@
+# Cloudflare Pages project config for apps/web.
+#
+# Deploy paths (both covered in docs/deploy.md):
+#   1. Git integration (dashboard): Workers & Pages -> Create -> Connect to
+#      Git. Build command `cd apps/web && bun run build`, build output
+#      directory `apps/web/dist`. Set the dashboard's own build-output-
+#      directory field explicitly to `apps/web/dist` regardless of this
+#      file's `pages_build_output_dir` below — [unverified, no live account
+#      to confirm either way] whether a git-connected build actually reads
+#      `pages_build_output_dir` from a wrangler.toml in the repo, or only
+#      honors the dashboard's own setting; Cloudflare's docs don't say
+#      either way as of writing. Keeping both set to the same value (as
+#      they are here) makes the ambiguity harmless.
+#   2. Wrangler CLI (direct upload), from apps/web/:
+#        bun run build
+#        bunx wrangler pages deploy dist --project-name=<your-project-name>
+#      This path DOES read pages_build_output_dir below when `dist` is
+#      omitted from the deploy command, but the explicit `dist` argument
+#      above is kept so the command is self-contained either way.
+#
+# IMPORTANT — VITE_API_URL is NOT set here. It is a Vite *build-time*
+# variable (baked into the JS bundle by `bun run build` via
+# `import.meta.env.VITE_API_URL` — see apps/web/src/api/client.ts), not a
+# Pages Functions runtime binding. A `[vars]` block in this file would only
+# ever be visible to Pages Functions (this app has none), so it would
+# silently do nothing for the web app itself. Set VITE_API_URL to the
+# API's origin instead:
+#   - git-integration builds: dashboard -> project -> Settings ->
+#     Environment variables (Production/Preview), so Cloudflare's build
+#     step sees it when it runs `bun run build`.
+#   - CLI/direct-upload builds: export it in the shell that runs
+#     `bun run build` *before* building, since `wrangler pages deploy`
+#     only uploads the already-built dist/ and does not rebuild.
+# See docs/deploy.md and apps/web/.env.example for the exact value.
+name = "tuhoc-web" # Pages project name — must be unique within your
+                    # Cloudflare account; rename to taste before first
+                    # deploy.
+compatibility_date = "2026-08-20"
+pages_build_output_dir = "dist"

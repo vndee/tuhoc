@@ -1,0 +1,10 @@
+DROP INDEX IF EXISTS idx_events_user_at;
+DROP TABLE IF EXISTS events;
+DROP INDEX IF EXISTS idx_annotations_sync;
+DROP INDEX IF EXISTS idx_progress_sync;
+DROP TABLE IF EXISTS annotations;
+DROP TABLE IF EXISTS progress;
+DROP TABLE IF EXISTS courses;
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS users;
+DROP EXTENSION IF EXISTS citext;

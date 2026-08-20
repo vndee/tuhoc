@@ -1,0 +1,11 @@
+# Pinned test dependency for tools/test_extract.py (make test-extract).
+#
+# pytest pulls in iniconfig, packaging, pluggy, and pygments as transitive
+# deps; pip resolves and pins those on its own from this one line, so they
+# are not listed separately here.
+#
+# Install (see docs/deploy.md and the root Makefile's `setup-extract`
+# target for the full story, including why --break-system-packages is
+# needed here):
+#   python3 -m pip install --break-system-packages -r tools/requirements.txt
+pytest==9.1.1

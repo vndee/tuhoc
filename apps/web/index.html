@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tự học</title>
+    <!--
+      Deployment requirement for whoever builds the Cloudflare Pages config
+      (courses/apps/web + courses/* are deployed as static assets, spec §7):
+      Pages needs an SPA fallback — `/* /index.html 200` — so a direct load
+      or refresh of a client-side route like /c/:courseId/:chapterId
+      resolves instead of 404ing. That rule MUST NOT use the Pages "force"
+      flag (`/* /index.html 200!`): a forced catch-all shadows the real
+      static files this app depends on at /course-kit/* and /courses/*
+      (see vite-plugins/courseAssets.ts), turning every runtime.js/viz.js/
+      manifest.json request into the SPA shell instead of the actual file.
+    -->
+    <script>
+      // Synchronous theme bootstrap — runs before first paint and before
+      // the React module script below, so a returning user with a stored
+      // theme never sees a flash of the other palette. Mirrors what the
+      // original v1 single-file app did with its own <head> IIFE.
+      //
+      // This only ever *applies* an already-persisted choice; useTheme()
+      // (src/theme/useTheme.ts) remains the single source of truth for
+      // changes and reads this same value back on mount instead of
+      // re-deriving it independently, so the two never disagree.
+      (function () {
+        try {
+          var stored = localStorage.getItem('itbook-theme');
+          if (stored === 'dark' || stored === 'light') {
+            document.documentElement.dataset.theme = stored;
+          }
+        } catch {
+          // localStorage can throw in private/locked-down browsing modes —
+          // fall through and let the light default (bare :root in
+          // reader.css) render, same as useTheme() would.
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
