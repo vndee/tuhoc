@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
+import { type LocalStorageKey, readLocalStorage, writeLocalStorage } from '../db/local';
 
 export type Theme = 'light' | 'dark';
 
-const STORAGE_KEY = 'itbook-theme';
+/**
+ * Declared in `db/local.ts`, where it is classified as a DEVICE PREFERENCE
+ * — the one list `clearLocalData()` deliberately leaves alone. Aliased here
+ * rather than re-declared so there is one string with one owner: signing in
+ * as somebody else must not flip a shared laptop back to a blinding white
+ * page, and that promise is only as good as the classification behind it.
+ */
+const STORAGE_KEY: LocalStorageKey = 'itbook-theme';
 
 declare global {
   interface Window {
@@ -19,13 +27,10 @@ declare global {
 }
 
 function readStoredTheme(): Theme | null {
-  try {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    return stored === 'light' || stored === 'dark' ? stored : null;
-  } catch {
-    // localStorage can throw (private mode, disabled storage, ...)
-    return null;
-  }
+  // `readLocalStorage` already swallows the private-mode/storage-disabled
+  // throw; what is left here is this module's own validation of the value.
+  const stored = readLocalStorage(STORAGE_KEY);
+  return stored === 'light' || stored === 'dark' ? stored : null;
 }
 
 function readAppliedTheme(): Theme | null {
@@ -69,11 +74,9 @@ export function useTheme() {
       const next: Theme = prev === 'dark' ? 'light' : 'dark';
 
       applyThemeToDocument(next);
-      try {
-        window.localStorage.setItem(STORAGE_KEY, next);
-      } catch {
-        // best-effort persistence; theme still applies for this session
-      }
+      // Best-effort persistence (see `writeLocalStorage`); the theme still
+      // applies for this session even where storage refuses to keep it.
+      writeLocalStorage(STORAGE_KEY, next);
 
       const redraws = window.CourseKit?.REDRAWS;
       if (redraws) {

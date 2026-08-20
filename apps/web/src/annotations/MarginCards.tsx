@@ -78,6 +78,7 @@
  */
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { type LocalStorageKey, readLocalStorage, writeLocalStorage } from '../db/local';
 import { type CardMeasure, DEFAULT_GAP, layoutCards } from './layout';
 import { highlightElements, highlightRects } from './painter';
 import { PENDING_ID_PREFIX } from './SelectionToolbar';
@@ -186,22 +187,29 @@ const WRITE_DEBOUNCE_MS = 600;
  * if it dies by reload. A key per note would close that, at the price of an
  * unbounded set of keys to expire; this is the cheaper end of that trade and
  * the reason is here so the next person can re-decide it.
+ *
+ * The key itself is DECLARED in `db/local.ts`, not here, and is classified
+ * there as user content. That is deliberate and it is the whole lesson of
+ * this mechanism's own follow-up bug: this is a per-BROWSER slot holding one
+ * person's private words, so the thing that empties this browser for the next
+ * person has to know it exists. Alias, not a second definition — one string,
+ * one owner.
  */
-export const DRAFT_KEY = 'itbook-note-draft';
+export const DRAFT_KEY: LocalStorageKey = 'itbook-note-draft';
 
 interface StashedDraft {
   readonly id: string;
   readonly text: string;
 }
 
-/** localStorage throws in private mode and when storage is disabled — the same
- * defensive read `theme/useTheme.ts` does, for the same reason: a reader whose
- * browser refuses storage should still get a working card, just without the
- * recovery. */
+/** Reads the slot. The defensive part (localStorage throws in private mode and
+ * wherever storage is disabled) lives in `readLocalStorage`; what is left here
+ * is this component's own shape check, because the stored JSON is as much an
+ * unknown as anything else that outlived a page. */
 function readStash(): StashedDraft | null {
+  const raw = readLocalStorage(DRAFT_KEY);
+  if (!raw) return null;
   try {
-    const raw = window.localStorage.getItem(DRAFT_KEY);
-    if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     const { id, text } = (parsed ?? {}) as { id?: unknown; text?: unknown };
     return typeof id === 'string' && typeof text === 'string' ? { id, text } : null;
@@ -211,13 +219,7 @@ function readStash(): StashedDraft | null {
 }
 
 function writeStash(draft: StashedDraft | null): void {
-  try {
-    if (draft) window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-    else window.localStorage.removeItem(DRAFT_KEY);
-  } catch {
-    // Nothing to do and nothing to say: the debounce and the flushes below are
-    // still the ordinary path, this was only the belt to their braces.
-  }
+  writeLocalStorage(DRAFT_KEY, draft === null ? null : JSON.stringify(draft));
 }
 
 /**

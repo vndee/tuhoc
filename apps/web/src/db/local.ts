@@ -85,8 +85,86 @@ class LocalDB extends Dexie {
 /** The single Dexie database instance every module in this app shares — one IndexedDB database per browser profile, matching one signed-in user's local mirror. */
 export const db = new LocalDB();
 
+/* ------------------------------------------------------------------ *
+ * `localStorage` — the OTHER local store, and why it lives in this file
+ * ------------------------------------------------------------------ */
+
 /**
- * Empties EVERY local table — the single, authoritative "this browser now
+ * Keys holding the USER'S OWN WORDS. `clearLocalData()` deletes every one
+ * of them, because these are their content, not their settings.
+ *
+ * Currently one entry, and the reason it exists is worth keeping in view:
+ * Chromium discards IndexedDB transactions opened during a same-tab
+ * navigation, so the note being typed was measurably lost at 0 ms and at
+ * 400 ms after F5. The draft is therefore stamped into `localStorage`
+ * synchronously on every keystroke — see `annotations/MarginCards.tsx`'s
+ * `DRAFT_KEY` for the measurement. That decision stands. What it also
+ * created was a SECOND store of user content, which this list is here to
+ * keep attached to the one place that empties them.
+ */
+export const USER_CONTENT_KEYS = ['itbook-note-draft'] as const;
+
+/**
+ * Keys describing this DEVICE, not this person. `clearLocalData()` leaves
+ * them alone, deliberately.
+ *
+ * Signing in as somebody else is not a request to change the lighting: a
+ * shared laptop that flipped back to a blinding white page on every
+ * handover would be a worse app, and there is nothing private in "dark".
+ * The line this list draws is CONTENT vs PREFERENCE, and drawing it
+ * explicitly is the point — the alternative, `localStorage.clear()`, is a
+ * one-liner that quietly gets the theme wrong and can never be argued
+ * with, because it does not know what it is deleting.
+ *
+ * `index.html` also reads `itbook-theme`, in an inline bootstrap script
+ * that runs before any module loads (that is what prevents a flash of the
+ * wrong palette). It cannot import this constant; `db/local.test.ts` pins
+ * the two together instead.
+ */
+export const DEVICE_PREFERENCE_KEYS = ['itbook-theme'] as const;
+
+/**
+ * Every `localStorage` key this app is allowed to touch.
+ *
+ * This union is the compile-time half of the "no third store" guard:
+ * `readLocalStorage`/`writeLocalStorage` accept nothing else, so a new key
+ * cannot be written without first being classified as content or
+ * preference above — and classifying it as content wires it into
+ * `clearLocalData()` in the same edit. `bunx tsc -b` is a gate, so this is
+ * enforced, not advisory.
+ *
+ * The runtime half (nothing may bypass these functions and reach
+ * `localStorage` directly) is pinned by `db/local.test.ts`.
+ */
+export type LocalStorageKey = (typeof USER_CONTENT_KEYS)[number] | (typeof DEVICE_PREFERENCE_KEYS)[number];
+
+/**
+ * `localStorage` throws in private mode and wherever storage is disabled,
+ * and a reader whose browser refuses it should still get a working app —
+ * just without the persistence. Both accessors swallow that, which is what
+ * every call site used to do for itself.
+ */
+export function readLocalStorage(key: LocalStorageKey): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/** Writes `value`, or removes the key when `value` is `null`. */
+export function writeLocalStorage(key: LocalStorageKey, value: string | null): void {
+  try {
+    if (value === null) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, value);
+  } catch {
+    // Best-effort: see `readLocalStorage`.
+  }
+}
+
+/**
+ * Empties EVERY local table AND every `localStorage` key holding the
+ * user's own content — the single, authoritative "this browser now
  * belongs to nobody / to somebody else" operation.
  *
  * Why this exists as a function rather than as the four-`clear()`
@@ -115,8 +193,28 @@ export const db = new LocalDB();
  *     cookie can expire (30 days) or simply be replaced by a second
  *     person signing in, while this database persists indefinitely
  *     either way. Ordering there is load-bearing; see that call site.
+ *
+ * **Why `localStorage` is cleared HERE and not at the call sites.** Task
+ * 6's fix (the note draft, see `USER_CONTENT_KEYS` above) added a second
+ * local store of user content, and neither call site knew about it — so
+ * one reader's half-typed note sat in a shared browser, inside the next
+ * reader's session, for as long as that browser lived. `DRAFT_KEY` is a
+ * constant, not a per-user key, and `localStorage` never expires. The
+ * error was not "somebody forgot a line at the call sites"; it was that
+ * the truth point stopped being the truth. Sprinkling `removeItem` into
+ * `useLogout` and `Login` would recreate exactly the eight-hand-copied-
+ * lists problem this function was extracted to end, with the copy that
+ * matters most being the one whose omission fails silently.
+ *
+ * The keys are removed BEFORE the tables are emptied: removal is
+ * synchronous and cannot fail (see `writeLocalStorage`), while the Dexie
+ * clear is asynchronous and can reject (quota, a blocked upgrade — a
+ * known, accepted gap recorded in `docs/carried-forward.md`). Doing the
+ * part that cannot fail first means a rejection leaves LESS behind, not
+ * more.
  */
 export async function clearLocalData(): Promise<void> {
+  for (const key of USER_CONTENT_KEYS) writeLocalStorage(key, null);
   await Promise.all(db.tables.map((table) => table.clear()));
 }
 
