@@ -2,8 +2,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { meQueryKey } from '../api/useMe';
-import { db } from '../db/local';
+import { meQueryKey, resetSessionScopedQueries } from '../api/useMe';
+import { clearLocalData } from '../db/local';
 import { stopSync, syncOnce, waitForInFlight } from '../sync/engine';
 
 /**
@@ -99,11 +99,19 @@ async function bestEffortFinalFlush(): Promise<void> {
  *     outcome this function must never allow is leaving another account's
  *     data behind in this browser's IndexedDB just because the network
  *     blipped on the way out.
- *  5. Clear every local table (`progress`, `annotations`, `outbox`,
- *     `meta`) — unconditionally, regardless of whether steps 2 or 4
- *     succeeded. See the paragraph below for why this is the right
- *     trade-off, not just the safe-looking one.
- *  6. Reset the shared `me` query to `null` and navigate to `/login`.
+ *  5. `clearLocalData()` (src/db/local.ts) — every local table,
+ *     unconditionally, regardless of whether steps 2 or 4 succeeded. See
+ *     the paragraph below for why this is the right trade-off, not just
+ *     the safe-looking one. This calls the shared helper rather than
+ *     spelling the table list out here, so a table added to `LocalDB`'s
+ *     schema cannot be forgotten at this, the one call site where
+ *     forgetting it fails silently.
+ *  6. `resetSessionScopedQueries()`, then reset the shared `me` query to `null`
+ *     and navigate to `/login`. The full cache clear is not decoration:
+ *     `['stats']` and every other cached entry belong to the session
+ *     that just ended, and `src/pages/Login.tsx` does the mirror-image
+ *     clear on the way IN — the two together are what make "this browser
+ *     shows one user at a time" true across an in-app logout→login.
  *
  * **The race this hook used to have (fix-round-1, Finding 2):** `stopSync()`
  * on its own only prevents FUTURE ticks — it cannot un-schedule a network
@@ -193,8 +201,19 @@ export function useLogout(): () => Promise<void> {
       // happens via the steps below.
     }
 
-    await Promise.all([db.progress.clear(), db.annotations.clear(), db.outbox.clear(), db.meta.clear()]);
+    await clearLocalData();
 
+    // A cache reset, not just `setQueryData(meQueryKey, null)` below. The `me`
+    // entry is not the only thing in this cache scoped to the session
+    // that is ending: `['stats']` (Dashboard's streak, total minutes and
+    // 30-day chart), `['course', ...]`, and every progress-derived entry
+    // are all the departing user's. Overwriting only `me` left the rest
+    // in place, so an in-app logout→login on the same browser rendered
+    // the PREVIOUS user's numbers to the new one for as long as the
+    // refetch took — or indefinitely if that refetch failed. Clearing
+    // before seeding `me` matters: `clear()` would otherwise wipe the
+    // seed it is supposed to leave behind.
+    resetSessionScopedQueries(queryClient);
     queryClient.setQueryData(meQueryKey, null);
     navigate('/login', { replace: true });
   }, [queryClient, navigate]);

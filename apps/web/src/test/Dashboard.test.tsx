@@ -6,7 +6,7 @@ import { setupServer } from 'msw/node';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { meQueryKey } from '../api/useMe';
-import { db } from '../db/local';
+import { clearLocalData, db } from '../db/local';
 import * as engine from '../sync/engine';
 import { Dashboard } from '../pages/Dashboard';
 import type { Manifest } from '../course/types';
@@ -55,7 +55,7 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 async function clearAll() {
-  await Promise.all([db.progress.clear(), db.annotations.clear(), db.outbox.clear(), db.meta.clear()]);
+  await clearLocalData();
 }
 
 beforeEach(() => {

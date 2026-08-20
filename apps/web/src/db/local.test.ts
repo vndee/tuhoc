@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { db, mergeRow, setProgress, type ProgressRow } from './local';
+import { clearLocalData, db, mergeRow, setProgress, type ProgressRow } from './local';
 
 async function clearAll() {
-  await Promise.all([db.progress.clear(), db.annotations.clear(), db.outbox.clear(), db.meta.clear()]);
+  await clearLocalData();
 }
 
 beforeEach(clearAll);
@@ -133,5 +133,34 @@ describe('setProgress', () => {
 
     const rows = await db.progress.where({ courseId: 'c1', chapterId: 'ch1' }).toArray();
     expect(rows).toHaveLength(2);
+  });
+});
+
+describe('clearLocalData', () => {
+  it('empties every table in the schema, not a hand-maintained list of four', async () => {
+    await db.progress.put({ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: '2026-08-20T10:00:00.000Z' });
+    await db.annotations.put({
+      id: '11111111-1111-4111-8111-111111111111',
+      courseId: 'c1',
+      chapterId: 'ch1',
+      anchor: {},
+      note: 'n',
+      createdAt: '2026-08-20T10:00:00.000Z',
+      updatedAt: '2026-08-20T10:00:00.000Z',
+      deletedAt: null,
+    });
+    await db.outbox.add({ table: 'progress', row: {} });
+    await db.meta.put({ key: 'syncCursor', value: '2026-08-20T10:00:00Z' });
+
+    // Pre-condition: every table genuinely has something in it, so the
+    // assertion below can't pass vacuously.
+    const before = await Promise.all(db.tables.map((t) => t.count()));
+    expect(before.every((n) => n > 0)).toBe(true);
+    expect(db.tables).toHaveLength(4);
+
+    await clearLocalData();
+
+    const after = await Promise.all(db.tables.map((t) => t.count()));
+    expect(after).toEqual(db.tables.map(() => 0));
   });
 });

@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { meQueryKey } from '../api/useMe';
-import { db } from '../db/local';
+import { clearLocalData, db } from '../db/local';
 import * as engine from '../sync/engine';
 import { useLogout } from './useLogout';
 
@@ -16,7 +16,7 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 async function clearAll() {
-  await Promise.all([db.progress.clear(), db.annotations.clear(), db.outbox.clear(), db.meta.clear()]);
+  await clearLocalData();
 }
 
 beforeEach(clearAll);
@@ -85,6 +85,37 @@ describe('useLogout', () => {
 
     stopSyncSpy.mockRestore();
     syncOnceSpy.mockRestore();
+  });
+
+  it('resets every session-scoped query cache entry, not just `me` (I5)', async () => {
+    // Before this fix the ONLY cache write logout did was
+    // `setQueryData(meQueryKey, null)`. `['stats']` — the dashboard's
+    // streak, total minutes and 30-day chart — survived untouched, so an
+    // in-app logout→login on the same browser rendered the DEPARTING
+    // user's numbers to the arriving one for as long as the refetch took,
+    // and indefinitely if it failed.
+    vi.spyOn(engine, 'syncOnce').mockResolvedValue(undefined);
+    server.use(http.post('/auth/logout', () => new HttpResponse(null, { status: 200 })));
+
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(meQueryKey, { id: 'u1', email: 'a@b.com', name: 'A' });
+    queryClient.setQueryData(['stats'], { totalMinutes: 123, streakDays: 7, days: [], courses: [] });
+    queryClient.setQueryData(['course', '***REMOVED***'], { title: '***REMOVED***' });
+
+    const { result } = renderHook(() => useLogout(), { wrapper: wrapper(queryClient) });
+    await act(async () => {
+      await result.current();
+    });
+
+    expect(queryClient.getQueryData(['stats'])).toBeUndefined();
+    expect(queryClient.getQueryData(['course', '***REMOVED***'])).toBeUndefined();
+    // `me` is deliberately the one entry NOT removed — it is overwritten
+    // with `null` instead, so the app-wide `useMe()` observer that drives
+    // <RequireAuth> and the sync lifecycle is never left pointing at a
+    // destroyed query. See resetSessionScopedQueries' own doc comment.
+    expect(queryClient.getQueryData(meQueryKey)).toBeNull();
+
+    vi.restoreAllMocks();
   });
 
   it('flushes the outbox (syncOnce) BEFORE calling POST /auth/logout — the session must still be valid for the flush to have any chance of succeeding', async () => {

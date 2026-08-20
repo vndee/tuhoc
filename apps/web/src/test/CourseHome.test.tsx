@@ -6,7 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { CourseHome } from '../pages/CourseHome';
 import type { Chapter, Manifest } from '../course/types';
-import { db } from '../db/local';
+import { clearLocalData, db } from '../db/local';
 
 function buildManifest(chapterCount: number): Manifest {
   const chapters: Chapter[] = Array.from({ length: chapterCount }, (_, i) => ({
@@ -35,7 +35,7 @@ const server = setupServer();
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 beforeEach(async () => {
-  await Promise.all([db.progress.clear(), db.annotations.clear(), db.outbox.clear(), db.meta.clear()]);
+  await clearLocalData();
 });
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());

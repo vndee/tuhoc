@@ -10,7 +10,7 @@ vi.mock('../api/navigation', () => ({
   redirectToLogin: vi.fn(),
 }));
 
-import { db, type AnnotationRow, type ProgressRow } from '../db/local';
+import { clearLocalData, db, type AnnotationRow, type ProgressRow } from '../db/local';
 import { redirectToLogin } from '../api/navigation';
 import { startSync, stopSync, syncOnce, waitForInFlight } from './engine';
 
@@ -26,7 +26,7 @@ afterEach(() => {
 afterAll(() => server.close());
 
 async function clearAll() {
-  await Promise.all([db.progress.clear(), db.annotations.clear(), db.outbox.clear(), db.meta.clear()]);
+  await clearLocalData();
 }
 
 beforeEach(async () => {

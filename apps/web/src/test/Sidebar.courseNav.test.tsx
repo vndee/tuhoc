@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Sidebar } from '../shell/Sidebar';
 import type { Manifest } from '../course/types';
-import { db } from '../db/local';
+import { clearLocalData, db } from '../db/local';
 
 const manifest: Manifest = {
   id: 'demo',
@@ -30,7 +30,7 @@ const server = setupServer();
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 beforeEach(async () => {
-  await Promise.all([db.progress.clear(), db.annotations.clear(), db.outbox.clear(), db.meta.clear()]);
+  await clearLocalData();
 });
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());

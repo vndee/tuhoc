@@ -86,6 +86,41 @@ class LocalDB extends Dexie {
 export const db = new LocalDB();
 
 /**
+ * Empties EVERY local table — the single, authoritative "this browser now
+ * belongs to nobody / to somebody else" operation.
+ *
+ * Why this exists as a function rather than as the four-`clear()`
+ * `Promise.all` it replaces: that literal appeared verbatim in eight
+ * places (one production call site in `src/auth/useLogout.ts`, seven test
+ * fixtures). This database is scoped to the BROWSER, not to a user — its
+ * name is the constant `'tuhoc'` (see `LocalDB`'s constructor) and
+ * IndexedDB never expires — so "no row of one account's data survives
+ * into another account's session" is a security invariant, not a tidiness
+ * one, and it was being maintained by eight hand-copied lists that a
+ * fifth table would silently fall out of. The one copy that matters most
+ * (useLogout's) is precisely the one whose omission fails silently.
+ *
+ * Enumerating `db.tables` rather than naming the four tables is the whole
+ * point: a table added to `LocalDB`'s schema is cleared here
+ * automatically, with nothing to remember to update. Dexie populates
+ * `db.tables` synchronously from `version().stores()`, so this is safe to
+ * call before the database has ever been opened (Dexie opens it lazily on
+ * the first operation).
+ *
+ * Call sites — both auth transitions, in both directions:
+ *   - `src/auth/useLogout.ts` (sign-out): the departing user's rows must
+ *     not outlive their session.
+ *   - `src/pages/Login.tsx` (sign-in / register): the ARRIVING user must
+ *     not inherit whatever the previous one left behind — a session
+ *     cookie can expire (30 days) or simply be replaced by a second
+ *     person signing in, while this database persists indefinitely
+ *     either way. Ordering there is load-bearing; see that call site.
+ */
+export async function clearLocalData(): Promise<void> {
+  await Promise.all(db.tables.map((table) => table.clear()));
+}
+
+/**
  * Any row this store's LWW rule applies to. Both `ProgressRow` and
  * `AnnotationRow` satisfy this structurally, which is what lets
  * `mergeRow` be a single generic function instead of one copy per table

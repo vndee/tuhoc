@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { hashKey, useQuery, type QueryClient } from '@tanstack/react-query';
 import { api, ApiError } from './client';
 
 /** Shape returned by GET /me — see apps/api/internal/auth/handler.go's meResponse (id/email/name only, never a password hash). */
@@ -16,6 +16,38 @@ export interface Me {
  * briefly back in its "pending" state right after a successful login.
  */
 export const meQueryKey = ['me'] as const;
+
+/**
+ * Drops every cached query belonging to the session that is ending —
+ * `['stats']`, course/progress entries, everything — EXCEPT `me` itself.
+ * Call it on BOTH auth transitions (src/pages/Login.tsx on the way in,
+ * src/auth/useLogout.ts on the way out), immediately before seeding `me`
+ * with the new value.
+ *
+ * Why it exists at all: nothing ever reset this cache. Overwriting
+ * `meQueryKey` alone left the dashboard's `['stats']` entry — the previous
+ * user's streak, total minutes and 30-day chart — sitting in memory, to be
+ * rendered to the NEXT user while a refetch was in flight, or indefinitely
+ * if that refetch failed.
+ *
+ * Why it is not simply `queryClient.clear()`: `clear()` removes the `me`
+ * query object too, and a `QueryObserver` only re-points at a
+ * newly-built query when its component next renders
+ * (`QueryObserver.setOptions` → `#updateQuery`, see @tanstack/query-core).
+ * `App.tsx`'s `useSyncLifecycle` holds exactly such an app-wide, always-
+ * mounted `useMe()` observer, and it is what starts the sync engine. Under
+ * `clear()` that observer is orphaned — pointing at a destroyed query —
+ * until something unrelated happens to re-render `AppShell`. It does
+ * happen to re-render today (`useMobileNav` reads `useLocation`, and both
+ * transitions navigate), but "sync starts after login because a drawer
+ * hook subscribes to the router" is an accident, not a guarantee: it would
+ * disappear silently the day that hook changed. Sparing `me` — which the
+ * caller overwrites on the very next line anyway — removes the accident.
+ */
+export function resetSessionScopedQueries(queryClient: QueryClient): void {
+  const meHash = hashKey(meQueryKey);
+  queryClient.removeQueries({ predicate: (query) => query.queryHash !== meHash });
+}
 
 async function fetchMe(): Promise<Me | null> {
   try {

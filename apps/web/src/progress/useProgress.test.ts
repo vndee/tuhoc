@@ -1,10 +1,10 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { db } from '../db/local';
+import { clearLocalData, db } from '../db/local';
 import { useProgress } from './useProgress';
 
 async function clearAll() {
-  await Promise.all([db.progress.clear(), db.annotations.clear(), db.outbox.clear(), db.meta.clear()]);
+  await clearLocalData();
 }
 
 beforeEach(clearAll);
