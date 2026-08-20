@@ -59,7 +59,11 @@ thật, nên spam gần như không có. Nền tảng nhúng đọc qua API (ser
 
 ### 1.4 AI: chỉ tự cắm key. **Không** credit, **không** thanh toán.
 
-Người dùng tự cấp API key của họ. Nền tảng **không bao giờ** nhận, truyền hay lưu key.
+Người dùng tự cấp API key của họ. **Nền tảng không bao giờ LƯU key** — không vào database,
+không vào log, không vào bản đồng bộ. Ở đường chính, key cũng không hề **đi qua** server:
+trình duyệt gọi thẳng nhà cung cấp. Chỉ có một ngoại lệ hẹp ở §3.2(3) — đường dự phòng khi
+nhà cung cấp chặn trình duyệt — và ở đó key **đi ngang qua bộ nhớ tiến trình rồi biến mất**,
+vẫn không bao giờ được ghi xuống, và người dùng phải được báo rõ trước khi dùng chế độ đó.
 
 Điều này khả thi vì các nhà cung cấp **cho gọi thẳng từ trình duyệt**. Đã dò thực nghiệm
 2026-08-20 từ một origin trình duyệt, dùng key giả:
@@ -117,8 +121,12 @@ Luật chung: manifest hợp lệ, mọi `file` trỏ tới tệp tồn tại, `
 ### 2.3 Import
 
 Ba nguồn, cùng một đường xử lý sau khi giải nén: **tệp `.zip`**, **URL trỏ tới `.zip`**, và
-**URL repo Git**. Nguồn thứ ba khiến "repo GitHub riêng tư của tôi" tự động thành hợp lệ —
-không cần thiết kế riêng cho nó.
+**URL repo Git công khai**.
+
+**Repo Git chỉ hỗ trợ repo CÔNG KHAI, và đây là quyết định có chủ ý.** Repo riêng tư đòi token
+truy cập, tức nền tảng lại phải giữ một bí mật lâu dài của người dùng — đúng thứ §1.4 vừa loại
+bỏ, chỉ đổi tên. Người muốn dùng course từ repo riêng tư của mình thì tải `.zip` về rồi import
+tệp: cùng kết quả, không ai phải giữ bí mật của ai.
 
 ### 2.4 Course riêng tư
 
@@ -176,7 +184,9 @@ CI chạy bộ kiểm định (§2.2), gán nhãn hạng, và **sinh `index.json
 metadata mọi course. Nền tảng chỉ tải tệp đó: một request, cache được, **không đụng giới hạn tần
 suất của GitHub API**, và bản tự chạy dùng được y hệt.
 
-Nội dung course tải theo yêu cầu khi người dùng pull về thư viện cá nhân.
+`index.json` phục vụ qua **GitHub Pages** của chính repo registry, không qua GitHub API — Pages
+cho cache CDN và **không có giới hạn tần suất theo IP** như API. Nội dung course tải theo yêu cầu
+khi người dùng pull về thư viện cá nhân.
 
 ### 4.2 Song ngữ
 
@@ -187,8 +197,10 @@ manifest là nhãn, catalog lọc và hiển thị theo nó. Không dịch cours
 
 ## 5. Hệ thống con 4 — Rating + Discussions
 
-Rating: bảng `course_ratings(user_id, course_id, stars, created_at)`, một phiếu mỗi người mỗi
-course, sửa được. Catalog sắp xếp theo điểm trung bình + số phiếu.
+Rating **chỉ áp dụng cho course trên registry** — course riêng tư và course import từ tệp không
+có rating, vì không có gì để so sánh giữa những người dùng khác nhau. Bảng
+`course_ratings(user_id, registry_id, stars, created_at)`, một phiếu mỗi người mỗi course, sửa
+được. Catalog sắp xếp theo điểm trung bình + số phiếu.
 
 Comment/forum: mỗi course có một Discussion tương ứng trên repo registry. Nền tảng nhúng đọc
 (server giữ token GitHub, cache theo TTL), nút đăng dẫn sang GitHub.
