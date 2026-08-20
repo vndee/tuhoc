@@ -59,11 +59,13 @@ thật, nên spam gần như không có. Nền tảng nhúng đọc qua API (ser
 
 ### 1.4 AI: chỉ tự cắm key. **Không** credit, **không** thanh toán.
 
-Người dùng tự cấp API key của họ. **Nền tảng không bao giờ LƯU key** — không vào database,
-không vào log, không vào bản đồng bộ. Ở đường chính, key cũng không hề **đi qua** server:
-trình duyệt gọi thẳng nhà cung cấp. Chỉ có một ngoại lệ hẹp ở §3.2(3) — đường dự phòng khi
-nhà cung cấp chặn trình duyệt — và ở đó key **đi ngang qua bộ nhớ tiến trình rồi biến mất**,
-vẫn không bao giờ được ghi xuống, và người dùng phải được báo rõ trước khi dùng chế độ đó.
+Người dùng tự cấp API key của họ. **Key không bao giờ chạm tới server của nền tảng** — không
+đi qua, không nằm trong bộ nhớ tiến trình, không vào log, không vào database, không vào bản đồng
+bộ. Không có ngoại lệ, không có đường dự phòng.
+
+Đây là lời hứa **tuyệt đối và có chủ ý**, vì chỉ lời hứa tuyệt đối mới kiểm chứng được: nếu
+không tồn tại đường nào trên server nhận key thì đó là điều **test bắt được**, chứ không phải
+điều con người phải nhớ. Xem §3.2(3) cho cách biến nó thành bất biến mà codebase tự giữ.
 
 Điều này khả thi vì các nhà cung cấp **cho gọi thẳng từ trình duyệt**. Đã dò thực nghiệm
 2026-08-20 từ một origin trình duyệt, dùng key giả:
@@ -161,8 +163,19 @@ Chi phí bằng 0: tên miền riêng **đã bắt buộc phải mua** vì vấn
    một bảng được đồng bộ thì nó lên server đúng cái điều ta đang tránh. Có sẵn chốt: `db/local.test.ts`
    assert database có đúng 4 bảng — thêm bảng thứ 5 phải sửa con số đó **một cách có ý thức**.
 2. **Key nhập theo từng thiết bị**, không đồng bộ. Mất máy này không lộ key ở máy kia.
-3. **Đường dự phòng**: nhà cung cấp nào chặn trình duyệt thì cho đi qua server ở chế độ
-   **chỉ đi ngang, không bao giờ ghi xuống đâu cả** — và phải nói rõ với người dùng khi dùng chế độ đó.
+3. **KHÔNG có đường dự phòng qua server, và điều đó phải được CƯỠNG CHẾ chứ không chỉ ghi nhớ.**
+   Nhà cung cấp nào không cho gọi từ trình duyệt thì đơn giản là **không được hỗ trợ** — danh sách
+   nhà cung cấp được định nghĩa đúng bằng "cho phép gọi từ trình duyệt".
+
+   Cưỡng chế bằng một test ở phía Go: quét toàn bộ route đã đăng ký và **khẳng định không route
+   nào nhận trường mang key** (`api_key`, `apiKey`, `authorization` chuyển tiếp, `x-api-key`…).
+   Test đó hỏng nghĩa là ai đó vừa mở lại đường ta đã đóng — kể cả khi họ có ý tốt. Đây là loại
+   bất biến đúng ra phải có test, vì nó là thứ **con người sẽ quên sau sáu tháng** còn hậu quả
+   thì không tự lộ ra: key rò rỉ không gây lỗi nào, chỉ âm thầm nằm trong log.
+
+   Rủi ro đã biết: nhà cung cấp có thể đổi chính sách và chặn trình duyệt sau này. Khi đó họ rời
+   danh sách hỗ trợ — **không phải** khi đó ta mở đường qua server. Cách kiểm lại chính sách của
+   một nhà cung cấp được ghi ở §1.4 (dò bằng key giả, đọc mã trạng thái).
 
 ### 3.3 Lớp trừ tượng nhà cung cấp
 
@@ -225,6 +238,8 @@ mục 1 cần thêm một vòng hỏi chi tiết trước khi thành plan.
 ## 7. Những gì spec này CỐ Ý không làm
 
 - **Không** thanh toán, không credit, không cổng thanh toán (§1.4).
+- **Không** cho key đi qua server dưới bất kỳ hình thức nào, kể cả "chỉ đi ngang không lưu"
+  (§3.2). Nhà cung cấp không hỗ trợ gọi từ trình duyệt thì không được hỗ trợ.
 - **Không** dịch nội dung course tự động.
 - **Không** mã hoá đầu-cuối cho course riêng tư (§2.4).
 - **Không** liên hợp (federation) giữa các bản tự chạy. Bản tự chạy chỉ **đọc** registry chung.
