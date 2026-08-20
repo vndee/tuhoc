@@ -184,9 +184,31 @@ describe('ChapterView', () => {
     renderChapterView();
     await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
 
+    // The same portal-commit race the StrictMode test above documents, in the
+    // test that finally lost to it: `initViz` having been called proves only
+    // that the chapter effect's BODY ran, while the rail entries are React
+    // state (`setHeadings`, at the end of that same effect) rendered through a
+    // portal into `#rail`, so they need a LATER commit. Measured directly, with
+    // a DOM snapshot taken at the exact instant `initViz` is called — the
+    // earliest moment the `waitFor` above can resume — `#rail` holds ZERO links
+    // there, and under StrictMode it is still empty two macrotasks later. That
+    // is the whole window, and P2 Task 4's 23 extra lines in ChapterView.tsx
+    // widened it enough to lose: `expected [] to deeply equal [ 'Phần A',
+    // 'Tiểu mục', 'Phần B' ]`. The same snapshot shows `#crumb`,
+    // `#prev-btn`/`#next-btn`, `#mark-btn` and the pager are ALREADY correct at
+    // that instant (they are written by the commit before, or by the same
+    // effect body), which is why only the rail needs this. Waiting for the full
+    // array keeps the claim exactly as strong as it was — still those three
+    // headings, in that order, never "at least one".
     const rail = document.getElementById('rail')!;
+    await waitFor(() =>
+      expect(Array.from(rail.querySelectorAll('a')).map((a) => a.textContent)).toEqual([
+        'Phần A',
+        'Tiểu mục',
+        'Phần B',
+      ]),
+    );
     const links = Array.from(rail.querySelectorAll('a'));
-    expect(links.map((a) => a.textContent)).toEqual(['Phần A', 'Tiểu mục', 'Phần B']);
     expect(links[1].className).toContain('lvl3');
     expect(links[0].className).not.toContain('lvl3');
   });
