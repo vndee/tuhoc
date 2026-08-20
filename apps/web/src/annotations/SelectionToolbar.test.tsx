@@ -26,7 +26,7 @@
  *      replacement text happens to have the same length, and anchors the
  *      reader's next note against text that is no longer on the page.
  */
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -37,8 +37,14 @@ import { clearLocalData, db } from '../db/local';
 import { type Anchor, type AnchorColor, selectionToAnchor } from './anchor';
 import { flatToDom, normalizeContainer } from './normalize';
 import { highlightElements } from './painter';
-import { SelectionToolbar, type ToolbarStore, toolbarSpot } from './SelectionToolbar';
-import { type ChapterContent, type UseAnnotationsResult, useAnnotations } from './useAnnotations';
+import {
+  PENDING_ID_PREFIX,
+  SelectionToolbar,
+  type ToolbarSpot,
+  type ToolbarStore,
+  toolbarSpot,
+} from './SelectionToolbar';
+import { type Ann, type ChapterContent, type UseAnnotationsResult, useAnnotations } from './useAnnotations';
 
 const CHAPTER = [
   '<h2>Entropy</h2>',
@@ -66,6 +72,22 @@ const hook = { api: null as unknown as UseAnnotationsResult };
 
 function stubStore(create: ToolbarStore['create']): ToolbarStore {
   return { create, list: [], orphans: [] };
+}
+
+/** A stored row, the shape `useAnnotations` publishes in `list`/`orphans`.
+ * Only the `id` matters to the toolbar — that is the whole contract between
+ * the two: "the store has reached a verdict about this id". */
+function annRow(id: string): Ann {
+  return {
+    id,
+    courseId: 'c1',
+    chapterId: 'ch1',
+    anchor: { exact: Q1, prefix: '', suffix: '', color: 'y' },
+    note: '',
+    createdAt: '2026-08-20T10:00:00.000Z',
+    updatedAt: '2026-08-20T10:00:00.000Z',
+    deletedAt: null,
+  };
 }
 
 /**
@@ -109,17 +131,56 @@ function chapterRoot(): HTMLElement {
   return screen.getByTestId('chapter');
 }
 
-/** Selects `quote` (matched in the chapter's flat text, so it keeps working
- * after painting has split text nodes) and fires `selectionchange` — the one
- * event both mouse drags and Shift+Arrow produce. jsdom does not fire it for
- * programmatic selection changes, so the test does. */
-function select(quote: string, root: HTMLElement = chapterRoot()): Range {
+/** The `Range` covering `quote`, matched in the chapter's flat text so it
+ * keeps working after painting has split text nodes. */
+function rangeFor(quote: string, root: HTMLElement = chapterRoot()): Range {
   const map = normalizeContainer(root);
   const at = map.flat.indexOf(quote);
   if (at < 0) throw new Error(`select: ${JSON.stringify(quote)} not in the chapter`);
   const range = flatToDom(map, at, at + quote.length);
   if (!range) throw new Error(`select: no range for ${JSON.stringify(quote)}`);
+  return range;
+}
+
+/** Selects `quote` and fires `selectionchange` — the one event both mouse
+ * drags and Shift+Arrow produce. jsdom does fire one of its own for a
+ * programmatic selection change, but only on a LATER task (measured; see
+ * `selectSilently`), which is no use to a test that wants to assert on the
+ * next line. Dispatching it here, inside `act`, is what makes the moment the
+ * component hears about the selection a moment the test controls. */
+function select(quote: string, root: HTMLElement = chapterRoot()): Range {
+  const range = rangeFor(quote, root);
   applySelection(range);
+  return range;
+}
+
+/**
+ * Moves the browser's selection to `quote` and returns BEFORE the component
+ * has been told, so its stored `lastRangeRef` and the live selection disagree.
+ *
+ * That disagreement is the whole subject of `createFrom`'s
+ * `selectionRange(root) ?? lastRangeRef.current`. In a browser it is opened by
+ * a DOM change rather than by a move: the store's deferred pass paints an
+ * overlapping note between the last `selectionchange` and the click, and per
+ * the DOM's own remove steps the STORED `Range` is pushed off the text it
+ * described while the browser's own answer stays right. Reproducing that
+ * particular mutation faithfully in jsdom would be testing jsdom's live-range
+ * fidelity rather than this component; moving the selection leaves the
+ * component in the same position with nothing else changed.
+ *
+ * No `selectionchange` is dispatched here — but note that jsdom fires one
+ * BY ITSELF, asynchronously (measured: nothing during the synchronous block,
+ * the event arrives on a later task). So the window this helper opens is real
+ * but short, and a caller has to act inside it: `fireEvent.click`, never
+ * `await user.click`, whose first await lets jsdom's queued event through and
+ * puts the two back in agreement.
+ */
+function selectSilently(quote: string, root: HTMLElement = chapterRoot()): Range {
+  const range = rangeFor(quote, root);
+  const selection = window.getSelection();
+  if (!selection) throw new Error('no Selection in this environment');
+  selection.removeAllRanges();
+  selection.addRange(range);
   return range;
 }
 
@@ -143,6 +204,12 @@ function toolbar(): HTMLElement | null {
 
 function marks(root: HTMLElement = chapterRoot()): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>('mark.ann'));
+}
+
+/** The optimistic layer only: marks still carrying a `pending-` id, i.e. ones
+ * whose handover to the store has not happened. */
+function pendingMarks(root: HTMLElement = chapterRoot()): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(`mark.ann[data-ann-id^="${PENDING_ID_PREFIX}"]`));
 }
 
 /** What a painted annotation now covers, in the same (collapsed projection)
@@ -434,7 +501,13 @@ describe('luồng tạo ghi chú', () => {
     await waitFor(() => expect(onRequestNote).toHaveBeenCalledWith('note-id'));
     expect(create).toHaveBeenCalledTimes(1);
     expect(create.mock.calls[0][0].exact).toBe(Q2);
+    // ALWAYS yellow, in the stored anchor and on the page alike. `NOTE_COLOR`
+    // is a design decision the component's own doc argues for ("a predictable
+    // colour is worth more here than a clever one"), and until this line
+    // nothing held it: swapping it for green left every test green too.
+    expect(create.mock.calls[0][0].color).toBe('y');
     expect(marks().length).toBeGreaterThan(0);
+    expect(marks()[0].className).toContain('ann-y');
   });
 
   it('lưu HỎNG → gỡ màu và báo lỗi cho người đọc', async () => {
@@ -450,6 +523,68 @@ describe('luồng tạo ghi chú', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(marks()).toHaveLength(0);
+    expect(chapterRoot().querySelector('#p1')!.textContent).toBe(
+      'Entropy đo lượng thông tin trung bình mà một nguồn tin sinh ra.',
+    );
+  });
+
+  it('bấm màu neo theo vùng chọn ĐANG SỐNG, không theo bản Range đã lưu', async () => {
+    // `createFrom` asks `selectionRange(root)` FIRST and only falls back to
+    // `lastRangeRef.current`, and the component's own comment says why: "a
+    // stored `Range` can be moved by a DOM change (the store's deferred pass
+    // painting an overlapping note, say)". That is a WRONG-DATA path — pick
+    // the wrong source and the note is anchored over words the reader never
+    // selected, silently and permanently — and until this test it was held up
+    // by nothing but that comment: reversing the two produced no failure
+    // anywhere in the suite.
+    const create = vi.fn(async (_anchor: Anchor, _note: string) => 'id-1');
+    render(<Harness html={CHAPTER} store={stubStore(create)} />);
+    await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
+
+    select(Q1);
+    expect(toolbar()).not.toBeNull();
+
+    // The browser's answer moves on; the component's stored copy has not been
+    // told yet. `fireEvent`, not `user.click`: the click has to land inside
+    // that window, and userEvent's first `await` lets jsdom's own queued
+    // `selectionchange` through, which would close it (see `selectSilently`).
+    selectSilently(Q2);
+    fireEvent.click(screen.getByRole('button', { name: /tô màu vàng/i }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0][0].exact).toBe(Q2);
+    // …and the colour went on the words the anchor names, not on the stale ones.
+    expect(marks()).toHaveLength(1);
+    expect(marks()[0].textContent).toBe(Q2);
+  });
+
+  it('kho xếp ghi chú vừa tạo là MỒ CÔI: lớp tô tạm vẫn được gỡ, không để lại vệt pending-', async () => {
+    // `settled` is the union of `list` AND `orphans`, and the union is the
+    // whole point: an orphan is a verdict, not a pending state. Watch only
+    // `list` and a note the store cannot re-anchor never settles — the
+    // `pending-` layer then sits on the page for the rest of the reading
+    // session, a highlight that looks real, has no note behind it, and
+    // disappears on the next load. The path is ordinary, not exotic: the
+    // chapter can change shape between the create and the store's resolve
+    // pass (a `<details>` opened, a viz redrawn, an overlapping note painted),
+    // and with 255 closed `<details class="deriv">` in this corpus it will.
+    const create = vi.fn(async (_anchor: Anchor, _note: string) => 'real-1');
+    const { rerender } = render(<Harness html={CHAPTER} store={{ create, list: [], orphans: [] }} />);
+    await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
+
+    select(Q1);
+    await clickColour(/vàng/i);
+
+    // The optimistic layer is on the page, under its temporary id, waiting.
+    await waitFor(() => expect(pendingMarks()).toHaveLength(1));
+
+    // The store's verdict lands — as an ORPHAN, so `real-1` will never appear
+    // in `list` at all.
+    rerender(<Harness html={CHAPTER} store={{ create, list: [], orphans: [annRow('real-1')] }} />);
+
+    await waitFor(() => expect(pendingMarks()).toHaveLength(0));
+    // Removing the layer put the chapter's text back exactly as it was —
+    // `unpaint` unwraps and re-normalises rather than deleting.
     expect(chapterRoot().querySelector('#p1')!.textContent).toBe(
       'Entropy đo lượng thông tin trung bình mà một nguồn tin sinh ra.',
     );
@@ -629,6 +764,114 @@ describe('toolbarSpot — vị trí trong toạ độ TÀI LIỆU', () => {
     const spot = toolbarSpot([], { scrollX: 0, scrollY: 500, innerWidth: 1200 });
     expect(Number.isFinite(spot.left)).toBe(true);
     expect(spot.top).toBeGreaterThanOrEqual(500);
+  });
+
+  it('bỏ qua rect DIỆN TÍCH 0 (vết ngắt dòng), neo vào dòng thật đầu/cuối', () => {
+    // A zero-area rect is what a line break leaves behind, and it can sit
+    // either end of the list. Keeping it costs a toolbar pointed at a place
+    // where nothing is drawn — 20 px above the real first line here, and 200 px
+    // to the right of the real last line below.
+    const above = toolbarSpot([rect(700, 400, 0, 0), rect(100, 420, 600, 20)], view);
+    expect(above.below).toBe(false);
+    expect(above.top).toBe(420);
+    expect(above.left).toBe(400);
+
+    const below = toolbarSpot([rect(300, 2, 200, 20), rect(100, 22, 400, 20), rect(500, 42, 0, 0)], view);
+    expect(below.below).toBe(true);
+    expect(below.top).toBe(42);
+    expect(below.left).toBe(300);
+  });
+});
+
+// ===========================================================================
+// 5b. The two estimates, pinned against the box that actually ships
+// ===========================================================================
+//
+// `EST_WIDTH`/`EST_HEIGHT` are the ONLY things deciding when the toolbar flips
+// below the selection and how far it is clamped from a window edge, and Task 5
+// CHANGED them (220×40 → 232×44) on the strength of a Chromium measurement.
+// Nothing held them: the Task 5 review flipped `EST_HEIGHT` to 0 and
+// `EST_WIDTH` to 232 → 20 and every test stayed green, because the clamp test
+// above only asks for `left > 15` on a 400 px window — which `EST_WIDTH = 20`
+// satisfies while the real 227 px box hangs ~95 px off the right edge.
+//
+// The tests below therefore do not assert the constants. They assert the thing
+// the constants exist for: THE REAL BOX LANDS ON SCREEN, and it never covers
+// the line it belongs to. The estimate is free to be a few px off (that is what
+// it is for); it is not free to be off by enough to push the box out of the
+// window, which is the only failure mode a reader can see.
+
+/**
+ * The toolbar's real measured box, in Chromium with this repo's own
+ * stylesheets: 188,67 × 34 px with a mouse, 226,67 × 42 px with
+ * `@media (pointer: coarse)` — and the coarse case is also the narrow-window
+ * case, so it is the one that binds. (The Task 5 review measured 212,6 × 42 on
+ * an iPhone 12 emulation; the larger of the two independent measurements is
+ * used here, so these tests cannot pass by assuming a smaller toolbar than the
+ * one that ships.)
+ */
+const REAL_W = 227;
+const REAL_H = 42;
+/** `.ann-tb`'s own `transform: translate(-50%, calc(-100% - 8px))` — the gap
+ * `GAP` decides there is ROOM for, and the CSS then draws. */
+const CSS_GAP = 8;
+/** How close to a window edge the toolbar is allowed to come. */
+const CSS_EDGE = 8;
+
+/** Where the real box lands for a given spot. `left` is a CENTRE (the CSS does
+ * `translateX(-50%)`); `top` is the selection line's own edge, with the box
+ * `CSS_GAP` away from it on whichever side `below` says. */
+function realBox(spot: ToolbarSpot) {
+  return {
+    left: spot.left - REAL_W / 2,
+    right: spot.left + REAL_W / 2,
+    top: spot.below ? spot.top + CSS_GAP : spot.top - CSS_GAP - REAL_H,
+    bottom: spot.below ? spot.top + CSS_GAP + REAL_H : spot.top - CSS_GAP,
+  };
+}
+
+describe('toolbarSpot — hộp THẬT phải nằm trong màn hình', () => {
+  const view = { scrollX: 0, scrollY: 0, innerWidth: 1200 };
+
+  it.each([
+    ['điện thoại hẹp (iPhone 12)', 390],
+    ['cửa sổ hẹp', 400],
+    ['máy tính để bàn', 1280],
+  ])('kẹp NGANG đủ cho hộp 227px: %s', (_name, innerWidth) => {
+    const narrow = { scrollX: 0, scrollY: 0, innerWidth };
+    for (const left of [0, 5, 30, innerWidth / 2, innerWidth - 60, innerWidth - 30, innerWidth - 1]) {
+      const box = realBox(toolbarSpot([rect(left, 300, 30, 20)], narrow));
+      expect(box.left).toBeGreaterThanOrEqual(CSS_EDGE);
+      expect(box.right).toBeLessThanOrEqual(innerWidth - CSS_EDGE);
+    }
+  });
+
+  it('lật xuống dưới SỚM ĐỦ: hộp 42px không bao giờ bị đẩy quá mép trên, không bao giờ che dòng của nó', () => {
+    // Sweeps the whole band the flip threshold lives in, one px at a time —
+    // the band the old tests never touched (`top = 2` is below every candidate
+    // threshold, so it cannot tell 60 from 16).
+    for (let top = 0; top <= 120; top++) {
+      const spot = toolbarSpot([rect(300, top, 200, 20)], view);
+      const box = realBox(spot);
+      expect(box.top).toBeGreaterThanOrEqual(CSS_EDGE);
+      if (spot.below) {
+        // Below the selection's LAST line, never on top of it.
+        expect(box.top).toBeGreaterThanOrEqual(top + 20);
+      } else {
+        // Above the selection's FIRST line, never on top of it.
+        expect(box.bottom).toBeLessThanOrEqual(top);
+      }
+    }
+  });
+
+  it('ngưỡng lật đúng bằng EST_HEIGHT + GAP + EDGE = 60 px, không phải 59 hay 61', () => {
+    // The exact boundary, so a `<`/`<=` slip is a failure rather than a shrug.
+    // 60 is the conservative side of the safety property above: the real 42 px
+    // box fits above a line at `top = 60` with 10 px to spare, so declining to
+    // flip there is right, and flipping at 59 is the estimate being cautious
+    // about a box it deliberately over-states.
+    expect(toolbarSpot([rect(300, 59, 200, 20)], view).below).toBe(true);
+    expect(toolbarSpot([rect(300, 60, 200, 20)], view).below).toBe(false);
   });
 });
 

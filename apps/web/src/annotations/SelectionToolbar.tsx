@@ -152,13 +152,22 @@ const EDGE = 8;
  * toolbar in the wrong place.
  *
  * The numbers are measured, not guessed, and the measurement is why they are
- * not 220×40: in Chromium with the real stylesheets, this toolbar is
- * 188,67 × 34 px with a mouse and 226,67 × 42 px on a touch device, where
- * `@media (pointer: coarse)` in `index.css` grows every control. The estimate
- * has to cover the LARGER of the two — a too-small width is the one direction
- * that can push the box past the window edge, and the coarse case is also the
- * narrow-window case. Rounded up from 226,67/42 with a few px of margin for a
- * different font stack.
+ * not 220×40. Measured in Chromium with the real stylesheets: 188,67 × 34 px
+ * with a mouse, and 226,67 × 42 px under `@media (pointer: coarse)` in
+ * `index.css`, which grows every control. Those two are OBSERVATIONS of one
+ * viewport and one font stack rather than constants of the layout — the Task 5
+ * review measured 212,6 × 42 for the coarse case on an iPhone 12 emulation,
+ * and a fallback font would move the width again. What the estimate must do is
+ * cover the widest of them: a too-small width is the one direction that can
+ * push the box past the window edge, and the coarse case is also the
+ * narrow-window case. Hence, rounded up from the largest coarse measurement
+ * with a few px of margin.
+ *
+ * Both numbers are pinned by `SelectionToolbar.test.tsx` §5b, which asserts
+ * that the REAL 227 × 42 box lands inside the window and never covers the line
+ * it points at — not that the constants hold particular values. The estimate
+ * stays free to be a few px off; it is not free to be off by enough for a
+ * reader to see.
  */
 const EST_WIDTH = 232;
 const EST_HEIGHT = 44;
