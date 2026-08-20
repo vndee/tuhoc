@@ -978,6 +978,41 @@ describe('chi phí fuzzy — không được treo trình duyệt lúc mở chư�
     return el(`<div>${parts.join('\n')}</div>`);
   }
 
+  /**
+   * Số ô DP mà một lời gọi `anchorToRange` thực sự tính. **Tất định** — không
+   * có đồng hồ nào tham gia, nên tải máy không vào được phép đo (ruling
+   * P2-F13).
+   *
+   * Cách đếm, và vì sao nó đúng bằng số ô: cả hai bảng DP trong `anchor.ts`
+   * đọc đúng MỘT ký tự văn bản cho mỗi ô, qua `String.prototype.charCodeAt` —
+   * `bestWindowMatch` ở `text.charCodeAt(from + j - 1)`, `levenshtein` ở
+   * `b.charCodeAt(j - 1)`. Ngoài hai vòng lặp ô đó, cả module không gọi
+   * `charCodeAt` ở đâu khác: đúng bốn chỗ trong file, hai chỗ còn lại
+   * (`pattern.charCodeAt(i - 1)`, `a.charCodeAt(i - 1)`) là một lần mỗi HÀNG,
+   * không phải mỗi ô. Nên số đếm = số ô + số hàng, và số hàng là dưới 1% của
+   * số ô ở kích cỡ bài này. Quan trọng hơn: đó là **cùng một hàm của cùng
+   * khối lượng việc** cho cả hai vế được so, nên tỉ số giữa hai lần đếm CHÍNH
+   * LÀ tỉ số ô DP.
+   *
+   * Vá `String.prototype` chỉ được phép ở test và phải hoàn nguyên vô điều
+   * kiện — `finally` bên dưới. Không có móc đo đạc nào trong `anchor.ts`, và
+   * cố ý không thêm: đây là phép đo của bộ test, không phải của sản phẩm.
+   */
+  function dpCells(run: () => void): number {
+    const real = String.prototype.charCodeAt;
+    let cells = 0;
+    String.prototype.charCodeAt = function (this: string, index: number): number {
+      cells++;
+      return real.call(this, index);
+    };
+    try {
+      run();
+    } finally {
+      String.prototype.charCodeAt = real;
+    }
+    return cells;
+  }
+
   it('anchor KHÔNG tồn tại (đường xấu nhất) trên flat cỡ chương thật vẫn dưới trần thời gian', () => {
     const m = normalizeContainer(bigChapter(150));
     expect(m.flat.length).toBeGreaterThan(19000); // ≥ chương dài nhất của khóa học
@@ -1028,9 +1063,20 @@ describe('chi phí fuzzy — không được treo trình duyệt lúc mở chư�
   it('exact vô vọng ngay từ đầu rẻ hơn HẲN exact gần đúng — chốt cắt sớm phải còn đó', () => {
     // Trần thời gian tuyệt đối không bắt được chốt cắt sớm: bỏ nó đi chỉ
     // làm chậm ~4,8× (1,17ms → 5,58ms đo trên máy này), tức vẫn lọt qua mọi
-    // ngưỡng đủ rộng để không flaky. Nên test này so hai phép đo TRONG CÙNG
-    // một lần chạy: cả hai chịu đúng một mức tải CPU, nên TỈ SỐ giữa chúng
-    // không phụ thuộc máy — thứ mà một con số ms tuyệt đối không làm được.
+    // ngưỡng đủ rộng để không flaky. Bản trước của test này vì thế so hai
+    // phép ĐO THỜI GIAN trong cùng một lần chạy, dựa trên giả định "cả hai
+    // vế chịu đúng một mức tải CPU nên TỈ SỐ giữa chúng không phụ thuộc
+    // máy". Giả định đó SAI, và ruling P2-F13 khai tử nó: dưới
+    // `--maxWorkers=24` vế ~1ms phồng 2,51× còn vế ~4,5ms gần như không đổi
+    // (0,92×) — nhiễu lịch trình cộng vào một lượng gần như TUYỆT ĐỐI, nên
+    // nó nuốt trọn vế nhỏ và bỏ qua vế lớn. Tỉ số trượt từ 0,260 lên 0,710
+    // và vượt ngưỡng 0,600; `Math.min` của 5 lần lặp không cứu được vì cả 5
+    // lần đều chịu cùng mức bão hoà.
+    //
+    // Nên bản này không đo thời gian nữa: nó đếm **số ô DP đã tính** —
+    // đúng đại lượng mà chốt cắt sớm tồn tại để cắt bớt, và là một số
+    // nguyên tất định (xem `dpCells`). Ngưỡng 0,600 giữ NGUYÊN từng chữ:
+    // nới nó là ăn thẳng vào biên phát hiện mutation.
     //
     //   · "vô vọng": exact toàn ký tự không hề có trong chương ⇒ cực tiểu
     //     hàng vượt ngưỡng ở hàng ~41 ⇒ bỏ bảng DP ngay.
@@ -1050,19 +1096,37 @@ describe('chi phí fuzzy — không được treo trình duyệt lúc mở chư�
     };
     const hopeless: Anchor = { ...context, exact: 'ẍ'.repeat(200) };
 
-    let hopelessMs = Number.POSITIVE_INFINITY;
-    let nearMissMs = Number.POSITIVE_INFINITY;
-    for (let r = 0; r < 5; r++) {
-      let t0 = performance.now();
-      expect(anchorToRange(m, hopeless)).toBeNull();
-      hopelessMs = Math.min(hopelessMs, performance.now() - t0);
-      t0 = performance.now();
-      expect(anchorToRange(m, nearMiss)).toBeNull();
-      nearMissMs = Math.min(nearMissMs, performance.now() - t0);
-    }
-    // Đo được: 1,17ms so với 4,5ms (tỉ số 3,8×). Bỏ chốt cắt sớm của
-    // bestWindowMatch thì thành 5,58ms so với 4,5ms (tỉ số 0,8×).
-    expect(hopelessMs).toBeLessThan(nearMissMs * 0.6);
+    // Làm nóng trước khi đếm: `projectionFor` dựng `Projection` một lần rồi
+    // cache theo `NormMap`, nên vế nào chạy TRƯỚC sẽ gánh thêm phần dựng đó.
+    // (`buildProjection` không gọi `charCodeAt`, nên nó không vào số đếm —
+    // gọi trước cũng loại luôn mọi tranh cãi về thứ tự.)
+    expect(anchorToRange(m, hopeless)).toBeNull();
+
+    let hopelessHit: unknown;
+    let nearMissHit: unknown;
+    const hopelessCells = dpCells(() => {
+      hopelessHit = anchorToRange(m, hopeless);
+    });
+    const nearMissCells = dpCells(() => {
+      nearMissHit = anchorToRange(m, nearMiss);
+    });
+    // Cả hai vế vẫn phải là orphan — nếu một vế bỗng khớp thì hai bên không
+    // còn so cùng một phép việc và tỉ số ô mất nghĩa. Đây đúng hai khẳng
+    // định `toBeNull()` của bản cũ, giữ nguyên, chỉ chuyển ra ngoài vùng đếm
+    // để không có lời gọi nào của vitest lọt vào số đếm.
+    expect(hopelessHit).toBeNull();
+    expect(nearMissHit).toBeNull();
+
+    // Đếm được trên fixture này (flat 20.139 ký tự) — số nguyên, lặp lại 3
+    // lần ra đúng cùng một số, cả lúc máy nhàn lẫn lúc ép tải:
+    //     còn chốt cắt sớm:  hopeless 151.921 ô · nearMiss 595.947 ô → 0,2549
+    //     bỏ chốt cắt sớm:   hopeless 732.100 ô · nearMiss 732.100 ô → 1,0000
+    // Ngưỡng 0,600 y hệt bản cũ và vẫn nằm giữa hai giá trị đó: số đúng thấp
+    // hơn ngưỡng 2,35× và mutation cao hơn ngưỡng 1,67×. Con số mutation là
+    // 1,0000 chứ không phải 0,8× như bản đo bằng đồng hồ ghi, vì bỏ chốt cắt
+    // sớm làm CẢ HAI vế chạy trọn mọi hàng của mọi ứng viên — tức chính xác
+    // cùng một số ô — nên phép đếm phân biệt sắc hơn phép đo thời gian.
+    expect(hopelessCells).toBeLessThan(nearMissCells * 0.6);
   });
 
   it('nội dung bị xóa hẳn (không prefix, không suffix, không exact) ⇒ orphan gần như tức thì', () => {
