@@ -21,8 +21,71 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 // is what real separate page loads would give this code.
 const emptyStats = { totalMinutes: 0, streakDays: 0, days: [], courses: [] };
 
+/**
+ * The budget every `it` and the warm-up hook below run under, and the
+ * reason this file needs one at all.
+ *
+ * Under `--maxWorkers=24` on an 8-core machine (24 vitest workers sharing 8
+ * cores — the shape an oversubscribed CI runner has) the FIRST test here
+ * used to die with `Error: Test timed out in 5000ms.` in 3 of 16 full-suite
+ * runs. That is vitest's own `testTimeout`, not an assertion: no `expect`
+ * in this file has ever been observed to fail, and in particular the
+ * "logged-out visitor" test's `expect(startSyncSpy).not.toHaveBeenCalled()`
+ * has never gone red. Nothing here is racing; the test body simply does
+ * not FIT in 5000 ms once 24 workers fight over 8 cores.
+ *
+ * Where the time went — probe around each phase of the first test's body,
+ * 16 full-suite runs at `--maxWorkers=24`, versus the same probe on an idle
+ * machine (raw numbers, not rounded):
+ *
+ *   phase                              idle          24 workers / 8 cores
+ *   ---------------------------------------------------------------------
+ *   await import('../sync/engine')     45.5 ms        160.7 – 2675.4 ms
+ *   await import('../App')            348.5 ms       2029.5 – 5736.8 ms
+ *   render(<App/>)                     30.5 ms         54.0 –  645.0 ms
+ *   waitFor(startSync called)          20.6 ms         44.9 –  888.0 ms
+ *   ---------------------------------------------------------------------
+ *   whole test body                   445.1 ms       3164.1 – 8984.6 ms
+ *
+ * The two dynamic imports are 91–98% of that, and they are not waiting on
+ * anything — they are Vite transforming and evaluating the entire `App`
+ * module graph, cold, inside the timed body. `waitFor`, the only phase that
+ * actually waits for the app, never exceeded 888.0 ms, and it carries its
+ * own 1000 ms bound anyway: a genuine "startSync was never called" still
+ * fails in about a second no matter how large this constant is. Which is
+ * the point — this budget covers module loading, and cannot mask a hang in
+ * anything these tests assert.
+ *
+ * 30 s is 3.3× the worst body ever measured before the warm-up below, and
+ * 4.6× the worst warm-up hook measured after it (2370.5 – 6467.2 ms over 16
+ * runs — vitest's default `hookTimeout` is 10000 ms, only 1.55× that worst
+ * case, so the hook needs the budget stated explicitly too).
+ */
+const OVERSUBSCRIBED_MS = 30_000;
+
 const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+
+/**
+ * Pay for the cold transform+evaluate of the `../App` module graph ONCE,
+ * here, instead of inside the first `it`'s timed body.
+ *
+ * `vi.resetModules()` in `beforeEach` clears vitest's module REGISTRY, so
+ * every test still evaluates a genuinely fresh module graph — the isolation
+ * the block comment above depends on is untouched. What it does not clear
+ * is Vite's transform cache, which is what actually costs seconds. Measured
+ * effect on the first test's body, same 16-run `--maxWorkers=24`
+ * configuration as the table above: 3164.1 – 8984.6 ms → 122.9 – 729.6 ms,
+ * i.e. the worst case drops 12.3× and lands 6.9× under the default 5000 ms
+ * even without `OVERSUBSCRIBED_MS`. Second and third tests already paid
+ * only 30 – 360 ms for `import('../App')` for exactly this reason; this
+ * hook gives the first test the same footing.
+ */
+beforeAll(async () => {
+  await import('../sync/engine');
+  await import('../App');
+}, OVERSUBSCRIBED_MS);
+
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
@@ -51,7 +114,7 @@ describe('sync lifecycle (App.tsx)', () => {
     expect(stopSyncSpy).toHaveBeenCalled();
 
     engine.stopSync();
-  });
+  }, OVERSUBSCRIBED_MS);
 
   it('does NOT call startSync() for a logged-out visitor (GET /me answers 401)', async () => {
     server.use(http.get('/me', () => new HttpResponse(JSON.stringify({ error: 'unauthenticated' }), { status: 401 })));
@@ -68,7 +131,7 @@ describe('sync lifecycle (App.tsx)', () => {
     expect(startSyncSpy).not.toHaveBeenCalled();
 
     engine.stopSync();
-  });
+  }, OVERSUBSCRIBED_MS);
 
   it('startSync() is idempotent under this wiring — mounting once authenticated registers exactly one interval', async () => {
     server.use(
@@ -95,5 +158,5 @@ describe('sync lifecycle (App.tsx)', () => {
 
     engine.stopSync();
     setIntervalSpy.mockRestore();
-  });
+  }, OVERSUBSCRIBED_MS);
 });
