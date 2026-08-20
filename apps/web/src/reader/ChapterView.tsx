@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
+import { type ChapterContent, useAnnotations } from '../annotations/useAnnotations';
 import { describeCourseError, loadChapter } from '../course/loader';
 import type { Chapter } from '../course/types';
 import { startHeartbeat } from '../progress/heartbeat';
@@ -59,6 +60,22 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
   // this through the shared context (not a second `useTheme()` call) is
   // debt #2's whole point — see ThemeContext.tsx's doc comment.
   const { toggle: toggleTheme } = useThemeContext();
+
+  // P2 Task 4: the annotation store resolves this chapter's stored anchors
+  // against the DOM below and paints the highlights in. It has to be told when
+  // the content under `containerRef` was REPLACED — the element identity never
+  // changes (the main effect swaps `innerHTML` on the same `<div>`), so a
+  // counter bumped by that effect is the only honest signal that every
+  // `<mark>` is gone and every anchor needs resolving again.
+  //
+  // The result is deliberately not consumed here: the toolbar (T5), the margin
+  // cards (T6) and the orphan panel (T7) are the UI for it and are not built
+  // yet. Painting is useful on its own in the meantime — a note taken on
+  // another device shows up on this one as soon as it syncs. When those tasks
+  // land they must take this ONE result as a prop rather than call the hook
+  // again; a second live instance would paint every annotation twice.
+  const [annotationContent, setAnnotationContent] = useState<ChapterContent>({ root: null, revision: 0 });
+  useAnnotations(courseId, chapter.id, annotationContent);
 
   const chapterQuery = useQuery({
     queryKey: ['course-chapter', courseId, chapter.file],
@@ -289,6 +306,12 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
     }
 
     setChapterContextSource({ courseId, chapterId: chapter.id, chapterTitle: chapter.title, contentEl: container });
+    // Last, and only after KaTeX/viz/TOC have finished with the container:
+    // annotation anchors are resolved against the DOM as the reader sees it,
+    // and `normalize.ts` is built to ignore exactly what `initViz` generates.
+    // Resolving before that ran would anchor against text that is about to
+    // change shape.
+    setAnnotationContent((prev) => ({ root: container, revision: prev.revision + 1 }));
     document.title = `${chapter.num ? `${chapter.num} ` : ''}${chapter.title} — ${courseTitle}`;
     window.scrollTo({ top: 0, behavior: 'auto' });
 

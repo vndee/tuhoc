@@ -927,6 +927,32 @@ function materialize(
 }
 
 /**
+ * How much of `anchorToRange`'s tier ladder to run.
+ *
+ * `fuzzy: false` stops after the two verbatim tiers and answers `null` where
+ * the full call would have gone on to `fuzzyFind`. It exists for ruling
+ * P2-F9's page-open budget, which Task 4's `./useAnnotations` implements: the
+ * exact tiers cost ~3 ms for a whole chapter's annotations and run inline with
+ * the render, while the fuzzy tier costs up to ~334 ms for the same 200
+ * anchors (see `MAX_EDIT_DIST` for the measurement) and must not sit between
+ * the reader and their chapter.
+ *
+ * The distinction cannot be made after the fact — `hit.fuzzy` tells you which
+ * tier answered only once the work is already paid for — and it cannot be made
+ * outside this module either, since the collapsed projection every tier
+ * searches in is built here (see "The whitespace decision"). A second copy of
+ * that projection living in the caller is exactly the drifting duplicate this
+ * file exists to prevent.
+ *
+ * Omitting the option runs every tier, which is what every caller before Task
+ * 4 meant and still gets.
+ */
+export interface ResolveOptions {
+  /** Run the fuzzy tier (default `true`). `false` = verbatim tiers only. */
+  readonly fuzzy?: boolean;
+}
+
+/**
  * Finds the anchored text in a freshly normalized chapter, in three tiers:
  *
  *   1. the quote occurs verbatim — first as `prefix + exact + suffix` if
@@ -957,8 +983,14 @@ function materialize(
  * Returning `null` instead would file the reader's note in the orphan panel
  * and say nothing about why; a named error says what happened and what to
  * do. Callers that would rather ask than catch have `isMapStale(map)`.
+ *
+ * `options.fuzzy: false` stops the ladder after tier 2 — see `ResolveOptions`.
  */
-export function anchorToRange(map: NormMap, a: Anchor): { range: Range; fuzzy: boolean } | null {
+export function anchorToRange(
+  map: NormMap,
+  a: Anchor,
+  options?: ResolveOptions,
+): { range: Range; fuzzy: boolean } | null {
   assertMapFresh(map);
 
   const quote = readQuote(a);
@@ -1000,6 +1032,8 @@ export function anchorToRange(map: NormMap, a: Anchor): { range: Range; fuzzy: b
     }
     return materialize(map, proj, bestStart, bestStart + quote.exact.length, false);
   }
+
+  if (options?.fuzzy === false) return null;
 
   const hit = fuzzyFind(text, quote);
   if (!hit) return null;
