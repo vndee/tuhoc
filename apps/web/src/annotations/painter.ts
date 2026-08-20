@@ -30,6 +30,7 @@
  *
  * The `paint*` functions return the number of elements they created for
  * exactly this: `0` means the DOM was not touched and your map is still good.
+ * `paintAll` enforces that rather than merely intending it — see `undoCuts`.
  *
  * Less obvious, and the reason `paintAll` exists at all: **a live `Range`
  * does not survive having its own text wrapped.** Wrapping requires moving a
@@ -319,6 +320,36 @@ function applyCuts(plans: readonly Piece[][]): Map<Text, Fragment[]> {
   return fragments;
 }
 
+/**
+ * Reverses `applyCuts` exactly. Only sound when NOTHING was wrapped — and that
+ * is the only place it is called from.
+ *
+ * `applyCuts` runs before `paintable` gets a say, so it cuts for pieces that
+ * are then dropped. A range whose every piece is dropped (the whole selection
+ * is indentation between two block tags) would otherwise leave `splitText`'d
+ * nodes behind while `paintAll` reported `0`: `innerHTML` unchanged — splitting
+ * changes no characters — but `isMapStale` flipped to `true`, so the caller
+ * that believed the `0` walks into a `StaleNormMapError` on its next
+ * `anchorToRange`. Rather than qualify the contract, make it true.
+ *
+ * With no `<mark>` inserted, each original node's fragments are still adjacent
+ * siblings in their original order, so appending their data back onto the FIRST
+ * one and removing the rest restores both the node identity every `NormMap`
+ * segment holds and the character count `isMapStale` checks. `appendData` +
+ * `remove()` rather than `parent.normalize()`: normalize would also merge text
+ * nodes this batch never touched, which is exactly the collateral edit a `0`
+ * promises did not happen.
+ */
+function undoCuts(fragments: Map<Text, Fragment[]>): void {
+  for (const [node, list] of fragments) {
+    for (let i = 1; i < list.length; i++) {
+      const extra = list[i].node;
+      node.appendData(extra.data);
+      extra.remove();
+    }
+  }
+}
+
 /** How the neighbour on one side of a whitespace fragment reads: `'inline'`
  * (a real rendered space belongs here), `'block'` (this is markup
  * indentation), `'none'` (no evidence either way). */
@@ -349,6 +380,17 @@ function paintable(node: Text): boolean {
   return before === 'inline' || after === 'inline';
 }
 
+/**
+ * Insert the `<mark>` BEFORE the node, then move the node into it. The reverse
+ * order — insert after, then move — leaves identical `innerHTML`, and the Task
+ * 3 report called the two "genuinely equivalent" on that basis. They are not:
+ * a live `Range` boundary expressed as `(parent, index)` immediately after the
+ * wrapped node lands on the wrong side of the new element. On
+ * `<p>aa<i>x</i>bb</p>` with a range `(p,1)→(p,3)`, wrapping `"aa"` reads back
+ * `"xbb"` this way and `"aaxbb"` the other. Pinned by test, because a module
+ * whose central argument is about the side effects of insert/remove on live
+ * ranges cannot afford to be casual about this one.
+ */
 function wrapText(node: Text, id: string, color: HighlightColor): void {
   const parent = node.parentNode;
   if (!parent) return;
@@ -443,9 +485,14 @@ function tintAtomic(el: Element, id: string, color: HighlightColor): boolean {
  * not equivalent.
  *
  * Returns the number of DOM elements created (`<mark>`s plus newly tinted
- * formulas). A non-zero result means every `NormMap` taken before this call is
- * now stale and must be rebuilt; `0` means nothing changed and the map is
- * still usable.
+ * formulas) — never a count of work attempted. A non-zero result means every
+ * `NormMap` taken before this call is now stale and must be rebuilt; `0` means
+ * nothing changed and the map is still usable.
+ *
+ * That second half is a guarantee, not a description of the common case. The
+ * cuts happen before `paintable` decides, so a batch can split text nodes and
+ * then drop every fragment; `undoCuts` puts those back, because a caller told
+ * to trust `0` must be able to.
  *
  * Painting an id that is already painted ADDS a second layer rather than
  * replacing the first — to change an annotation's colour, `unpaint` it first.
@@ -481,6 +528,10 @@ export function paintAll(items: readonly PaintItem[]): number {
       }
     }
   }
+
+  // Phase 4 — nothing survived `paintable`, so put the text back and let the
+  // `0` above mean what the doc says it means.
+  if (created === 0) undoCuts(fragments);
   return created;
 }
 
@@ -547,10 +598,18 @@ export function unpaint(id: string, root: ParentNode = document): number {
 }
 
 /**
- * Every element currently drawing one annotation, in document order: its
- * `<mark>`s and any formula it tints. This is what Task 6 needs to add a
- * focus class or scroll a highlight into view, and what `highlightRects`
- * measures.
+ * Every element that carries one annotation, in document order: its `<mark>`s
+ * and any formula it tints. This is what Task 6 needs to add a focus class or
+ * scroll a highlight into view, and what `highlightRects` measures.
+ *
+ * "Carries", not "draws": an annotation inside a collapsed `<details>` is
+ * listed here — it exists, it is exactly what `scrollIntoView` and the focus
+ * class want to act on — but it has no place on the page, and
+ * `highlightRects` leaves it out. The pair of calls is how a caller tells the
+ * two apart; see `highlightRects` below.
+ *
+ * `root` defaults to `document`, which scans everything React owns as well.
+ * Pass the chapter container.
  */
 export function highlightElements(id: string, root: ParentNode = document): Element[] {
   // One selector rather than two queries merged afterwards: `querySelectorAll`
@@ -579,12 +638,31 @@ export function highlightElements(id: string, root: ParentNode = document): Elem
  * resized, a figure grows), which is real movement the cards have to follow —
  * so Task 6 re-measures on resize/relayout, but not on scroll.
  *
- * An empty array means the annotation is not painted, or is painted only over
- * content with no box (a highlighted space between two blocks).
+ * `root` defaults to `document`; pass the chapter container, as for `unpaint`.
+ *
+ * Two caveats, both measured:
+ *
+ * X is only a document coordinate while nothing between the highlight and the
+ * page scrolls sideways. `reader.css` has two containers that do:
+ * `.tbl-wrap{overflow-x:auto}` and `.katex-display{overflow-x:auto}`. Scrolling
+ * a wide table sideways changes the X this function reports without the page
+ * having scrolled, because only `window.scrollX` is added back. Y is unaffected
+ * — `#scroller{overflow:visible}`, so the chapter body is not inside a
+ * vertically scrolling container of its own — and Y is what Task 6 aligns on.
+ *
+ * AN EMPTY ARRAY IS A VALID STATE, and it does not mean "no such annotation".
+ * It means nothing of this annotation is currently drawn: it may be painted
+ * only over content with no box (a highlighted space between two blocks), or —
+ * far more often in this corpus — it may sit inside a COLLAPSED `<details>`.
+ * To tell that apart from an id that was never painted, ask
+ * `highlightElements(id, root)`: non-empty there and empty here means "painted,
+ * but not on the page right now", which is a thing to say to the reader rather
+ * than a card to place.
  */
 export function highlightRects(id: string, root: ParentNode = document): DOMRect[] {
   const out: DOMRect[] = [];
   for (const el of highlightElements(id, root)) {
+    if (!isRendered(el)) continue;
     const view = el.ownerDocument?.defaultView;
     const scrollX = view?.scrollX ?? 0;
     const scrollY = view?.scrollY ?? 0;
@@ -593,4 +671,29 @@ export function highlightRects(id: string, root: ParentNode = document): DOMRect
     }
   }
   return out;
+}
+
+/**
+ * Whether `el` is actually drawn on the page. `getClientRects()` cannot answer
+ * that on its own, which is the whole reason this exists.
+ *
+ * Chrome renders a closed `<details>` body with `content-visibility`: the
+ * contents are not painted, but their geometry is NOT discarded, so a `<mark>`
+ * inside a collapsed proof still hands back a confident-looking rect — one that
+ * points at the empty strip between the collapsed block and the next paragraph.
+ * A caller aligning a note card to `highlightRects(id)[0].top` would place it
+ * against nothing, with no way to notice. Measured in Chromium over all 44
+ * chapters, one highlight per closed block: 254 of 254 returned a non-empty
+ * rect list and 254 of 254 answered `checkVisibility() === false`. This is not
+ * a corner: the corpus ships 255 `<details class="deriv">` — "Proof" and
+ * "Solution" bodies, exactly what a reader highlights — and NOT ONE of them
+ * carries `open`, so every page load closes them all again.
+ *
+ * `display:none` needs no help (its rect list is already empty); the feature
+ * detection does. jsdom 30 has no layout and does not implement
+ * `checkVisibility`, so there the honest answer is "no opinion" and the rect
+ * list decides, exactly as before.
+ */
+function isRendered(el: Element): boolean {
+  return typeof el.checkVisibility !== 'function' || el.checkVisibility();
 }

@@ -493,6 +493,98 @@ describe('nhiều ghi chú — vòng lặp hiển nhiên nhất của Task 4', (
     expect(paint(collapsed, 'n1', 'y')).toBe(0);
     expect(isMapStale(map)).toBe(false);
   });
+
+  it('0 nghĩa là DOM KHÔNG bị đụng vào — kể cả khi range đã buộc phải cắt text node', () => {
+    // `applyCuts` chạy TRƯỚC `paintable`, nên một range mà mọi mảnh đều bị bỏ
+    // vẫn kịp gọi splitText. `innerHTML` không đổi (splitText không đổi chuỗi
+    // hoá) nhưng NormMap thì chết — đúng cái bẫy mà giá trị trả về sinh ra để
+    // báo. Hợp đồng phải đúng như lời nó nói, không phải đúng "gần như".
+    const host = el('<div id="c"><p>Trước.</p>\n\t\t<p>Sau.</p></div>');
+    const ws = host.querySelectorAll('p')[0].nextSibling as Text;
+    expect(ws.data).toBe('\n\t\t');
+    const before = { html: host.innerHTML, children: host.querySelector('#c')!.childNodes.length };
+
+    const map = normalizeContainer(host);
+    const range = (host.ownerDocument ?? document).createRange();
+    range.setStart(ws, 0);
+    range.setEnd(ws, 1); // phủ MỘT PHẦN node khoảng trắng giữa hai khối
+
+    expect(paint(range, 'n1', 'y')).toBe(0);
+    expect(isMapStale(map)).toBe(false);
+    expect(host.innerHTML).toBe(before.html);
+    expect(host.querySelector('#c')!.childNodes.length).toBe(before.children);
+    expect(ws.data).toBe('\n\t\t');
+  });
+
+  it('một node bị cắt NHIỀU LẦN mà không mảnh nào được tô: chữ ghép lại đúng thứ tự', () => {
+    // Hai ghi chú, mỗi cái liếm một đầu của cùng một node khoảng trắng giữa hai
+    // khối ⇒ hai vết cắt, BA mảnh, không mảnh nào được tô. Ghép lại sai thứ tự
+    // cho đúng số ký tự (nên `isMapStale` im lặng) nhưng sai chuỗi.
+    const host = el('<div id="c"><p>Trước.</p>\n\t\t\n<p>Sau.</p></div>');
+    const ws = host.querySelectorAll('p')[0].nextSibling as Text;
+    expect(ws.data).toBe('\n\t\t\n');
+    const before = host.innerHTML;
+    const map = normalizeContainer(host);
+
+    const doc = host.ownerDocument ?? document;
+    const r1 = doc.createRange();
+    r1.setStart(ws, 0);
+    r1.setEnd(ws, 1);
+    const r2 = doc.createRange();
+    r2.setStart(ws, 3);
+    r2.setEnd(ws, 4);
+
+    expect(
+      paintAll([
+        { range: r1, id: 'a', color: 'y' },
+        { range: r2, id: 'b', color: 'g' },
+      ]),
+    ).toBe(0);
+    expect(ws.data).toBe('\n\t\t\n');
+    expect(host.innerHTML).toBe(before);
+    expect(host.querySelector('#c')!.childNodes.length).toBe(3);
+    expect(isMapStale(map)).toBe(false);
+  });
+
+  it('giá trị trả về ĐẾM ĐÚNG số phần tử đã tạo, không đếm mảnh bị bỏ', () => {
+    // Mảnh [0,1) của node khoảng trắng giữa hai <p> BỊ CẮT (vì mép range rơi
+    // vào giữa nó) rồi mới bị `paintable` loại. Nếu giá trị trả về đếm cả nó
+    // thì caller thấy 2 trong khi DOM chỉ có 1 phần tử mới.
+    const host = el('<div id="c"><p>Alpha beta</p>\n\t<p>Sau.</p></div>');
+    const alpha = host.querySelectorAll('p')[0].firstChild as Text;
+    const ws = host.querySelectorAll('p')[0].nextSibling as Text;
+    expect(ws.data).toBe('\n\t');
+
+    const range = (host.ownerDocument ?? document).createRange();
+    range.setStart(alpha, 6);
+    range.setEnd(ws, 1);
+
+    const created = paint(range, 'n1', 'y');
+    expect(marksOf(host, 'n1').map((m) => m.textContent)).toEqual(['beta']);
+    expect(highlightElements('n1', host)).toHaveLength(1);
+    expect(created).toBe(1);
+  });
+
+  it('bọc một text node KHÔNG làm trôi mép range nằm ngay SAU node đó', () => {
+    // Thứ tự trong `wrapText` — chèn <mark> TRƯỚC node rồi mới chuyển node vào
+    // — là load-bearing, không phải sở thích. Báo cáo Task 3 gọi thứ tự ngược
+    // lại là "tương đương thật sự" vì `innerHTML` giống hệt: đúng về DOM, SAI
+    // về live Range. Chèn SAU thì mép ở dạng (parent, index) ngay sau node bị
+    // bọc rơi sang bên kia <mark>, và range đọc ra "aaxbb" thay vì "xbb".
+    const host = el('<p>aa<i>x</i>bb</p>');
+    const p = host.querySelector('p')!;
+    const keep = (host.ownerDocument ?? document).createRange();
+    keep.setStart(p, 1);
+    keep.setEnd(p, 3);
+    expect(keep.toString()).toBe('xbb');
+
+    const other = (host.ownerDocument ?? document).createRange();
+    other.selectNodeContents(p.firstChild as Text); // "aa" — KHÔNG phải chữ của keep
+    expect(paint(other, 'n1', 'y')).toBe(1);
+
+    expect(keep.startOffset).toBe(1);
+    expect(keep.toString()).toBe('xbb');
+  });
 });
 
 // ===========================================================================
@@ -765,6 +857,20 @@ describe('bẫy endContainer', () => {
     expect(marksOf(host, 'n1').map((m) => m.textContent)).toEqual(['Trước.', 'Sau.']);
   });
 
+  it('khoảng trắng đầu dòng sau <br> vẫn là ngữ cảnh inline', () => {
+    // 21 chỗ trong 44 chương có đúng hình dạng `P | BR _ B` (18 ở p4-10, 3 ở
+    // p1-1) và chúng nằm trong 364 mảnh được tô mà doc của module đếm. Bỏ 'BR'
+    // khỏi INLINE_TAGS làm `side()` chấm nó là 'block' và luật "một bên là
+    // khối thì bỏ" nuốt mất mảnh này — không test nào bắt được cho tới đây.
+    const host = el('<p>Dòng một<br>\n<b>Dòng hai</b></p>');
+    const br = host.querySelector('br')!;
+    expect((br.nextSibling as Text).data).toBe('\n');
+
+    const map = normalizeContainer(host);
+    paint(flatToDom(map, 0, map.flat.length)!, 'n1', 'y');
+    expect(marksOf(host, 'n1').map((m) => m.textContent)).toEqual(['Dòng một', '\n', 'Dòng hai']);
+  });
+
   it('không bao giờ đặt <mark> làm con trực tiếp của <ul>/<tbody>', () => {
     const host = el(
       '<div id="c"><ul>\n<li>Mục một</li>\n<li>Mục hai</li>\n</ul>\n' +
@@ -864,6 +970,115 @@ describe('highlightRects', () => {
     const host = el(AB_C);
     expect(highlightRects('không-có', host)).toEqual([]);
     expect(highlightElements('không-có', host)).toEqual([]);
+  });
+});
+
+// ===========================================================================
+// Highlight trong khối đang THU GỌN.
+//
+// Đo trên Chromium thật, cả 44 chương, một highlight cho mỗi <details> đóng:
+// 254/254 highlight trả về rect KHÔNG rỗng, và 254/254 trả
+// `checkVisibility() === false`. Rect ấy trỏ vào khoảng trống giữa hộp
+// <details> đã thu gọn và đoạn văn kế tiếp, vì Chrome dựng thân <details> đóng
+// bằng `content-visibility`: nó bỏ phần VẼ nhưng giữ hình học của con cháu.
+// Corpus có 255 <details class="deriv"> và KHÔNG cái nào mang `open`.
+//
+// `Element.checkVisibility` không tồn tại trong jsdom 30 (không có engine dàn
+// trang để trả lời), nên nó được stub ở đây đúng cách `stubRects` stub
+// `getClientRects` — test ghim HỢP ĐỒNG, còn phép đo trên trình duyệt là thứ
+// chứng minh hợp đồng ấy khớp với Chrome.
+// ===========================================================================
+
+function stubVisibility(target: Element, visible: boolean): void {
+  Object.defineProperty(target, 'checkVisibility', { configurable: true, value: () => visible });
+}
+
+const DETAILS_FIX =
+  '<div id="c"><details class="deriv"><summary>Chứng minh</summary>' +
+  '<div class="deriv-body"><p>Bước một của chứng minh.</p></div></details>' +
+  '<p id="after">Đoạn văn kế tiếp.</p></div>';
+
+describe('highlightRects — highlight không hiển thị được', () => {
+  it('trả MẢNG RỖNG, không phải một toạ độ trông hợp lệ mà trỏ vào chỗ trống', () => {
+    const host = el(DETAILS_FIX);
+    document.body.appendChild(host);
+    try {
+      const map = normalizeContainer(host);
+      const from = map.flat.indexOf('Bước một');
+      expect(paint(flatToDom(map, from, from + 8)!, 'H', 'y')).toBe(1);
+
+      const mark = marksOf(host, 'H')[0];
+      stubRects(mark, [[89.5, 121.4, 70.6, 22.5]]); // đúng thứ Chrome trả về
+      stubVisibility(mark, false);
+      expect(highlightRects('H', host)).toEqual([]);
+
+      // …và khi người đọc mở khối ra thì toạ độ ấy mới có nghĩa.
+      stubVisibility(mark, true);
+      expect(highlightRects('H', host).map((r) => [r.x, r.y])).toEqual([[89.5, 121.4]]);
+    } finally {
+      host.remove();
+    }
+  });
+
+  it('mảng rỗng là trạng thái HỢP LỆ — highlightElements phân biệt "thu gọn" với "chưa tô"', () => {
+    const host = el(DETAILS_FIX);
+    document.body.appendChild(host);
+    try {
+      const map = normalizeContainer(host);
+      const from = map.flat.indexOf('Bước một');
+      paint(flatToDom(map, from, from + 8)!, 'H', 'y');
+      const mark = marksOf(host, 'H')[0];
+      stubRects(mark, [[10, 20, 30, 14]]);
+      stubVisibility(mark, false);
+
+      // Đang được tô, chỉ là không vẽ ra ở đâu cả.
+      expect(highlightRects('H', host)).toEqual([]);
+      expect(highlightElements('H', host)).toHaveLength(1);
+
+      // Không hề được tô — cùng mảng rỗng, khác ý nghĩa.
+      expect(highlightRects('không-có', host)).toEqual([]);
+      expect(highlightElements('không-có', host)).toHaveLength(0);
+    } finally {
+      host.remove();
+    }
+  });
+
+  it('công thức được tô cũng bị loại, không riêng <mark>', () => {
+    const host = el(
+      '<div id="c"><details class="deriv"><summary>S</summary><div class="deriv-body">' +
+        `<p>Ta có ${katexSpan('p', 'p')} xong.</p></div></details></div>`,
+    );
+    document.body.appendChild(host);
+    try {
+      const map = normalizeContainer(host);
+      const k = map.flat.indexOf('￼');
+      paint(flatToDom(map, k, k + 1)!, 'F', 'g');
+      const els = highlightElements('F', host);
+      expect(els).toHaveLength(1);
+      stubRects(els[0], [[5, 60, 44, 18]]);
+      stubVisibility(els[0], false);
+      expect(highlightRects('F', host)).toEqual([]);
+    } finally {
+      host.remove();
+    }
+  });
+
+  it('lọc theo TỪNG phần tử: phần hiển thị được vẫn trả toạ độ của nó', () => {
+    const host = el(AB_C);
+    document.body.appendChild(host);
+    try {
+      const map = normalizeContainer(host);
+      paint(flatToDom(map, 0, map.flat.length)!, 'n1', 'y');
+      const marks = marksOf(host, 'n1');
+      expect(marks).toHaveLength(3);
+      marks.forEach((m, i) => {
+        stubRects(m, [[10 * i, 20, 8, 14]]);
+        stubVisibility(m, i !== 1);
+      });
+      expect(highlightRects('n1', host).map((r) => r.x)).toEqual([0, 20]);
+    } finally {
+      host.remove();
+    }
   });
 });
 
