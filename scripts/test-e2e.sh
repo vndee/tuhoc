@@ -4,6 +4,10 @@
 # definition-of-done suite against all of it, and tears the stack back
 # down — win or lose. Invoked as `make test-e2e`; see the Makefile.
 #
+# Prerequisites (migrate CLI, a one-time docker build to dodge the hang
+# documented below): see docs/testing.md before the first run on a new
+# machine.
+#
 # Known environment caveat (see task-17-report.md for the full writeup):
 # `apps/api/compose.e2e.yml`'s `api` service is `image: tuhoc-api:latest`
 # with a `build:` fallback. `docker compose up` only builds when that tag

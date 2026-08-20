@@ -36,11 +36,23 @@ export default defineConfig({
   // e2e/p1.spec.ts) — this is not a fast suite, and 90s is a real budget
   // for it, not a copy-pasted default.
   timeout: 90_000,
-  // Playwright's web-first assertions (`expect(locator).toBeVisible()`
-  // etc.) poll internally up to this timeout instead of a fixed sleep —
-  // see p1.spec.ts's own comment on the second-device wait for why this
-  // matters more here than in a typical suite.
-  expect: { timeout: 45_000 },
+  // Deliberately Playwright's own stock default (5s), not a suite-wide
+  // bump — fix-round-1 finding: an earlier draft set this globally to
+  // 45_000 to cover the one assertion that genuinely needs it (the
+  // cross-device sync wait, which polls across two independent 15s
+  // server timers — see p1.spec.ts). That gave every OTHER assertion in
+  // this file — `.katex` visibility, `#mark-btn.on`, the pre-login
+  // redirect, the pre-mark "nothing done yet" check — the same 45s of
+  // slack, none of which they need: a regression that made the initial
+  // chapter render take, say, 20s would still have passed silently. The
+  // one assertion that actually needs more than 5s
+  // (`courseHomeChapterLink(...).toHaveClass(/\bdone\b/, ...)`) sets its
+  // own explicit `{ timeout: 45_000 }` inline instead — see that call
+  // site's own comment. `expectVizCanvasDrawn`'s pixel-ratio check
+  // likewise carries its own explicit `expect.poll(..., { timeout:
+  // 10_000 })`, chosen for its own reason (one animation frame, never
+  // 5s), not this default. No timeout override left here at all: fast
+  // checks stay fast-failing, slow checks say why inline.
   fullyParallel: false,
   workers: 1,
   // Never retry silently: this suite exists to tell the truth about

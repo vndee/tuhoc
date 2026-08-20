@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type ConsoleMessage, type Locator, type Page } from '@playwright/test';
 
 /**
  * Task 17 — the P1 end-to-end gate. This is the only test in this repo
@@ -156,34 +156,48 @@ async function expectVizCanvasDrawn(page: Page, dataViz: string): Promise<void> 
 /**
  * Judgment 4 — console/page-error policy, part 2. Found by actually running
  * this suite, not anticipated up front (see task report for the full
- * story): Chromium logs `console.error`-level "Failed to load resource:
- * the server responded with a status of NNN" for EVERY non-2xx
- * fetch/XHR response — this is the browser's own network-activity mirror,
- * emitted regardless of whether application code handles that response.
- * It is NOT something the app's own code calls `console.error(...)` for.
+ * story, including fix-round-1): Chromium logs a `console.error`-level
+ * "Failed to load resource: the server responded with a status of NNN"
+ * line for EVERY non-2xx fetch/XHR response — this is the browser's own
+ * network-activity mirror, emitted regardless of whether application code
+ * handles that response. It is NOT something the app's own code calls
+ * `console.error(...)` for.
  *
- * This app deliberately triggers exactly this, twice, by design, in this
- * test's own normal flow: `GET /me` returning 401 is the documented
- * mechanism `useMe()` (src/api/useMe.ts) uses to mean "nobody is signed in
- * yet" — `App.tsx`'s `useSyncLifecycle` calls `useMe()` on EVERY route
- * including `/login`, so device 1's very first page load fires one, and
- * device 2's pre-login visit in this test's own isolation check (Judgment
- * 3, above) fires the other — the redirect to `/login` that follows IS
- * this test's assertion that the 401 happened, not a symptom of it.
+ * This app deliberately triggers exactly ONE instance of this, twice, by
+ * design, in this test's own normal flow: `GET /me` returning 401 is the
+ * documented mechanism `useMe()` (src/api/useMe.ts) uses to mean "nobody
+ * is signed in yet" — `App.tsx`'s `useSyncLifecycle` calls `useMe()` on
+ * EVERY route including `/login`, so device 1's very first page load
+ * fires one, and device 2's pre-login visit in this test's own isolation
+ * check (Judgment 3, above) fires the other — the redirect to `/login`
+ * that follows IS this test's assertion that the 401 happened, not a
+ * symptom of it.
  *
- * Excluding this exact pattern does not narrow what this suite can catch:
- * a GENUINE unexpected 401/500 in this app's flows always also surfaces
- * as a DIFFERENT, directly-asserted symptom — `RequireAuth` rendering its
- * inline error text instead of children, `sync/engine.ts`'s `runCycle`
- * catch logging its own real `console.error(...)`, or this test's
- * cross-device assertion simply never becoming true within the timeout —
- * none of which match this pattern. What's excluded is specifically the
- * redundant browser-level echo of a status code this suite (and the
- * API's own access log captured in the task report) already accounts for.
+ * fix-round-1 finding: the first draft of this filter matched the
+ * message TEXT alone (`status of \d+` — any status, any URL), which is
+ * broader than anything actually verified — a real 500 from `/sync` or a
+ * broken `/events/batch` produces the identical text and would have been
+ * silently dropped too. `ConsoleMessage.location()` was checked directly
+ * (a one-off debug run: `console.log(JSON.stringify(msg.location()))`
+ * against this exact message) and DOES carry the failing resource's own
+ * URL for this browser-generated log class — not the call-site URL a
+ * `console.error(...)` from application code would carry —
+ * `{"url":"http://localhost:8089/me","line":0,"column":0}` was the actual
+ * observed value. `isBenignAuthCheck401` below is scoped to exactly what
+ * that run verified: status 401 (not any status) AND path `/me` (not any
+ * path). A 500 anywhere, or a 401 anywhere other than `/me`, now fails
+ * the suite — as it should; if narrowing this ever turns the suite red,
+ * that is real information about a real fault, not a reason to widen the
+ * pattern back.
  */
-const BENIGN_CONSOLE_ERROR_PATTERNS: readonly RegExp[] = [
-  /^Failed to load resource: the server responded with a status of \d+/,
-];
+function isBenignAuthCheck401(msg: ConsoleMessage): boolean {
+  if (!/^Failed to load resource: the server responded with a status of 401\b/.test(msg.text())) return false;
+  try {
+    return new URL(msg.location().url).pathname === '/me';
+  } catch {
+    return false;
+  }
+}
 
 test.describe('P1 definition-of-done gate', () => {
   test('read a chapter, mark it read, see it read on a second device', async ({ browser }) => {
@@ -193,20 +207,20 @@ test.describe('P1 definition-of-done gate', () => {
     // this app's own code deliberately routes through console.error on a
     // caught-but-still-real failure (e.g. useCourseKit.ts's "failed to
     // load" branch, runtime.js's own `initViz` catch), MINUS the one
-    // browser-generated, by-design pattern named in
-    // `BENIGN_CONSOLE_ERROR_PATTERNS` above. Both listeners are attached
-    // on BOTH devices — a bug that only manifests on the second context
-    // (e.g. a state-sharing leak) must not be invisible just because the
-    // brief's own sketch only wired this up on device 1.
+    // precisely-scoped, browser-generated, by-design case
+    // `isBenignAuthCheck401` names above (status 401 AND path `/me` —
+    // not any status, not any path). Both listeners are attached on BOTH
+    // devices — a bug that only manifests on the second context (e.g. a
+    // state-sharing leak) must not be invisible just because the brief's
+    // own sketch only wired this up on device 1.
     const pageErrors: string[] = [];
     const consoleErrors: string[] = [];
     function watch(page: Page, device: 'device1' | 'device2'): void {
       page.on('pageerror', (err) => pageErrors.push(`[${device}] ${err.stack ?? err.message}`));
       page.on('console', (msg) => {
         if (msg.type() !== 'error') return;
-        const text = msg.text();
-        if (BENIGN_CONSOLE_ERROR_PATTERNS.some((pattern) => pattern.test(text))) return;
-        consoleErrors.push(`[${device}] ${text}`);
+        if (isBenignAuthCheck401(msg)) return;
+        consoleErrors.push(`[${device}] ${msg.text()}`);
       });
     }
 

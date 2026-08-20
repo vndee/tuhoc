@@ -7,9 +7,10 @@ test-web: ; cd apps/web && bun run test
 # apps/api/compose.e2e.yml, applies migrations, boots the real web app,
 # runs apps/web/e2e/p1.spec.ts (Playwright) against all of it, and tears
 # the whole stack back down afterwards regardless of pass/fail — see
-# scripts/test-e2e.sh for the actual orchestration and its own comment on
-# this task's one real environment caveat (a Docker Hub resolution hang
-# hit while building tuhoc-api under this task's own sandbox).
+# scripts/test-e2e.sh for the actual orchestration.
+# Read docs/testing.md's "Prerequisites" section BEFORE the first run on
+# a new machine (migrate CLI on PATH; a one-time `docker build` avoids a
+# real Docker Hub resolution hang this task hit under its own sandbox).
 test-e2e: ; ./scripts/test-e2e.sh
 # One-time setup for a fresh machine: test-extract depends on pytest, which
 # is not part of this repo's own dependency graph (tools/ has no
