@@ -141,6 +141,18 @@ func (uc *Usecase) Pull(ctx context.Context, userID uuid.UUID, since time.Time) 
 // effects — a client can't end up in a state where "some of my batch
 // applied, some didn't" because of a typo in one item; either every item
 // was well-formed and PushBatch's single transaction ran, or nothing did.
+//
+// Clock clamping: each item's UpdatedAt is stored as
+// min(clientUpdatedAt, now) — see clampFuture. FUTURE timestamps only;
+// past-dated ones are stored exactly as sent, because that is what makes
+// offline editing work at all (see clampFuture's own doc comment).
+//
+// Note that this mutates the caller's slices in place rather than copying
+// them. That is intentional and safe here: handler.go builds both slices
+// fresh, per request, from the parsed body and hands them straight to this
+// method — there is no other holder of them to surprise. Copying two
+// slices per request to avoid a side effect nobody can observe would be
+// pure ceremony.
 func (uc *Usecase) Push(ctx context.Context, userID uuid.UUID, progress []ProgressRow, annotations []AnnotationRow) (int, error) {
 	for _, p := range progress {
 		if p.CourseID == "" || p.ChapterID == "" || p.Status == "" || p.UpdatedAt.IsZero() {
@@ -157,5 +169,52 @@ func (uc *Usecase) Push(ctx context.Context, userID uuid.UUID, progress []Progre
 		return 0, nil
 	}
 
+	// One `now` for the whole batch, read after validation and before any
+	// database work: two items in the same request must not be clamped to
+	// two different instants just because the loop took a moment.
+	now := time.Now().UTC()
+	for i := range progress {
+		progress[i].UpdatedAt = clampFuture(progress[i].UpdatedAt, now)
+	}
+	for i := range annotations {
+		annotations[i].UpdatedAt = clampFuture(annotations[i].UpdatedAt, now)
+	}
+
 	return uc.repo.PushBatch(ctx, userID, progress, annotations)
+}
+
+// clampFuture returns t, or now if t is after now. One-sided on purpose.
+//
+// Why the future must be clamped: `updated_at` arrives from the CLIENT
+// (handler.go parses it out of the request body) and is then the sole
+// input to Pull's returned cursor, which every one of that user's devices
+// polls with. A single device whose clock runs more than SyncSafetyLag
+// (60s) fast therefore poisons the watermark for ALL of that user's
+// devices at once: it pushes a row stamped, say, an hour ahead, Pull hands
+// back `thatTime - 60s` as the cursor, and every row written afterwards
+// with a CORRECT timestamp falls below that cursor and is never delivered
+// to anyone — silently, with no error anywhere, until wall-clock time
+// catches up an hour later. The safety lag was never meant to absorb this;
+// it is sized for commit-ordering jitter (milliseconds), not for clock
+// skew (unbounded). A wrong clock is a mundane environmental fault — a
+// flat CMOS battery, a phone with automatic time off, a VM resuming from
+// suspend — not an attack, and it must not be able to stop this user's
+// sync.
+//
+// Why the PAST must NOT be clamped: past-dated timestamps are load-bearing
+// and correct. `setProgress` (apps/web/src/db/local.ts) stamps an edit at
+// the instant it happens, deliberately NOT when the outbox eventually
+// flushes, so that a device that was offline for an hour does not have its
+// hour-old edit dishonestly beat a genuinely newer edit made elsewhere in
+// the meantime. Clamping the past — or, worse, replacing every timestamp
+// with `now` — would break last-write-wins for exactly the offline case
+// the whole design exists to support. And a past-dated row cannot poison
+// anything: Pull's cursor already floors at the caller's own `since`, so a
+// row older than the watermark can only ever cause a harmless re-delivery,
+// never a skip.
+func clampFuture(t, now time.Time) time.Time {
+	if t.After(now) {
+		return now
+	}
+	return t
 }

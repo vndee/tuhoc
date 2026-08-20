@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 
+	"github.com/vndee/tuhoc-api/internal/apilog"
 	"github.com/vndee/tuhoc-api/internal/auth"
 )
 
@@ -94,6 +95,7 @@ func (h *Handler) Pull(c *fiber.Ctx) error {
 
 	progress, annotations, cursor, err := h.uc.Pull(c.Context(), auth.UID(c), since)
 	if err != nil {
+		apilog.Internal(c, "sync.Pull", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "sync pull failed"})
 	}
 
@@ -199,6 +201,7 @@ func (h *Handler) Push(c *fiber.Ctx) error {
 		if errors.Is(err, ErrInvalidBatch) {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid batch item"})
 		}
+		apilog.Internal(c, "sync.Push", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "sync push failed"})
 	}
 

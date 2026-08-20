@@ -8,6 +8,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/vndee/tuhoc-api/internal/apilog"
 )
 
 // CookieName is the name of the session cookie set by Register/Login and
@@ -78,9 +80,12 @@ func (h *Handler) Register(c *fiber.Ctx) error {
 		if errors.Is(err, ErrEmailTaken) {
 			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "email already registered"})
 		}
-		// Deliberately no err.Error() in the response: it could leak
+		// Deliberately no err.Error() in the RESPONSE: it could leak
 		// internal detail (and must never leak a password/hash — see
-		// Usecase.Register, which never returns one to us anyway).
+		// Usecase.Register, which never returns one to us anyway). The
+		// cause is logged server-side instead — see apilog's own doc
+		// comment for why both halves are mandatory.
+		apilog.Internal(c, "auth.Register", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "registration failed"})
 	}
 
@@ -105,6 +110,7 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 			// or the password is wrong — see Usecase.Login.
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid email or password"})
 		}
+		apilog.Internal(c, "auth.Login", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "login failed"})
 	}
 
@@ -120,6 +126,7 @@ func (h *Handler) Logout(c *fiber.Ctx) error {
 	if raw := c.Cookies(CookieName); raw != "" {
 		if sessionID, err := uuid.Parse(raw); err == nil {
 			if err := h.uc.Logout(c.Context(), sessionID); err != nil {
+				apilog.Internal(c, "auth.Logout", err)
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "logout failed"})
 			}
 		}
@@ -134,6 +141,7 @@ func (h *Handler) Logout(c *fiber.Ctx) error {
 func (h *Handler) Me(c *fiber.Ctx) error {
 	user, err := h.uc.GetUser(c.Context(), UID(c))
 	if err != nil {
+		apilog.Internal(c, "auth.Me", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to load user"})
 	}
 	return c.Status(fiber.StatusOK).JSON(toMeResponse(user))
@@ -232,6 +240,7 @@ func RequireWithUsecase(uc *Usecase) fiber.Handler {
 			}
 			// A real failure, not "no such session" — see the doc
 			// comment above for why this must not also come back as 401.
+			apilog.Internal(c, "auth.Require", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "session validation failed"})
 		}
 

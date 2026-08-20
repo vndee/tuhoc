@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/vndee/tuhoc-api/internal/apilog"
 	"github.com/vndee/tuhoc-api/internal/auth"
 )
 
@@ -163,6 +164,7 @@ func (h *Handler) EventsBatch(c *fiber.Ctx) error {
 
 	accepted, err := h.repo.InsertEvents(c.Context(), auth.UID(c), rows)
 	if err != nil {
+		apilog.Internal(c, "stats.EventsBatch", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "events batch failed"})
 	}
 
@@ -228,14 +230,17 @@ func (h *Handler) Stats(c *fiber.Ctx) error {
 
 	dayCounts, err := h.repo.HeartbeatDayCounts(ctx, userID, icTZOffset)
 	if err != nil {
+		apilog.Internal(c, "stats.Stats/HeartbeatDayCounts", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "stats failed"})
 	}
 	courseCounts, err := h.repo.HeartbeatCourseCounts(ctx, userID)
 	if err != nil {
+		apilog.Internal(c, "stats.Stats/HeartbeatCourseCounts", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "stats failed"})
 	}
 	chaptersDone, err := h.repo.CompletedChaptersByCourse(ctx, userID)
 	if err != nil {
+		apilog.Internal(c, "stats.Stats/CompletedChaptersByCourse", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "stats failed"})
 	}
 

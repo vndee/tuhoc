@@ -805,6 +805,124 @@ func TestSyncFlows(t *testing.T) {
 		}
 	})
 
+	// I3 — a device with a fast clock must not be able to poison the
+	// cursor for every OTHER device the same user owns.
+	//
+	// `updated_at` comes from the client (handler.go parses it out of the
+	// request body) and is the sole input to the cursor Pull hands back.
+	// Before the clamp, one device stamping a row an hour ahead pushed the
+	// watermark to (thatTime - SyncSafetyLag), i.e. ~59 minutes into the
+	// future — and every row written afterwards with a CORRECT timestamp
+	// then fell BELOW that cursor and was never delivered to anyone, with
+	// no error anywhere, until wall-clock time caught up. The safety lag
+	// is sized for commit-ordering jitter (milliseconds), not clock skew
+	// (unbounded), so it cannot absorb this.
+	t.Run("a future-dated client timestamp does not poison the cursor for the user's other devices", func(t *testing.T) {
+		app := newTestApp(pool)
+		cookie, _ := registerUser(t, app, "fastclock")
+
+		t0 := nowUTC()
+		// An hour ahead: far past SyncSafetyLag (60s), which is the whole
+		// point — anything inside the lag is absorbed by design.
+		skewed := t0.Add(time.Hour)
+
+		resp, raw := doRequest(t, app, http.MethodPost, "/sync",
+			pushBody([]map[string]any{progressPushItem("c1", "ch-fast", "read", true, skewed)}, nil), cookie)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("push from the fast-clock device: want 200 got %d body=%s", resp.StatusCode, raw)
+		}
+
+		// The stored row itself is clamped to server-now, so it cannot be
+		// used to beat every future edit under last-write-wins either.
+		_, firstRaw := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
+		var first pullOut
+		mustUnmarshal(t, firstRaw, &first)
+		if len(first.Progress) != 1 {
+			t.Fatalf("want 1 progress row back, got %d: %+v", len(first.Progress), first.Progress)
+		}
+		storedUpdatedAt, err := time.Parse(time.RFC3339Nano, first.Progress[0].UpdatedAt)
+		if err != nil {
+			t.Fatalf("parse stored updatedAt %q: %v", first.Progress[0].UpdatedAt, err)
+		}
+		// A generous ceiling: the clamp uses the API server's own clock,
+		// which is this same process, so "not meaningfully in the future"
+		// is the honest assertion — not equality with any exact instant.
+		if storedUpdatedAt.After(t0.Add(time.Minute)) {
+			t.Fatalf("stored updatedAt %s was not clamped to server-now (test started at %s) — the client's clock still decides", storedUpdatedAt, t0)
+		}
+
+		if first.Cursor == "" {
+			t.Fatalf("want a non-empty cursor after a push, got empty")
+		}
+		cursor, err := time.Parse(time.RFC3339Nano, first.Cursor)
+		if err != nil {
+			t.Fatalf("parse cursor %q: %v", first.Cursor, err)
+		}
+		if cursor.After(t0) {
+			t.Fatalf("cursor %s is in the future relative to the test's own start (%s) — the fast device poisoned the watermark", cursor, t0)
+		}
+
+		// The real consequence, stated as a behaviour rather than as a
+		// property of the cursor string: a SUBSEQUENT, correctly-stamped
+		// row must still be delivered to a device polling with the cursor
+		// the poisoned pull handed back.
+		later := nowUTC().Add(time.Second)
+		resp2, raw2 := doRequest(t, app, http.MethodPost, "/sync",
+			pushBody([]map[string]any{progressPushItem("c1", "ch-correct", "read", true, later)}, nil), cookie)
+		if resp2.StatusCode != http.StatusOK {
+			t.Fatalf("push from the correct-clock device: want 200 got %d body=%s", resp2.StatusCode, raw2)
+		}
+
+		_, secondRaw := doRequest(t, app, http.MethodGet, "/sync?since="+url.QueryEscape(first.Cursor), nil, cookie)
+		var second pullOut
+		mustUnmarshal(t, secondRaw, &second)
+
+		var sawCorrectRow bool
+		for _, row := range second.Progress {
+			if row.ChapterID == "ch-correct" {
+				sawCorrectRow = true
+			}
+		}
+		if !sawCorrectRow {
+			t.Fatalf("the correctly-timestamped row was never delivered to a device polling with cursor=%s — this is the silent data loss the clamp exists to prevent; got %+v", first.Cursor, second.Progress)
+		}
+	})
+
+	// The other half of the clamp: it is ONE-SIDED. Offline editing
+	// depends on past-dated timestamps being honoured exactly as sent —
+	// apps/web/src/db/local.ts stamps an edit when it HAPPENS, not when
+	// the outbox eventually flushes, so that an hour-old offline edit
+	// cannot dishonestly beat a genuinely newer edit made elsewhere. A
+	// clamp that touched the past (or that replaced every timestamp with
+	// `now`) would break last-write-wins for exactly that case.
+	t.Run("a past-dated client timestamp is stored verbatim — the clamp is future-only", func(t *testing.T) {
+		app := newTestApp(pool)
+		cookie, _ := registerUser(t, app, "offlineedit")
+
+		// An edit made an hour ago on a device that has been offline since.
+		offlineEdit := nowUTC().Add(-time.Hour)
+
+		resp, raw := doRequest(t, app, http.MethodPost, "/sync",
+			pushBody([]map[string]any{progressPushItem("c1", "ch-offline", "read", true, offlineEdit)}, nil), cookie)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("push of an offline edit: want 200 got %d body=%s", resp.StatusCode, raw)
+		}
+
+		_, pullRaw := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
+		var pull pullOut
+		mustUnmarshal(t, pullRaw, &pull)
+		if len(pull.Progress) != 1 {
+			t.Fatalf("want 1 progress row back, got %d: %+v", len(pull.Progress), pull.Progress)
+		}
+		got, err := time.Parse(time.RFC3339Nano, pull.Progress[0].UpdatedAt)
+		if err != nil {
+			t.Fatalf("parse stored updatedAt %q: %v", pull.Progress[0].UpdatedAt, err)
+		}
+		if !got.Equal(offlineEdit) {
+			t.Fatalf("past-dated updatedAt was rewritten: sent %s, stored %s — offline edits depend on this being untouched", offlineEdit, got)
+		}
+	})
+
 	// Ruling F3: both routes must reject an unauthenticated request with
 	// 401 — the same case auth_test.go pins for /me, exercised here for
 	// sync's own two routes.

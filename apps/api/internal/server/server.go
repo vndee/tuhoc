@@ -5,6 +5,7 @@ package server
 
 import (
 	"io"
+	"runtime/debug"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -14,6 +15,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/vndee/tuhoc-api/internal/apilog"
 	"github.com/vndee/tuhoc-api/internal/auth"
 	"github.com/vndee/tuhoc-api/internal/config"
 	"github.com/vndee/tuhoc-api/internal/stats"
@@ -68,7 +70,19 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 		corsOrigin = config.DefaultCORSOrigin
 	}
 
-	app.Use(recover.New())
+	// EnableStackTrace + an explicit StackTraceHandler, not the stock
+	// `recover.New()`. A panic in a handler already becomes a 500 either
+	// way; what the default config throws away is the ONLY thing that
+	// makes such a 500 actionable — where it came from. (The middleware's
+	// own default stack-trace handler also writes straight to os.Stderr,
+	// outside whatever the rest of the process logs through, and is not
+	// assertable from a test; routing it into apilog fixes both.)
+	app.Use(recover.New(recover.Config{
+		EnableStackTrace: true,
+		StackTraceHandler: func(c *fiber.Ctx, e any) {
+			apilog.Panic(c, e, debug.Stack())
+		},
+	}))
 	app.Use(logger.New(logger.Config{Output: deps.LogOutput}))
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     corsOrigin,
