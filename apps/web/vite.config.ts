@@ -23,6 +23,21 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // 30s, not vitest's 5s default. This is a HARNESS budget, not an
+    // assertion: nothing here waits on a bare timer. Every wait inside a
+    // test is a `waitFor`/`findBy*` with its own bound (1000ms by
+    // default), so a genuinely stuck test still fails on ITS OWN clock —
+    // raising this cannot mask a hang, it can only stop the harness from
+    // killing a test that is doing real, slow work.
+    //
+    // Why it was needed: under `--maxWorkers=24` on 8 cores, Vite
+    // transforming a cold module graph *inside* a timed test body was
+    // measured at 8,984ms (445ms idle). That produced red runs with NO
+    // failing assertion — the most misleading signal a suite can give,
+    // and it cost this phase three separate investigations before the
+    // cause was found. See `syncLifecycle.test.tsx`'s beforeAll for the
+    // complementary fix: warm the imports so the work leaves the body.
+    testTimeout: 30_000,
     setupFiles: ['./src/test/setup.ts'],
     css: true,
     // `apps/web/e2e/p1.spec.ts` (Task 17) is a Playwright spec, run only
