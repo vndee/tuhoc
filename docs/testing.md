@@ -6,11 +6,28 @@ doc is only about the one that's different in kind:
 
 ## `make test-e2e` — the P1 end-to-end gate
 
-Brings up the real API + Postgres, the real Vite dev server, and drives
-both with a real browser (Playwright) to prove the whole stack works
-together — see `apps/web/e2e/p1.spec.ts` and
+Brings up the real API + Postgres, serves the real **production build**
+of the web app, and drives both with a real browser (Playwright) to prove
+the whole stack works together — see `apps/web/e2e/p1.spec.ts`,
+`apps/web/e2e/viz.spec.ts` and
 `.superpowers/sdd/2026-08-19-p1-platform-core/task-17-report.md` for what
 it actually checks and why.
+
+Two properties of this gate are deliberate and easy to lose:
+
+- **The API image is rebuilt on every run** (`docker compose up -d
+  --build`). `apps/api/compose.e2e.yml` declares `image: tuhoc-api:latest`
+  alongside `build:`, and compose builds only when that tag is absent —
+  so without `--build` every run after the first silently tested a cached
+  image, and the gate was blind to Go changes.
+- **The browser is pointed at the built artifact, not `vite dev`**
+  (`bun run build && bun run preview`). The production path — `tsc -b &&
+  vite build`, the `courseAssets` plugin's post-build copy of
+  `/course-kit` and `/courses` into `dist/`, and the SPA fallback — had no
+  automated coverage at all while the gate ran against the dev server.
+  `p1.spec.ts` asserts the served HTML really is the built one (it
+  references hashed `/assets/…` bundles, not `/src/main.tsx`) so this
+  cannot silently revert.
 
 ### Prerequisites
 
@@ -33,31 +50,42 @@ before, if you skip this.
    `scripts/test-e2e.sh` checks for `migrate` on `PATH` up front and
    fails immediately with this exact command if it's missing, rather
    than failing confusingly later.
-4. **One-time, before the very first `make test-e2e` run on a machine
-   that has never built the API image:** run
+4. **A Docker Hub connection that can resolve the BuildKit frontend
+   image, on the first build.** `make test-e2e` rebuilds the API image
+   every run, and `apps/api/Dockerfile`'s `# syntax=docker/dockerfile:1`
+   header makes Docker fetch that frontend image before building.
+   Task 17's own verification hit a real, reproducible hang there (most
+   likely Docker Hub's anonymous-pull rate limit on a shared sandbox
+   egress IP — raw HTTPS to `registry-1.docker.io` answered instantly
+   from the same host, so it was not a blanket network outage). If
+   `make test-e2e` hangs at "Building api", pull it once by hand on a
+   connection you know reaches Docker Hub:
    ```bash
-   docker build -t tuhoc-api:latest apps/api
+   docker pull docker/dockerfile:1
    ```
-   by hand first, on a connection you know can reach Docker Hub.
-   `apps/api/compose.e2e.yml`'s `api` service declares `image:
-   tuhoc-api:latest` alongside its own `build:` block — `docker compose
-   up` only invokes the build when that tag doesn't already exist
-   locally, so every run *after* this one-time build reuses it and never
-   touches the network for it again. Why this is called out explicitly:
-   this task's own verification hit a real, reproducible hang resolving
-   `apps/api/Dockerfile`'s `# syntax=docker/dockerfile:1` frontend image
-   over the network (most likely Docker Hub's anonymous-pull rate limit
-   on a shared sandbox egress IP — raw HTTPS to `registry-1.docker.io`
-   answered instantly from the same host, so it is not a blanket network
-   outage). Unlikely to reproduce on an ordinary developer machine or CI
-   runner, but real and worth a five-second pre-build rather than a
-   confusing multi-minute hang the first time someone runs the gate.
+   It is cached from then on and the per-run rebuild costs seconds.
+
+   **Do not "fix" this by pre-building `tuhoc-api:latest` and dropping
+   `--build`.** That was the previous advice here, and it is precisely
+   what made the gate able to pass against an API binary that is not in
+   your branch.
+
+   `DOCKER_BUILDKIT=0 make test-e2e` removes the `# syntax=` frontend
+   fetch specifically (verified: the build gets past that step), but it
+   is not an offline mode — the build stage's own `golang:1.25.5-alpine`
+   base image still has to be pullable or already in the local cache. On
+   a machine where Docker Hub is unreachable altogether, neither builder
+   can produce this image and the gate cannot run; that is an environment
+   problem to fix, not a reason to test a stale binary.
 
 ### Running it
 
 ```bash
 make test-e2e
 ```
+
+The web step builds before it serves, so the first run in a clean
+checkout spends a little time in `vite build` before the browser starts.
 
 Tears the compose stack down on exit — pass or fail — via a `trap ...
 EXIT` in `scripts/test-e2e.sh`, so a failed run doesn't leave containers

@@ -8,21 +8,29 @@
 # documented below): see docs/testing.md before the first run on a new
 # machine.
 #
+# The API image is ALWAYS rebuilt (`up -d --build`), never reused. This is
+# not a nicety: `apps/api/compose.e2e.yml` declares `image: tuhoc-api:latest`
+# alongside `build:`, and a plain `docker compose up` builds ONLY when that
+# tag is absent locally. Every run after the first therefore silently reused
+# a cached image — which made this script, the phase's acceptance gate,
+# blind to every Go change since that image was built. A gate that can pass
+# against a binary that is not in the branch is worse than no gate.
+#
 # Known environment caveat (see task-17-report.md for the full writeup):
-# `apps/api/compose.e2e.yml`'s `api` service is `image: tuhoc-api:latest`
-# with a `build:` fallback. `docker compose up` only builds when that tag
-# doesn't already exist locally — on a genuinely clean checkout it does
-# not exist, so compose builds it, which requires the `apps/api/Dockerfile`
-# `# syntax=docker/dockerfile:1` frontend image to resolve over the
-# network. In this task's own sandbox that resolution hung indefinitely
-# (raw HTTPS to registry-1.docker.io worked fine from the host shell, but
-# the Docker Desktop VM's own pull of that specific tag did not return —
-# most likely Docker Hub's anonymous-pull rate limit on a shared sandbox
-# egress IP, not a code problem). If `make test-e2e` hangs at "Building
-# api", the fix that unblocked this task was:
-# `docker build -t tuhoc-api:latest apps/api` once, ahead of time, on a
-# connection that CAN reach Docker Hub — after that, this script's
-# `up` reuses the tag and never touches the network for it again.
+# building requires the `apps/api/Dockerfile`'s `# syntax=docker/dockerfile:1`
+# frontend image to resolve over the network. In task 17's own sandbox that
+# resolution hung indefinitely (raw HTTPS to registry-1.docker.io worked
+# fine from the host shell, but the Docker Desktop VM's own pull of that
+# specific tag did not return — most likely Docker Hub's anonymous-pull
+# rate limit on a shared sandbox egress IP, not a code problem). If
+# `make test-e2e` hangs at "Building api", pull that frontend image once,
+# ahead of time, on a connection that CAN reach Docker Hub:
+# `docker pull docker/dockerfile:1`. Do NOT work around it by pre-building
+# `tuhoc-api:latest` and dropping `--build` — that is exactly the hole this
+# comment replaced. `DOCKER_BUILDKIT=0` removes the frontend fetch
+# specifically (verified), but it is not an offline mode: the build stage's
+# `golang:1.25.5-alpine` base still has to be pullable or cached. See
+# docs/testing.md.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -57,8 +65,11 @@ command -v docker >/dev/null 2>&1 || fail "docker not found on PATH"
 command -v bun >/dev/null 2>&1 || fail "bun not found on PATH"
 command -v migrate >/dev/null 2>&1 || fail "golang-migrate CLI ('migrate') not found on PATH — see docs/deploy.md §1 for the pinned install command (go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.1)"
 
-log "bringing up Postgres + API (docker compose -f $COMPOSE_FILE)"
-docker compose -f "$COMPOSE_FILE" up -d
+log "bringing up Postgres + API (docker compose -f $COMPOSE_FILE up -d --build)"
+# --build is load-bearing — see this script's header comment. Without it the
+# gate happily tests whatever tuhoc-api:latest happened to be built from
+# last, which may be another branch, or a week old.
+docker compose -f "$COMPOSE_FILE" up -d --build
 UP_EXIT=$?
 echo "docker compose up exit=$UP_EXIT"
 [ "$UP_EXIT" -eq 0 ] || fail "docker compose up failed (exit=$UP_EXIT) — see output above"

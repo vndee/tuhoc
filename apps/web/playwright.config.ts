@@ -2,16 +2,17 @@ import { defineConfig, devices } from '@playwright/test';
 
 /**
  * Task 17: the P1 end-to-end gate. This config boots the REAL app the same
- * way a learner would load it — `vite dev` (not a mock, not a component
- * harness) — against the REAL API + Postgres that `scripts/test-e2e.sh`
- * already brought up via `apps/api/compose.e2e.yml` before Playwright ever
- * runs. Nothing here mocks `fetch`, IndexedDB, or the course-kit runtime
- * scripts: the whole point of this suite is to prove the pieces actually
- * work together, which a mocked boundary would defeat.
+ * way a learner would load it — the PRODUCTION BUILD, served by
+ * `vite preview` (not a dev server, not a mock, not a component harness) —
+ * against the REAL API + Postgres that `scripts/test-e2e.sh` already
+ * brought up via `apps/api/compose.e2e.yml` before Playwright ever runs.
+ * Nothing here mocks `fetch`, IndexedDB, or the course-kit runtime scripts:
+ * the whole point of this suite is to prove the pieces actually work
+ * together, which a mocked boundary would defeat.
  *
- * Port choice (5183): deliberately NOT 5173 (`bun run dev`'s default,
- * used by any developer's own local dev server) or 4173 (`vite preview`'s
- * default) — running this suite must never fight a dev server a human
+ * Port choice (5183): deliberately NOT 5173 (`vite dev`'s default, used by
+ * any developer's own local dev server) or 4173 (`vite preview`'s own
+ * default, which a developer may equally have open) — running this suite must never fight a dev server a human
  * happens to have open, and must never silently attach to one via
  * `reuseExistingServer` (see below). Verified free on this machine before
  * picking it (see task report). `apps/api/compose.e2e.yml`'s `CORS_ORIGIN`
@@ -66,14 +67,35 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   webServer: {
-    command: `bun run dev -- --port ${WEB_PORT} --strictPort`,
+    // `build` then `preview`, NOT `dev`. While this ran `vite dev`, the
+    // entire production path had no automated coverage anywhere in the
+    // repo: `tsc -b && vite build`, the `courseAssets` plugin's
+    // `closeBundle` copy of `/course-kit` and `/courses` into `dist/`, and
+    // the SPA fallback for deep links like `/c/:courseId/:chapterId`. A
+    // build that emitted a broken bundle, or a plugin that copied the
+    // course assets to the wrong place, would have left this gate green —
+    // the gate would have been proving that the DEV SERVER works.
+    //
+    // `vite preview` serves `dist/` and, thanks to the same plugin's
+    // `configurePreviewServer` hook, the two asset prefixes as well. It
+    // also does its own SPA history fallback, which is what `_redirects`
+    // arranges for on the real host (Cloudflare Pages) — the same
+    // behaviour, not the same file, so a broken `_redirects` is still not
+    // something this gate can see. p1.spec.ts asserts the served document
+    // really is the built one, so a silent revert to `dev` fails loudly
+    // rather than quietly halving what this suite proves.
+    command: `bun run build && bun run preview -- --port ${WEB_PORT} --strictPort`,
     url: BASE_URL,
     // Always boot a fresh server scoped to this run, never attach to one
     // that happens to already be listening on WEB_PORT: a stale server
     // started with a different (or no) VITE_API_URL would make every
     // request in this suite silently talk to the wrong API, or none.
     reuseExistingServer: false,
-    timeout: 60_000,
+    // Generous because it now covers `tsc -b && vite build` as well as
+    // boot: a cold build on a slow machine is minutes, not seconds, and a
+    // timeout here would look like an app failure rather than a slow
+    // toolchain.
+    timeout: 300_000,
     env: {
       VITE_API_URL: API_URL,
     },

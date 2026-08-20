@@ -35,21 +35,18 @@ services:
       retries: 30
 
   api:
-    # `image:` + `build:` together, deliberately: `docker compose up`
-    # (without `--build`) only invokes the build when `tuhoc-api:latest`
-    # doesn't already exist locally — otherwise it reuses it as-is. On a
-    # genuinely clean checkout (the image doesn't exist yet) this builds
-    # it, matching docs/deploy.md's own `docker build -t tuhoc-api
-    # apps/api` exactly (same tag, same context, same Dockerfile) so the
-    # e2e stack and the documented deploy build are never two different
-    # artifacts by accident. `scripts/test-e2e.sh` also runs
-    # `docker build -t tuhoc-api:latest apps/api` explicitly before this
-    # file is ever read — see that script's own comment for why: pulling
-    # `docker/dockerfile:1` (the Dockerfile's `# syntax=` frontend) to
-    # resolve a build hung indefinitely under this task's sandbox
-    # (verified — see task report), and `image:` alone would silently
-    # test a stale binary once a developer's local Go source changes,
-    # which is worse than a slow build.
+    # `image:` names the tag the build is TAGGED AS — matching
+    # docs/deploy.md's own `docker build -t tuhoc-api apps/api` (same tag,
+    # same context, same Dockerfile), so the e2e stack and the documented
+    # deploy build are never two different artifacts by accident.
+    #
+    # It is NOT a way to skip the build. `docker compose up` without
+    # `--build` invokes `build:` only when this tag is absent locally, so
+    # every run after the first silently reused a cached image and the
+    # gate went blind to Go changes. `scripts/test-e2e.sh` therefore
+    # always passes `--build` — see its header comment. Anything that
+    # brings this stack up by hand must do the same:
+    #   docker compose -f apps/api/compose.e2e.yml up -d --build
     image: tuhoc-api:latest
     build:
       # Build context is apps/api itself, matching the Dockerfile's own
