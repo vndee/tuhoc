@@ -128,6 +128,108 @@ function prose(seed: number, words: number): string {
   return out.join(' ');
 }
 
+/**
+ * Số ô DP mà một lời gọi `anchorToRange` thực sự tính. **Tất định** — không
+ * có đồng hồ nào tham gia, nên tải máy không vào được phép đo (ruling
+ * P2-F13).
+ *
+ * Ở mức module chứ không nằm trong một `describe` nào, vì HAI describe cần
+ * nó: `I1 — quote DÀI…` và `chi phí fuzzy…`. Trước vòng này nó nằm trong
+ * `chi phí fuzzy`, nơi describe kia không với tới được.
+ *
+ * Cách đếm, và vì sao nó đúng bằng số ô: cả hai bảng DP trong `anchor.ts`
+ * đọc đúng MỘT ký tự văn bản cho mỗi ô, qua `String.prototype.charCodeAt` —
+ * `bestWindowMatch` ở `text.charCodeAt(from + j - 1)`, `levenshtein` ở
+ * `b.charCodeAt(j - 1)`. Ngoài hai vòng lặp ô đó, cả module không gọi
+ * `charCodeAt` ở đâu khác: đúng bốn chỗ trong file, hai chỗ còn lại
+ * (`pattern.charCodeAt(i - 1)`, `a.charCodeAt(i - 1)`) là một lần mỗi HÀNG,
+ * không phải mỗi ô. Nên số đếm = số ô + số hàng, và số hàng là dưới 1% của
+ * số ô ở kích cỡ bài này. Quan trọng hơn: đó là **cùng một hàm của cùng
+ * khối lượng việc** cho cả hai vế được so, nên tỉ số giữa hai lần đếm CHÍNH
+ * LÀ tỉ số ô DP.
+ *
+ * Vá `String.prototype` chỉ được phép ở test và phải hoàn nguyên vô điều
+ * kiện — `finally` bên dưới. Không có móc đo đạc nào trong `anchor.ts`, và
+ * cố ý không thêm: đây là phép đo của bộ test, không phải của sản phẩm.
+ */
+/**
+ * Ngân sách ô DP cho MỘT lời gọi `anchorToRange`, chép nguyên từ
+ * `anchor.ts:156` (`const MAX_DP_CELLS = 1_000_000;`) — hằng số đó không
+ * được export và cố ý không export chỉ để phục vụ test.
+ *
+ * Đây là ngưỡng có nghĩa duy nhất cho một phép đếm ô: `fuzzyFind` trừ dần
+ * ngân sách này bằng một ƯỚC LƯỢNG theo công thức băng
+ * (`(m + 1) × band`, `anchor.ts:894`). Nếu `bestWindowMatch` thôi đi theo
+ * băng thì sổ sách vẫn ghi y như cũ trong khi việc thật phồng lên — nên
+ * "số ô THẬT ≤ ngân sách sổ sách" chính là bất biến cần một bài test.
+ */
+const MAX_DP_CELLS = 1_000_000;
+
+/**
+ * Ngân sách của ba bài chạy KaTeX THẬT trên chương thật — **không phải một
+ * khẳng định**, mà là `testTimeout` của vitest, và lý do đo được.
+ *
+ * Bài `40 đoạn chọn ngẫu nhiên…` nạp `vendor/katex.js` + `auto-render.js`
+ * vào jsdom rồi render toàn bộ `p1-5.html`. Dưới `--maxWorkers=24` (24
+ * worker vitest trên 8 lõi) nó **hỏng 3 / 24** lần chạy bộ đầy đủ, nguyên
+ * văn `Error: Test timed out in 5000ms.` Đo bằng `--reporter=json` trên 12
+ * lần chạy khác: cao nhất **3892 ms**, tức biên so với trần mặc định chỉ
+ * **1,28×**.
+ *
+ * Vì sao nới KHÔNG phải làm yếu: cả ba bài là mã đồng bộ thuần, không chờ
+ * gì cả — `testTimeout` ở đây chỉ đang canh tốc độ CPU của máy chạy test,
+ * không canh một hành vi nào của sản phẩm. Mọi khẳng định trong ba bài
+ * (`toBe(a.exact)`, `not.toBeNull()`, `toHaveLength`) giữ nguyên từng chữ.
+ *
+ * 30 s = 7,7× lần chạy tệ nhất từng đo, cùng con số mà
+ * `src/test/syncLifecycle.test.tsx` và `normalize.test.ts` đã chốt cho cùng
+ * loại vấn đề.
+ */
+const OVERSUBSCRIBED_MS = 30_000;
+
+/**
+ * Số lần một lời gọi đọc `.data` của một Text node — tức số lần nó quét
+ * qua các segment của `NormMap`. **Tất định**, cùng kỷ luật với `dpCells`.
+ *
+ * Dùng để canh một chi phí mà `dpCells` KHÔNG nhìn thấy: `buildProjection`
+ * dựng lại chuỗi chiếu ~20.000 ký tự và không gọi `charCodeAt` lần nào, nên
+ * mất cache `Projection` là vô hình với phép đếm ô. Nó lại rất hữu hình ở
+ * đây: mỗi lần dựng lại là thêm một lượt đọc `.data` trên TOÀN BỘ segment.
+ */
+function textDataReads(run: () => void): number {
+  const desc = Object.getOwnPropertyDescriptor(CharacterData.prototype, 'data')!;
+  const real = desc.get!;
+  let reads = 0;
+  Object.defineProperty(CharacterData.prototype, 'data', {
+    ...desc,
+    get(this: unknown): unknown {
+      reads++;
+      return real.call(this);
+    },
+  });
+  try {
+    run();
+  } finally {
+    Object.defineProperty(CharacterData.prototype, 'data', desc);
+  }
+  return reads;
+}
+
+function dpCells(run: () => void): number {
+  const real = String.prototype.charCodeAt;
+  let cells = 0;
+  String.prototype.charCodeAt = function (this: string, index: number): number {
+    cells++;
+    return real.call(this, index);
+  };
+  try {
+    run();
+  } finally {
+    String.prototype.charCodeAt = real;
+  }
+  return cells;
+}
+
 const PROSE = `<div id="c"><p>Xét phân kỳ ${katexSpan('D_{\\mathrm{KL}}(p\\Vert q)', 'DKL(p‖q)')} giữa hai phân phối,
 và ${katexSpan('H(p,q)', 'H(p,q)')} là đại lượng trung tâm của chương này.</p>
 <p>Đoạn thứ hai nói về cross-entropy và số bit lãng phí mỗi ký hiệu.</p></div>`;
@@ -867,22 +969,58 @@ describe('I1 — quote DÀI vẫn phải còn đường fuzzy', () => {
     expect(got.slice(-60)).toBe(a.exact.slice(-60));
   });
 
-  it('quote ~2.500 ký tự đi hết đường fuzzy vẫn dưới trần thời gian một lần gọi', () => {
+  it('quote ~2.500 ký tự đi hết đường fuzzy: số ô DP THẬT vẫn nằm trong ngân sách MAX_DP_CELLS', () => {
     const { before, after } = threeParagraphs(4321, 500);
     const m1 = normalizeContainer(el(before));
     const a = anchorAt(m1, 100, 2700)!;
     const m2 = normalizeContainer(el(after));
-    let elapsed = Number.POSITIVE_INFINITY;
-    for (let r = 0; r < 5; r++) {
-      const t0 = performance.now();
-      expect(anchorToRange(m2, a)).not.toBeNull();
-      elapsed = Math.min(elapsed, performance.now() - t0);
-    }
-    // Đo được (best-of-5) 1,2–1,6ms. Trần 60ms cùng cách chọn với các phép đo
-    // khác trong file: nó canh ĐỘ PHỨC TẠP, không canh mili-giây. Bỏ dải băng
-    // của `bestWindowMatch` thì cửa sổ này là 2.516×2.532 ≈ 6,4M ô — vượt hẳn
-    // ngân sách, nên test trên (`không null`) đỏ trước khi test này kịp đỏ.
-    expect(elapsed).toBeLessThan(60);
+    // Làm nóng trước khi đếm: `projectionFor` dựng `Projection` một lần rồi
+    // cache theo `NormMap`. (`buildProjection` không gọi `charCodeAt` nên nó
+    // không vào số đếm; gọi trước cũng loại luôn mọi tranh cãi về thứ tự.)
+    expect(anchorToRange(m2, a)).not.toBeNull();
+
+    let hit: unknown;
+    const cells = dpCells(() => {
+      hit = anchorToRange(m2, a);
+    });
+    // Khẳng định của bản cũ, giữ nguyên matcher, chỉ chuyển ra ngoài vùng
+    // đếm để không lời gọi nào của vitest lọt vào số đếm.
+    expect(hit).not.toBeNull();
+
+    // ------------------------------------------------------------------
+    // Vì sao đếm ô chứ không bấm giờ, và vì sao bản này MẠNH HƠN bản cũ
+    // ------------------------------------------------------------------
+    // Bản cũ đo `performance.now()` và đòi `< 60ms`. Hai vấn đề, cả hai đo
+    // được:
+    //
+    //  (1) Nó chập chờn. Cùng lớp lỗi với thứ ruling P2-F13 đã khai tử:
+    //      dưới `--maxWorkers=24` (24 worker vitest trên 8 lõi) khẳng định
+    //      này hỏng 3/64 lần chạy bộ đầy đủ ở vòng trước.
+    //
+    //  (2) Quan trọng hơn: **nó không giết mutation nào cả.** Chú thích của
+    //      bản cũ khẳng định "bỏ dải băng của `bestWindowMatch` … vượt hẳn
+    //      ngân sách, nên test trên (`không null`) đỏ trước". Điều đó SAI,
+    //      và kiểm được: bỏ hẳn dải băng (`hi0 = w`, `lo = 0`, `hi = w`
+    //      trong `bestWindowMatch`) rồi chạy `anchor.test.ts` cho ra
+    //      **55/55 xanh**. Không bài nào đỏ. Bảng đầy đủ chạy nhanh hơn
+    //      60ms nên trần thời gian không thấy gì, và kết quả vẫn khớp nên
+    //      bài `không null` cũng không thấy gì.
+    //
+    // Đại lượng đúng để canh là thứ mà chính `fuzzyFind` tự nhận là đang
+    // tiêu: `MAX_DP_CELLS = 1_000_000` ô cho MỘT lời gọi `anchorToRange`.
+    // Nhưng `fuzzyFind` chỉ ƯỚC LƯỢNG chi phí mỗi cửa sổ bằng công thức
+    // BĂNG (`(m + 1) × band`) rồi trừ dần vào ngân sách — nếu
+    // `bestWindowMatch` thôi không đi theo băng nữa, sổ sách vẫn ghi đúng
+    // như cũ trong khi việc thật phồng lên gấp bội. Đếm ô THẬT là cách duy
+    // nhất bắt được đúng chỗ lệch đó.
+    //
+    // Đếm được trên fixture này (exact 2.581 ký tự, flat 2.681) — số
+    // nguyên, ba lần liên tiếp ra đúng một số:
+    //     còn băng (đúng):     842.396 ô  → 0,842× ngân sách
+    //     bỏ băng (mutation):  7.016.160 ô → 7,016× ngân sách
+    // Ngưỡng là chính `MAX_DP_CELLS`, không phải một con số chọn cho vừa:
+    // bản đúng nằm dưới nó 1,19× và mutation vượt nó 7,02×.
+    expect(cells).toBeLessThanOrEqual(MAX_DP_CELLS);
   });
 
   it('trần số lần sửa vẫn còn: quote dài bị sửa QUÁ nhiều thì thà orphan còn hơn đoán', () => {
@@ -978,42 +1116,7 @@ describe('chi phí fuzzy — không được treo trình duyệt lúc mở chư�
     return el(`<div>${parts.join('\n')}</div>`);
   }
 
-  /**
-   * Số ô DP mà một lời gọi `anchorToRange` thực sự tính. **Tất định** — không
-   * có đồng hồ nào tham gia, nên tải máy không vào được phép đo (ruling
-   * P2-F13).
-   *
-   * Cách đếm, và vì sao nó đúng bằng số ô: cả hai bảng DP trong `anchor.ts`
-   * đọc đúng MỘT ký tự văn bản cho mỗi ô, qua `String.prototype.charCodeAt` —
-   * `bestWindowMatch` ở `text.charCodeAt(from + j - 1)`, `levenshtein` ở
-   * `b.charCodeAt(j - 1)`. Ngoài hai vòng lặp ô đó, cả module không gọi
-   * `charCodeAt` ở đâu khác: đúng bốn chỗ trong file, hai chỗ còn lại
-   * (`pattern.charCodeAt(i - 1)`, `a.charCodeAt(i - 1)`) là một lần mỗi HÀNG,
-   * không phải mỗi ô. Nên số đếm = số ô + số hàng, và số hàng là dưới 1% của
-   * số ô ở kích cỡ bài này. Quan trọng hơn: đó là **cùng một hàm của cùng
-   * khối lượng việc** cho cả hai vế được so, nên tỉ số giữa hai lần đếm CHÍNH
-   * LÀ tỉ số ô DP.
-   *
-   * Vá `String.prototype` chỉ được phép ở test và phải hoàn nguyên vô điều
-   * kiện — `finally` bên dưới. Không có móc đo đạc nào trong `anchor.ts`, và
-   * cố ý không thêm: đây là phép đo của bộ test, không phải của sản phẩm.
-   */
-  function dpCells(run: () => void): number {
-    const real = String.prototype.charCodeAt;
-    let cells = 0;
-    String.prototype.charCodeAt = function (this: string, index: number): number {
-      cells++;
-      return real.call(this, index);
-    };
-    try {
-      run();
-    } finally {
-      String.prototype.charCodeAt = real;
-    }
-    return cells;
-  }
-
-  it('anchor KHÔNG tồn tại (đường xấu nhất) trên flat cỡ chương thật vẫn dưới trần thời gian', () => {
+  it('anchor KHÔNG tồn tại (đường xấu nhất) trên flat cỡ chương thật vẫn trong ngân sách MAX_DP_CELLS', () => {
     const m = normalizeContainer(bigChapter(150));
     expect(m.flat.length).toBeGreaterThan(19000); // ≥ chương dài nhất của khóa học
 
@@ -1035,29 +1138,45 @@ describe('chi phí fuzzy — không được treo trình duyệt lúc mở chư�
     expect(hostile.exact).toHaveLength(200);
     expect(m.flat.replace(/\s+/g, ' ')).not.toContain(hostile.exact);
 
-    const RUNS = 5;
-    let elapsed = Number.POSITIVE_INFINITY;
-    for (let r = 0; r < RUNS; r++) {
-      const t0 = performance.now();
-      expect(anchorToRange(m, hostile)).toBeNull();
-      elapsed = Math.min(elapsed, performance.now() - t0);
-    }
-    // BEST-of-5, không phải một phát: `anchorToRange` chỉ ĐỌC, chạy lại đo
-    // đúng cùng một khối lượng việc, nên cực tiểu là ước lượng trung thực —
-    // nó loại bỏ đúng cú GC/tráo lịch mà một lần đo xui xẻo nuốt phải.
+    // Làm nóng `Projection` trước khi đếm (xem `dpCells`).
+    expect(anchorToRange(m, hostile)).toBeNull();
+    let hit: unknown;
+    const cells = dpCells(() => {
+      hit = anchorToRange(m, hostile);
+    });
+    // Khẳng định của bản cũ, giữ nguyên matcher, chuyển ra ngoài vùng đếm.
+    expect(hit).toBeNull();
+
+    // Bản cũ đo `performance.now()` best-of-5 và đòi `< 60ms`. Nó **chập
+    // chờn**: 2 hỏng / 24 lần chạy bộ đầy đủ ở `--maxWorkers=24`, nguyên văn
+    //     AssertionError: expected 161.90220899999986 to be less than 60
+    //     AssertionError: expected  93.93395899999996 to be less than 60
+    // — dù chú thích cũ ghi số đo best-of-5 chỉ 4,5–4,6 ms, tức trần 60 ms
+    // được cho là cách số đo 13×. Biên 13× KHÔNG cứu được một trần tuyệt
+    // đối khi 24 worker giành 8 lõi; đó là toàn bộ bài học của P2-F13.
     //
-    // Đo trên máy này (flat 20.139 ký tự, đúng fixture trên):
-    //     một phát   máy rảnh 4.5–12.8ms  ·  8 lõi bão hòa 4.6–28.6ms
-    //     best-of-5  máy rảnh 4.5ms       ·  8 lõi bão hòa 4.6ms
-    // Trần 60ms = 13× số đo best-of-5 tệ nhất, cùng cách chọn (và cùng con
-    // số) mà normalize.test.ts dùng cho phép đo của nó. Vòng sửa Task 1 đo
-    // được cùng một phép việc dao động 24–90ms tùy tải CPU, nên trần sát số
-    // đo lúc máy rảnh là tự chuốc lấy flaky. Cái này canh ĐỘ PHỨC TẠP: bỏ
-    // `CAND_CAP` (32 → 150 ứng viên do prefix lặp lại) hay quét cả chương
-    // đều vượt; nới `MAX_DP_CELLS` một chút thì không, và đó là chủ ý —
-    // một trần tuyệt đối không thể vừa chịu được CI chậm vừa bắt được hồi
-    // quy 2×.
-    expect(elapsed).toBeLessThan(60);
+    // Và cũng như bài quote-2.500, chú thích cũ nói sai về sức phát hiện:
+    // nó ghi "bỏ `CAND_CAP` … đều vượt". Kiểm: thay
+    // `return out.length > CAND_CAP ? out.slice(0, CAND_CAP) : out;` bằng
+    // `return out;` → `Tests 55 passed (55)`, không bài nào đỏ; số ô chỉ đi
+    // từ 595.947 lên 671.993 (1,13×). Ràng buộc thật sự trên đường này là
+    // `MAX_DP_CELLS`, không phải `CAND_CAP`.
+    //
+    // Nên bản này canh đúng cái đang thật sự canh, bằng đại lượng tất định:
+    // MỘT lời gọi `anchorToRange` trên đường xấu nhất không được vượt ngân
+    // sách mà chính `fuzzyFind` tự đặt ra cho mình.
+    //     đếm được: 595.947 ô — 0,596× ngân sách, dưới trần 1,68×
+    // Số nguyên, lặp lại ra đúng một giá trị ở mọi mức tải.
+    //
+    // Nói thẳng cho người sau: ở fixture này bản mới **cũng chưa giết
+    // mutation nào** — `CAND_CAP` (671.993 ô), bỏ dải băng (998.102 ô) và
+    // bỏ hẳn chốt ngân sách `if (cells > budget) break` (595.947 ô, không
+    // đổi) đều còn dưới 1.000.000. Bản cũ cũng vậy, cả ba đều lọt qua trần
+    // 60 ms. Cái bản mới đổi được là: nó **không còn hỏng ngẫu nhiên**, và
+    // nó phát biểu được một bất biến thật thay vì một con số mili-giây.
+    // Chốt cắt sớm thì đã có bài `exact vô vọng…` bên dưới giữ (mutation
+    // M-B1), và dải băng đã có bài quote-2.500 giữ.
+    expect(cells).toBeLessThanOrEqual(MAX_DP_CELLS);
   });
 
   it('exact vô vọng ngay từ đầu rẻ hơn HẲN exact gần đúng — chốt cắt sớm phải còn đó', () => {
@@ -1137,21 +1256,24 @@ describe('chi phí fuzzy — không được treo trình duyệt lúc mở chư�
       suffix: 'và suffix cũng vậy, hoàn toàn xa lạ với chương',
       color: 'y',
     };
-    let elapsed = Number.POSITIVE_INFINITY;
-    for (let r = 0; r < 5; r++) {
-      const t0 = performance.now();
-      expect(anchorToRange(m, gone)).toBeNull();
-      elapsed = Math.min(elapsed, performance.now() - t0);
-    }
-    // Đo được 0.06–0.14ms ở cả hai chế độ tải: không có ứng viên nào thì
-    // không có bảng DP nào chạy. Trần 15ms để khẳng định đúng MỘT điều —
-    // rằng nhánh này KHÔNG quét cả chương. Một lần quét toàn chương ở đây
-    // là ~10^8 phép tính, tức hàng giây, nên 15ms bắt được nó dứt khoát mà
-    // vẫn cách số đo hơn 100×.
-    expect(elapsed).toBeLessThan(15);
+    expect(anchorToRange(m, gone)).toBeNull(); // làm nóng `Projection`
+    let hit: unknown;
+    const cells = dpCells(() => {
+      hit = anchorToRange(m, gone);
+    });
+    expect(hit).toBeNull();
+    // Bản cũ đo 0,06–0,14 ms và đòi `< 15ms`, để khẳng định đúng MỘT điều:
+    // nhánh này KHÔNG quét cả chương. Đại lượng tất định phát biểu đúng
+    // điều đó, và phát biểu nó **tuyệt đối** thay vì qua một cái trần:
+    // không ứng viên nào ⇒ **không một ô DP nào được tính**.
+    //     đếm được: 0 ô. Không phải "ít", mà là KHÔNG.
+    // Mạnh hơn hẳn trần 15 ms: một lần quét toàn chương ở đây là ~10^8 phép
+    // tính và trần cũ bắt được, nhưng một hồi quy chỉ tính vài nghìn ô thì
+    // trần cũ mù còn `toBe(0)` thì không.
+    expect(cells).toBe(0);
   });
 
-  it('giải 60 anchor cùng lúc lúc mở chương (kịch bản Task 4) vẫn dưới trần', () => {
+  it('giải 60 anchor cùng lúc lúc mở chương (kịch bản Task 4): 0 ô DP và đúng MỘT lần dựng phép chiếu', () => {
     const m = normalizeContainer(bigChapter(150));
     const anchors: Anchor[] = [];
     const rand = rng(7);
@@ -1164,18 +1286,41 @@ describe('chi phí fuzzy — không được treo trình duyệt lúc mở chư�
       if (a) anchors.push(a);
     }
     expect(anchors).toHaveLength(60);
-    let elapsed = Number.POSITIVE_INFINITY;
-    for (let r = 0; r < 5; r++) {
-      const t0 = performance.now();
-      for (const a of anchors) expect(anchorToRange(m, a)).not.toBeNull();
-      elapsed = Math.min(elapsed, performance.now() - t0);
-    }
-    // Đo được (best-of-5): 1.6ms máy rảnh, 1.5ms khi ép 8 lõi bão hòa — cả
-    // 60 anchor khớp CHÍNH XÁC nên không anchor nào chạm tới bảng DP, và
-    // phép chiếu chỉ dựng đúng một lần cho cả 60 (WeakMap theo NormMap).
-    // Trần 60ms ≈ 40×: bỏ cache phép chiếu là dựng lại chuỗi 20k ký tự 60
-    // lần, đúng loại hồi quy mà con số này canh.
-    expect(elapsed).toBeLessThan(60);
+    for (const a of anchors) expect(anchorToRange(m, a)).not.toBeNull(); // làm nóng + khẳng định
+
+    // Bản cũ đo `< 60ms` để canh HAI điều cùng lúc; bản này tách chúng ra
+    // thành hai phép đếm tất định, vì hai điều đó cần hai đại lượng khác
+    // nhau — và một trong hai thì `dpCells` KHÔNG nhìn thấy.
+    let allHit = true;
+    const cells = dpCells(() => {
+      for (const a of anchors) if (anchorToRange(m, a) === null) allHit = false;
+    });
+    const reads = textDataReads(() => {
+      for (const a of anchors) if (anchorToRange(m, a) === null) allHit = false;
+    });
+    expect(allHit).toBe(true);
+
+    // (1) Cả 60 anchor khớp CHÍNH XÁC nên không anchor nào chạm tới bảng DP.
+    //     Đếm được: 0 ô.
+    expect(cells).toBe(0);
+    // (2) Và `Projection` chỉ được dựng MỘT lần cho cả 60 (WeakMap theo
+    //     `NormMap`). `buildProjection` không gọi `charCodeAt` lần nào nên
+    //     nó vô hình với (1) — đây đúng là cái bẫy mà một bản thay thế chỉ
+    //     dùng `dpCells` sẽ rơi vào, và nó sẽ LÀM YẾU test: trần 60 ms cũ
+    //     ĐANG giết mutation "bỏ cache phép chiếu"
+    //     (`let proj = projectionCache.get(map)` → `undefined`), nguyên văn
+    //     `AssertionError: expected 93.83162500000003 to be less than 60`
+    //     — biên chỉ 1,56×, tức chính nó cũng là một quả bom chập chờn.
+    //
+    //     Đại lượng tất định thay thế: số lần đọc `.data` của Text node.
+    //     Mỗi lời gọi `anchorToRange` quét segment đúng một lượt cho phép
+    //     kiểm map-cũ (`normalize.ts` › `staleSeg`); mỗi lần dựng lại
+    //     `Projection` là THÊM một lượt nữa trên toàn bộ segment.
+    //         còn cache:   17.940 lần = 60 × 299 segment
+    //         bỏ cache:    35.880 lần = 120 × 299  → vượt trần 1,967×
+    //     Trần `(60 + 1) × segs` để chỗ cho đúng MỘT lần dựng phép chiếu
+    //     (nếu ai đó dời chỗ làm nóng), và không hơn.
+    expect(reads).toBeLessThanOrEqual((anchors.length + 1) * m.segs.length);
   });
 });
 
@@ -1242,7 +1387,7 @@ describe('chương thật p1-5.html với KaTeX thật', () => {
     }
     expect(made).toBeGreaterThanOrEqual(35);
     expect(exactHits).toBe(made); // trên DOM y hệt thì phải khớp CHÍNH XÁC, không fuzzy
-  });
+  }, OVERSUBSCRIBED_MS);
 
   it('cùng bộ anchor đó vẫn giải được sau khi HTML nguồn bị bỏ hết khoảng trắng giữa các khối', () => {
     // Mô phỏng một lần build lại khóa học với bộ định dạng HTML khác: nội
@@ -1270,7 +1415,7 @@ describe('chương thật p1-5.html với KaTeX thật', () => {
     }
     expect(made).toBeGreaterThanOrEqual(35);
     expect(resolved).toBe(made);
-  });
+  }, OVERSUBSCRIBED_MS);
 
   it('BẪY CHO TASK 3: mép cuối của Range thường KHÔNG ở nơi painter đoán', () => {
     // Tính chất này không phải lỗi — `rangeToFlat` đọc lại đúng offset cũ và
@@ -1310,5 +1455,5 @@ describe('chương thật p1-5.html với KaTeX thật', () => {
     expect(endsAtOffsetZero).toBeGreaterThanOrEqual(5);
     expect(endsInWhitespaceNode).toBeGreaterThanOrEqual(3);
     expect(endsOutsideStartBlock).toBeGreaterThan(made / 2);
-  });
+  }, OVERSUBSCRIBED_MS);
 });

@@ -100,6 +100,175 @@ function glyphTextOf(atomicEl: Element): Text {
   return atomicEl.querySelector('.katex-html .mord')!.firstChild as Text;
 }
 
+/**
+ * Ngân sách của bài test "không quadratic" — **không phải một khẳng định**,
+ * mà là `testTimeout` của vitest, và lý do phải đặt tường minh thì đo được.
+ *
+ * Bài đó chỉ tốn **121 – 130 ms** lúc máy nhàn (3 lần chạy). Dưới
+ * `--maxWorkers=24` (24 worker vitest trên 8 lõi) nó tốn tới **4391 ms** —
+ * phồng ~35× vì tranh chấp lịch, đo bằng `--reporter=json` trên 12 lần chạy
+ * bộ đầy đủ. So với `testTimeout` mặc định 5000 ms thì biên chỉ **1,14×**,
+ * và nó đã thủng: **1 hỏng / 24** lần chạy bộ đầy đủ, nguyên văn
+ * `Error: Test timed out in 5000ms.`
+ *
+ * Ghi cho rõ để không ai đổ cho phép đếm mới: bản CŨ (đo bằng đồng hồ) tốn
+ * **114 – 132 ms** lúc máy nhàn — **bằng đúng bản này**. Cái trần 5000 ms
+ * vốn đã quá sát với bài test này từ trước; bản cũ chỉ chưa bao giờ chạm
+ * tới nó vì nó hỏng ở khẳng định 60 ms trước.
+ *
+ * Vì sao nới cái này KHÔNG phải làm yếu: thân bài test là mã đồng bộ thuần
+ * — dựng fixture rồi đếm — nên nó không CHỜ cái gì cả. Không có hành vi nào
+ * mà `testTimeout` bắt được và hai khẳng định đếm-node không bắt được;
+ * `testTimeout` ở đây chỉ đang canh tốc độ CPU của máy chạy test.
+ *
+ * 30 s = 6,8× lần chạy tệ nhất từng đo, và cùng con số mà
+ * `src/test/syncLifecycle.test.tsx` đã chốt cho cùng loại vấn đề.
+ */
+const OVERSUBSCRIBED_MS = 30_000;
+
+/** Số node trong cây con của `root`, KỂ CẢ chính nó. */
+function nodeCount(root: Node): number {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ALL);
+  let n = 1;
+  while (walker.nextNode() !== null) n++;
+  return n;
+}
+
+/**
+ * Số node DOM mà một lần chạy thực sự NHÌN QUA. **Tất định** — không có
+ * đồng hồ nào tham gia, nên tải máy không vào được phép đo. Cùng kỹ thuật
+ * với `dpCells` của `anchor.test.ts`, theo ruling P2-F13.
+ *
+ * Vì sao phải đếm chứ không bấm giờ: bản trước của bài test "không
+ * quadratic" đặt trần 60 ms tuyệt đối, và trần đó hỏng **2 lần / 24 lần**
+ * chạy bộ đầy đủ ở `--maxWorkers=24` (24 worker vitest trên 8 lõi — hình
+ * dạng của một CI bị oversubscribe). Nguyên văn lần hỏng:
+ * `AssertionError: expected 99.95658299999923 to be less than 60`. Cùng
+ * fixture, cùng máy, cùng phép việc; khác đúng mức tranh chấp CPU. Một cổng
+ * nghiệm thu không được phụ thuộc vào chuyện đó.
+ *
+ * Mô hình chi phí, phát biểu rõ vì đó là thứ làm phép đếm này có nghĩa: mỗi
+ * thao tác DOM bị tính bằng **số node nó buộc phải nhìn**.
+ *   · một bước của `TreeWalker`/`NodeIterator` nhìn 1 node;
+ *   · mỗi lần bộ lọc `acceptNode` được gọi là 1 node được xem xét — đây mới
+ *     là vòng đi `normalizeContainer` thật sự trả tiền, vì `nextNode()` chỉ
+ *     trả về node được CHẤP NHẬN còn số node phải cân nhắc nằm ở bộ lọc;
+ *   · `matches`/`closest` xét 1 node;
+ *   · một truy vấn chọn (`querySelector*`, `getElementsBy*`) hay một lần đọc
+ *     `textContent` phải quét TRỌN cây con của node nhận, nên bị tính đúng
+ *     bằng kích thước cây con đó — **kể cả khi nó trả về rỗng**. Tính theo
+ *     độ dài kết quả sẽ là chặn DƯỚI, và một chặn dưới thì không chứng minh
+ *     được gì về việc "rẻ": `querySelectorAll('.không-có-gì')` quét cả cây
+ *     rồi trả về 0 phần tử;
+ *   · một lần đọc `childNodes`/`children` nhìn đúng số con.
+ *
+ * Nên phép đếm không phụ thuộc cách jsdom cài đặt gì cả: một vòng đi bậc
+ * hai viết bằng `querySelectorAll`, bằng đệ quy qua `childNodes`, hay bằng
+ * một `TreeWalker` thứ hai đều bị tính như nhau.
+ *
+ * Vá prototype chỉ được phép ở test và phải hoàn nguyên vô điều kiện —
+ * `finally` bên dưới. Không có móc đo đạc nào trong `normalize.ts`, và cố ý
+ * không thêm: đây là phép đo của bộ test, không phải của sản phẩm.
+ */
+function domNodeVisits(run: () => void): number {
+  let visits = 0;
+  const undo: Array<() => void> = [];
+
+  // Bản gốc, lấy TRƯỚC khi vá, để `subtreeSize` tự đi cây mà không tự đếm
+  // chính nó và không đệ quy vào bản đã vá.
+  const realCreateTreeWalker = Document.prototype.createTreeWalker;
+  const realNextNode = TreeWalker.prototype.nextNode;
+  const subtreeSize = (node: Node): number => {
+    const walker = realCreateTreeWalker.call(document, node, NodeFilter.SHOW_ALL);
+    let n = 1;
+    while (realNextNode.call(walker) !== null) n++;
+    return n;
+  };
+
+  const patchMethod = (proto: object, prop: string, charge: (self: unknown) => number): void => {
+    const desc = Object.getOwnPropertyDescriptor(proto, prop);
+    if (!desc || typeof desc.value !== 'function') return;
+    const real = desc.value as (...args: unknown[]) => unknown;
+    Object.defineProperty(proto, prop, {
+      ...desc,
+      value(this: unknown, ...args: unknown[]): unknown {
+        const result = real.apply(this, args);
+        visits += charge(this);
+        return result;
+      },
+    });
+    undo.push(() => Object.defineProperty(proto, prop, desc));
+  };
+
+  const patchGetter = (proto: object, prop: string, charge: (self: unknown, result: unknown) => number): void => {
+    const desc = Object.getOwnPropertyDescriptor(proto, prop);
+    if (!desc || typeof desc.get !== 'function') return;
+    const real = desc.get;
+    Object.defineProperty(proto, prop, {
+      ...desc,
+      get(this: unknown): unknown {
+        const result = real.call(this);
+        visits += charge(this, result);
+        return result;
+      },
+    });
+    undo.push(() => Object.defineProperty(proto, prop, desc));
+  };
+
+  const one = (): number => 1;
+
+  try {
+    for (const step of ['nextNode', 'previousNode', 'firstChild', 'lastChild', 'nextSibling', 'previousSibling', 'parentNode']) {
+      patchMethod(TreeWalker.prototype, step, one);
+    }
+    patchMethod(NodeIterator.prototype, 'nextNode', one);
+    patchMethod(NodeIterator.prototype, 'previousNode', one);
+
+    // `createTreeWalker` không bị tính công gì cho bản thân lời gọi; nó chỉ
+    // bọc bộ lọc lại để mỗi `acceptNode` cộng đúng 1 node.
+    const cwDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'createTreeWalker')!;
+    Object.defineProperty(Document.prototype, 'createTreeWalker', {
+      ...cwDesc,
+      value(this: Document, root: Node, whatToShow?: number, filter?: NodeFilter | ((node: Node) => number) | null): TreeWalker {
+        let wrapped = filter;
+        if (typeof filter === 'function') {
+          wrapped = (node: Node): number => {
+            visits++;
+            return filter(node);
+          };
+        } else if (filter && typeof filter.acceptNode === 'function') {
+          const accept = filter.acceptNode.bind(filter);
+          wrapped = {
+            acceptNode: (node: Node): number => {
+              visits++;
+              return accept(node);
+            },
+          };
+        }
+        return realCreateTreeWalker.call(this, root, whatToShow ?? NodeFilter.SHOW_ALL, (wrapped ?? null) as NodeFilter | null);
+      },
+    });
+    undo.push(() => Object.defineProperty(Document.prototype, 'createTreeWalker', cwDesc));
+
+    const scan = (self: unknown): number => subtreeSize(self as Node);
+    for (const proto of [Element.prototype, Document.prototype, DocumentFragment.prototype]) {
+      for (const query of ['querySelector', 'querySelectorAll', 'getElementsByTagName', 'getElementsByTagNameNS', 'getElementsByClassName']) {
+        patchMethod(proto, query, scan);
+      }
+    }
+    patchMethod(Element.prototype, 'matches', one);
+    patchMethod(Element.prototype, 'closest', one);
+    patchGetter(Node.prototype, 'textContent', scan);
+    patchGetter(Node.prototype, 'childNodes', (_self, result) => (result as NodeList).length);
+    patchGetter(Element.prototype, 'children', (_self, result) => (result as HTMLCollection).length);
+
+    run();
+    return visits;
+  } finally {
+    for (let i = undo.length - 1; i >= 0; i--) undo[i]();
+  }
+}
+
 describe('normalizeContainer', () => {
   it('katex là 1 token, ctrls bị loại', () => {
     const m = normalizeContainer(el(BRIEF_FIX));
@@ -224,48 +393,55 @@ describe('normalizeContainer', () => {
   });
 
   it('không quadratic một cách rõ ràng: nhiều trăm công thức trong 1 chương vẫn chạy nhanh', () => {
-    const parts: string[] = [];
-    for (let i = 0; i < 400; i++) {
-      parts.push(`<p>Đoạn ${i} có công thức ${katexSpan(`x_{${i}}`, `x${i}`)} ở giữa câu.</p>`);
-    }
-    const container = el(`<div>${parts.join('')}</div>`);
+    const build = (formulas: number): HTMLDivElement => {
+      const parts: string[] = [];
+      for (let i = 0; i < formulas; i++) {
+        parts.push(`<p>Đoạn ${i} có công thức ${katexSpan(`x_{${i}}`, `x${i}`)} ở giữa câu.</p>`);
+      }
+      return el(`<div>${parts.join('')}</div>`);
+    };
+    const half = build(200);
+    const full = build(400);
+    const fullNodes = nodeCount(full);
+    expect(fullNodes).toBe(6802);
 
-    // BEST of several runs, not a single shot. `normalizeContainer` only
-    // READS the DOM, so re-running it over the same container is
-    // side-effect-free and every run measures exactly the same work — which
-    // makes the minimum the honest estimator here: it discards the GC pause
-    // or scheduler preemption that one unlucky measurement swallows. That
-    // noise, not the walk, is what forced the old ceiling to be so loose.
-    // Measured on this fixture (fix round 1, this machine):
-    //     single-shot   idle 24–60ms   ·  8 cores saturated 33–90ms
-    //     best-of-5     idle 6.2–8.5ms ·  8 cores saturated 6.6–18.7ms
-    // i.e. the spread collapses from ~3.8× to ~2.8× and the absolute worst
-    // case drops ~4.8×.
-    const RUNS = 5;
-    let elapsed = Number.POSITIVE_INFINITY;
-    let m = normalizeContainer(container);
-    for (let r = 0; r < RUNS; r++) {
-      const start = performance.now();
-      m = normalizeContainer(container);
-      elapsed = Math.min(elapsed, performance.now() - start);
-    }
+    let m!: ReturnType<typeof normalizeContainer>;
+    const halfVisits = domNodeVisits(() => {
+      normalizeContainer(half);
+    });
+    const fullVisits = domNodeVisits(() => {
+      m = normalizeContainer(full);
+    });
 
     expect(m.segs.filter((s) => s.atomic)).toHaveLength(400);
-    // 60ms, chosen from those numbers rather than from taste. It sits 3.2×
-    // above the worst measurement taken with all 8 cores saturated (18.7ms)
-    // and 7× above the worst idle one, so it is not a flaky wall — the
-    // saturated figure is itself a stand-in for CI hardware several times
-    // slower than this machine. What it buys over the old 500ms: that
-    // ceiling needed a ~17× slowdown before it tripped, so it caught an
-    // accidentally quadratic walk (mutation M16 in the Task 1 review) and
-    // nothing else; this one trips at ~8.6× idle and ~5× under contention,
-    // which is the constant-factor range the review flagged as invisible.
-    // An absolute wall-clock ceiling cannot both tolerate slow CI and catch
-    // a 2× regression; 60ms is the tightest point on that trade that still
-    // keeps >3× margin over anything actually observed. Re-tighten only
-    // with fresh measurements pasted here.
-    expect(elapsed).toBeLessThan(60);
-  });
+
+    // Đếm được trên fixture này — SỐ NGUYÊN, lặp lại bao nhiêu lần cũng ra
+    // đúng bấy nhiêu, ở mọi mức tải máy:
+    //     đúng:          200 công thức 2.004 · 400 công thức 4.004
+    //                    → tỉ số 1,998003992015968
+    //     mutation M16:  200 công thức 1.162.804 · 400 công thức 4.645.604
+    //                    → tỉ số 3,995173735212469
+    // (M16 = chèn `root.querySelectorAll('*')` mỗi công thức, tức làm vòng
+    // đi bậc hai — đúng mutation mà review Task 1 dùng để chứng minh bài
+    // test này có tác dụng.)
+    //
+    // Hai khẳng định, hai điều khác nhau, cả hai đều tất định:
+    //
+    // (1) Mỗi node DOM chỉ được nhìn một số lần CÓ CHẶN. 4.004 lần xem trên
+    //     6.802 node là 0,589 lần/node; trần `2 × số node` để chỗ cho một
+    //     lần viết lại hợp lệ (ví dụ thêm một lượt đi thứ hai) mà vẫn cách
+    //     số đo thật 3,4×. M16 vượt trần này 341,5×; nguyên văn lần giết:
+    //     `AssertionError: expected 4645604 to be less than 13604`.
+    expect(fullVisits).toBeLessThan(fullNodes * 2);
+    // (2) Và chi phí đó TUYẾN TÍNH theo kích thước cây, đúng cái tên bài
+    //     test nói. Gấp đôi số công thức thì phép đếm gấp đôi (1,99800);
+    //     một vòng đi bậc hai thì gấp bốn (3,99277). Ngưỡng 2,5 nằm giữa
+    //     hai giá trị đó — cách bản đúng 1,25× và cách mutation 1,60×.
+    //     Khẳng định này không phụ thuộc hằng số nào của máy, chỉ phụ thuộc
+    //     độ dốc: đó là thứ mà một trần mili-giây tuyệt đối không bao giờ
+    //     phát biểu được.
+    expect(fullVisits).toBeLessThan(halfVisits * 2.5);
+  }, OVERSUBSCRIBED_MS);
 });
 
 describe('flatToDom / domToFlat round-trip', () => {
