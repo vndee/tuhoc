@@ -131,13 +131,75 @@ const CAND_CAP = 32;
  * waiting for the page, so "slow" here means a frozen tab, not a slow
  * function. A cell is a handful of integer operations on an `Int32Array`;
  * one million of them is single-digit milliseconds on this machine (see
- * task-2-report.md). The budget is spent per candidate window, largest
- * first come first served, so a pathological anchor degrades to "fewer
- * candidates examined" rather than to "browser stops responding". A quote
- * long enough that a single window exceeds the whole budget (~1000
- * characters) gets the exact tier only.
+ * task-2-fix-report.md). The budget is spent per candidate window, first
+ * come first served, so a pathological anchor degrades to "fewer candidates
+ * examined" rather than to "browser stops responding".
+ *
+ * Two properties of this number are worth stating explicitly, because both
+ * were measured rather than assumed:
+ *
+ *   - It is a PER-CALL budget, not a per-page one. Nothing here bounds
+ *     `N × MAX_DP_CELLS` for a chapter with N annotations; that ceiling has
+ *     to be Task 4's, and the numbers it needs are in the fix report.
+ *   - Together with the band in `bestWindowMatch` it sets the longest quote
+ *     that still gets a fuzzy tier at all. A window costs
+ *     `(m + 1) × (16 + 3·maxDist + 1)` cells now instead of
+ *     `(m + 1) × (m + 17)`, which moves the cut-off from 998 characters to
+ *     5.005 (both measured on p4-10, the longest chapter, with a quote one
+ *     edit away). Measured on the real corpus (44 chapters, projected text —
+ *     the string anchors actually store): the longest single `<p>` is 1.824
+ *     characters and the longest run of 2–3 adjacent `<p>` is 4.432, so
+ *     nothing a reader can select on this course loses the fuzzy tier any
+ *     more. Before the band, 1,2% of paragraphs and 11,8% of 2–3 paragraph
+ *     selections did.
  */
 const MAX_DP_CELLS = 1_000_000;
+
+/**
+ * Hard ceiling on the number of edits the fuzzy tier will accept, whatever
+ * `|exact|` is.
+ *
+ * `max(2, ceil(0.2·m))` alone grows without bound: a 900-character quote
+ * would be allowed to differ in 180 characters, and a 2.500-character one in
+ * 500. That is not a quote that survived an edit, it is a different passage
+ * on the same topic — and the reader's note would be pinned to it silently.
+ * The cap also keeps the banded DP LINEAR in `m`: the band is
+ * `16 + 3·maxDist + 1` wide, so an uncapped `maxDist` would put the cost
+ * back at `0.6·m²` and undo most of the point of banding.
+ *
+ * 64 rather than the 32 review proposed, decided on measurement. 600
+ * anchors of p4-10 (40–1.240 characters) with 0,5–10% of their characters
+ * corrupted, resolved against the unmodified chapter — before/after, and
+ * again at each candidate cap:
+ *
+ *     correct re-attachments     misplaced     orphaned
+ *     no cap (old)      470          0           130
+ *     cap 32            451          0           149
+ *     cap 64            543          0            57
+ *
+ * The safety argument for a tight cap does not survive that table:
+ * misplacement is zero at every setting — the independent `levenshtein`
+ * re-check and the context tie-breaks are what prevent it, not the
+ * threshold. What the threshold decides is how many notes become orphans,
+ * and 32 orphans 86 quotes the old code re-attached CORRECTLY, including
+ * 1.500-character quotes with a 2% edit — the long, laborious note this
+ * whole tier exists for.
+ *
+ * The price is per-page cost on the path Task 4 walks: 200 anchors of 900
+ * characters, all one edit away, measured 221 ms at 32 against 334 ms at 64
+ * (1.442 ms before the band). Both need a batch budget in Task 4 either way,
+ * so the cap is not the place to buy that.
+ *
+ * Known limit, stated rather than discovered later: with `MAX_DP_CELLS` at
+ * one million this caps quotes at ~5.005 characters, and the longest
+ * selection this corpus can produce is 4.432 — 13% of headroom. The formula
+ * is `MAX_DP_CELLS / (2·FUZZY_SLACK + 3·MAX_EDIT_DIST + 1)`; a course with
+ * longer paragraphs has to recompute it rather than assume it.
+ *
+ * It binds only above `m = 320`; below that `ceil(0.2·m)` is smaller and
+ * nothing changes.
+ */
+const MAX_EDIT_DIST = 64;
 
 /**
  * Cap on exact-match occurrences collected before context scoring.
@@ -527,6 +589,43 @@ export function levenshtein(a: string, b: string, max: number = Number.POSITIVE_
  * (row minima never decrease, so nothing below `maxDist` can appear later),
  * which is what keeps a quote that simply is not in the chapter cheap.
  *
+ * ---------------------------------------------------------------------
+ * The band, and why Sellers does not obviously have one
+ * ---------------------------------------------------------------------
+ * `levenshtein` above bands around the main diagonal because its alignment
+ * starts at a fixed place. Here the start is free — row 0 is all zeros —
+ * so there is no single diagonal, and this function used to fill the whole
+ * `(m + 1) × (w + 1)` table. That made cost quadratic in `|exact|`: with
+ * `MAX_DP_CELLS` at one million, a quote over ~1.000 characters could not
+ * afford even ONE window and silently lost the fuzzy tier entirely — the
+ * longest, most laboriously made notes, exactly when the content had just
+ * been edited.
+ *
+ * The band comes from the window rather than from the diagonal. The answer
+ * must have length within `maxDist` of `m` and must fit inside the window,
+ * so its start `p` (window-relative) obeys `0 <= p <= w - m + maxDist`;
+ * call that bound `startSlack`. Along any path of total cost `<= maxDist`,
+ * the text consumed after `i` pattern characters is `i ± maxDist` (cost is
+ * non-decreasing along a path, and a length difference of `d` costs at
+ * least `d`). So every cell that can belong to an accepted alignment has
+ *
+ *     i - maxDist <= j <= i + startSlack + maxDist
+ *
+ * and the rest can be filled with "further than maxDist" without losing a
+ * single answer at or below the threshold. The band is
+ * `startSlack + 2·maxDist + 1` wide — with `w - m = 2·FUZZY_SLACK = 16` and
+ * `maxDist` capped by `MAX_EDIT_DIST`, that is 209 columns regardless of
+ * `m`, so a window costs O(m) rather than O(m²).
+ *
+ * Two consequences to keep in mind when reading the code below:
+ *   - cells outside the band hold whatever an earlier row left in the
+ *     buffer (the two row buffers are swapped, not cleared), so every scan
+ *     — the row minimum, the final-row minimum, the tie-break — is
+ *     restricted to `[lo, hi]`, and the two cells just outside the band are
+ *     written with `over` so neighbours read them as unreachable;
+ *   - `maxDist` is now capped, which is not just a cost decision: see
+ *     `MAX_EDIT_DIST`.
+ *
  * Ties in the final row are broken by CONTEXT, not by position, and that is
  * load-bearing rather than tidy. Equal-cost alignments are the normal case,
  * not an edge one: a quote whose last character was edited matches equally
@@ -568,21 +667,51 @@ function bestWindowMatch(
   const w = to - from;
   if (m === 0 || w <= 0) return null;
 
-  let prevD = new Int32Array(w + 1);
-  let prevS = new Int32Array(w + 1);
-  let curD = new Int32Array(w + 1);
-  let curS = new Int32Array(w + 1);
-  for (let j = 0; j <= w; j++) {
+  // "Further than maxDist" — one value, since nothing above the threshold is
+  // ever compared for magnitude. Also what every out-of-band cell is set to.
+  const over = maxDist + 1;
+  // How far into the window the accepted alignment may START (see the band
+  // derivation in the doc above). Clamped at 0: a window narrower than
+  // `m - maxDist` cannot hold an alignment of the required length at all,
+  // and the per-row `lo > hi` check below turns that into `null`.
+  const startSlack = Math.max(0, w - m + maxDist);
+
+  let prevD = new Int32Array(w + 2);
+  let prevS = new Int32Array(w + 2);
+  let curD = new Int32Array(w + 2);
+  let curS = new Int32Array(w + 2);
+
+  // Row 0 is "the alignment may start here, at no cost" — but only within
+  // the band, so that a start too late to yield a long enough alignment is
+  // never seeded.
+  const hi0 = Math.min(w, startSlack + maxDist);
+  for (let j = 0; j <= hi0; j++) {
     prevD[j] = 0;
     prevS[j] = from + j;
   }
+  if (hi0 < w) {
+    prevD[hi0 + 1] = over;
+    prevS[hi0 + 1] = from;
+  }
 
   for (let i = 1; i <= m; i++) {
-    curD[0] = i;
-    curS[0] = from;
-    let rowMin = i;
+    const lo = i > maxDist ? i - maxDist : 0;
+    const hi = Math.min(w, i + startSlack + maxDist);
+    if (lo > hi) return null; // band has slid past the end of the window
+    let rowMin = over;
+    if (lo === 0) {
+      // `lo === 0` exactly when `i <= maxDist`, so this cell — "delete the
+      // first `i` pattern characters, start at the window's own start" — is
+      // still within the threshold.
+      curD[0] = i;
+      curS[0] = from;
+      rowMin = i;
+    } else {
+      curD[lo - 1] = over;
+      curS[lo - 1] = from;
+    }
     const pi = pattern.charCodeAt(i - 1);
-    for (let j = 1; j <= w; j++) {
+    for (let j = lo === 0 ? 1 : lo; j <= hi; j++) {
       let best = prevD[j - 1] + (pi === text.charCodeAt(from + j - 1) ? 0 : 1);
       let bestStart = prevS[j - 1];
       let bestDrift = bestStart < expectedStart ? expectedStart - bestStart : bestStart - expectedStart;
@@ -608,9 +737,14 @@ function bestWindowMatch(
         }
       }
 
+      if (best > over) best = over;
       curD[j] = best;
       curS[j] = bestStart;
       if (best < rowMin) rowMin = best;
+    }
+    if (hi < w) {
+      curD[hi + 1] = over;
+      curS[hi + 1] = from;
     }
     if (rowMin > maxDist) return null;
     let swap = prevD;
@@ -621,11 +755,15 @@ function bestWindowMatch(
     curS = swap;
   }
 
-  // `prevD` now holds row `m`. Column 0 is skipped: it describes the empty
-  // substring, which is never a useful anchor and would otherwise win for
-  // very short patterns where `maxDist >= m`.
+  // `prevD` now holds row `m`, meaningful only inside that row's band —
+  // outside it the buffer still carries values from row `m - 2`. Column 0 is
+  // skipped as well: it describes the empty substring, which is never a
+  // useful anchor and would otherwise win for very short patterns where
+  // `maxDist >= m`.
+  const loM = Math.max(1, m > maxDist ? m - maxDist : 0);
+  const hiM = Math.min(w, m + startSlack + maxDist);
   let bestV = Number.POSITIVE_INFINITY;
-  for (let j = 1; j <= w; j++) {
+  for (let j = loM; j <= hiM; j++) {
     if (prevD[j] < bestV) bestV = prevD[j];
   }
   if (bestV > maxDist) return null;
@@ -633,7 +771,7 @@ function bestWindowMatch(
   let bestJ = -1;
   let bestScore = -1;
   let bestLenGap = Number.POSITIVE_INFINITY;
-  for (let j = 1; j <= w; j++) {
+  for (let j = loM; j <= hiM; j++) {
     if (prevD[j] !== bestV) continue;
     const start = prevS[j];
     const end = from + j;
@@ -736,7 +874,7 @@ function fuzzyFind(
   quote: { exact: string; prefix: string; suffix: string },
 ): { start: number; to: number } | null {
   const m = quote.exact.length;
-  const maxDist = Math.max(2, Math.ceil(0.2 * m));
+  const maxDist = Math.min(Math.max(2, Math.ceil(0.2 * m)), MAX_EDIT_DIST);
   if (m < 4 * maxDist) return null;
 
   const candidates = candidateStarts(text, quote.prefix, quote.suffix, m);
@@ -750,7 +888,12 @@ function fuzzyFind(
     const to = Math.min(text.length, c + m + FUZZY_SLACK);
     const w = to - from;
     if (w <= 0) continue;
-    const cells = (m + 1) * (w + 1);
+    // The BANDED cost, matching what `bestWindowMatch` actually walks. The
+    // unbanded `(m + 1) × (w + 1)` estimate was what put the fuzzy tier's
+    // length ceiling at ~1.000 characters: the budget was being charged for
+    // cells nobody visits.
+    const band = Math.min(w + 1, Math.max(0, w - m + maxDist) + 2 * maxDist + 1);
+    const cells = (m + 1) * band;
     if (cells > budget) break;
     budget -= cells;
 

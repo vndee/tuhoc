@@ -106,6 +106,28 @@ function paint(range: Range): HTMLElement {
   return mark;
 }
 
+/**
+ * Deterministic pseudo-prose. The perf fixtures elsewhere in this file
+ * repeat one paragraph verbatim, which is fine for measuring cost but
+ * useless for the fuzzy tier: a quote taken from a periodic text still
+ * occurs VERBATIM at the next period after an edit, so the exact tier
+ * answers and the fuzzy tier is never reached. Random word order makes a
+ * 2.500-character quote unique in the chapter, which is what a real
+ * paragraph is.
+ */
+function prose(seed: number, words: number): string {
+  const bag = [
+    'phân', 'kỳ', 'entropy', 'chéo', 'mô', 'hình', 'sinh', 'giá', 'đỡ', 'ước', 'lượng', 'bit',
+    'lãng', 'phí', 'ký', 'hiệu', 'thông', 'tin', 'tương', 'hỗ', 'điều', 'kiện', 'bất', 'đẳng',
+    'thức', 'cận', 'dưới', 'chi', 'phí', 'tin', 'sai', 'khoảng', 'cách', 'biến', 'phân', 'chuẩn',
+    'hoá', 'xác', 'suất', 'hậu', 'nghiệm', 'tiên', 'tổng', 'quát', 'độ', 'dài', 'trung', 'bình',
+  ];
+  const rand = rng(seed);
+  const out: string[] = [];
+  for (let i = 0; i < words; i++) out.push(bag[Math.floor(rand() * bag.length)]);
+  return out.join(' ');
+}
+
 const PROSE = `<div id="c"><p>Xét phân kỳ ${katexSpan('D_{\\mathrm{KL}}(p\\Vert q)', 'DKL(p‖q)')} giữa hai phân phối,
 và ${katexSpan('H(p,q)', 'H(p,q)')} là đại lượng trung tâm của chương này.</p>
 <p>Đoạn thứ hai nói về cross-entropy và số bit lãng phí mỗi ký hiệu.</p></div>`;
@@ -796,6 +818,90 @@ describe('C1 — NormMap cũ sau khi tô: ném lỗi CÓ TÊN, không trả kế
     paint(anchorToRange(m, anchorAt(m, i, i + 10)!)!.range);
     expect(isMapStale(m)).toBe(true);
     expect(isMapStale(normalizeContainer(root))).toBe(false);
+  });
+});
+
+// ===========================================================================
+// I1 (review vòng 1) — trần độ dài của tầng fuzzy.
+//
+// `bestWindowMatch` chạy TOÀN bảng `(m+1)×(w+1)`, `w ≈ m + 16`, nên số ô tăng
+// theo bình phương độ dài quote: với ngân sách 1M ô, một quote quá ~1.000 ký
+// tự không còn cửa sổ nào chạy nổi và ghi chú mất hẳn khả năng tự phục hồi
+// đúng lúc cần nó nhất (tác giả vừa sửa nội dung).
+// ===========================================================================
+
+describe('I1 — quote DÀI vẫn phải còn đường fuzzy', () => {
+  /** Ba đoạn văn ~1.000 ký tự, và bản sao đã sửa đúng MỘT ký tự ở giữa
+   * đoạn thứ hai. Trả về HTML gốc, HTML đã sửa, và ký tự đã bị thay. */
+  function threeParagraphs(seed: number, editAtChar: number, edits = 1) {
+    const paras = [prose(seed, 190), prose(seed + 1, 190), prose(seed + 2, 190)];
+    const mangle = (s: string): string => {
+      let out = s;
+      if (edits === 1) return s.slice(0, editAtChar) + 'Ẍ' + s.slice(editAtChar + 1);
+      // Spread evenly through the paragraph so the count is the edit
+      // DISTANCE, not a cluster the DP absorbs as one block.
+      for (let k = 1; k <= edits; k++) {
+        const at = Math.floor((k * s.length) / (edits + 1));
+        out = out.slice(0, at) + 'Ẍ' + out.slice(at + 1);
+      }
+      return out;
+    };
+    const wrap = (ps: string[]): string => `<div>${ps.map((p) => `<p>${p}</p>`).join('\n')}</div>`;
+    return { before: wrap(paras), after: wrap([paras[0], mangle(paras[1]), paras[2]]) };
+  }
+
+  it('quote ~2.500 ký tự (2–3 đoạn văn) sống sót một lỗi chính tả', () => {
+    const { before, after } = threeParagraphs(1234, 400);
+    const m1 = normalizeContainer(el(before));
+    const a = anchorAt(m1, 100, 2700)!;
+    expect(a.exact.length).toBeGreaterThan(2400);
+
+    const m2 = normalizeContainer(el(after));
+    const hit = anchorToRange(m2, a);
+    expect(hit).not.toBeNull();
+    expect(hit!.fuzzy).toBe(true);
+    // ...và ở ĐÚNG chỗ, không phải một vị trí trôi: hai đầu của đoạn tìm được
+    // phải trùng hai đầu của quote gốc (chỗ sửa nằm ở giữa).
+    const got = describeResolved(m2, hit!.range)!;
+    expect(got.slice(0, 60)).toBe(a.exact.slice(0, 60));
+    expect(got.slice(-60)).toBe(a.exact.slice(-60));
+  });
+
+  it('quote ~2.500 ký tự đi hết đường fuzzy vẫn dưới trần thời gian một lần gọi', () => {
+    const { before, after } = threeParagraphs(4321, 500);
+    const m1 = normalizeContainer(el(before));
+    const a = anchorAt(m1, 100, 2700)!;
+    const m2 = normalizeContainer(el(after));
+    let elapsed = Number.POSITIVE_INFINITY;
+    for (let r = 0; r < 5; r++) {
+      const t0 = performance.now();
+      expect(anchorToRange(m2, a)).not.toBeNull();
+      elapsed = Math.min(elapsed, performance.now() - t0);
+    }
+    // Đo được (best-of-5) 1,2–1,6ms. Trần 60ms cùng cách chọn với các phép đo
+    // khác trong file: nó canh ĐỘ PHỨC TẠP, không canh mili-giây. Bỏ dải băng
+    // của `bestWindowMatch` thì cửa sổ này là 2.516×2.532 ≈ 6,4M ô — vượt hẳn
+    // ngân sách, nên test trên (`không null`) đỏ trước khi test này kịp đỏ.
+    expect(elapsed).toBeLessThan(60);
+  });
+
+  it('trần số lần sửa vẫn còn: quote dài bị sửa QUÁ nhiều thì thà orphan còn hơn đoán', () => {
+    // Dải băng làm quote dài chạy được, nhưng `maxDist = ceil(0.2·m)` trên một
+    // quote 2.500 ký tự nghĩa là chấp nhận lệch 500 ký tự — đó không phải khớp,
+    // đó là hai đoạn văn khác nhau tình cờ cùng chủ đề. Trần tuyệt đối phải
+    // giữ, và nó cũng là thứ giữ cho dải băng rộng CỐ ĐỊNH (bỏ trần thì bề
+    // rộng băng lại tỉ lệ với m và chi phí quay về bình phương).
+    const { before, after } = threeParagraphs(999, 200, 150);
+    const m1 = normalizeContainer(el(before));
+    const a = anchorAt(m1, 100, 2700)!;
+    const m2 = normalizeContainer(el(after));
+    expect(anchorToRange(m2, a)).toBeNull();
+
+    // Đối chứng: cùng quote, cùng chỗ, chỉ 5 lỗi ⇒ vẫn cứu được.
+    const { after: lightlyEdited } = threeParagraphs(999, 200, 5);
+    const hit = anchorToRange(normalizeContainer(el(lightlyEdited)), a);
+    expect(hit).not.toBeNull();
+    expect(hit!.fuzzy).toBe(true);
   });
 });
 
