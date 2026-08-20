@@ -323,3 +323,76 @@ mục 1 cần thêm một vòng hỏi chi tiết trước khi thành plan.
   `docs/carried-forward.md`) nay thuộc hệ thống con 1. **Thêm**: registry, rating, song ngữ.
 - Nợ **C-1** (rò rỉ chéo tài khoản qua nhiều tab) và **C-3** (CSRF khi dùng `SameSite=None`)
   vẫn phải xử lý trước khi mở cho người lạ.
+
+---
+
+## 9. Quyết định chốt vòng 2 (2026-08-20)
+
+### 9.1 Tên miền — vấn đề tốn tiền nhất của dự án đã tự giải quyết
+
+Tác giả đã sở hữu `duy.dev`. Bố trí:
+
+| Vai trò | Origin |
+|---|---|
+| Web | `tuhoc.duy.dev` |
+| API | `api.tuhoc.duy.dev` |
+| Kho khoá AI (§3.1) | **`vault.duy.dev`** |
+
+Cookie phiên: `Domain=.tuhoc.duy.dev`, `SameSite=Lax`. Web và API cùng tên miền đăng ký `duy.dev`
+nên là **same-site** ⇒ cookie được gửi, **lỗi đăng nhập-hỏng-âm-thầm ở `docs/deploy.md` §0 biến mất
+mà không tốn đồng nào**.
+
+**Kho khoá cố ý nằm NGOÀI `tuhoc.duy.dev`.** Nếu đặt ở `vault.tuhoc.duy.dev` thì nó nằm trong phạm
+vi `Domain=.tuhoc.duy.dev` và sẽ **nhận được cookie phiên** — nghĩa là một chỗ duy nhất giữ cả khoá
+API lẫn phiên đăng nhập, và một lỗi ở đó làm mất cả hai. Đặt ở `vault.duy.dev` thì cookie không với
+tới, mà `postMessage` vẫn hoạt động bình thường (nó vốn xuyên origin). Cách ly vẫn nguyên vẹn: same-site
+**không** phải same-origin — trình duyệt vẫn cấm JS của `tuhoc.duy.dev` đọc storage của `vault.duy.dev`.
+
+Lưu ý: `.dev` nằm trong danh sách HSTS preload ⇒ HTTPS là bắt buộc, không có đường HTTP.
+
+### 9.2 Giấy phép: AGPL-3.0
+
+Ai chạy bản sửa đổi cho người khác dùng thì phải công bố mã. Cộng đồng tự chạy và đóng góp bình
+thường; chỉ chặn việc lấy nền tảng đóng kín lại rồi chạy dịch vụ cạnh tranh.
+
+**Giấy phép nền tảng ≠ giấy phép course.** AGPL áp cho mã nguồn. Mỗi course mang giấy phép riêng
+trong `manifest.license` (§2.1). Phải nói rõ trong `CONTRIBUTING.md`, kẻo người đóng góp course
+tưởng nội dung của họ bị AGPL hoá.
+
+### 9.3 Phạm vi AI: tối thiểu, và nối thẳng vào P2
+
+Chỉ hai việc: **hỏi-đáp về chương đang đọc**, và **"Đào sâu" một đoạn bôi chọn**. Không sinh câu
+hỏi luyện tập, không chấm bài, không soạn nội dung.
+
+Việc thứ hai gần như miễn phí vì P2 đã có sẵn: đoạn bôi chọn đã được chuẩn hoá và neo. Nút "Đào sâu"
+nằm ngay cạnh bốn nút màu trên thanh công cụ của Task 5.
+
+Quyết định kèm theo (tôi tự chốt): lịch sử hội thoại lưu cục bộ và **đồng bộ như ghi chú** — với
+tự-cắm-key thì server không tốn gì. Ngữ cảnh gửi đi là **chương hiện tại + đoạn bôi chọn**, và
+người dùng **xem được chính xác những gì được gửi** trước khi gửi.
+
+### 9.4 Registry mở cả hai hạng ngay từ đầu
+
+Tác giả tự duyệt mọi PR hạng `interactive`. Đây là **cam kết thời gian lặp lại**, và duyệt sót một
+lần là XSS trên bản chính thức.
+
+**Hệ quả về thứ tự — bắt buộc:** kho khoá (§3.1) và CSP phải **lên trước khi registry mở cửa**.
+Trùng với thứ tự ở §6 (hệ 2 trước hệ 3), nhưng nay nó là ràng buộc chứ không phải sở thích: kho
+khoá chính là thứ giới hạn thiệt hại khi duyệt sót — khoá API của người đọc **không** nằm trong
+tầm với của JS course, kể cả JS độc hại đã lọt qua vòng duyệt.
+
+### 9.5 Những gì tôi tự quyết (nói ra để phản đối được)
+
+- **Đặt tên trong registry:** `<tài-khoản-github>/<mã-course>`, ví dụ `vndee/***REMOVED***`.
+  Tránh trùng tên vĩnh viễn mà không cần cơ quan cấp phát nào.
+- **Bản dịch là course RIÊNG**, liên kết bằng trường `translationOf` trong manifest. Nhồi nhiều
+  ngôn ngữ vào một gói làm hỏng việc ghim phiên bản và neo ghi chú (§2.6).
+- **Song ngữ ngay từ đầu** (vi + en). Nhét i18n vào sau đắt hơn nhiều so với làm từ đầu ở một ứng
+  dụng còn nhỏ.
+- **Không đóng gói sẵn course nào** trong repo. Lần chạy đầu dẫn thẳng tới registry hoặc màn hình
+  import — và điều đó buộc chính đường import phải hoạt động (§2B.1).
+- **Giới hạn 20 MB chưa nén** mỗi course trên registry; CI từ chối gói lớn hơn.
+- **CLI có thêm `tuhoc init`** dựng khung course rỗng. Vài chục dòng, bỏ đi phần lớn ma sát của
+  người đóng góp đầu tiên.
+- **Rating cần đăng nhập** trên bản chính thức. Bản tự chạy **đọc** được điểm từ registry nhưng
+  không bỏ phiếu — không có danh tính thì không có phiếu.
