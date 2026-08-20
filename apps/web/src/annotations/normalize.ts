@@ -73,7 +73,15 @@
  * that formula rather than collapsing to nothing.
  */
 
-const ATOMIC_SELECTOR = '.katex, .katex-display, .katex-error';
+/**
+ * Exported for `./painter` (Task 3), which walks the same DOM for a
+ * different purpose and must agree with this module about what an atomic
+ * token is — a `<mark>` opened inside a formula's subtree would corrupt the
+ * structure KaTeX generated. A second copy of this string in painter.ts
+ * would be a list that can drift silently: the day a new KaTeX class shows
+ * up here, the painter would keep wrapping it. One definition, two readers.
+ */
+export const ATOMIC_SELECTOR = '.katex, .katex-display, .katex-error';
 
 /**
  * Runtime-generated UI that must never be annotated. `[data-viz]` alone
@@ -95,8 +103,15 @@ const ATOMIC_SELECTOR = '.katex, .katex-display, .katex-error';
  * this is the module's "annotatable is the default" philosophy costing
  * three tag names to keep a future chapter with an SVG diagram from
  * quietly corrupting anchors.
+ *
+ * Exported for the same reason as `ATOMIC_SELECTOR` above: `./painter` has
+ * to skip exactly these subtrees when it walks a `Range`. A highlight that
+ * spans a figure physically contains that figure's canvas, sliders and
+ * readouts even though none of them contributes a flat character, and
+ * wrapping any of it in a `<mark>` would put reader-owned DOM inside
+ * `initViz`'s.
  */
-const EXCLUDED_SELECTOR = '.ctrls, .tip, canvas, [data-viz], .readout, .ex-check, style, script, svg';
+export const EXCLUDED_SELECTOR = '.ctrls, .tip, canvas, [data-viz], .readout, .ex-check, style, script, svg';
 
 /** OBJECT REPLACEMENT CHARACTER — the single atomic stand-in for one
  * whole `.katex`/`.katex-display`/`.katex-error` subtree. */

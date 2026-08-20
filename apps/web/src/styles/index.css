@@ -235,3 +235,89 @@
   font-weight: 700;
   fill: var(--ink-2);
 }
+
+/* P2 Task 3 — highlight painter (src/annotations/painter.ts).
+   The task brief names `src/styles/shell.css`; no such file exists in this
+   repo — the app's own stylesheet is THIS one, and it is the file that
+   already imports reader.css, so the tokens below resolve. Same placement
+   rationale as .auth-page/.dash-* above: reader.css stays the ported v1
+   stylesheet, anything P1/P2 adds lives here and reuses v1's tokens.
+
+   Colour mapping is the plan's (--s4/--s3/--s1/--s5 at .28 alpha, .38 in
+   dark). `color-mix` rather than hard-coded rgba() so a theme change to
+   --s1..--s5 carries into the highlights; reader.css already uses it
+   (`a{border-bottom: … color-mix(…)}`), so this needs no new baseline. */
+:root {
+  --ann-y: color-mix(in srgb, var(--s4) 28%, transparent);
+  --ann-g: color-mix(in srgb, var(--s3) 28%, transparent);
+  --ann-b: color-mix(in srgb, var(--s1) 28%, transparent);
+  --ann-p: color-mix(in srgb, var(--s5) 28%, transparent);
+}
+
+html[data-theme='dark'] {
+  --ann-y: color-mix(in srgb, var(--s4) 38%, transparent);
+  --ann-g: color-mix(in srgb, var(--s3) 38%, transparent);
+  --ann-b: color-mix(in srgb, var(--s1) 38%, transparent);
+  --ann-p: color-mix(in srgb, var(--s5) 38%, transparent);
+}
+
+/* `color: inherit` is load-bearing: the UA stylesheet gives <mark> both a
+   yellow background AND a near-black text colour, which is unreadable in
+   dark mode. `box-decoration-break: clone` keeps the rounded corners on
+   every line a highlight wraps onto instead of only the first and last. */
+mark.ann {
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 2px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* Formulas are tinted, never wrapped — see painter.ts, section 2. The class
+   is ADDED to the .katex/.katex-display element, so every one of KaTeX's own
+   `.katex …` rules still matches; vendor/katex.css sets no background
+   anywhere, so nothing inside paints over this. */
+.ann-hl {
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.katex-display.ann-hl {
+  border-radius: 4px;
+}
+
+/* One rule per colour, covering both the <mark> form and the formula form.
+   Deliberately class-only (no `mark.ann-y`): author rules beat the UA
+   stylesheet whatever their specificity, and keeping every colour at the
+   same specificity is what lets a nested mark composite over its parent
+   instead of a more specific selector winning outright. Alpha < 1 is what
+   makes two overlapping notes read as a darker band rather than as one note
+   hiding the other. */
+.ann-y,
+.ann-hl-y {
+  background-color: var(--ann-y);
+}
+
+.ann-g,
+.ann-hl-g {
+  background-color: var(--ann-g);
+}
+
+.ann-b,
+.ann-hl-b {
+  background-color: var(--ann-b);
+}
+
+.ann-p,
+.ann-hl-p {
+  background-color: var(--ann-p);
+}
+
+/* Task 6 focuses a highlight when its margin card is clicked. Named as the
+   plan names it (`.ann.focus`) so that task finds the hook it expects. */
+.ann.focus,
+.ann-hl.focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
