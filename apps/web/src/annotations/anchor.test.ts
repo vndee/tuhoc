@@ -2,7 +2,14 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { type Anchor, anchorToRange, levenshtein, selectionToAnchor } from './anchor';
+import {
+  type Anchor,
+  anchorToRange,
+  isMapStale,
+  levenshtein,
+  selectionToAnchor,
+  StaleNormMapError,
+} from './anchor';
 import { flatToDom, normalizeContainer, rangeToFlat } from './normalize';
 
 /**
@@ -83,6 +90,20 @@ function rng(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/**
+ * Task 3's painter, in miniature — and the exact DOM operation that turns a
+ * `NormMap` into a snapshot of a DOM that no longer exists.
+ * `Range.surroundContents` extracts the covered text and re-inserts it under
+ * a `<mark>`, which SPLITS the Text node the range started in: the original
+ * node keeps only the characters before the highlight, while `map.segs`
+ * still records its old length.
+ */
+function paint(range: Range): HTMLElement {
+  const mark = document.createElement('mark');
+  range.surroundContents(mark);
+  return mark;
 }
 
 const PROSE = `<div id="c"><p>Xét phân kỳ ${katexSpan('D_{\\mathrm{KL}}(p\\Vert q)', 'DKL(p‖q)')} giữa hai phân phối,
@@ -667,6 +688,175 @@ describe('P2-F5 — khoảng trắng: đúng MỘT đường, từ lúc lưu t�
   });
 });
 
+// ===========================================================================
+// C1 (review vòng 1) — `NormMap` là ẢNH CHỤP.
+//
+// Vòng lặp hiển nhiên nhất của Task 4 là `for (a of annotations) { paint(
+// anchorToRange(map, a)) }`, và nó dùng lại CÙNG một map sau khi DOM đã bị
+// tô. Đo trên p1-5 thật (40 anchor, tô đúng một cái): map cũ làm
+// `anchorToRange` ném `IndexSizeError: Offset out of bound` — một thông điệp
+// không nói được nguyên nhân, ném ra giữa lúc render chương.
+//
+// Không test một-ghi-chú nào phát hiện được điều này: phải có ghi chú THỨ HAI
+// giải sau khi cái thứ nhất đã được tô.
+// ===========================================================================
+
+describe('C1 — NormMap cũ sau khi tô: ném lỗi CÓ TÊN, không trả kết quả', () => {
+  const ONE_P =
+    '<div><p>Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron.</p></div>';
+  const TWO_P =
+    '<div><p>Alpha beta gamma delta epsilon zeta.</p><p>Eta theta iota kappa lambda mu nu xi.</p></div>';
+
+  function twoAnchors(html: string, first: string, second: string) {
+    const root = el(html);
+    const m = normalizeContainer(root);
+    const i1 = m.flat.indexOf(first);
+    const i2 = m.flat.indexOf(second);
+    expect(i1).toBeGreaterThanOrEqual(0);
+    expect(i2).toBeGreaterThan(i1);
+    return { root, m, a1: anchorAt(m, i1, i1 + first.length)!, a2: anchorAt(m, i2, i2 + second.length)! };
+  }
+
+  it('ghi chú thứ HAI trong CÙNG text node đã bị cắt: StaleNormMapError, không phải IndexSizeError', () => {
+    const { m, a1, a2 } = twoAnchors(ONE_P, 'beta gamma', 'iota kappa');
+    expect(isMapStale(m)).toBe(false);
+
+    paint(anchorToRange(m, a1)!.range); // <mark> ⇒ splitText ⇒ node gốc ngắn đi
+
+    expect(isMapStale(m)).toBe(true);
+    expect(() => anchorToRange(m, a2)).toThrow(StaleNormMapError);
+    // Thông điệp phải nói được PHẢI LÀM GÌ, không chỉ "có gì đó sai".
+    expect(() => anchorToRange(m, a2)).toThrow(/normalizeContainer/);
+  });
+
+  it('map cũ bị từ chối kể cả khi ghi chú thứ hai nằm ở text node KHÔNG bị đụng tới', () => {
+    // Hợp đồng là "ảnh chụp", không phải "ảnh chụp từng phần". Nếu chỉ xác
+    // thực đúng những seg mà câu trả lời chạm tới thì 38/40 anchor của p1-5
+    // vẫn giải được trên một map đã hỏng — tức là Task 4 sẽ học được thói
+    // quen dùng lại map cũ, và sẽ trúng đúng 2/40 kia vào một hôm khác.
+    const { m, a1, a2 } = twoAnchors(TWO_P, 'gamma delta', 'iota kappa');
+    paint(anchorToRange(m, a1)!.range);
+    expect(isMapStale(m)).toBe(true);
+    expect(() => anchorToRange(m, a2)).toThrow(StaleNormMapError);
+  });
+
+  it('selectionToAnchor cũng từ chối map cũ — tạo ghi chú mới trên map cũ là cùng một lỗi', () => {
+    const { root, m, a1 } = twoAnchors(ONE_P, 'beta gamma', 'iota kappa');
+    const live = flatToDom(m, m.flat.indexOf('nu xi'), m.flat.indexOf('nu xi') + 5)!;
+    paint(anchorToRange(m, a1)!.range);
+    expect(() => selectionToAnchor(m, live, 'y')).toThrow(StaleNormMapError);
+    void root;
+  });
+
+  it('DỰNG LẠI map sau khi tô ⇒ cả hai ghi chú giải đúng, range.toString() khớp exact', () => {
+    const { root, m, a1, a2 } = twoAnchors(ONE_P, 'beta gamma', 'iota kappa');
+    paint(anchorToRange(m, a1)!.range);
+
+    const m2 = normalizeContainer(root);
+    expect(isMapStale(m2)).toBe(false);
+    for (const a of [a1, a2]) {
+      const hit = anchorToRange(m2, a)!;
+      expect(hit, a.exact).not.toBeNull();
+      expect(hit.fuzzy, a.exact).toBe(false);
+      // Fixture cố ý nằm gọn trong MỘT thẻ <p> với dấu cách thường, nên ở đây
+      // chuỗi DOM thô và phép chiếu trùng nhau và `toString()` là oracle hợp lệ
+      // (nói chung thì không — xem test "định dạng lại" ở trên).
+      expect(hit.range.toString(), a.exact).toBe(a.exact);
+    }
+  });
+
+  it('<mark> bọc TRỌN một text node (không cắt) KHÔNG bị coi là cũ — chống báo nhầm', () => {
+    // Đây là nửa còn lại của hợp đồng. Một painter tô đúng trọn một text node
+    // chỉ ĐỔI CHA của node đó: độ dài giữ nguyên, mọi offset vẫn đúng, phép
+    // chiếu không đổi (`<mark>` là thẻ inline). Nếu phép xác thực báo cũ ở
+    // đây thì Task 4 phải dựng lại `NormMap` sau MỌI nét tô, và "ảnh chụp"
+    // biến thành "dựng lại 200 lần mỗi lần mở chương".
+    const root = el('<div><p>Alpha beta gamma</p><p>delta epsilon zeta</p></div>');
+    const m = normalizeContainer(root);
+    const i = m.flat.indexOf('epsilon');
+    const a = anchorAt(m, i, i + 'epsilon'.length)!;
+
+    const t = root.querySelector('p')!.firstChild as Text;
+    const before = t.data;
+    const mark = document.createElement('mark');
+    t.parentNode!.insertBefore(mark, t);
+    mark.appendChild(t);
+
+    expect(t.data).toBe(before);
+    expect(t.parentElement!.tagName).toBe('MARK');
+    expect(isMapStale(m)).toBe(false);
+    expect(anchorToRange(m, a)!.range.toString()).toBe('epsilon');
+  });
+
+  it('isMapStale trả về boolean, không ném — caller kiểm chủ động được, không cần try/catch', () => {
+    const root = el(ONE_P);
+    const m = normalizeContainer(root);
+    expect(isMapStale(m)).toBe(false);
+    const i = m.flat.indexOf('beta gamma');
+    paint(anchorToRange(m, anchorAt(m, i, i + 10)!)!.range);
+    expect(isMapStale(m)).toBe(true);
+    expect(isMapStale(normalizeContainer(root))).toBe(false);
+  });
+});
+
+// ===========================================================================
+// I2 (review vòng 1) — hai cơ chế mà 43 test cũ KHÔNG hề giữ.
+//
+// Review độc lập chạy 25 mutation: R22 (bỏ hẳn tầng chữ ký
+// `prefix+exact+suffix`) và R21 (bỏ tie-break ngữ cảnh ở hàng cuối của
+// Sellers) đều để nguyên 43/43 test xanh. Cả hai đều là quyết định mà chính
+// doc của module gọi là quan trọng.
+// ===========================================================================
+
+describe('I2 — hai cơ chế trước đây không có test nào giữ', () => {
+  it('R22 — chữ ký prefix+exact+suffix là thứ DUY NHẤT cứu được quote khi exact vượt EXACT_CAP', () => {
+    // Đường chấm điểm từng lần xuất hiện chỉ thu thập `EXACT_CAP = 2000` chỗ
+    // đầu tiên. Test cũ dùng 400 chỗ trùng — thừa sức lọt qua cái cap đó, nên
+    // bỏ HẲN tầng chữ ký mà chúng vẫn xanh. Ở đây `exact` xuất hiện hơn 2.000
+    // lần TRƯỚC vị trí đúng, nên danh sách bị cắt cụt trước khi tới nơi và chỉ
+    // còn chữ ký nguyên khối trả lời đúng được.
+    const filler = Array.from({ length: 2100 }, (_, k) => `Câu ${k} nói về p và q.`).join(' ');
+    const html = `<div><p>${filler} Điểm chốt cuối cùng là p đứng một mình.</p></div>`;
+    const m1 = normalizeContainer(el(html));
+    const target = m1.flat.indexOf('là p đứng') + 3;
+    expect(m1.flat.slice(0, target).split('p').length - 1).toBeGreaterThan(2000);
+
+    const a = anchorAt(m1, target, target + 1)!;
+    expect(a.exact).toBe('p');
+
+    const m2 = normalizeContainer(el(html));
+    const hit = anchorToRange(m2, a)!;
+    expect(hit).not.toBeNull();
+    expect(hit.fuzzy).toBe(false);
+    expect(rangeToFlat(m2, hit.range)).toEqual({ from: target, to: target + 1 });
+  });
+
+  it('R21 — tie-break NGỮ CẢNH ở hàng cuối Sellers: độ dài gần |exact| nhất là câu trả lời SAI', () => {
+    // Ký tự cuối của quote bị xóa. Trong cửa sổ có ĐÚNG hai cách khớp cùng giá
+    // (khoảng cách 1):
+    //   (A) dừng trước dấu chấm  → xóa 'h' khỏi pattern, dài m-1
+    //   (B) nuốt luôn dấu chấm   → thay 'h' bằng '.',   dài m
+    // (B) có |len − m| = 0 nên "chọn độ dài gần nhất" luôn thắng — và nó dán
+    // thêm một dấu chấm không thuộc về ghi chú vào highlight, mỗi lần tác giả
+    // sửa chữ thì lấn thêm một ký tự. Chỉ ngữ cảnh (suffix bắt đầu bằng '.')
+    // mới phân biệt được hai cách này.
+    const lead = 'Đoạn dẫn nhập giữ nguyên. Bất đẳng thức Pinsker ';
+    const quote = 'cho cận dưới của phân phối thật của mô hình';
+    const trail = '. Kết thúc đoạn văn ở đây.';
+    const m1 = normalizeContainer(el(`<div><p>${lead}${quote}${trail}</p></div>`));
+    const i = m1.flat.indexOf(quote);
+    const a = anchorAt(m1, i, i + quote.length)!;
+    expect(a.suffix.startsWith('. Kết thúc')).toBe(true);
+
+    const edited = quote.slice(0, quote.length - 1); // mất chữ 'h' cuối
+    const m2 = normalizeContainer(el(`<div><p>${lead}${edited}${trail}</p></div>`));
+    const hit = anchorToRange(m2, a)!;
+    expect(hit).not.toBeNull();
+    expect(hit.fuzzy).toBe(true);
+    expect(describeResolved(m2, hit.range)).toBe(edited);
+  });
+});
+
 describe('chi phí fuzzy — không được treo trình duyệt lúc mở chương', () => {
   /** Sinh một `flat` cỡ chương thật (p4-10, chương dài nhất: 19.358 ký
    * tự) bằng văn xuôi lặp lại — lặp lại là trường hợp TỆ cho việc khoanh
@@ -910,5 +1100,45 @@ describe('chương thật p1-5.html với KaTeX thật', () => {
     }
     expect(made).toBeGreaterThanOrEqual(35);
     expect(resolved).toBe(made);
+  });
+
+  it('BẪY CHO TASK 3: mép cuối của Range thường KHÔNG ở nơi painter đoán', () => {
+    // Tính chất này không phải lỗi — `rangeToFlat` đọc lại đúng offset cũ và
+    // `range.toString()` đúng chữ. Nó là một CẢNH BÁO cho painter: một
+    // `Range` hợp lệ có thể kết thúc ở `offset 0` của text node TIẾP THEO,
+    // thường là một node chỉ chứa xuống dòng/thụt lề nằm NGOÀI thẻ <p>. Một
+    // painter suy luận theo `endContainer` — hay "bọc mọi text node giao với
+    // range" — sẽ tạo một `<mark>` RỖNG ở ngoài đoạn văn.
+    //
+    // Cảnh báo này trước đây chỉ nằm trong một báo cáo bị gitignore. Test này
+    // là chỗ nó sống được: nếu một ngày nào đó `flatToDom` đổi cách chọn mép
+    // và tính chất biến mất, đây là nơi Task 3 biết được.
+    const m = normalizeContainer(renderChapter(SOURCE));
+    const rand = rng(20260820);
+    let made = 0;
+    let endsAtOffsetZero = 0;
+    let endsInWhitespaceNode = 0;
+    let endsOutsideStartBlock = 0;
+    for (let k = 0; k < 200; k++) {
+      const len = 3 + Math.floor(rand() * 200);
+      const from = Math.floor(rand() * Math.max(1, m.flat.length - len - 1));
+      const a = anchorAt(m, from, from + len);
+      if (!a) continue;
+      const hit = anchorToRange(m, a);
+      if (!hit) continue;
+      made++;
+      const r = hit.range;
+      if (r.endOffset === 0) endsAtOffsetZero++;
+      if (r.endContainer.nodeType === Node.TEXT_NODE && (r.endContainer as Text).data.trim() === '') {
+        endsInWhitespaceNode++;
+      }
+      if (r.endContainer !== r.startContainer) endsOutsideStartBlock++;
+    }
+    // Đo được trên p1-5 với đúng hạt giống này: made=200, offset0=12 (6,0%),
+    // node toàn khoảng trắng=6 (3,0%), khác node bắt đầu=159 (79,5%).
+    expect(made).toBe(200);
+    expect(endsAtOffsetZero).toBeGreaterThanOrEqual(5);
+    expect(endsInWhitespaceNode).toBeGreaterThanOrEqual(3);
+    expect(endsOutsideStartBlock).toBeGreaterThan(made / 2);
   });
 });

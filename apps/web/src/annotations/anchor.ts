@@ -70,7 +70,16 @@
  * absorbs.
  */
 
-import { flatToDom, type NormMap, rangeToFlat } from './normalize';
+import { assertMapFresh, flatToDom, type NormMap, rangeToFlat } from './normalize';
+
+/**
+ * Re-exported so a caller that resolves anchors never has to import
+ * `./normalize` just to name the error it has to handle, or to ask the
+ * question that avoids it. `isMapStale` is the non-throwing form: Task 4's
+ * "resolve every annotation on page open" should ask ONCE per batch rather
+ * than wrap 200 calls in `try`/`catch`.
+ */
+export { isMapStale, StaleNormMapError } from './normalize';
 
 export type AnchorColor = 'y' | 'g' | 'b' | 'p';
 
@@ -141,7 +150,14 @@ const MAX_DP_CELLS = 1_000_000;
  * 11k–19k character chapter, so a cap in the dozens silently truncates the
  * list before reaching the right one and the note moves to a different
  * letter. 2000 is more occurrences than any single character has in the
- * longest chapter of this course.
+ * longest chapter of this course — but only just: the highest single-
+ * character count measured across all 44 chapters is 1.559 (`'n'`, p4-6),
+ * a margin of 1,28×. A chapter ~30% longer, or a second course, truncates
+ * the list; what keeps the note in the right place when that happens is the
+ * unique-signature tier in `anchorToRange`, which is therefore load-bearing
+ * rather than a shortcut, and now has a test of its own (search "R22" in
+ * `anchor.test.ts` — before that test it could be deleted outright with all
+ * 43 tests still green).
  */
 const EXACT_CAP = 2000;
 
@@ -194,6 +210,16 @@ interface Projection {
  * `WeakMap` for the same reason `normalize.ts` caches its segment index
  * that way: when the chapter's map is dropped, so is this, with no
  * invalidation to remember.
+ *
+ * A cache keyed on a snapshot makes stale state STICKY, which is exactly
+ * the objection raised against it in review — so the ordering matters and
+ * is deliberate: every public entry point (`selectionToAnchor` via
+ * `rangeToFlat`, `anchorToRange` directly) calls `assertMapFresh` BEFORE it
+ * calls `projectionFor`. A map that fails that check never reaches this
+ * cache, so a cached projection can only ever be read for a map whose
+ * segments still describe the DOM. There is deliberately no invalidation
+ * path: a stale `NormMap` is not something to recover from, it is something
+ * to replace, and its `Projection` becomes garbage along with it.
  */
 const projectionCache = new WeakMap<NormMap, Projection>();
 
@@ -209,11 +235,14 @@ function projectionFor(map: NormMap): Projection {
 /** The nearest block-level ancestor of a segment's node, or `map.root` when
  * there is none inside the chapter. Two segments sharing this element are
  * on the same line of reading; two that do not have a boundary between
- * them. For an atomic (formula) segment the walk starts at the `.katex`
- * element's PARENT — the formula element itself is a `<span>`, and its own
- * subtree is off-limits by construction. */
+ * them. The walk starts at the node's PARENT in both cases: for a Text
+ * segment because a Text node is never itself a block, and for an atomic
+ * (formula) segment because the `.katex` element is a `<span>` whose own
+ * subtree is off-limits by construction. `Text` and `Element` both have
+ * `parentElement`, so there is nothing to branch on — an earlier version
+ * had a ternary here whose two arms were the same expression. */
 function blockOf(node: Text | Element, root: Element): Element {
-  let el: Element | null = node.nodeType === Node.ELEMENT_NODE ? (node as Element).parentElement : node.parentElement;
+  let el: Element | null = node.parentElement;
   while (el && el !== root) {
     if (BLOCK_TAGS.has(el.tagName)) return el;
     el = el.parentElement;
@@ -335,6 +364,11 @@ function firstStartAtOrAfter(proj: Projection, raw: number): number {
  * Whitespace at the edges of a selection is trimmed off the quote (browsers
  * routinely include a trailing space or newline when a drag ends past the
  * end of a line), so `exact` never begins or ends with a space.
+ *
+ * Throws `StaleNormMapError` (via `rangeToFlat`) if `map` describes a DOM
+ * that has since changed — creating an annotation against a stale map is
+ * the same bug as resolving one against it, and would store an anchor whose
+ * quote is read off the wrong characters.
  */
 export function selectionToAnchor(map: NormMap, range: Range, color: AnchorColor): Anchor | null {
   const span = rangeToFlat(map, range);
@@ -465,6 +499,14 @@ export function levenshtein(a: string, b: string, max: number = Number.POSITIVE_
     prev = cur;
     cur = swap;
   }
+  // Redundant defence, kept knowingly: every cell is clamped to `over` above
+  // and every out-of-band cell is assigned `over`, so `prev[n] <= over` and
+  // `prev[n] > band` holds exactly when `prev[n] === over` — both arms return
+  // the same value. Review proved this (its mutation "drop the final guard"
+  // survived, necessarily). Left in rather than deleted because it is the
+  // line that makes the RETURN CONTRACT true by construction if a future
+  // edit adds a path that skips the clamp; do not add a test to "kill" it,
+  // there is no behaviour to kill.
   return prev[n] > band ? over : prev[n];
 }
 
@@ -495,6 +537,10 @@ export function levenshtein(a: string, b: string, max: number = Number.POSITIVE_
  * highlight that creeps by a word or two every time the chapter is edited.
  * The stored `prefix`/`suffix` say which alignment the reader actually
  * meant; length closest to `|exact|` only settles what context cannot.
+ * Pinned by the "R21" test in `anchor.test.ts` — and only since that test:
+ * review replaced this `contextScore` call with a constant `0` and all 43
+ * tests stayed green, so for one commit this paragraph described an
+ * intention rather than a guarantee.
  *
  * That tie-break can only choose between different END positions, though —
  * two alignments that end at the same place but START in different places
@@ -503,7 +549,10 @@ export function levenshtein(a: string, b: string, max: number = Number.POSITIVE_
  * keep the one whose start is nearest `expectedStart`, the position the
  * prefix (or suffix) pointed at. Without it, "chi phí của việc tin sai"
  * re-attaches to "phí thật của việc tin sai" — same cost, same end, four
- * characters late, and the reader's highlight loses its first word.
+ * characters late, and the reader's highlight loses its first word. That
+ * one IS pinned, by the "chèn thêm một từ vào GIỮA exact" test, which is
+ * the same example; the two tie-breaks are separate decisions in separate
+ * places and only one of them used to have a test.
  */
 function bestWindowMatch(
   text: string,
@@ -665,12 +714,22 @@ function probe(text: string, context: string, isPrefix: boolean): number[] {
  *    panel (Task 7), where the reader still has their words and can put
  *    them back. Cheap and honest beats expensive and wrong.
  *
- * 2. **Quotes shorter than 8 characters never go fuzzy.** With
- *    `max(2, ceil(0.2·m))` as the threshold, a 4-character quote would
- *    accept a match that differs in half its characters — which on a 19k
- *    chapter is not a match, it is a coincidence. Short quotes are exactly
- *    the ones the exact tier finds reliably; if it did not, the text is
- *    gone.
+ * 2. **Short quotes never go fuzzy.** With `max(2, ceil(0.2·m))` as the
+ *    threshold, a 4-character quote would accept a match that differs in
+ *    half its characters — which on a 19k chapter is not a match, it is a
+ *    coincidence. Short quotes are exactly the ones the exact tier finds
+ *    reliably; if it did not, the text is gone.
+ *
+ *    The rule is literally `m >= 4 · maxDist`, which is NOT the same as
+ *    "at least 8 characters" — an earlier version of this comment said
+ *    that, and it was wrong. Because `maxDist` steps up in whole edits, the
+ *    admitted lengths are 8, 9, 10, then 12 and up: an 11-character quote
+ *    gets `maxDist = 3`, needs 12, and is refused while both 10 and 12 are
+ *    allowed. That step is an artifact of rounding, not a decision, and it
+ *    is left alone deliberately — the alternative rules all move the
+ *    threshold for real quote lengths too, and one refused 11-character
+ *    quote (which becomes an orphan the reader can re-attach) is a smaller
+ *    price than shifting the line for every length around it.
  */
 function fuzzyFind(
   text: string,
@@ -739,10 +798,26 @@ function materialize(
  *
  * `null` is also the answer for a chapter with nothing annotatable in it,
  * for an anchor whose quote is empty or not a string, and for a span that
- * `flatToDom` refuses (see its own doc). None of those throw: this runs
- * during chapter render, once per stored annotation.
+ * `flatToDom` refuses (see its own doc). None of THOSE throw — they are all
+ * statements about the stored annotation or about the chapter, and this
+ * runs during chapter render, once per stored annotation, where an
+ * exception takes the page down.
+ *
+ * Exactly one thing here does throw, and on purpose: `StaleNormMapError`,
+ * when `map` no longer describes the live DOM. That is not a statement
+ * about an annotation, it is a caller bug — and it is the one Task 4 walks
+ * straight into, because the obvious loop is
+ * `for (const a of annotations) paint(anchorToRange(map, a))` and painting
+ * the first one invalidates `map` for the rest. Measured on the real p1-5
+ * with 40 anchors and one painted: two of the remaining resolutions threw
+ * `IndexSizeError: Offset out of bound` from deep inside `Range.setStart`.
+ * Returning `null` instead would file the reader's note in the orphan panel
+ * and say nothing about why; a named error says what happened and what to
+ * do. Callers that would rather ask than catch have `isMapStale(map)`.
  */
 export function anchorToRange(map: NormMap, a: Anchor): { range: Range; fuzzy: boolean } | null {
+  assertMapFresh(map);
+
   const quote = readQuote(a);
   if (!quote) return null;
 

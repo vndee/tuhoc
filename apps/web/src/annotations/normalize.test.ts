@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { domToFlat, flatToDom, normalizeContainer, rangeToFlat } from './normalize';
+import { domToFlat, flatToDom, isMapStale, normalizeContainer, rangeToFlat, StaleNormMapError } from './normalize';
 
 /**
  * Builds a fixture DOM tree from an HTML string, exactly like every other
@@ -716,5 +716,111 @@ describe('M-g — NormMap/NormSeg readonly (review §4)', () => {
       m.root = document.createElement('div');
     };
     expect(wouldNotCompile).toBeTypeOf('function');
+  });
+});
+
+// ===========================================================================
+// C1 (review Task 2) — `NormMap` là một ẢNH CHỤP của DOM, không phải một
+// khung nhìn sống. Task 3 sẽ bọc `<mark>` quanh từng đoạn được tô, tức
+// `splitText`: text node gốc ngắn lại trong khi `map.segs` vẫn ghi độ dài
+// cũ, và `setBoundary` gọi `range.setStart(t, offsetInSeg)` với một offset
+// đã vượt quá node. Trên p1-5 thật, tô đúng MỘT ghi chú rồi giải 40 ghi chú
+// còn lại trên cùng map: 2 lần `IndexSizeError: Offset out of bound`.
+// ===========================================================================
+
+describe('C1 — map cũ sau khi DOM đổi (review Task 2)', () => {
+  it('isMapStale: false trên map vừa dựng, true sau khi một text node bị cắt ngắn', () => {
+    const container = el('<div><p>Alpha beta gamma delta</p></div>');
+    const m = normalizeContainer(container);
+    expect(isMapStale(m)).toBe(false);
+
+    const t = container.querySelector('p')!.firstChild as Text;
+    t.splitText(5); // đúng thứ mà bọc <mark> làm với text node
+    expect(isMapStale(m)).toBe(true);
+  });
+
+  it('text node DÀI RA cũng là map cũ — gỡ <mark> rồi normalize() gộp node lại là đường đó', () => {
+    const container = el('<div><p>Alpha beta</p></div>');
+    const m = normalizeContainer(container);
+    const t = container.querySelector('p')!.firstChild as Text;
+    t.appendData(' gamma');
+    expect(isMapStale(m)).toBe(true);
+  });
+
+  it('rangeToFlat ném StaleNormMapError thay vì trả offset của một DOM không còn tồn tại', () => {
+    const container = el('<div><p>Alpha beta gamma delta</p></div>');
+    const m = normalizeContainer(container);
+    const t = container.querySelector('p')!.firstChild as Text;
+
+    const range = document.createRange();
+    range.setStart(t, 0);
+    range.setEnd(t, 5);
+    expect(rangeToFlat(m, range)).toEqual({ from: 0, to: 5 });
+
+    t.splitText(11);
+    expect(() => rangeToFlat(m, range)).toThrow(StaleNormMapError);
+    // Lỗi phải TỰ GIẢI THÍCH: cả tên lớp lẫn cách sửa.
+    expect(() => rangeToFlat(m, range)).toThrow(/normalizeContainer/);
+    try {
+      rangeToFlat(m, range);
+    } catch (e) {
+      expect((e as Error).name).toBe('StaleNormMapError');
+      expect(e).toBeInstanceOf(Error);
+    }
+  });
+
+  it('đổi CHA của một text node mà không cắt nó KHÔNG phải map cũ', () => {
+    // Painter tô trọn một text node chỉ chuyển node đó vào trong <mark>.
+    // Độ dài không đổi ⇒ mọi offset vẫn đúng ⇒ map vẫn dùng được, và phải
+    // được coi là dùng được, nếu không Task 4 phải dựng lại map sau MỌI nét tô.
+    const container = el('<div><p>Alpha beta</p><p>gamma delta</p></div>');
+    const m = normalizeContainer(container);
+    const t = container.querySelector('p')!.firstChild as Text;
+    const mark = document.createElement('mark');
+    t.parentNode!.insertBefore(mark, t);
+    mark.appendChild(t);
+
+    expect(isMapStale(m)).toBe(false);
+    const range = document.createRange();
+    range.setStart(t, 0);
+    range.setEnd(t, 5);
+    expect(rangeToFlat(m, range)).toEqual({ from: 0, to: 5 });
+  });
+});
+
+// ===========================================================================
+// Mục 7 của review Task 2 — BẪY CHO PAINTER (Task 3), ghim bằng test vì một
+// báo cáo bị gitignore thì biến mất.
+// ===========================================================================
+
+describe('mép CUỐI của Range: hợp lệ về offset, gây hiểu nhầm về cấu trúc', () => {
+  it('range dừng đúng cuối một thẻ <p> lại kết thúc ở offset 0 của text node NGOÀI thẻ đó', () => {
+    const m = normalizeContainer(el('<div><p>Alpha beta</p>\n<p>Gamma delta</p></div>'));
+    expect(m.flat).toBe('Alpha beta\nGamma delta');
+
+    const r = flatToDom(m, 0, 10)!;
+    expect(r).not.toBeNull();
+
+    // Chữ thì ĐÚNG, offset đọc ngược lại cũng ĐÚNG...
+    expect(r.toString()).toBe('Alpha beta');
+    expect(rangeToFlat(m, r)).toEqual({ from: 0, to: 10 });
+
+    // ...nhưng mép cuối nằm ở một node khác hẳn: text node "\n" giữa hai thẻ
+    // <p>, tại offset 0. `locate(10)` chọn seg ĐẦU TIÊN có `end > 10`, và seg
+    // "Alpha beta" kết thúc đúng ở 10.
+    expect(r.endContainer.nodeType).toBe(Node.TEXT_NODE);
+    expect(r.endContainer).not.toBe(r.startContainer);
+    expect(r.endOffset).toBe(0);
+    expect((r.endContainer as Text).data.trim()).toBe('');
+
+    // Hệ quả cho painter: range đã RA NGOÀI thẻ <p>. Một painter bọc "mọi
+    // text node giao với range" sẽ sinh một <mark> rỗng ở cấp <div>; một
+    // painter suy luận theo `endContainer.parentElement` sẽ tưởng highlight
+    // kết thúc ở đoạn văn KẾ TIẾP. Cách đúng là `getClientRects()` /
+    // `cloneContents()`, không phải đọc `endContainer`.
+    expect((r.commonAncestorContainer as Element).tagName).toBe('DIV');
+    expect(r.commonAncestorContainer).not.toBe(r.startContainer.parentElement);
+    expect(r.cloneContents().childNodes).toHaveLength(2);
+    expect(r.cloneContents().textContent).toBe('Alpha beta');
   });
 });

@@ -194,6 +194,106 @@ export function normalizeContainer(root: Element): NormMap {
   return { root, flat, segs };
 }
 
+/**
+ * Thrown when a `NormMap` is used after the DOM it describes has changed.
+ *
+ * A `NormMap` is a SNAPSHOT: `segs` holds direct references to the Text
+ * nodes that were in `root` at `normalizeContainer` time, together with the
+ * flat offsets those nodes occupied THEN. Nothing keeps that in sync. The
+ * mutation that breaks it is not exotic — it is the one Task 3 performs on
+ * purpose: wrapping a highlight in a `<mark>` splits the Text node it
+ * starts in (`Range.surroundContents` → `splitText`), so the recorded node
+ * keeps only the characters before the highlight while `segs` still claims
+ * its old length. `setBoundary` then calls `range.setStart(node, offset)`
+ * with an offset past the end of the node and the DOM throws
+ * `IndexSizeError: Offset out of bound` — an error that says nothing about
+ * why, raised in the middle of rendering a chapter.
+ *
+ * This error is the alternative: a NAME, and a message that says what to
+ * do. It is deliberately not `null`: a stale map is a caller bug (an
+ * integration mistake between Task 3 and Task 4), and turning it into an
+ * "orphan" would hide that bug behind a reader-visible symptom — their note
+ * appearing in the orphan panel — with nothing anywhere saying why.
+ */
+export class StaleNormMapError extends Error {
+  constructor(detail: string) {
+    super(
+      'NormMap is a snapshot of the DOM under map.root, taken by normalizeContainer(); ' +
+        `that DOM has changed since (${detail}). The recorded offsets no longer describe ` +
+        'the live tree, so resolving against this map would either throw IndexSizeError ' +
+        'or return a Range over different text. Call normalizeContainer(root) again after ' +
+        'every batch of DOM changes, and check with isMapStale(map) if you are not sure.',
+    );
+    this.name = 'StaleNormMapError';
+  }
+}
+
+/**
+ * The one cheap, reliable signal that a `NormMap` has gone stale: a tracked
+ * Text node no longer holds the number of characters the map recorded for
+ * it.
+ *
+ * Why this test and not something stronger:
+ *   - It catches every mutation that changes what a segment's offsets MEAN.
+ *     `splitText` (what painting does) shortens the node; merging text back
+ *     together after un-painting (`Element.normalize()`) lengthens it;
+ *     editing a node's data does one or the other. All three are `!==`.
+ *   - It does NOT flag a highlight that wraps a whole Text node without
+ *     cutting it — the node moves into a `<mark>` with the same data, every
+ *     offset still points at the same character, and the projection is
+ *     unchanged because `<mark>` is not a block tag. Reporting that as
+ *     stale would force Task 4 to rebuild the map after every single stroke
+ *     of paint, which is the cost the snapshot exists to avoid.
+ *   - It costs one property read per segment: 0,011 ms for p1-5's 756
+ *     segments on this machine, i.e. ~2 ms across a 200-annotation page.
+ *     The stronger checks were measured and rejected on that basis:
+ *     `root.contains(seg.node)` costs 0,12 ms per call (25 ms per page) and
+ *     `seg.node.isConnected` 0,14 ms (28 ms per page) — 10× the cost of the
+ *     whole common path, to catch a mutation (a tracked node detached with
+ *     its length intact) that painting does not perform.
+ *
+ * Stated limit, so nobody reads more into this than it says: a `true` here
+ * is proof of staleness, a `false` is not proof of freshness. A mutation
+ * that leaves every tracked node's length alone — detaching a node, or
+ * re-parenting content into a new BLOCK-level element, which would change
+ * `anchor.ts`'s projection — is not detected. The contract remains "rebuild
+ * after you touch the DOM"; this is a guard against the specific way that
+ * contract gets broken in practice, not a substitute for it.
+ */
+export function isMapStale(map: NormMap): boolean {
+  return staleSeg(map) !== null;
+}
+
+function staleSeg(map: NormMap): NormSeg | null {
+  for (const seg of map.segs) {
+    if (seg.atomic) continue;
+    if ((seg.node as Text).data.length !== seg.end - seg.start) return seg;
+  }
+  return null;
+}
+
+/**
+ * The guard `rangeToFlat` (here) and `anchorToRange` (`./anchor`) both run
+ * before touching anything. Exported so the two modules share one
+ * definition and one message rather than each growing its own.
+ *
+ * Deliberately NOT run by `domToFlat`/`flatToDom`: those are the primitives
+ * the entry points call — `rangeToFlat` calls `domToFlat` twice, and
+ * `anchorToRange` calls `flatToDom` once per resolved anchor — so checking
+ * there would pay for the same scan two or three times per operation
+ * without catching anything the entry points do not already catch.
+ */
+export function assertMapFresh(map: NormMap): void {
+  const seg = staleSeg(map);
+  if (seg) {
+    const actual = (seg.node as Text).data.length;
+    throw new StaleNormMapError(
+      `a tracked text node now holds ${actual} characters where the map recorded ` +
+        `${seg.end - seg.start} at flat offset ${seg.start}`,
+    );
+  }
+}
+
 /** Binary-searches `map.segs` (sorted, contiguous, gapless by
  * construction) for the segment covering flat position `pos`, returning
  * that segment plus `pos`'s offset within it. `pos === map.flat.length`
@@ -506,8 +606,16 @@ export function domToFlat(map: NormMap, node: Node, offset: number, bias: SnapBi
  *
  * The returned span always has `from < to`, with `from`/`to` ordered even
  * if the two boundaries snapped in opposite directions.
+ *
+ * THROWS `StaleNormMapError` — the one thing here that is not a `null` —
+ * when `map` describes a DOM that has since changed (see `isMapStale`). A
+ * stale map cannot produce a correct answer and there is no answer worth
+ * guessing; `null` would say "this selection cannot be anchored", which is
+ * a statement about the reader's selection rather than about the caller's
+ * bug.
  */
 export function rangeToFlat(map: NormMap, range: Range): { from: number; to: number } | null {
+  assertMapFresh(map);
   if (range.collapsed) return null;
 
   const a = domToFlat(map, range.startContainer, range.startOffset, 'start');
