@@ -13,7 +13,7 @@
  *     one card can never collide with itself.
  *  2. **A note inside a collapsed `<details>` is the ORDINARY case, not a
  *     corner.** The corpus ships 255 `<details class="deriv">` and not one of
- *     them carries `open`; 19 of p1-5's 48 paragraphs live inside one. So a
+ *     them carries `open`; 19 of p1-5's 33 paragraphs live inside one. So a
  *     large share of cards have NO coordinate to align to —
  *     `highlightRects` answers with an empty array, which per its own doc
  *     means "exists but is not drawn", not "no such note". The card still has
@@ -35,6 +35,7 @@ import { type AnnotationRow, clearLocalData, db } from '../db/local';
 import { type Anchor, type AnchorColor, selectionToAnchor } from './anchor';
 import { type CardFocus, DRAFT_KEY, MarginCards } from './MarginCards';
 import { normalizeContainer } from './normalize';
+import { PENDING_ID_PREFIX } from './SelectionToolbar';
 import { type ChapterContent, useAnnotations } from './useAnnotations';
 
 /** Wide enough for the rail to exist at all — `reader.css` hides `#rail`
@@ -262,6 +263,7 @@ afterEach(async () => {
   await clearLocalData();
   setViewportWidth(1024);
   Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+  Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
 });
 
 describe('MarginCards — cột thẻ ghi chú', () => {
@@ -670,6 +672,187 @@ describe('MarginCards — cột thẻ ghi chú', () => {
 
     fireEvent.blur(within(cardFor('n2')).getByRole('button', { name: /thẻ hai|Độ dài mã/ }));
     expect(marksFor('n2')[0].classList.contains('peek')).toBe(false);
+  });
+
+  it('thẻ nằm ở DOC-Y trừ gốc cột — không phải toạ độ viewport, kể cả khi đã cuộn', async () => {
+    // Brief §2 dành hẳn một mục để cấm việc trộn hai hệ toạ độ, và `- originY`
+    // là đúng chỗ nó có thể bị trộn. Bỏ phép trừ ấy đi thì cả 456 test vẫn
+    // xanh, vì jsdom cho `scrollY = 0` và `host.getBoundingClientRect().top =
+    // 0`, nên phép trừ là no-op trong mọi fixture. Test này đặt cả hai số
+    // KHÁC 0 — và khác nhau — để phép trừ phải thật sự xảy ra.
+    //
+    // `highlightRects` trả về toạ độ TÀI LIỆU (nó tự cộng `scrollY` vào rect
+    // viewport), còn `host.getBoundingClientRect()` thì viewport, nên gốc cột
+    // là `top + scrollY`. Chọn số sao cho `scrollY` không tự triệt tiêu:
+    //   scrollY = 500; gốc cột ở viewport −300 ⇒ doc-Y 200
+    //   highlight ở viewport 700 ⇒ doc-Y 1200 ⇒ thẻ ở 1200 − 200 = 1000
+    //   khối thu gọn ở viewport 900 ⇒ doc-Y 1400 ⇒ thẻ ở 1200
+    await seed(makeAnchor(WITH_PROOF, Q_FIRST), 'ngoài');
+    await seed(makeAnchor(WITH_PROOF, Q_PROOF), 'trong');
+    render(<Harness html={WITH_PROOF} />);
+    await waitForCards(2);
+
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 500 });
+    stubBox(document.querySelector<HTMLElement>('.ann-cards')!, -300, 900);
+    stubRects(marksFor('n1')[0], [[40, 700, 300, 20]]);
+    stubBox(chapterRoot().querySelector('details')!, 900, 30);
+    for (const card of cards()) stubBox(card, 0, 40);
+    fireEvent(window, new Event('resize'));
+    await frame();
+
+    await waitFor(() => {
+      // Nhánh `rect`.
+      expect(cardFor('n1').style.top).toBe('1000px');
+      // Nhánh `details` — cùng phép trừ, cùng cái bẫy.
+      expect(cardFor('n2').style.top).toBe('1200px');
+    });
+    // Và đường nối bắt đầu đúng ở đó, không phải ở toạ độ viewport.
+    expect(document.querySelectorAll<HTMLElement>('.ann-tie')[0].style.top).toBe('1000px');
+  });
+
+  it('cửa hàng phát lại trong lúc đang gõ KHÔNG được ném đi những gì đã gõ', async () => {
+    // Effect nạp bản nháp cố ý chỉ khoá theo `focusId`. Thêm `list` vào deps
+    // thì mỗi lần cửa hàng phát — kể cả lần phát do chính ghi chú này được ghi
+    // — sẽ nạp lại từ hàng và xoá sạch chữ đang gõ. Comment ngay trên dòng ấy
+    // mô tả đúng cái bug này; không có test nào ghim nó.
+    const row = await seed(makeAnchor(PROSE, Q_FIRST), '');
+    const other = await seed(makeAnchor(PROSE, Q_SECOND), 'giữ nguyên');
+    render(<Harness html={PROSE} />);
+    await waitForCards(2);
+
+    fireEvent.click(within(cardFor(row.id)).getByRole('button', { name: /Entropy/ }));
+    const box = await screen.findByRole('textbox', { name: /ghi chú/i });
+    fireEvent.change(box, { target: { value: 'đang gõ dở' } });
+
+    // Một lần phát của cửa hàng, không đụng gì tới ghi chú đang mở: sửa ghi
+    // chú KIA thẳng trong Dexie, live query sẽ dựng một `list` mới.
+    await db.annotations.put({ ...other, note: 'hàng xóm đổi', updatedAt: '2026-08-20T11:00:00.000Z' });
+    await waitFor(() => expect(within(cardFor('n2')).queryByText('hàng xóm đổi')).toBeInTheDocument());
+
+    expect(box).toHaveValue('đang gõ dở');
+  });
+
+  it('ngưỡng cột là 1241, không phải 1240: ở đúng 1240 thì CSS đã giấu rãnh rồi', async () => {
+    // `reader.css` dùng `@media (max-width:1240px)`, và điều kiện ấy ĐÚNG tại
+    // đúng 1240. Một phép kiểm `>= 1240` trong JS sẽ dựng cột ở cái bề rộng mà
+    // CSS vừa cất rãnh đi — rộng đúng một pixel, và người đọc ở đó không có
+    // thẻ lẫn tấm trượt. Bộ test cũ chỉ chạy 1400 và 900 nên không chạm tới.
+    await seed(makeAnchor(PROSE, Q_FIRST), 'một');
+    await seed(makeAnchor(PROSE, Q_SECOND), 'hai');
+
+    setViewportWidth(1240);
+    const view = render(<Harness html={PROSE} />);
+    await waitForNotes(2);
+    expect(cards()).toHaveLength(0);
+    // Và cái thay thế phải có mặt: chạm highlight mở tấm trượt.
+    fireEvent.click(marksFor('n1')[0]);
+    expect(await screen.findByRole('dialog', { name: /ghi chú/i })).toBeInTheDocument();
+    view.unmount();
+
+    // Cả hai số đều viết thẳng ra, khớp với `@media (max-width:1240px)` của
+    // reader.css, chứ không lấy từ chính hằng số đang được kiểm.
+    setViewportWidth(1241);
+    render(<Harness html={PROSE} />);
+    await waitForCards(2);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('nhãn thời gian là NGÀY rồi mới tới GIỜ', async () => {
+    // ICU đặt đồng hồ trước cho vi-VN ở dạng kết hợp ("02:58 21-08"), đọc ra
+    // như một cái giờ ai đó gõ nhầm. Hai formatter riêng là để tránh đúng
+    // chuyện ấy — một khiếm khuyết đã tìm ra trên trình duyệt, đã sửa, và
+    // chưa từng có test giữ. Kiểm THỨ TỰ chứ không kiểm chuỗi: chuỗi phụ
+    // thuộc múi giờ của máy chạy test, thứ tự thì không.
+    await seed(makeAnchor(PROSE, Q_FIRST), 'một');
+    await seed(makeAnchor(PROSE, Q_SECOND), 'hai');
+    render(<Harness html={PROSE} />);
+    await waitForCards(2);
+
+    for (const card of cards()) {
+      expect(card.querySelector('time')?.textContent).toMatch(/^\d{2}-\d{2} · \d{2}:\d{2}$/);
+    }
+  });
+
+  it('mở rồi đóng một thẻ mà không sửa gì thì KHÔNG ghi, không thêm dòng outbox', async () => {
+    // `updateNote` vẫn đóng dấu `updatedAt` và xếp một dòng outbox dù nội dung
+    // y nguyên — tức mỗi lần liếc vào một ghi chú là một vòng đồng bộ, và một
+    // `updatedAt` mới hơn có thể thắng một sửa đổi thật từ máy khác.
+    await seed(makeAnchor(PROSE, Q_FIRST), 'đã có nội dung');
+    await seed(makeAnchor(PROSE, Q_SECOND), 'hai');
+    render(<Harness html={PROSE} />);
+    await waitForCards(2);
+    expect(await db.outbox.count()).toBe(0);
+
+    fireEvent.click(within(cardFor('n1')).getByRole('button', { name: /Entropy/ }));
+    const box = await screen.findByRole('textbox', { name: /ghi chú/i });
+    fireEvent.blur(box);
+    fireEvent.click(within(cardFor('n1')).getByRole('button', { name: 'Xong' }));
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: /ghi chú/i })).not.toBeInTheDocument());
+
+    expect(await db.outbox.count()).toBe(0);
+    expect((await db.annotations.get('n1'))?.updatedAt).toBe('2026-08-20T10:00:00.000Z');
+  });
+
+  it('gõ cả một câu là MỘT lần ghi, không phải một lần cho mỗi phím', async () => {
+    // Đây là toàn bộ việc mà debounce còn làm sau khi bản nháp đã bền: gộp
+    // một tràng phím thành một dòng outbox thay vì bốn mươi.
+    const row = await seed(makeAnchor(PROSE, Q_FIRST), '');
+    await seed(makeAnchor(PROSE, Q_SECOND), 'hai');
+    render(<Harness html={PROSE} />);
+    await waitForCards(2);
+
+    fireEvent.click(within(cardFor(row.id)).getByRole('button', { name: /Entropy/ }));
+    const box = await screen.findByRole('textbox', { name: /ghi chú/i });
+    for (const text of ['x', 'xe', 'xem', 'xem l', 'xem lại']) {
+      fireEvent.change(box, { target: { value: text } });
+    }
+    fireEvent.blur(box);
+
+    await waitFor(async () => expect((await db.annotations.get(row.id))?.note).toBe('xem lại'));
+    expect(await db.outbox.count()).toBe(1);
+  });
+
+  it('cột được cho chiều cao thật, nếu không rãnh sẽ sụp và thanh tab hết chỗ dính', async () => {
+    // Mọi thẻ đều `position:absolute`, nên `.ann-cards` không có chiều cao của
+    // riêng nó; `#rail` lại là `align-self:flex-start`. Không đặt chiều cao thì
+    // rãnh cao 0 và thanh tab dính không còn hộp nào để dính vào.
+    await seed(makeAnchor(PROSE, Q_FIRST), 'trên');
+    await seed(makeAnchor(PROSE, Q_SECOND), 'dưới');
+    render(<Harness html={PROSE} />);
+    await waitForCards(2);
+
+    stubRects(marksFor('n1')[0], [[40, 200, 300, 20]]);
+    stubRects(marksFor('n2')[0], [[40, 500, 300, 20]]);
+    for (const card of cards()) stubBox(card, 0, 60);
+    fireEvent(window, new Event('resize'));
+    await frame();
+
+    // Thẻ cuối ở 500, cao 60 ⇒ đáy cột ở 560.
+    const host = document.querySelector<HTMLElement>('.ann-cards')!;
+    await waitFor(() => expect(host.style.height).toBe('560px'));
+  });
+
+  it('bản tô lạc quan của Task 5 (id tạm) chưa có thẻ: bấm vào nó KHÔNG mở gì cả', async () => {
+    // Nút màu tô ngay trong handler dưới một id TẠM, rồi cửa hàng mới trả về
+    // hàng thật. Trong một commit ở giữa, trên trang có một highlight mà `list`
+    // chưa biết. Bỏ chốt ấy đi thì cú bấm mở một thẻ không tồn tại — và trong
+    // ứng dụng thật, lật luôn tab rãnh của người đọc sang một ghi chú không có.
+    await seed(makeAnchor(PROSE, Q_FIRST), 'một');
+    await seed(makeAnchor(PROSE, Q_SECOND), 'hai');
+    render(<Harness html={PROSE} />);
+    await waitForCards(2);
+
+    const pending = document.createElement('mark');
+    pending.className = 'ann ann-y';
+    pending.dataset.annId = `${PENDING_ID_PREFIX}tam-thoi`;
+    pending.textContent = 'đang tô';
+    chapterRoot().querySelector('p')?.append(pending);
+
+    fireEvent.click(pending);
+    await frame();
+
+    expect(cards().some((card) => card.dataset.open === 'true')).toBe(false);
+    expect(pending.classList.contains('focus')).toBe(false);
   });
 
   it('mở/đóng <details> làm trang dàn lại → thẻ được đo lại, không giữ toạ độ cũ', async () => {

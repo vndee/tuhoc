@@ -690,6 +690,33 @@ describe('ChapterView', () => {
       expect(ids).toEqual(painted);
       expect(within(rail()).getByRole('tab', { name: 'Ghi chú (2)' })).toBeInTheDocument();
     });
+
+    it('.rail-notes được áp khi tab Ghi chú lên, và gỡ khi rời đi', async () => {
+      // Class này là toàn bộ khác biệt giữa "một rãnh TOC ngắn tự cuộn" và "một
+      // cột thẻ neo theo toạ độ tài liệu": nó tắt `position:sticky`,
+      // `max-height:calc(100vh - 100px)` và `overflow-y:auto`, rồi nới rãnh từ
+      // 210px lên 260px. Gỡ nó ra trên trang thật thì rãnh tụt về 210px và MỘT
+      // THẺ BỊ CẮT — mà không một test nào trong 456 nhìn thấy, vì không test
+      // nào từng đọc `className` của `#rail`.
+      await renderChapterAndSettle();
+      expect(rail().classList.contains('rail-notes')).toBe(false);
+
+      fireEvent.click(within(rail()).getByRole('tab', { name: /^Ghi chú/ }));
+      await waitFor(() => expect(rail().classList.contains('rail-notes')).toBe(true));
+
+      fireEvent.click(within(rail()).getByRole('tab', { name: 'Trong chương' }));
+      await waitFor(() => expect(rail().classList.contains('rail-notes')).toBe(false));
+    });
+
+    it('rời chương mang .rail-notes đi theo: rãnh trang sau không thừa hưởng bố cục thẻ', async () => {
+      const { unmount } = await renderChapterAndSettle();
+      fireEvent.click(within(rail()).getByRole('tab', { name: /^Ghi chú/ }));
+      await waitFor(() => expect(rail().classList.contains('rail-notes')).toBe(true));
+
+      unmount();
+
+      expect(rail().classList.contains('rail-notes')).toBe(false);
+    });
   });
 
   describe('t/T theme shortcut (debt #2 — shared ThemeContext, no topbar desync)', () => {

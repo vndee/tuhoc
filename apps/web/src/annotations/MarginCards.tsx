@@ -46,8 +46,14 @@
  * `highlightRects` returns an EMPTY ARRAY for a highlight that exists but is
  * not drawn, and the corpus makes that the common case rather than a corner:
  * 255 `<details class="deriv">` blocks, not one of them `open` on load, and
- * 19 of p1-5's 48 paragraphs inside one. Those are the "Chứng minh"/"Lời
+ * 19 of p1-5's 33 paragraphs inside one. Those are the "Chứng minh"/"Lời
  * giải" bodies — where a reader annotates most.
+ *
+ * 33, not the 48 an earlier draft of this comment claimed. p1-5 has 33 `<p>`
+ * (in the rendered DOM and in `chapters/p1-5.html` alike), 11 `<li>`, and 6
+ * `<details>`, none of them `open`. Counted twice from opposite ends and the
+ * two counts agree; the ratio the corrected number gives is 58%, i.e. STRONGER
+ * than the 40% the wrong one implied.
  *
  * So a card gets one of three anchors, recorded on the element as
  * `data-anchor-kind` so the CSS (and a person debugging in the inspector) can
