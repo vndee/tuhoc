@@ -352,9 +352,18 @@ mark.ann {
 }
 
 /* Task 6 focuses a highlight when its margin card is clicked. Named as the
-   plan names it (`.ann.focus`) so that task finds the hook it expects. */
+   plan names it (`.ann.focus`) so that task finds the hook it expects.
+
+   `.peek` is the same look for the lighter gesture — the reader has the pointer
+   on a card, or has tabbed into one, and wants to know which of the highlights
+   down the page it belongs to. Deliberately the SAME outline rather than a
+   second visual language: both mean "this highlight and that card are one
+   note", and inventing a second way to say it would ask the reader to learn
+   two. */
 .ann.focus,
-.ann-hl.focus {
+.ann-hl.focus,
+.ann.peek,
+.ann-hl.peek {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
@@ -727,23 +736,49 @@ mark.ann {
 }
 
 /* The hairline from the highlight to its card: it leaves the text at the
-   highlight's own Y (the top border) and turns down the column's left edge
-   (the right border) to wherever the card had to be pushed. Both segments are
-   one element, so there is nothing to keep in step. Dashed when the card is
-   pointing at something that is not drawn — a collapsed proof — because a
-   solid line there would claim a precision the position does not have. */
+   highlight's own Y (the top border) and turns down toward the card (the right
+   border) to wherever the card had to be pushed. Both segments are one element,
+   so there is nothing to keep in step. Dashed when the card is pointing at
+   something that is not drawn — a collapsed proof — because a solid line there
+   would claim a precision the position does not have.
+
+   `--ink-3`, not `--rule-strong`, and the reason is a number rather than a
+   preference. `--rule-strong` is an alpha (`rgba(11,11,11,.16)`), so over
+   `--page` it composites to `#d1d0ce`: 1,43:1 in light and 1,56:1 in dark,
+   both measured on the page. WCAG 2.1 SC 1.4.11 asks 3:1 of a graphic needed to
+   understand the content, and this line is the only thing saying which card
+   goes with which highlight. `--ink-3` is a solid colour and measures 3,32:1
+   light / 5,79:1 dark. MarginCards.test.tsx recomputes both ratios from the
+   tokens rather than trusting this comment.
+
+   `left`/`width` come from the measure pass, not from here: each tie gets its
+   own lane across the gutter, so a cluster reads as N brackets instead of one
+   long rule (see MarginCards.tsx's TIE_REACH). The values below are the lane-0
+   geometry and the fallback if the pass has not run yet. */
 .ann-tie {
   position: absolute;
   left: -18px;
   width: 18px;
-  border-top: 1px solid var(--rule-strong);
-  border-right: 1px solid var(--rule-strong);
+  border-top: 1px solid var(--ink-3);
+  border-right: 1px solid var(--ink-3);
   pointer-events: none;
 }
 
 .ann-tie[data-anchor-kind='details'],
 .ann-tie[data-anchor-kind='none'] {
   border-style: dashed;
+}
+
+/* The reader is pointing at this card, or has tabbed into it. Lanes prove the
+   ties are separate; this says which of them is THIS card's, and the matching
+   `.peek` on the highlight (painter block above) says which of the highlights
+   scattered down the page it lands on. Together they answer the question the
+   idle tie cannot: not "there is a card below somewhere" but "that card and
+   this highlight are the same note". */
+.ann-tie[data-peek='true'] {
+  border-top-width: 2px;
+  border-right-width: 2px;
+  border-color: var(--accent);
 }
 
 /* Under 1241px `#rail` is `display:none` (reader.css), so there is no column

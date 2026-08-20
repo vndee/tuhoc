@@ -214,6 +214,21 @@ function writeStash(draft: StashedDraft | null): void {
   }
 }
 
+/**
+ * The tie's geometry, in px, kept here rather than in CSS because the lane is
+ * per-card and the measure pass is already writing to these elements.
+ *
+ * `TIE_REACH` is how far left of the card column a tie's horizontal segment
+ * starts — the same 18px the stylesheet used before lanes existed, so the
+ * whole set still lives inside the gutter and never crosses into the 18px a
+ * `.fig` bleeds into it above 1100px. `TIE_LANE_PX` × `TIE_LANES` must stay
+ * within `TIE_REACH`: four lanes, 4px apart, put the last vertical at -12 and
+ * still leave its horizontal 6px of run.
+ */
+const TIE_REACH = 18;
+const TIE_LANE_PX = 4;
+const TIE_LANES = 4;
+
 /** How much of the highlighted text a card shows above the note. */
 const QUOTE_MAX = 120;
 
@@ -582,6 +597,16 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
         // +1 so a card sitting exactly at its anchor still draws the
         // horizontal hairline rather than a zero-height box.
         tie.style.height = `${Math.max(1, placed[i].top - anchors[i].y + 1)}px`;
+        // The lane. Every tie used to drop its vertical at the column's own
+        // left edge, so in a cluster the five of them stacked into ONE
+        // continuous rule — measured on the real page, and the eye sees a
+        // single line, not five. That is the tie failing precisely where it is
+        // needed most. Spreading them across the gutter by index turns the
+        // cluster back into N brackets, all sharing a left edge at -TIE_REACH
+        // so the row of horizontals still reads as one column of departures.
+        const reach = TIE_REACH - (i % TIE_LANES) * TIE_LANE_PX;
+        tie.style.left = `${-TIE_REACH}px`;
+        tie.style.width = `${reach}px`;
       }
       bottom = Math.max(bottom, placed[i].top + measures[i].height);
     }
@@ -645,13 +670,63 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
     };
   }, [root, measure, visible, wide]);
 
-  // A card opened from a click on its highlight has to be brought into view;
-  // one opened by clicking the card itself is already there, and `nearest`
-  // makes that a no-op rather than a jump.
-  useEffect(() => {
-    if (!focusId || !visible || !wide) return;
-    cardRefs.current.get(focusId)?.scrollIntoView?.({ block: 'nearest' });
-  }, [focusId, visible, wide]);
+  // NOTHING here scrolls the column, and that is the fix for the one thing
+  // measurement showed this feature getting wrong on a real page.
+  //
+  // There used to be a `cardRefs.current.get(focusId)?.scrollIntoView({block:
+  // 'nearest'})` on this line, whose stated job was "a card opened from a click
+  // on its highlight has to be brought into view". On Chromium, with a cluster
+  // of notes in one paragraph and the reader looking at their own highlight in
+  // the middle of the screen, clicking it moved the page from about six notes
+  // onward, and from about fifteen the move pushed the highlight they had just
+  // clicked clean off the top of the screen (at twenty: y=-224). Both
+  // directions of the "two-way" link ended at the same scroll position, so the
+  // link only ever really went one way: the card always won.
+  //
+  // That contradicted this component's own rule, three screens up, that
+  // `edit:false` must not steal a reader's place. It stole the place instead of
+  // the caret, which is the same loss.
+  //
+  // Clamping the scroll so the highlight stays visible was tried on paper and
+  // is worse: at twenty notes it moves the page as far as it is allowed and
+  // STILL cannot get the card on screen, so the reader pays the disorientation
+  // and gets nothing. Doing nothing is right. What the reader gets instead is
+  // the card's open state, the highlight's own outline, and the tie — which is
+  // why the tie's contrast and its per-card lane (see `measure`) are part of
+  // the same change rather than a cosmetic afterthought.
+  //
+  // The two `edit:true` paths were never this effect's job and are already
+  // covered: `openCard` calls `reveal`, which scrolls the HIGHLIGHT to centre,
+  // and the toolbar path's `box.focus()` brings the editor into view by itself.
+
+  /**
+   * Which card the reader is pointing at, or has tabbed to — and its highlight
+   * and its tie lit up to say so.
+   *
+   * This is the answer to the half of the problem lanes cannot solve. A lane
+   * proves there are five ties rather than one; it still does not say WHICH of
+   * five nearly-identical brackets belongs to the card under the cursor, and
+   * the highlights it points back at are scattered across 600px of prose. One
+   * pointer (or one Tab stop) resolves the whole cluster.
+   *
+   * Written imperatively, like every other pairing signal in this file: a
+   * `useState` here would re-render — and re-measure — the entire column on
+   * every mouse move across it, to change two class names. `focus`/`blur` are
+   * React's bubbling synthetic events, so tabbing to any control inside the
+   * card counts, which is what makes this reachable without a mouse.
+   */
+  const peek = useCallback(
+    (id: string, on: boolean): void => {
+      const tie = tieRefs.current.get(id);
+      if (tie) {
+        if (on) tie.dataset.peek = 'true';
+        else delete tie.dataset.peek;
+      }
+      if (!root) return;
+      for (const el of highlightElements(id, root)) el.classList.toggle('peek', on);
+    },
+    [root],
+  );
 
   const setCardRef = useCallback((id: string, el: HTMLElement | null): void => {
     if (el) cardRefs.current.set(id, el);
@@ -787,6 +862,10 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
                 data-anchor-kind={kinds.get(row.id) ?? 'rect'}
                 data-open={focusId === row.id ? 'true' : undefined}
                 ref={(el) => setCardRef(row.id, el)}
+                onMouseEnter={() => peek(row.id, true)}
+                onMouseLeave={() => peek(row.id, false)}
+                onFocus={() => peek(row.id, true)}
+                onBlur={() => peek(row.id, false)}
               >
                 {body(row)}
               </article>

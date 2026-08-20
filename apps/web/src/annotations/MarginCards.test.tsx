@@ -25,6 +25,9 @@
  *     matches a real page. A test that asserted real geometry here would be
  *     asserting that jsdom returns zeros.
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -573,6 +576,102 @@ describe('MarginCards — cột thẻ ghi chú', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
+  it('bấm vào highlight KHÔNG kéo trang đi — người đọc giữ nguyên chỗ đang đọc', async () => {
+    // Đo trên Chromium thật, cụm ghi chú trong MỘT đoạn văn, viewport
+    // 1440×900, người đọc đang nhìn chính highlight của mình ở giữa màn:
+    // từ N≈6 thì bấm vào highlight làm trang cuộn đi, và từ N≈15 thì lần cuộn
+    // ấy đẩy chính cái highlight vừa bấm RA NGOÀI màn hình (N=20: y=−224).
+    // Thủ phạm là `card.scrollIntoView({block:'nearest'})` — thẻ luôn thắng
+    // cuộc cuộn, nên liên kết "hai chiều" thực chất chỉ có một chiều.
+    //
+    // `edit:false` (bấm highlight) đã được ghi ngay trong code là "focus stays
+    // in the page, because stealing it from someone who was reading is a way
+    // to lose their place". Không cướp con trỏ mà cướp vị trí đọc thì cũng
+    // vậy.
+    await seed(makeAnchor(PROSE, Q_FIRST), 'thẻ một');
+    await seed(makeAnchor(PROSE, Q_SECOND), 'thẻ hai');
+    render(<Harness html={PROSE} />);
+    await waitForCards(2);
+
+    const scrolled: string[] = [];
+    for (const card of cards()) {
+      Object.defineProperty(card, 'scrollIntoView', {
+        configurable: true,
+        value: () => scrolled.push(card.dataset.annCard ?? '?'),
+      });
+    }
+
+    fireEvent.click(marksFor('n2')[0]);
+    await waitFor(() => expect(cardFor('n2').dataset.open).toBe('true'));
+    await frame();
+
+    expect(scrolled).toEqual([]);
+  });
+
+  it('đường nối: mỗi thẻ một đoạn dọc riêng, không chồng thành một vạch duy nhất', async () => {
+    // Trong một cụm, mọi đoạn dọc từng được vẽ ở CÙNG một x (mép trái cột), nên
+    // 5 đường nối hợp thành đúng một vạch thẳng liên tục: nó nói được "có thẻ ở
+    // dưới đâu đó" và không nói được thẻ nào ứng với highlight nào — đúng vào
+    // lúc cần nhất, khi ghi chú nằm sát nhau.
+    await seed(makeAnchor(PROSE, Q_FIRST), 'trên');
+    await seed(makeAnchor(PROSE, Q_SECOND), 'dưới');
+    render(<Harness html={PROSE} />);
+    await waitForCards(2);
+
+    stubRects(marksFor('n1')[0], [[40, 200, 300, 20]]);
+    stubRects(marksFor('n2')[0], [[40, 220, 300, 20]]);
+    for (const card of cards()) stubBox(card, 0, 60);
+    fireEvent(window, new Event('resize'));
+    await frame();
+
+    const ties = Array.from(document.querySelectorAll<HTMLElement>('.ann-tie'));
+    expect(ties).toHaveLength(2);
+    // Đoạn dọc là mép PHẢI của hộp — left + width.
+    const verticalX = (tie: HTMLElement) => parseFloat(tie.style.left) + parseFloat(tie.style.width);
+    expect(verticalX(ties[0])).not.toBe(verticalX(ties[1]));
+    // Và vẫn nằm gọn trong máng 18px như cũ: không lấn sang nội dung, không
+    // chạm vào phần `.fig` tràn 18px vào máng.
+    for (const tie of ties) {
+      expect(parseFloat(tie.style.left)).toBeGreaterThanOrEqual(-18);
+      expect(verticalX(tie)).toBeLessThanOrEqual(0);
+    }
+  });
+
+  it('rê chuột vào một thẻ làm nổi ĐÚNG cặp của nó: đường nối và highlight tương ứng', async () => {
+    await seed(makeAnchor(PROSE, Q_FIRST), 'thẻ một');
+    await seed(makeAnchor(PROSE, Q_SECOND), 'thẻ hai');
+    render(<Harness html={PROSE} />);
+    await waitForCards(2);
+
+    const ties = Array.from(document.querySelectorAll<HTMLElement>('.ann-tie'));
+    fireEvent.mouseEnter(cardFor('n1'));
+
+    expect(ties[0].dataset.peek).toBe('true');
+    expect(ties[1].dataset.peek).toBeUndefined();
+    expect(marksFor('n1')[0].classList.contains('peek')).toBe(true);
+    expect(marksFor('n2')[0].classList.contains('peek')).toBe(false);
+
+    fireEvent.mouseLeave(cardFor('n1'));
+    expect(ties[0].dataset.peek).toBeUndefined();
+    expect(marksFor('n1')[0].classList.contains('peek')).toBe(false);
+  });
+
+  it('bàn phím cũng ghép được cặp: Tab vào thẻ làm nổi highlight của nó', async () => {
+    // Cùng một tín hiệu, cho người không dùng chuột. `focus` nổi bọt qua
+    // `onFocus` của React, nên nút bên trong thẻ cũng kích hoạt được.
+    await seed(makeAnchor(PROSE, Q_FIRST), 'thẻ một');
+    await seed(makeAnchor(PROSE, Q_SECOND), 'thẻ hai');
+    render(<Harness html={PROSE} />);
+    await waitForCards(2);
+
+    fireEvent.focus(within(cardFor('n2')).getByRole('button', { name: /thẻ hai|Độ dài mã/ }));
+    expect(marksFor('n2')[0].classList.contains('peek')).toBe(true);
+    expect(marksFor('n1')[0].classList.contains('peek')).toBe(false);
+
+    fireEvent.blur(within(cardFor('n2')).getByRole('button', { name: /thẻ hai|Độ dài mã/ }));
+    expect(marksFor('n2')[0].classList.contains('peek')).toBe(false);
+  });
+
   it('mở/đóng <details> làm trang dàn lại → thẻ được đo lại, không giữ toạ độ cũ', async () => {
     await seed(makeAnchor(WITH_PROOF, Q_FIRST), 'ngoài');
     await seed(makeAnchor(WITH_PROOF, Q_PROOF), 'trong');
@@ -599,4 +698,65 @@ describe('MarginCards — cột thẻ ghi chú', () => {
       expect(cardFor('n2').dataset.anchorKind).toBe('rect');
     });
   });
+});
+
+/**
+ * The tie's contrast, checked against the RULE rather than against the token
+ * name — so it fails both when someone picks a fainter token for the line and
+ * when someone changes what that token is worth.
+ *
+ * WCAG 2.1 SC 1.4.11 (non-text contrast) asks for 3:1 on a graphic that is
+ * needed to understand the content, and the tie is the only thing on screen
+ * saying which card belongs to which highlight. Measured before this test
+ * existed: `--rule-strong` gave 1,43:1 in light and 1,56:1 in dark — under half
+ * the threshold — because it is an alpha, and an alpha over `--page` composites
+ * to a colour nobody chose.
+ */
+describe('đường nối thẻ↔highlight — độ tương phản', () => {
+  const HERE = path.dirname(fileURLToPath(import.meta.url));
+  const APP_CSS = fs.readFileSync(path.join(HERE, '../styles/index.css'), 'utf8');
+  const READER_CSS = fs.readFileSync(path.join(HERE, '../../../../packages/course-kit/reader.css'), 'utf8');
+
+  /** The token `.ann-tie` actually paints its two segments with. */
+  function tieToken(): string {
+    const block = /\.ann-tie\s*\{([^}]*)\}/.exec(APP_CSS);
+    if (!block) throw new Error('không tìm thấy quy tắc .ann-tie trong index.css');
+    const token = /border-top:[^;]*var\((--[a-z0-9-]+)\)/i.exec(block[1]);
+    if (!token) throw new Error(`.ann-tie không vẽ bằng một token nào: ${block[1]}`);
+    return token[1];
+  }
+
+  /** One token's value in one theme, read out of reader.css's own two blocks. */
+  function tokenValue(name: string, theme: 'light' | 'dark'): string {
+    const scope = theme === 'light' ? /:root\{([\s\S]*?)\n\}/ : /html\[data-theme="dark"\]\{([\s\S]*?)\n\}/;
+    const body = scope.exec(READER_CSS);
+    if (!body) throw new Error(`không đọc được khối token ${theme} trong reader.css`);
+    const found = new RegExp(`${name}\\s*:\\s*([^;]+);`).exec(body[1]);
+    if (!found) throw new Error(`reader.css không định nghĩa ${name} cho ${theme}`);
+    return found[1].trim();
+  }
+
+  function channel(v: number): number {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  }
+
+  function luminance(hex: string): number {
+    const m = /^#([0-9a-f]{6})$/i.exec(hex);
+    if (!m) throw new Error(`không phải màu đặc: ${hex}`);
+    const n = parseInt(m[1], 16);
+    return 0.2126 * channel((n >> 16) & 255) + 0.7152 * channel((n >> 8) & 255) + 0.0722 * channel(n & 255);
+  }
+
+  function contrast(a: string, b: string): number {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  for (const theme of ['light', 'dark'] as const) {
+    it(`đạt tối thiểu 3:1 của WCAG 1.4.11 ở chế độ ${theme}`, () => {
+      const ratio = contrast(tokenValue(tieToken(), theme), tokenValue('--page', theme));
+      expect(ratio).toBeGreaterThanOrEqual(3);
+    });
+  }
 });
