@@ -456,11 +456,39 @@ describe('failure mode: unmount/teardown must be releasable', () => {
     const tick = setIntervalSpy.mock.calls[0][0] as () => void;
     const timerHandle = setIntervalSpy.mock.results[0].value;
 
+    // Each tick is followed by `waitForInFlight()` before the NEXT one is
+    // fired, and that pairing is load-bearing rather than tidy.
+    //
+    // `vi.waitFor` resolves as soon as its condition holds, and `pullCount` is
+    // incremented by the msw handler — i.e. while the cycle that caused it is
+    // still running: the response body has yet to be parsed, `pull()` has yet
+    // to run its epoch check and its Dexie merge transaction, and `runCycle`'s
+    // `finally` has yet to clear `inFlight`. Firing the second `tick()` inside
+    // that window makes it a pure no-op — `runCycle`'s FIRST line is
+    // `if (inFlight) return`, which is deliberate production behaviour (see its
+    // doc comment: a 15s tick landing on a slow cycle must not double-send the
+    // outbox), not a bug. `pullCount` then never reaches 2 and the assertion
+    // below times out.
+    //
+    // Measured, rather than assumed: a probe around this exact sequence found
+    // a cycle still in flight at the moment `vi.waitFor` returned in 0/20
+    // attempts on an idle machine and 1/60 with all 8 cores saturated — which
+    // is why this failed roughly 1 full-suite run in 12 and never in isolation.
+    // Forcing the window open (polling for `pullCount === 1` with no interval
+    // at all, then ticking) reproduces it 1/1: the second tick is swallowed and
+    // `pullCount` stays at 1.
+    //
+    // `waitForInFlight()` awaits the cycle's own promise, whose `finally` has
+    // already cleared `inFlight` by the time it resolves, so the next tick is
+    // guaranteed to start a real cycle. It weakens nothing: the assertions are
+    // still exactly `toBe(1)` and `toBe(2)`.
     tick(); // simulate the interval firing, without waiting 15 real seconds
     await vi.waitFor(() => expect(pullCount).toBe(1));
+    await waitForInFlight();
 
     tick();
     await vi.waitFor(() => expect(pullCount).toBe(2));
+    await waitForInFlight();
 
     stopSync();
     // clearInterval is the real, native browser/Node API — calling it
