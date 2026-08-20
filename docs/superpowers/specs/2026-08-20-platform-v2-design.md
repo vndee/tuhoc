@@ -139,6 +139,70 @@ có là **1,3 MB thô / 0,4 MB nén**, nên 1000 course riêng tư vẫn nằm g
 **Ranh giới:** riêng tư nghĩa là không người dùng nào khác thấy. Không phải mã hoá đầu-cuối —
 người vận hành máy chủ về nguyên tắc đọc được. Nói rõ trong tài liệu, đừng hứa điều không giữ được.
 
+
+### 2.5 Hai công cụ tạo course — và vì sao cần cả hai
+
+**CLI `tuhoc pack ./thư-mục`** — kiểm định rồi đóng gói. Chạy **đúng bộ luật** mà CI của registry
+chạy (§2.2): một nguồn chân lý, không có bản sao trôi dạt. Người đóng góp biết gói của mình hợp lệ
+**trước** khi mở PR, thay vì đợi CI báo đỏ.
+
+**Skill soạn course cho agent** — CLI đảm bảo course **hợp lệ**; skill đảm bảo course **hay**.
+Một registry đầy course hợp lệ mà nhạt thì vẫn thất bại. Vì phần lớn course sẽ do AI sinh, chất
+lượng phải được mã hoá thành hướng dẫn chứ không trông chờ vào lời nhắc tuỳ hứng.
+
+Skill mã hoá: cấu trúc chương và manifest · chuẩn sư phạm lấy **chính giáo trình Lý thuyết Thông
+tin làm mẫu** (độ sâu, xây trực giác trước hình thức, bài tập có lời giải, mô phỏng khi khái niệm
+cần nhìn thấy mới hiểu) · luật hai hạng §1.2 · nhãn `lang`/`generatedBy` · và **bắt buộc chạy CLI
+kiểm định trước khi coi là xong**.
+
+### 2.6 Phiên bản: ghim, cập nhật là tự chọn, có báo cáo thiệt hại trước
+
+Người học **ghim** phiên bản đã pull. Course có bản mới thì hiện thông báo, **không tự cập nhật**.
+
+Khi người dùng bấm cập nhật, hệ thống chạy **thử neo lại** (dry-run) toàn bộ ghi chú của họ trên
+nội dung mới rồi báo cáo **trước khi** đổi bất cứ thứ gì:
+
+> *v1.0 → v1.1 · 37/40 ghi chú giữ đúng chỗ · 2 dịch nhẹ (khớp mờ) · **1 mất neo** (chương 3.4,
+> đoạn đã bị viết lại) · Cập nhật / Ở lại v1.0*
+
+Đây chính là chỗ máy móc khớp-mờ của P2 (Task 2) trả lãi: nó vốn được xây để chịu nội dung thay
+đổi, và ở đây nó biến "nội dung đổi dưới chân bạn" thành **một quyết định có thông tin**.
+
+Yêu cầu kỹ thuật kéo theo: registry giữ **mọi phiên bản** (mỗi phiên bản là một thư mục/tag), và
+máy người dùng giữ bản đã ghim để đọc offline. Ghi chú mất neo **không bị xoá** — rơi vào mục mất
+neo (Task 7) để nối tay.
+
+### 2.7 Nơi lưu nội dung course phía server
+
+**Postgres**, không dùng object storage riêng. Lý do: gói lớn nhất hiện có là 0,4 MB nén, nên
+1000 course riêng tư vẫn nằm gọn trong free tier; và mỗi dịch vụ thêm vào là một thứ nữa mà
+**người tự chạy bản riêng phải cấu hình** — trái mục tiêu §1.1. Sao lưu cũng đi kèm luôn.
+Xem lại nếu có ngày một course vượt ~10 MB.
+
+---
+
+## 2B. Việc phải làm NGAY, trước khi publish
+
+### 2B.1 Course riêng tư đang nằm trong git — và xoá sau không cứu được
+
+`courses/***REMOVED***/` hiện là **47 tệp, 1,3 MB đã commit** trong chính repo sẽ được
+publish. Xoá ở một commit sau **không giải quyết gì**: git giữ toàn bộ lịch sử, ai clone cũng khôi
+phục được bằng một lệnh.
+
+**Xử lý, hai phần:**
+
+1. **Ngay bây giờ:** chuyển course ra khỏi repo. Nó trở thành **course import đầu tiên** của chính
+   tác giả — tức đường import được **dùng thật** thay vì được ưu ái bằng một đường đặc biệt. Nếu
+   đường import có lỗi, ta phát hiện ngay trên dữ liệu ta quan tâm nhất, không phải sáu tháng sau
+   từ một người lạ.
+2. **Khi publish:** viết lại lịch sử, bóc `courses/` khỏi mọi commit. Giữ được toàn bộ lịch sử phát
+   triển — vốn là tài sản thật: từng vòng review, từng phán quyết, từng lần số đo bị bác bỏ. Đổi
+   lại **mọi mã commit đều đổi**, nên tài liệu nào đang trích mã commit phải sửa theo. Danh sách
+   nơi cần sửa phải được lập **trước** khi viết lại, không phải sau.
+
+*Đây là một lỗi lẽ ra spec v1 phải bắt: nó thiết kế nền tảng cho một người, nên "course nằm trong
+repo" là hợp lý. Yêu cầu publish làm giả định đó sai, và giả định sai thì không tự báo lỗi.*
+
 ---
 
 ## 3. Hệ thống con 2 — AI tự cắm key
@@ -241,6 +305,10 @@ mục 1 cần thêm một vòng hỏi chi tiết trước khi thành plan.
 - **Không** cho key đi qua server dưới bất kỳ hình thức nào, kể cả "chỉ đi ngang không lưu"
   (§3.2). Nhà cung cấp không hỗ trợ gọi từ trình duyệt thì không được hỗ trợ.
 - **Không** dịch nội dung course tự động.
+- **Không** trình soạn course trong ứng dụng — đã cân nhắc và loại: nó là một sản phẩm riêng,
+  to hơn cả bốn hệ thống con còn lại cộng lại, và cạnh tranh với chính cách course đang được
+  sinh ra (AI + CLI đóng gói, §2.5).
+- **Không** tự động cập nhật course (§2.6).
 - **Không** mã hoá đầu-cuối cho course riêng tư (§2.4).
 - **Không** liên hợp (federation) giữa các bản tự chạy. Bản tự chạy chỉ **đọc** registry chung.
 - **Không** sandbox iframe cho nội dung chương — đánh đổi đã phân tích ở §1.2.
