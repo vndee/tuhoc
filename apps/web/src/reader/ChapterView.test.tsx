@@ -162,8 +162,19 @@ describe('ChapterView', () => {
     await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1));
     expect(renderKatex).toHaveBeenCalledTimes(1);
 
+    // `initViz` having been called only proves the chapter effect's BODY
+    // ran. The rail entries are React state (`setHeadings`, set at the end
+    // of that same effect) rendered through a portal into `#rail`, so they
+    // land one commit LATER. Asserting on them immediately after the
+    // `waitFor` above reads the DOM inside the window between the two, and
+    // on a loaded machine that window is wide enough to lose: measured 1
+    // failure in 40 consecutive runs of this file under an 8-core CPU load
+    // (and ~8% of full-suite runs in P2 Task 1's review), always
+    // `expected 0 to have length 3`. Waiting for the count itself closes
+    // the window WITHOUT loosening the claim — still exactly 3, never "at
+    // least one".
     const rail = document.getElementById('rail')!;
-    expect(rail.querySelectorAll('a')).toHaveLength(3);
+    await waitFor(() => expect(rail.querySelectorAll('a')).toHaveLength(3));
     // REDRAWS holds exactly the current (single, live) chapter's entry —
     // not a leftover from the StrictMode-discarded first pass.
     expect(window.CourseKit?.REDRAWS).toHaveLength(1);
