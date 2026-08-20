@@ -1,0 +1,78 @@
+# Task 17: the E2E gate's own throwaway stack. Not used by any other task,
+# not the deploy path (see docs/deploy.md for that) — this brings up
+# exactly what `make test-e2e` needs to exercise the real API against a
+# real Postgres, and nothing else.
+#
+# Ports are fixed (55433 / 8089) rather than left to compose's own dynamic
+# allocation, on purpose: `apps/web/playwright.config.ts` and
+# `scripts/test-e2e.sh` both need to know them ahead of time (the former to
+# set `VITE_API_URL` for the dev server it boots, the latter to poll
+# `/healthz` before handing off to Playwright), and hardcoding the same
+# fixed pair in both places is simpler and more auditable than plumbing a
+# discovered port through three tools. Both were checked free of any
+# already-running service on this machine before being picked (see task
+# report) — pass different `TUHOC_E2E_DB_PORT`/`TUHOC_E2E_API_PORT` env
+# vars if either collides on yours.
+#
+# No named volume for `db`: every `make test-e2e` run starts from a
+# genuinely empty database (schema applied fresh by the migrate step in
+# scripts/test-e2e.sh) and `docker compose down -v` at teardown removes the
+# anonymous volume compose still creates for the container's data
+# directory, so nothing carries over between runs.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tuhoc
+      POSTGRES_PASSWORD: tuhoc
+      POSTGRES_DB: tuhoc
+    ports:
+      - '${TUHOC_E2E_DB_PORT:-55433}:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U tuhoc -d tuhoc']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    # `image:` + `build:` together, deliberately: `docker compose up`
+    # (without `--build`) only invokes the build when `tuhoc-api:latest`
+    # doesn't already exist locally — otherwise it reuses it as-is. On a
+    # genuinely clean checkout (the image doesn't exist yet) this builds
+    # it, matching docs/deploy.md's own `docker build -t tuhoc-api
+    # apps/api` exactly (same tag, same context, same Dockerfile) so the
+    # e2e stack and the documented deploy build are never two different
+    # artifacts by accident. `scripts/test-e2e.sh` also runs
+    # `docker build -t tuhoc-api:latest apps/api` explicitly before this
+    # file is ever read — see that script's own comment for why: pulling
+    # `docker/dockerfile:1` (the Dockerfile's `# syntax=` frontend) to
+    # resolve a build hung indefinitely under this task's sandbox
+    # (verified — see task report), and `image:` alone would silently
+    # test a stale binary once a developer's local Go source changes,
+    # which is worse than a slow build.
+    image: tuhoc-api:latest
+    build:
+      # Build context is apps/api itself, matching the Dockerfile's own
+      # header comment and docs/deploy.md's documented invocation
+      # (`docker build -t tuhoc-api apps/api`) — this compose file lives
+      # inside apps/api, so "." already resolves to the right context.
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: '8080'
+      DATABASE_URL: 'postgres://tuhoc:tuhoc@db:5432/tuhoc?sslmode=disable'
+      # Must equal the origin the e2e web server actually runs on
+      # (playwright.config.ts's PORT) — SameSite=Lax cookies require the
+      # request's Origin to match what CORS allows, and the auth flow
+      # will silently 401 on every post-login request otherwise. See
+      # docs/deploy.md §0 for the full mechanism this mirrors locally.
+      CORS_ORIGIN: 'http://localhost:${TUHOC_E2E_WEB_PORT:-5183}'
+      # false: both sides are plain http://localhost in this local e2e
+      # run. Never set this to false for a real deployment — see
+      # docs/deploy.md.
+      COOKIE_SECURE: 'false'
+    ports:
+      - '${TUHOC_E2E_API_PORT:-8089}:8080'
