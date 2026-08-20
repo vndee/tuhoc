@@ -41,13 +41,14 @@
  *     `flatToDom`/`domToFlat` exist to provide; see the file-level doc in
  *     `normalize.test.ts` and this task's report for why that is a
  *     deliberate choice, not an oversight).
- *   - Every `.katex`/`.katex-display` root contributes exactly one
- *     `'￼'` (OBJECT REPLACEMENT CHARACTER) and its subtree is never
- *     descended into.
+ *   - Every `.katex`/`.katex-display`/`.katex-error` root contributes
+ *     exactly one `'￼'` (OBJECT REPLACEMENT CHARACTER) and its subtree is
+ *     never descended into.
  *   - `.ctrls`, `.tip`, `canvas`, `[data-viz]` (the whole viz mount —
  *     canvas/.ctrls/.tip/.readout are all descendants of it, so excluding
  *     it wholesale is both simpler and more future-proof than enumerating
- *     each generated class individually) and `.ex-check` are skipped
+ *     each generated class individually), `.ex-check`, and the
+ *     never-reader-visible `style`/`script`/`svg` subtrees are skipped
  *     entirely, subtree included.
  *   - Everything else (headings, `<b>`/`<i>`, `<th>`, `<summary>`, box
  *     headers, figure titles/captions, …) is included by default: this
@@ -59,54 +60,84 @@
  *     `<summary>`, say) silently makes real authored content
  *     unannotatable, which is worse than the alternative.
  *
- * `flatToDom`/`domToFlat` are the two directions of the same mapping.
- * Both treat an atomic segment's element as indivisible: a boundary that
- * lands on/inside a formula is always resolved to a position in the
- * formula's PARENT (immediately before or after the whole element), never
- * to a position inside the formula's own (excluded) subtree — this is
- * the "snap outward" behaviour the task brief asks for, and it falls out
- * naturally from always using `Range.setStart(Before|After)` /
- * `setEnd(Before|After)` for atomic segments instead of indexing into the
- * element's own children.
+ * `flatToDom`/`domToFlat` are the two directions of the same mapping, and
+ * `rangeToFlat` is the one callers outside this module should reach for
+ * (see its own doc). Both directions treat an atomic segment's element as
+ * indivisible and snap OUTWARD: a boundary that lands on/inside a formula
+ * resolves to a position in the formula's PARENT (immediately before it
+ * for a `'start'` boundary, immediately after it for an `'end'` one),
+ * never to a position inside the formula's own (excluded) subtree. The
+ * consequence that matters to a reader: a selection that touches a
+ * formula always ends up containing the WHOLE formula, in both drag
+ * directions, and a selection made entirely inside one formula highlights
+ * that formula rather than collapsing to nothing.
  */
 
-const ATOMIC_SELECTOR = '.katex, .katex-display';
+const ATOMIC_SELECTOR = '.katex, .katex-display, .katex-error';
 
 /**
  * Runtime-generated UI that must never be annotated. `[data-viz]` alone
  * would cover canvas/.ctrls/.tip/.readout (all mounted underneath it by
  * `initViz`, see the file doc above), but the narrower selectors are kept
  * too as defence in depth in case a future visualization ever appends
- * one of these outside its own `[data-viz]` host. `.ex-check` is Task
- * 15's injected exercise checkbox — not a visualization at all, but the
- * same category of "exists only in the live DOM, never in the chapter's
- * source HTML."
+ * one of these outside its own `[data-viz]` host — and `normalize.test.ts`
+ * pins each of them standing ALONE, so neither half of that pair can be
+ * deleted as "already covered by the other" without a test going red.
+ * `.ex-check` is Task 15's injected exercise checkbox — not a
+ * visualization at all, but the same category of "exists only in the live
+ * DOM, never in the chapter's source HTML."
+ *
+ * `style`/`script`/`svg` are a different category again: they carry text
+ * that is REAL DOM text yet invisible to a reader (a stylesheet body, a
+ * script source, an `<svg><title>`/`<desc>` accessibility string). Left
+ * in, that text would occupy flat offsets nobody can select, shifting
+ * every offset after it. No chapter currently ships any of the three —
+ * this is the module's "annotatable is the default" philosophy costing
+ * three tag names to keep a future chapter with an SVG diagram from
+ * quietly corrupting anchors.
  */
-const EXCLUDED_SELECTOR = '.ctrls, .tip, canvas, [data-viz], .readout, .ex-check';
+const EXCLUDED_SELECTOR = '.ctrls, .tip, canvas, [data-viz], .readout, .ex-check, style, script, svg';
 
 /** OBJECT REPLACEMENT CHARACTER — the single atomic stand-in for one
- * whole `.katex`/`.katex-display` subtree. */
+ * whole `.katex`/`.katex-display`/`.katex-error` subtree. */
 const ATOMIC_CHAR = '￼';
+
+/** Which edge of an atomic token a DOM position inside it should snap to.
+ * `'start'` is the default so that a bare three-argument `domToFlat` call
+ * keeps its original meaning; `'end'` is what an END boundary needs, so
+ * that snapping pushes the boundary OUT of the formula rather than back
+ * into the middle of the user's selection. `rangeToFlat` picks both for
+ * you — prefer it. */
+export type SnapBias = 'start' | 'end';
 
 export interface NormSeg {
   /** The Text node this segment's characters come from, or the
-   * `.katex`/`.katex-display` Element it stands in for (`atomic: true`). */
-  node: Text | Element;
+   * `.katex`/`.katex-display`/`.katex-error` Element it stands in for
+   * (`atomic: true`). */
+  readonly node: Text | Element;
   /** Flat-string offset where this segment starts (inclusive). */
-  start: number;
+  readonly start: number;
   /** Flat-string offset where this segment ends (exclusive). */
-  end: number;
-  /** True for a `.katex`/`.katex-display` stand-in (always `end - start === 1`). */
-  atomic: boolean;
+  readonly end: number;
+  /** True for an atomic formula stand-in (always `end - start === 1`). */
+  readonly atomic: boolean;
 }
 
 export interface NormMap {
+  /** The element `normalizeContainer` walked. Kept so `domToFlat` can
+   * tell "this DOM position is outside the chapter entirely" (a drag in
+   * the rail/TOC, a stale node from a previous render) apart from a real
+   * position at offset 0 — see `domToFlat`'s own doc. */
+  readonly root: Element;
   /** The chapter's annotatable text, whitespace preserved, one `'￼'`
    * per formula. */
-  flat: string;
+  readonly flat: string;
   /** Segments in flat-string order, contiguous and gapless: `segs[i].end
-   * === segs[i + 1].start` for every `i`. */
-  segs: NormSeg[];
+   * === segs[i + 1].start` for every `i`. Declared `readonly` on purpose:
+   * `segIndexCache` below indexes this array exactly once per `NormMap`,
+   * so a later caller pushing a segment in would silently desynchronize
+   * that cache. */
+  readonly segs: readonly NormSeg[];
 }
 
 function isElement(node: Node): node is Element {
@@ -121,15 +152,15 @@ function isElement(node: Node): node is Element {
  * duty: for an excluded container it returns `FILTER_REJECT`, which per
  * the DOM traversal algorithm skips the node AND its entire subtree —
  * exactly what "invisible to annotation" requires. For an atomic
- * `.katex`/`.katex-display` root it records the atomic segment as a side
- * effect and *also* returns `FILTER_REJECT`, for the same subtree-skip
- * reason (the walker never needs to visit — and must never visit — the
- * MathML/HTML internals). Ordinary elements return `FILTER_SKIP` (not
- * accepted themselves, but their children are still traversed). Text
- * nodes are accepted outright. This keeps the whole walk to a single
- * `nextNode()` loop with no re-scanning of any subtree, so cost is
- * linear in the number of DOM nodes regardless of how many formulas a
- * chapter has.
+ * `.katex`/`.katex-display`/`.katex-error` root it records the atomic
+ * segment as a side effect and *also* returns `FILTER_REJECT`, for the
+ * same subtree-skip reason (the walker never needs to visit — and must
+ * never visit — the MathML/HTML internals). Ordinary elements return
+ * `FILTER_SKIP` (not accepted themselves, but their children are still
+ * traversed). Text nodes are accepted outright. This keeps the whole walk
+ * to a single `nextNode()` loop with no re-scanning of any subtree, so
+ * cost is linear in the number of DOM nodes regardless of how many
+ * formulas a chapter has.
  */
 export function normalizeContainer(root: Element): NormMap {
   const segs: NormSeg[] = [];
@@ -160,7 +191,7 @@ export function normalizeContainer(root: Element): NormMap {
     flat += data;
   }
 
-  return { flat, segs };
+  return { root, flat, segs };
 }
 
 /** Binary-searches `map.segs` (sorted, contiguous, gapless by
@@ -217,10 +248,25 @@ function setBoundary(range: Range, which: 'start' | 'end', seg: NormSeg, offsetI
 /**
  * Converts a `[from, to)` flat-offset span into a DOM `Range`.
  *
+ * Returns `null` — "there is nothing here to paint" — when:
+ *   - `map` has no annotatable content at all, or
+ *   - either bound is not a finite number, or
+ *   - `from === to` after clamping, i.e. the span is EMPTY. This is the
+ *     one that matters: the previous version handed back a collapsed but
+ *     non-null `Range` for an empty span, which reads as success to every
+ *     caller. Downstream that becomes a highlight with no client rects
+ *     (nothing drawn) attached to a stored annotation with no way to
+ *     click it and no way to delete it — a note the reader typed and can
+ *     never see again. `null` here is the second safety net; the first is
+ *     `rangeToFlat` refusing to produce an empty span in the first place.
+ *
  * `from`/`to` are clamped into `[0, map.flat.length]` and swapped if
- * given in reverse order — a defensive convenience, not a documented
- * contract callers should rely on. Returns `null` when `map` has no
- * annotatable content at all (nothing to build a `Range` over).
+ * given in reverse order. The swap is deliberately kept (and pinned by a
+ * test): without it, a reversed call would hit `Range.setEnd` with a
+ * boundary before the current start, which per the DOM spec silently
+ * COLLAPSES the range — producing exactly the invisible-annotation
+ * failure the `from === to` guard above exists to prevent, except this
+ * time past the guard, since numerically `from !== to`.
  *
  * A boundary that lands exactly on a formula's edge is always resolved
  * to a position in the formula's parent (see `setBoundary` above), never
@@ -234,10 +280,12 @@ function setBoundary(range: Range, which: 'start' | 'end', seg: NormSeg, offsetI
  */
 export function flatToDom(map: NormMap, from: number, to: number): Range | null {
   if (map.flat.length === 0 || map.segs.length === 0) return null;
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
 
   let a = Math.max(0, Math.min(from, map.flat.length));
   let b = Math.max(0, Math.min(to, map.flat.length));
   if (a > b) [a, b] = [b, a];
+  if (a === b) return null;
 
   const startLoc = locate(map, a);
   const endLoc = locate(map, b);
@@ -279,10 +327,11 @@ function lastFlatEnd(node: Node, segByNode: Map<Node, NormSeg>): number | null {
 }
 
 /** Climbs from `node` (inclusive) up through `parentElement` looking for
- * a tracked ATOMIC ancestor — i.e. a `.katex`/`.katex-display` root that
- * has a segment in `segByNode`. Any Element key in `segByNode` is
- * necessarily atomic (plain-text segments are always keyed by a Text
- * node), so no extra `.atomic` check is needed once a match is found. */
+ * a tracked ATOMIC ancestor — i.e. a `.katex`/`.katex-display`/
+ * `.katex-error` root that has a segment in `segByNode`. Any Element key
+ * in `segByNode` is necessarily atomic (plain-text segments are always
+ * keyed by a Text node), so no extra `.atomic` check is needed once a
+ * match is found. */
 function closestAtomicAncestor(node: Node, segByNode: Map<Node, NormSeg>): NormSeg | null {
   let el: Element | null = isElement(node) ? node : node.parentElement;
   while (el) {
@@ -301,8 +350,23 @@ function closestAtomicAncestor(node: Node, segByNode: Map<Node, NormSeg>): NormS
  * using `el`'s own position in ITS parent — this is what lets an
  * `Element`+childIndex boundary landing in the middle of a wholly
  * excluded/empty subtree still resolve to a sensible nearby position
- * instead of failing. */
-function resolveWithinElement(map: NormMap, el: Element, offset: number, segByNode: Map<Node, NormSeg>): number {
+ * instead of failing. The climb stops at `map.root`: past that there is
+ * no chapter left to resolve against, so the answer is `null` (no flat
+ * position) rather than a plausible-looking `0`.
+ *
+ * `bias` is threaded through only so the recursion keeps whatever the
+ * caller asked for. It cannot change an answer produced here — an atomic
+ * ancestor is matched by `domToFlat` BEFORE this function is reached, so
+ * no position handled here is inside a formula — but leaving the
+ * parameter out would make that a fact you have to rediscover rather than
+ * read. */
+function resolveWithinElement(
+  map: NormMap,
+  el: Element,
+  offset: number,
+  segByNode: Map<Node, NormSeg>,
+  bias: SnapBias,
+): number | null {
   const children = Array.from(el.childNodes);
   const clampedOffset = Math.max(0, Math.min(offset, children.length));
 
@@ -315,12 +379,13 @@ function resolveWithinElement(map: NormMap, el: Element, offset: number, segByNo
     if (found !== null) return found;
   }
 
+  if (el === map.root) return null;
   const parent = el.parentNode;
   if (parent && isElement(parent)) {
     const idx = Array.prototype.indexOf.call(parent.childNodes, el);
-    return domToFlat(map, parent, idx);
+    return domToFlat(map, parent, idx, bias);
   }
-  return 0;
+  return null;
 }
 
 /** `domToFlat` is called repeatedly against the SAME `NormMap` while a
@@ -335,7 +400,8 @@ function resolveWithinElement(map: NormMap, el: Element, offset: number, segByNo
  * navigated away, `normalizeContainer` ran again for a re-render), its
  * cached index — and the DOM nodes it holds onto as keys — becomes
  * eligible for garbage collection on its own, with no explicit
- * invalidation needed. */
+ * invalidation needed. The index is built exactly once per `NormMap`,
+ * which is why `NormMap.segs` is `readonly`. */
 const segIndexCache = new WeakMap<NormMap, Map<Node, NormSeg>>();
 
 function segIndexFor(map: NormMap): Map<Node, NormSeg> {
@@ -351,20 +417,46 @@ function segIndexFor(map: NormMap): Map<Node, NormSeg> {
 /**
  * Converts a DOM `(node, offset)` position — as handed back by a live
  * `Selection`/`Range`, or by a `Range` this module itself produced — into
- * a flat offset.
+ * a flat offset. Returns `null` when the position has no flat offset at
+ * all:
  *
- * Any position inside a `.katex`/`.katex-display` subtree (the hidden
- * MathML, its `<annotation>`, or the visible HTML glyphs — anywhere)
- * resolves to that formula's own START edge, regardless of how deep the
- * position is nested or which of the three internal renderings it falls
- * in. This is a deliberate simplification: distinguishing "closer to the
- * start" from "closer to the end" of a formula would require reasoning
- * about the internal MathML/HTML structure this module is specifically
- * designed to never look inside. A single, consistent edge keeps the
- * mapping well-defined and — critically — keeps a formula from ever
- * being partially selectable, which is the actual requirement.
+ *   - `node` is not inside `map.root` (a drag that started in the rail
+ *     TOC or the sidebar, a node left over from a previous chapter
+ *     render, a detached tree). This used to come back as `0` or
+ *     `map.flat.length`, which is indistinguishable from a genuine
+ *     selection at the very start or very end of the chapter — so a
+ *     caller had no way to reject it and would happily store an
+ *     annotation over content the reader never touched.
+ *   - `map` has nothing annotatable in it.
+ *   - `offset` is not finite (`NaN`/`Infinity`). A live `Selection` never
+ *     produces those, but the old code propagated `NaN` straight through
+ *     the clamp and out of a function declared to return `number`.
+ *
+ * Any position inside an atomic formula subtree (the hidden MathML, its
+ * `<annotation>`, or the visible HTML glyphs — anywhere) resolves to ONE
+ * of that formula's two edges, chosen by `bias`: `'start'` (the default)
+ * for a selection's START boundary, `'end'` for its END boundary. Both
+ * therefore snap OUTWARD, away from the middle of the selection, so a
+ * selection touching a formula always contains the whole formula. The
+ * alternative — always snapping to `.start`, as this function used to —
+ * pulls an END boundary BACKWARD past the formula, which makes a drag
+ * that stops on a formula silently drop it while the identical drag made
+ * in the other direction keeps it: behaviour that depends on drag
+ * direction and cannot be explained to a reader.
+ *
+ * Which edge is never decided by looking inside the formula. Reasoning
+ * about the internal MathML/HTML structure is exactly what this module is
+ * built never to do, and a formula must never be partially selectable.
+ *
+ * Prefer `rangeToFlat` over calling this directly for a selection's two
+ * boundaries: forgetting to pass `'end'` for the end boundary is a silent
+ * error, and `rangeToFlat` makes the correct usage the default one.
  */
-export function domToFlat(map: NormMap, node: Node, offset: number): number {
+export function domToFlat(map: NormMap, node: Node, offset: number, bias: SnapBias = 'start'): number | null {
+  if (map.segs.length === 0) return null;
+  if (!map.root.contains(node)) return null;
+  if (!Number.isFinite(offset)) return null;
+
   const segByNode = segIndexFor(map);
 
   if (node.nodeType === Node.TEXT_NODE) {
@@ -375,10 +467,10 @@ export function domToFlat(map: NormMap, node: Node, offset: number): number {
   }
 
   const atomicHost = closestAtomicAncestor(node, segByNode);
-  if (atomicHost) return atomicHost.start;
+  if (atomicHost) return bias === 'end' ? atomicHost.end : atomicHost.start;
 
   if (isElement(node)) {
-    return resolveWithinElement(map, node, offset, segByNode);
+    return resolveWithinElement(map, node, offset, segByNode, bias);
   }
 
   // An untracked/empty Text node, or some other node kind: resolve as
@@ -386,7 +478,44 @@ export function domToFlat(map: NormMap, node: Node, offset: number): number {
   const parent = node.parentNode;
   if (parent && isElement(parent)) {
     const idx = Array.prototype.indexOf.call(parent.childNodes, node);
-    return domToFlat(map, parent, idx);
+    return domToFlat(map, parent, idx, bias);
   }
-  return 0;
+  return null;
+}
+
+/**
+ * Converts a live DOM `Range` (`selection.getRangeAt(0)`, typically) into
+ * the flat span `[from, to)` it covers. THIS is the entry point callers
+ * should use for a selection; `domToFlat` is the primitive underneath it.
+ *
+ * The reason this exists rather than leaving callers to call `domToFlat`
+ * twice: `bias` is an argument that is easy to get wrong in a way nothing
+ * reports. Omit it on the end boundary and everything still type-checks,
+ * still returns numbers, still round-trips through `flatToDom` — it just
+ * quietly eats the formula at the end of every selection. `rangeToFlat`
+ * makes the right pairing the only pairing.
+ *
+ * Returns `null` when there is no annotation to make:
+ *   - the range is collapsed (a plain click, not a selection) — without
+ *     this, clicking anywhere inside a formula would map to that
+ *     formula's whole span and could create an annotation from a click;
+ *   - either boundary is outside `map.root` (see `domToFlat`);
+ *   - the two boundaries snap to the SAME flat offset, i.e. the selection
+ *     covers nothing annotatable (it sat entirely inside an excluded
+ *     visualization, say). An empty span must never reach storage.
+ *
+ * The returned span always has `from < to`, with `from`/`to` ordered even
+ * if the two boundaries snapped in opposite directions.
+ */
+export function rangeToFlat(map: NormMap, range: Range): { from: number; to: number } | null {
+  if (range.collapsed) return null;
+
+  const a = domToFlat(map, range.startContainer, range.startOffset, 'start');
+  const b = domToFlat(map, range.endContainer, range.endOffset, 'end');
+  if (a === null || b === null) return null;
+
+  const from = Math.min(a, b);
+  const to = Math.max(a, b);
+  if (from === to) return null;
+  return { from, to };
 }

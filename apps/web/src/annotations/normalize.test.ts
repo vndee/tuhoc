@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { domToFlat, flatToDom, normalizeContainer } from './normalize';
+import { domToFlat, flatToDom, normalizeContainer, rangeToFlat } from './normalize';
 
 /**
  * Builds a fixture DOM tree from an HTML string, exactly like every other
@@ -79,6 +79,26 @@ function vizFixture(): string {
 const BRIEF_FIX = `<div id="c"><p>Xét phân kỳ ${katexSpan('D_{\\mathrm{KL}}(p\\Vert q)', 'DKL(p‖q)')} giữa hai phân phối,
 và ${katexSpan('H(p,q)', 'H(p,q)')} là đại lượng trung tâm.</p>
 <div class="ctrls"><label>bỏ qua tôi</label></div></div>`;
+
+/** The sentence finding I1 was measured on, cut from the same p1-5.html:
+ * ONE inline formula with real prose on BOTH sides, so a selection can end
+ * inside the formula (formula at the TAIL of the selection) or start inside
+ * it (formula at the HEAD). */
+const I1_FIX = `<div id="c"><p>Giả sử dữ liệu thực sự theo ${katexSpan('p', 'p')}, nhưng bạn thiết kế bộ mã tối ưu cho phân phối khác.</p></div>`;
+
+/** A chapter container with a rail/TOC as its SIBLING — the shape finding I4
+ * is about. `#chapter` is what gets normalized; `#rail` is DOM the reader can
+ * also drag in but which has no flat position at all. */
+const OUTSIDE_FIX =
+  `<section id="chapter"><p>Nội dung chương thật.</p></section>` +
+  `<aside id="rail"><a href="#sec-a">Mục lục ngoài chương</a></aside>`;
+
+/** A DOM position deep inside a formula's VISIBLE glyph tree — where a mouse
+ * drag that stops "on the formula" actually lands (the MathML half is
+ * clipped out of the hit-testable area by KaTeX's CSS). */
+function glyphTextOf(atomicEl: Element): Text {
+  return atomicEl.querySelector('.katex-html .mord')!.firstChild as Text;
+}
 
 describe('normalizeContainer', () => {
   it('katex là 1 token, ctrls bị loại', () => {
@@ -209,15 +229,42 @@ describe('normalizeContainer', () => {
       parts.push(`<p>Đoạn ${i} có công thức ${katexSpan(`x_{${i}}`, `x${i}`)} ở giữa câu.</p>`);
     }
     const container = el(`<div>${parts.join('')}</div>`);
-    const start = performance.now();
-    const m = normalizeContainer(container);
-    const elapsed = performance.now() - start;
+
+    // BEST of several runs, not a single shot. `normalizeContainer` only
+    // READS the DOM, so re-running it over the same container is
+    // side-effect-free and every run measures exactly the same work — which
+    // makes the minimum the honest estimator here: it discards the GC pause
+    // or scheduler preemption that one unlucky measurement swallows. That
+    // noise, not the walk, is what forced the old ceiling to be so loose.
+    // Measured on this fixture (fix round 1, this machine):
+    //     single-shot   idle 24–60ms   ·  8 cores saturated 33–90ms
+    //     best-of-5     idle 6.2–8.5ms ·  8 cores saturated 6.6–18.7ms
+    // i.e. the spread collapses from ~3.8× to ~2.8× and the absolute worst
+    // case drops ~4.8×.
+    const RUNS = 5;
+    let elapsed = Number.POSITIVE_INFINITY;
+    let m = normalizeContainer(container);
+    for (let r = 0; r < RUNS; r++) {
+      const start = performance.now();
+      m = normalizeContainer(container);
+      elapsed = Math.min(elapsed, performance.now() - start);
+    }
+
     expect(m.segs.filter((s) => s.atomic)).toHaveLength(400);
-    // Generous ceiling — this is a sanity net against an accidentally
-    // quadratic walk (e.g. re-scanning from root per formula), not a tight
-    // perf budget: a linear walk over ~400 formulas finishes in low
-    // single-digit milliseconds even under test-runner overhead.
-    expect(elapsed).toBeLessThan(500);
+    // 60ms, chosen from those numbers rather than from taste. It sits 3.2×
+    // above the worst measurement taken with all 8 cores saturated (18.7ms)
+    // and 7× above the worst idle one, so it is not a flaky wall — the
+    // saturated figure is itself a stand-in for CI hardware several times
+    // slower than this machine. What it buys over the old 500ms: that
+    // ceiling needed a ~17× slowdown before it tripped, so it caught an
+    // accidentally quadratic walk (mutation M16 in the Task 1 review) and
+    // nothing else; this one trips at ~8.6× idle and ~5× under contention,
+    // which is the constant-factor range the review flagged as invisible.
+    // An absolute wall-clock ceiling cannot both tolerate slow CI and catch
+    // a 2× regression; 60ms is the tightest point on that trade that still
+    // keeps >3× margin over anything actually observed. Re-tighten only
+    // with fresh measurements pasted here.
+    expect(elapsed).toBeLessThan(60);
   });
 });
 
@@ -313,5 +360,361 @@ describe('flatToDom / domToFlat round-trip', () => {
     // .tip → .relwrap → [data-viz] → .fig-body and scanning forward at
     // each level, per resolveWithinElement's doc comment in normalize.ts).
     expect(domToFlat(m, tipText as Node, 0)).toBe(m.flat.indexOf('Sau'));
+  });
+});
+
+// ===========================================================================
+// Fix round 1. Every test below was written RED-first against the reviewed
+// implementation (3e420c9) and names the review finding it pins. Several of
+// them exist specifically because a mutation of normalize.ts SURVIVED the
+// original suite — the mutation each one kills is named in its describe
+// block, and re-running that mutation is how the test was verified to have
+// teeth rather than merely to pass.
+// ===========================================================================
+
+describe('C1 — bôi chọn nằm gọn trong một công thức (review §2)', () => {
+  it('flatToDom trả null khi from === to: Range collapsed không bao giờ là "thành công"', () => {
+    const m = normalizeContainer(el(BRIEF_FIX));
+    const i = m.flat.indexOf('hai phân phối');
+    expect(flatToDom(m, i, i)).toBeNull();
+    expect(flatToDom(m, 0, 0)).toBeNull();
+    expect(flatToDom(m, m.flat.length, m.flat.length)).toBeNull();
+    // Đối chứng: khoảng KHÔNG rỗng, dù chỉ 1 ký tự, vẫn cho Range.
+    expect(flatToDom(m, i, i + 1)).not.toBeNull();
+  });
+
+  it('kéo chuột nằm gọn trong một công thức display cho ra NGUYÊN công thức, không phải Range rỗng', () => {
+    // Thao tác tự nhiên nhất để "tô một công thức" trong giáo trình toán:
+    // nhấn ở giữa khối $$…$$ rồi thả cũng ở giữa nó (khối display căn giữa
+    // chiếm cả chiều rộng — mục tiêu kéo chuột lớn nhất trang). Trước bản
+    // vá, cả hai mép snap về CÙNG mép đầu ⇒ from === to ⇒ flatToDom trả
+    // một Range collapsed nhưng NON-NULL ⇒ painter vẽ không ra gì còn store
+    // vẫn lưu một annotation vô hình, không bấm được nên không xóa được.
+    const container = el(`<div><p>Trước</p>${katexSpan('x^2', 'x2', true)}<p>Sau</p></div>`);
+    const m = normalizeContainer(container);
+    const seg = m.segs.find((s) => s.atomic)!;
+    const displayEl = seg.node as Element;
+
+    const range = document.createRange();
+    range.setStart(displayEl.querySelector('mi')!.firstChild as Text, 0);
+    const glyph = glyphTextOf(displayEl);
+    range.setEnd(glyph, glyph.data.length);
+    expect(range.collapsed).toBe(false);
+
+    const span = rangeToFlat(m, range);
+    expect(span).toEqual({ from: seg.start, to: seg.end });
+
+    const painted = flatToDom(m, span!.from, span!.to)!;
+    expect(painted).not.toBeNull();
+    expect(painted.collapsed).toBe(false);
+    expect(painted.cloneContents().querySelectorAll('.katex-display')).toHaveLength(1);
+  });
+});
+
+describe('I1 — mép cuối snap RA NGOÀI token atomic, không lùi vào trong (review §3)', () => {
+  it('domToFlat: bias "end" trả mép CUỐI của token; mặc định và "start" vẫn trả mép đầu', () => {
+    const m = normalizeContainer(el(BRIEF_FIX));
+    const seg = m.segs.find((s) => s.atomic)!;
+    const katexEl = seg.node as Element;
+    const deepInAnnotation = katexEl.querySelector('annotation')!.firstChild as Text;
+
+    expect(domToFlat(m, deepInAnnotation, 3)).toBe(seg.start);
+    expect(domToFlat(m, deepInAnnotation, 3, 'start')).toBe(seg.start);
+    expect(domToFlat(m, deepInAnnotation, 3, 'end')).toBe(seg.end);
+    expect(domToFlat(m, katexEl, 0, 'end')).toBe(seg.end);
+    expect(domToFlat(m, glyphTextOf(katexEl), 1, 'end')).toBe(seg.end);
+  });
+
+  it('công thức được bao TRỌN dù nằm ở cuối hay ở đầu đoạn chọn — không phụ thuộc chiều kéo', () => {
+    const container = el(I1_FIX);
+    const m = normalizeContainer(container);
+    const seg = m.segs.find((s) => s.atomic)!;
+    const before = m.segs.find((s) => !s.atomic && s.end === seg.start)!;
+    const after = m.segs.find((s) => !s.atomic && s.start === seg.end)!;
+    const inside = glyphTextOf(seg.node as Element);
+
+    // Công thức ở CUỐI đoạn chọn (kéo xuôi, nhả chuột TRÊN công thức).
+    // Trước bản vá `to` lùi về seg.start ⇒ công thức rơi ra ngoài đúng cái
+    // người dùng vừa thấy trình duyệt bôi xanh, và highlight hiện ra ngắn
+    // hơn vùng họ bôi đúng một công thức.
+    const tailRange = document.createRange();
+    tailRange.setStart(before.node as Text, 0);
+    tailRange.setEnd(inside, 1);
+    const tail = rangeToFlat(m, tailRange)!;
+    expect(tail.to).toBe(seg.end);
+
+    // Công thức ở ĐẦU đoạn chọn (nhấn chuột TRÊN công thức rồi kéo tiếp).
+    const headRange = document.createRange();
+    headRange.setStart(inside, 1);
+    headRange.setEnd(after.node as Text, 10);
+    const head = rangeToFlat(m, headRange)!;
+    expect(head.from).toBe(seg.start);
+
+    // Bất biến thật sự: ở CẢ HAI chiều, công thức nằm trọn trong đoạn chọn.
+    for (const span of [tail, head]) {
+      expect(span.from).toBeLessThanOrEqual(seg.start);
+      expect(span.to).toBeGreaterThanOrEqual(seg.end);
+    }
+  });
+});
+
+describe('I4 — vị trí ngoài root phải báo được, không giả vờ là đầu/cuối chương (review §3)', () => {
+  it('NormMap ghi lại root của lần chuẩn hoá', () => {
+    const host = el(OUTSIDE_FIX);
+    const root = host.querySelector('#chapter')!;
+    expect(normalizeContainer(root).root).toBe(root);
+  });
+
+  it('domToFlat trả null cho node ngoài root (rail/TOC, cây rời) — không phải 0 hay flat.length', () => {
+    const host = el(OUTSIDE_FIX);
+    const root = host.querySelector('#chapter')!;
+    const m = normalizeContainer(root);
+
+    const railText = host.querySelector('#rail a')!.firstChild as Text;
+    expect(domToFlat(m, railText, 0)).toBeNull();
+    expect(domToFlat(m, railText, 0, 'end')).toBeNull();
+    expect(domToFlat(m, host, 1)).toBeNull(); // chính cha của root
+
+    const detached = document.createElement('p');
+    detached.textContent = 'hoàn toàn tách rời';
+    expect(domToFlat(m, detached.firstChild!, 0)).toBeNull();
+
+    // Đối chứng: bên trong root vẫn giải bình thường — 0 vẫn là 0 THẬT,
+    // và đó chính là lý do 0 không được phép kiêm nghĩa "thất bại".
+    const inside = root.querySelector('p')!.firstChild as Text;
+    expect(domToFlat(m, inside, 0)).toBe(0);
+    expect(domToFlat(m, inside, 3)).toBe(3);
+  });
+
+  it('rangeToFlat trả null khi một mép nằm ngoài root', () => {
+    const host = el(OUTSIDE_FIX);
+    const root = host.querySelector('#chapter')!;
+    const m = normalizeContainer(root);
+    const inside = root.querySelector('p')!.firstChild as Text;
+    const railText = host.querySelector('#rail a')!.firstChild as Text;
+
+    const r = document.createRange();
+    r.setStart(inside, 0);
+    r.setEnd(railText, 2);
+    expect(rangeToFlat(m, r)).toBeNull();
+  });
+});
+
+describe('rangeToFlat — cách dùng ĐÚNG là cách dùng mặc định (review §2, đề xuất (b))', () => {
+  it('đoạn chọn văn xuôi bình thường cho đúng [from, to)', () => {
+    const m = normalizeContainer(el(BRIEF_FIX));
+    const i = m.flat.indexOf('hai phân phối');
+    const r = flatToDom(m, i, i + 13)!;
+    expect(rangeToFlat(m, r)).toEqual({ from: i, to: i + 13 });
+  });
+
+  it('Range collapsed (nháy chuột, không bôi gì) trả null — kể cả khi nháy vào giữa công thức', () => {
+    const m = normalizeContainer(el(BRIEF_FIX));
+    const seg = m.segs.find((s) => s.atomic)!;
+
+    const caretInProse = document.createRange();
+    caretInProse.setStart(m.segs[0].node as Text, 3);
+    caretInProse.collapse(true);
+    expect(rangeToFlat(m, caretInProse)).toBeNull();
+
+    // Đây là chỗ chốt chặn này thật sự cần: hai mép snap ra hai hướng
+    // ngược nhau nên from < to, tức là nếu không kiểm `collapsed` thì
+    // một cú NHÁY vào công thức sẽ thành một annotation cả công thức.
+    const caretInFormula = document.createRange();
+    caretInFormula.setStart(glyphTextOf(seg.node as Element), 1);
+    caretInFormula.collapse(true);
+    expect(rangeToFlat(m, caretInFormula)).toBeNull();
+  });
+
+  it('đoạn chọn không rỗng nhưng nằm trọn trong vùng bị loại trừ cho from === to ⇒ null', () => {
+    const container = el(`<div><p>Trước</p>${vizFixture()}<p>Sau</p></div>`);
+    const m = normalizeContainer(container);
+    const tipText = container.querySelector('.tip')!.firstChild as Text;
+
+    const r = document.createRange();
+    r.setStart(tipText, 0);
+    r.setEnd(tipText, 3);
+    expect(r.collapsed).toBe(false);
+    expect(rangeToFlat(m, r)).toBeNull();
+  });
+});
+
+describe('I2 — mỗi selector loại trừ phải tự đứng vững MỘT MÌNH (review §3, mutation M5–M8)', () => {
+  // `vizFixture()` đặt canvas/.tip/.ctrls/.readout BÊN TRONG [data-viz], nên
+  // mỗi selector đều được selector khác che: xóa bất kỳ cái nào khỏi
+  // EXCLUDED_SELECTOR cũng không làm test nào đỏ. Mỗi test dưới đây tách ra
+  // đúng MỘT selector và không để cái nào khác che nó.
+
+  it('[data-viz] chặn được legend/.ctrl/<button>/div.small.muted — thứ danh sách hẹp KHÔNG có tên', () => {
+    // runtime.js sinh legendRow (:309), seg (:283), ctrl (:274), button
+    // (:298), và viz.js:50 sinh div.small.muted — TRỰC TIẾP dưới host
+    // [data-viz]. Không cái nào khớp canvas/.tip/.ctrls/.readout/.ex-check.
+    // Nếu ai đó dọn EXCLUDED_SELECTOR và bỏ [data-viz] vì "đã có canvas/.tip
+    // rồi", đúng những chuỗi này chui vào flat — và nhãn legend phụ thuộc
+    // TRẠNG THÁI viz, tức khác nhau giữa hai lần render và giữa hai thiết
+    // bị: anchor lưu ở máy A không giải được ở máy B.
+    const container = el(
+      `<div><p>Trước hình</p>` +
+        `<div data-viz="kl-directions">` +
+        `<div class="legend"><span class="sw"></span>p (hỗn hợp hai mode)</div>` +
+        `<div class="ctrl"><label>μ</label><input type="range"></div>` +
+        `<div class="seg"><button type="button">Forward</button><button type="button">Reverse</button></div>` +
+        `<div class="small muted">Kéo để thay đổi tham số.</div>` +
+        `</div>` +
+        `<p>Sau hình</p></div>`,
+    );
+    const m = normalizeContainer(container);
+    expect(m.flat).toBe('Trước hìnhSau hình');
+  });
+
+  it('canvas tự nó bị loại (nội dung dự phòng trong <canvas> không phải văn xuôi)', () => {
+    const m = normalizeContainer(
+      el('<div><p>Trước</p><canvas>Trình duyệt không hỗ trợ canvas</canvas><p>Sau</p></div>'),
+    );
+    expect(m.flat).toBe('TrướcSau');
+  });
+
+  it('.tip tự nó bị loại kể cả khi không nằm trong [data-viz]', () => {
+    const m = normalizeContainer(el('<div><p>Trước</p><div class="tip">σ = 1.2</div><p>Sau</p></div>'));
+    expect(m.flat).toBe('TrướcSau');
+  });
+
+  it('.readout tự nó bị loại kể cả khi không nằm trong [data-viz]', () => {
+    const m = normalizeContainer(
+      el('<div><p>Trước</p><div class="readout"><div class="k">D(p‖q)</div><div class="v">0.42</div></div><p>Sau</p></div>'),
+    );
+    expect(m.flat).toBe('TrướcSau');
+  });
+
+  it('.ctrls tự nó bị loại kể cả khi không nằm trong [data-viz]', () => {
+    const m = normalizeContainer(el('<div><p>Trước</p><div class="ctrls"><label>μ</label></div><p>Sau</p></div>'));
+    expect(m.flat).toBe('TrướcSau');
+  });
+
+  it('.ex-check tự nó bị loại kể cả khi không nằm trong .box-h', () => {
+    const m = normalizeContainer(
+      el('<div><p>Trước</p><label class="ex-check"><input type="checkbox"><span>Đã làm</span></label><p>Sau</p></div>'),
+    );
+    expect(m.flat).toBe('TrướcSau');
+  });
+});
+
+describe('I3 — biên CUỐI chương (review §3, mutation M13)', () => {
+  it('tô mấy chữ cuối chương: pos === flat.length cho Range hợp lệ và round-trip đúng', () => {
+    const m = normalizeContainer(el(BRIEF_FIX));
+    const n = m.flat.length;
+    const r = flatToDom(m, n - 8, n)!;
+    expect(r).not.toBeNull();
+    expect(r.toString()).toBe(m.flat.slice(n - 8, n));
+    expect(domToFlat(m, r.startContainer, r.startOffset)).toBe(n - 8);
+    expect(domToFlat(m, r.endContainer, r.endOffset, 'end')).toBe(n);
+  });
+
+  it('đúng ký tự cuối cùng, một mình, cũng tô được', () => {
+    const m = normalizeContainer(el(BRIEF_FIX));
+    const n = m.flat.length;
+    const r = flatToDom(m, n - 1, n)!;
+    expect(r.toString()).toBe(m.flat.slice(n - 1));
+    expect(domToFlat(m, r.endContainer, r.endOffset, 'end')).toBe(n);
+  });
+
+  it('offset vượt quá flat.length bị kẹp về cuối, không ném IndexSizeError', () => {
+    const m = normalizeContainer(el(BRIEF_FIX));
+    const n = m.flat.length;
+    const r = flatToDom(m, n - 3, n + 999)!;
+    expect(r).not.toBeNull();
+    expect(domToFlat(m, r.endContainer, r.endOffset, 'end')).toBe(n);
+  });
+});
+
+describe('M-c — clamp offset của text node (review §4, mutation M14)', () => {
+  it('offset vượt quá độ dài text node bị kẹp về mép seg, không tràn sang seg sau', () => {
+    const container = el('<div><p>Alpha</p><p>Beta</p></div>');
+    const m = normalizeContainer(container);
+    expect(m.flat).toBe('AlphaBeta');
+    const first = container.querySelector('p')!.firstChild as Text;
+    const seg = m.segs.find((s) => s.node === first)!;
+    expect(domToFlat(m, first, 999)).toBe(seg.end);
+    expect(domToFlat(m, first, -7)).toBe(seg.start);
+  });
+
+  it('offset không hữu hạn (NaN/Infinity) trả null thay vì NaN', () => {
+    const container = el('<div><p>Alpha</p></div>');
+    const m = normalizeContainer(container);
+    const t = container.querySelector('p')!.firstChild as Text;
+    expect(domToFlat(m, t, Number.NaN)).toBeNull();
+    expect(domToFlat(m, t, Number.POSITIVE_INFINITY)).toBeNull();
+    expect(flatToDom(m, Number.NaN, 3)).toBeNull();
+  });
+});
+
+describe('M-d — nhánh hoán đổi from/to của flatToDom (review §4, mutation M12)', () => {
+  it('from/to đảo ngược được chuẩn hoá lại, KHÔNG cho ra Range collapsed', () => {
+    // Giữ nhánh này thay vì bỏ nó: nếu bỏ, `setEnd` với biên nằm TRƯỚC
+    // start sẽ (đúng theo spec DOM) làm Range tự collapse — tức là đúng lỗi
+    // "annotation vô hình" mà chốt chặn `from === to` tồn tại để ngăn, chỉ
+    // khác là lần này nó lọt qua chốt vì về mặt số học from !== to.
+    const m = normalizeContainer(el(BRIEF_FIX));
+    const i = m.flat.indexOf('hai phân phối');
+    const fwd = flatToDom(m, i, i + 13)!;
+    const rev = flatToDom(m, i + 13, i)!;
+    expect(rev).not.toBeNull();
+    expect(rev.collapsed).toBe(false);
+    expect(rev.startContainer).toBe(fwd.startContainer);
+    expect(rev.startOffset).toBe(fwd.startOffset);
+    expect(rev.endContainer).toBe(fwd.endContainer);
+    expect(rev.endOffset).toBe(fwd.endOffset);
+  });
+});
+
+describe('M-a / M-b — hai lỗ hổng tiềm ẩn (review §4)', () => {
+  it('M-a: <style>/<script>/<svg> không bao giờ thành văn xuôi tô được', () => {
+    // Cả ba đều mang text THẬT trong DOM nhưng VÔ HÌNH với người đọc
+    // (<svg><title>/<desc> là chuỗi trợ năng). Lọt vào flat, chúng chiếm
+    // những offset không ai chọn được và làm lệch mọi offset phía sau.
+    const container = el(
+      `<div><p>Trước.</p><style>.fig{color:red}</style><script>var secret=1;</script>` +
+        `<svg viewBox="0 0 10 10"><title>Sơ đồ ẩn</title><desc>mô tả ẩn</desc><text x="0" y="5">nhãn</text></svg>` +
+        `<p>Sau</p></div>`,
+    );
+    const m = normalizeContainer(container);
+    expect(m.flat).toBe('Trước.Sau');
+  });
+
+  it('M-b: công thức KaTeX lỗi cú pháp (.katex-error) cũng là 1 token atomic, TeX thô không lọt vào flat', () => {
+    // Với throwOnError:false (đúng option runtime.js:319-333 dùng), lỗi
+    // parse cho <span class="katex-error">RAW_TEX</span> KHÔNG bọc trong
+    // .katex và KHÔNG bọc trong .katex-display — nên nếu ATOMIC_SELECTOR
+    // không nhắc tới nó, nguyên chuỗi TeX thô vào flat như văn xuôi.
+    const container = el(
+      `<div><p>Trước <span class="katex-error" title="ParseError" style="color:#cc0000">\\frac{a}{</span> Sau</p></div>`,
+    );
+    const m = normalizeContainer(container);
+    expect(m.flat).toBe('Trước ￼ Sau');
+    expect(m.flat).not.toContain('\\frac');
+    expect(m.segs.filter((s) => s.atomic)).toHaveLength(1);
+  });
+});
+
+describe('M-g — NormMap/NormSeg readonly (review §4)', () => {
+  it('kiểu từ chối mọi phép sửa map sau khi chuẩn hoá', () => {
+    const m = normalizeContainer(el(BRIEF_FIX));
+    // Khối dưới đây KHÔNG BAO GIỜ chạy. Nó tồn tại để `tsc` từ chối biên
+    // dịch nếu ai đó gỡ `readonly` khỏi NormMap/NormSeg: một
+    // `@ts-expect-error` không còn lỗi để nuốt thì tự nó thành lỗi.
+    // `segIndexFor` (normalize.ts) lập chỉ mục `map.segs` đúng MỘT lần cho
+    // mỗi NormMap, nên một task sau push thêm seg vào đó sẽ làm cache lỗi
+    // thời trong im lặng — không có gì đỏ, chỉ có offset sai.
+    const wouldNotCompile = () => {
+      // @ts-expect-error `segs` là mảng readonly
+      m.segs.push(m.segs[0]);
+      // @ts-expect-error `flat` là readonly
+      m.flat = '';
+      // @ts-expect-error `NormSeg.start` là readonly
+      m.segs[0].start = 1;
+      // @ts-expect-error `root` là readonly
+      m.root = document.createElement('div');
+    };
+    expect(wouldNotCompile).toBeTypeOf('function');
   });
 });
