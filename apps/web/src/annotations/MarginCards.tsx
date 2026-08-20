@@ -129,11 +129,90 @@ export const WIDE_MIN_PX = 1241;
 const WIDE_QUERY = `(min-width: ${WIDE_MIN_PX}px)`;
 
 /** How long after the last keystroke the note is written. Long enough that
- * typing a sentence is one write and one outbox row rather than forty; short
- * enough that a reader who closes the tab mid-thought loses nothing they
- * would notice. Blur, closing the card and unmounting all flush immediately,
- * so this is a ceiling on the delay, not the delay. */
+ * typing a sentence is one write and one outbox row rather than forty.
+ *
+ * This number is NOT what protects the reader's words — an earlier version of
+ * this comment claimed it was ("short enough that a reader who closes the tab
+ * mid-thought loses nothing they would notice"), and a browser measurement
+ * showed that claim was false: typing a note and reloading 0 ms or 400 ms
+ * later lost the WHOLE note, silently, leaving a highlight whose card read
+ * "(chưa có nội dung)". What protects it is that every way out flushes
+ * first — blur, closing the card, unmounting, and (see `useEffect` below) the
+ * page itself going away. This is a ceiling on how long a write can be
+ * DEFERRED while the reader is still there, not a bound on what they can
+ * lose. */
 const WRITE_DEBOUNCE_MS = 600;
+
+/**
+ * Where the note being typed right now is kept so that nothing can lose it.
+ *
+ * This exists because of a measurement, not a worry. Three IndexedDB write
+ * shapes were raced against four ways a page can go away, in real Chromium:
+ *
+ * | how the page went away | `put` straight from the handler | read-then-`put` (what the store does) |
+ * |---|---|---|
+ * | tab closed             | committed | committed |
+ * | reloaded (F5)          | **lost**  | **lost**  |
+ * | followed a link out    | **lost**  | **lost**  |
+ * | hidden, then reloaded  | **lost**  | **lost**  |
+ *
+ * So "flush harder on the way out" cannot be the whole answer: on a same-tab
+ * navigation the browser discards transactions opened during unload no matter
+ * how early they are issued, and `updateNote` is a read-modify-write, the
+ * shape with the least chance of all. `localStorage` survived every one of the
+ * four, because writing it is synchronous — it is done before the handler
+ * returns, not scheduled.
+ *
+ * So the draft is stamped here on EVERY keystroke, and the durable write to
+ * Dexie stays debounced. Not on unload only, deliberately: the lesson of this
+ * bug is that enumerating the ways out is what failed (nobody listed Cmd+W),
+ * and a draft that is already safe before anything happens does not need the
+ * list to be complete — it also covers the exits that fire no event at all, a
+ * crash or an out-of-memory tab kill on a phone.
+ *
+ * ONE slot, not one per note: exactly one card is open at a time in a tab (see
+ * `editorRef`), so one slot holds everything a tab can be in the middle of.
+ * The known limitation, written down rather than designed around: two tabs
+ * typing two different notes share this slot, and the tab that stamps second
+ * wins it. The loser still writes its note normally through every other path
+ * (blur, closing the card, leaving the chapter, closing the tab) — what it
+ * gives up is only the recovery of its last few hundred milliseconds, and only
+ * if it dies by reload. A key per note would close that, at the price of an
+ * unbounded set of keys to expire; this is the cheaper end of that trade and
+ * the reason is here so the next person can re-decide it.
+ */
+export const DRAFT_KEY = 'itbook-note-draft';
+
+interface StashedDraft {
+  readonly id: string;
+  readonly text: string;
+}
+
+/** localStorage throws in private mode and when storage is disabled — the same
+ * defensive read `theme/useTheme.ts` does, for the same reason: a reader whose
+ * browser refuses storage should still get a working card, just without the
+ * recovery. */
+function readStash(): StashedDraft | null {
+  try {
+    const raw = window.localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    const { id, text } = (parsed ?? {}) as { id?: unknown; text?: unknown };
+    return typeof id === 'string' && typeof text === 'string' ? { id, text } : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStash(draft: StashedDraft | null): void {
+  try {
+    if (draft) window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    else window.localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    // Nothing to do and nothing to say: the debounce and the flushes below are
+    // still the ordinary path, this was only the belt to their braces.
+  }
+}
 
 /** How much of the highlighted text a card shows above the note. */
 const QUOTE_MAX = 120;
@@ -264,6 +343,15 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
   draftRef.current = draft;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /** What was last handed to `updateNote`. The `row.note === pending.text`
+   * guard below cannot stand in for this: `row` comes from `list`, and `list`
+   * does not re-emit between a `visibilitychange` and the `pagehide` that
+   * follows it milliseconds later — so without this, one tab close costs two
+   * Dexie writes and two outbox rows, i.e. two sync round trips, for one note.
+   * Cleared when the write fails, so a later flush retries rather than
+   * believing a note was stored that was not. */
+  const writtenRef = useRef<{ id: string; text: string } | null>(null);
+
   const flush = useCallback((): void => {
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current);
@@ -276,10 +364,61 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
     // stamp `updatedAt` and queue an outbox row, i.e. a sync round trip for
     // opening a card and closing it again.
     if (!row || row.note === pending.text) return;
-    void updateNote(pending.id, pending.text).catch((error: unknown) => {
-      console.error('MarginCards: could not store the note', error);
-    });
+    const written = writtenRef.current;
+    if (written !== null && written.id === pending.id && written.text === pending.text) return;
+    writtenRef.current = { id: pending.id, text: pending.text };
+    void updateNote(pending.id, pending.text)
+      .then(() => {
+        // Only now: while the write is in flight the stash is still the only
+        // copy that survives a reload, and clearing it first would open the
+        // very window this whole mechanism exists to close.
+        const current = readStash();
+        if (current && current.id === pending.id && current.text === pending.text) writeStash(null);
+      })
+      .catch((error: unknown) => {
+        writtenRef.current = null;
+        console.error('MarginCards: could not store the note', error);
+      });
   }, [updateNote]);
+
+  /**
+   * The other half of `DRAFT_KEY`: a draft that outlived its page gets written
+   * through as soon as the note it belongs to is on screen.
+   *
+   * Keyed on `list` because the row has to exist before it can be patched, and
+   * it arrives asynchronously (Dexie live query → resolve → paint). Rows from
+   * OTHER chapters are left alone rather than cleaned up: one shared slot means
+   * a draft this chapter does not recognise probably belongs to a chapter that
+   * has not been opened yet, and deleting it would be exactly the silent data
+   * loss this is here to end.
+   *
+   * `honoured` because `list` emits again on the store's own write of this very
+   * note, and a second `updateNote` for the same text would be a second outbox
+   * row — the same trap `flush`'s `writtenRef` guards.
+   */
+  const recoveredRef = useRef<string | null>(null);
+  useEffect(() => {
+    const stash = readStash();
+    if (!stash) return;
+    const row = list.find((candidate) => candidate.id === stash.id);
+    if (!row) return;
+    if (row.note === stash.text) {
+      writeStash(null);
+      return;
+    }
+    const token = `${stash.id} ${stash.text}`;
+    if (recoveredRef.current === token) return;
+    recoveredRef.current = token;
+    void updateNote(stash.id, stash.text)
+      .then(() => {
+        const current = readStash();
+        if (current && current.id === stash.id && current.text === stash.text) writeStash(null);
+      })
+      .catch((error: unknown) => {
+        recoveredRef.current = null;
+        console.error('MarginCards: could not restore the note that was being typed', error);
+      });
+  }, [list, updateNote]);
 
   // A card opening (or closing) loads the draft from the row. Deliberately
   // keyed on the id ALONE: re-reading it whenever `list` emits would throw
@@ -297,6 +436,52 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
   useEffect(() => {
     return () => flush();
   }, [focusId, flush]);
+
+  /**
+   * The page going away is a write deadline, and the debounce above had no
+   * answer for it. Measured on Chromium, through the real user path (select →
+   * "Ghi chú" → type → reload): waiting 0 ms lost the note, 400 ms lost the
+   * note, 800 ms kept it. In-app navigation was always safe — the cleanup
+   * above sees that — so the hole was HARD unload only: Cmd+W, F5, a link out
+   * of the app, quitting the browser. What survived was a highlight whose card
+   * said "(chưa có nội dung)", with no warning and no recoverable draft.
+   *
+   * `visibilitychange` → `hidden` AND `pagehide`, both, and deliberately NOT
+   * `beforeunload`:
+   *
+   *   - `visibilitychange` is the one that matters on a phone. iOS and Android
+   *     discard a backgrounded tab without ever running `pagehide` or
+   *     `beforeunload`, so anything that waits for those loses the note on the
+   *     commonest mobile exit there is — switching apps. It also fires on an
+   *     ordinary tab switch, well before anything is torn down, so in practice
+   *     the note is usually already stored long before the tab is really
+   *     closed.
+   *   - `pagehide` covers the desktop shape `visibilitychange` does not
+   *     guarantee to precede: a window closed, or navigated away from, while it
+   *     is still the visible one. Firing both for one exit costs nothing —
+   *     `writtenRef` makes the second call a no-op.
+   *   - `beforeunload` is absent on purpose. It does not fire on mobile, it
+   *     disqualifies the page from the back/forward cache, and it adds nothing
+   *     the two above do not already cover.
+   *
+   * Not gated on `visible`/`wide`: below 1241px the bottom sheet edits the same
+   * draft through the same `flush`, and a reader on a phone is exactly who this
+   * is for.
+   */
+  useEffect(() => {
+    const doc = root?.ownerDocument ?? document;
+    const view = doc.defaultView ?? window;
+    const onVisibility = (): void => {
+      if (doc.visibilityState === 'hidden') flush();
+    };
+    const onPageHide = (): void => flush();
+    doc.addEventListener('visibilitychange', onVisibility);
+    view.addEventListener('pagehide', onPageHide);
+    return () => {
+      doc.removeEventListener('visibilitychange', onVisibility);
+      view.removeEventListener('pagehide', onPageHide);
+    };
+  }, [root, flush]);
 
   // The reader asked for the editor (toolbar "Ghi chú", or a click on the
   // card). `focus` is a fresh object on every request, so asking twice for the
@@ -489,6 +674,9 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
   const onDraftChange = useCallback(
     (id: string, text: string): void => {
       setDraft({ id, text });
+      // Synchronously, before anything is scheduled — see `DRAFT_KEY`. This
+      // line is what makes the loss window zero rather than smaller.
+      writeStash({ id, text });
       if (timerRef.current !== null) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
@@ -507,6 +695,10 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
         timerRef.current = null;
       }
       draftRef.current = null;
+      // And the durable copy with it: the row is being tombstoned, so a stash
+      // left behind would be a draft nothing will ever adopt.
+      const stash = readStash();
+      if (stash?.id === id) writeStash(null);
       setDraft(null);
       onFocusChange(null);
       void remove(id).catch((error: unknown) => {
