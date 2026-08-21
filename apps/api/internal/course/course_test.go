@@ -835,6 +835,14 @@ func validPackage(t *testing.T, courseID, version string) []byte {
 // the request; see TestPostIgnoresClientSuppliedOwnerID.
 func postPackage(t *testing.T, app *fiber.App, cookie *http.Cookie, target string, zipBytes []byte, extraFields map[string]string) (*http.Response, []byte) {
 	t.Helper()
+	return postPackageWithHeaders(t, app, cookie, target, zipBytes, extraFields, nil)
+}
+
+// postPackageWithHeaders is postPackage plus arbitrary request headers.
+// The only callers that pass any are trying to make a handler read an
+// identity out of a header; see TestNoRouteReadsOwnerFromTheRequest.
+func postPackageWithHeaders(t *testing.T, app *fiber.App, cookie *http.Cookie, target string, zipBytes []byte, extraFields, headers map[string]string) (*http.Response, []byte) {
+	t.Helper()
 
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
@@ -856,6 +864,9 @@ func postPackage(t *testing.T, app *fiber.App, cookie *http.Cookie, target strin
 
 	req := httptest.NewRequest(http.MethodPost, target, &body)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 	if cookie != nil {
 		req.AddCookie(cookie)
 	}
@@ -874,8 +885,18 @@ func postPackage(t *testing.T, app *fiber.App, cookie *http.Cookie, target strin
 
 func doGet(t *testing.T, app *fiber.App, target string, cookie *http.Cookie) (*http.Response, []byte) {
 	t.Helper()
+	return doGetWithHeaders(t, app, target, cookie, nil)
+}
+
+// doGetWithHeaders is doGet plus arbitrary request headers, for the cases
+// that try to smuggle an owner id past the session in one.
+func doGetWithHeaders(t *testing.T, app *fiber.App, target string, cookie *http.Cookie, headers map[string]string) (*http.Response, []byte) {
+	t.Helper()
 
 	req := httptest.NewRequest(http.MethodGet, target, nil)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 	if cookie != nil {
 		req.AddCookie(cookie)
 	}
@@ -1253,6 +1274,164 @@ func TestPostIgnoresClientSuppliedOwnerID(t *testing.T) {
 	}
 }
 
+// impersonationHeaders is every header a handler might plausibly be
+// tempted to read an identity out of, all carrying the victim's id. They
+// are sent together rather than one per case on purpose: the assertion is
+// that NONE of them is read, and a table of eleven single-header requests
+// would prove the same thing eleven times more slowly.
+func impersonationHeaders(victimID uuid.UUID) map[string]string {
+	id := victimID.String()
+	return map[string]string{
+		"X-User-Id":           id,
+		"X-User-ID":           id,
+		"X-Owner-Id":          id,
+		"X-Owner":             id,
+		"X-Forwarded-User":    id,
+		"X-Forwarded-For":     id,
+		"X-Impersonate-Owner": id,
+		"X-Auth-User":         id,
+		"X-Remote-User":       id,
+		"Authorization":       "Bearer " + id,
+		"From":                id,
+	}
+}
+
+// impersonationQuery is the same idea in the query string.
+func impersonationQuery(victimID uuid.UUID) string {
+	id := victimID.String()
+	return "?owner_id=" + id + "&ownerId=" + id + "&user_id=" + id + "&uid=" + id
+}
+
+// TestNoRouteReadsOwnerFromTheRequest closes the gap a review measured in
+// this file's coverage: owner injection was tested on the WRITE path only.
+// Three independent mutants — GET /courses reading owner_id from the query,
+// the asset routes doing the same, and POST /courses reading X-User-Id —
+// all survived the suite as it stood, while a review's own battery killed
+// all three. Ruling S1-F12 is precisely about a handler passing the wrong
+// owner to a repository method that is otherwise correct, so "the code is
+// right today" is not the property worth having; "a handler that started
+// reading an owner out of the request would fail this test" is.
+//
+// Four routes × (query parameters, headers, form fields), one fiber.App
+// shared by both users — stronger than an app each, because an identity
+// cached anywhere at the app layer would surface here.
+//
+// It is top level rather than a case under TestCourseHTTPContracts (and so
+// pays for its own container) because it is the pin for this subsystem's
+// single most important property, and it has to stay runnable on its own
+// with -run.
+func TestNoRouteReadsOwnerFromTheRequest(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool)
+
+	cookieAlice, aliceID := registerUser(t, app, "alice")
+	cookieBob, bobID := registerUser(t, app, "bob")
+
+	const aliceCourse = "alice-secret-course"
+	const aliceVersion = "2.3.4"
+	const aliceTitle = "ALICE-TITLE-SECRET"
+	const aliceChapter = "ALICE-CHAPTER-SECRET"
+
+	aliceManifest := manifestDoc(aliceCourse, aliceVersion, "chapters/ch-1.html")
+	aliceManifest["title"] = aliceTitle
+	aliceZip := buildZip(t, []zipEntry{
+		{manifestPath, mustJSON(t, aliceManifest)},
+		{"chapters/ch-1.html", []byte(aliceChapter)},
+	})
+	if resp, raw := postPackage(t, app, cookieAlice, "/courses", aliceZip, nil); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("alice import: want 201 got %d body=%s", resp.StatusCode, raw)
+	}
+
+	headers := impersonationHeaders(aliceID)
+	query := impersonationQuery(aliceID)
+	secrets := []string{aliceCourse, aliceTitle, aliceChapter, aliceID.String()}
+
+	assertNoSecret := func(what string, body []byte) {
+		t.Helper()
+		for _, s := range secrets {
+			if bytes.Contains(body, []byte(s)) {
+				t.Errorf("CRITICAL: %s leaked %q to another user: %s", what, s, body)
+			}
+		}
+	}
+
+	// READ path 1 — the catalog.
+	for _, target := range []string{"/courses", "/courses" + query} {
+		resp, body := doGetWithHeaders(t, app, target, cookieBob, headers)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("bob GET %s: want 200 got %d body=%s", target, resp.StatusCode, body)
+		}
+		assertNoSecret("GET "+target, body)
+	}
+
+	// READ path 2 — the manifest and asset routes, with alice's exact id
+	// and version. 404, never 403: the distinction repo.go's ErrNotFound
+	// exists to erase would come straight back as a way to confirm that
+	// somebody else holds a package.
+	base := "/courses/" + aliceCourse + "/@" + aliceVersion + "/"
+	for _, name := range []string{manifestPath, "chapters/ch-1.html"} {
+		for _, target := range []string{base + name, base + name + query} {
+			resp, body := doGetWithHeaders(t, app, target, cookieBob, headers)
+			if resp.StatusCode != http.StatusNotFound {
+				t.Errorf("bob GET %s: want 404 got %d body=%s", target, resp.StatusCode, body)
+			}
+			assertNoSecret("GET "+target, body)
+		}
+	}
+
+	// WRITE path — headers as well as the query and form fields
+	// TestPostIgnoresClientSuppliedOwnerID already covers.
+	bobManifest := manifestDoc(aliceCourse, aliceVersion, "chapters/ch-1.html")
+	bobManifest["title"] = "BOB-OVERWRITE-ATTEMPT"
+	bobZip := buildZip(t, []zipEntry{
+		{manifestPath, mustJSON(t, bobManifest)},
+		{"chapters/ch-1.html", []byte("<p>bob</p>")},
+	})
+	resp, raw := postPackageWithHeaders(t, app, cookieBob, "/courses"+query, bobZip,
+		map[string]string{"owner_id": aliceID.String(), "ownerId": aliceID.String(), "user_id": aliceID.String()},
+		headers)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("bob import: want 201 got %d body=%s", resp.StatusCode, raw)
+	}
+	if n := countRowsFor(t, pool, aliceID); n != 1 {
+		t.Errorf("alice rows after bob's forged import: want 1, got %d", n)
+	}
+	if n := countRowsFor(t, pool, bobID); n != 1 {
+		t.Errorf("bob rows after his own import: want 1, got %d", n)
+	}
+
+	// Anti-vacuity. Without this, a handler that answered every request
+	// with 404 and an empty catalog would pass everything above.
+	catalog := listCourses(t, app, cookieAlice)
+	found := false
+	for _, c := range catalog {
+		if c.ID == aliceCourse {
+			found = true
+			if c.Title != aliceTitle {
+				t.Errorf("alice's own catalog entry: want title %q got %q", aliceTitle, c.Title)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("alice cannot see her own course: %+v", catalog)
+	}
+	aliceGot, aliceBody := doGet(t, app, base+"chapters/ch-1.html", cookieAlice)
+	if aliceGot.StatusCode != http.StatusOK {
+		t.Fatalf("alice reading her own chapter: want 200 got %d body=%s", aliceGot.StatusCode, aliceBody)
+	}
+	if string(aliceBody) != aliceChapter {
+		t.Errorf("alice's own chapter: want %q got %q", aliceChapter, aliceBody)
+	}
+	// And bob's write did land — under bob.
+	bobGot, bobBody := doGet(t, app, base+manifestPath, cookieBob)
+	if bobGot.StatusCode != http.StatusOK {
+		t.Fatalf("bob reading his own manifest: want 200 got %d body=%s", bobGot.StatusCode, bobBody)
+	}
+	if !bytes.Contains(bobBody, []byte("BOB-OVERWRITE-ATTEMPT")) {
+		t.Errorf("bob's own row does not hold bob's package: %s", bobBody)
+	}
+}
+
 // stubRepo is a course.Repo whose Put fails with whatever error the case
 // hands it. It exists for one job: the storage-failure classification
 // below, where the interesting inputs are driver errors that a healthy
@@ -1444,6 +1623,41 @@ func TestCourseHTTPContracts(t *testing.T) {
 		}
 		if !bytes.Equal(servedBody, clean) {
 			t.Errorf("the served manifest is not the validated one:\nwant %s\ngot  %s", clean, servedBody)
+		}
+	})
+
+	// checkPackagePath's own comment calls this distinction load-bearing:
+	// the ".." clause tests SEGMENTS, not a substring, because being
+	// STRICTER than packages/course-format's escapesPackage is the
+	// dangerous direction — it rejects packages `tuhoc pack` built
+	// correctly, for a reason pack never warned about. A review mutated
+	// the clause to strings.Contains(p, "..") and the whole suite stayed
+	// green, so the claim was unpinned. Both halves are asserted here: the
+	// package imports, AND the file with ".." in its name is served, which
+	// is the same rule again on the read path (assetName).
+	t.Run("a file whose name merely contains .. is not an escape", func(t *testing.T) {
+		app := newTestApp(pool)
+		cookie, _ := registerUser(t, app, "legaldotdot")
+
+		const legal = "chapters/notes..draft.html"
+		const legalBody = "<p>hai dấu chấm, không phải một đoạn</p>"
+		pkg := buildZip(t, []zipEntry{
+			{manifestPath, mustJSON(t, manifestDoc("c-dotdot", "1.0.0", legal))},
+			{legal, []byte(legalBody)},
+		})
+
+		resp, raw := postPackage(t, app, cookie, "/courses", pkg, nil)
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("a legal file name containing '..' inside a segment was rejected: %d body=%s",
+				resp.StatusCode, raw)
+		}
+
+		got, body := doGet(t, app, "/courses/c-dotdot/@1.0.0/"+legal, cookie)
+		if got.StatusCode != http.StatusOK {
+			t.Fatalf("GET %q: want 200 got %d body=%s", legal, got.StatusCode, body)
+		}
+		if string(body) != legalBody {
+			t.Errorf("GET %q: want %q got %q", legal, legalBody, body)
 		}
 	})
 
