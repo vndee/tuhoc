@@ -7,6 +7,44 @@ const SYNC_INTERVAL_MS = 15_000;
 /** `db.meta`'s single row key for the opaque cursor `GET /sync` hands back. */
 const CURSOR_KEY = 'syncCursor';
 
+/**
+ * How many queued outbox entries ONE request carries.
+ *
+ * **This is not a copy of the server's cap, and that is the whole point.**
+ * `POST /sync` refuses a body of more than `MaxItemsPerPush` progress +
+ * annotation items and `POST /events/batch` more than
+ * `MaxEventsPerBatch` events (both 10 000 today,
+ * apps/api/internal/sync/handler.go and apps/api/internal/stats/handler.go),
+ * and both endpoints ALSO sit behind a 4 MiB body limit that a few very
+ * large annotation notes can trip long before any item count does. There
+ * is no build step linking Go constants to TypeScript ones, so writing
+ * `10000` here would create a second, hand-maintained truth point for a
+ * number only the server actually enforces — the failure this codebase has
+ * already been bitten by twice (see `icTZOffset`'s doc comment on the Go
+ * side, and docs/carried-forward.md's rule about never writing "7" in a
+ * second place). Two constants drift, and the drift is silent until a
+ * device is stranded.
+ *
+ * So the client keeps NO copy of the ceiling. It keeps only this: a
+ * request size chosen for reasons of its own — small enough that one batch
+ * is a few hundred KB rather than tens of MB, large enough that a
+ * long-offline device drains in tens of requests rather than thousands —
+ * and it treats a **413 as the server's authoritative answer** about what
+ * it will accept, halving the batch and retrying rather than assuming it
+ * knows better (see `pushBatches`). Correctness therefore does not depend
+ * on this number being below the ceiling at all: it converges for any
+ * server ceiling down to a single item, including one this file was
+ * written before anybody chose. Being comfortably below today's ceiling is
+ * a performance property (no wasted discovery round trip), not the safety
+ * property.
+ *
+ * Exported so `engine.test.ts` can assert the exact REQUEST COUNT a drain
+ * costs, not merely that it eventually drained — an implementation that
+ * posted one entry per request would satisfy "the outbox empties" and be
+ * its own kind of broken.
+ */
+export const OUTBOX_BATCH_SIZE = 1000;
+
 /** Shape of `GET /sync`'s response body — see apps/api/internal/sync/handler.go's `pullResponse`. */
 interface PullResponse {
   progress: ProgressRow[];
@@ -14,10 +52,14 @@ interface PullResponse {
   cursor: string;
 }
 
-/** Shape of `POST /sync`'s response body — apps/api/internal/sync/handler.go's `pushResponse`. Only `applied` exists; the engine does not currently act on the count, but the shape is documented here so a future caller doesn't have to rediscover it. */
-interface PushResponse {
-  applied: number;
-}
+// The two write endpoints' response bodies are deliberately NOT modelled
+// here: `POST /sync` answers `{applied: number}` and `POST /events/batch`
+// answers `{accepted: number}` (apps/api/internal/sync/handler.go's
+// `pushResponse` and apps/api/internal/stats/handler.go's
+// `eventsBatchResponse`), and this engine reads neither — a batch's
+// outcome is its HTTP status, not its count. `applied: 0` is the ORDINARY
+// answer to a correct retry of an already-durable batch (see `mergeRow`),
+// so treating the count as a success signal would be actively wrong.
 
 // ---------------------------------------------------------------------------
 // Module-level state for the timer + listener startSync()/stopSync() own,
@@ -73,23 +115,211 @@ let syncEpoch = 0;
  */
 let currentCycle: Promise<void> | null = null;
 
-function isAuthError(err: unknown): boolean {
-  return err instanceof ApiError && err.status === 401;
+/**
+ * What one attempted batch did, in the only four terms the flush driver
+ * below has to act on differently. The distinction that matters most is
+ * `retriable` vs `rejected`, because they are the two ends of an
+ * asymmetry:
+ *
+ *  - `retriable` — no answer arrived (offline, DNS, connection refused),
+ *    or the answer was "not now" (5xx, 429, 408). The batch is fine; the
+ *    moment is not. Leave it queued, say nothing, try again next cycle.
+ *    This is the ordinary state of a device on a train, and logging it
+ *    would print every 15 seconds for hours.
+ *  - `rejected` — the server looked at this exact content and said no
+ *    (400, 422, and every other non-401/408/413/429 4xx). Retrying byte-
+ *    identical content against a deterministic validator returns the
+ *    identical answer forever, so this one is NOT ordinary and must not
+ *    pass in silence. See `pushBatches` for what is done with it.
+ *  - `too-large` — 413, the one answer that is about the batch's SIZE
+ *    rather than its content, and therefore the one the client can fix by
+ *    itself. See `OUTBOX_BATCH_SIZE`.
+ *  - `auth-failed` — 401, which is about the session, not this request.
+ */
+type BatchOutcome = 'applied' | 'auth-failed' | 'too-large' | 'rejected' | 'retriable';
+
+/**
+ * Maps a thrown failure onto the outcome the driver acts on.
+ *
+ * Anything that is not an `ApiError` never reached a server at all (see
+ * `serverAnswered` in src/api/client.ts for the full four-case argument)
+ * and is therefore retriable by definition. A status this function has no
+ * opinion about falls to `rejected`, which is the fail-loud side: a new
+ * 4xx nobody anticipated gets reported rather than silently retried
+ * forever.
+ */
+function classifyPushFailure(err: unknown): Exclude<BatchOutcome, 'applied'> {
+  if (!(err instanceof ApiError)) return 'retriable';
+  if (err.status === 401) return 'auth-failed';
+  if (err.status === 413) return 'too-large';
+  if (err.status === 408 || err.status === 429 || err.status >= 500) return 'retriable';
+  return 'rejected';
 }
 
 /**
- * Pushes the outbox's queued mutations to the server and, for each
- * sub-batch that is confirmed applied, deletes exactly those entries.
+ * Deletes exactly the outbox rows a confirmed batch carried — never a row
+ * queued while that request was in flight, and never a row belonging to
+ * the endpoint this batch did not go to.
  *
- * Two separate HTTP calls, because the two write endpoints are separate
- * on the wire (`POST /sync` for progress+annotations, `POST /events/batch`
- * for events — see the task brief's server contract) and are handled
- * independently: a failure in one must not block or roll back the other,
- * since they are unrelated resources server-side with unrelated failure
- * modes (e.g. a malformed event should never block a valid progress
- * write from landing).
+ * Two spellings of the identical delete, and the branch is a proof, not a
+ * heuristic. `batch` is a contiguous slice of a `toArray()` snapshot, so
+ * its `seq`s are strictly ascending; when the span they cover equals their
+ * count (`last - first + 1 === batch.length`) the seqs are exactly
+ * `first…last` with no gaps, so every row the store holds in that key
+ * range is a row this batch sent. Under that condition — and only under
+ * it — a bounded primary-key range delete removes precisely the same rows
+ * as naming each key, with no way for either to reach a row the other
+ * would not. When entries of both endpoints interleave in the outbox (the
+ * ordinary case once heartbeats are queuing alongside progress), the span
+ * is wider than the batch, the condition is false, and the keys are named
+ * individually.
  *
- * `rows` is snapshotted via `toArray()` ONCE, before either request goes
+ * The range form is one bounded cursor sweep instead of `batch.length`
+ * point deletes. What made this worth writing down at all is the test
+ * harness rather than the browser: `fake-indexeddb`'s per-key delete is
+ * O(rows in the store), so draining 25 000 entries a thousand keys at a
+ * time measured 157 s of pure test-double bookkeeping, against 0.2 s for
+ * the same rows swept by cursor (see engine.test.ts's own measurements).
+ * A real IndexedDB is a B-tree and shows nothing like that gap — but a
+ * cursor sweep is not slower there either, and the mandated 25 000-entry
+ * acceptance test is not worth a three-minute gate.
+ */
+async function deleteSentEntries(batch: OutboxEntry[]): Promise<void> {
+  const first = batch[0].seq as number;
+  const last = batch[batch.length - 1].seq as number;
+
+  if (last - first + 1 === batch.length) {
+    await db.outbox.where('seq').between(first, last, true, true).delete();
+    return;
+  }
+
+  await db.outbox.bulkDelete(batch.map((entry) => entry.seq as number));
+}
+
+/**
+ * Posts `entries` to `path` in batches, deleting each batch's outbox rows
+ * as soon as that batch is confirmed applied, and returns `false` only if
+ * a 401 was observed (which aborts the whole cycle — see `runCycle`).
+ *
+ * **Why batching exists at all.** Before this, `flushOutbox` posted the
+ * WHOLE outbox in one request. Both write endpoints cap a single request
+ * (see `OUTBOX_BATCH_SIZE`), so an outbox that grew past that cap — a
+ * device offline long enough, at one heartbeat per 30 s plus ordinary
+ * writes — produced the same over-cap body every cycle, got the same 413
+ * every cycle, and never shrank. Not slow: LOST. Every note queued behind
+ * that wall stayed on the device forever with nothing shown to the user.
+ * A smaller server cap would only have moved the wall closer.
+ *
+ * **The batch boundary is the entry, not the array.** `POST /sync` counts
+ * `progress` and `annotations` TOGETHER against one cap (they are written
+ * in one transaction server-side), so batching each array independently
+ * would let a mixed outbox exceed the cap while both halves looked
+ * innocent. Slicing the interleaved entry list and splitting each SLICE
+ * into the two arrays makes the client's unit of accounting the same as
+ * the server's.
+ *
+ * **Per-batch deletion, per-batch failure.** Each batch's `seq`s are
+ * deleted the moment that batch is confirmed, so a flush interrupted at
+ * batch 17 keeps the 16 batches of progress it already made instead of
+ * re-sending them next cycle. A failed batch never aborts the flush: the
+ * loop keeps going. That is not tidiness — it is the same finding one
+ * level down. If one bad batch stopped the flush, a single permanently
+ * unacceptable entry near the front of the queue would strand everything
+ * behind it forever, which is precisely the shape of failure this
+ * function was written to end.
+ *
+ * **A `rejected` batch is kept, and said out loud.** The two choices for
+ * content the server will never accept are to drop it or to keep it. This
+ * keeps it: every item here is something the user did (a note, a chapter
+ * marked read), and every field the server validates — RFC3339Nano
+ * instants, UUIDs — is generated by this client, so a 400 means OUR bug,
+ * not their input. Deleting the evidence would turn a fixable client bug
+ * into permanent, invisible data loss, and "invisible" is the property
+ * this whole task is about. Keeping it costs one wasted request per cycle
+ * for that one batch, and `console.error` is what stops it from being
+ * silent. Batching already shrank the blast radius from "the entire
+ * outbox" to "one batch"; narrowing it further (bisecting a poisoned
+ * batch down to the single offending entry) would spend O(log n) requests
+ * every 15 s forever to isolate something that still cannot be sent, so
+ * it is deliberately not done here.
+ *
+ * **413 is the server's answer, not the client's guess.** On `too-large`
+ * the batch size is halved and the SAME entries are retried, down to a
+ * single entry. This is what lets `OUTBOX_BATCH_SIZE` be an independent
+ * preference rather than a copy of a Go constant: whatever the real
+ * ceiling is — an item count, a byte limit tripped by a few very long
+ * notes, or a number changed server-side years from now — the client
+ * converges on it within a few requests instead of being stranded by it.
+ * If even a single entry comes back 413, no batch size can ever carry it,
+ * so it is treated exactly like `rejected` (kept, reported, stepped over)
+ * and the size is restored: it was that entry, not the ceiling.
+ *
+ * **`epoch`** — see `syncEpoch`'s doc comment. Checked immediately before
+ * each batch's deletion, exactly as the single-request version did, and
+ * additionally at the top of each iteration so a `stopSync()` landing
+ * mid-flush (a logout) stops the REMAINING batches rather than spending
+ * another two dozen requests on a session being torn down. Stopping early
+ * is never lossy: undeleted entries stay queued for the next cycle, or
+ * are cleared by whatever ended the session.
+ */
+async function pushBatches(
+  path: string,
+  entries: OutboxEntry[],
+  buildBody: (batch: OutboxEntry[]) => unknown,
+  epoch: number,
+): Promise<boolean> {
+  let size = OUTBOX_BATCH_SIZE;
+  let index = 0;
+
+  while (index < entries.length) {
+    if (epoch !== syncEpoch) return true;
+
+    const batch = entries.slice(index, index + size);
+
+    let outcome: BatchOutcome;
+    try {
+      await api.post(path, buildBody(batch));
+      outcome = 'applied';
+    } catch (err) {
+      outcome = classifyPushFailure(err);
+    }
+
+    if (outcome === 'auth-failed') return false;
+
+    if (outcome === 'too-large' && size > 1) {
+      size = Math.max(1, Math.floor(size / 2));
+      continue; // same entries, smaller request — nothing consumed, nothing lost
+    }
+
+    if (outcome === 'applied') {
+      if (epoch === syncEpoch) await deleteSentEntries(batch);
+    } else if (outcome === 'too-large') {
+      console.error(`tuhoc sync: the server refuses a single queued entry as too large for ${path}; it stays queued and is skipped for now`);
+      size = OUTBOX_BATCH_SIZE; // the ceiling was never the problem — that one entry was
+    } else if (outcome === 'rejected') {
+      console.error(`tuhoc sync: the server permanently rejected ${batch.length} queued entr${batch.length === 1 ? 'y' : 'ies'} for ${path}; they stay queued and cannot be sent as-is`);
+    }
+
+    index += batch.length;
+  }
+
+  return true;
+}
+
+/**
+ * Pushes the outbox's queued mutations to the server and, for each batch
+ * that is confirmed applied, deletes exactly those entries.
+ *
+ * Two separate sequences of HTTP calls, because the two write endpoints
+ * are separate on the wire (`POST /sync` for progress+annotations,
+ * `POST /events/batch` for events — see the task brief's server contract)
+ * and are handled independently: a failure in one must not block or roll
+ * back the other, since they are unrelated resources server-side with
+ * unrelated failure modes (e.g. a malformed event should never block a
+ * valid progress write from landing). Each sequence is batched — see
+ * `pushBatches`, which is where the interesting decisions live.
+ *
+ * `rows` is snapshotted via `toArray()` ONCE, before any request goes
  * out, and only the `seq`s present in that snapshot are ever deleted.
  * This matters: `setProgress` (or a future annotation/event write) can
  * add a NEW outbox entry while a flush's `await` is still pending on the
@@ -99,63 +329,49 @@ function isAuthError(err: unknown): boolean {
  * deleting only the snapshotted `seq`s, a mutation queued mid-flush
  * survives untouched and is picked up by the NEXT cycle instead.
  *
- * Returns `false` the moment a 401 is observed on either call, which
+ * Returns `false` the moment a 401 is observed on either endpoint, which
  * tells `runCycle` to abort the rest of this cycle (see its doc comment
- * for why). Any other failure (network error, 5xx, 429) is swallowed
- * here: the corresponding outbox entries are simply left in place to be
- * retried on the next cycle. This is safe to retry unboundedly because
- * the server's conflict rule is idempotent — replaying a batch that was
+ * for why). Every other failure leaves the corresponding entries queued
+ * for the next cycle. That is safe to repeat unboundedly because the
+ * server's conflict rule is idempotent — replaying a batch that was
  * already durably applied (or applying it for the first time after a
  * response got lost in transit) always converges to the same state; see
  * `mergeRow`'s doc comment and apps/api/internal/sync/usecase.go's
  * `Push` for the server-side half of that guarantee.
  *
- * `epoch` is the value of module-level `syncEpoch` this cycle captured
- * when it started (see `runCycle`) — passed through so each
- * `db.outbox.bulkDelete(...)` below can check, immediately before
- * writing, whether `stopSync()` (e.g. from a logout mid-flight — see
- * `syncEpoch`'s own doc comment) has bumped `syncEpoch` since. The
- * network request itself is always allowed to complete either way
- * (harmless — the server already durably applied or didn't; nothing
- * local depends on this response existing), only the LOCAL deletion is
- * conditional. Skipping a stale deletion is always safe, never a data
- * loss risk of its own: the corresponding outbox rows either still exist
- * (if nothing else cleared them) and get retried by a later cycle, or
- * they were already cleared by whatever bumped the epoch (e.g. logout's
- * own unconditional clear), in which case there is nothing left to
- * delete and the `bulkDelete` would have been a no-op anyway.
+ * **Splitting one request into many does not change where the data ends
+ * up.** The server resolves every conflict per ROW by strictly-greater
+ * `updatedAt` (repo.go's `WHERE EXCLUDED.updated_at > ...`), and
+ * `updatedAt` is stamped at the moment of the edit, on this device, by
+ * `setProgress` — never at flush time. That rule is commutative: two
+ * writes to the same key converge on the one with the later stamp no
+ * matter which request carried it or which arrived first, so batch order
+ * is not part of the answer. (Batches here are issued strictly
+ * sequentially — each `await`ed before the next is built — so they cannot
+ * even overlap on the wire; the commutativity is what makes a batch
+ * failing, being retried a cycle later, or arriving out of order against
+ * ANOTHER device's push harmless rather than merely unlikely.) Events are
+ * inserted with their own dedup (repo.go's `insertEventSQL`), so a
+ * replayed event batch reports `accepted: 0` rather than double-counting
+ * study minutes.
  */
 async function flushOutbox(epoch: number): Promise<boolean> {
   const rows = await db.outbox.toArray();
 
-  const isProgressOrAnnotation = (r: OutboxEntry) => r.table === 'progress' || r.table === 'annotations';
-  const progressRows = rows.filter((r) => r.table === 'progress').map((r) => r.row);
-  const annotationRows = rows.filter((r) => r.table === 'annotations').map((r) => r.row);
-  const eventRows = rows.filter((r) => r.table === 'events').map((r) => r.row);
+  const syncEntries = rows.filter((r) => r.table === 'progress' || r.table === 'annotations');
+  const eventEntries = rows.filter((r) => r.table === 'events');
 
-  if (progressRows.length > 0 || annotationRows.length > 0) {
-    try {
-      await api.post<PushResponse>('/sync', { progress: progressRows, annotations: annotationRows });
-      if (epoch === syncEpoch) {
-        const seqs = rows.filter(isProgressOrAnnotation).map((r) => r.seq as number);
-        await db.outbox.bulkDelete(seqs);
-      }
-    } catch (err) {
-      if (isAuthError(err)) return false;
-      // network failure / 5xx / 429 — leave these entries queued, retry next cycle.
-    }
+  if (syncEntries.length > 0) {
+    const buildPushBody = (batch: OutboxEntry[]) => ({
+      progress: batch.filter((r) => r.table === 'progress').map((r) => r.row),
+      annotations: batch.filter((r) => r.table === 'annotations').map((r) => r.row),
+    });
+    if (!(await pushBatches('/sync', syncEntries, buildPushBody, epoch))) return false;
   }
 
-  if (eventRows.length > 0) {
-    try {
-      await api.post<{ accepted: number }>('/events/batch', { events: eventRows });
-      if (epoch === syncEpoch) {
-        const seqs = rows.filter((r) => r.table === 'events').map((r) => r.seq as number);
-        await db.outbox.bulkDelete(seqs);
-      }
-    } catch (err) {
-      if (isAuthError(err)) return false;
-    }
+  if (eventEntries.length > 0) {
+    const buildEventsBody = (batch: OutboxEntry[]) => ({ events: batch.map((r) => r.row) });
+    if (!(await pushBatches('/events/batch', eventEntries, buildEventsBody, epoch))) return false;
   }
 
   return true;
