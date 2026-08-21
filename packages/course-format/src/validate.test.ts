@@ -553,6 +553,56 @@ describe('N1 — một thẻ mở nhồi thuộc tính không được làm treo
     expect(ms, `mất ${ms.toFixed(0)} ms — bậc hai đã quay lại`).toBeLessThan(1000);
   });
 
+  it('4,7 MiB: MỘT thẻ nhồi thuộc tính không được đắt hơn CÙNG số byte trải mỏng', { timeout: 120_000 }, () => {
+    // Nợ chuyển từ vòng review trước, trả ở đây. Lưới test cũ ghim TRẦN và ghim
+    // NGỮ NGHĨA của phép khử trùng lặp, nhưng không ghim LÝ DO phép khử đó tồn
+    // tại: một mutant khôi phục cách khử tuyến tính của parse5 — giữ nguyên
+    // trần, chỉ đổi `seenAttrNames` thành một vòng quét `token.attrs` — vẫn để
+    // 93/93 XANH. Payload lớn nhất trong bộ test là 552 KiB, và ở kích thước đó
+    // bản chỉ-có-trần vẫn kịp xong trước ngân sách 1.000 ms.
+    //
+    // KHÔNG dùng ngân sách tuyệt đối làm dòng bắt mutant, và đây là lý do — đo
+    // trong ĐÚNG môi trường cổng (`make test-format` → vitest/V8), ba lần mỗi ô:
+    //
+    //   payload                    | bản đang có | chỉ-có-trần
+    //   ---------------------------|-------------|-------------
+    //   64k thuộc tính / 552 KiB   |  17–27 ms   |  144–236 ms
+    //   500k thuộc tính / 4,7 MiB  | 141–186 ms  | 1095–1212 ms
+    //   4,7 MiB trải trên thẻ nhỏ  | 197–291 ms  |  202–215 ms   ← không đổi
+    //
+    // Bản chỉ-có-trần rơi vào 1.095–1.212 ms, tức là NẰM NGAY TRÊN vạch 1.000 ms
+    // đúng một sợi tóc. Đo bằng những cách gọi vitest khác nhau, cùng mutant đó
+    // cho ra từ 1.013 ms tới 2.539 ms; ở 1.013 ms nó SỐNG SÓT. Một ngân sách
+    // tuyệt đối ở đây là tung đồng xu, không phải cổng. (Cũng cẩn thận với hai
+    // môi trường: bun/JSC đo chính mutant này ở 2.113 ms còn vitest/V8 ở
+    // ~1.100 ms — ngân sách phải đúng ở nơi cổng thật chạy.)
+    //
+    // Nên dòng bắt mutant là một TỈ SỐ giữa hai hình dạng payload CÙNG số byte,
+    // đo liền nhau trong cùng tiến trình. Máy chậm làm chậm cả hai vế như nhau:
+    // bản đang có ở 0,48–0,94; chỉ-có-trần ở 5,1–6,0. Vạch 2,5 nằm giữa với
+    // khoảng cách ~2,7× phía dưới và ~2,0× phía trên, và không phụ thuộc máy.
+    const bytes = 4_774 * 1024;
+    // Trải mỏng ĐO TRƯỚC: nó làm nóng tokenizer, nên số của thẻ đơn ở dưới
+    // không bị cộng thêm chi phí khởi động — tỉ số vì thế nghiêng về phía an
+    // toàn (khó đỏ oan) chứ không nghiêng về phía dễ dãi với mutant.
+    const unit = '<img a=1 b=2 c=3 d=4>';
+    const flat = timed(unit.repeat(Math.ceil(bytes / unit.length)));
+    expect(flat.codes, 'payload trải mỏng phải sạch').toEqual([]);
+
+    const { codes, ms } = timed(tagWithAttrs(500_000));
+    expect(codes, 'thẻ nhồi thuộc tính phải sinh finding').toContain('TAG_ATTR_FLOOD');
+
+    const ratio = ms / Math.max(flat.ms, 1);
+    expect(
+      ratio,
+      `một thẻ mất ${ms} ms so với ${flat.ms} ms khi trải mỏng (tỉ số ${ratio.toFixed(2)}) — khử trùng lặp tuyến tính đã quay lại`,
+    ).toBeLessThan(2.5);
+    // Lưới thứ hai, rộng rãi, cùng quy ước với các dòng khác trong khối: bắt
+    // hồi quy thô bạo mà tỉ số bỏ lọt (ví dụ cả hai vế cùng chậm đi 10 lần).
+    // KHÔNG phải dòng bắt mutant ở trên — xem bảng số.
+    expect(ms, `mất ${ms.toFixed(0)} ms`).toBeLessThan(2000);
+  });
+
   it('CÙNG số byte trải trên NHIỀU thẻ vẫn tuyến tính và vẫn sạch', { timeout: 120_000 }, () => {
     // The control that proves the fence is on the right axis. This payload is
     // the same size as the one above and is legitimate markup; if a "fix" ever
