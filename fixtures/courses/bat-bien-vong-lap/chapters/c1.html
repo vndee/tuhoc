@@ -1,0 +1,185 @@
+<div class="ch-eyebrow">Phần I · Từ chạy thử đến chứng minh — Chương 1.1</div>
+<h1 class="ch-title">Vì sao chạy thử không kết luận được</h1>
+<p class="ch-lede">Ai cũng biết câu "kiểm thử chỉ chứng minh có lỗi, không chứng minh hết lỗi". Ít ai rút ra hệ quả của nó: nếu muốn một khẳng định đúng cho <i>mọi</i> đầu vào thì phải nói được điều gì đó về vòng lặp mà <b>không cần biết nó đã chạy bao nhiêu lần</b>. Chương này đi từ chỗ bí đó tới chỗ thứ duy nhất thoát ra được, và hoá ra chỉ có một lối.</p>
+
+<h2 id="mot-vong-lap-sai">Một vòng lặp sai vượt qua mười nghìn lần chạy thử</h2>
+
+<p>Hàm dưới đây trả về phần tử lớn nhất của một dãy. Nó có một lỗi. Hãy tìm ra trước khi đọc tiếp:</p>
+
+<pre><code>def lon_nhat(a):
+    m = 0
+    for i in range(len(a)):
+        if a[i] &gt; m:
+            m = a[i]
+    return m</code></pre>
+
+<p>Sinh ngẫu nhiên mười nghìn dãy số nguyên trong khoảng $[0, 1000]$ rồi so với hàm <code>max</code> có sẵn: <b>mười nghìn lần khớp</b>. Sinh thêm một triệu lần nữa: vẫn khớp. Kết luận "hàm này đúng" nghe rất có cơ sở.</p>
+
+<p>Nó sai với <code>[-5, -2, -9]</code>. Hàm trả về $0$, một số không có trong dãy.</p>
+
+<div class="box pitfall"><div class="box-h">Điều thật sự đã xảy ra</div>
+<p>Mười nghìn lần chạy thử không hề "gần đúng" hay "đúng $99{,}99\%$". Chúng <b>không nói gì</b> về dãy toàn số âm, vì bộ sinh chưa bao giờ tạo ra một dãy như thế. Kiểm thử là <b>lấy mẫu</b> từ không gian đầu vào; con số mười nghìn chỉ đo được công sức bỏ ra, không đo được phần không gian đã phủ. Sai lầm nguy hiểm là đọc "nhiều mẫu" thành "xác suất đúng cao".</p></div>
+
+<p>Bạn có thể phản đối: thêm số âm vào bộ sinh là xong. Đúng, với lỗi <i>này</i>. Nhưng lập luận đó chỉ hoạt động khi bạn <b>đã biết</b> lỗi nằm ở đâu — mà nếu đã biết thì đâu cần kiểm thử. Vấn đề không phải bộ sinh dở; vấn đề là hình thức của kết luận.</p>
+
+<h2 id="hinh-thuc-ket-luan">Ta thật sự muốn kết luận có hình thức gì</h2>
+
+<p>Điều muốn khẳng định là một câu <b>với mọi</b>:</p>
+
+<div class="box def"><div class="box-h">Điều cần chứng minh</div>
+<p>Với <b>mọi</b> dãy $a$ khác rỗng, sau khi hàm chạy xong, giá trị trả về bằng $\max_i a_i$.</p></div>
+
+<p>Chạy thử cho ta các câu <b>tồn tại</b>: "tồn tại mười nghìn dãy mà hàm đúng". Không có số lượng câu tồn tại nào cộng lại thành một câu với-mọi, khi tập đầu vào vô hạn. Bài 3 cuối chương định lượng chính xác khoảng cách này.</p>
+
+<p>Vậy phải chứng minh trực tiếp. Nhưng ngay lập tức vấp: vòng lặp chạy bao nhiêu vòng phụ thuộc <code>len(a)</code>, tức phụ thuộc chính cái đầu vào ta đang muốn lượng hoá. Ta không thể viết ra "trạng thái sau vòng thứ $n$" khi $n$ chưa biết.</p>
+
+<h2 id="doi-hoi">Thứ ta cần phải thoả ba đòi hỏi</h2>
+
+<p>Giả sử tồn tại một mệnh đề $P$ nào đó về trạng thái chương trình, giúp ta thoát khỏi chỗ bí. Chưa biết $P$ là gì, nhưng ta biết nó <b>phải</b> làm được ba việc — nếu không thì nó vô dụng:</p>
+
+<ol>
+<li><b>Phát biểu được mà không cần biết đã chạy bao nhiêu vòng.</b> Nếu $P$ chứa biến "số vòng đã chạy" thì ta lại quay về đúng chỗ bí. Vậy $P$ chỉ được nói về các biến của chương trình tại một thời điểm.</li>
+<li><b>Sống sót qua một vòng lặp.</b> Ta chỉ đọc được <i>thân</i> vòng lặp — một đoạn mã hữu hạn, không phụ thuộc $n$. Thứ duy nhất ta kiểm tra được trên đoạn đó là: nếu $P$ đúng trước khi thân chạy thì $P$ vẫn đúng sau khi thân chạy.</li>
+<li><b>Đủ mạnh để suy ra kết luận khi vòng lặp dừng.</b> Nếu $P$ đúng nhưng chẳng nói gì về giá trị trả về thì chứng minh xong cũng không dùng được.</li>
+</ol>
+
+<div class="box intu"><div class="box-h">Ba đòi hỏi này ép ra cái gì</div>
+<p>Đòi hỏi 1 nói $P$ là một mệnh đề về <b>trạng thái</b>, không về <b>lịch sử</b>. Đòi hỏi 2 nói $P$ được bảo toàn — đúng nghĩa của chữ <b>bất biến</b>. Đòi hỏi 3 nói $P$ phải được chọn <i>hướng về</i> kết luận, chứ không phải một sự thật ngẫu nhiên nào đó cũng bảo toàn (ví dụ "$1 = 1$" thoả đòi hỏi 1 và 2 hoàn hảo, và vô dụng).</p>
+<p>Ba đòi hỏi đó không phải là một định nghĩa được tuyên bố — chúng <b>là</b> định nghĩa, khi ta ghi lại đúng những gì vừa buộc phải có.</p></div>
+
+<div class="box def"><div class="box-h">Định nghĩa 1.1 · Bất biến vòng lặp</div>
+<p><b>Bất biến</b> của một vòng lặp là một mệnh đề $P$ về các biến chương trình sao cho $P$ đúng tại <b>đầu mỗi lần</b> kiểm tra điều kiện lặp.</p></div>
+
+<p>"Đầu mỗi lần kiểm tra điều kiện" là một chi tiết đắt, không phải câu chữ. $P$ <b>không</b> cần đúng ở giữa thân vòng lặp — thân được phép phá vỡ $P$ tạm thời rồi khôi phục trước khi kết thúc. Đó là chỗ cắt duy nhất mà ta có quyền chọn, và chọn đúng chỗ cắt là nửa công việc.</p>
+
+<div class="fig">
+  <div class="fig-head">
+    <div class="fig-num">Hình 1.1</div>
+    <div class="fig-title">Bất biến sống ở các vết cắt, không sống ở mọi dòng</div>
+    <p class="fig-desc">Trục ngang là thời gian chạy. Các vạch đứng là những thời điểm kiểm tra điều kiện lặp. Chú ý dải xám: bên trong thân, $P$ được phép sai.</p>
+  </div>
+  <div class="fig-body">
+    <svg viewBox="0 0 660 210" width="100%" role="img" aria-label="Sơ đồ các vết cắt của một vòng lặp: P đúng tại mỗi lần kiểm tra điều kiện, được phép sai bên trong thân vòng lặp">
+      <line x1="30" y1="150" x2="640" y2="150" stroke="currentColor" stroke-width="1.2" opacity="0.45"></line>
+      <text x="30" y="182" font-size="12" fill="currentColor" opacity="0.6">thời gian chạy</text>
+
+      <rect x="90" y="96" width="90" height="40" rx="6" fill="currentColor" opacity="0.07"></rect>
+      <rect x="250" y="96" width="90" height="40" rx="6" fill="currentColor" opacity="0.07"></rect>
+      <rect x="410" y="96" width="90" height="40" rx="6" fill="currentColor" opacity="0.07"></rect>
+      <text x="135" y="121" font-size="11" text-anchor="middle" fill="currentColor" opacity="0.65">thân</text>
+      <text x="295" y="121" font-size="11" text-anchor="middle" fill="currentColor" opacity="0.65">thân</text>
+      <text x="455" y="121" font-size="11" text-anchor="middle" fill="currentColor" opacity="0.65">thân</text>
+
+      <g stroke="currentColor" stroke-width="2">
+        <line x1="70" y1="60" x2="70" y2="150"></line>
+        <line x1="230" y1="60" x2="230" y2="150"></line>
+        <line x1="390" y1="60" x2="390" y2="150"></line>
+        <line x1="550" y1="60" x2="550" y2="150"></line>
+      </g>
+      <g font-size="13" text-anchor="middle" fill="currentColor">
+        <text x="70" y="48">P</text>
+        <text x="230" y="48">P</text>
+        <text x="390" y="48">P</text>
+        <text x="550" y="48">P</text>
+      </g>
+      <g font-size="10.5" text-anchor="middle" fill="currentColor" opacity="0.6">
+        <text x="70" y="170">vào</text>
+        <text x="230" y="170">lặp lại</text>
+        <text x="390" y="170">lặp lại</text>
+        <text x="550" y="170">thoát</text>
+      </g>
+      <text x="550" y="30" font-size="12" text-anchor="middle" fill="currentColor" opacity="0.85">P và ¬(điều kiện)</text>
+      <line x1="550" y1="36" x2="550" y2="56" stroke="currentColor" stroke-width="1" opacity="0.5"></line>
+    </svg>
+  </div>
+  <div class="fig-foot">Số vạch phụ thuộc đầu vào — có thể là ba, có thể là ba triệu — nhưng <b>mọi vạch đều mang cùng một nhãn $P$</b>. Đó chính là mẹo: một mệnh đề duy nhất phủ một số lần lặp chưa biết. Ở vạch cuối ta có thêm thông tin "điều kiện lặp sai", và cặp $P \wedge \neg(\text{điều kiện})$ là toàn bộ vốn liếng để suy ra kết luận.</div>
+</div>
+
+<h2 id="quay-lai">Quay lại hàm sai lúc đầu</h2>
+
+<p>Với hàm <code>lon_nhat</code>, bất biến mà tác giả <i>ngầm định</i> là:</p>
+
+<div class="box thm"><div class="box-h">Bất biến ngầm định</div>
+<p>$P(i)$: "<code>m</code> bằng phần tử lớn nhất trong $a[0..i)$."</p></div>
+
+<p>Ba đòi hỏi được kiểm ra sao? Đòi hỏi 2 và 3 đều ổn. Đòi hỏi còn lại — $P$ có đúng <b>ngay lần kiểm tra điều kiện đầu tiên</b>, khi $i = 0$ và <code>m = 0</code> hay không — thì hỏng: lớn nhất của một đoạn <b>rỗng</b> không phải $0$, nó không tồn tại.</p>
+
+<div class="box intu"><div class="box-h">Lỗi ở đâu, nói cho chính xác</div>
+<p>Lỗi không nằm ở dòng <code>if</code>, không nằm ở vòng <code>for</code>, và không nằm ở dữ liệu âm. Nó nằm ở <b>dòng khởi tạo</b>, và nó là một lỗi ta phát hiện <b>mà không cần chạy chương trình lần nào</b> — chỉ bằng cách hỏi "bất biến có đúng ở vạch đầu tiên không". Một triệu lần chạy thử không tìm ra; một câu hỏi đúng chỗ thì tìm ra ngay.</p>
+<p>Cách sửa đọc thẳng từ đó: cho vòng lặp bắt đầu từ $i = 1$ với <code>m = a[0]</code>, khi ấy $P(1)$ đúng hiển nhiên.</p></div>
+
+<h2 id="cai-gia">Cái giá, nói thẳng</h2>
+
+<p>Chứng minh không thay thế kiểm thử, và chương này không nói thế. Ba giới hạn thật:</p>
+
+<ul>
+<li><b>Chứng minh nói về mã, không nói về máy.</b> Bất biến "<code>m</code> là lớn nhất trong $a[0..i)$" đúng với số nguyên toán học; một biến $32$ bit tràn số thì mệnh đề vẫn đúng còn chương trình vẫn sai. Chứng minh chỉ tốt bằng mô hình mà nó dùng.</li>
+<li><b>Chứng minh sai đặc tả thì vô dụng.</b> Chứng minh xong "trả về lớn nhất" trong khi thứ khách hàng cần là "lớn thứ hai" thì công sức bằng không.</li>
+<li><b>Không phải vòng lặp nào cũng bõ.</b> Ba chương này dạy một công cụ để dùng ở chỗ đắt: mã nằm ở đường nóng, mã xử lý biên, mã mà một lỗi im lặng gây thiệt hại thật.</li>
+</ul>
+
+<p>Đổi lại, cái được là thứ kiểm thử không bao giờ mua được: một khẳng định phủ <b>toàn bộ</b> không gian đầu vào, và một chỗ để trỏ tay khi ai đó hỏi "sao anh chắc?".</p>
+
+<div class="keyfacts"><div class="box-h">Chốt chương</div>
+<ul>
+<li>Kiểm thử lấy mẫu không gian đầu vào; số lần chạy đo công sức, không đo phần không gian đã phủ.</li>
+<li>Số vòng lặp phụ thuộc đầu vào, nên không viết được "trạng thái sau vòng thứ $n$" — đó là chỗ bí thật sự.</li>
+<li>Ba đòi hỏi (nói về trạng thái · sống sót qua một vòng · đủ mạnh để suy ra kết luận) ép ra đúng khái niệm bất biến, không còn lựa chọn nào khác.</li>
+<li>Bất biến chỉ cần đúng tại <b>vạch kiểm tra điều kiện</b>; thân vòng lặp được phép phá vỡ nó tạm thời.</li>
+<li>Vốn liếng khi thoát vòng lặp là $P \wedge \neg(\text{điều kiện})$ — Chương 1.2 biến cặp đó thành một chứng minh đầy đủ.</li>
+</ul></div>
+
+<h2 id="bai-tap">Bài tập</h2>
+
+<div class="box ex"><div class="box-h">Bài 1 · Bất biến của phép cộng dồn · ★</div>
+<p>Xét đoạn mã tính tổng một dãy:</p>
+<pre><code>s = 0
+i = 0
+while i &lt; len(a):
+    s = s + a[i]
+    i = i + 1
+return s</code></pre>
+<p>(a) Viết bất biến $P(i)$ mô tả quan hệ giữa <code>s</code> và <code>i</code> tại mỗi vạch kiểm tra điều kiện.</p>
+<p>(b) Kiểm bất biến đó tại vạch đầu tiên.</p>
+<p>(c) Khi vòng lặp thoát, ta biết thêm điều gì, và từ $P$ cùng điều đó suy ra kết luận thế nào?</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> $P(i)$: "$0 \le i \le n$ và $s = \sum_{k=0}^{i-1} a_k$", với $n = $ <code>len(a)</code>. Vế $0 \le i \le n$ trông thừa nhưng không thừa — nó là thứ cho phép viết tổng ở trên mà không ra ngoài dãy, và ở Chương 1.2 nó còn là thứ chứng minh vòng lặp dừng.</p>
+<p><b>(b)</b> Tại vạch đầu tiên, $i = 0$ và $s = 0$. Vế đầu: $0 \le 0 \le n$ đúng. Vế sau: tổng rỗng $\sum_{k=0}^{-1} a_k$ bằng $0$ theo quy ước, khớp với $s = 0$. Chú ý điểm khác với hàm <code>lon_nhat</code>: ở đây phần tử trung hoà của phép cộng <b>tồn tại</b> và bằng $0$, nên khởi tạo bằng $0$ là đúng. Phép "lớn nhất" không có phần tử trung hoà trong tập số nguyên — đó chính là lỗi của chương.</p>
+<p><b>(c)</b> Khi thoát, điều kiện <code>i &lt; n</code> sai, tức $i \ge n$; kết hợp với $i \le n$ trong $P$ được $i = n$. Thay vào vế sau của $P$: $s = \sum_{k=0}^{n-1} a_k$, đúng là tổng cả dãy. Toàn bộ kết luận rơi ra từ cặp $P \wedge \neg(i &lt; n)$ — không cần biết vòng lặp đã chạy mấy lần.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 2 · Sửa hàm lớn nhất, và sửa cho đúng lý do · ★★</div>
+<p>(a) Viết lại <code>lon_nhat</code> sao cho bất biến $P(i)$: "<code>m</code> là phần tử lớn nhất trong $a[0..i)$" đúng ngay tại vạch đầu tiên. Nêu rõ tiền điều kiện bạn phải thêm.</p>
+<p>(b) Một người khác đề nghị sửa bằng cách khởi tạo <code>m = float('-inf')</code> thay vì đổi điểm bắt đầu. Bất biến nào đúng cho phiên bản đó? Nó khác bất biến ở (a) ở chỗ nào?</p>
+<p>(c) Phiên bản (b) trả về gì với dãy rỗng? Đó là hành vi đúng hay sai?</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b></p>
+<pre><code>def lon_nhat(a):          # tiền điều kiện: len(a) &gt;= 1
+    m = a[0]
+    i = 1
+    while i &lt; len(a):
+        if a[i] &gt; m:
+            m = a[i]
+        i = i + 1
+    return m</code></pre>
+<p>Tại vạch đầu tiên $i = 1$ và $m = a_0$, mà lớn nhất của $a[0..1)$ đúng bằng $a_0$. Tiền điều kiện <code>len(a) &gt;= 1</code> là <b>bắt buộc</b> và phải viết ra: không có nó thì dòng <code>a[0]</code> đã hỏng trước khi vòng lặp bắt đầu. Đây là một bài học chung — sửa khởi tạo thường sinh ra tiền điều kiện, và tiền điều kiện không viết ra thì chỉ là lỗi đã dời chỗ.</p>
+<p><b>(b)</b> Bất biến là "$m = \max(a[0..i) \cup \{-\infty\})$", tức lớn nhất của đoạn đã duyệt <b>hoặc</b> $-\infty$ nếu đoạn rỗng. Nó <b>yếu hơn</b> bất biến ở (a): nó không khẳng định $m$ là một phần tử của dãy. Đổi lại, nó đúng ngay cả khi $i = 0$, nên phiên bản này không cần tiền điều kiện. Đây là một đánh đổi sẽ gặp lại suốt Chương 1.3: bất biến yếu hơn thì dễ khởi tạo hơn nhưng nói được ít hơn ở lối ra.</p>
+<p><b>(c)</b> Với dãy rỗng nó trả về $-\infty$. Không có câu trả lời đúng phổ quát: $-\infty$ là <b>phần tử trung hoà</b> của phép $\max$, nên nếu hàm được dùng trong một phép gộp lớn hơn (chia dãy, lấy $\max$ từng mảnh, rồi $\max$ các kết quả) thì đó chính là hành vi mong muốn. Nếu hàm là API mà người khác gọi thẳng thì trả về một giá trị không nằm trong dãy là cái bẫy đúng kiểu đã gây ra lỗi ở đầu chương, và ném lỗi mới đúng. Điều phải làm trong cả hai trường hợp là <b>viết ra</b> mình chọn cái nào — bản thân bất biến ở (b) đã nói thẳng điều đó, còn phiên bản sai ở đầu chương thì im lặng.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 3 · Chạy thử mua được bao nhiêu · ★★★</div>
+<p>Bài này định lượng câu "không có số lượng câu tồn tại nào cộng lại thành một câu với mọi".</p>
+<p>(a) Xét các hàm nhận vào một số nguyên $32$ bit và trả về <code>True</code>/<code>False</code>. Không gian đầu vào có $2^{32}$ phần tử. Giả sử một hàm sai đúng tại một điểm duy nhất, điểm đó phân bố đều. Chạy thử $k$ đầu vào phân biệt lấy ngẫu nhiên đều thì xác suất bắt được lỗi là bao nhiêu? Với $k = 10^6$?</p>
+<p>(b) Vẫn giả thiết đó, cần $k$ bằng bao nhiêu để xác suất bắt lỗi đạt $99\%$?</p>
+<p>(c) Bây giờ bỏ giả thiết "phân bố đều". Giải thích vì sao trong thực tế con số ở (b) vẫn <b>quá lạc quan</b>, và vì sao chính lập luận đó lại là lý do khiến kiểm thử ngẫu nhiên vẫn hữu ích trong thực tế.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Với $k$ đầu vào phân biệt lấy từ $N = 2^{32}$ điểm, xác suất điểm hỏng nằm trong tập đã thử là $k/N$. Với $k = 10^6$:
+$$\frac{10^6}{2^{32}} = \frac{10^6}{4{,}295 \times 10^9} \approx 2{,}3 \times 10^{-4},$$
+tức khoảng $0{,}023\%$. Một triệu lần chạy thử — nhiều hơn hầu hết bộ kiểm thử thật — mua được hai phần vạn.</p>
+<p><b>(b)</b> Cần $k/N \ge 0{,}99$, tức $k \ge 0{,}99 \times 2^{32} \approx 4{,}25 \times 10^9$. Nói cách khác: phải thử gần như <b>toàn bộ</b> không gian. Với một hàm hai tham số $32$ bit thì $N = 2^{64}$ và con số này vượt quá mọi ngân sách tính toán tồn tại. Đây là lý do kỹ thuật của câu mở chương: khi không gian đầu vào lớn, khoảng cách giữa "đã thử nhiều" và "đúng" không thu hẹp lại bằng cách thử thêm.</p>
+<p><b>(c)</b> Giả thiết "điểm hỏng phân bố đều" là giả thiết <b>có lợi</b> cho kiểm thử, và nó sai theo hướng bất lợi: lỗi thật tụ ở biên — $0$, $1$, $-1$, giá trị lớn nhất, dãy rỗng, dãy một phần tử — nên với bộ sinh đều, xác suất chạm đúng vùng hỏng còn thấp hơn $k/N$ nhiều. Hàm ở đầu chương là ví dụ: vùng hỏng là "mọi phần tử đều âm", một tập <i>lớn</i>, nhưng bộ sinh trong khoảng $[0, 1000]$ gán cho nó xác suất bằng $0$ — không phải nhỏ, mà bằng $0$.</p>
+<p>Và đây là chiều ngược lại, quan trọng không kém: chính vì lỗi <b>tụ ở biên</b> nên một bộ kiểm thử <i>được chọn</i> — chứ không lấy đều — có hiệu quả cao hơn hẳn con số $k/N$. Kiểm thử biên, kiểm thử dựa trên tính chất, fuzzing có dẫn hướng đều là cách khai thác đúng sự lệch đó. Kết luận đúng của bài này không phải "kiểm thử vô ích", mà là: <b>kiểm thử và chứng minh trả lời hai câu hỏi khác nhau</b>. Kiểm thử tìm lỗi nhanh và rẻ ở nơi lỗi hay nằm; chứng minh cho một khẳng định phủ toàn bộ không gian. Chương 1.2 xây phần thứ hai, và không đề nghị bạn bỏ phần thứ nhất.</p>
+</div></details>
+</div>

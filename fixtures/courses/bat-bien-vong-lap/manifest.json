@@ -1,0 +1,40 @@
+{
+  "id": "bat-bien-vong-lap",
+  "title": "Bất biến vòng lặp",
+  "description": "Ba chương về cách chứng minh một vòng lặp đúng cho MỌI đầu vào — và cách tìm ra thứ để chứng minh.",
+  "lang": "vi",
+  "version": "1.0.0",
+  "runtime": "^1",
+  "tier": "content",
+  "license": "CC-BY-4.0",
+  "authors": [{ "name": "tuhoc course-authoring skill" }],
+  "generatedBy": "ai",
+  "parts": [
+    {
+      "title": "Phần I · Từ chạy thử đến chứng minh",
+      "chapters": [
+        {
+          "id": "c1",
+          "num": "1.1",
+          "title": "Vì sao chạy thử không kết luận được",
+          "short": "Vì sao chạy thử không đủ",
+          "file": "chapters/c1.html"
+        },
+        {
+          "id": "c2",
+          "num": "1.2",
+          "title": "Ba nghĩa vụ của một bất biến",
+          "short": "Ba nghĩa vụ",
+          "file": "chapters/c2.html"
+        },
+        {
+          "id": "c3",
+          "num": "1.3",
+          "title": "Tìm bất biến từ đâu ra",
+          "short": "Tìm bất biến",
+          "file": "chapters/c3.html"
+        }
+      ]
+    }
+  ]
+}

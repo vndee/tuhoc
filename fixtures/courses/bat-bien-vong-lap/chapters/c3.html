@@ -1,0 +1,188 @@
+<div class="ch-eyebrow">Phần I · Từ chạy thử đến chứng minh — Chương 1.3</div>
+<h1 class="ch-title">Tìm bất biến từ đâu ra</h1>
+<p class="ch-lede">Chương 1.2 kiểm được mọi bất biến người ta đưa cho, và không nói được lấy chúng ở đâu — mà đó mới là chỗ người học tắc thật. Chương này nêu một câu trả lời cụ thể: bất biến không được nghĩ ra từ mã, nó được <b>hạ yếu ra từ điều cần chứng minh</b>, bằng bốn phép biến đổi đếm được trên đầu ngón tay.</p>
+
+<h2 id="cong-thuc">Nhìn ngược: bắt đầu từ hậu điều kiện</h2>
+
+<p>Nhắc lại điều đã có ở lối ra của mọi vòng lặp:</p>
+
+<div class="box thm"><div class="box-h">Ràng buộc ở lối ra</div>
+<p>$P \wedge \neg B \Rightarrow Q$, với $Q$ là hậu điều kiện.</p></div>
+
+<p>Đọc xuôi thì đây là nghĩa vụ 3. Đọc ngược thì nó là một <b>công thức đi tìm</b>: bất biến cần có phải là thứ mà, khi cộng thêm thông tin "điều kiện lặp đã sai", cho ra $Q$. Nghĩa là $P$ trông <b>gần giống</b> $Q$, nhưng yếu hơn đúng bằng phần mà $\neg B$ bù vào.</p>
+
+<div class="box intu"><div class="box-h">Câu hỏi nên tự hỏi</div>
+<p>Không phải "mã này giữ gì bất biến?" — hỏi thế là nhìn mã, và Bài 2 Chương 1.2 cho thấy nó dẫn tới những bất biến đúng mà câm.</p>
+<p>Mà là: <b>"$Q$ nói về kết quả đã hoàn thành. Câu tương ứng nói về kết quả đã hoàn thành MỘT PHẦN là gì?"</b> Đó là bất biến.</p></div>
+
+<h2 id="bon-phep">Bốn phép hạ yếu</h2>
+
+<p>Hầu hết bất biến trong thực tế là kết quả của một hoặc hai phép dưới đây áp lên $Q$. Danh sách này không phải định lý — nó là một danh mục cách làm, và giá trị của nó nằm ở chỗ ngắn.</p>
+
+<div class="tbl-wrap"><table class="tbl">
+<thead><tr><th>Phép</th><th>Làm gì</th><th>Ví dụ</th></tr></thead>
+<tbody>
+<tr>
+  <td><b>1. Thay hằng bằng biến</b></td>
+  <td>Trong $Q$ có một hằng đánh dấu "đã xong" — thay nó bằng biến chạy của vòng lặp.</td>
+  <td>$Q$: $s = \sum_{k=0}^{n-1} a_k$ &nbsp;→&nbsp; $P$: $s = \sum_{k=0}^{i-1} a_k$. Ở lối ra $i = n$ và $P$ thành $Q$.</td>
+</tr>
+<tr>
+  <td><b>2. Bỏ một vế của phép và</b></td>
+  <td>$Q$ là $Q_1 \wedge Q_2$; giữ một vế làm bất biến, để vòng lặp lo vế kia.</td>
+  <td>Sắp xếp: giữ "dãy là hoán vị của dãy gốc", để vòng lặp dần dựng "dãy tăng dần".</td>
+</tr>
+<tr>
+  <td><b>3. Nới miền</b></td>
+  <td>$Q$ nói "câu trả lời <b>là</b> $v$"; hạ xuống "câu trả lời <b>nằm trong</b> một vùng đang thu hẹp".</td>
+  <td>Tìm kiếm nhị phân, Chương 1.2: "nếu $x$ có mặt thì mọi vị trí chứa $x$ nằm trong $[lo, hi)$".</td>
+</tr>
+<tr>
+  <td><b>4. Làm mạnh thêm</b></td>
+  <td>Ngược chiều ba phép trên: <b>thêm</b> vào $P$ một thông tin phụ mà bảo toàn cần tới.</td>
+  <td>Xem §"Khi hạ yếu là chưa đủ" dưới đây — đây là phép khó nhất và cần nhất.</td>
+</tr>
+</tbody>
+</table></div>
+
+<div class="box res"><div class="box-h">Vì sao chương này không có mô phỏng</div>
+<p>Hai chương trước mỗi chương có một hình, vì ở đó có thứ phải <b>nhìn</b> mới tin: các vết cắt của vòng lặp, và sự độc lập giữa "khoảng chứa câu trả lời" với "khoảng ngắn lại". Chương này không có thứ như vậy — nội dung của nó là một thao tác trên <i>mệnh đề</i>, và bảng bốn phép ở trên là hình thức đúng cho nó. Một hoạt hình ở đây sẽ đẹp và không dạy thêm gì.</p></div>
+
+<h2 id="lam-manh">Khi hạ yếu là chưa đủ: phép thứ tư</h2>
+
+<p>Đôi khi mọi cách hạ yếu $Q$ đều cho một $P$ mà <b>bảo toàn không chứng minh nổi</b>: chạy một vòng, ta thấy $P$ mới cần một thông tin mà $P$ cũ không mang. Khi ấy lối thoát đi ngược chiều trực giác — phải chứng minh một điều <b>mạnh hơn</b>.</p>
+
+<p>Bài toán chuẩn: cho dãy $a$ khác rỗng, tìm tổng lớn nhất của một đoạn con liên tiếp khác rỗng.</p>
+
+<pre><code>tot = a[0]
+cur = a[0]
+i = 1
+while i &lt; len(a):
+    cur = max(a[i], cur + a[i])
+    tot = max(tot, cur)
+    i = i + 1
+return tot</code></pre>
+
+<p>Hậu điều kiện $Q$: "<code>tot</code> là tổng lớn nhất trên mọi đoạn con khác rỗng của $a[0..n)$". Áp phép 1 (thay $n$ bằng $i$) được ứng viên hiển nhiên:</p>
+
+<div class="box def"><div class="box-h">Ứng viên $P_1$</div>
+<p>"<code>tot</code> là tổng lớn nhất trên mọi đoạn con khác rỗng của $a[0..i)$."</p></div>
+
+<p>Khởi tạo đúng. Nhưng bảo toàn <b>hỏng</b>, và hỏng ở chỗ đáng học: để tính đáp án cho $a[0..i{+}1)$ ta phải xét thêm những đoạn <i>kết thúc tại</i> $i$, mà $P_1$ không giữ bất kỳ thông tin nào về chúng — nó chỉ nhớ con số lớn nhất, đã vứt mất mọi thứ khác.</p>
+
+<div class="box pitfall"><div class="box-h">Triệu chứng, và cách đọc nó</div>
+<p>Dấu hiệu: khi chứng minh bảo toàn, bạn thấy mình cần một đại lượng mà bất biến không nhắc tới. Phản xạ sai là đi sửa mã. Phản xạ đúng là: <b>bất biến còn thiếu một vế</b> — và đại lượng bạn vừa thấy mình cần chính là vế còn thiếu.</p></div>
+
+<p>Đại lượng đang thiếu là "tổng lớn nhất của một đoạn <b>kết thúc đúng tại</b> $i-1$" — chính là <code>cur</code>. Thêm nó vào:</p>
+
+<div class="box thm"><div class="box-h">Bất biến $P_2$</div>
+<p>"<code>tot</code> là tổng lớn nhất trên mọi đoạn con khác rỗng của $a[0..i)$, <b>và</b> <code>cur</code> là tổng lớn nhất trên mọi đoạn con khác rỗng của $a[0..i)$ kết thúc đúng tại $i-1$."</p></div>
+
+<details class="deriv"><summary>Kiểm ba nghĩa vụ cho $P_2$</summary><div class="deriv-body">
+<p><b>Khởi tạo.</b> $i = 1$: đoạn con khác rỗng duy nhất của $a[0..1)$ là chính $\{a_0\}$, tổng bằng $a_0$; nó cũng là đoạn duy nhất kết thúc tại $0$. Cả <code>tot</code> và <code>cur</code> đều bằng $a_0$. Đúng.</p>
+<p><b>Bảo toàn.</b> Giả sử $P_2$ và $i &lt; n$. Một đoạn khác rỗng kết thúc đúng tại $i$ hoặc chỉ gồm $a_i$, hoặc là (một đoạn kết thúc tại $i-1$) nối thêm $a_i$. Lấy lớn nhất hai khả năng:
+$$cur' = \max\big(a_i,\; cur + a_i\big),$$
+đúng dòng mã. Mọi đoạn khác rỗng của $a[0..i{+}1)$ hoặc nằm trọn trong $a[0..i)$ — lớn nhất là <code>tot</code> theo $P_2$ — hoặc kết thúc tại $i$ — lớn nhất là $cur'$. Vậy $tot' = \max(tot, cur')$, cũng đúng dòng mã. Hai vế của $P_2$ được giữ.</p>
+<p><b>Kết thúc.</b> $V = n - i$ nguyên, $\ge 1$ khi $i &lt; n$, giảm đúng $1$ mỗi vòng. Ở lối ra $i = n$, vế đầu của $P_2$ chính là $Q$. $\square$</p>
+<p class="small muted">Chú ý vế thứ hai của $P_2$ <b>không xuất hiện</b> trong $Q$ và bị vứt đi hoàn toàn ở lối ra. Nó tồn tại chỉ để chứng minh chạy được. Đó là dấu hiệu nhận biết của phép thứ tư: thông tin thêm vào phục vụ <i>bước quy nạp</i>, không phục vụ <i>kết luận</i>.</p>
+</div></details>
+
+<div class="box intu"><div class="box-h">Vì sao "mạnh hơn" lại dễ chứng minh hơn</div>
+<p>Nghe nghịch lý cho tới khi nhớ rằng bảo toàn là một bước <b>quy nạp</b>: mệnh đề mạnh hơn thì phải chứng minh nhiều hơn, nhưng cũng <b>được giả thiết nhiều hơn</b>. Với $P_1$ ta phải dựng lại thông tin về các đoạn kết thúc tại $i$ từ hư không; với $P_2$ thông tin đó đã có sẵn trong giả thiết quy nạp. Vế thêm vào trả tiền cho chính nó, và trả dư.</p>
+<p>Đây không phải mẹo riêng của bài này — nó là hiện tượng chung của quy nạp, xuất hiện dưới tên "làm mạnh giả thiết quy nạp" ở mọi nơi có quy nạp.</p></div>
+
+<h2 id="quy-trinh">Quy trình rút gọn</h2>
+
+<p>Gói cả chương thành một thủ tục dùng được khi bí:</p>
+
+<ol>
+<li>Viết $Q$ ra <b>bằng chữ</b>, đầy đủ. Không viết được thì chưa biết mình đang chứng minh gì, và mọi bước sau đều vô ích.</li>
+<li>Hỏi: "phiên bản hoàn thành một phần của câu này là gì?" Dùng phép 1, 2 hoặc 3.</li>
+<li>Kiểm <b>khởi tạo</b> ngay. Rẻ nhất, và loại được nhiều ứng viên nhất — hàm sai ở Chương 1.1 chết đúng ở bước này.</li>
+<li>Thử chứng minh <b>bảo toàn</b>. Thấy thiếu đại lượng nào thì áp phép 4: thêm đại lượng ấy vào bất biến và quay lại bước 3.</li>
+<li>Kiểm $P \wedge \neg B \Rightarrow Q$. Không ra thì bất biến còn quá yếu — quay lại bước 2 với một phép hạ yếu ít tay hơn.</li>
+<li>Tìm hàm giảm dần. Nhớ cả ba tính chất: nguyên, chặn dưới, giảm <b>nghiêm ngặt</b>.</li>
+</ol>
+
+<p>Vòng lặp giữa bước 3, 4 và 5 là công việc thật, và nó hội tụ nhanh hơn ta tưởng: mỗi lần thất bại đều chỉ đúng thứ còn thiếu.</p>
+
+<div class="box warn"><div class="box-h">Điều chương này không hứa</div>
+<p>Không có thuật toán tìm bất biến. Không thể có: bài toán "vòng lặp này có dừng không" là bài toán dừng, và nó không quyết định được. Bốn phép trên là <b>danh mục</b> đã bao phủ phần lớn vòng lặp người ta viết hằng ngày, không phải một quy trình đầy đủ. Gặp một vòng lặp mà không phép nào áp được thì đó là thông tin thật — thường có nghĩa là vòng lặp ấy đang làm hai việc cùng lúc và nên tách.</p></div>
+
+<div class="keyfacts"><div class="box-h">Chốt chương</div>
+<ul>
+<li>Bất biến được hạ yếu ra từ <b>hậu điều kiện</b>, không nghĩ ra từ mã.</li>
+<li>Câu hỏi vận hành: "phiên bản <i>hoàn thành một phần</i> của điều cần chứng minh là gì?"</li>
+<li>Bốn phép: thay hằng bằng biến · bỏ một vế của phép và · nới miền · làm mạnh thêm.</li>
+<li>Bảo toàn cần một đại lượng mà bất biến không có ⇒ thêm đại lượng đó vào bất biến, đừng sửa mã.</li>
+<li>Mệnh đề mạnh hơn thường <b>dễ</b> chứng minh hơn, vì bước quy nạp được giả thiết nhiều hơn.</li>
+<li>Không có thuật toán tìm bất biến, và không thể có — bốn phép là danh mục, không phải quy trình.</li>
+</ul></div>
+
+<h2 id="bai-tap">Bài tập</h2>
+
+<div class="box ex"><div class="box-h">Bài 1 · Đảo ngược một dãy tại chỗ · ★</div>
+<p>Hậu điều kiện $Q$: "$a$ là dãy ban đầu đọc ngược". Mã:</p>
+<pre><code>i, j = 0, len(a) - 1
+while i &lt; j:
+    a[i], a[j] = a[j], a[i]
+    i, j = i + 1, j - 1</code></pre>
+<p>(a) Phép nào trong bốn phép cho ra bất biến ở đây? Viết bất biến.</p>
+<p>(b) Kiểm khởi tạo và lối ra. Chú ý cả hai trường hợp $n$ chẵn và $n$ lẻ.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Phép 2, bỏ một vế của phép và — tách $Q$ thành "phần ngoài đã đảo" $\wedge$ "phần trong chưa động tới":</p>
+<p>$P$: "$a[0..i)$ và $a(j..n)$ đã mang giá trị cuối cùng của chúng (tức $a_k$ = phần tử thứ $n-1-k$ của dãy gốc, với mọi $k &lt; i$ và mọi $k &gt; j$), còn $a[i..j]$ vẫn giữ nguyên giá trị gốc; và $i + j = n - 1$."</p>
+<p>Vế $i + j = n-1$ dễ bị bỏ quên nhưng làm việc thật: nó là thứ buộc hai con trỏ đi đối xứng, và thiếu nó thì bảo toàn không chứng minh được.</p>
+<p><b>(b)</b> <i>Khởi tạo:</i> $i = 0$, $j = n-1$, hai vùng ngoài rỗng nên vế đầu đúng trống rỗng; $a[0..n-1]$ nguyên vẹn; $i + j = n - 1$. Đúng.</p>
+<p><i>Lối ra:</i> $\neg(i &lt; j)$ cho $i \ge j$. Kết hợp $i + j = n-1$:</p>
+<p><i>$n$ chẵn:</i> $i$ và $j$ vượt qua nhau, $j = i - 1$, vùng giữa $a[i..j]$ rỗng — mọi vị trí đã đảo.</p>
+<p><i>$n$ lẻ:</i> $i = j = (n-1)/2$, vùng giữa gồm đúng một phần tử, và phần tử chính giữa của một dãy đọc ngược nằm nguyên tại chỗ. Cũng đúng.</p>
+<p>Hai trường hợp gộp lại cho $Q$. Đây là ví dụ điển hình cho chuyện bất biến <b>tự xử lý</b> phân biệt chẵn/lẻ mà mã không cần một dòng <code>if</code> nào — và nếu ta chỉ chạy thử, phần lẻ rất dễ là phần không được thử.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 2 · Phân hoạch kiểu cờ Hà Lan · ★★</div>
+<p>Cho dãy chỉ gồm các giá trị $0, 1, 2$; sắp xếp tại chỗ bằng một lần duyệt:</p>
+<pre><code>lo, mid, hi = 0, 0, len(a) - 1
+while mid &lt;= hi:
+    if a[mid] == 0:
+        a[lo], a[mid] = a[mid], a[lo]
+        lo, mid = lo + 1, mid + 1
+    elif a[mid] == 1:
+        mid = mid + 1
+    else:
+        a[mid], a[hi] = a[hi], a[mid]
+        hi = hi - 1</code></pre>
+<p>(a) Viết bất biến bằng cách mô tả bốn vùng của dãy. Phép nào đã được dùng?</p>
+<p>(b) Vì sao nhánh cuối <b>không</b> tăng <code>mid</code>? Trả lời bằng bất biến, đừng trả lời bằng "vì phải kiểm tra lại".</p>
+<p>(c) Cho hàm giảm dần và kiểm ba tính chất.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> $P$: "$a[0..lo)$ toàn $0$; $a[lo..mid)$ toàn $1$; $a(hi..n)$ toàn $2$; $a[mid..hi]$ chưa xét; và $0 \le lo \le mid \le hi + 1 \le n$; và dãy hiện tại là một hoán vị của dãy gốc."</p>
+<p>Hai phép cùng lúc: <b>phép 3</b> (nới miền — thay "đã sắp xong" bằng "còn một vùng chưa xét đang co lại") và <b>phép 2</b> (tách vế "là hoán vị của dãy gốc" ra giữ riêng, để vòng lặp lo vế "đã phân nhóm"). Vế hoán vị được giữ miễn phí vì mọi thao tác đều là hoán đổi.</p>
+<p><b>(b)</b> Vì bất biến nói $a(hi..n)$ toàn $2$ và $a[mid..hi]$ <b>chưa xét</b>. Sau khi hoán đổi <code>a[mid]</code> với <code>a[hi]</code>, giá trị vừa rơi vào vị trí <code>mid</code> đến từ <code>hi</code> — tức đến từ vùng <b>chưa xét</b>. Tăng <code>mid</code> lúc đó sẽ tuyên bố "$a[lo..mid)$ toàn $1$" cho một phần tử chưa ai nhìn, và bảo toàn hỏng ngay. Ngược lại, nhánh đầu tăng được <code>mid</code> vì phần tử hoán đổi vào đến từ vùng $a[lo..mid)$ mà bất biến đã khẳng định toàn $1$.</p>
+<p>Chú ý cấu trúc của câu trả lời: sự bất đối xứng giữa hai nhánh không phải mẹo cài đặt cần học thuộc, nó <b>đọc thẳng ra từ bất biến</b>. Đây đúng là thứ chương 1.2 gọi là "chứng minh cho biết giả thiết nào thực sự làm việc".</p>
+<p><b>(c)</b> $V = hi - mid + 1$, đúng số phần tử chưa xét. <i>Nguyên:</i> hiển nhiên. <i>Chặn dưới:</i> điều kiện lặp $mid \le hi$ cho $V \ge 1$. <i>Giảm nghiêm ngặt:</i> nhánh 1 và 2 tăng <code>mid</code> lên $1$; nhánh 3 giảm <code>hi</code> đi $1$; cả ba làm $V$ giảm đúng $1$. Vòng lặp dừng sau đúng $n$ vòng nhiều nhất — và tiện thể, đó cũng là chứng minh thuật toán chạy trong một lần duyệt.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 3 · Khi bất biến hiển nhiên không đủ · ★★★</div>
+<p>Cho dãy $a$ độ dài $n \ge 1$. Ta muốn <code>tot</code> = số cặp chỉ số $(k, l)$ với $k &lt; l$ và $a_k &gt; a_l$ (số "nghịch thế" với một phần tử đứng sau nhỏ hơn). Xét khung vòng lặp một lần duyệt:</p>
+<pre><code>tot = 0
+i = 1
+while i &lt; len(a):
+    # ??? cập nhật tot bằng thông tin về a[0..i)
+    i = i + 1
+return tot</code></pre>
+<p>(a) Áp phép 1 lên hậu điều kiện được ứng viên $P_1$. Viết nó ra và chỉ chính xác chỗ bảo toàn hỏng.</p>
+<p>(b) Đại lượng phụ nào phải thêm vào để bảo toàn chạy được? Viết bất biến $P_2$ đầy đủ.</p>
+<p>(c) $P_2$ nói được rằng khung một-lần-duyệt này chạy trong thời gian bao nhiêu, và nó gợi ý gì về việc phải thay cấu trúc dữ liệu nào để xuống $O(n \log n)$?</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> $P_1$: "<code>tot</code> là số cặp $(k,l)$ với $k &lt; l &lt; i$ và $a_k &gt; a_l$."</p>
+<p>Khởi tạo đúng ($i = 1$, không có cặp nào, <code>tot</code> $= 0$). Bảo toàn hỏng: đi từ $i$ sang $i+1$, phần thêm vào là số cặp có $l = i$, tức <b>số phần tử trong $a[0..i)$ lớn hơn $a_i$</b>. $P_1$ chỉ mang một con số đếm và không giữ gì về <i>các giá trị</i> trong $a[0..i)$, nên không cách nào tính được lượng thêm. Đây đúng triệu chứng mà hộp cảnh báo trong chương mô tả.</p>
+<p><b>(b)</b> Phải thêm chính cái tập giá trị đó. $P_2$: "<code>tot</code> là số cặp $(k,l)$ với $k &lt; l &lt; i$ và $a_k &gt; a_l$; <b>và</b> $S$ là đa tập gồm đúng các giá trị $a[0..i)$."</p>
+<p>Bảo toàn khi ấy chạy: lượng thêm bằng $|\{v \in S : v &gt; a_i\}|$, cộng vào <code>tot</code>, rồi thêm $a_i$ vào $S$. Cả hai vế được giữ. Ở lối ra $i = n$ và vế đầu chính là hậu điều kiện; vế thứ hai bị vứt đi — dấu hiệu quen thuộc của phép 4.</p>
+<p><b>(c)</b> $P_2$ nói thẳng rằng mỗi vòng cần <b>hai thao tác</b> trên $S$: đếm số phần tử lớn hơn một giá trị, và chèn một giá trị. Với $S$ là một danh sách thường, thao tác đếm là $O(i)$, nên tổng là $\sum_{i=1}^{n-1} O(i) = O(n^2)$.</p>
+<p>Và đây là chỗ bất biến trả công nhiều nhất: nó đã <b>tách bạch</b> phần "thuật toán đúng" khỏi phần "cấu trúc dữ liệu nhanh". Chứng minh đúng đắn ở (b) không hề dùng $S$ được cài thế nào — nó chỉ dùng $S$ <i>là</i> đa tập các giá trị đã duyệt. Nên có thể thay $S$ bằng bất cứ cấu trúc nào hỗ trợ hai thao tác ấy trong $O(\log n)$ — cây chỉ số nhị phân (Fenwick) trên giá trị đã nén, hoặc cây tìm kiếm cân bằng có đếm — và được $O(n \log n)$ <b>mà không phải chứng minh lại một dòng nào</b>.</p>
+<p>Đó là lý do thực dụng nhất để viết bất biến ra: nó là chỗ ranh giới giữa "cái gì đúng" và "cái gì nhanh" trở nên nhìn thấy được.</p>
+</div></details>
+</div>

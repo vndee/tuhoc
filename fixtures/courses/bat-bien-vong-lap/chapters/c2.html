@@ -1,0 +1,206 @@
+<div class="ch-eyebrow">Phần I · Từ chạy thử đến chứng minh — Chương 1.2</div>
+<h1 class="ch-title">Ba nghĩa vụ của một bất biến</h1>
+<p class="ch-lede">Chương 1.1 dừng ở chỗ có một mệnh đề $P$ đúng tại mọi vạch kiểm tra điều kiện. Nhưng "đúng tại mọi vạch" là thứ ta <b>muốn</b>, không phải thứ ta <b>kiểm được</b> — vì số vạch vẫn phụ thuộc đầu vào. Chương này chỉ ra ba nghĩa vụ hữu hạn, kiểm được từng cái một, và cùng nhau chúng cho đúng điều muốn có.</p>
+
+<h2 id="ba-nghia-vu">Ba nghĩa vụ</h2>
+
+<div class="box def"><div class="box-h">Định nghĩa 1.2 · Ba nghĩa vụ</div>
+<p>Cho vòng lặp <code>while B: S</code> và mệnh đề $P$.</p>
+<ol>
+<li><b>Khởi tạo.</b> $P$ đúng ngay trước lần kiểm tra $B$ đầu tiên.</li>
+<li><b>Bảo toàn.</b> Nếu $P$ và $B$ cùng đúng trước khi thân $S$ chạy, thì $P$ đúng sau khi $S$ chạy xong.</li>
+<li><b>Kết thúc.</b> Vòng lặp dừng, và khi dừng thì $P \wedge \neg B$ suy ra điều cần chứng minh.</li>
+</ol></div>
+
+<p>Nghĩa vụ 2 là chỗ toàn bộ mẹo nằm ở đó. Nó là một khẳng định về <b>một</b> lần chạy thân vòng lặp — một đoạn mã hữu hạn, không phụ thuộc $n$ — nên kiểm được bằng tay. Ba nghĩa vụ đều hữu hạn; kết luận thì phủ mọi $n$.</p>
+
+<div class="box thm"><div class="box-h">Định lý 1.3 · Vì sao ba nghĩa vụ là đủ</div>
+<p>Nếu nghĩa vụ 1 và 2 thoả thì $P$ đúng tại <b>mọi</b> lần kiểm tra $B$, bất kể vòng lặp chạy bao nhiêu lần.</p></div>
+
+<details class="deriv"><summary>Chứng minh (quy nạp theo số vòng đã chạy)</summary><div class="deriv-body">
+<p>Gọi $\sigma_j$ là trạng thái chương trình tại lần kiểm tra $B$ thứ $j$, với $j = 0, 1, 2, \dots$ ($\sigma_0$ là lần kiểm tra đầu tiên). Đặt mệnh đề quy nạp $Q(j)$: "nếu lần kiểm tra thứ $j$ có xảy ra thì $P$ đúng tại $\sigma_j$".</p>
+<p><b>Cơ sở.</b> $Q(0)$ chính là nghĩa vụ 1.</p>
+<p><b>Bước quy nạp.</b> Giả sử $Q(j)$. Nếu lần kiểm tra thứ $j+1$ xảy ra thì lần thứ $j$ cũng đã xảy ra và tại đó $B$ phải đúng (nếu $B$ sai thì vòng lặp đã thoát, không có lần thứ $j+1$). Vậy tại $\sigma_j$ ta có $P$ (theo $Q(j)$) và $B$. Thân $S$ chạy một lần và đưa trạng thái tới $\sigma_{j+1}$; nghĩa vụ 2 cho $P$ đúng tại $\sigma_{j+1}$. Vậy $Q(j+1)$.</p>
+<p>Theo nguyên lý quy nạp, $Q(j)$ đúng với mọi $j \in \mathbb{N}$. $\square$</p>
+<p class="small muted">Chú ý chỗ quy nạp làm việc: nó <b>lượng hoá theo số vòng lặp</b>, đúng thứ mà Chương 1.1 nói ta không viết ra được. Ta không viết ra nó; ta để quy nạp lượng hoá giúp, và đổi lại chỉ phải kiểm hai sự kiện hữu hạn. Đó là toàn bộ nội dung kỹ thuật của phương pháp.</p>
+</div></details>
+
+<div class="box warn"><div class="box-h">Nghĩa vụ 3 gồm hai phần, và người ta hay bỏ quên phần đầu</div>
+<p>Định lý 1.3 chỉ nói "$P$ đúng ở mọi vạch". Nó <b>không</b> nói vòng lặp sẽ dừng. Chứng minh xong nghĩa vụ 1 và 2 rồi tuyên bố hàm đúng là một lỗi thật, đủ phổ biến để có tên riêng.</p>
+<ul>
+<li><b>Đúng bộ phận</b> (partial correctness): <i>nếu</i> vòng lặp dừng thì kết quả đúng. Đây là tất cả những gì nghĩa vụ 1 + 2 cho.</li>
+<li><b>Đúng toàn phần</b> (total correctness): vòng lặp dừng, <b>và</b> kết quả đúng.</li>
+</ul>
+<p>Một vòng lặp không bao giờ dừng thì đúng bộ phận một cách vô nghĩa: nó không có kết quả nào để sai cả. <code>while True: pass</code> thoả mọi hậu điều kiện bạn muốn.</p></div>
+
+<h2 id="chung-minh-dung">Chứng minh dừng: hàm giảm dần</h2>
+
+<p>Cách chuẩn để chứng minh một vòng lặp dừng là tìm một <b>hàm giảm dần</b> (variant): một biểu thức $V$ trên các biến chương trình sao cho</p>
+
+<ol>
+<li>$V$ nhận giá trị nguyên,</li>
+<li>$P \wedge B$ suy ra $V \ge 0$ (bị chặn dưới),</li>
+<li>mỗi lần chạy thân, $V$ <b>giảm ít nhất một</b>.</li>
+</ol>
+
+<p>Một dãy số nguyên không âm giảm nghiêm ngặt thì hữu hạn, nên thân chỉ chạy được hữu hạn lần. Ba đòi hỏi trên đều hữu hạn và kiểm được, y hệt tinh thần của ba nghĩa vụ.</p>
+
+<div class="box pitfall"><div class="box-h">Cả ba điều kiện đều cần, và bỏ điều nào cũng hỏng thật</div>
+<p>Bỏ (1), cho $V$ nhận giá trị thực: $V = 1/2^k$ giảm nghiêm ngặt, luôn dương, và vòng lặp chạy mãi.</p>
+<p>Bỏ (2), không đòi chặn dưới: $V = -k$ giảm nghiêm ngặt và vòng lặp cũng chạy mãi.</p>
+<p>Bỏ (3), chỉ đòi "không tăng": $V$ đứng yên là hợp lệ, và vòng lặp cũng chạy mãi. Chữ <b>nghiêm ngặt</b> không phải để cho đẹp.</p></div>
+
+<h2 id="tim-kiem-nhi-phan">Ví dụ trọn vẹn: tìm kiếm nhị phân</h2>
+
+<p>Đây là vòng lặp mà ai cũng nghĩ mình viết đúng, và là vòng lặp mà rất nhiều người viết sai. Ta làm đủ ba nghĩa vụ.</p>
+
+<pre><code>def tim(a, x):            # tiền điều kiện: a tăng dần
+    lo, hi = 0, len(a)
+    while lo &lt; hi:
+        mid = lo + (hi - lo) // 2
+        if a[mid] == x:
+            return mid
+        if a[mid] &lt; x:
+            lo = mid + 1
+        else:
+            hi = mid
+    return -1</code></pre>
+
+<div class="box thm"><div class="box-h">Bất biến</div>
+<p>$P$: "$0 \le lo \le hi \le n$, và nếu $x$ có mặt trong $a$ thì mọi vị trí chứa $x$ đều nằm trong $[lo, hi)$."</p></div>
+
+<div class="box intu"><div class="box-h">Đọc bất biến này cho đúng</div>
+<p>Chú ý dạng <b>nếu … thì</b>. Bất biến <i>không</i> khẳng định $x$ có trong $a$ — nó không biết điều đó và không cần biết. Nó chỉ khẳng định: <b>vùng còn phải tìm chưa bao giờ vứt mất câu trả lời</b>. Đây là hình dạng hay gặp nhất của bất biến trong các thuật toán tìm kiếm, và cũng là hình dạng khiến trường hợp "không tìm thấy" tự động đúng chứ không cần xử lý riêng.</p></div>
+
+<p><b>Nghĩa vụ 1 — khởi tạo.</b> $lo = 0$, $hi = n$. Vế đầu: $0 \le 0 \le n \le n$. Vế sau: $[0, n)$ là toàn bộ dãy, nên mọi vị trí chứa $x$ hiển nhiên nằm trong đó.</p>
+
+<p><b>Nghĩa vụ 2 — bảo toàn.</b> Giả sử $P$ và $lo &lt; hi$. Khi đó $lo \le mid &lt; hi$, nên <code>a[mid]</code> hợp lệ. Ba nhánh:</p>
+
+<ul>
+<li><code>a[mid] == x</code>: hàm trả về ngay, không có vòng tiếp theo để bảo toàn.</li>
+<li><code>a[mid] &lt; x</code>: vì $a$ tăng dần, mọi $k \le mid$ có $a_k \le a_{mid} &lt; x$, nên không vị trí nào trong $[lo, mid]$ chứa $x$. Vậy vứt bỏ chúng là an toàn: mọi vị trí chứa $x$ trong $[lo, hi)$ đều đã nằm trong $[mid+1, hi)$. Đặt $lo' = mid+1$; vì $mid &lt; hi$ nên $lo' \le hi$, các bất đẳng thức vẫn giữ.</li>
+<li><code>a[mid] &gt; x</code>: đối xứng, mọi $k \ge mid$ có $a_k \ge a_{mid} &gt; x$, nên $[mid, hi)$ không chứa $x$; đặt $hi' = mid$, và $lo \le mid$ nên vẫn có $lo \le hi'$.</li>
+</ul>
+
+<p>Trong cả ba nhánh $P$ được giữ. Chú ý chỗ tiền điều kiện "$a$ tăng dần" được dùng: đúng hai lần, và chỉ ở đó. Một chứng minh tốt cho biết <b>giả thiết nào thực sự làm việc</b>.</p>
+
+<p><b>Nghĩa vụ 3 — kết thúc.</b> Lấy $V = hi - lo$. Nó nguyên; $P \wedge B$ cho $lo &lt; hi$ nên $V \ge 1 &gt; 0$. Mỗi vòng: nhánh hai đặt $lo' = mid + 1 &gt; mid \ge lo$, nhánh ba đặt $hi' = mid &lt; hi$ (vì $mid &lt; hi$). Cả hai làm $V$ giảm ít nhất $1$. Vậy vòng lặp dừng.</p>
+
+<p>Khi thoát, $\neg B$ cho $lo = hi$, tức khoảng $[lo, hi)$ <b>rỗng</b>. Ghép với $P$: nếu $x$ có mặt trong $a$ thì mọi vị trí chứa $x$ nằm trong một khoảng rỗng — vô lý. Vậy $x$ không có trong $a$, và <code>return -1</code> là đúng.</p>
+
+<div class="fig">
+  <div class="fig-head">
+    <div class="fig-num">Hình 1.2</div>
+    <div class="fig-title">Bất biến và hàm giảm dần là hai thứ khác nhau</div>
+    <p class="fig-desc">Mỗi hàng là một vòng lặp. Thanh đậm là khoảng $[lo, hi)$ còn phải tìm; dấu ● là vị trí thật của $x$. Nhìn hai thứ riêng biệt: dấu ● <b>luôn nằm trong</b> thanh (bất biến), và thanh <b>luôn ngắn đi</b> (hàm giảm dần).</p>
+  </div>
+  <div class="fig-body">
+    <svg viewBox="0 0 660 230" width="100%" role="img" aria-label="Bốn vòng lặp của tìm kiếm nhị phân: khoảng lo đến hi thu hẹp dần trong khi vị trí của x luôn nằm trong khoảng">
+      <g font-size="11" fill="currentColor" opacity="0.6">
+        <text x="8" y="42">vòng 0</text>
+        <text x="8" y="92">vòng 1</text>
+        <text x="8" y="142">vòng 2</text>
+        <text x="8" y="192">thoát</text>
+      </g>
+      <g stroke="currentColor" stroke-width="1" opacity="0.25">
+        <rect x="70" y="26" width="560" height="20" rx="4" fill="none"></rect>
+        <rect x="70" y="76" width="560" height="20" rx="4" fill="none"></rect>
+        <rect x="70" y="126" width="560" height="20" rx="4" fill="none"></rect>
+        <rect x="70" y="176" width="560" height="20" rx="4" fill="none"></rect>
+      </g>
+      <g fill="currentColor" opacity="0.22">
+        <rect x="70" y="26" width="560" height="20" rx="4"></rect>
+        <rect x="350" y="76" width="280" height="20" rx="4"></rect>
+        <rect x="350" y="126" width="140" height="20" rx="4"></rect>
+      </g>
+      <g fill="currentColor">
+        <circle cx="420" cy="36" r="4.5"></circle>
+        <circle cx="420" cy="86" r="4.5"></circle>
+        <circle cx="420" cy="136" r="4.5"></circle>
+        <circle cx="420" cy="186" r="4.5"></circle>
+      </g>
+      <g font-size="11" fill="currentColor" opacity="0.75" text-anchor="middle">
+        <text x="640" y="40">V = 16</text>
+        <text x="640" y="90">V = 8</text>
+        <text x="640" y="140">V = 4</text>
+        <text x="640" y="190">V = 1</text>
+      </g>
+      <text x="420" y="216" font-size="11" text-anchor="middle" fill="currentColor" opacity="0.6">vị trí của x</text>
+    </svg>
+  </div>
+  <div class="fig-foot">Hai tính chất này <b>độc lập với nhau</b>, và đó là điều hình vẽ nói rõ hơn văn xuôi. Một thuật toán sai có thể thu hẹp thanh rất nhanh mà để dấu ● rơi ra ngoài (bảo toàn hỏng, dừng vẫn tốt — trả lời sai rất nhanh); một thuật toán khác giữ dấu ● trong thanh nhưng thanh không ngắn lại (bảo toàn tốt, dừng hỏng — không bao giờ trả lời). Nghĩa vụ 2 canh cột thứ nhất, nghĩa vụ 3 canh cột thứ hai.</div>
+</div>
+
+<div class="box res"><div class="box-h">Vì sao ví dụ này chứ không phải ví dụ khác</div>
+<p>Tìm kiếm nhị phân được chọn vì nó có tiếng là khó viết đúng, và lịch sử thật xác nhận: cài đặt trong thư viện chuẩn của Java mang một lỗi tràn số ở chính dòng tính <code>mid</code> suốt nhiều năm mới bị phát hiện. Đáng chú ý là <b>lỗi ấy không nằm trong ba nghĩa vụ ở trên</b> — bất biến vẫn đúng với số nguyên toán học. Nó đúng là giới hạn mà Chương 1.1 đã nêu: chứng minh chỉ tốt bằng mô hình mà nó dùng. Cách viết <code>lo + (hi - lo) // 2</code> ở trên tránh được, và tránh có chủ ý.</p></div>
+
+<div class="keyfacts"><div class="box-h">Chốt chương</div>
+<ul>
+<li>Ba nghĩa vụ — khởi tạo, bảo toàn, kết thúc — đều là khẳng định hữu hạn, kiểm được bằng tay.</li>
+<li>Quy nạp theo số vòng biến chúng thành "$P$ đúng ở mọi vạch", tức lượng hoá giúp ta phần mà ta không viết ra được.</li>
+<li>Khởi tạo + bảo toàn chỉ cho <b>đúng bộ phận</b>. Không có chứng minh dừng thì <code>while True: pass</code> cũng thoả mọi hậu điều kiện.</li>
+<li>Hàm giảm dần cần đủ ba tính chất: nguyên, chặn dưới, giảm <b>nghiêm ngặt</b>. Bỏ bất cứ cái nào cũng có phản ví dụ.</li>
+<li>Bất biến dạng "<b>nếu</b> câu trả lời tồn tại <b>thì</b> nó còn trong vùng đang xét" khiến trường hợp "không tìm thấy" tự đúng.</li>
+<li>Chương 1.3 trả lời câu hỏi mà chương này cố tình bỏ ngỏ: các bất biến ở trên <i>từ đâu ra</i>.</li>
+</ul></div>
+
+<h2 id="bai-tap">Bài tập</h2>
+
+<div class="box ex"><div class="box-h">Bài 1 · Ba nghĩa vụ cho luỹ thừa nhanh · ★</div>
+<p>Đoạn mã sau tính $b^{e}$ với $e \ge 0$ nguyên:</p>
+<pre><code>r, x, k = 1, b, e
+while k &gt; 0:
+    if k % 2 == 1:
+        r = r * x
+    x = x * x
+    k = k // 2
+return r</code></pre>
+<p>(a) Kiểm bất biến $P$: "$r \cdot x^{k} = b^{e}$ và $k \ge 0$" cho nghĩa vụ 1.</p>
+<p>(b) Kiểm nghĩa vụ 2, xét cả hai trường hợp $k$ chẵn và lẻ.</p>
+<p>(c) Cho một hàm giảm dần và suy ra kết luận tại lối ra.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Ban đầu $r = 1$, $x = b$, $k = e$, nên $r \cdot x^k = 1 \cdot b^e = b^e$, và $k = e \ge 0$ theo tiền điều kiện. Nghĩa vụ 1 xong.</p>
+<p><b>(b)</b> Giả sử $P$ và $k &gt; 0$. Gọi $r', x', k'$ là giá trị sau một vòng.</p>
+<p><i>$k$ chẵn:</i> $r' = r$, $x' = x^2$, $k' = k/2$. Khi đó $r'\,(x')^{k'} = r\,(x^2)^{k/2} = r\,x^{k} = b^e$. </p>
+<p><i>$k$ lẻ:</i> $r' = r x$, $x' = x^2$, $k' = (k-1)/2$. Khi đó
+$$r'\,(x')^{k'} = r x \cdot x^{\,k-1} = r\,x^{k} = b^{e}.$$
+Cả hai trường hợp $k' \ge 0$ vì $k \ge 1$. Nghĩa vụ 2 xong.</p>
+<p><b>(c)</b> Lấy $V = k$: nguyên, và $P \wedge (k &gt; 0)$ cho $V \ge 1$. Mỗi vòng $k$ thành $\lfloor k/2 \rfloor$, và với $k \ge 1$ thì $\lfloor k/2 \rfloor \le k - 1$, tức giảm ít nhất $1$. Vậy vòng lặp dừng. Khi thoát, $\neg(k &gt; 0)$ cùng $k \ge 0$ trong $P$ cho $k = 0$; thay vào bất biến: $r \cdot x^{0} = r = b^{e}$. Đúng là thứ cần trả về.</p>
+<p class="small muted">Đáng chú ý: bất biến này khẳng định một điều gần như không ai nghĩ tới khi đọc mã — rằng <code>r</code> và <code>x</code> phối hợp giữ nguyên một <b>tích</b>. Ba nghĩa vụ không giúp ta <i>tìm</i> ra nó, chỉ giúp kiểm nó. Chương 1.3 lo phần tìm.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 2 · Một bất biến đúng nhưng vô dụng · ★★</div>
+<p>Với vòng lặp tìm kiếm nhị phân trong chương, xét mệnh đề $P_0$: "$0 \le lo \le hi \le n$".</p>
+<p>(a) Chứng minh $P_0$ thoả nghĩa vụ 1 và 2.</p>
+<p>(b) Chỉ ra vì sao $P_0$ vẫn không chứng minh được hàm đúng, và nói chính xác nghĩa vụ nào hỏng.</p>
+<p>(c) Rút ra một quy tắc chung về việc <b>chọn</b> bất biến, và đối chiếu với câu "$1 = 1$ là bất biến hoàn hảo và vô dụng" ở Chương 1.1.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Khởi tạo: $lo = 0 \le hi = n \le n$. Bảo toàn: nhánh hai đặt $lo' = mid+1 \le hi$ vì $mid &lt; hi$; nhánh ba đặt $hi' = mid \ge lo$ vì $mid \ge lo$. Trong cả hai, các bất đẳng thức được giữ. Vậy $P_0$ là một bất biến hợp lệ.</p>
+<p><b>(b)</b> Hỏng ở <b>nửa sau của nghĩa vụ 3</b>: vòng lặp vẫn dừng (hàm giảm dần $V = hi - lo$ không liên quan gì tới việc ta chọn $P_0$ hay $P$), nhưng $P_0 \wedge \neg B$ chỉ cho $lo = hi$, và từ đó không suy ra được gì về $x$. Ta biết vùng tìm kiếm rỗng, mà không biết vùng đó từng chứa câu trả lời hay chưa. Đúng nhưng câm.</p>
+<p><b>(c)</b> Quy tắc: <b>bất biến phải được chọn hướng về hậu điều kiện, không phải hướng về mã.</b> $P_0$ được rút ra bằng cách nhìn mã và ghi lại điều dễ thấy; $P$ được rút ra bằng cách nhìn thứ cần kết luận rồi hỏi "phải đúng liên tục điều gì thì kết luận ấy mới rơi ra ở lối ra". Đây đúng là nội dung đòi hỏi thứ ba ở Chương 1.1, và "$1 = 1$" là trường hợp cực đoan của cùng một sai lầm: bảo toàn hoàn hảo, nói được không gì cả. Ranh giới giữa $P_0$ và "$1=1$" chỉ là mức độ; cả hai thất bại vì cùng một lý do.</p>
+<p>Có một sắc thái đáng giữ: $P_0$ không hoàn toàn vô dụng — nó là <b>một phần</b> của $P$, và là phần chứng minh <code>a[mid]</code> không truy cập ra ngoài dãy. Bất biến thật thường là hợp của một phần "an toàn bộ nhớ" tầm thường và một phần "đúng thuật toán" khó hơn. Nhận ra hai phần đó tách nhau làm việc kiểm dễ đi nhiều.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 3 · Dừng nhưng không hiển nhiên · ★★★</div>
+<p>Xét vòng lặp trên hai số nguyên dương:</p>
+<pre><code>while a != b:
+    if a &gt; b:
+        a = a - b
+    else:
+        b = b - a
+return a</code></pre>
+<p>(a) Tìm bất biến chứng minh giá trị trả về là $\gcd$ của hai số ban đầu. (Dùng tính chất $\gcd(a,b) = \gcd(a-b, b)$ khi $a &gt; b$; bạn được dùng mà không cần chứng minh lại.)</p>
+<p>(b) Hàm $V = a + b$ có thoả cả ba tính chất của một hàm giảm dần không? Kiểm từng cái.</p>
+<p>(c) Cùng vòng lặp đó nhưng bỏ tiền điều kiện "dương", chạy với $a = 3$, $b = 0$. Điều gì xảy ra, và tính chất nào trong ba tính chất đã hỏng?</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> $P$: "$a &gt; 0$, $b &gt; 0$, và $\gcd(a, b) = \gcd(a_0, b_0)$", với $a_0, b_0$ là giá trị ban đầu.</p>
+<p><i>Khởi tạo:</i> hiển nhiên, $a = a_0$, $b = b_0$ và cả hai dương theo tiền điều kiện.</p>
+<p><i>Bảo toàn:</i> giả sử $P$ và $a \ne b$. Nếu $a &gt; b$ thì $a' = a - b &gt; 0$ (vì $a &gt; b$) và $b' = b &gt; 0$, còn $\gcd(a', b') = \gcd(a-b, b) = \gcd(a,b) = \gcd(a_0,b_0)$. Nhánh kia đối xứng.</p>
+<p><i>Lối ra:</i> $\neg(a \ne b)$ cho $a = b$, và $\gcd(a,a) = a$, nên $a = \gcd(a_0, b_0)$. Đúng thứ cần trả về. Chú ý phần "$a &gt; 0, b &gt; 0$" của bất biến không phải trang trí: thiếu nó, bước $\gcd(a,a) = a$ ở lối ra không dùng được khi $a = 0$, và đó chính là cái bẫy ở câu (c).</p>
+<p><b>(b)</b> Có. <i>Nguyên:</i> hiển nhiên. <i>Chặn dưới:</i> $P$ cho $a, b &gt; 0$ nên $V = a + b \ge 2 &gt; 0$. <i>Giảm nghiêm ngặt:</i> mỗi vòng trừ đi số dương nhỏ hơn, nên $V$ giảm đúng $\min(a,b) \ge 1$. Vậy vòng lặp dừng. Chú ý cả ba đều <b>dựa vào phần "$a,b &gt; 0$" của bất biến</b> — hàm giảm dần và bất biến không phải hai chứng minh rời nhau, cái sau nuôi cái trước.</p>
+<p><b>(c)</b> Với $a = 3$, $b = 0$: điều kiện $a \ne b$ đúng, $a &gt; b$ nên $a$ thành $3 - 0 = 3$. Trạng thái không đổi chút nào, và vòng lặp <b>chạy mãi</b>.</p>
+<p>Tính chất hỏng là <b>giảm nghiêm ngặt</b>: $V = a + b = 3$ đứng yên. Nó hỏng vì lập luận ở (b) — "mỗi vòng trừ đi một số dương" — đã dùng $b &gt; 0$, mà giả thiết đó vừa bị bỏ. Đây là minh hoạ đúng cho hộp cảnh báo trong chương: bỏ chữ <b>nghiêm ngặt</b> và giữ nguyên "không tăng" thì vòng lặp này lọt qua mọi kiểm tra và vẫn treo. Đáng nói thêm: nghĩa vụ 1 và 2 vẫn <i>thoả</i> ở đây nếu ta bỏ phần dương khỏi bất biến — tức hàm này vẫn <b>đúng bộ phận</b>, và đúng bộ phận là một lời hứa rỗng với một vòng lặp không bao giờ dừng.</p>
+</div></details>
+</div>
