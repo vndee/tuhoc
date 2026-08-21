@@ -1,6 +1,53 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterEach } from 'vitest';
+
+/**
+ * How long a `waitFor`/`findBy*` may keep asking before it gives up.
+ *
+ * This is a HARNESS BUDGET, not an assertion — the same distinction ruling
+ * P2-F16 drew for `vite.config.ts`'s `testTimeout`, and the same one
+ * `Dashboard.test.tsx` already wrote down at length when it set this exact
+ * number file-locally. It is repeated here for one reason: that file's own
+ * closing argument turned out to apply one level up as well.
+ *
+ * Dashboard.test.tsx says a wait that survives today is safe "do THỨ TỰ,
+ * không phải do bản chất" — safe by ordering, not by nature — and so applies
+ * its budget to all six of its tests rather than to the one that happened to
+ * lose. Exactly the same is true ACROSS files: nothing makes Dashboard's
+ * Dexie→liveQuery→commit chain special. Every suite here waits on the same
+ * shape of chain, and every one of them was still on RTL's 1000 ms default.
+ *
+ * Measured, gate-close round, 8 full-suite runs against 20 busy-loop
+ * processes on 8 cores (load average 88–120 — the acceptance run that went
+ * red reported load 32, so this is that condition made worse on purpose):
+ *
+ *     3 of 8 runs red; the losers were three DIFFERENT tests in three
+ *     different files —
+ *       annotations/SelectionToolbar.test.tsx  "HAI ghi chú liên tiếp"
+ *       reader/ChapterView.test.tsx            "gắn lại qua giao diện thật"
+ *       annotations/painter.test.ts            (a testTimeout, see that file)
+ *
+ * Two of those three are this budget, and which test draws the short straw
+ * is luck. That is the signature of a suite-wide ceiling, not of a defect in
+ * any one test, and it is why the fix belongs in the shared setup file.
+ *
+ * Why raising it weakens nothing — the argument is Dashboard.test.tsx's,
+ * unchanged: `waitFor`/`findBy*` are MutationObserver-driven and answer the
+ * instant the DOM satisfies them, so this number is only the moment they
+ * stop asking. A genuinely broken screen still fails, on the SAME assertion
+ * with the SAME message, just later. Nothing in this suite asserts that a
+ * wait *expires* (checked: no `.rejects` anywhere on a `waitFor`/`findBy*` —
+ * the `.rejects` in `course/loader.test.ts` and `api/client.test.ts` are on
+ * plain API promises, which this does not touch), so no test can pass
+ * because of a longer wait that would have failed with a shorter one.
+ *
+ * It must stay comfortably below `vite.config.ts`'s `testTimeout` (30 s), or
+ * a wait that legitimately expires gets cut off by the test clock first and
+ * reports a useless "Test timed out" in place of the real assertion.
+ */
+const OVERSUBSCRIBED_WAIT_MS = 15_000;
+configure({ asyncUtilTimeout: OVERSUBSCRIBED_WAIT_MS });
 
 /**
  * jsdom (this project's `test.environment`) implements no IndexedDB at all

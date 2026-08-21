@@ -20,7 +20,63 @@ Ghi lại lúc kết thúc P1 (nhánh `p1-platform-core`, 37 commit, hợp nhấ
 - **`clearLocalData()` trong `apps/web/src/db/local.ts` là điểm chân lý duy nhất** cho việc xóa dữ liệu cục bộ, và nó liệt kê bảng qua `db.tables` để không lỗi thời. Đừng inline lại `Promise.all([...clear()])` — trước đây có 8 bản sao và bản quan trọng nhất là bản dễ quên nhất. Lưu ý `db/local.test.ts` assert `db.tables` có 4 bảng như một tripwire; khi thêm bảng thứ 5, sửa con số đó chứ đừng "sửa" helper.
 - **Cursor đồng bộ là giá trị đục.** Server trả về mốc đã lùi 60 giây có chủ đích, để chống mất dữ liệu do thứ tự commit khác thứ tự dấu thời gian. Client phải gửi lại **nguyên văn** — không parse, không tự tính từ `updatedAt`. Việc nhận lại bản ghi đã có là cơ chế đang chạy đúng, không phải lỗi.
 - **Múi giờ UTC+7 chỉ còn một nguồn** (`icTZOffset` trong `apps/api/internal/stats/handler.go`, truyền vào SQL dạng tham số). Đừng viết lại số 7 ở chỗ thứ hai — nếu hai chỗ lệch nhau, dữ liệu quanh nửa đêm hỏng **âm thầm**.
+- **`rtk` VIẾT LẠI `make test-e2e`, và trả về mã thoát của CHÍNH NÓ — cổng có thể báo xanh mà chưa
+  hề chạy.** Xác minh 2026-08-21: `rtk rewrite 'make test-e2e'` → `rtk make test-e2e`. Lần chạy đầu
+  ở Task 8 trả `EXIT=0` với log 77 dòng **bị đảo thứ tự và KHÔNG có phần Playwright nào** — tin nó
+  thì đã báo một cổng xanh chưa từng chạy. **Luôn dùng `rtk proxy make test-e2e`** và kiểm log có
+  phần Playwright thật.
+  Đã kiểm từng lệnh cổng: **chỉ `make test-e2e` bị viết lại**; `bun run test/build/lint`,
+  `bunx tsc -b`, `bunx playwright test`, `docker compose`, `docker pull` đều đi thẳng.
+  Cộng dồn các vấn đề `rtk` đã gặp: in "Success" cho lệnh thật ra exit 1 · lược dòng khỏi `git log`
+  (giấu mất merge commit) · viết lại `cat`/`grep` làm lệnh hỏng · và nay: **bọc cả cổng nghiệm thu**.
+  Quy tắc: mọi thứ bạn dựa vào để KẾT LUẬN phải chạy qua `/usr/bin/…` hoặc `rtk proxy`.
+- **`apps/web/e2e/**` KHÔNG được `tsc -b` kiểm kiểu** — không tsconfig project nào bao nó. Áp cho cả
+  `p1.spec.ts` lẫn `p2.spec.ts`. Cùng lớp với hai cổng mù ở trên: cổng vẫn chạy, vẫn xanh, chỉ là
+  không nhìn vào thứ nó tưởng đang nhìn.
+- **`tsc --noEmit` ở `apps/web` là CỔNG RỖNG — đừng dùng nó để nghiệm thu.** `apps/web/tsconfig.json`
+  dùng `"files": []` + `references`, và cờ `--noEmit` **không đi vào references**. Chứng minh: tiêm
+  `const x: number = "chuỗi"` vào một file thật rồi chạy → `tsc --noEmit` **exit=0**, `tsc -b` **exit=2**.
+  Cổng kiểu thật là **`tsc -b`** (và `bun run build`, vốn gọi `tsc -b`). Phát hiện ở vòng sửa P2 Task 1,
+  sau khi cổng mù này đã được dùng làm "bằng chứng" một lần. Cùng lớp lỗi với cổng e2e từng mù với
+  thay đổi Go: cổng vẫn chạy, vẫn báo xanh, chỉ là không nhìn vào thứ nó tưởng đang nhìn.
 - **Cổng nghiệm thu luôn rebuild image API** (`docker compose up -d --build`). Đừng "tối ưu" bằng cách pre-build rồi bỏ `--build` — đó chính là lỗ hổng khiến cổng từng mù với mọi thay đổi Go.
+
+## 2B. Nợ kết chuyển từ P2 — hai mục review tổng thể tìm ra
+
+### P2-C1 · Last-write-wins áp theo DÒNG, không theo TRƯỜNG — và P2 là thứ đưa văn xuôi người dùng vào
+
+Đo được trên **hai thiết bị thật** (review tổng thể P2, có ngăn xếp đầy đủ):
+
+> Máy A xoá một ghi chú. Máy B **chưa kịp kéo về tombstone** nên vẫn thấy ghi chú, và người dùng
+> sửa chữ trên đó. Kết quả: **ghi chú SỐNG LẠI trên cả hai máy**, `deletedAt` về `null`.
+
+Doc của `remove` nói tombstone "propagates the deletion" — **không đúng vô điều kiện**.
+
+Nguy hiểm hơn ở đường `reattach`: cùng cơ chế đó sẽ **âm thầm nuốt mất chữ** người dùng vừa gõ ở
+thiết bị kia. Không exception, không cảnh báo, chỉ là một phiên bản thắng.
+
+**Vì sao P1 không gặp:** P1 chỉ đặt `progress` — **một boolean** — dưới quy tắc này. Mất một
+boolean thì cùng lắm là mất dấu tích "đã đọc". **P2 là giai đoạn đầu tiên đưa VĂN XUÔI người dùng
+vào cùng quy tắc**, và mất văn xuôi thì không lấy lại được.
+
+Sửa đúng = hợp nhất theo TRƯỜNG (hoặc tombstone thắng tuyệt đối), tức đổi giao thức đồng bộ cả hai
+phía — không phải việc vá trước khi hợp nhất. **Phải quyết ở giai đoạn sau.** Đừng để nó im lặng.
+
+### P2-C2 · Spec §5 hứa những thứ KHÔNG task nào được giao xây — và chúng HIỆN TRÊN MỌI TRANG
+
+Toàn bộ 13 gạch đầu dòng về annotation của §5 **đều tồn tại và đã được thấy chạy**. Nhưng nửa
+thuộc P1 thì không, và người dùng nhìn thấy:
+
+- thanh bên in nguyên chuỗi giữ chỗ **`Tiến độ sẽ hiện ở đây`**;
+- ô tìm chương ở trạng thái **`disabled`**;
+- `#progbar` **không ai ghi vào** ⇒ vĩnh viễn 0%;
+- `a.nav-item.active` có CSS nhưng **không ai set** ⇒ không bao giờ sáng;
+- `/c/:course` thiếu "tiến độ từng phần";
+- thiếu phím tắt `/` và `Escape` vốn có ở bản v1 một-file.
+
+Khác **C-2** (`GET /courses`) ở một điểm quan trọng: **không mục nào trong số này từng được ghi
+vào tài liệu nào**. Đây là cùng lớp lỗi với C-2 — *spec liệt kê, không ai được giao, không ai phát
+hiện* — và lần này nó **hiển thị ra màn hình**.
 
 ## 3. Nợ kỹ thuật đã ghi nhận, chấp nhận mang theo
 

@@ -1,7 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
+import { type CardFocus, MarginCards } from '../annotations/MarginCards';
+import { OrphanPanel } from '../annotations/OrphanPanel';
+import { SelectionToolbar } from '../annotations/SelectionToolbar';
+import { type ChapterContent, useAnnotations } from '../annotations/useAnnotations';
 import { describeCourseError, loadChapter } from '../course/loader';
 import type { Chapter } from '../course/types';
 import { startHeartbeat } from '../progress/heartbeat';
@@ -60,6 +64,58 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
   // debt #2's whole point — see ThemeContext.tsx's doc comment.
   const { toggle: toggleTheme } = useThemeContext();
 
+  // P2 Task 4: the annotation store resolves this chapter's stored anchors
+  // against the DOM below and paints the highlights in. It has to be told when
+  // the content under `containerRef` was REPLACED — the element identity never
+  // changes (the main effect swaps `innerHTML` on the same `<div>`), so a
+  // counter bumped by that effect is the only honest signal that every
+  // `<mark>` is gone and every anchor needs resolving again.
+  //
+  // Task 5 consumes the result: `<SelectionToolbar>` below is what lets a
+  // reader CREATE an annotation, and it takes THIS one hook result as a prop.
+  // Calling `useAnnotations` again from inside the toolbar would give the
+  // chapter two live instances, each painting every annotation — the trap the
+  // hook's own doc names. The margin cards (T6) and the orphan panel (T7) join
+  // the same way, through `list`/`orphans` on this same object.
+  const [annotationContent, setAnnotationContent] = useState<ChapterContent>({ root: null, revision: 0 });
+  const annotations = useAnnotations(courseId, chapter.id, annotationContent);
+
+  // P2 Task 6. The right rail becomes two tabs, and BOTH are built here,
+  // inside this component's own portal into `#rail` — ruling P2-F1.
+  // `shell/Rail.tsx` returns null on a chapter route precisely because the
+  // rail's content is derived from the chapter DOM, which that component
+  // cannot see; adding the tabs there would render the rail twice (the P1
+  // Task 11 bug that route-awareness was introduced to fix).
+  //
+  // `cardFocus` is which note card is open. It lives here rather than inside
+  // `<MarginCards>` because Task 5's toolbar is what opens one: "Ghi chú"
+  // creates the annotation and calls `onRequestNote(id)` — a callback that,
+  // until this task, nothing was listening to, so the button highlighted in
+  // yellow and offered no way to write anything.
+  const [railTab, setRailTab] = useState<'toc' | 'notes'>('toc');
+  const [cardFocus, setCardFocus] = useState<CardFocus | null>(null);
+
+  // P2 Task 7. Which orphaned note is waiting for the reader to select its new
+  // home, or null. It lives HERE, not inside `<OrphanPanel>`, because it is the
+  // one piece of state two siblings disagree about: while it is set, dragging
+  // across a paragraph means "put the note here", so Task 5's toolbar must not
+  // offer to create a NEW note from the same drag. Both components listen to
+  // `selectionchange` on the same document; without a shared owner they both
+  // answer, and the reader gets a colour picker on top of the paragraph they
+  // were trying to re-anchor. Reattach mode wins — see `OrphanPanel.tsx`'s doc,
+  // section 1.
+  const [reattaching, setReattaching] = useState<string | null>(null);
+
+  // A card being opened from the CHAPTER (a click on a highlight) has to
+  // bring its tab forward with it, or the reader clicks their own highlight
+  // and nothing appears to happen.
+  const focusCard = useCallback((next: CardFocus | null) => {
+    setCardFocus(next);
+    if (next) setRailTab('notes');
+  }, []);
+
+  const requestNote = useCallback((id: string) => focusCard({ id, edit: true }), [focusCard]);
+
   const chapterQuery = useQuery({
     queryKey: ['course-chapter', courseId, chapter.file],
     queryFn: () => loadChapter(courseId, chapter.file),
@@ -107,6 +163,37 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
     setRailEl(document.getElementById('rail'));
     setCrumbEl(document.getElementById('crumb'));
   }, []);
+
+  // The rail is a STICKY, self-scrolling box (`reader.css`: `position:sticky`,
+  // `max-height:calc(100vh - 100px)`, `overflow-y:auto`) — the right shape for
+  // a short table of contents and the wrong one for a column of cards pinned
+  // to document coordinates, which have to scroll WITH the chapter and must
+  // not be clipped at the viewport's height. `.rail-notes` (src/styles/
+  // index.css) turns those three properties off and widens the rail to fit a
+  // card.
+  //
+  // Applied from here, imperatively, for the same reason `#mark-btn` and
+  // `#prev-btn` are driven from here: `#rail` is chrome `<Shell>` renders,
+  // and teaching `shell/Rail.tsx` about chapter state is exactly what ruling
+  // P2-F1 forbids. The cleanup is what keeps a rail on `/` or `/c/:courseId`
+  // from inheriting a chapter's layout after the reader navigates away.
+  useEffect(() => {
+    if (!railEl) return;
+    railEl.classList.toggle('rail-notes', railTab === 'notes');
+    return () => railEl.classList.remove('rail-notes');
+  }, [railEl, railTab]);
+
+  // A new chapter has none of the previous chapter's notes, so an open card
+  // there refers to an annotation that is no longer on the page. The same goes
+  // for a rescue in progress: the paragraph the reader was about to select is
+  // gone, and leaving the mode on would keep the toolbar suspended in a
+  // chapter where nothing can be reattached. The tab itself is deliberately
+  // NOT reset: which of the two the reader is using is a preference, and
+  // resetting it every chapter would fight them.
+  useEffect(() => {
+    setCardFocus(null);
+    setReattaching(null);
+  }, [chapter.id]);
 
   // Prev/next chapter navigation: topbar `#prev-btn`/`#next-btn` (Task 9
   // left them inert — its own comment names this task as the owner) plus
@@ -289,6 +376,12 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
     }
 
     setChapterContextSource({ courseId, chapterId: chapter.id, chapterTitle: chapter.title, contentEl: container });
+    // Last, and only after KaTeX/viz/TOC have finished with the container:
+    // annotation anchors are resolved against the DOM as the reader sees it,
+    // and `normalize.ts` is built to ignore exactly what `initViz` generates.
+    // Resolving before that ran would anchor against text that is about to
+    // change shape.
+    setAnnotationContent((prev) => ({ root: container, revision: prev.revision + 1 }));
     document.title = `${chapter.num ? `${chapter.num} ` : ''}${chapter.title} — ${courseTitle}`;
     window.scrollTo({ top: 0, behavior: 'auto' });
 
@@ -396,6 +489,19 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
           crumbEl,
         )}
       <div ref={containerRef} />
+      {/* Last in the chapter pipeline (innerHTML → renderKatex → initViz →
+          injectExerciseCheckboxes → normalize/resolve/paint → toolbar): it
+          watches `selectionchange` and does nothing at all until the reader
+          selects something inside `annotationContent.root`, which is the same
+          element the store above resolves against and only exists once that
+          effect has run. It portals itself into `document.body`, so its
+          position in this JSX is about ownership, not layout. */}
+      <SelectionToolbar
+        content={annotationContent}
+        store={annotations}
+        onRequestNote={requestNote}
+        suspended={reattaching !== null}
+      />
       {(prevChapter || nextChapter) && (
         <div className="pager">
           {prevChapter && (
@@ -421,23 +527,109 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
       {railEl &&
         createPortal(
           <>
-            {headings.length > 0 && <p className="rail-h">Trong chương này</p>}
-            {headings.map((h) => (
-              <a
-                key={h.id}
-                href={`#${h.id}`}
-                className={
-                  [h.level === 3 ? 'lvl3' : '', h.id === currentHeadingId ? 'cur' : ''].filter(Boolean).join(' ') ||
-                  undefined
-                }
-                onClick={(e) => {
-                  e.preventDefault();
-                  document.getElementById(h.id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-                }}
+            {/* The rail's own heading used to be a `<p class="rail-h">Trong
+                chương này</p>`; the "Trong chương" tab now IS that heading,
+                and two of them one above the other is one too many. */}
+            <div className="rail-tabs" role="tablist" aria-label="Nội dung rãnh phải">
+              <button
+                type="button"
+                role="tab"
+                id="rail-tab-toc"
+                aria-controls="rail-panel-toc"
+                aria-selected={railTab === 'toc'}
+                onClick={() => setRailTab('toc')}
               >
-                {h.text}
-              </a>
-            ))}
+                Trong chương
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="rail-tab-notes"
+                aria-controls="rail-panel-notes"
+                aria-selected={railTab === 'notes'}
+                onClick={() => setRailTab('notes')}
+              >
+                {/* `list` PLUS `orphans`, and the plus is Task 7's, found by
+                    looking at the real page rather than at a test. Counting
+                    only what got painted has two bad consequences and no good
+                    one:
+
+                      - A chapter whose content was rebuilt shows a note count
+                        that has silently DROPPED — which looks exactly like the
+                        data loss this whole phase exists to prevent, while the
+                        notes are in fact all still there.
+                      - The orphan panel is reachable only through this tab, so
+                        a reader whose only notes are orphaned is invited in by
+                        a label reading "Ghi chú (0)". Measured on the real
+                        reader with two orphans seeded: the tab said (0) with
+                        both of them one click behind it.
+
+                    A note that could not be placed is still a note in this
+                    chapter. The panel behind the tab is where the difference
+                    between the two kinds is explained; the count's job is to
+                    say how much of the reader's work is in here. Notes still
+                    awaiting the deferred fuzzy pass are in neither list and so
+                    are not counted yet — that is the existing, deliberate
+                    behaviour (see `useAnnotations`, section 2): reporting a
+                    note before it has been looked for is what the store goes
+                    out of its way not to do. */}
+                {`Ghi chú (${annotations.list.length + annotations.orphans.length})`}
+              </button>
+            </div>
+            {railTab === 'toc' && (
+              <div role="tabpanel" id="rail-panel-toc" aria-labelledby="rail-tab-toc">
+                {headings.map((h) => (
+                  <a
+                    key={h.id}
+                    href={`#${h.id}`}
+                    className={
+                      [h.level === 3 ? 'lvl3' : '', h.id === currentHeadingId ? 'cur' : ''].filter(Boolean).join(' ') ||
+                      undefined
+                    }
+                    onClick={(e) => {
+                      e.preventDefault();
+                      document.getElementById(h.id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+                    }}
+                  >
+                    {h.text}
+                  </a>
+                ))}
+              </div>
+            )}
+            {/* Always mounted, `hidden` while the TOC tab is up: a click on a
+                highlight has to be able to open its card (and, below 1241px
+                where the rail does not exist at all, the bottom sheet)
+                whatever the rail happens to be showing. `visible` is what
+                decides whether the COLUMN is built; the component itself has
+                work to do either way. */}
+            <div
+              role="tabpanel"
+              id="rail-panel-notes"
+              aria-labelledby="rail-tab-notes"
+              hidden={railTab !== 'notes'}
+            >
+              <MarginCards
+                content={annotationContent}
+                store={annotations}
+                visible={railTab === 'notes'}
+                focus={cardFocus}
+                onFocusChange={focusCard}
+              />
+              {/* Last in the panel, under the card column, because that is
+                  what it is: the notes this chapter could NOT place, after the
+                  ones it could. Same one store instance — a second
+                  `useAnnotations` here would paint every annotation twice.
+                  Mounted unconditionally, like `<MarginCards>`: a rescue
+                  started here has a bar portalled into `document.body`, and a
+                  reader who flips back to the TOC tab mid-rescue must not lose
+                  the only way out of the mode. */}
+              <OrphanPanel
+                content={annotationContent}
+                store={annotations}
+                reattaching={reattaching}
+                onReattachingChange={setReattaching}
+              />
+            </div>
           </>,
           railEl,
         )}

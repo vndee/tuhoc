@@ -2,8 +2,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useId, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { api, describeAuthError } from '../api/client';
-import { meQueryKey, resetSessionScopedQueries, useMe, type Me } from '../api/useMe';
-import { clearLocalData } from '../db/local';
+import { meQueryKey, useMe, type Me } from '../api/useMe';
+import { clearSession } from '../auth/session';
 import { stopSync } from '../sync/engine';
 
 type Tab = 'login' | 'register';
@@ -140,22 +140,27 @@ export function Login() {
     //     landing it after step 2's clear. Same mechanism, same reason,
     //     as `useLogout`'s own `stopSync()` calls; the lifecycle effect
     //     restarts sync on its own once `me` changes below.
-    //  2. `await clearLocalData()` — the previous user's rows must be
-    //     gone before this session can read or push any of them. The
-    //     local database is named for the BROWSER (`'tuhoc'`), not the
-    //     user, and IndexedDB never expires, so "the cookie changed" is
-    //     the only thing that changes here — nothing else would. Without
-    //     this, the previous user's queued outbox entries (progress AND
-    //     heartbeat events) get POSTed under the new user's cookie into
-    //     the NEW user's server account, the previous user's progress
-    //     renders as the new user's, and `db.meta.syncCursor` — still the
-    //     previous user's watermark — makes `GET /sync?since=` skip
-    //     everything of the new user's older than it, so their own
-    //     history never downloads at all.
-    //  3. `resetSessionScopedQueries()` — the in-memory half of the same problem
-    //     (`['stats']` etc. still hold the previous user's numbers). See
-    //     `useLogout`, which does the mirror-image clear on the way out.
-    //     Before `setQueryData`, or it would wipe the seed.
+    //  2. `await clearSession(queryClient)` (src/auth/session.ts) — BOTH
+    //     halves of what the previous session left on this machine, through
+    //     the one door (ruling P2-F18), and both strictly before the seed:
+    //
+    //       - the durable half (`clearLocalData()`): the previous user's
+    //         rows must be gone before this session can read or push any of
+    //         them. The local database is named for the BROWSER (`'tuhoc'`),
+    //         not the user, and IndexedDB never expires, so "the cookie
+    //         changed" is the only thing that changes here — nothing else
+    //         would. Without this, the previous user's queued outbox entries
+    //         (progress AND heartbeat events) get POSTed under the new
+    //         user's cookie into the NEW user's server account, the previous
+    //         user's progress renders as the new user's, and
+    //         `db.meta.syncCursor` — still the previous user's watermark —
+    //         makes `GET /sync?since=` skip everything of the new user's
+    //         older than it, so their own history never downloads at all.
+    //       - the in-memory half (`resetSessionScopedQueries()`): `['stats']`
+    //         etc. still hold the previous user's numbers. It has to land
+    //         before `setQueryData`, or it would wipe the seed.
+    //
+    //     `useLogout` goes through the same door on the way out.
     //
     // Only then: seed `me`. Seeding it directly rather than invalidating
     // and refetching is the original, still-valid reason — `<RequireAuth>`
@@ -163,8 +168,7 @@ export function Login() {
     // refetch would leave it briefly back in its "pending" state
     // (rendering nothing) right after a successful login.
     stopSync();
-    await clearLocalData();
-    resetSessionScopedQueries(queryClient);
+    await clearSession(queryClient);
     queryClient.setQueryData(meQueryKey, user);
     navigate(redirectTarget(location.state, location.search), { replace: true });
   }

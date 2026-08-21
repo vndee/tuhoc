@@ -235,3 +235,950 @@
   font-weight: 700;
   fill: var(--ink-2);
 }
+
+/* P2 Task 3 — highlight painter (src/annotations/painter.ts).
+   The task brief names `src/styles/shell.css`; no such file exists in this
+   repo — the app's own stylesheet is THIS one, and it is the file that
+   already imports reader.css, so the tokens below resolve. Same placement
+   rationale as .auth-page/.dash-* above: reader.css stays the ported v1
+   stylesheet, anything P1/P2 adds lives here and reuses v1's tokens.
+
+   Colour mapping is the plan's (--s4/--s3/--s1/--s5 at .28 alpha, .38 in
+   dark). `color-mix` rather than hard-coded rgba() so a theme change to
+   --s1..--s5 carries into the highlights; reader.css already uses it
+   (`a{border-bottom: … color-mix(…)}`), so this needs no new baseline. */
+:root {
+  --ann-y: color-mix(in srgb, var(--s4) 28%, transparent);
+  --ann-g: color-mix(in srgb, var(--s3) 28%, transparent);
+  --ann-b: color-mix(in srgb, var(--s1) 28%, transparent);
+  --ann-p: color-mix(in srgb, var(--s5) 28%, transparent);
+}
+
+html[data-theme='dark'] {
+  --ann-y: color-mix(in srgb, var(--s4) 38%, transparent);
+  --ann-g: color-mix(in srgb, var(--s3) 38%, transparent);
+  --ann-b: color-mix(in srgb, var(--s1) 38%, transparent);
+  --ann-p: color-mix(in srgb, var(--s5) 38%, transparent);
+}
+
+/* `color: inherit` is load-bearing: the UA stylesheet gives <mark> both a
+   yellow background AND a near-black text colour, which is unreadable in
+   dark mode. `box-decoration-break: clone` keeps the rounded corners on
+   every line a highlight wraps onto instead of only the first and last. */
+mark.ann {
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 2px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* Formulas are tinted, never wrapped — see painter.ts, section 2. The class
+   is ADDED to the .katex/.katex-display element, so every one of KaTeX's own
+   `.katex …` rules still matches; vendor/katex.css sets no background
+   anywhere, so nothing inside paints over this.
+
+   The tint sits on the .katex INLINE box on purpose, and three rounds have now
+   argued about it, so here is the measurement — please do not re-open it
+   without new numbers. Chromium, 44/44 chapters, viewport 1280x900, real
+   katex.css + reader.css + this file, 10.538 inline formulas (10.182 of them
+   on a single line):
+
+   - As written: how far a glyph box sticks out of the tint is 0px at p50,
+     0,63/2,47px at p90, 4,61/4,31px at p99 (top/bottom), 17,77/20,03px at the
+     extreme; 7,07% of formulas exceed 4px and 0,39% exceed 8px. The
+     16,5/23,6px in ruling P2-F10 came from `\dfrac` and `\displaystyle\sum`
+     written INLINE — 17 and 1 occurrences in this corpus, against 1.355 plain
+     `\frac` — so it measured the two rarest shapes, not the common one.
+   - `display: inline-block` (what P2-F10 prescribed) makes the formula an
+     atomic box that can no longer break across lines, and 3,38% of inline
+     formulas currently do break. Painting ONE formula re-flows its paragraph
+     in 250/10.538 = 2,37% of cases; painting a whole chapter moves
+     5.738/10.538 = 54,4% of them. Withdrawn.
+   - Tinting `.katex-html > .base` instead covers nearly everything (uncovered
+     by more than 2px falls from 13,83% to 0,64%; zero horizontal gaps across
+     6.756 adjacent base pairs; zero layout change) and its coverage is
+     IDENTICAL to inline-block's, because an inline-block .katex box is exactly
+     the union of its bases. But it also makes the tint 32,44px tall against
+     the 24px band of the prose around it, so the stroke steps 4,00px up and
+     4,44px down at 100,00% of 9.172 measured formulas — 82,45% of them by more
+     than 4px, against 0,01% today. That trades a tail into a ragged stroke at
+     every formula in a mathematics textbook. Screenshots in both themes agree
+     with the numbers.
+   - Padding both bands by 2px keeps the stroke flush (still 0,01% steps) and
+     cuts >4px overflow from 7,07% to 0,67% with no layout change, but it grows
+     the prose band from 24px to 28px, closing the gap between highlighted
+     lines from 6,1px to 2,1px — 0,4px in .ch-lede — so a multi-line highlight
+     becomes a slab. Also rejected.
+
+   A uniform stroke with the tips of tall glyphs outside it is what a
+   highlighter pen looks like, and it beats full coverage bought with a stroke
+   that changes height 10.538 times per book. */
+.ann-hl {
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.katex-display.ann-hl {
+  border-radius: 4px;
+}
+
+/* One rule per colour, covering both the <mark> form and the formula form.
+   Deliberately class-only (no `mark.ann-y`): author rules beat the UA
+   stylesheet whatever their specificity, and keeping every colour at the
+   same specificity is what lets a nested mark composite over its parent
+   instead of a more specific selector winning outright. Alpha < 1 is what
+   makes two overlapping notes read as a darker band rather than as one note
+   hiding the other. */
+.ann-y,
+.ann-hl-y {
+  background-color: var(--ann-y);
+}
+
+.ann-g,
+.ann-hl-g {
+  background-color: var(--ann-g);
+}
+
+.ann-b,
+.ann-hl-b {
+  background-color: var(--ann-b);
+}
+
+.ann-p,
+.ann-hl-p {
+  background-color: var(--ann-p);
+}
+
+/* Task 6 focuses a highlight when its margin card is clicked. Named as the
+   plan names it (`.ann.focus`) so that task finds the hook it expects.
+
+   `.peek` is the same look for the lighter gesture — the reader has the pointer
+   on a card, or has tabbed into one, and wants to know which of the highlights
+   down the page it belongs to. Deliberately the SAME outline rather than a
+   second visual language: both mean "this highlight and that card are one
+   note", and inventing a second way to say it would ask the reader to learn
+   two. */
+.ann.focus,
+.ann-hl.focus,
+.ann.peek,
+.ann-hl.peek {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* P2 Task 5 — the selection toolbar (src/annotations/SelectionToolbar.tsx).
+   Same placement rationale as the painter block above: reader.css stays the
+   ported v1 stylesheet, and everything P1/P2 adds lives here reusing v1's own
+   tokens (--surface-1, --rule-strong, --ink*, --accent, --shadow, --sans).
+
+   POSITIONING CONTRACT, and it is split across two files on purpose:
+   `toolbarSpot()` computes a point in DOCUMENT coordinates — the middle of the
+   selection's first line (or its last, when it had to flip below) — and this
+   file turns that point into a box. Centring is `translateX(-50%)` so the
+   component never has to measure its own width, and the 8px in the transforms
+   below is the same gap `GAP` names in the .tsx: that constant decides whether
+   there is ROOM above the selection, this transform decides where the box is
+   actually drawn. Change one and change the other.
+
+   Document coordinates (not `position: fixed`) are what make a scroll during an
+   open toolbar a non-event: the bar scrolls with the words it belongs to,
+   exactly as the margin cards will (see `highlightRects`'s own doc for why that
+   coordinate space was chosen for this engine).
+
+   z-index 50 sits above the sticky topbar (z-index 40 in reader.css) — a
+   selection near the top of the viewport puts the toolbar over the topbar — and
+   below the mobile nav drawer and its overlay (70/60), which are modal and must
+   stay on top. */
+.ann-tb {
+  position: absolute;
+  z-index: 50;
+  transform: translate(-50%, calc(-100% - 8px));
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  font-family: var(--sans);
+  /* The bar must never become the thing that ends a drag or eats a tap on the
+     text under it while it is animating into place. */
+  user-select: none;
+}
+
+.ann-tb-below {
+  transform: translate(-50%, 8px);
+}
+
+/* The swatch carries the very tint the highlight will get (`.ann-y` … are the
+   painter's own colour classes, reused rather than re-declared), so what the
+   reader picks is what they see. The border is what keeps a 28%-alpha tint
+   legible as a control on a light surface. */
+.ann-tb-swatch {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ann-tb-swatch:hover,
+.ann-tb-note:hover {
+  border-color: var(--accent);
+}
+
+.ann-tb-swatch:focus-visible,
+.ann-tb-note:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.ann-tb-note {
+  height: 24px;
+  padding: 0 9px;
+  margin-left: 2px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Fingers, not mice: 24px is a comfortable click target and an uncomfortable
+   tap target, and this toolbar appears exactly where a finger already is. */
+@media (pointer: coarse) {
+  .ann-tb-swatch,
+  .ann-tb-note {
+    width: 32px;
+    height: 32px;
+  }
+
+  .ann-tb-note {
+    width: auto;
+    padding: 0 12px;
+  }
+}
+
+/* Shown when the local write failed, in place of the toolbar that was there.
+   Saying nothing would leave a highlight that quietly disappears on the next
+   page load; the colour itself is removed by the component. */
+.ann-tb-error {
+  position: absolute;
+  z-index: 50;
+  transform: translate(-50%, calc(-100% - 8px));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 280px;
+  padding: 7px 9px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: #e0453c;
+}
+
+.ann-tb-error button {
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* v1's print stylesheet keeps the reading experience; a floating toolbar is
+   screen chrome and has no business on paper. */
+@media print {
+  .ann-tb,
+  .ann-tb-error {
+    display: none;
+  }
+}
+
+/* P2 Task 6 — the rail's two tabs, the margin cards, and the mobile sheet
+   (src/annotations/MarginCards.tsx). Same placement rationale as everything
+   above: reader.css stays the ported v1 stylesheet and this file adds to it
+   with v1's own tokens.
+
+   THE LAYOUT DECISION, because it is not obvious from the markup: `#rail` in
+   reader.css is `position:sticky; top:74px; max-height:calc(100vh - 100px);
+   overflow-y:auto` — a short, self-scrolling box that stays put while the
+   chapter scrolls past it. That is right for a table of contents and wrong
+   for note cards, which are placed in DOCUMENT coordinates (see
+   `highlightRects`' own doc) and have to travel with the paragraphs they
+   annotate. `.rail-notes`, which ChapterView puts on `#rail` while the "Ghi
+   chú" tab is up, turns all three off and widens the rail from 210px to
+   260px — a card holding a quote and a note needs the extra 50px, and the
+   plan asked for exactly this width. The tab bar keeps its own `sticky` so it
+   is still reachable from anywhere in a long chapter. */
+.rail-tabs {
+  position: sticky;
+  top: 74px;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  /* Cards scroll UNDER this bar in `.rail-notes` mode, so it cannot be
+     transparent. It is not fully opaque either, and that is measured rather
+     than tasteful: `.fig` carries `margin-right:-52px` above 1100px, so a
+     figure bleeds 18px into the 34px gutter and passes beneath the rail's
+     left edge — an opaque bar cuts its border off with a hard white edge (seen
+     in the first browser run of this task). This is exactly the case
+     `#topbar` already solves in reader.css, with exactly these two
+     declarations, so the app answers it the same way in both places. */
+  background: color-mix(in srgb, var(--page) 88%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.rail-tabs button {
+  flex: 1;
+  padding: 4px 6px;
+  border: 0;
+  border-bottom: 2px solid var(--grid);
+  background: none;
+  color: var(--ink-3);
+  font-family: var(--sans);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.rail-tabs button:hover {
+  color: var(--ink);
+}
+
+.rail-tabs button[aria-selected='true'] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.rail-tabs button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+#rail.rail-notes {
+  width: 260px;
+  flex: 0 0 260px;
+  position: static;
+  max-height: none;
+  overflow: visible;
+}
+
+/* The column itself has no height of its own — every card is absolutely
+   positioned — so MarginCards sets one imperatively after each measure pass.
+   Without it `#rail` (align-self:flex-start) would collapse and the sticky
+   tab bar above would have no box to stick inside. */
+.ann-cards {
+  position: relative;
+  font-family: var(--sans);
+}
+
+.ann-cards-empty {
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.ann-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  /* Only ever animates a RE-measure (a `<details>` opening, a window resize):
+     a freshly inserted element has no previous computed style to transition
+     from, so the first placement is instant. */
+  transition: top 0.15s ease;
+}
+
+/* The card wears its highlight's colour, so the eye can pair the two across
+   the gap. Solid palette tokens rather than the 28%-alpha `--ann-*` mixes the
+   highlights use: a 3px rule at 28% alpha reads as grey. */
+.ann-card-y {
+  border-left-color: var(--s4);
+}
+
+.ann-card-g {
+  border-left-color: var(--s3);
+}
+
+.ann-card-b {
+  border-left-color: var(--s1);
+}
+
+.ann-card-p {
+  border-left-color: var(--s5);
+}
+
+.ann-card[data-open='true'] {
+  /* Above its neighbours: an open card is taller than the space the layout
+     reserved for the closed one for exactly as long as it takes the measure
+     pass to run. */
+  z-index: 3;
+  border-color: var(--accent);
+}
+
+.ann-card-open {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  background: none;
+  font-family: var(--sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ann-card-quote {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--ink-3);
+}
+
+.ann-card-time {
+  display: block;
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.ann-card-badge {
+  display: block;
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.ann-card-note {
+  display: block;
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  /* A note is prose the reader typed, newlines included. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ann-card-note-empty {
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+.ann-card-input {
+  display: block;
+  width: calc(100% - 20px);
+  margin: 0 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.ann-card-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.ann-card-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.ann-card-actions button {
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  padding: 3px 9px;
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.ann-card-del:hover {
+  border-color: #e0453c;
+  color: #e0453c;
+}
+
+.ann-card-done:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* The hairline from the highlight to its card: it leaves the text at the
+   highlight's own Y (the top border) and turns down toward the card (the right
+   border) to wherever the card had to be pushed. Both segments are one element,
+   so there is nothing to keep in step. Dashed when the card is pointing at
+   something that is not drawn — a collapsed proof — because a solid line there
+   would claim a precision the position does not have.
+
+   `--ink-3`, not `--rule-strong`, and the reason is a number rather than a
+   preference. `--rule-strong` is an alpha (`rgba(11,11,11,.16)`), so over
+   `--page` it composites to `#d1d0ce`: 1,43:1 in light and 1,56:1 in dark,
+   both measured on the page. WCAG 2.1 SC 1.4.11 asks 3:1 of a graphic needed to
+   understand the content, and this line is the only thing saying which card
+   goes with which highlight. `--ink-3` is a solid colour and measures 3,32:1
+   light / 5,79:1 dark. MarginCards.test.tsx recomputes both ratios from the
+   tokens rather than trusting this comment.
+
+   `left`/`width` come from the measure pass, not from here: each tie gets its
+   own lane across the gutter, so a cluster reads as N brackets instead of one
+   long rule (see MarginCards.tsx's TIE_REACH). The values below are the lane-0
+   geometry and the fallback if the pass has not run yet. */
+.ann-tie {
+  position: absolute;
+  left: -18px;
+  width: 18px;
+  border-top: 1px solid var(--ink-3);
+  border-right: 1px solid var(--ink-3);
+  pointer-events: none;
+}
+
+.ann-tie[data-anchor-kind='details'],
+.ann-tie[data-anchor-kind='none'] {
+  border-style: dashed;
+}
+
+/* The reader is pointing at this card, or has tabbed into it. Lanes prove the
+   ties are separate; this says which of them is THIS card's, and the matching
+   `.peek` on the highlight (painter block above) says which of the highlights
+   scattered down the page it lands on. Together they answer the question the
+   idle tie cannot: not "there is a card below somewhere" but "that card and
+   this highlight are the same note". */
+.ann-tie[data-peek='true'] {
+  border-top-width: 2px;
+  border-right-width: 2px;
+  border-color: var(--accent);
+}
+
+/* Under 1241px `#rail` is `display:none` (reader.css), so there is no column
+   at all and a tap on a highlight opens this instead. z-index 80/79 puts it
+   above the mobile nav drawer and its overlay (70/60 in reader.css) rather
+   than beside them: both are modal, and the one the reader just opened is the
+   one that has to be on top. */
+.ann-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 79;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.ann-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 80;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 6px 0 max(10px, env(safe-area-inset-bottom));
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--rule-strong);
+  border-radius: 14px 14px 0 0;
+  background: var(--surface-1);
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18);
+  font-family: var(--sans);
+  animation: ann-sheet-up 0.2s ease;
+}
+
+@keyframes ann-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ann-sheet {
+    animation: none;
+  }
+
+  .ann-card {
+    transition: none;
+  }
+}
+
+.ann-sheet-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font-size: 20px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------------
+   The orphan panel (P2 Task 7): the notes this build of the chapter could not
+   place. It sits UNDER the card column inside the same rail panel, which is
+   why the margin above is generous — the column has no height of its own and
+   MarginCards sets one imperatively, so this section is the first thing in the
+   panel with an ordinary flow box, and the gap is what keeps it from reading
+   as the last card. */
+.ann-orphans {
+  margin-top: 26px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--sans);
+}
+
+/* …unless there is no column above it to be separated FROM. A chapter whose
+   every note is orphaned renders an empty `.ann-cards` (or, on the TOC tab and
+   below 1241px, none at all), and the rule above then draws a divider with
+   nothing on one side of it — a stray line across the rail. Seen on the real
+   page; no test in the suite reads a border. */
+.ann-cards:empty + .ann-orphans,
+.ann-orphans:first-child {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.ann-orphans-h {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.ann-orphans-lede {
+  margin: 5px 0 8px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+
+.ann-orphan-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Same border language as `.ann-card`, and the same colour rule (a solid
+   palette token, not the 28%-alpha highlight mix — a 3px rule at 28% reads as
+   grey), because a rescued note becomes one of those cards. What is different
+   is `position: static`: an orphan has no coordinate on the page to align to,
+   which is the whole reason it is in a list instead of the column. */
+.ann-orphan {
+  position: relative;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--surface-1);
+}
+
+.ann-orphan[data-waiting='true'] {
+  border-color: var(--accent);
+}
+
+.ann-orphan-quote {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--ink-3);
+  /* The words are gone from the page — say so with the type, not with a
+     second badge competing with the note itself. */
+  font-style: italic;
+}
+
+.ann-orphan-note {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ann-orphan-note-empty {
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+.ann-orphan-wait {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--accent);
+}
+
+.ann-orphan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ann-orphan-act {
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  padding: 3px 9px;
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.ann-orphan-act:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ann-orphan-act:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.ann-orphan-source {
+  margin-top: 8px;
+}
+
+/* A real, focusable, selectable field rather than a `<code>` block: "copyable"
+   has to mean something a reader can do with no permission prompt and no
+   Clipboard API, and selecting a textarea then pressing Ctrl/Cmd+C is that
+   thing everywhere. The "Sao chép" button is a shortcut layered on top. */
+.ann-orphan-exact {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--ink-2);
+  /* `--sans`, not `--mono`: this is a sentence out of a maths textbook that
+     the reader is about to search the page for, not a code fragment. */
+  font-family: var(--sans);
+  font-size: 11.5px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+/* The reattach bar. Fixed to the viewport rather than positioned in document
+   coordinates like `.ann-tb`, and the difference is deliberate: the toolbar
+   points AT a selection that already exists, while this bar is up before there
+   is one and has to stay reachable while the reader scrolls the chapter
+   looking for the right paragraph. Anchoring it to a selection would need a
+   re-measure on every scroll, and would leave the reader's only way out of the
+   mode somewhere off screen.
+
+   Bottom centre, so it never covers the line being selected. z-index 78: above
+   the sticky topbar (40), `.ann-tb` (50) and the mobile nav (60/70), below the
+   note sheet (79/80), which is modal. */
+.ann-reattach {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 78;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: min(560px, calc(100vw - 24px));
+  padding: 8px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.ann-reattach-what b {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ann-reattach-hint {
+  color: var(--ink-3);
+}
+
+.ann-reattach-preview {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+
+.ann-reattach-error {
+  color: #e0453c;
+}
+
+/* The refusal that is NOT an error: the reader's drag landed on a formula, and
+   a quote made only of formula stand-ins would name every formula in the
+   chapter equally. It sits where "Gắn vào đây" would have been, so it reads as
+   the reason the button is missing rather than as a complaint. Wider than
+   `.ann-reattach-preview` because it is a sentence, and `flex-basis: 100%` so
+   it wraps onto its own line instead of squeezing the "Hủy" button off the
+   bar on a narrow window. */
+.ann-reattach-why {
+  flex: 1 1 100%;
+  max-width: 100%;
+  line-height: 1.45;
+}
+
+.ann-reattach-ok,
+.ann-reattach-cancel {
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  padding: 3px 10px;
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ann-reattach-ok {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.ann-reattach-ok:focus-visible,
+.ann-reattach-cancel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The narrow-screen signal (P2 Task 7, review fix I1). Everything about the
+   orphan panel lives inside `#rail`, which is `display:none` below 1241px —
+   measured on a real browser at 390/1024/1240, `body.innerText` contained the
+   word "Mồ côi" nowhere, so an orphaned note was the ONE class of note that is
+   indistinguishable from a deleted one on a phone.
+
+   Bottom of the viewport rather than the top: the topbar is sticky and already
+   crowded there, and this is not urgent enough to take the reading position's
+   place. z-index 55 puts it above the sticky topbar (40) and Task 5's toolbar
+   (50) but below the mobile nav (60/70) and the note sheet (79/80) — anything
+   the reader has deliberately opened covers it.
+
+   The component only renders it below the breakpoint; this rule is the belt to
+   that braces, and it is written the same way `#rail`'s own rule is so the two
+   cannot disagree at the boundary pixel. */
+.ann-orphan-away {
+  position: fixed;
+  /* `left: 10px; right: 10px` + `margin: 0 auto`, NOT the `left: 50%;
+     transform: translateX(-50%)` the reattach bar uses: a shrink-to-fit fixed
+     box anchored at `left: 50%` can only ever be half the viewport wide, which
+     measured 195px of usable width on a 390px phone and wrapped this sentence
+     onto three lines. Centred between two insets instead, so the strip is as
+     wide as the phone allows and as wide as it needs on a desktop. */
+  left: 10px;
+  right: 10px;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 55;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 520px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.ann-orphan-away b {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ann-orphan-away-hide {
+  flex: 0 0 auto;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  padding: 3px 10px;
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ann-orphan-away-hide:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (min-width: 1241px) {
+  .ann-orphan-away {
+    display: none;
+  }
+}
+
+/* Belt and braces: `#rail` is already hidden here, so this only matters if
+   something ever renders the column outside the rail. */
+@media (max-width: 1240px) {
+  .ann-cards {
+    display: none;
+  }
+}
+
+@media print {
+  .rail-tabs,
+  .ann-cards,
+  .ann-orphans,
+  .ann-orphan-away,
+  .ann-reattach,
+  .ann-sheet,
+  .ann-sheet-scrim {
+    display: none;
+  }
+}

@@ -1,5 +1,18 @@
+/// <reference types="node" />
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import * as ts from 'typescript';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { clearLocalData, db, mergeRow, setProgress, type ProgressRow } from './local';
+import {
+  clearLocalData,
+  db,
+  DEVICE_PREFERENCE_KEYS,
+  mergeRow,
+  type ProgressRow,
+  setProgress,
+  USER_CONTENT_KEYS,
+} from './local';
 
 async function clearAll() {
   await clearLocalData();
@@ -162,5 +175,275 @@ describe('clearLocalData', () => {
 
     const after = await Promise.all(db.tables.map((t) => t.count()));
     expect(after).toEqual(db.tables.map(() => 0));
+  });
+
+  it("empties every key holding the user's own words, and leaves this device's preferences alone", async () => {
+    for (const key of USER_CONTENT_KEYS) window.localStorage.setItem(key, 'chữ của người dùng');
+    for (const key of DEVICE_PREFERENCE_KEYS) window.localStorage.setItem(key, 'dark');
+    // Not ours: another app on the same origin, an extension, a key from a
+    // version of this app that no longer exists. Deleting what we did not
+    // write is not tidying, it is breaking someone else's software — which
+    // is exactly what the one-line `localStorage.clear()` would do.
+    window.localStorage.setItem('not-ours', 'nguyên vẹn');
+
+    await clearLocalData();
+
+    for (const key of USER_CONTENT_KEYS) expect(window.localStorage.getItem(key)).toBeNull();
+    for (const key of DEVICE_PREFERENCE_KEYS) expect(window.localStorage.getItem(key)).toBe('dark');
+    expect(window.localStorage.getItem('not-ours')).toBe('nguyên vẹn');
+  });
+});
+
+/* ====================================================================== *
+ * The tripwires: nothing may become a place user data hides
+ * ====================================================================== */
+
+const SRC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const REPO_ROOT = resolve(SRC_DIR, '../../..');
+const INDEX_HTML = resolve(SRC_DIR, '../index.html');
+
+/** Repo-relative, so a violation names the file the way a person would open it. */
+function label(file: string): string {
+  return relative(REPO_ROOT, file);
+}
+
+/**
+ * Classic-script JavaScript that runs on reader routes, in this origin, with
+ * the same access to every store below — loaded as `<script src>` instead of
+ * imported (it attaches globals; see `reader/useCourseKit.ts`). A store
+ * opened there would be exactly as invisible to `clearLocalData()` as one
+ * opened in `src/`, and exactly as easy to miss, since nothing under `src/`
+ * would mention it.
+ *
+ * This is a GLOB, not a file list, and that is the point. The first version
+ * of this scan named `packages/course-kit/runtime.js` alone. Every word of
+ * its reasoning applied verbatim to `courses/<id>/viz.js` — 3,159 lines,
+ * same origin, same `<script src>`, equally unmentioned in `src/` — which
+ * was simply not scanned. P2's overall review caught it. A rule that names
+ * one file instead of the class it belongs to holds only until the second
+ * member of the class appears, and here the count grows with every course
+ * the registry ever accepts.
+ *
+ * `vendor/` is excluded: KaTeX, third-party, not ours to police.
+ */
+function classicScripts(): string[] {
+  const roots = [resolve(SRC_DIR, '../../../packages/course-kit'), resolve(SRC_DIR, '../../../courses')];
+  const out: string[] = [];
+  const walk = (dir: string): void => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'vendor' || entry.name === 'node_modules') continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('.js')) out.push(full);
+    }
+  };
+  roots.forEach(walk);
+  return out;
+}
+
+/**
+ * Files this scan does NOT read, and why each one is safe to skip.
+ *
+ * `*.test.ts(x)` — a test's job includes seeding and observing the very
+ * stores production code must not multiply; `MarginCards.test.tsx` reads
+ * the draft slot on purpose, and `theme.test.tsx` writes the theme key.
+ *
+ * `test/setup.ts` — installs the in-memory `Storage` that stands in for
+ * the one Bun's runtime breaks under vitest. It is the harness, not the
+ * app; it ships in no bundle.
+ */
+function isProductionSource(relativePath: string): boolean {
+  if (/\.test\.tsx?$/.test(relativePath)) return false;
+  return relativePath !== join('test', 'setup.ts');
+}
+
+function productionSourceFiles(): string[] {
+  const out: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.tsx?$/.test(entry.name) && isProductionSource(relative(SRC_DIR, full))) out.push(full);
+    }
+  };
+  walk(SRC_DIR);
+  out.push(...classicScripts());
+  return out.sort();
+}
+
+/** Every place in the app that can outlive a signed-in session, and who is allowed to touch it. */
+const PERSISTENCE: readonly { readonly name: string; readonly allowedIn: readonly string[]; readonly why: string }[] = [
+  {
+    name: 'localStorage',
+    allowedIn: [join('apps', 'web', 'src', 'db', 'local.ts')],
+    why: 'go through readLocalStorage/writeLocalStorage, whose key type forces the key to be classified as content or preference first',
+  },
+  {
+    name: 'sessionStorage',
+    allowedIn: [],
+    why: 'a third store nothing empties; if a draft needs to survive a reload, the classified localStorage slot already does that',
+  },
+  {
+    name: 'indexedDB',
+    allowedIn: [],
+    why: 'a second database is invisible to clearLocalData(), which enumerates db.tables of the ONE Dexie instance',
+  },
+  {
+    name: 'Dexie',
+    allowedIn: [join('apps', 'web', 'src', 'db', 'local.ts')],
+    why: 'one database instance for the whole app — see the `db` export',
+  },
+  {
+    name: 'caches',
+    allowedIn: [],
+    why: 'the Cache API keeps whole HTTP responses on disk, per origin, past the end of a session',
+  },
+];
+
+/** `document.cookie` is checked as a property access rather than by name, so that an unrelated `.cookie` field cannot be mistaken for it. */
+function usesDocumentCookie(node: ts.Node): boolean {
+  return (
+    ts.isPropertyAccessExpression(node) &&
+    node.name.text === 'cookie' &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === 'document'
+  );
+}
+
+/** Names of the persistence APIs actually referenced by CODE in `source` — comments and string literals are not code, which is the entire reason this reads an AST instead of grepping. */
+function persistenceUsedIn(fileName: string, source: string): Set<string> {
+  const watched = new Set(PERSISTENCE.map((p) => p.name));
+  const found = new Set<string>();
+  const parsed = ts.createSourceFile(
+    fileName,
+    source,
+    ts.ScriptTarget.Latest,
+    false,
+    fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const walk = (node: ts.Node): void => {
+    if (ts.isIdentifier(node) && watched.has(node.text)) found.add(node.text);
+    if (usesDocumentCookie(node)) found.add('document.cookie');
+    ts.forEachChild(node, walk);
+  };
+  walk(parsed);
+  return found;
+}
+
+/**
+ * The `db.tables` assertion above is a tripwire for a FIFTH TABLE: add one
+ * and the count changes, so somebody has to come here and think. It works
+ * because Dexie enumerates its own tables, and `clearLocalData()` can
+ * therefore be right about a table nobody has written yet.
+ *
+ * `localStorage` has no such enumeration to lean on. Nothing hands you the
+ * list of keys the app *can* write, only the ones it happens to have
+ * written on this device — so a key that exists but was never classified
+ * would be invisible exactly when it matters, on a machine that has not
+ * hit the code path yet. That is how the note draft slipped past: Task 6
+ * did not inline a copy of the clearing logic (the failure
+ * `docs/carried-forward.md` warns about), it did the equivalent one level
+ * up — it opened a store of user content that the truth point had never
+ * heard of.
+ *
+ * So the enumeration is built by hand and defended two ways:
+ *
+ *   1. **The compiler.** `LocalStorageKey` is the union of the two lists,
+ *      and `readLocalStorage`/`writeLocalStorage` take nothing else. A new
+ *      key does not typecheck until it has been classified as content or
+ *      preference — and classifying it as content is what wires it into
+ *      `clearLocalData()`. `bunx tsc -b` is a gate, so this is a wall, not
+ *      a note in a doc.
+ *   2. **This scan**, which closes the door the compiler cannot: writing
+ *      `window.localStorage.setItem(...)` directly, or reaching for
+ *      `sessionStorage`, a second IndexedDB database, the Cache API or
+ *      `document.cookie` — any of which would be a place user data lives
+ *      that `clearLocalData()` has never heard of.
+ *
+ * Considered and rejected: an oxlint `no-restricted-globals` rule. It
+ * matches bare globals, and every call here is written `window.localStorage`
+ * — the rule would sit in the config looking like protection while catching
+ * nothing, which is worse than no rule at all.
+ */
+describe('no third place for user data to hide', () => {
+  it('reads its own instrument correctly: code counts, comments and strings do not', () => {
+    const decoyed = [
+      '// window.localStorage.setItem("x", "y") — a mention, not a use',
+      '/** sessionStorage, indexedDB, caches, document.cookie in prose */',
+      'const notARealUse = "localStorage";',
+      'export const fine = 1;',
+    ].join('\n');
+    expect([...persistenceUsedIn('decoy.ts', decoyed)]).toEqual([]);
+
+    const real = 'export const v = window.localStorage.getItem("k") ?? document.cookie;';
+    expect([...persistenceUsedIn('real.ts', real)].sort()).toEqual(['document.cookie', 'localStorage']);
+  });
+
+  it('is looking at the whole app, not at nothing', () => {
+    const seen = productionSourceFiles().map(label);
+    // A broken glob is the classic way a scan like this goes quietly
+    // blind: it keeps passing, because it stops reading anything.
+    expect(seen.length).toBeGreaterThan(20);
+    expect(seen).toContain(join('apps', 'web', 'src', 'db', 'local.ts'));
+    expect(seen).toContain(join('apps', 'web', 'src', 'annotations', 'MarginCards.tsx'));
+    expect(seen).toContain(join('packages', 'course-kit', 'runtime.js'));
+    expect(seen).not.toContain(join('apps', 'web', 'src', 'db', 'local.test.ts'));
+  });
+
+  it('keeps every store that outlives a session inside clearLocalData()’s reach', () => {
+    const violations: string[] = [];
+    for (const file of productionSourceFiles()) {
+      const where = label(file);
+      const used = persistenceUsedIn(file, readFileSync(file, 'utf-8'));
+      for (const api of PERSISTENCE) {
+        if (used.has(api.name) && !api.allowedIn.includes(where)) {
+          violations.push(`${where} uses ${api.name} — ${api.why}`);
+        }
+      }
+      if (used.has('document.cookie')) {
+        violations.push(`${where} uses document.cookie — the session cookie is the server's; nothing here should read or write one`);
+      }
+    }
+    // If this fails: the new store is not the problem, the fact that
+    // `clearLocalData()` does not know about it is. Either route the write
+    // through `db/local.ts` (classifying the key), or — if a genuinely
+    // different mechanism is needed — teach `clearLocalData()` to empty it
+    // and add the file to `allowedIn` above, in the same commit.
+    expect(violations).toEqual([]);
+  });
+});
+
+describe('the localStorage key registry', () => {
+  /**
+   * Written out in full rather than derived, for the same reason the
+   * `db.tables` assertion above hard-codes 4: a list that recomputes
+   * itself from the thing it is checking cannot object to anything. Adding
+   * a key has to be a decision made HERE, out loud, on one side of the
+   * line or the other.
+   */
+  it('classifies every key, with nothing on both lists', () => {
+    expect([...USER_CONTENT_KEYS]).toEqual(['itbook-note-draft']);
+    expect([...DEVICE_PREFERENCE_KEYS]).toEqual(['itbook-theme']);
+
+    const all = [...USER_CONTENT_KEYS, ...DEVICE_PREFERENCE_KEYS];
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it("index.html's inline bootstrap reads a key this registry calls a preference", () => {
+    // The one reader of localStorage that CANNOT import the registry: a
+    // synchronous inline script in <head>, which is what stops a flash of
+    // the wrong palette before React loads (see
+    // test/indexHtmlThemeBootstrap.test.ts). Reclassify `itbook-theme` as
+    // user content and this fails — which is the point, because
+    // `clearLocalData()` would then be deleting the key that script is
+    // about to read.
+    const html = readFileSync(INDEX_HTML, 'utf-8');
+    const keys = [...html.matchAll(/localStorage\.getItem\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => m[1]);
+
+    expect(keys.length).toBeGreaterThan(0);
+    for (const key of keys) {
+      expect(DEVICE_PREFERENCE_KEYS as readonly string[]).toContain(key);
+    }
   });
 });
