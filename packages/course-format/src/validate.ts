@@ -714,9 +714,12 @@ export function parseManifest(raw: string): { manifest: Manifest } | { error: Fi
  *
  * **Every** problem is reported, never just the first: a contributor fixing a
  * package should see the whole list in one pass instead of discovering it one
- * rebuild at a time. The single exception is an empty package, which returns
- * `EMPTY_PACKAGE` alone — every other rule would only be restating that one
- * fact.
+ * rebuild at a time. Two exceptions, both about work that cannot pay for
+ * itself: an empty package returns `EMPTY_PACKAGE` alone, because every other
+ * rule would only restate that one fact; and a package over the byte budget
+ * skips the per-entry content scan, because that scan is the only rule here
+ * whose cost is proportional to the very quantity being refused — see the
+ * comment on the loop itself for the measurements.
  *
  * Tier-specific rules run only when the manifest parsed and named a tier. A
  * package with no readable manifest already fails; guessing a tier for it would
@@ -731,7 +734,8 @@ export function validatePackage(files: ReadonlyMap<string, Uint8Array>): Validat
 
   let totalBytes = 0;
   for (const bytes of files.values()) totalBytes += bytes.byteLength;
-  if (totalBytes > MAX_UNCOMPRESSED_BYTES) {
+  const overBudget = totalBytes > MAX_UNCOMPRESSED_BYTES;
+  if (overBudget) {
     findings.push(
       finding(
         'TOO_LARGE',
@@ -823,17 +827,45 @@ export function validatePackage(files: ReadonlyMap<string, Uint8Array>): Validat
     // MANIFEST_PARSE, MANIFEST_FIELD, SEMVER, RUNTIME_RANGE,
     // DUPLICATE_CHAPTER_ID, CHAPTER_FILE_MISSING and PATH_ESCAPE all still read
     // this file. Only the five HTML rules stop looking at it.
-    for (const [path, bytes] of files) {
-      if (path === MANIFEST_PATH) continue;
-      // The one shortcut taken, and it is a proof rather than a heuristic: a
-      // start tag cannot exist without a U+003C, 0x3C is that character and
-      // nothing else in UTF-8 (continuation bytes are all >= 0x80), a
-      // character reference decodes to a character token and never re-enters
-      // the tag-open state, and an invalid byte decodes to U+FFFD. No `<` byte
-      // therefore means no start tag, and every content rule reads start tags.
-      // It is what keeps a 20 MB image out of the tokenizer.
-      if (!bytes.includes(0x3c)) continue;
-      findings.push(...scanHtmlText(path, decoder.decode(bytes)));
+    // Skipped once the package is over the byte budget, and this is the one
+    // place `validatePackage` stops short of reporting everything.
+    //
+    // The line it draws is not "the first finding wins" but "no more work
+    // proportional to the quantity that has already been refused". Every other
+    // rule in this function costs O(entries) or O(manifest); this loop alone
+    // costs O(bytes) — it decodes and tokenizes each entry — and bytes is
+    // exactly what TOO_LARGE says there are too many of. Measured on packages
+    // of binary assets: 25 MB took 1,494 ms, 64 MB 3,532 ms, 256 MB 13,195 ms,
+    // and the Task 3 reviewer measured 2 GB at over ten minutes. All of it
+    // spent on a package that is already refused.
+    //
+    // What a contributor loses: the five content rules and TAG_ATTR_FLOOD, for
+    // a package they must shrink before it can ship at all — and after they
+    // shrink it, the content is different content, which the next run reads.
+    // What they keep: everything cheap, in the same one pass — PATH_ESCAPE,
+    // MANIFEST_*, SEMVER, RUNTIME_RANGE, DUPLICATE_CHAPTER_ID,
+    // CHAPTER_FILE_MISSING, JS_FILE_IN_PACKAGE. The tier's promise is kept the
+    // way TAG_ATTR_FLOOD keeps it a few lines up: by refusing the file, not by
+    // understanding it.
+    //
+    // Note what this does NOT fix, so nobody reads a bigger claim into it: a
+    // package UNDER the budget still pays full price — a valid 19 MB package of
+    // images measured 1,045 ms here (7 s on the reviewer's machine), because
+    // binary bytes contain `<` and go through the tokenizer. That is the "no
+    // binary skip" decision above, and it is a separate question from this one.
+    if (!overBudget) {
+      for (const [path, bytes] of files) {
+        if (path === MANIFEST_PATH) continue;
+        // The one shortcut taken, and it is a proof rather than a heuristic: a
+        // start tag cannot exist without a U+003C, 0x3C is that character and
+        // nothing else in UTF-8 (continuation bytes are all >= 0x80), a
+        // character reference decodes to a character token and never re-enters
+        // the tag-open state, and an invalid byte decodes to U+FFFD. No `<`
+        // byte therefore means no start tag, and every content rule reads start
+        // tags. It is what keeps a 20 MB image out of the tokenizer.
+        if (!bytes.includes(0x3c)) continue;
+        findings.push(...scanHtmlText(path, decoder.decode(bytes)));
+      }
     }
   }
 

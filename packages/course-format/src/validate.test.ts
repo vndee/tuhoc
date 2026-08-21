@@ -114,6 +114,67 @@ describe('luật chung', () => {
     expect(r.findings.map((f) => f.code)).not.toContain('TOO_LARGE');
   });
 
+  it('TOO_LARGE DỪNG phần quét nội dung — thứ đắt tiền tỉ lệ với chính cái vừa bị từ chối', () => {
+    // Đo, không đoán (bản trước phép sửa này, gói toàn ảnh nhị phân):
+    //
+    //   gói    | trước  | sau
+    //   -------|--------|------
+    //    25 MB | 1.494  | 0 ms
+    //    64 MB | 3.532  | 0 ms
+    //   256 MB | 13.195 | 1 ms
+    //
+    // Tuyến tính theo số byte, tức là không có trần: reviewer của Task 3 đo gói
+    // 2 GB quá 10 phút. Chi phí đó tỉ lệ với ĐÚNG cái đại lượng gói này vừa bị
+    // từ chối vì nó quá lớn.
+    //
+    // "Trả về TẤT CẢ finding" vẫn giữ, và giữ ở chỗ nó đáng giá: mọi luật có
+    // chi phí theo SỐ MỤC hoặc theo manifest — PATH_ESCAPE, MANIFEST_*, SEMVER,
+    // DUPLICATE_CHAPTER_ID, CHAPTER_FILE_MISSING, JS_FILE_IN_PACKAGE — vẫn chạy
+    // đủ. Chỉ vòng đọc TỪNG BYTE của từng mục là dừng. Người đóng góp phải cắt
+    // gói xuống trước đã, và sau khi cắt thì nội dung còn lại là nội dung khác;
+    // năm luật HTML sẽ chấm nó ở lần chạy sau. Cùng lập luận mà module này đã
+    // dùng cho TAG_ATTR_FLOOD: lời hứa của hạng được giữ bằng cách TỪ CHỐI tệp,
+    // không phải bằng cách hiểu nó.
+    //
+    // Ghim bằng ĐẠI LƯỢNG ĐẾM ĐƯỢC, không bằng đồng hồ: `<script>` nằm trong
+    // chính mục 20 MiB, nên SCRIPT_TAG chỉ xuất hiện được nếu 20 MiB đó đã thực
+    // sự được giải mã và tokenize.
+    const big = new Uint8Array(MAX_UNCOMPRESSED_BYTES + 1);
+    big.set(enc('<script>alert(1)</script>'), 0);
+    const codes = codesOf(new Map([
+      ['manifest.json', MANIFEST()],
+      ['chapters/c1.html', enc('<p>a</p>')],
+      ['assets/big.bin', big],
+    ]));
+    expect(codes).toContain('TOO_LARGE');
+    expect(codes, 'gói vượt trần thì KHÔNG được tokenize một byte nội dung nào').not.toContain('SCRIPT_TAG');
+
+    // …và ĐỐI CHỨNG, cùng những byte đó nhưng dưới trần: luật nội dung vẫn chạy
+    // đầy đủ. Không có dòng này thì "không báo SCRIPT_TAG" có thể là vì luật
+    // SCRIPT_TAG hỏng, chứ không phải vì phép dừng sớm chạy đúng.
+    const small = new Uint8Array(1024);
+    small.set(enc('<script>alert(1)</script>'), 0);
+    const under = codesOf(new Map([
+      ['manifest.json', MANIFEST()],
+      ['chapters/c1.html', enc('<p>a</p>')],
+      ['assets/big.bin', small],
+    ]));
+    expect(under).not.toContain('TOO_LARGE');
+    expect(under).toContain('SCRIPT_TAG');
+
+    // …và nửa còn lại của lời hứa: dừng sớm KHÔNG phải "finding đầu tiên
+    // thắng". Trên CÙNG một gói vượt trần, mọi luật rẻ vẫn phải nói hết.
+    const alsoBroken = codesOf(new Map([
+      ['manifest.json', MANIFEST({ version: '1.0' })],
+      ['chapters/c1.html', enc('<p>a</p>')],
+      ['../thoat.txt', enc('x')],
+      ['assets/big.bin', big],
+    ]));
+    expect(alsoBroken).toContain('TOO_LARGE');
+    expect(alsoBroken, 'luật theo SỐ MỤC vẫn phải chạy').toContain('PATH_ESCAPE');
+    expect(alsoBroken, 'luật theo MANIFEST vẫn phải chạy').toContain('SEMVER');
+  });
+
   it('MAX_UNCOMPRESSED_BYTES là ĐÚNG 20 MiB — con số, không phải quan hệ', () => {
     // Both threshold tests above compute their fixtures FROM this constant, so
     // they measure the boundary rule and not the budget: raising the constant
