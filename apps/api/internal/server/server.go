@@ -18,6 +18,7 @@ import (
 	"github.com/vndee/tuhoc-api/internal/apilog"
 	"github.com/vndee/tuhoc-api/internal/auth"
 	"github.com/vndee/tuhoc-api/internal/config"
+	"github.com/vndee/tuhoc-api/internal/course"
 	"github.com/vndee/tuhoc-api/internal/stats"
 	// appsync is internal/sync under an explicit alias, not its default
 	// package name ("sync"): that name collides with the standard
@@ -136,6 +137,18 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	statsHandler := stats.NewHandler(stats.NewRepo(deps.Pool))
 	app.Post("/events/batch", auth.Require(deps.Pool), statsHandler.EventsBatch)
 	app.Get("/stats", auth.Require(deps.Pool), statsHandler.Stats)
+
+	// Course-package storage. The repository is built here so its wiring
+	// is compiled and exercised alongside the rest of the app, but NO
+	// routes are registered for it yet: the endpoints that read and write
+	// packages (GET/POST /courses and the asset routes) are the next
+	// task's, and mounting a half-built surface early would expose
+	// handlers nobody has tested. When those routes land they belong
+	// behind auth.Require(deps.Pool) like every other route above — every
+	// course.Repo method is keyed on an owner id, and that id must come
+	// from the authenticated session, never from the request.
+	courseRepo := course.NewRepo(deps.Pool)
+	_ = courseRepo
 
 	return app
 }
