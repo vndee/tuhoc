@@ -20,13 +20,16 @@
  * Corollary that is easy to miss: `README.md` is IN the package, and the
  * content-tier rules read every entry, not just `.html`. So the template README
  * contains no `<` at all — a code sample showing a script tag would make the
- * scaffold fail its own gate.
+ * scaffold fail its own gate. That applies to every substitution too, which is
+ * why `{{title}}` is filtered and `{{cmd}}` has a fallback: both are built from
+ * strings a contributor chose.
  */
 
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { DOCUMENTED_INVOCATION, shellQuote } from './invocation.ts';
 import type { Io } from './io.ts';
 import { readPackageDir } from './readdir.ts';
 
@@ -68,18 +71,35 @@ function displayTitle(raw: string): string {
   return clean.length > 0 ? clean : 'Course mới';
 }
 
-function parseArgs(argv: string[]): { dir: string } | { error: string } {
+function parseArgs(argv: string[], self: string): { dir: string } | { error: string } {
   const positional = argv.filter((a) => !a.startsWith('-'));
   const flag = argv.find((a) => a.startsWith('-'));
   if (flag !== undefined) return { error: `tuỳ chọn không nhận ra: "${flag}"` };
   const dir = positional[0];
-  if (dir === undefined) return { error: 'thiếu thư mục đích. Cách dùng: tuhoc init <thư-mục>' };
+  if (dir === undefined) return { error: `thiếu thư mục đích. Cách dùng: ${self} init <thư-mục>` };
   if (positional.length > 1) return { error: 'chỉ init được một thư mục mỗi lần' };
   return { dir };
 }
 
-export async function init(argv: string[], io: Io): Promise<number> {
-  const parsed = parseArgs(argv);
+/**
+ * The `pack` command line this scaffold's author should run next — the same
+ * string in the terminal and in the generated README, because those are the two
+ * places they will look and they must not disagree.
+ *
+ * The fallback exists for one reason: this string is written INTO `README.md`,
+ * which is inside the package the content-tier rules then read. A directory
+ * called `<img onerror=…>` would otherwise put a start tag in the README and
+ * make the scaffold fail its own gate — the one thing `init` may never do. `<`
+ * is the only character that can start a tag, so it is the only one checked.
+ */
+function packCommand(self: string, dir: string): { shown: string; safeForPackage: string } {
+  const shown = `${self} pack ${shellQuote(dir)}`;
+  const safeForPackage = shown.includes('<') ? `${DOCUMENTED_INVOCATION} pack duong-dan-course` : shown;
+  return { shown, safeForPackage };
+}
+
+export async function init(argv: string[], io: Io, self: string): Promise<number> {
+  const parsed = parseArgs(argv, self);
   if ('error' in parsed) {
     io.err(`tuhoc init: ${parsed.error}`);
     return 1;
@@ -98,9 +118,18 @@ export async function init(argv: string[], io: Io): Promise<number> {
     return 1;
   }
 
+  const cmd = packCommand(self, parsed.dir);
+
   const rendered = new Map<string, string>();
   for (const [rel, bytes] of template.files) {
-    rendered.set(rel, decoder.decode(bytes).replaceAll('{{id}}', id).replaceAll('{{title}}', title));
+    rendered.set(
+      rel,
+      decoder
+        .decode(bytes)
+        .replaceAll('{{id}}', id)
+        .replaceAll('{{title}}', title)
+        .replaceAll('{{cmd}}', cmd.safeForPackage),
+    );
   }
 
   // Check everything before writing anything: a half-scaffolded directory with
@@ -140,7 +169,7 @@ export async function init(argv: string[], io: Io): Promise<number> {
   io.out('Tiếp theo:');
   io.out('  1. Sửa manifest.json — title, description, license, authors, generatedBy.');
   io.out('  2. Viết chương trong chapters/, và khai báo từng chương trong "parts".');
-  io.out(`  3. Chạy \`tuhoc pack ${parsed.dir}\` để kiểm và đóng gói.`);
+  io.out(`  3. Chạy \`${cmd.shown}\` để kiểm và đóng gói.`);
   io.out('Định dạng đầy đủ: docs/course-format.md');
   return 0;
 }

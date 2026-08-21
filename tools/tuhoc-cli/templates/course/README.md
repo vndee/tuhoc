@@ -12,8 +12,10 @@ Một course cho nền tảng tuhoc. Mã course: `{{id}}`.
 
 ## Quy trình
 
+Chạy từ thư mục gốc của repo — đúng dòng lệnh mà `init` vừa in ra:
+
 ```
-tuhoc pack .
+{{cmd}}
 ```
 
 Lệnh này kiểm gói theo bộ luật dùng chung rồi ghi ra một tệp `.zip`. Nếu có gì
@@ -21,8 +23,12 @@ sai, nó in ra **mọi** vấn đề cùng lúc — mỗi vấn đề gồm mã 
 đúng trường bị sai, và một dòng nói phải làm gì — rồi thoát với mã 1. Sửa hết
 rồi chạy lại.
 
-Chạy được `tuhoc pack` không có nghĩa là course hay. Nó chỉ có nghĩa là course
-hợp lệ.
+Ghi zip ra **ngoài** thư mục này (mặc định lệnh trên đã làm vậy: zip nằm ở thư
+mục bạn đang đứng, không nằm trong gói). Một tệp `.zip` để quên bên trong thư
+mục course sẽ bị đóng vào gói lần sau — lệnh pack có nói ra khi chuyện đó xảy
+ra, nhưng dọn trước thì hơn.
+
+Pack chạy được không có nghĩa là course hay. Nó chỉ có nghĩa là course hợp lệ.
 
 ## Hai hạng
 

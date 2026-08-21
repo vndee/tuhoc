@@ -368,6 +368,13 @@ export function unpackZip(zip: Uint8Array): Map<string, Uint8Array> {
   const fail = (code: UnsafeArchiveCode, entry: string, detail: string): void => {
     // First refusal wins. Later callbacks in the same push must not overwrite
     // the reason with a downstream symptom of it.
+    //
+    // Second fence, like `Object.create(null)` in `packZip`, and no test can
+    // reach it: every call site below returns immediately after calling this,
+    // and both callbacks begin with `if (failure) return`. Measured rather than
+    // argued — with a probe that THROWS on a second call, all 149 tests still
+    // pass. So deleting `if (!failure)` changes no behaviour today; it changes
+    // what happens the day someone deletes one of those guards.
     if (!failure) failure = new UnsafeArchiveError(code, entry, detail, total);
   };
 

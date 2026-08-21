@@ -19,17 +19,13 @@
  * this whole subsystem exists to avoid.
  */
 
-export {
-  FINDING_CODES,
-  MANIFEST_PATH,
-  MAX_UNCOMPRESSED_BYTES,
-  packZip,
-  validatePackage,
-} from '../../../packages/course-format/src/index.ts';
+/**
+ * Only what the CLI actually calls. `MANIFEST_PATH`, `MAX_UNCOMPRESSED_BYTES`,
+ * `Manifest` and `ValidationResult` were re-exported here and used nowhere —
+ * and `MAX_UNCOMPRESSED_BYTES` in particular is the constant a size check in
+ * this CLI would need, sitting ready for someone to write the second copy of a
+ * rule with. Re-export it on the day something here calls it.
+ */
+export { FINDING_CODES, packZip, validatePackage } from '../../../packages/course-format/src/index.ts';
 
-export type {
-  Finding,
-  FindingCode,
-  Manifest,
-  ValidationResult,
-} from '../../../packages/course-format/src/index.ts';
+export type { Finding, FindingCode } from '../../../packages/course-format/src/index.ts';

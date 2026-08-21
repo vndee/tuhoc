@@ -24,10 +24,14 @@ import type { Finding, FindingCode } from './course-format.ts';
  * set's own English `detail` is printed verbatim right above it and is never
  * paraphrased away — it carries the specifics (which field, which byte count,
  * which duplicate id) that no fixed sentence can.
+ *
+ * `{{cmd}}` stands for however this program was actually started, filled in by
+ * {@link renderFindings}. A hint that tells a contributor to run something has
+ * to name a command that exists — see `invocation.ts`.
  */
 export const FIX_HINTS: Record<FindingCode, string> = {
   EMPTY_PACKAGE:
-    'Thư mục không có tệp nào để đóng gói. Chạy `tuhoc init <thư-mục>` để dựng khung, hoặc kiểm tra lại đường dẫn.',
+    'Thư mục không có tệp nào để đóng gói. Chạy `{{cmd}} init <thư-mục>` để dựng khung, hoặc kiểm tra lại đường dẫn.',
   TOO_LARGE:
     'Gói vượt trần 20 MB (tính theo kích thước ĐÃ giải nén). Nén ảnh, bỏ tệp không dùng, hoặc tách thành nhiều course.',
   PATH_ESCAPE:
@@ -97,7 +101,7 @@ function locationLabel(path: string): string {
  * command exists to avoid. `vị trí` and `vấn đề` are still printed in full for
  * every finding, because those are what differ.
  */
-export function renderFindings(dir: string, findings: readonly Finding[]): string[] {
+export function renderFindings(dir: string, findings: readonly Finding[], self: string): string[] {
   const lines: string[] = [];
   const n = findings.length;
   lines.push('');
@@ -124,8 +128,9 @@ export function renderFindings(dir: string, findings: readonly Finding[]): strin
     // A code with no hint should be impossible (the type and the test both say
     // so). If one ever gets here anyway, say so out loud rather than printing a
     // bare code and letting the contributor guess.
-    const hint =
-      FIX_HINTS[f.code as FindingCode] ?? `(chưa có gợi ý cho mã "${f.code}" — báo lỗi này cho maintainer)`;
+    const hint = (
+      FIX_HINTS[f.code as FindingCode] ?? `(chưa có gợi ý cho mã "${f.code}" — báo lỗi này cho maintainer)`
+    ).replaceAll('{{cmd}}', self);
     // Multi-line hints are indented to line up under the first line, so a long
     // one reads as one block rather than as new findings.
     const [head, ...tail] = hint.split('\n');

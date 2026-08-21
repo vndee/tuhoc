@@ -1,8 +1,22 @@
 import { Zip, ZipDeflate, ZipPassThrough } from 'fflate';
 import { readFileSync, readdirSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MAX_UNCOMPRESSED_BYTES } from './validate';
 import { UnsafeArchiveError, packZip, unpackZip } from './zip';
+
+// Ngân sách thời gian cho CẢ TỆP, không rắc `{ timeout }` lên từng ca.
+//
+// Mọi ca ở đây dựng fixture cỡ MiB — bom nén theo dòng, hai payload 20 MiB đóng
+// ở level 9 — và đó là chi phí DỰNG, không phải một khẳng định nào. Máy rảnh:
+// 0,1–1,5 s mỗi ca. Đo dưới tải (32 spinner; cache lạnh, load avg tới 123) thì
+// cùng những ca đó phồng 10–13 lần, và ca "kho KHÔNG có mục lục" — 1,0 s khi
+// rảnh — ĐỎ 25/26 lần vì chạm mặc định 5.000 ms của vitest, trong khi rảnh thì
+// 0/30, mã không đổi. Đó là cổng đỏ giả, không phải hồi quy.
+//
+// Đặt một chỗ cho cả tệp là có chủ ý: cách kia — thêm `{ timeout }` vào ca vừa
+// đỏ — chính là cách quả bom 128 MiB ở dòng dưới có ngân sách còn ca anh em
+// dựng CÙNG quả bom thì không. Ca tiếp theo ai đó viết cũng sẽ quên.
+vi.setConfig({ testTimeout: 120_000 });
 
 const enc = (s: string) => new TextEncoder().encode(s);
 
@@ -41,7 +55,34 @@ describe('trần giải nén được áp TRONG lúc giải nén', () => {
     const six = 6 * 1024 * 1024;
     const files = new Map<string, Uint8Array>();
     for (let i = 0; i < 4; i++) files.set(`e${i}.bin`, new Uint8Array(six));
-    expect(() => unpackZip(packZip(files))).toThrow(/TOO_LARGE/);
+    const err = catchUnsafe(() => unpackZip(packZip(files)));
+    expect(err.code).toBe('TOO_LARGE');
+    // …và ném ở ĐÚNG chỗ phần cộng dồn nói nó phải ném. `e3.bin` khai 6 MiB
+    // trong khi ngân sách CÒN LẠI là 2 MiB, nên đường tắt "từ chối theo kích
+    // thước khai báo" phải trừ đi phần đã đọc: `claimed > MAX - total`. Bỏ
+    // `- total` đi thì gói này VẪN bị từ chối — phép đếm byte thật vẫn cứu —
+    // nhưng bởi một luật khác, ở một mục khác, sau khi đã bung thêm 6 MiB.
+    // Chấm `code` thôi thì không thấy khác biệt đó; chấm chỗ ném thì thấy.
+    expect(err.entry).toBe('e3.bin');
+    expect(err.message).toContain(`declares ${six} bytes`);
+  });
+
+  it('trần + 1 byte KHI KHÔNG AI KHAI KÍCH THƯỚC: chỉ còn phép cộng dồn đỡ', () => {
+    // Biên trên của phép cộng dồn, đo bằng kho KHÔNG khai kích thước.
+    //
+    // Ca "ĐỐI CHỨNG: đúng trần thì QUA, trần + 1 thì NÉM" ở dưới dùng `packZip`,
+    // mà `packZip` luôn ghi kích thước thật vào local header — nên CẢ HAI vế của
+    // nó được quyết bởi đường tắt `claimed`, không phải bởi `total`. Hệ quả đo
+    // được: nới trần thêm 4 KiB (`total > MAX + 4096`) thì không một test nào
+    // đỏ. `streamedBomb` dùng data descriptor nên `claimed === undefined`, và
+    // đường duy nhất còn lại là phép đếm byte thật.
+    const over = catchUnsafe(() => unpackZip(streamedBomb('x.bin', MAX_UNCOMPRESSED_BYTES + 1)));
+    expect(over.code).toBe('TOO_LARGE');
+    expect(over.message).toContain('decompressed size passed');
+    // …và ĐỐI CHỨNG ở đúng biên đó: một byte ít hơn thì đọc trọn vẹn. Không có
+    // dòng này thì `total >= MAX` cũng xanh.
+    expect(unpackZip(streamedBomb('x.bin', MAX_UNCOMPRESSED_BYTES)).get('x.bin')?.byteLength)
+      .toBe(MAX_UNCOMPRESSED_BYTES);
   });
 
   it('ĐỐI CHỨNG: đúng trần thì QUA, trần + 1 byte thì NÉM', () => {
@@ -90,6 +131,51 @@ describe('trần giải nén được áp TRONG lúc giải nén', () => {
       err.bytesRead,
       `đã giải nén ${(err.bytesRead / 1024 / 1024).toFixed(2)} MiB trước khi dừng`,
     ).toBeLessThan(2 * MAX_UNCOMPRESSED_BYTES);
+  });
+
+  it('ĐIỂM DỪNG không phụ thuộc kích thước kho: tỉ số thời gian của HAI quả bom khác cỡ', () => {
+    // Ca ngay trên chấm `err.bytesRead` — một con số do CHÍNH cài đặt ghi ra.
+    // Đo được, không phải lo xa: một biến thể hai dòng (chuyển phép kiểm trần ra
+    // SAU vòng push, rồi khai `bytesRead = MAX + 1` cho "trông hợp lý") QUA SẠCH
+    // toàn bộ bộ test, trong khi vẫn bung trọn quả bom:
+    //
+    //   bom     | bản đúng            | bản khai láo `bytesRead`
+    //   --------|---------------------|-------------------------
+    //    32 MiB | 194–200 ms          |  267–288 ms
+    //   256 MiB | 193–202 ms          | 2.156–2.247 ms
+    //   RSS     | 165–196 MB          | 769–1.047 MB
+    //   (ở 64/512 MiB thì cùng câu chuyện, đắt gấp đôi: 0,97–0,99 so với
+    //    7,84–8,08, RSS bản rơm 2.122 MB — chọn 32/256 cho cổng chạy nhanh)
+    //
+    // Doc của `bytesRead` nói nó "là bằng chứng rằng trần được áp TRONG lúc giải
+    // nén"; nó chỉ là bằng chứng nếu không ai sửa được nó, mà sửa nó là hai
+    // dòng. Cùng họ với bài học của Task 1: một luật khoá theo thứ kẻ tấn công
+    // viết được thì kẻ tấn công viết lại nó — ở đây "kẻ tấn công" là người
+    // refactor sau này.
+    //
+    // Nên dòng bắt mutant là một đại lượng cài đặt KHÔNG tự khai được: thời gian
+    // dừng của hai quả bom khác cỡ, đo liền nhau trong cùng tiến trình. Bản đúng
+    // dừng ở CÙNG một chỗ (24.924.788 byte) bất kể kho khai bao nhiêu, nên tỉ số
+    // ≈ 1; bản bung hết thì tỉ số ≈ 8 vì nó tuyến tính theo kho. Vạch 3 nằm giữa
+    // hai cụm [0,97–1,04] và [7,80–8,21]: cách cụm xanh 2,9× và cụm đỏ 2,6×.
+    // Máy chậm làm chậm CẢ HAI vế, và cả hai vế đều ≥150 ms nên nhiễu lịch trình
+    // là <2% chứ không phải 250% — đúng điều kiện mà sổ P2-F11 chỉ ra.
+    const stop = (bomb: Uint8Array): number => {
+      const t0 = Date.now();
+      expect(catchUnsafe(() => unpackZip(bomb)).code).toBe('TOO_LARGE');
+      return Date.now() - t0;
+    };
+    const small = streamedBomb('big.bin', 32 * 1024 * 1024);
+    const large = streamedBomb('big.bin', 256 * 1024 * 1024);
+    // Quả NHỎ đo trước: nó gánh phần khởi động của tiến trình, nên tỉ số nghiêng
+    // về phía khó đỏ oan chứ không nghiêng về phía dễ dãi với mutant.
+    const one = stop(small);
+    const eight = stop(large);
+    const ratio = eight / Math.max(one, 1);
+    expect(
+      ratio,
+      `kho gấp 8 lần mất ${eight} ms so với ${one} ms (tỉ số ${ratio.toFixed(2)}) — điểm dừng đang chạy theo kích thước kho, tức là kho ĐÃ được bung hết`,
+    ).toBeLessThan(3);
   });
 
   it('ĐỐI CHỨNG cho ca trên: cùng cách dựng, kích thước lành thì đọc ĐÚNG', () => {
@@ -308,6 +394,22 @@ describe('kho nhập nhằng bị từ chối thay vì bị đoán', () => {
     // …và ĐỐI CHỨNG: chưa sửa thì đọc bình thường.
     expect([...unpackZip(good).keys()]).toEqual(['a.txt', 'b.txt']);
   });
+
+  it('số mục 0xFFFF (sentinel zip64) bị từ chối NGAY, không bị đối chiếu nhầm', () => {
+    // 0xFFFF ở trường số mục nghĩa là "số thật nằm trong bản ghi zip64", và
+    // module này không đọc bản ghi đó. Nhánh từ chối ấy có doc nhưng không có
+    // lưới: bỏ nó đi thì phép đối chiếu số mục ở CUỐI hàm vẫn ném MALFORMED, nên
+    // chấm `code` thôi không phân biệt được. Hai thứ phân biệt được: lý do ném,
+    // và ném vào LÚC NÀO — bỏ nhánh này thì kho được bung xong rồi mới bị chê.
+    const good = packZip(new Map([['a.txt', enc('AAAA')]]));
+    const sentinel = good.slice();
+    sentinel[sentinel.length - 22 + 10] = 0xff;
+    sentinel[sentinel.length - 22 + 11] = 0xff;
+    const err = catchUnsafe(() => unpackZip(sentinel));
+    expect(err.code).toBe('MALFORMED');
+    expect(err.message).toContain('zip64');
+    expect(err.bytesRead, 'kho zip64 không được bung một byte nào').toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -359,6 +461,23 @@ describe('mục lục và local header phải khai cùng những cái tên', () 
     const good = packZip(new Map([['a.txt', enc('AAAA')], ['b.txt', enc('BBBB')]]));
     expect([...unpackZip(renameInCentralDirectory(good, 'a.txt', 'a.txt')).keys()])
       .toEqual(['a.txt', 'b.txt']);
+  });
+
+  it('byte lạ GIỮA mục lục và footer của nó cũng bị từ chối', () => {
+    // Ảnh chiếu vào bên trong của luật "không có byte thừa ở hai đầu tệp". Chèn
+    // rác vào GIỮA bản ghi cuối của mục lục và bản ghi EOCD: mọi phép kiểm cũ
+    // vẫn xanh — local header còn nguyên, số mục vẫn khớp, trường độ dài chú
+    // thích vẫn chạm đúng cuối tệp — nên chỗ này là chỗ duy nhất còn lại để
+    // giấu byte mà một trình đọc khác có thể diễn giải kiểu khác. Các bản ghi
+    // phải kết thúc ĐÚNG ở chỗ footer bắt đầu.
+    const good = packZip(new Map([['a.txt', enc('AAAA')]]));
+    const eocd = good.length - 22; // không có chú thích, nên EOCD là 22 byte cuối
+    const junk = enc('TRAILINGGARBAGE!');
+    const spliced = new Uint8Array(good.length + junk.length);
+    spliced.set(good.subarray(0, eocd), 0);
+    spliced.set(junk, eocd);
+    spliced.set(good.subarray(eocd), eocd + junk.length);
+    expect(catchUnsafe(() => unpackZip(spliced)).code).toBe('MALFORMED');
   });
 
   it('tên KHÔNG PHẢI ASCII vẫn so khớp được — phép giải mã hai bên phải giống nhau', () => {

@@ -17,24 +17,32 @@
  */
 
 import { init } from './init.ts';
+import { selfCommand } from './invocation.ts';
 import type { Io } from './io.ts';
 import { pack } from './pack.ts';
 
-const USAGE = [
-  'tuhoc — đóng gói course cho nền tảng tuhoc',
-  '',
-  'Cách dùng:',
-  '  tuhoc init <thư-mục>              dựng khung một course mới (hạng "content")',
-  '  tuhoc pack <thư-mục> [-o out.zip] kiểm theo bộ luật rồi đóng gói thành .zip',
-  '',
-  'Tuỳ chọn của pack:',
-  '  -o, --out <tệp>   nơi ghi zip. Mặc định: <tên-thư-mục>.zip trong thư mục hiện tại.',
-  '',
-  'pack thoát 0 khi gói hợp lệ và đã ghi zip, thoát 1 kèm danh sách mọi vấn đề khi không.',
-  'Mục ẩn (tên bắt đầu bằng ".") không được đóng gói; symlink bị từ chối.',
-  '',
-  'Định dạng gói và giải thích từng mã lỗi: docs/course-format.md',
-];
+/**
+ * `self` is how this program was actually started — see `invocation.ts`. Every
+ * line below that a reader could retype is built from it, so the usage block
+ * cannot drift back into advertising a `tuhoc` command that does not exist.
+ */
+function usage(self: string): string[] {
+  return [
+    'tuhoc — đóng gói course cho nền tảng tuhoc',
+    '',
+    'Cách dùng:',
+    `  ${self} init <thư-mục>              dựng khung một course mới (hạng "content")`,
+    `  ${self} pack <thư-mục> [-o out.zip] kiểm theo bộ luật rồi đóng gói thành .zip`,
+    '',
+    'Tuỳ chọn của pack:',
+    '  -o, --out <tệp>   nơi ghi zip. Mặc định: <tên-thư-mục>.zip trong thư mục hiện tại.',
+    '',
+    'pack thoát 0 khi gói hợp lệ và đã ghi zip, thoát 1 kèm danh sách mọi vấn đề khi không.',
+    'Mục ẩn (tên bắt đầu bằng ".") không được đóng gói; symlink bị từ chối.',
+    '',
+    'Định dạng gói và giải thích từng mã lỗi: docs/course-format.md',
+  ];
+}
 
 const io: Io = {
   out: (line) => void process.stdout.write(`${line}\n`),
@@ -43,21 +51,22 @@ const io: Io = {
 
 async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
+  const self = selfCommand();
 
   if (command === undefined) {
-    for (const line of USAGE) io.err(line);
+    for (const line of usage(self)) io.err(line);
     return 1;
   }
   if (command === '--help' || command === '-h' || command === 'help') {
-    for (const line of USAGE) io.out(line);
+    for (const line of usage(self)) io.out(line);
     return 0;
   }
-  if (command === 'init') return init(rest, io);
-  if (command === 'pack') return pack(rest, io);
+  if (command === 'init') return init(rest, io, self);
+  if (command === 'pack') return pack(rest, io, self);
 
   io.err(`tuhoc: không có lệnh "${command}".`);
   io.err('');
-  for (const line of USAGE) io.err(line);
+  for (const line of usage(self)) io.err(line);
   return 1;
 }
 

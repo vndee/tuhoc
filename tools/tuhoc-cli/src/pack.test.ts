@@ -9,9 +9,9 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir as osTmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 
@@ -21,6 +21,15 @@ import { readPackageDir } from './readdir.ts';
 
 const CLI = fileURLToPath(new URL('./index.ts', import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
+
+/**
+ * What the CLI must call itself when it is run from the repo root — the cwd a
+ * contributor is actually in, and the one `docs/course-format.md` writes its
+ * examples for. There is no installed `tuhoc` executable anywhere in this repo
+ * (no workspaces, no link step), so any line telling a contributor to type
+ * `tuhoc pack …` is a line that exits 127 when they do.
+ */
+const SELF_FROM_ROOT = 'bun tools/tuhoc-cli/src/index.ts';
 
 const cleanup: string[] = [];
 afterAll(() => {
@@ -121,6 +130,64 @@ describe('tuhoc init', () => {
     const dir = await tmpdir();
     expect((await runInit([dir])).code).toBe(0);
     expect((await runPack([dir])).code).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Every command line this CLI tells a contributor to type has to be a command
+// line that RUNS. The first one it prints is the last step of the first command
+// they ever run, so getting it wrong ends the session right there.
+// ---------------------------------------------------------------------------
+
+describe('lệnh mà CLI bảo người dùng gõ', () => {
+  // Two names: the tidy one, and one with a space in it — because people name
+  // course directories in Vietnamese and an unquoted path in a printed command
+  // is a command that means something else.
+  for (const name of ['khoa-hoc-cua-toi', 'Course Của Tôi']) {
+    it(`dán thẳng dòng lệnh init in ra vào shell thì nó CHẠY: ${JSON.stringify(name)}`, async () => {
+      const parent = await tmpdir();
+      const res = await runInit([name], parent);
+      expect(res.code).toBe(0);
+
+      // The literal characters between backticks — what a contributor copies.
+      const printed = /Chạy `([^`]+)`/.exec(res.stdout);
+      expect(printed).not.toBeNull();
+      const line = printed![1] as string;
+
+      // A REAL shell, from the SAME cwd, because "copy, paste, it runs" is the
+      // claim being made. Running it through an argv list would prove nothing
+      // about a name only a $PATH lookup can fail to find, nor about quoting.
+      const pasted = spawnSync('/bin/sh', ['-c', line], { cwd: parent, encoding: 'utf8' });
+      expect({ line, code: pasted.status, err: pasted.stderr }).toMatchObject({ code: 0 });
+      expect(pasted.stdout).toContain('OK');
+    });
+  }
+
+  it('khối "Cách dùng" nêu lệnh có thật khi chạy từ gốc repo', async () => {
+    const res = run(['--help'], REPO_ROOT);
+    expect(res.code).toBe(0);
+    expect(res.stdout).toContain(`${SELF_FROM_ROOT} init `);
+    expect(res.stdout).toContain(`${SELF_FROM_ROOT} pack `);
+  });
+
+  it('gợi ý của EMPTY_PACKAGE trỏ tới lệnh init có thật', async () => {
+    const empty = await tmpdir();
+    const res = await runPack([empty], REPO_ROOT);
+    expect(res.code).toBe(1);
+    expect(res.stderr).toContain('EMPTY_PACKAGE');
+    expect(res.stderr).toContain(`${SELF_FROM_ROOT} init `);
+  });
+
+  it('README của khung mẫu nhắc lại ĐÚNG dòng lệnh init vừa in ra', async () => {
+    // The contributor reads the README minutes or days after the terminal
+    // scrollback is gone. If the two disagree, the durable one is the one that
+    // has to be right — so they are the same string.
+    const parent = await tmpdir();
+    const res = await runInit(['khoa-hoc-cua-toi'], parent);
+    expect(res.code).toBe(0);
+    const line = (/Chạy `([^`]+)`/.exec(res.stdout)?.[1] ?? '') as string;
+    expect(line).not.toBe('');
+    expect(readFileSync(join(parent, 'khoa-hoc-cua-toi', 'README.md'), 'utf8')).toContain(line);
   });
 });
 
@@ -255,6 +322,59 @@ describe('đọc thư mục thành gói', () => {
     const { files } = await readPackageDir(dir, null);
     expect([...files.keys()].sort()).toEqual(['chapters/c1.html', 'manifest.json']);
   });
+
+  // The self-exclusion above only ever covers THIS run's output path. A zip
+  // left behind by a previous run under any other name is ordinary content:
+  // it gets packed, the package is still valid, and the only signal is a file
+  // count nobody reads. Left silent, a course grows one zip per pack until it
+  // hits the 20 MB ceiling for a reason its author cannot possibly guess.
+  it('nói ra khi một tệp .zip có sẵn đang bị đóng vào gói', async () => {
+    const dir = await makeFixtureCourse();
+    writeFileSync(join(dir, 'lan-truoc.zip'), 'PK rác');
+    const out = join(await tmpdir(), 'lan-nay.zip');
+    const res = await runPack([dir, '-o', out]);
+    expect(res.code).toBe(0);
+    // It really is in there — that is the fact being reported, not a guess.
+    const { files } = await readPackageDir(dir, out);
+    expect(files.has('lan-truoc.zip')).toBe(true);
+    expect(res.stdout).toContain('đang chứa');
+    expect(res.stdout).toContain('lan-truoc.zip');
+  });
+
+  it('không nói gì về .zip khi trong thư mục không có tệp .zip nào', async () => {
+    const dir = await makeFixtureCourse();
+    const res = await runPack([dir, '-o', join(await tmpdir(), 'x.zip')]);
+    expect(res.code).toBe(0);
+    expect(res.stdout).not.toContain('đang chứa');
+  });
+
+  it('khi pack thất bại, thông báo bỏ qua mục ẩn được lặp sang stderr', async () => {
+    // Here the skipped entry IS the cause of the failure, and stderr is the
+    // half a CI log keeps. Splitting cause from effect across two streams
+    // leaves whoever reads the log with an impossible finding.
+    const manifest = fixtureManifest() as { parts: { chapters: { file: string }[] }[] };
+    manifest.parts[0].chapters[0].file = 'chapters/.an.html';
+    const dir = await makeFixtureCourse({
+      'manifest.json': JSON.stringify(manifest),
+      'chapters/.an.html': '<p>bị bỏ qua vì tên bắt đầu bằng dấu chấm</p>',
+    });
+    const res = await runPack([dir]);
+    expect(res.code).toBe(1);
+    expect(res.stderr).toContain('CHAPTER_FILE_MISSING');
+    expect(res.stderr).toContain('bỏ qua');
+    expect(res.stderr).toContain('chapters/.an.html');
+  });
+
+  it('tên tệp "__proto__": thoát 1, không ghi zip, và nói phải làm gì', async () => {
+    const dir = await makeFixtureCourse();
+    writeFileSync(join(dir, '__proto__'), 'ghi chú');
+    const out = join(await tmpdir(), 'proto.zip');
+    const res = await runPack([dir, '-o', out]);
+    expect(res.code).toBe(1);
+    expect(res.stderr).toContain('__proto__');
+    expect(res.stderr).toContain('Cách sửa');
+    expect(existsSync(out)).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -296,15 +416,37 @@ describe('khung mẫu của init', () => {
     expect(existsSync(join(dir, 'README.md'))).toBe(false);
   });
 
-  it('tên thư mục thù địch vẫn cho ra khung mẫu HỢP LỆ', async () => {
-    // `{{title}}` is substituted into both JSON and HTML. A directory name is
-    // attacker-adjacent input at worst and a typo at best; either way the
-    // scaffold it produces still has to pass its own gate.
-    const parent = await tmpdir();
-    const dir = join(parent, '<script>a" \\ b</script>');
-    expect((await runInit([dir])).code).toBe(0);
-    expect((await runPack([dir])).code).toBe(0);
-  });
+  // `{{title}}` is substituted into both JSON and HTML. A directory name is
+  // attacker-adjacent input at worst and a typo at best; either way the
+  // scaffold it produces still has to pass its own gate.
+  //
+  // The names below deliberately contain NO `/`. A name like `<script>a</script>`
+  // never reaches the filter at all: the `/` in the closing tag is a path
+  // separator, so `join(parent, name)` makes nested directories and
+  // `basename()` — the only thing `displayTitle` ever sees — is the harmless
+  // tail `script>`. A test built on such a name passes whether the filter
+  // exists or not, which is the same as not having a test.
+  const HOSTILE_NAMES = [
+    '<img onerror=alert(1)>', // breaks the HTML the README is scanned as
+    'a" , "id": "x', //          breaks the JSON of manifest.json
+    '<script>a" \\ b</script>', // the `/`-containing original, kept as a case
+  ];
+  for (const name of HOSTILE_NAMES) {
+    it(`tên thư mục thù địch vẫn cho ra khung mẫu HỢP LỆ: ${JSON.stringify(name)}`, async () => {
+      const parent = await tmpdir();
+      const dir = join(parent, name);
+      expect((await runInit([dir])).code).toBe(0);
+      expect((await runPack([dir])).code).toBe(0);
+
+      // …and pin the filter itself, not just the verdict: whatever the
+      // directory was called, what landed in the manifest is parseable JSON
+      // whose title carries no markup.
+      const raw = readFileSync(join(dir, 'manifest.json'), 'utf8');
+      const title = (JSON.parse(raw) as Record<string, unknown>)['title'];
+      expect(typeof title).toBe('string');
+      expect(title as string).not.toMatch(/[<>&"'\\]/);
+    });
+  }
 
   it('tạo thư mục nếu chưa có', async () => {
     const parent = await tmpdir();
@@ -320,22 +462,90 @@ describe('khung mẫu của init', () => {
 
 describe('mặt tiền dòng lệnh', () => {
   it('không tham số: in cách dùng ra stderr và thoát 1', async () => {
-    const res = run([], await tmpdir());
+    const res = run([], REPO_ROOT);
     expect(res.code).toBe(1);
-    expect(res.stderr).toContain('tuhoc init');
-    expect(res.stderr).toContain('tuhoc pack');
+    expect(res.stderr).toContain(`${SELF_FROM_ROOT} init `);
+    expect(res.stderr).toContain(`${SELF_FROM_ROOT} pack `);
   });
 
   it('--help: in cách dùng ra stdout và thoát 0', async () => {
-    const res = run(['--help'], await tmpdir());
+    const res = run(['--help'], REPO_ROOT);
     expect(res.code).toBe(0);
-    expect(res.stdout).toContain('tuhoc pack');
+    expect(res.stdout).toContain(`${SELF_FROM_ROOT} pack `);
   });
 
   it('lệnh con lạ: thoát 1 và nhắc lại tên lệnh sai', async () => {
     const res = run(['bogus'], await tmpdir());
     expect(res.code).toBe(1);
     expect(res.stderr).toContain('bogus');
+  });
+
+  it('--out là bí danh của -o, không phải tuỳ chọn lạ', async () => {
+    const dir = await makeFixtureCourse();
+    const out = join(await tmpdir(), 'qua-bi-danh.zip');
+    const res = await runPack([dir, '--out', out]);
+    expect(res.code).toBe(0);
+    expect(existsSync(out)).toBe(true);
+  });
+
+  it('hai thư mục một lúc: thoát 1 và nói ra cả hai', async () => {
+    const a = await makeFixtureCourse();
+    const b = await makeFixtureCourse();
+    const res = await runPack([a, b]);
+    expect(res.code).toBe(1);
+    expect(res.stderr).toContain(a);
+    expect(res.stderr).toContain(b);
+  });
+
+  it('-o tạo cả nhánh thư mục cha chưa tồn tại', async () => {
+    const dir = await makeFixtureCourse();
+    const out = join(await tmpdir(), 'chua-co', 'sau', 'nua', 'out.zip');
+    expect((await runPack([dir, '-o', out])).code).toBe(0);
+    expect(existsSync(out)).toBe(true);
+  });
+
+  it('không có -o: tên zip lấy từ tên thư mục, ghi vào thư mục hiện tại', async () => {
+    const dir = await makeFixtureCourse();
+    const cwd = await tmpdir();
+    expect((await runPack([dir], cwd)).code).toBe(0);
+    expect(existsSync(join(cwd, `${basename(dir)}.zip`))).toBe(true);
+  });
+
+  it('-o trỏ vào một thư mục đã có: nói rõ -o cần đường dẫn TỆP', async () => {
+    const dir = await makeFixtureCourse();
+    const target = await tmpdir(); // a directory, not a file
+    const res = await runPack([dir, '-o', target]);
+    expect(res.code).toBe(1);
+    expect(res.stderr).toContain('tệp');
+    expect(res.stderr).not.toContain('EISDIR');
+  });
+
+  it('dòng thành công nói số tệp, cỡ gói đúng đơn vị, và đường dẫn tuyệt đối', async () => {
+    // `humanBytes` is the number a contributor reads the 20 MB ceiling against,
+    // so the unit is checked against the zip that actually landed on disk
+    // rather than against a hard-coded string.
+    const dir = await tmpdir();
+    expect((await runInit([dir])).code).toBe(0);
+    const out = join(await tmpdir(), 'khung.zip');
+    const res = await runPack([dir, '-o', out]);
+    expect(res.code).toBe(0);
+    const size = statSync(out).size;
+    expect(size).toBeGreaterThan(1024);
+    expect(size).toBeLessThan(1024 * 1024);
+    expect(res.stdout).toContain(' KB → ');
+    expect(res.stdout).toContain('3 tệp');
+    expect(res.stdout).toContain(out); // absolute, not whatever was typed
+  });
+
+  it('-o tương đối: zip nằm ở thư mục hiện tại, và dòng OK nói đường dẫn tuyệt đối', async () => {
+    // A relative path in a success line stops meaning anything the moment the
+    // reader has cd'd somewhere else — including in a CI log.
+    const dir = await makeFixtureCourse();
+    const cwd = await tmpdir();
+    const res = await runPack([dir, '-o', 'ra.zip'], cwd);
+    expect(res.code).toBe(0);
+    expect(existsSync(join(cwd, 'ra.zip'))).toBe(true);
+    expect(res.stdout).toContain(join(cwd, 'ra.zip'));
   });
 });
 

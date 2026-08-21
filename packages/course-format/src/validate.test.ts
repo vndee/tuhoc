@@ -620,7 +620,18 @@ describe('N1 — một thẻ mở nhồi thuộc tính không được làm treo
     // Lưới thứ hai, rộng rãi, cùng quy ước với các dòng khác trong khối: bắt
     // hồi quy thô bạo mà tỉ số bỏ lọt (ví dụ cả hai vế cùng chậm đi 10 lần).
     // KHÔNG phải dòng bắt mutant ở trên — xem bảng số.
-    expect(ms, `mất ${ms.toFixed(0)} ms`).toBeLessThan(2000);
+    //
+    // 2.000 ms là con số cũ, và nó ĐÃ đỏ oan với mã ĐÚNG: một lần trong 50 lần
+    // chạy cổng đầy đủ dưới tải (cache lạnh, load avg 123) cho
+    // `ratio=0.946 one=2015 flat=2130` — tỉ số xanh thoải mái, dòng đỏ là chính
+    // dòng này. Rà lại cả gói theo một luật chung: một mốc thời gian TUYỆT ĐỐI
+    // chỉ được giữ nếu nó (a) không phải dòng bắt mutant nào, và (b) cách số đo
+    // lúc máy rảnh ít nhất ~20 lần — tải đo được làm phồng 10–13 lần, nên dưới
+    // 20 lần là tung đồng xu. Bốn mốc còn lại trong khối này đều đạt (17–32 ms
+    // so với 1.000 ms, tức 30–58 lần) và được giữ nguyên; chỉ dòng này trượt
+    // (164 ms so với 2.000 ms, 12 lần). 10.000 ms cho nó 61 lần, mà vẫn thấp
+    // hơn 19.228 ms — con số bậc hai mà cả họ lưới này sinh ra để bắt.
+    expect(ms, `mất ${ms.toFixed(0)} ms`).toBeLessThan(10_000);
   });
 
   it('CÙNG số byte trải trên NHIỀU thẻ vẫn tuyến tính và vẫn sạch', { timeout: 120_000 }, () => {
