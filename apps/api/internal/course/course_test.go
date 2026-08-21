@@ -1343,6 +1343,110 @@ func TestCourseHTTPContracts(t *testing.T) {
 		}
 	})
 
+	// The bytes that were CHECKED and the bytes that are SERVED have to be
+	// the same bytes, and a zip is allowed to carry two entries under one
+	// name. validatePackage walked every entry and kept the LAST one named
+	// manifest.json; Usecase.Asset serves the FIRST entry whose name
+	// matches. A package built [dirty manifest][chapter][clean manifest]
+	// was therefore stored on the strength of the clean document (201,
+	// clean title/version/tier/manifest columns) and then handed the dirty
+	// one — measured: GET manifest.json returned a document declaring
+	// "file": "../../../etc/passwd", a path no check had ever seen. The
+	// reversed order was rejected 400, which is what proves the divergence
+	// was the entry order and not the fixture.
+	//
+	// The fix is to refuse duplicate names at ingest rather than to add a
+	// second check on the serving side: two checks that have to keep
+	// agreeing are the same defect one layer along. This case is the pin
+	// for that, and it asserts the property directly — the answer must not
+	// depend on which copy came first.
+	t.Run("two entries with one name are refused, in either order", func(t *testing.T) {
+		app := newTestApp(pool)
+		cookie, ownerID := registerUser(t, app, "dupentry")
+
+		clean := mustJSON(t, manifestDoc("c-dup", "1.0.0", "chapters/ch-1.html"))
+		dirtyDoc := manifestDoc("c-dup", "1.0.0", "../../../etc/passwd")
+		dirtyDoc["title"] = "DIRTY"
+		dirty := mustJSON(t, dirtyDoc)
+		chapter := []byte(sampleChapterHTML)
+
+		type orderCase struct {
+			name    string
+			entries []zipEntry
+		}
+		orders := []orderCase{
+			{"dirty first, clean last", []zipEntry{
+				{manifestPath, dirty},
+				{"chapters/ch-1.html", chapter},
+				{manifestPath, clean},
+			}},
+			{"clean first, dirty last", []zipEntry{
+				{manifestPath, clean},
+				{"chapters/ch-1.html", chapter},
+				{manifestPath, dirty},
+			}},
+			// Not only the manifest: Asset serves the first match for any
+			// name, so a duplicate chapter has the same shape — one copy
+			// is what the checks saw, the other is what readers get.
+			{"a duplicated chapter file", []zipEntry{
+				{manifestPath, clean},
+				{"chapters/ch-1.html", chapter},
+				{"chapters/ch-1.html", []byte("<p>the copy nobody validated</p>")},
+			}},
+		}
+
+		details := map[string]string{}
+		for _, oc := range orders {
+			before := countAllRows(t, pool)
+			resp, raw := postPackage(t, app, cookie, "/courses", buildZip(t, oc.entries), nil)
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Errorf("%s: want 400 got %d body=%s", oc.name, resp.StatusCode, raw)
+			}
+			var body struct {
+				Detail string `json:"detail"`
+			}
+			if err := json.Unmarshal(raw, &body); err != nil {
+				t.Fatalf("%s: unmarshal %s: %v", oc.name, raw, err)
+			}
+			details[oc.name] = body.Detail
+			if !strings.Contains(body.Detail, "two entries") {
+				t.Errorf("%s: the rejection does not name the duplicate: %q", oc.name, body.Detail)
+			}
+			if n := countRowsFor(t, pool, ownerID); n != 0 {
+				t.Errorf("%s: a rejected package left %d row(s) behind", oc.name, n)
+			}
+			if after := countAllRows(t, pool); after != before {
+				t.Errorf("%s: a rejected package moved the row count from %d to %d", oc.name, before, after)
+			}
+		}
+
+		// The load-bearing assertion: the two orders are the SAME two
+		// documents, and the server must not answer them differently.
+		// Before the fix one was 201 and the other 400.
+		if details["dirty first, clean last"] != details["clean first, dirty last"] {
+			t.Errorf("entry order still changes the verdict:\n  dirty-first: %q\n  clean-first: %q",
+				details["dirty first, clean last"], details["clean first, dirty last"])
+		}
+
+		// Anti-vacuity, and the property this whole case exists to
+		// protect: with no duplicate, the manifest that is served is
+		// byte-for-byte the one that was validated.
+		ok := buildZip(t, []zipEntry{
+			{manifestPath, clean},
+			{"chapters/ch-1.html", chapter},
+		})
+		if resp, raw := postPackage(t, app, cookie, "/courses", ok, nil); resp.StatusCode != http.StatusCreated {
+			t.Fatalf("a duplicate-free package: want 201 got %d body=%s", resp.StatusCode, raw)
+		}
+		served, servedBody := doGet(t, app, "/courses/c-dup/@1.0.0/manifest.json", cookie)
+		if served.StatusCode != http.StatusOK {
+			t.Fatalf("GET manifest: want 200 got %d body=%s", served.StatusCode, servedBody)
+		}
+		if !bytes.Equal(servedBody, clean) {
+			t.Errorf("the served manifest is not the validated one:\nwant %s\ngot  %s", clean, servedBody)
+		}
+	})
+
 	t.Run("every course route is behind auth", func(t *testing.T) {
 		app := newTestApp(pool)
 		for _, target := range []string{

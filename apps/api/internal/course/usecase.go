@@ -294,6 +294,11 @@ func (uc *Usecase) Asset(ctx context.Context, ownerID uuid.UUID, courseID, versi
 		return nil, fmt.Errorf("course: stored package %s@%s is not a readable zip: %w", id, v, err)
 	}
 
+	// The FIRST entry whose name matches. That is only unambiguous because
+	// validatePackage refuses a package carrying two entries under one
+	// name — see the duplicate check there. Drop that check and this loop
+	// silently starts serving a different file than the one the checks
+	// ran over.
 	for _, f := range zr.File {
 		if f.Name != name {
 			continue
@@ -374,6 +379,12 @@ func validatePackage(zipBytes []byte) (parsedPackage, error) {
 	// Work stays bounded even for an enormous bomb: the moment the total
 	// passes the ceiling this returns, so at most MaxUncompressedBytes+1
 	// bytes are ever expanded, whatever the archive claims to hold.
+	// seen holds EVERY entry name, directories included; names holds only
+	// the file entries a chapter.file may point at. They are two maps
+	// because they answer two different questions and merging them would
+	// weaken the second: a manifest naming "chapters/" as a chapter file
+	// would start passing the existence check below.
+	seen := make(map[string]struct{}, len(zr.File))
 	names := make(map[string]struct{}, len(zr.File))
 	var manifestBytes []byte
 	haveManifest := false
@@ -382,6 +393,30 @@ func validatePackage(zipBytes []byte) (parsedPackage, error) {
 		if err := checkPackagePath(f.Name); err != nil {
 			return out, err
 		}
+		// A zip may carry two entries under one name, and this loop and
+		// Usecase.Asset would then disagree about which one the package
+		// contains: this loop reads every entry (so the LAST manifest.json
+		// is the one validated and stored), while Asset returns the FIRST
+		// entry whose name matches (so the first is the one served). A
+		// review measured the gap — [dirty manifest][chapter][clean
+		// manifest] was accepted 201 with clean database columns and then
+		// served a manifest declaring "file": "../../../etc/passwd", a
+		// path no check had ever seen; the same two documents in the
+		// reverse order were rejected 400.
+		//
+		// Refusing the duplicate here is what makes "the bytes that were
+		// checked" and "the bytes that are served" the SAME bytes, by
+		// construction. The alternative — a second check on the serving
+		// side — would leave two rules that have to keep agreeing with
+		// each other forever, which is the shape of this defect, not its
+		// fix. (It is also the second time this subsystem has been bitten
+		// by one datum with two readings: Task 2's C1 was a zip whose
+		// central directory and local header named different files.)
+		if _, dup := seen[f.Name]; dup {
+			return out, invalid("the package contains two entries named %q; a name must identify one file, or the file that is checked is not the file that is served", f.Name)
+		}
+		seen[f.Name] = struct{}{}
+
 		if strings.HasSuffix(f.Name, "/") {
 			// A directory entry: no content, and nothing that a
 			// chapter.file could ever point at.
