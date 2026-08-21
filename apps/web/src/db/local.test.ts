@@ -9,6 +9,7 @@ import {
   db,
   DEVICE_PREFERENCE_KEYS,
   mergeRow,
+  type PackageRow,
   type ProgressRow,
   setProgress,
   USER_CONTENT_KEYS,
@@ -20,6 +21,32 @@ async function clearAll() {
 
 beforeEach(clearAll);
 afterEach(clearAll);
+
+/** A minimal, valid cached course package — enough to seed `db.packages`. */
+function packageRow(courseId = 'demo', version = '1.0.0'): PackageRow {
+  const manifest = {
+    id: courseId,
+    title: 'Khóa học đã lưu',
+    description: '',
+    lang: 'vi',
+    version,
+    runtime: '^1',
+    tier: 'content',
+    parts: [{ title: 'Phần 1', chapters: [{ id: 'c1', num: '1.1', title: 'Chương một', short: 'C1', file: 'chapters/c1.html' }] }],
+  };
+  const encode = (s: string) => new TextEncoder().encode(s);
+  return {
+    key: `${courseId}@${version}`,
+    courseId,
+    version,
+    manifest,
+    files: {
+      'manifest.json': encode(JSON.stringify(manifest)),
+      'chapters/c1.html': encode('<h1 class="ch-title">Chương một</h1>'),
+    },
+    pinnedAt: '2026-08-21T10:00:00.000Z',
+  };
+}
 
 describe('mergeRow (pure LWW)', () => {
   // The four cases the brief names verbatim: incoming newer / incoming
@@ -150,7 +177,48 @@ describe('setProgress', () => {
 });
 
 describe('clearLocalData', () => {
-  it('empties every table in the schema, not a hand-maintained list of four', async () => {
+  /**
+   * THE TRIPWIRE, and the number it guards.
+   *
+   * Five, as of Task 7's `packages` table. It was four
+   * (`progress`/`annotations`/`outbox`/`meta`) and the count was raised
+   * DELIBERATELY, which is the only way it is ever allowed to move —
+   * `docs/carried-forward.md`'s standing warning is "change the number,
+   * do not 'fix' the helper," because the helper (`clearLocalData`
+   * enumerating `db.tables`) being right about a table nobody has written
+   * yet is precisely what makes this assertion cheap enough to keep.
+   *
+   * What the fifth table holds and why it belongs on the clearing side of
+   * the line: an imported course package is the reader's own copy of
+   * somebody's course, sitting in a browser-scoped database that never
+   * expires. A private course surviving into the next person's session on
+   * a shared laptop is the same failure as their half-typed note doing so
+   * — see USER_CONTENT_KEYS's comment for the incident that rule came
+   * from. `packages` is user CONTENT, not a device preference.
+   *
+   * Written out by name rather than only counted: `toHaveLength(5)` would
+   * also pass if somebody added a sixth table and deleted a different one.
+   */
+  it('has exactly five tables, and they are the five this file knows about', () => {
+    expect(db.tables.map((t) => t.name).sort()).toEqual([
+      'annotations',
+      'meta',
+      'outbox',
+      'packages',
+      'progress',
+    ]);
+  });
+
+  it('signing out deletes cached course packages too — a private course is user data, not a device setting', async () => {
+    await db.packages.put(packageRow());
+    expect(await db.packages.count()).toBe(1);
+
+    await clearLocalData();
+
+    expect(await db.packages.count()).toBe(0);
+  });
+
+  it('empties every table in the schema, not a hand-maintained list of five', async () => {
     await db.progress.put({ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: '2026-08-20T10:00:00.000Z' });
     await db.annotations.put({
       id: '11111111-1111-4111-8111-111111111111',
@@ -164,12 +232,13 @@ describe('clearLocalData', () => {
     });
     await db.outbox.add({ table: 'progress', row: {} });
     await db.meta.put({ key: 'syncCursor', value: '2026-08-20T10:00:00Z' });
+    await db.packages.put(packageRow());
 
     // Pre-condition: every table genuinely has something in it, so the
     // assertion below can't pass vacuously.
     const before = await Promise.all(db.tables.map((t) => t.count()));
     expect(before.every((n) => n > 0)).toBe(true);
-    expect(db.tables).toHaveLength(4);
+    expect(db.tables).toHaveLength(5);
 
     await clearLocalData();
 
@@ -258,7 +327,21 @@ function isProductionSource(relativePath: string): boolean {
   return relativePath !== join('test', 'setup.ts');
 }
 
-function productionSourceFiles(): string[] {
+/**
+ * Every non-test `.ts`/`.tsx` file under `apps/web/src` — this application's
+ * own code, and nothing else's.
+ *
+ * Split out from `productionSourceFiles` because the two scans in this file
+ * have different jurisdictions. The persistence scan has to include the
+ * classic scripts (a store opened in `runtime.js` outlives a session exactly
+ * as hard as one opened here). The HTML-sink scan at the bottom must NOT:
+ * `runtime.js` builds tooltips and control panels out of HTML strings by
+ * design, that is what a rendering runtime does, and it never sees a
+ * manifest field. Pointing a rule at code it was not written about produces
+ * violations with no correct resolution — the same category error ruling
+ * S1-F8 refused when it kept the markup rules off `manifest.json`.
+ */
+function appSourceFiles(): string[] {
   const out: string[] = [];
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -268,8 +351,11 @@ function productionSourceFiles(): string[] {
     }
   };
   walk(SRC_DIR);
-  out.push(...classicScripts());
   return out.sort();
+}
+
+function productionSourceFiles(): string[] {
+  return [...appSourceFiles(), ...classicScripts()].sort();
 }
 
 /** Every place in the app that can outlive a signed-in session, and who is allowed to touch it. */
@@ -332,10 +418,13 @@ function persistenceUsedIn(fileName: string, source: string): Set<string> {
 }
 
 /**
- * The `db.tables` assertion above is a tripwire for a FIFTH TABLE: add one
+ * The `db.tables` assertion above is a tripwire for the NEXT table: add one
  * and the count changes, so somebody has to come here and think. It works
  * because Dexie enumerates its own tables, and `clearLocalData()` can
- * therefore be right about a table nobody has written yet.
+ * therefore be right about a table nobody has written yet. It has now been
+ * tripped exactly once, by Task 7's `packages`, and it did its job — the
+ * count was raised on purpose and the sign-out test above was written to
+ * PROVE the new table gets emptied, rather than left to be true by luck.
  *
  * `localStorage` has no such enumeration to lean on. Nothing hands you the
  * list of keys the app *can* write, only the ones it happens to have
@@ -445,5 +534,201 @@ describe('the localStorage key registry', () => {
     for (const key of keys) {
       expect(DEVICE_PREFERENCE_KEYS as readonly string[]).toContain(key);
     }
+  });
+});
+
+/* ====================================================================== *
+ * The other tripwire: a manifest field must never become markup
+ * ====================================================================== */
+
+/**
+ * Names of the HTML SINKS — the expressions that turn a STRING into
+ * MARKUP — actually reached by CODE in `source`, one entry per occurrence,
+ * in source order. Comments and string literals do not count, which is
+ * why this reads an AST rather than grepping.
+ *
+ * Reads are deliberately not sinks. `reader/getContext.ts` concatenates
+ * `node.outerHTML` to build the "copy this section" payload; reading
+ * markup out of the DOM is the opposite of injecting a string into it,
+ * and a rule that could not tell the two apart would either have to
+ * exempt that file — weakening it for the real case — or be argued with
+ * every time somebody serializes a node.
+ *
+ * Known blind spot, written down rather than papered over: a sink reached
+ * through a computed member (`el[k] = s`) or spread into JSX
+ * (`<div {...props} />`) is invisible here. Both are unusual enough that
+ * catching the ordinary spelling is worth having; neither appears in this
+ * codebase today.
+ */
+function htmlSinksUsedIn(fileName: string, source: string): string[] {
+  const found: string[] = [];
+  const parsed = ts.createSourceFile(
+    fileName,
+    source,
+    ts.ScriptTarget.Latest,
+    false,
+    fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+
+  /** The property name being ASSIGNED to (`=` or `+=`), or null — a read returns null. */
+  const assignedProperty = (node: ts.Node): string | null => {
+    if (!ts.isBinaryExpression(node)) return null;
+    const op = node.operatorToken.kind;
+    if (op !== ts.SyntaxKind.EqualsToken && op !== ts.SyntaxKind.PlusEqualsToken) return null;
+    return ts.isPropertyAccessExpression(node.left) ? node.left.name.text : null;
+  };
+
+  /** The method name being CALLED on some object, or null. */
+  const calledMethod = (node: ts.Node): string | null =>
+    ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) ? node.expression.name.text : null;
+
+  const isDocumentCall = (node: ts.Node): boolean =>
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    ts.isIdentifier(node.expression.expression) &&
+    node.expression.expression.text === 'document';
+
+  const propertyName = (node: ts.Node): string | null => {
+    if (ts.isJsxAttribute(node)) return ts.isIdentifier(node.name) ? node.name.text : null;
+    if (ts.isPropertyAssignment(node)) {
+      return ts.isIdentifier(node.name) || ts.isStringLiteral(node.name) ? node.name.text : null;
+    }
+    if (ts.isShorthandPropertyAssignment(node)) return node.name.text;
+    return null;
+  };
+
+  const walk = (node: ts.Node): void => {
+    const assigned = assignedProperty(node);
+    if (assigned === 'innerHTML' || assigned === 'outerHTML') found.push(assigned);
+
+    const called = calledMethod(node);
+    if (called === 'insertAdjacentHTML' || called === 'createContextualFragment') found.push(called);
+    if ((called === 'write' || called === 'writeln') && isDocumentCall(node)) found.push('document.write');
+
+    if (propertyName(node) === 'dangerouslySetInnerHTML') found.push('dangerouslySetInnerHTML');
+
+    ts.forEachChild(node, walk);
+  };
+  walk(parsed);
+  return found;
+}
+
+/** Every HTML sink this app is allowed to contain, where, and how many times. */
+const HTML_SINKS_ALLOWED: readonly {
+  readonly sink: string;
+  readonly file: string;
+  readonly times: number;
+  readonly why: string;
+}[] = [
+  {
+    sink: 'innerHTML',
+    file: join('apps', 'web', 'src', 'reader', 'ChapterView.tsx'),
+    times: 1,
+    why: 'the chapter fragment — the one string in this app that IS markup, and the only one a course author is allowed to write',
+  },
+];
+
+/**
+ * THE FLOOR RULING S1-F8 STANDS ON.
+ *
+ * The shared rule set (`packages/course-format/src/validate.ts`) scans a
+ * package's HTML with the markup rules and deliberately does NOT scan
+ * `manifest.json` with them. That was the right call, and it is worth
+ * restating why: a manifest is DATA. Running `<script>` / `on*=` /
+ * `javascript:` detectors over a JSON document reports a course whose
+ * DESCRIPTION happens to mention `<script>` — a false positive with no fix
+ * available to the author, since that sentence is simply what their course
+ * is about. Refusing to make that category error is what ruling S1-F8
+ * decided.
+ *
+ * But the decision is CONDITIONAL, and this is the condition: it holds
+ * exactly as long as no manifest field ever reaches an HTML sink. Today the
+ * app satisfies that with room to spare — every manifest string (`title`,
+ * `description`, part and chapter titles, `num`) is rendered as a React
+ * text node in `Dashboard`, `CourseHome`, `Sidebar`, `Reader` and
+ * `ChapterView`'s breadcrumb, and React escapes text nodes. That is not a
+ * property anyone had written down, though; it is a property that happened
+ * to be true — the kind that stops being true in a hurry once manifests
+ * arrive from strangers' packages instead of from this repo.
+ *
+ * Task 7 is where manifests started arriving from strangers: an imported
+ * package's manifest goes into `db.packages` and comes back out through
+ * `course/loader.ts` with no markup scan anywhere along the way — by
+ * design, per the ruling. So the ruling's floor gets a test.
+ *
+ * If this goes red, the fix is almost never "add the file to the
+ * allowlist." It is: render the string as text. And if some future feature
+ * genuinely must inject markup built from a manifest, then S1-F8 has to be
+ * REOPENED in the same commit — at that moment the manifest stops being
+ * data the reader only ever reads, and the validator's decision not to scan
+ * it stops being free.
+ */
+describe('a manifest field is text, never markup (the floor under ruling S1-F8)', () => {
+  it('reads its own instrument correctly: writing markup counts, reading it does not', () => {
+    const decoyed = [
+      '// el.innerHTML = manifest.title — a mention, not a use',
+      '/** dangerouslySetInnerHTML, insertAdjacentHTML, document.write in prose */',
+      'const notARealUse = "innerHTML";',
+      'export const serialized = node.outerHTML;',
+      'export const current = el.innerHTML;',
+      'export const same = el.innerHTML === other.innerHTML;',
+    ].join('\n');
+    expect(htmlSinksUsedIn('decoy.ts', decoyed)).toEqual([]);
+
+    const real = [
+      'el.innerHTML = m.title;',
+      'el.outerHTML = m.description;',
+      'el.innerHTML += m.title;',
+      'el.insertAdjacentHTML("beforeend", m.title);',
+      'document.write(m.title);',
+      'range.createContextualFragment(m.title);',
+    ].join('\n');
+    expect(htmlSinksUsedIn('real.ts', real).sort()).toEqual([
+      'createContextualFragment',
+      'document.write',
+      'innerHTML',
+      'innerHTML',
+      'insertAdjacentHTML',
+      'outerHTML',
+    ]);
+
+    expect(
+      htmlSinksUsedIn('real.tsx', 'export const V = () => <div dangerouslySetInnerHTML={{ __html: m.title }} />;'),
+    ).toEqual(['dangerouslySetInnerHTML']);
+  });
+
+  it('is looking at the whole app, and at the one sink it allows', () => {
+    const seen = appSourceFiles().map(label);
+    expect(seen.length).toBeGreaterThan(20);
+    for (const allowed of HTML_SINKS_ALLOWED) expect(seen).toContain(allowed.file);
+
+    // Not vacuous: the allowlisted sink is genuinely found where it is
+    // allowed. A scanner that quietly stopped matching anything would
+    // otherwise keep this suite green while protecting nothing.
+    for (const allowed of HTML_SINKS_ALLOWED) {
+      const file = resolve(REPO_ROOT, allowed.file);
+      const used = htmlSinksUsedIn(file, readFileSync(file, 'utf-8')).filter((s) => s === allowed.sink);
+      expect(used).toHaveLength(allowed.times);
+    }
+  });
+
+  it('has no HTML sink anywhere else — no manifest string can become markup', () => {
+    const violations: string[] = [];
+    for (const file of appSourceFiles()) {
+      const where = label(file);
+      const sinks = htmlSinksUsedIn(file, readFileSync(file, 'utf-8'));
+      for (const sink of new Set(sinks)) {
+        const allowed = HTML_SINKS_ALLOWED.find((a) => a.sink === sink && a.file === where);
+        const times = sinks.filter((s) => s === sink).length;
+        if (!allowed) {
+          violations.push(
+            `${where} turns a string into markup via ${sink} — a manifest arrives inside a stranger's package and is never scanned for markup (ruling S1-F8); render it as text instead`,
+          );
+        } else if (times !== allowed.times) {
+          violations.push(`${where} uses ${sink} ${times}× (expected ${allowed.times}: ${allowed.why})`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
   });
 });

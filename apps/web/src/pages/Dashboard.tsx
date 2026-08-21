@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLogout } from '../auth/useLogout';
 import { api } from '../api/client';
+import { coursesQueryKey, type CourseSummary, listCourses } from '../api/courses';
 import { useMe } from '../api/useMe';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
 import type { Manifest } from '../course/types';
@@ -29,27 +30,6 @@ interface Stats {
   courses: CourseStat[];
 }
 
-/**
- * `GET /courses`'s response shape — apps/api/internal/course/handler.go's
- * `courseSummary`. One entry per course the signed-in learner holds, with
- * every version they have and the one a reader should open (`pinned`).
- *
- * This endpoint is the catalog this page used to have to invent. The full
- * platform spec (docs/superpowers/specs/2026-08-19-tuhoc-platform-design.md
- * §4) listed it, P1 was never assigned it, and so this file carried a
- * hardcoded `KNOWN_COURSE_IDS = ['***REMOVED***']` in its place —
- * debt C-2 in docs/carried-forward.md, whose own note said a real catalog
- * would only need that constant deleted. It has been.
- */
-interface CourseSummary {
-  id: string;
-  title: string;
-  lang: string;
-  tier: string;
-  versions: string[];
-  pinned: string;
-}
-
 function statsQueryKey() {
   return ['stats'] as const;
 }
@@ -62,14 +42,26 @@ function useStats() {
   });
 }
 
-function coursesQueryKey() {
-  return ['courses'] as const;
-}
-
+/**
+ * The catalog this page used to have to invent.
+ *
+ * `GET /courses` is listed in the platform spec
+ * (docs/superpowers/specs/2026-08-19-tuhoc-platform-design.md §4), P1 was
+ * never assigned it, and so this file carried a hardcoded
+ * `KNOWN_COURSE_IDS = ['***REMOVED***']` in its place — debt C-2 in
+ * docs/carried-forward.md, whose own note said a real catalog would only
+ * need that constant deleted. It has been.
+ *
+ * The shape and the query key live in `api/courses.ts` alongside the call
+ * itself, because this is no longer the only reader of them:
+ * `course/loader.ts` consults the same catalog to find a package it should
+ * download. Two hand-copied declarations of one endpoint's response is one
+ * declaration too many.
+ */
 function useCourses() {
   return useQuery({
     queryKey: coursesQueryKey(),
-    queryFn: () => api.get<CourseSummary[]>('/courses'),
+    queryFn: () => listCourses(),
     retry: false,
   });
 }
