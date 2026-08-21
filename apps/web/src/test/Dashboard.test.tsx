@@ -11,10 +11,17 @@ import * as engine from '../sync/engine';
 import { Dashboard } from '../pages/Dashboard';
 import type { Manifest } from '../course/types';
 
-function fallbackManifest(): Manifest {
-  // The app's own known-course fallback (Dashboard.tsx's KNOWN_COURSE_IDS)
-  // — every test stubs its manifest endpoint so a stray real network call
-  // never happens even for tests that don't care about this course.
+function catalogManifest(): Manifest {
+  // The manifest of the course the default `GET /courses` stub below puts
+  // in the learner's catalog — every test stubs its manifest endpoint so a
+  // stray real network call never happens even for tests that don't care
+  // about this course.
+  //
+  // This used to be the app's own hardcoded known-course fallback
+  // (`Dashboard.tsx`'s `KNOWN_COURSE_IDS`), which existed only because
+  // `GET /courses` had not been built. It has been; the constant is gone,
+  // and the course reaches the Dashboard the same way every other course
+  // does now — because the catalog endpoint named it.
   return {
     id: '***REMOVED***',
     title: '***REMOVED***',
@@ -121,8 +128,24 @@ async function clearAll() {
   await clearLocalData();
 }
 
+/**
+ * One entry of `GET /courses`'s response — apps/api/internal/course/
+ * handler.go's `courseSummary`. Written out here rather than imported so
+ * the wire contract has to be restated on this side: a change to the
+ * backend's JSON shape should break a test, not silently produce a
+ * Dashboard with no cards.
+ */
+function catalogEntry(id: string, title: string) {
+  return { id, title, lang: 'vi', tier: 'content', versions: ['1.0.0'], pinned: '1.0.0' };
+}
+
 beforeEach(() => {
-  server.use(http.get('/courses/***REMOVED***/manifest.json', () => HttpResponse.json(fallbackManifest())));
+  server.use(http.get('/courses/***REMOVED***/manifest.json', () => HttpResponse.json(catalogManifest())));
+  // The default catalog. Tests that care about the catalog itself
+  // override this; the rest get a learner who holds one course, which is
+  // the same starting state every test in this file had back when the
+  // Dashboard hardcoded that id.
+  server.use(http.get('/courses', () => HttpResponse.json([catalogEntry('***REMOVED***', '***REMOVED***')])));
 });
 beforeEach(clearAll);
 afterEach(clearAll);
@@ -152,9 +175,14 @@ function renderDashboard() {
 }
 
 describe('Dashboard', () => {
-  it('renders a card for a course known ONLY from local progress (Ruling F5 — offline-first, even when /stats never resolves)', async () => {
+  it('renders a card for a course known ONLY from local progress (Ruling F5 — offline-first, even when /stats and /courses never resolve)', async () => {
     server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(4))));
     server.use(http.get('/stats', () => new Promise(() => {}))); // never resolves — simulate offline
+    // The catalog is a network call too, so "offline" has to mean it is
+    // unreachable as well. A Dashboard that learned which courses exist
+    // ONLY from the server would show nothing here — Ruling F5 is exactly
+    // about that not happening.
+    server.use(http.get('/courses', () => new Promise(() => {})));
     await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: new Date().toISOString() });
     await db.progress.put({ courseId: 'demo', chapterId: 'ch-2', status: 'read', done: true, updatedAt: new Date().toISOString() });
 
@@ -166,9 +194,10 @@ describe('Dashboard', () => {
     await waitFor(() => expect(screen.getByText(/2\s*\/\s*4/)).toBeInTheDocument());
   }, OVERSUBSCRIBED_MS);
 
-  it('shows the ring/course card correctly even when GET /stats 500s — must not blank the whole panel', async () => {
+  it('shows the ring/course card correctly even when GET /stats and GET /courses 500 — must not blank the whole panel', async () => {
     server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(2))));
     server.use(http.get('/stats', () => new HttpResponse(null, { status: 500 })));
+    server.use(http.get('/courses', () => new HttpResponse(null, { status: 500 })));
     await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: new Date().toISOString() });
 
     renderDashboard();
@@ -218,13 +247,35 @@ describe('Dashboard', () => {
     expect(await screen.findByText('Khóa học demo')).toBeInTheDocument();
   }, OVERSUBSCRIBED_MS);
 
-  it('always includes the app\'s known-course fallback even with no local progress and no matching stats.courses entry', async () => {
+  it('renders a card for every course GET /courses lists, with no local progress and no matching stats.courses entry', async () => {
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
 
     renderDashboard();
 
     expect(await screen.findByText('***REMOVED***')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/0\s*\/\s*1/)).toBeInTheDocument());
+  }, OVERSUBSCRIBED_MS);
+
+  it('says the library is empty rather than rendering a blank card area when GET /courses returns nothing', async () => {
+    server.use(http.get('/courses', () => HttpResponse.json([])));
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+
+    renderDashboard();
+
+    expect(await screen.findByText(/chưa có khóa học nào/i)).toBeInTheDocument();
+    expect(document.querySelectorAll('.dash-card')).toHaveLength(0);
+  }, OVERSUBSCRIBED_MS);
+
+  it('does not flash the empty-library note while GET /courses is still in flight', async () => {
+    server.use(http.get('/courses', () => new Promise(() => {}))); // never resolves
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+
+    renderDashboard();
+
+    // The streak panel proves the page has rendered; the note must not be
+    // there yet, because "no courses came back" is not yet true.
+    expect(await screen.findByText('ngày liên tục')).toBeInTheDocument();
+    expect(screen.queryByText(/chưa có khóa học nào/i)).not.toBeInTheDocument();
   }, OVERSUBSCRIBED_MS);
 
   it('shows the signed-in user\'s name and a working logout control that stops sync, clears local data, and returns to /login', async () => {

@@ -10,22 +10,6 @@ import type { Manifest } from '../course/types';
 import { db } from '../db/local';
 import { useProgress } from '../progress/useProgress';
 
-/**
- * Every course this app ships in `courses/` today. The full platform spec
- * (docs/superpowers/specs/2026-08-19-tuhoc-platform-design.md §4) lists a
- * `GET /courses` registry endpoint ("registry + trạng thái enroll"), but
- * no task through this one has built it (see `.superpowers/sdd/
- * 2026-08-19-p1-platform-core/progress.md`'s own ledger, which names it
- * as P4 territory). Until a real catalog exists, this is the Dashboard's
- * fallback answer to "which courses might this learner care about" —
- * unioned with whatever `GET /stats` and local progress ALREADY know
- * about (see `useDashboardCourseIds` below), so a brand-new, offline,
- * never-touched-anything learner still has an entry point into the one
- * course this platform actually has, and a real catalog slotting in
- * later only needs this constant deleted, not a redesign.
- */
-const KNOWN_COURSE_IDS = ['***REMOVED***'];
-
 interface DayStat {
   date: string;
   minutes: number;
@@ -45,6 +29,27 @@ interface Stats {
   courses: CourseStat[];
 }
 
+/**
+ * `GET /courses`'s response shape — apps/api/internal/course/handler.go's
+ * `courseSummary`. One entry per course the signed-in learner holds, with
+ * every version they have and the one a reader should open (`pinned`).
+ *
+ * This endpoint is the catalog this page used to have to invent. The full
+ * platform spec (docs/superpowers/specs/2026-08-19-tuhoc-platform-design.md
+ * §4) listed it, P1 was never assigned it, and so this file carried a
+ * hardcoded `KNOWN_COURSE_IDS = ['***REMOVED***']` in its place —
+ * debt C-2 in docs/carried-forward.md, whose own note said a real catalog
+ * would only need that constant deleted. It has been.
+ */
+interface CourseSummary {
+  id: string;
+  title: string;
+  lang: string;
+  tier: string;
+  versions: string[];
+  pinned: string;
+}
+
 function statsQueryKey() {
   return ['stats'] as const;
 }
@@ -53,6 +58,18 @@ function useStats() {
   return useQuery({
     queryKey: statsQueryKey(),
     queryFn: () => api.get<Stats>('/stats'),
+    retry: false,
+  });
+}
+
+export function coursesQueryKey() {
+  return ['courses'] as const;
+}
+
+function useCourses() {
+  return useQuery({
+    queryKey: coursesQueryKey(),
+    queryFn: () => api.get<CourseSummary[]>('/courses'),
     retry: false,
   });
 }
@@ -82,21 +99,30 @@ function useLocalCourseIds(): string[] {
 }
 
 /**
- * The set of courses the Dashboard renders a card for: the known-course
- * fallback above, UNION every `courseId` `GET /stats` mentions, UNION
- * every `courseId` local progress has a row for. Deliberately a union of
- * three sources, not just `/stats` alone — Ruling F5 requires the
- * completion ring to stay correct offline, and a Dashboard that only
- * learns which courses exist from a network call would show NO cards at
- * all while offline for a learner whose local progress already proves
- * they have a course open. `useMemo` is skipped here on purpose: these
- * are tiny arrays (this platform ships one course today) and rebuilding
- * the de-duplicated union on every render is not worth the extra hook.
+ * The set of courses the Dashboard renders a card for: every course
+ * `GET /courses` lists, UNION every `courseId` `GET /stats` mentions,
+ * UNION every `courseId` local progress has a row for.
+ *
+ * Still a union and not just the catalog, even though the catalog is now
+ * the authoritative list. Ruling F5 requires the completion ring to stay
+ * correct offline, and both `/courses` and `/stats` are network calls: a
+ * Dashboard that learned which courses exist ONLY from the server would
+ * show no cards at all to an offline learner whose local progress already
+ * proves they have a course open. The catalog replaced a hardcoded
+ * constant, not the offline-first rule.
+ *
+ * `useMemo` is skipped here on purpose: these are tiny arrays and
+ * rebuilding the de-duplicated union on every render is not worth the
+ * extra hook.
  */
-function useDashboardCourseIds(statsCourses: CourseStat[] | undefined): string[] {
+function useDashboardCourseIds(
+  catalog: CourseSummary[] | undefined,
+  statsCourses: CourseStat[] | undefined,
+): string[] {
   const localCourseIds = useLocalCourseIds();
+  const catalogCourseIds = catalog?.map((c) => c.id) ?? [];
   const statsCourseIds = statsCourses?.map((c) => c.courseId) ?? [];
-  return Array.from(new Set([...KNOWN_COURSE_IDS, ...statsCourseIds, ...localCourseIds])).sort();
+  return Array.from(new Set([...catalogCourseIds, ...statsCourseIds, ...localCourseIds])).sort();
 }
 
 /**
@@ -117,7 +143,8 @@ export function Dashboard() {
   const meQuery = useMe();
   const logout = useLogout();
   const statsQuery = useStats();
-  const courseIds = useDashboardCourseIds(statsQuery.data?.courses);
+  const coursesQuery = useCourses();
+  const courseIds = useDashboardCourseIds(coursesQuery.data, statsQuery.data?.courses);
 
   return (
     <div className="dashboard">
@@ -141,6 +168,24 @@ export function Dashboard() {
           <CourseCard key={courseId} courseId={courseId} statsCourses={statsQuery.data?.courses} />
         ))}
       </div>
+
+      {/*
+        An empty catalog is now a state this page can genuinely be in — a
+        new account holds no packages until it imports one — where before
+        the hardcoded course id made it unreachable. Saying so beats
+        rendering an empty strip that reads as a broken page.
+
+        Gated on the catalog query having SETTLED, not merely on the list
+        being empty: while `GET /courses` is still in flight the answer is
+        "we do not know yet", and flashing "you have no courses" at a
+        learner who has several is worse than showing nothing for a
+        moment.
+      */}
+      {courseIds.length === 0 && !coursesQuery.isPending && (
+        <p className="dash-stats-note">
+          Thư viện của bạn chưa có khóa học nào. Nhập một gói course (.zip) để bắt đầu.
+        </p>
+      )}
     </div>
   );
 }

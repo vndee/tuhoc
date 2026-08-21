@@ -59,7 +59,27 @@ type Deps struct {
 // New builds a Fiber app with the standard middleware stack (recover,
 // logger, CORS) and the health check route.
 func New(cfg config.Config, deps Deps) *fiber.App {
-	app := fiber.New()
+	// BodyLimit is raised from fiber's 4 MiB default because POST /courses
+	// accepts a course package, and a legitimate one may be up to 20 MiB
+	// of contents that barely compress (a course is mostly images once it
+	// stops being mostly prose). course.MaxUploadBytes is that ceiling
+	// plus room for zip and multipart framing.
+	//
+	// It is a per-APP setting in fiber v2, not a per-route one, so every
+	// other route inherits it. That is a real, if small, widening: /sync
+	// and /events/batch will now buffer a 21 MiB body before their
+	// handlers reject it, where they used to be cut off at 4 MiB. The
+	// alternative — leaving the limit at 4 MiB — would reject perfectly
+	// valid packages at the transport layer with a message that says
+	// nothing about packages, so the trade is made deliberately here
+	// rather than discovered later by someone whose 6 MiB course would not
+	// upload.
+	//
+	// This limit is NOT the package size rule and must never be mistaken
+	// for it: it bounds the bytes on the wire, while the rule that matters
+	// (course.MaxUncompressedBytes) bounds the bytes after expansion. A
+	// zip bomb passes this one comfortably.
+	app := fiber.New(fiber.Config{BodyLimit: int(course.MaxUploadBytes)})
 
 	// Fiber's CORS middleware treats an empty AllowOrigins as the
 	// wildcard "*", which it refuses to combine with AllowCredentials —
@@ -138,17 +158,21 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	app.Post("/events/batch", auth.Require(deps.Pool), statsHandler.EventsBatch)
 	app.Get("/stats", auth.Require(deps.Pool), statsHandler.Stats)
 
-	// Course-package storage. The repository is built here so its wiring
-	// is compiled and exercised alongside the rest of the app, but NO
-	// routes are registered for it yet: the endpoints that read and write
-	// packages (GET/POST /courses and the asset routes) are the next
-	// task's, and mounting a half-built surface early would expose
-	// handlers nobody has tested. When those routes land they belong
-	// behind auth.Require(deps.Pool) like every other route above — every
-	// course.Repo method is keyed on an owner id, and that id must come
-	// from the authenticated session, never from the request.
-	courseRepo := course.NewRepo(deps.Pool)
-	_ = courseRepo
+	// Course routes. Behind auth.Require(deps.Pool) like every route
+	// above, and for a sharper reason than most: every course.Repo method
+	// is keyed on an owner id, and that id must come from the
+	// authenticated session (auth.UID) — never from a request body, form
+	// field, or query parameter. See handler.go.
+	//
+	// The manifest route is registered BEFORE the wildcard so it wins the
+	// match. Both would serve the same bytes, but the explicit route is
+	// the one the brief names as a contract, and leaving it implicit would
+	// make it disappear the day the wildcard's shape changes.
+	courseHandler := course.NewHandler(course.NewUsecase(course.NewRepo(deps.Pool)))
+	app.Get("/courses", auth.Require(deps.Pool), courseHandler.List)
+	app.Post("/courses", auth.Require(deps.Pool), courseHandler.Post)
+	app.Get("/courses/:id/@:version/manifest.json", auth.Require(deps.Pool), courseHandler.Manifest)
+	app.Get("/courses/:id/@:version/*", auth.Require(deps.Pool), courseHandler.Asset)
 
 	return app
 }
