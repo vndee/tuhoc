@@ -1,8 +1,23 @@
-.PHONY: dev-api dev-web test-api test-web test-e2e test-viz setup-extract test-extract extract
+.PHONY: dev-api dev-web test-api test-web test-format test-e2e test-viz setup-extract test-extract extract
 dev-api:  ; cd apps/api && go run ./cmd/api
 dev-web:  ; cd apps/web && bun run dev
 test-api: ; cd apps/api && go test ./...
 test-web: ; cd apps/web && bun run test
+# packages/course-format — the course package rule set shared by the packaging
+# CLI, registry CI and the browser importer. Two gates, both required: vitest
+# for behaviour, and `tsc -b` for types.
+#
+# `tsc -b`, NOT `tsc --noEmit`: `--noEmit` does not descend into project
+# references and has already produced one empty, always-green gate in this repo
+# (docs/carried-forward.md §2). This package's tsconfig names real sources in
+# `include`, so both would work here — `tsc -b` is used anyway so there is one
+# type-gate shape in the repo rather than two, and it is the shape proven to go
+# red. Verified by injecting `const x: number = 'chuỗi'` into src/validate.ts
+# (exit 1) and into src/validate.test.ts (exit 1, so test files are covered too).
+#
+# Note this package has its own node_modules: the repo has no npm workspaces
+# and no root package.json. Run `cd packages/course-format && bun install` once.
+test-format: ; cd packages/course-format && bun run typecheck && bun run test
 # Task 17: the P1 end-to-end gate. Rebuilds and brings up Postgres + the
 # real API via apps/api/compose.e2e.yml (always `--build`, so the gate can
 # never pass against a stale API binary), applies migrations, builds and
