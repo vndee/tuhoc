@@ -222,7 +222,15 @@ export function ImportCourse() {
               the file count and nothing here makes it fast. A static line
               for twenty seconds reads as a hung page.
             */}
-            {progress && ` ${progress.done}/${progress.total} tệp.`}
+            {/*
+              Only while FETCHING, and that clause was added from looking at
+              the real screen rather than from thinking about it: driving a
+              25-file repo in Chromium, the counter survived into the next
+              stage and printed "Đang kiểm tra nội dung gói… 24/25 tệp.",
+              which reads as if the scan were still downloading with one file
+              to go. A count belongs to the phase that produced it.
+            */}
+            {stage === 'fetching' && progress && ` ${progress.done}/${progress.total} tệp.`}
           </p>
         )}
         {/*

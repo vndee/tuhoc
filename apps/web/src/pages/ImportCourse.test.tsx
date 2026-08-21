@@ -320,6 +320,54 @@ it('đếm tệp trong lúc tải repo, và cho HUỶ — nút duy nhất không
   release?.();
 });
 
+it('bộ đếm tệp biến mất khi việc TẢI xong — nó thuộc về chặng đã sinh ra nó', async () => {
+  // Found by driving a real 25-file repo in Chromium, not by reasoning: the
+  // count survived into the next stage and the page read
+  // "Đang kiểm tra nội dung gói… 24/25 tệp.", as though the scan were still
+  // downloading and one file short. Every line the live region ever showed
+  // is collected here, because the offending one is transient and a check
+  // afterwards would never see it.
+  const manifestJson = JSON.stringify(manifest(), null, 2);
+  const assets = Array.from({ length: 8 }, (_, i) => `assets/${i}.txt`);
+  server.use(
+    http.get('https://api.github.com/repos/ai-do/khoa-hoc/git/trees/HEAD', () =>
+      HttpResponse.json({
+        sha: 'x',
+        truncated: false,
+        tree: [
+          { path: 'manifest.json', type: 'blob', mode: '100644', size: manifestJson.length },
+          { path: 'chapters/c1.html', type: 'blob', mode: '100644', size: 30 },
+          ...assets.map((path) => ({ path, type: 'blob', mode: '100644', size: 1 })),
+        ],
+      }),
+    ),
+    http.get('https://raw.githubusercontent.com/ai-do/khoa-hoc/HEAD/manifest.json', () =>
+      new HttpResponse(encode(manifestJson) as BlobPart),
+    ),
+    http.get('https://raw.githubusercontent.com/ai-do/khoa-hoc/HEAD/assets/:name', () =>
+      new HttpResponse(encode('x') as BlobPart),
+    ),
+    http.get('https://raw.githubusercontent.com/ai-do/khoa-hoc/HEAD/chapters/c1.html', () =>
+      new HttpResponse(encode('<h1 class="ch-title">Chương một</h1>') as BlobPart),
+    ),
+  );
+  const user = userEvent.setup();
+  renderPage();
+
+  const seen: string[] = [];
+  const live = document.querySelector('[role="status"]') as HTMLElement;
+  const observer = new MutationObserver(() => seen.push(live.textContent ?? ''));
+  observer.observe(live, { childList: true, subtree: true, characterData: true });
+
+  await user.type(screen.getByLabelText(/đường dẫn repo/i), 'https://github.com/ai-do/khoa-hoc');
+  await user.click(screen.getByRole('button', { name: /nhập từ repo/i }));
+  await screen.findByRole('link', { name: /mở khóa học/i });
+  observer.disconnect();
+
+  expect(seen.some((line) => /tệp\./.test(line)), 'bộ đếm chưa bao giờ hiện ra').toBe(true);
+  expect(seen.filter((line) => /kiểm tra|lưu vào máy/i.test(line) && /tệp\./.test(line))).toEqual([]);
+});
+
 it('không để bấm nhập lần hai khi lần một chưa xong', async () => {
   let release: (() => void) | undefined;
   server.use(
