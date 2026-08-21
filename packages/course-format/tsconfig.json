@@ -1,0 +1,37 @@
+{
+  // Copied from `apps/web/tsconfig.app.json` with the JSX/DOM parts dropped:
+  // this package must compile for BOTH Node (the packaging CLI of task 3, the
+  // registry CI of subsystem 3) and the browser (the import path of task 8),
+  // so it may not depend on `lib: DOM` or on `vite/client` ambient types.
+  //
+  // Unlike `apps/web/tsconfig.json` this file is NOT a `"files": []` +
+  // `references` shell. That shape is exactly what made the web app's
+  // `tsc --noEmit` an EMPTY gate (see docs/carried-forward.md §2): `--noEmit`
+  // does not descend into project references, so it type-checked nothing and
+  // still exited 0. Here `include` names real source, so both `tsc -b` and
+  // `tsc --noEmit` actually look at the files. `bun run typecheck` uses
+  // `tsc -b`, which is the shape proven to go red in this repo.
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "module": "esnext",
+    "types": [],
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
+}
