@@ -129,6 +129,18 @@ describe('đường dẫn thoát khỏi gói', () => {
     'a/../../thoat.txt',
     '/tuyet-doi.txt',
     'C:\\windows\\evil.txt',
+    // Cùng đường dẫn Windows, viết bằng dấu gạch chéo XUÔI. Ca ngay trên xanh
+    // vì luật "có ký tự \", KHÔNG phải vì "là đường tuyệt đối" — nên nó tạo cảm
+    // giác đường ổ đĩa đã được xử lý trong khi ba dòng dưới đây từng đi lọt.
+    // Đo bằng đúng ngữ nghĩa Windows của Node:
+    //   path.win32.resolve('C:\\pkg', 'C:/evil.txt') → "C:\\evil.txt"  ← ra khỏi gói
+    //   path.win32.resolve('C:\\pkg', 'C:evil.txt')  → "C:\\pkg\\evil.txt"
+    // Dạng thứ hai không thoát, nhưng nó là đường dẫn TƯƠNG ĐỐI THEO Ổ ĐĨA:
+    // nghĩa của nó phụ thuộc thư mục hiện hành của ổ C: lúc giải nén. Một cái
+    // tên mà ý nghĩa do máy người đọc quyết định thì không có chỗ trong gói.
+    'C:/evil.txt',
+    'c:/evil.txt',
+    'C:evil.txt',
     'a\\b.txt',
     '',
   ];
@@ -175,6 +187,42 @@ describe('kho nhập nhằng bị từ chối thay vì bị đoán', () => {
     const err = catchUnsafe(() => unpackZip(dup));
     expect(err.code).toBe('DUPLICATE_ENTRY');
     expect(err.entry).toBe('manifest.json');
+  });
+
+  it('trùng tên theo HOA/THƯỜNG cũng là trùng — trên APFS và NTFS đó là MỘT tệp', () => {
+    // Luật `DUPLICATE_ENTRY` tồn tại để từ chối cái nhập nhằng "hai mục, một
+    // tệp". So khớp phân biệt hoa thường trả lời câu hỏi đó theo ngữ nghĩa của
+    // `Map`, không theo ngữ nghĩa của hệ tệp mà gói sẽ được ghi ra: macOS (APFS,
+    // mặc định không phân biệt hoa thường) và Windows (NTFS) đều coi
+    // `manifest.json` và `MANIFEST.JSON` là một. Người ghi ra đĩa — `tuhoc` CLI —
+    // sẽ giữ cái sau; bộ kiểm định đọc cái đầu. Đúng cái bất đồng này.
+    const dup = rawZip([
+      ['manifest.json', enc('{"tier":"content"}')],
+      ['MANIFEST.JSON', enc('{"tier":"interactive"}')],
+    ]);
+    const err = catchUnsafe(() => unpackZip(dup));
+    expect(err.code).toBe('DUPLICATE_ENTRY');
+    expect(err.entry).toBe('MANIFEST.JSON');
+  });
+
+  it('trùng tên theo CHUẨN HOÁ UNICODE cũng là trùng — hai chuỗi, một tên tệp', () => {
+    // `café.txt` viết bằng NFC (é = U+00E9) và bằng NFD (e + U+0301) là hai
+    // chuỗi JavaScript khác nhau in ra GIỐNG HỆT nhau, và trên macOS là cùng một
+    // tệp. Một mục lục trộn hai dạng là cách viết "hai mục trùng tên" mà mắt
+    // người đọc diff không thấy được.
+    const nfc = 'café.txt';
+    const nfd = 'café.txt';
+    expect(nfc).not.toBe(nfd); // hai chuỗi thật sự khác nhau…
+    expect(nfc.normalize('NFD')).toBe(nfd); // …và đúng là hai dạng của MỘT tên
+    const err = catchUnsafe(() => unpackZip(rawZip([[nfc, enc('a')], [nfd, enc('b')]])));
+    expect(err.code).toBe('DUPLICATE_ENTRY');
+    expect(err.entry).toBe(nfd);
+  });
+
+  it('ĐỐI CHỨNG: hai tên KHÁC nhau thật thì vẫn qua, kể cả khi chỉ khác một chữ', () => {
+    // Không có dòng này thì luật ở trên có thể là "từ chối mọi thứ na ná nhau".
+    expect([...unpackZip(rawZip([['a.txt', enc('a')], ['ab.txt', enc('b')]])).keys()])
+      .toEqual(['a.txt', 'ab.txt']);
   });
 
   it('rác không phải zip bị NÉM, KHÔNG trả về Map rỗng', () => {
@@ -259,6 +307,68 @@ describe('kho nhập nhằng bị từ chối thay vì bị đoán', () => {
     expect(catchUnsafe(() => unpackZip(tampered)).code).toBe('MALFORMED');
     // …và ĐỐI CHỨNG: chưa sửa thì đọc bình thường.
     expect([...unpackZip(good).keys()]).toEqual(['a.txt', 'b.txt']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hai nửa của một zip phải nói CÙNG MỘT chuyện — ở mức TÊN, không chỉ mức SỐ.
+//
+// `fflate.Unzip` (thứ `unpackZip` dùng) đi theo local header. `unzipSync`,
+// `python zipfile`, `java.util.zip`, `JSZip`, `unzip(1)` đi theo mục lục ở cuối
+// tệp. Phép đối chiếu SỐ MỤC bịt được bất đồng về số lượng; bất đồng về TÊN thì
+// không, và tên chính là phần mang đường thoát.
+// ---------------------------------------------------------------------------
+
+describe('mục lục và local header phải khai cùng những cái tên', () => {
+  it('local khai "manifest.json", mục lục khai "../../evil.js" → NÉM', () => {
+    // Đo bằng bốn trình đọc trên ĐÚNG những byte này (xem báo cáo), trước khi
+    // có luật:
+    //   unpackZip         : ACCEPTED keys=["manifest.json"]   ← cổng nói ĐƯỢC
+    //   fflate.unzipSync  : ["../../evil.js"]
+    //   python3 zipfile   : ['../../evil.js']
+    //   /usr/bin/unzip -l : ../../evil.js
+    // Không trình nào ghi ra ngoài thư mục đích (Info-ZIP cắt "../" rồi cảnh
+    // báo; ditto dùng tên local) — nhưng đó là may, không phải luật, và nó
+    // KHÔNG phải vấn đề chính. Vấn đề chính: tệp đã qua kiểm định
+    // (`manifest.json`) và tệp mọi công cụ khác nhìn thấy (`evil.js`) là HAI tệp
+    // khác nhau. Sổ đăng ký lưu byte gói gốc; người tải về mở bằng công cụ của
+    // họ và nhận một gói chưa từng đi qua cổng này.
+    //
+    // Hai tên dài BẰNG NHAU (13 ký tự) nên không một byte nào khác trong kho
+    // phải dịch chỗ, và số mục vẫn 1 = 1: phép đối chiếu số mục không chạm tới.
+    const good = packZip(new Map([['manifest.json', enc('{"id":"demo"}')]]));
+    const forged = renameInCentralDirectory(good, 'manifest.json', '../../evil.js');
+    expect(forged).not.toEqual(good); // phép vá thực sự đã đổi byte
+    const err = catchUnsafe(() => unpackZip(forged));
+    expect(err.code).toBe('MALFORMED');
+    expect(err.bytesRead, 'kho hai-nửa-nói-khác-nhau không được bung một byte nào').toBe(0);
+  });
+
+  it('bất đồng tên bị chặn kể cả khi CẢ HAI tên đều vô hại', () => {
+    // Luật là "hai nửa phải khớp", KHÔNG phải "tên trong mục lục không được
+    // thoát ra". Nếu chỉ chạy `escapesPackage` trên tên mục lục thì cặp
+    // (a.txt, b.txt) đi lọt — mà nó vẫn là hai gói khác nhau cho hai trình đọc.
+    const good = packZip(new Map([['a.txt', enc('AAAA')]]));
+    const forged = renameInCentralDirectory(good, 'a.txt', 'b.txt');
+    expect(catchUnsafe(() => unpackZip(forged)).code).toBe('MALFORMED');
+  });
+
+  it('ĐỐI CHỨNG: kho chưa bị vá — cùng đường đi, cùng helper — đọc bình thường', () => {
+    // Không có dòng này thì hai ca trên có thể xanh vì `renameInCentralDirectory`
+    // làm hỏng kho, chứ không phải vì phép đối chiếu tên chạy đúng.
+    const good = packZip(new Map([['a.txt', enc('AAAA')], ['b.txt', enc('BBBB')]]));
+    expect([...unpackZip(renameInCentralDirectory(good, 'a.txt', 'a.txt')).keys()])
+      .toEqual(['a.txt', 'b.txt']);
+  });
+
+  it('tên KHÔNG PHẢI ASCII vẫn so khớp được — phép giải mã hai bên phải giống nhau', () => {
+    // Phép đối chiếu chỉ có nghĩa nếu tên trong mục lục được giải mã ĐÚNG như
+    // `fflate` giải mã tên trong local header: UTF-8 khi bit 11 của general
+    // purpose flag bật, còn không thì từng byte một. Sai một trong hai thì gói
+    // tiếng Việt nào cũng thành MALFORMED — một cổng "an toàn" vì nó từ chối
+    // tất cả.
+    const files = new Map([['assets/anh nền.png', enc('x')], ['trống.txt', enc('y')]]);
+    expect([...unpackZip(packZip(files)).keys()]).toEqual(['assets/anh nền.png', 'trống.txt']);
   });
 });
 
@@ -468,6 +578,32 @@ function rawZip(entries: readonly (readonly [string, Uint8Array])[]): Uint8Array
   const out = new Uint8Array(n);
   let at = 0;
   for (const p of parts) out.set(p, at), (at += p.length);
+  return out;
+}
+
+/**
+ * Đổi tên một mục TRONG MỤC LỤC mà không chạm vào local header của nó — tức là
+ * dựng ra một kho mà hai nửa nói khác nhau.
+ *
+ * Bắt buộc cùng độ dài tên: giữ nguyên mọi offset trong kho, nên phép vá không
+ * thể làm kho hỏng theo cách nào khác, và số mục vẫn khớp. Ném nếu không đúng
+ * một bản ghi được sửa — một helper vá hụt sẽ làm ca test xanh vì lý do sai.
+ */
+function renameInCentralDirectory(zip: Uint8Array, from: string, to: string): Uint8Array {
+  const f = enc(from);
+  const t = enc(to);
+  if (f.length !== t.length) throw new Error('renameInCentralDirectory: hai tên phải cùng số byte');
+  const out = zip.slice();
+  let patched = 0;
+  for (let i = 0; i + 46 <= out.length; i++) {
+    // "PK\x01\x02" — một bản ghi trong mục lục.
+    if (out[i] !== 0x50 || out[i + 1] !== 0x4b || out[i + 2] !== 0x01 || out[i + 3] !== 0x02) continue;
+    if (((out[i + 28] as number) | ((out[i + 29] as number) << 8)) !== f.length) continue;
+    if (!f.every((b, k) => out[i + 46 + k] === b)) continue;
+    out.set(t, i + 46);
+    patched++;
+  }
+  if (patched !== 1) throw new Error(`renameInCentralDirectory: vá ${patched} bản ghi, cần đúng 1`);
   return out;
 }
 

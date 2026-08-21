@@ -143,6 +143,26 @@ describe('luật chung', () => {
     expect(codesOf(withChapter('<p>a</p>').set('a\\b.txt', enc('x')))).toContain('PATH_ESCAPE');
   });
 
+  it('PATH_ESCAPE: tiền tố Ổ ĐĨA bị chặn kể cả khi viết bằng dấu gạch XUÔI', () => {
+    // Bài học Task 1, áp vào chính chỗ này. Ca `C:\windows\evil.txt` (ở trên,
+    // qua luật "có ký tự \") tạo cảm giác đường ổ đĩa đã được xử lý — nhưng luật
+    // được viết ra là "có \", không phải "là đường tuyệt đối", nên đổi sang `/`
+    // là thoát. Đúng ngữ nghĩa Windows của Node, đo chứ không đoán:
+    //   path.win32.resolve('C:\\pkg', 'C:/evil.txt') → "C:\\evil.txt"  ← ra khỏi gói
+    //   path.win32.resolve('C:\\pkg', 'C:evil.txt')  → "C:\\pkg\\evil.txt"
+    // Dạng thứ hai KHÔNG thoát; nó bị chặn vì lý do khác và lý do đó cũng phải
+    // được viết ra: đường tương đối theo ổ đĩa trỏ tới đâu là do thư mục hiện
+    // hành của ổ C: lúc giải nén quyết định. Gói không được mang một cái tên mà
+    // nghĩa của nó nằm ở máy người đọc.
+    for (const name of ['C:/evil.txt', 'c:/evil.txt', 'C:evil.txt', 'Z:/x']) {
+      expect(codesOf(withChapter('<p>a</p>').set(name, enc('x'))), name).toContain('PATH_ESCAPE');
+    }
+    // …và ĐỐI CHỨNG: dấu hai chấm ở chỗ khác trong tên là tên tệp bình thường
+    // trên macOS/Linux, không phải đường ổ đĩa.
+    expect(validatePackage(withChapter('<p>a</p>').set('ghi chú: bản 2.txt', enc('x'))).ok).toBe(true);
+    expect(validatePackage(withChapter('<p>a</p>').set('assets/CC:BY.txt', enc('x'))).ok).toBe(true);
+  });
+
   it('PATH_ESCAPE: chapter.file thoát ra ngoài cũng bị chặn, không chỉ tên entry', () => {
     const over = {
       parts: [{ title: 'P', chapters: [{ id: 'c1', num: '1', title: 'T', short: 'T', file: '../ngoai.html' }] }],

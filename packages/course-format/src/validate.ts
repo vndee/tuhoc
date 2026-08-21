@@ -234,9 +234,22 @@ function finding(code: FindingCode, path: string, detail: string): Finding {
  * True when a package-relative path could resolve outside the package once a
  * consumer joins it to a destination directory.
  *
- * Catches: any `..` segment, a leading `/` (absolute POSIX), a drive-letter or
- * UNC prefix and every other use of `\` (a backslash is never a legitimate
- * separator here, and on Windows it IS one), and the empty path.
+ * Catches: any `..` segment, a leading `/` (absolute POSIX), a drive-letter
+ * prefix in either slash direction, a UNC prefix and every other use of `\` (a
+ * backslash is never a legitimate separator here, and on Windows it IS one),
+ * and the empty path.
+ *
+ * The drive-letter rule is its own line and not a side effect of the backslash
+ * rule, because that is exactly how it was missed: `C:\windows\evil.txt` was
+ * refused — by the backslash — while `C:/evil.txt` was allowed, and
+ * `path.win32.resolve('C:\\pkg', 'C:/evil.txt')` is `C:\evil.txt`, outside the
+ * package. Same shape as the lesson this file already carries elsewhere: a rule
+ * written against one *spelling* of a thing, standing in for the thing.
+ * `C:evil.txt` (drive-RELATIVE) resolves to `C:\pkg\evil.txt` and does not
+ * escape, and is refused anyway: where it lands depends on that drive's current
+ * directory at extraction time, and a package may not carry a name whose
+ * meaning is decided by the reader's machine. A colon elsewhere in a name
+ * (`ghi chú: bản 2.txt`) is an ordinary POSIX filename and stays allowed.
  *
  * Misses: percent-encoded traversal (`%2e%2e/`) and Unicode look-alikes. Those
  * are decoded by whoever decodes them, not by this module — a consumer must
@@ -250,8 +263,12 @@ export function escapesPackage(path: string): boolean {
   if (path.length === 0) return true;
   if (path.includes('\\')) return true;
   if (path.startsWith('/')) return true;
+  if (DRIVE_PREFIX_RE.test(path)) return true;
   return path.split('/').some((segment) => segment === '..');
 }
+
+/** `C:` at the very start — a Windows drive, absolute or drive-relative. */
+const DRIVE_PREFIX_RE = /^[a-zA-Z]:/;
 
 /** Tags whose mere presence is `EMBEDDED_FRAME`. */
 const EMBEDDED_FRAME_TAGS = new Set(['iframe', 'object', 'embed', 'frame', 'frameset']);

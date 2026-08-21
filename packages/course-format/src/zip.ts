@@ -44,8 +44,12 @@
  *     package" is one answer too many.
  *  2. a name already seen — a zip may legally carry two entries called
  *     `manifest.json`; `new Map()` would silently keep the second and any other
- *     reader might keep the first. Ambiguity gets refused, not resolved.
- *  3. the size the local header *claims* — a cheap early exit for an honest
+ *     reader might keep the first. Ambiguity gets refused, not resolved, and
+ *     "the same name" is decided the way the file system the package lands on
+ *     decides it (see {@link duplicateKey}), not the way `Map` does.
+ *  3. the name the archive's own index gives that entry — see the third bullet
+ *     under Deliberate non-goals.
+ *  4. the size the local header *claims* — a cheap early exit for an honest
  *     bomb. It is a claim by whoever wrote the file, so it may only ever be used
  *     to REJECT. Accepting on it is pinned as a test.
  * Then, during inflation: the running total, which is the only number here that
@@ -60,19 +64,28 @@
  * - **No CRC check.** `fflate`'s reader does not verify entry CRCs and neither
  *   does this. A CRC detects corruption, not malice — an attacker writes the
  *   CRC too — and every rule here has to hold against malice.
- * - **The central directory is only counted, not parsed.** `fflate`'s streaming
- *   reader walks local headers; `unzipSync` and `unzip(1)` walk the central
- *   directory. A zip whose two halves disagree is read differently by the two,
- *   which is how a scanner at one end of a pipeline and a reader at the other
- *   end are made to see different files. Fully closing that needs a second
- *   parser. What is done instead is the cheap half: the end-of-central-directory
- *   record must exist, its entry count must equal the number of entries actually
- *   read, and it must reach exactly the end of the file. That catches every
- *   truncation and every count-level disagreement — including the one measured
- *   while writing this module, where a zip cut short inside a local header
- *   returned a *smaller package with no error at all*. A disagreement in entry
- *   *contents* with a matching count is still not detected, and that is written
- *   down rather than handled.
+ * - **The central directory is read for names, not for contents.** `fflate`'s
+ *   streaming reader walks local headers; `unzipSync`, `unzip(1)`, `python
+ *   zipfile`, `java.util.zip` and `JSZip` walk the central directory. A zip
+ *   whose two halves disagree is read differently by the two, which is how a
+ *   scanner at one end of a pipeline and a reader at the other end are made to
+ *   see different files. Three things are required to agree, all before a byte
+ *   is inflated: the end-of-central-directory record must exist and reach
+ *   exactly the end of the file, its entry count must equal the number of
+ *   entries actually read, and **every name a local header announces must be a
+ *   name the index lists**. The count half catches every truncation — including
+ *   the one measured while writing this module, where a zip cut short inside a
+ *   local header returned a *smaller package with no error at all*. The name
+ *   half catches the archive measured in review, whose local header said
+ *   `manifest.json` while its index said `../../evil.js`: this reader accepted
+ *   it and the other four each listed the escape. The earlier note here that
+ *   closing that needed "a second parser" was wrong by about twenty lines —
+ *   see {@link centralDirectoryNames}. What is still NOT compared is entry
+ *   *contents*: an index that agrees on every name but points at different
+ *   bytes is not detected. Written down rather than handled — and narrower than
+ *   it sounds, because the duplicate-name rule and the count cross-check
+ *   together already refuse every "zip nested inside a zip" shape tried against
+ *   them.
  * - **Nothing may sit outside the archive at either end.** A file that does not
  *   begin with a local header is refused, and so is one with bytes past its own
  *   index. Both ends of a polyglot are the same trick: give one reader a JPEG
@@ -176,7 +189,7 @@ function u32(b: Uint8Array, at: number): number {
 }
 
 /**
- * How many entries the archive's own index claims, or `null` if it has no index.
+ * Where the archive's own index ends, or `null` if it has no index.
  *
  * The record is at the end, but a zip may carry a trailing comment of up to
  * 65,535 bytes, so it has to be searched for backwards. A candidate only counts
@@ -184,18 +197,89 @@ function u32(b: Uint8Array, at: number): number {
  * that, arbitrary bytes that happen to spell `PK\x05\x06` would be accepted as
  * the index.
  *
- * This number is written by whoever wrote the file, so it is not *trust*. It is
- * a consistency check: an archive whose two indexes agree is at least one
- * archive rather than two, and truncation makes them disagree for free.
+ * What the record says is written by whoever wrote the file, so it is not
+ * *trust*. It is a consistency check: an archive whose two halves agree is at
+ * least one archive rather than two, and truncation makes them disagree for
+ * free.
  */
-function centralDirectoryCount(zip: Uint8Array): number | null {
+function findEndOfCentralDirectory(zip: Uint8Array): number | null {
   const lowest = Math.max(0, zip.length - EOCD_SIZE - 0xffff);
   for (let at = zip.length - EOCD_SIZE; at >= lowest; at--) {
     if (u32(zip, at) !== EOCD_SIG) continue;
     if (u16(zip, at + 20) !== zip.length - at - EOCD_SIZE) continue;
-    return u16(zip, at + 10);
+    return at;
   }
   return null;
+}
+
+/** `PK\x01\x02` — a central directory record, as a little-endian u32. */
+const CENTRAL_SIG = 0x02014b50;
+/** A central directory record without its name, extra field and comment. */
+const CENTRAL_SIZE = 46;
+/** Bit 11 of the general purpose flag: the entry name is UTF-8. */
+const UTF8_NAME_FLAG = 0x800;
+
+const utf8 = new TextDecoder('utf-8');
+
+/**
+ * An entry name, decoded the way `fflate` decodes the one in the local header.
+ *
+ * This has to match `fflate`'s `strFromU8(bytes, !(flag & 2048))` byte for
+ * byte, or the two halves of a perfectly ordinary Vietnamese package would
+ * "disagree" and every such package would be refused — a gate that is safe
+ * because it says no to everything. Latin-1 is one `String.fromCharCode` per
+ * byte, not `windows-1252`, because that is what `fflate` does.
+ */
+function decodeEntryName(bytes: Uint8Array, isUtf8: boolean): string {
+  if (isUtf8) return utf8.decode(bytes);
+  let name = '';
+  for (const b of bytes) name += String.fromCharCode(b);
+  return name;
+}
+
+/**
+ * Every name the archive's index claims, or `null` if the index is unreadable.
+ *
+ * `count` records are walked from the offset the end-of-central-directory
+ * record gives, and they must end exactly where that record begins: a gap
+ * between the last index entry and the index's own footer is the same trick as
+ * bytes before the first local header, one reader's padding being another
+ * reader's file.
+ *
+ * Not a general zip64 parser and not trying to be — an archive whose index does
+ * not sit plainly in front of its footer is refused rather than guessed at, and
+ * this module already refuses zip64 entry counts a few lines up.
+ */
+function centralDirectoryNames(zip: Uint8Array, eocd: number, count: number): Set<string> | null {
+  const start = u32(zip, eocd + 16);
+  const names = new Set<string>();
+  let at = start;
+  for (let i = 0; i < count; i++) {
+    if (at < 0 || at + CENTRAL_SIZE > eocd) return null;
+    if (u32(zip, at) !== CENTRAL_SIG) return null;
+    const nameLength = u16(zip, at + 28);
+    const nameAt = at + CENTRAL_SIZE;
+    if (nameAt + nameLength > eocd) return null;
+    names.add(
+      decodeEntryName(zip.subarray(nameAt, nameAt + nameLength), (u16(zip, at + 8) & UTF8_NAME_FLAG) !== 0),
+    );
+    at = nameAt + nameLength + u16(zip, at + 30) + u16(zip, at + 32);
+  }
+  return at === eocd ? names : null;
+}
+
+/**
+ * The key two entry names are "the same file" under.
+ *
+ * `Map` compares strings; the file systems a package is extracted onto do not.
+ * APFS (macOS default) and NTFS both fold case, and macOS also folds Unicode
+ * normalization, so `manifest.json`/`MANIFEST.JSON` and NFC/NFD `café.txt` are
+ * each ONE file there — the very ambiguity `DUPLICATE_ENTRY` exists to refuse,
+ * arriving in a spelling the plain string comparison could not see. The
+ * refusal still names the entry as it was written.
+ */
+function duplicateKey(name: string): string {
+  return name.normalize('NFC').toLowerCase();
 }
 
 /**
@@ -254,21 +338,27 @@ export function unpackZip(zip: Uint8Array): Map<string, Uint8Array> {
     throw new UnsafeArchiveError('MALFORMED', '.', 'does not begin with a zip signature');
   }
 
-  // Read the archive's own entry count up front, so a file with no index at all
-  // is refused before any inflation rather than after.
-  const declared = centralDirectoryCount(zip);
-  if (declared === null) {
+  // Read the archive's own index up front, so a file with no index at all — or
+  // with one that does not agree with its own contents — is refused before any
+  // inflation rather than after.
+  const eocd = findEndOfCentralDirectory(zip);
+  if (eocd === null) {
     throw new UnsafeArchiveError('MALFORMED', '.', 'archive has no end-of-central-directory record');
   }
+  const declared = u16(zip, eocd + 10);
   if (declared === 0xffff) {
     // 0xFFFF is zip64's "look in the zip64 record instead" sentinel, and this
     // module does not read that record. Refusing beats quietly skipping the
     // cross-check — and a course package with 65,535 entries is not a thing.
     throw new UnsafeArchiveError('MALFORMED', '.', 'zip64 entry counts are not supported');
   }
+  const indexed = centralDirectoryNames(zip, eocd, declared);
+  if (indexed === null) {
+    throw new UnsafeArchiveError('MALFORMED', '.', 'archive index is not readable');
+  }
 
   const out = new Map<string, Uint8Array>();
-  /** Names announced by a local header — the duplicate check's memory. */
+  /** Case- and normalization-folded names seen so far — the duplicate check's memory. */
   const announced = new Set<string>();
   /** Directory markers, dropped from `out` but still entries as far as the index is concerned. */
   let dropped = 0;
@@ -292,11 +382,27 @@ export function unpackZip(zip: Uint8Array): Map<string, Uint8Array> {
       fail('PATH_ESCAPE', name, 'entry path escapes the package root');
       return;
     }
-    if (announced.has(name)) {
+    const key = duplicateKey(name);
+    if (announced.has(key)) {
       fail('DUPLICATE_ENTRY', name, 'two entries share this name');
       return;
     }
-    announced.add(name);
+    announced.add(key);
+
+    // The name in the local header must be a name the index lists. `fflate`'s
+    // streaming reader — this one — walks local headers; `unzipSync`,
+    // `python zipfile`, `java.util.zip`, `JSZip` and `unzip(1)` all walk the
+    // index. Measured on an archive whose local header said `manifest.json`
+    // while its index said `../../evil.js`: this gate accepted it and reported
+    // `manifest.json`, and the other four all reported `../../evil.js`. Whether
+    // any of them then WRITES outside the destination is their business and
+    // mostly they do not; the part that is this module's business is that the
+    // file which passed the gate and the file everyone else sees are not the
+    // same file. Names, not just how many of them, and it costs one Set lookup.
+    if (!indexed.has(name)) {
+      fail('MALFORMED', name, 'a local header announces a name the archive index does not list');
+      return;
+    }
 
     // The header's own claim about the decompressed size. Only ever a reason to
     // stop early — an entry that lies low here is caught by the running total
