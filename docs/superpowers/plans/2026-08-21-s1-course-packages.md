@@ -466,10 +466,10 @@ it('đăng xuất xoá luôn gói course đã cache', async () => {
 
 it('db.tables có đúng 5 bảng', () => {
   expect(db.tables.map(t => t.name).sort())
-    .toEqual(['annotations', 'events', 'outbox', 'packages', 'progress']);
+    .toEqual(['annotations', 'meta', 'outbox', 'packages', 'progress']);
 });
 ```
-*(Kiểm tên 4 bảng hiện có trong `db/local.ts` trước khi viết ca thứ ba — đừng chép danh sách trên mà không xác minh.)*
+*(Bốn bảng hiện có đã được xác minh ở bước pre-flight: `progress`, `annotations`, `outbox`, `meta` — ruling S1-F4.)*
 
 - [ ] **Step 2:** `bun run test -- src/db/local.test.ts src/course/loader.test.ts` → FAIL.
 - [ ] **Step 3:** Cài đặt. **Step 4:** Run → PASS, rồi chạy **cả bộ** — 523 test cũ phải giữ nguyên xanh.
@@ -615,7 +615,7 @@ git rm -r courses/***REMOVED***
 ```
 Rồi: `courseAssets.ts` phải chạy được với `courses/` **rỗng** (đừng để nó ném khi không có course nào — lần chạy đầu của người clone repo là đúng trạng thái này); `tools/extract.py` giữ nguyên, nó là công cụ chuyển đổi một lần, chỉ cập nhật tài liệu để nói rõ đầu ra nay đi qua `tuhoc pack`.
 
-- [ ] **Step 4: Chạy bộ test.** Nhiều test dùng chương thật p1-5 làm fixture (`painter.test.ts`, `anchor.test.ts`, `normalize.test.ts`, e2e). Chúng sẽ đỏ.
+- [ ] **Step 4: Chạy bộ test.** **Danh sách đầy đủ, đã đếm ở pre-flight (ruling S1-F5) — 11 tệp:** 7 test đơn vị (`painter.test.ts`, `anchor.test.ts`, `normalize.test.ts`, `SelectionToolbar.test.tsx`, `Dashboard.test.tsx`, `useLogout.test.tsx`, `session.test.ts`) + 4 tệp e2e (`helpers.ts`, `p1.spec.ts`, `p2.spec.ts`, `viz.spec.ts`). Chúng sẽ đỏ. Mọi chỗ nhắc tới course trong code sản phẩm chỉ là comment trỏ về bản v1 — không có phụ thuộc lúc chạy.
   **Đây là quyết định thiết kế, không phải việc dọn dẹp:** những test đó có giá trị **chính vì chạy trên dữ liệu thật** — chúng đã bắt được lỗi mà fixture thủ công bỏ qua ở cả bốn vòng review của P2. **KHÔNG được đổi chúng sang fixture giả.**
   Thay vào đó: đưa **một chương thật duy nhất** vào `apps/web/src/test/fixtures/` như **fixture kiểm thử**, có ghi rõ trong tài liệu rằng nó ở đó để làm gì và nó **không phải** một course. Nếu bạn thấy cách tốt hơn giữ được tính "dữ liệu thật", làm và giải thích. **Nếu cách duy nhất bạn thấy là làm yếu các test đó → DỪNG và báo.**
 
