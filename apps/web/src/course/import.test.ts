@@ -1,7 +1,10 @@
 /// <reference types="node" />
 import { packZip, FINDING_CODES } from '@tuhoc/course-format';
 import { http, HttpResponse } from 'msw';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import * as ts from 'typescript';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../db/local';
@@ -1138,6 +1141,198 @@ function cutOffBody(): ReadableStream<Uint8Array> {
       controller.error(new Error('kết nối bị cắt giữa chừng'));
     },
   });
+}
+
+/* ====================================================================== *
+ * The `onStage` + `flushSync` contract, enforced instead of documented
+ * ====================================================================== */
+
+/**
+ * `ImportOptions.onStage` says a React caller MUST commit synchronously, and
+ * `stageAnnouncer` explains why with a measurement. Neither made it true.
+ *
+ * Independent mutation testing replaced `flushSync(() => setStage(next))`
+ * with a bare `setStage(next)` and ran the whole suite: **632 passed**, while
+ * the same build in real Chromium drew only the first of the four stages —
+ * the exact §5.1 failure the `flushSync` was added to fix, reproducing at
+ * 100 % behind a suite that was 100 % green. jsdom has no compositor and no
+ * long tasks, so no behavioural test in this repo can ever see it.
+ *
+ * What CAN see it is the source, and this repo already does exactly this
+ * twice: `auth/session.test.ts` and `db/local.test.ts` both parse every
+ * production file with the TypeScript compiler to enforce "if you call this,
+ * you must also do that". This is the same instrument aimed at the same kind
+ * of rule, and — the reason it is possible at all — it needs nothing from
+ * `react-dom` inside `course/import.ts`, which is what made the contract look
+ * unenforceable when it was written.
+ */
+describe('mọi lời gọi importCourse có onStage đều cam kết đồng bộ', () => {
+  it('đọc đúng công cụ của chính nó: mã tính, bình luận và chuỗi thì không', () => {
+    // The classic way a scan like this goes quietly blind is by matching
+    // prose. `ImportCourse.tsx` and `import.ts` both discuss `flushSync` at
+    // length in comments, so a grep would pass on a file that never calls it.
+    const decoy = [
+      'import { importCourse } from "../course/import";',
+      '// this one uses flushSync, honestly it does',
+      'const label = "flushSync";',
+      'export const go = () => importCourse(src, { onStage: (s) => setStage(s) });',
+    ].join('\n');
+    expect(flushSyncViolations('decoy.ts', decoy)).toHaveLength(1);
+
+    const real = [
+      'import { flushSync } from "react-dom";',
+      'const announce = (s) => { flushSync(() => setStage(s)); };',
+      'export const go = () => importCourse(src, { onStage: announce });',
+    ].join('\n');
+    expect(flushSyncViolations('real.ts', real)).toEqual([]);
+
+    // No `onStage` at all is not a violation — there is no commit to order.
+    expect(flushSyncViolations('bare.ts', 'go(() => importCourse(src));')).toEqual([]);
+  });
+
+  it('đang nhìn vào cả ứng dụng, không phải vào hư không', () => {
+    const seen = productionSourceFiles().map((f) => relative(SRC_DIR, f));
+    expect(seen.length).toBeGreaterThan(20);
+    expect(seen).toContain(join('pages', 'ImportCourse.tsx'));
+    expect(seen).toContain(join('course', 'import.ts'));
+    expect(seen).not.toContain(join('course', 'import.test.ts'));
+  });
+
+  it('không tệp sản phẩm nào gọi importCourse với onStage ngoài flushSync', () => {
+    const violations = productionSourceFiles().flatMap((file) =>
+      flushSyncViolations(relative(SRC_DIR, file), readFileSync(file, 'utf-8')),
+    );
+    // If this fails: the stage line will be committed in the same task as the
+    // work it announces, and the reader will watch a frozen page showing the
+    // PREVIOUS stage. That is not a style rule — it was measured, twice, in
+    // a real browser. See `course/import.ts`'s `stageAnnouncer`.
+    expect(violations).toEqual([]);
+  });
+
+  it('và có ít nhất một nơi thật sự dùng nó — luật chỉ biết cấm thì xoá hết là xong', () => {
+    // The complement of the scan. Without this, deleting the `onStage`
+    // argument from the one real call site would leave the rule green while
+    // removing the waiting state entirely.
+    const callers = productionSourceFiles()
+      .filter((file) => namesOnStageAt(readFileSync(file, 'utf-8')))
+      .map((file) => relative(SRC_DIR, file));
+    expect(callers).toEqual([join('pages', 'ImportCourse.tsx')]);
+  });
+});
+
+const SRC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+/** Every `.ts`/`.tsx` under `src/` that ships, tests excluded. */
+function productionSourceFiles(): string[] {
+  const out: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) out.push(full);
+    }
+  };
+  walk(SRC_DIR);
+  return out.sort();
+}
+
+/** True if this source calls `importCourse` and hands it an `onStage`. */
+function namesOnStageAt(source: string): boolean {
+  let found = false;
+  forEachOnStageValue(ts.createSourceFile('x.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX), () => {
+    found = true;
+  });
+  return found;
+}
+
+/**
+ * Complaints about `importCourse(…, { onStage })` callbacks that do not
+ * commit synchronously.
+ *
+ * The callback is followed either inline or through a `const` in the same
+ * file (`ImportCourse.tsx` wraps its in a `useCallback`, which is why
+ * resolving one level of indirection is required rather than optional). An
+ * `onStage` whose value comes from somewhere this scan cannot follow is
+ * reported too: "I cannot check this" and "this is fine" are different
+ * answers, and a checker that conflates them is how the last version of this
+ * contract came to be enforced by nothing at all.
+ */
+function flushSyncViolations(fileName: string, source: string): string[] {
+  const parsed = ts.createSourceFile(
+    fileName,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+
+  const declared = new Map<string, ts.Node>();
+  const collectDeclarations = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer !== undefined) {
+      declared.set(node.name.text, node.initializer);
+    }
+    ts.forEachChild(node, collectDeclarations);
+  };
+  collectDeclarations(parsed);
+
+  const violations: string[] = [];
+  forEachOnStageValue(parsed, (value) => {
+    let body = value;
+    if (ts.isIdentifier(body)) {
+      const declaration = declared.get(body.text);
+      if (declaration === undefined) {
+        violations.push(`${fileName}: onStage là \`${body.text}\`, không lần được về nơi khai báo`);
+        return;
+      }
+      body = declaration;
+    }
+    if (!callsFlushSync(body)) {
+      violations.push(`${fileName}: callback onStage không nằm trong flushSync`);
+    }
+  });
+  return violations;
+}
+
+/** Runs `visit` on the value of every `onStage:` passed to `importCourse`. */
+function forEachOnStageValue(root: ts.SourceFile, visit: (value: ts.Node) => void): void {
+  const walk = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && calleeName(node.expression) === 'importCourse') {
+      const options = node.arguments[1];
+      if (options !== undefined && ts.isObjectLiteralExpression(options)) {
+        for (const property of options.properties) {
+          const name = property.name !== undefined ? propertyName(property.name) : undefined;
+          if (ts.isPropertyAssignment(property) && name === 'onStage') visit(property.initializer);
+          else if (ts.isShorthandPropertyAssignment(property) && name === 'onStage') visit(property.name);
+        }
+      }
+    }
+    ts.forEachChild(node, walk);
+  };
+  walk(root);
+}
+
+function calleeName(expression: ts.Expression): string | undefined {
+  if (ts.isIdentifier(expression)) return expression.text;
+  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+  return undefined;
+}
+
+function propertyName(name: ts.PropertyName): string | undefined {
+  return ts.isIdentifier(name) || ts.isStringLiteral(name) ? name.text : undefined;
+}
+
+function callsFlushSync(node: ts.Node): boolean {
+  let found = false;
+  const walk = (inner: ts.Node): void => {
+    if (found) return;
+    if (ts.isCallExpression(inner) && calleeName(inner.expression) === 'flushSync') {
+      found = true;
+      return;
+    }
+    ts.forEachChild(inner, walk);
+  };
+  walk(node);
+  return found;
 }
 
 /* ------------------------------------------------------------------ *

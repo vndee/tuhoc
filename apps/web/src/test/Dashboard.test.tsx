@@ -266,6 +266,23 @@ describe('Dashboard', () => {
     expect(document.querySelectorAll('.dash-card')).toHaveLength(0);
   }, OVERSUBSCRIBED_MS);
 
+  it('có lối vào /import — cả nút ở đầu trang lẫn liên kết trong lời nhắn thư viện rỗng', async () => {
+    // `/import` (Task 8) has exactly one door in the whole app and it is
+    // here. Independent mutation testing removed BOTH of these links and all
+    // 632 tests stayed green: a route nobody can reach is a feature nobody
+    // has, and this page's own empty state has told readers to "nhập một gói
+    // course" since Task 7 without ever saying where.
+    server.use(http.get('/courses', () => HttpResponse.json([])));
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+
+    renderDashboard();
+
+    await screen.findByText(/chưa có khóa học nào/i);
+    const links = screen.getAllByRole('link').filter((a) => a.getAttribute('href') === '/import');
+    expect(links.length, 'không còn lối vào /import nào trên Bảng điều khiển').toBeGreaterThanOrEqual(2);
+    expect(links.map((a) => a.textContent).join(' ')).toMatch(/nhập/i);
+  }, OVERSUBSCRIBED_MS);
+
   it('does not flash the empty-library note while GET /courses is still in flight', async () => {
     server.use(http.get('/courses', () => new Promise(() => {}))); // never resolves
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
