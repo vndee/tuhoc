@@ -135,6 +135,45 @@ export const api = {
 };
 
 /**
+ * Did an HTTP response ever arrive?
+ *
+ * `true` means a server answered — with any status. `false` means the
+ * request never got one: the transport failed and this page knows nothing
+ * about its own session.
+ *
+ * This is the single distinction `<RequireAuth>`'s offline branch rests on,
+ * so it is worth being precise about what falls on each side, measured
+ * rather than assumed (see `client.test.ts`, and task-7b-report.md for the
+ * same four cases driven through a real browser):
+ *
+ *  - **401 → answered.** The server looked at the cookie and said nobody is
+ *    signed in. That is a fact, not a silence, and it outranks anything
+ *    this device believes about itself. (`useMe` turns it into `null` data
+ *    before it ever reaches here.)
+ *  - **500 / 502 / 503 → answered.** Something on the other end is broken,
+ *    but the network reached it. A reachable, broken server is NOT an
+ *    offline device, and the existing behaviour — an inline outage message
+ *    — is kept for it deliberately. Widening the offline branch to cover
+ *    5xx would mean a bad deploy silently flipped every reader into
+ *    local-only mode with no request ever failing to leave the machine.
+ *  - **Offline, DNS failure, connection refused, a blocked or CORS-refused
+ *    request → NOT answered.** All four arrive here as the same bare
+ *    `TypeError` from `fetch`, with no status and no body. The browser
+ *    deliberately refuses to tell a page which one it was — so they cannot
+ *    be told apart, and this function does not pretend to. What makes that
+ *    acceptable is the other side of the door: see
+ *    `offlineSessionIsUsable` in `auth/session.ts` for why "unknown" only
+ *    ever unlocks the device's OWN local data.
+ *  - **Anything else thrown → NOT answered.** A bug in our own code
+ *    reaching this predicate reads as "we do not know", never as "the
+ *    server answered". Failing that way round is what keeps a future
+ *    mistake from being read as authorization.
+ */
+export function serverAnswered(error: unknown): boolean {
+  return error instanceof ApiError;
+}
+
+/**
  * Vietnamese, human-readable summary of an auth failure, for surfaces
  * that show it directly to a learner (`Login`, `RequireAuth`) — mirrors
  * `describeCourseError` in `src/course/loader.ts`.

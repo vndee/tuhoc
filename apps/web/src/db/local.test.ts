@@ -1,9 +1,10 @@
 /// <reference types="node" />
+import Dexie from 'dexie';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as ts from 'typescript';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearLocalData,
   db,
@@ -11,6 +12,9 @@ import {
   mergeRow,
   type PackageRow,
   type ProgressRow,
+  readSessionVerifiedAt,
+  rememberSessionVerified,
+  SESSION_VERIFIED_KEY,
   setProgress,
   USER_CONTENT_KEYS,
 } from './local';
@@ -260,6 +264,112 @@ describe('clearLocalData', () => {
     for (const key of USER_CONTENT_KEYS) expect(window.localStorage.getItem(key)).toBeNull();
     for (const key of DEVICE_PREFERENCE_KEYS) expect(window.localStorage.getItem(key)).toBe('dark');
     expect(window.localStorage.getItem('not-ours')).toBe('nguyên vẹn');
+  });
+});
+
+/* ====================================================================== *
+ * The offline-read marker (Task 7b)
+ * ====================================================================== */
+
+describe('the "somebody was signed in here" marker', () => {
+  it('round-trips through db.meta as a parsed instant', async () => {
+    await rememberSessionVerified(new Date('2026-08-21T10:00:00.000Z'));
+
+    expect(await readSessionVerifiedAt()).toBe(Date.parse('2026-08-21T10:00:00.000Z'));
+  });
+
+  it('is absent until something writes it, and unreadable garbage reads as absent', async () => {
+    expect(await readSessionVerifiedAt()).toBeNull();
+
+    await db.meta.put({ key: SESSION_VERIFIED_KEY, value: 'không phải mốc thời gian' });
+    // `Date.parse` of junk is NaN, and NaN would sail through every
+    // `now - verifiedAt < window` comparison as `false` — which happens to
+    // be the safe answer, but only by accident. Answering `null` makes the
+    // safe answer deliberate.
+    expect(await readSessionVerifiedAt()).toBeNull();
+  });
+
+  it('holds NO identity — only an instant, and that is what makes it cheap to be wrong about', async () => {
+    // The whole reason `<RequireAuth>` can consult this marker without
+    // repeating P2's cross-account leak: even in the worst case (a stale
+    // row nothing erased), it says "somebody was signed in on this device
+    // at T" and cannot say WHO. There is no name, no email, no user id to
+    // render at the next person. If a future edit adds one, this fails.
+    await rememberSessionVerified(new Date('2026-08-21T10:00:00.000Z'));
+
+    const row = await db.meta.get(SESSION_VERIFIED_KEY);
+    expect(row?.value).toBe('2026-08-21T10:00:00.000Z');
+  });
+
+  it('is erased by clearLocalData() without a line being written for it — it lives in db.meta', async () => {
+    await rememberSessionVerified();
+    expect(await readSessionVerifiedAt()).not.toBeNull();
+
+    await clearLocalData();
+
+    expect(await readSessionVerifiedAt()).toBeNull();
+  });
+
+  it('is gone when the clear happens to run AFTER the write has landed', async () => {
+    // The easy interleaving, and the one IndexedDB gives you by default:
+    // the `put` transaction is created first, so it commits first and the
+    // `clear` that follows sweeps it up. Nothing but `clearLocalData()`
+    // itself is doing any work here — which is exactly why this test alone
+    // is NOT enough. See the next one.
+    const inFlight = rememberSessionVerified();
+    await clearLocalData();
+    await inFlight;
+
+    expect(await readSessionVerifiedAt()).toBeNull();
+    expect(await db.meta.count()).toBe(0);
+  });
+
+  it('cannot be resurrected by a write that lands AFTER the browser was declared clean', async () => {
+    // The hard interleaving, and the only one that is actually dangerous:
+    // `GET /me` settles a moment after `useLogout` finished clearing, and
+    // its write lands in a database somebody has already been told is
+    // empty. That is the P2 cross-account leak's exact shape, and the shape
+    // `sync/engine.ts`'s `syncEpoch` exists for one layer down.
+    //
+    // The `put` is gated rather than raced: an interleaving that depends on
+    // which promise wins is a test that passes for luck. This one pins the
+    // order — capture the generation, let the whole clear finish, THEN let
+    // the write through.
+    const realPut = db.meta.put.bind(db.meta);
+    let letTheWriteLand!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      letTheWriteLand = resolve;
+    });
+    // `Dexie.Promise`, not a native `async` function: `Table.put` is typed
+    // to return Dexie's own `PromiseExtended`, and `bunx tsc -b` — a real
+    // gate here — rejects a plain `Promise` in its place.
+    const put = vi.spyOn(db.meta, 'put').mockImplementation((row) => Dexie.Promise.resolve(gate).then(() => realPut(row)));
+
+    try {
+      const inFlight = rememberSessionVerified();
+      await clearLocalData();
+      // Nothing has been written yet: the clear ran against an empty table
+      // and would have swept nothing even if it wanted to.
+      expect(await db.meta.count()).toBe(0);
+
+      letTheWriteLand();
+      await inFlight;
+
+      expect(put).toHaveBeenCalledTimes(1);
+      expect(await readSessionVerifiedAt()).toBeNull();
+      expect(await db.meta.count()).toBe(0);
+    } finally {
+      put.mockRestore();
+    }
+  });
+
+  it('still writes normally when no clear happens around it', async () => {
+    // The complement of the test above — a guard that refused every write
+    // would also pass it.
+    await clearLocalData();
+    await rememberSessionVerified(new Date('2026-08-21T10:00:00.000Z'));
+
+    expect(await readSessionVerifiedAt()).toBe(Date.parse('2026-08-21T10:00:00.000Z'));
   });
 });
 
