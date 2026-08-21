@@ -5,9 +5,31 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { db } from '../db/local';
 import { ImportCourse } from './ImportCourse';
+
+/**
+ * An armed switch that makes `importCourse` THROW instead of resolving.
+ *
+ * `importCourse` promises it never throws, and this page must not depend on
+ * that promise being kept — the version of this file with `try { … } finally`
+ * and no `catch` turned one broken promise into a blank screen. The only way
+ * to test the page's own net is to break the contract deliberately, so the
+ * real module is used everywhere except when a test arms this.
+ */
+const armed = vi.hoisted(() => ({ throws: null as Error | null }));
+
+vi.mock('./../course/import', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../course/import')>();
+  return {
+    ...actual,
+    importCourse: (...args: Parameters<typeof actual.importCourse>) => {
+      if (armed.throws) throw armed.throws;
+      return actual.importCourse(...args);
+    },
+  };
+});
 
 const COURSE_ID = 'bat-bien-vong-lap';
 const encode = (text: string) => new TextEncoder().encode(text);
@@ -48,7 +70,10 @@ function zipFile(bytes: Uint8Array, name = 'khoa-hoc.zip'): File {
 
 const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  armed.throws = null;
+});
 afterAll(() => server.close());
 beforeEach(() => db.packages.clear());
 
@@ -164,6 +189,48 @@ it('hiện trạng thái chờ trong một vùng aria-live, rồi dọn nó đi'
 
   await screen.findByRole('link', { name: /mở khóa học/i });
   expect(live?.textContent).not.toMatch(/đang tải|đang kiểm tra/i);
+});
+
+it('mạng đứt GIỮA thân phản hồi → nói ra, chứ không trở về trang trống', async () => {
+  // The exact failure measured in review, driven through the real page: a
+  // server that answers 200 with a correct Content-Length and then stops
+  // sending. The page used to show nothing whatsoever — the stage line was
+  // cleared by its `finally` and no error was ever set, so the reader saw the
+  // button enable itself as though the click had not happened.
+  server.use(
+    http.get('https://vi-du.test/goi.zip', () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(1024));
+          controller.error(new Error('kết nối bị cắt giữa chừng'));
+        },
+      });
+      return new HttpResponse(body);
+    }),
+  );
+  const user = userEvent.setup();
+  renderPage();
+
+  await user.type(screen.getByLabelText(/đường dẫn tới tệp \.zip/i), 'https://vi-du.test/goi.zip');
+  await user.click(screen.getByRole('button', { name: /nhập từ đường dẫn/i }));
+
+  const message = await screen.findByText(/kết nối đứt giữa chừng/i);
+  expect(message).toBeInTheDocument();
+  expect(screen.getByText(/không nhập được gói này/i)).toBeInTheDocument();
+  expect(await db.packages.count()).toBe(0);
+});
+
+it('kể cả khi `importCourse` phá vỡ hợp đồng và NÉM, trang vẫn nói ra điều gì đó', async () => {
+  armed.throws = new Error('hợp đồng bị phá: importCourse đã ném');
+  const user = userEvent.setup();
+  renderPage();
+
+  await user.upload(fileInput(), zipFile(zipBytes()));
+
+  // Not "an error appeared somewhere": the assertion is that the page is not
+  // BLANK — the one outcome the missing `catch` produced.
+  expect(await screen.findByText(/hợp đồng bị phá: importCourse đã ném/)).toBeInTheDocument();
+  expect(screen.getByText(/không nhập được gói này/i)).toBeInTheDocument();
 });
 
 it('không để bấm nhập lần hai khi lần một chưa xong', async () => {

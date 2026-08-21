@@ -80,6 +80,19 @@ export function ImportCourse() {
       } else {
         setFindings(result.findings);
       }
+    } catch (cause) {
+      // `try { … } finally { … }` with no `catch` was this file's original
+      // shape, and it is how a reader got a BLANK SCREEN: anything thrown out
+      // of `importCourse` became an `unhandledrejection`, the stage line was
+      // cleared by the `finally`, and not one pixel said why. Measured in a
+      // real browser against a server that cut the response body mid-package.
+      //
+      // `importCourse` now promises never to throw and has its own net, so
+      // reaching here means that promise was broken — which is exactly when
+      // a page must still say something rather than trust a contract.
+      setFindings([
+        { code: 'UNEXPECTED', path: '.', detail: `(${cause instanceof Error ? cause.message : String(cause)})` },
+      ]);
     } finally {
       setStage(null);
       if (fileInput.current) fileInput.current.value = '';

@@ -330,6 +330,119 @@ describe('nhập từ URL', () => {
 });
 
 /* ====================================================================== *
+ * The connection dies AFTER the headers — the commonest network failure
+ * there is, and the one that produced a blank screen
+ * ====================================================================== */
+
+/**
+ * Every one of these drives a failure that happens **after** an `await` has
+ * already succeeded, which is the shape the first version of this module got
+ * wrong: `fetch()` was inside a `try` and `res.arrayBuffer()` was not, so a
+ * body that stopped arriving rejected out of `importCourse` entirely. In a
+ * real browser that reached the page as an `unhandledrejection` and drew
+ * nothing at all — no error, no explanation, the button simply enabled itself
+ * again. Measured in review against a server that answered `HTTP/1.1 200` with
+ * a correct `Content-Length` and then `RST` the connection at 200 000 bytes
+ * (`curl` agrees: `size_download=200000`, exit 56).
+ *
+ * The claim each test makes is the module's own documented contract — it
+ * RESOLVES, it does not throw — so each one asserts a finding rather than
+ * merely "no crash": a rejected promise fails these, and so does an empty
+ * `findings` list.
+ */
+describe('kết nối chết giữa chừng — không ca nào được ném ra ngoài', () => {
+  it('thân phản hồi bị cắt giữa chừng (tải dở 20 MB trên 4G)', async () => {
+    server.use(http.get('https://vi-du.test/goi.zip', () => new HttpResponse(cutOffBody())));
+
+    const r = await importCourse({ kind: 'zipUrl', url: 'https://vi-du.test/goi.zip' });
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.findings[0].code).toBe('FETCH_FAILED');
+    expect(describeFinding(r.findings[0]).length).toBeGreaterThan(20);
+    expect(await db.packages.count()).toBe(0);
+  });
+
+  it('blob của repo bị cắt giữa chừng, không chỉ tệp .zip đơn lẻ', async () => {
+    const manifestJson = JSON.stringify(manifest(), null, 2);
+    server.use(
+      http.get('https://api.github.com/repos/ai-do/khoa-hoc/git/trees/HEAD', () =>
+        HttpResponse.json({
+          sha: 'HEAD',
+          truncated: false,
+          tree: [{ path: 'manifest.json', type: 'blob', mode: '100644', size: manifestJson.length }],
+        }),
+      ),
+      http.get('https://raw.githubusercontent.com/ai-do/khoa-hoc/HEAD/manifest.json', () =>
+        new HttpResponse(cutOffBody()),
+      ),
+    );
+
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.findings[0].code).toBe('FETCH_FAILED');
+  });
+
+  it('cổng đăng nhập Wi-Fi trả HTML ở chỗ đợi JSON — `res.json()` hỏng', async () => {
+    // A captive portal answers 200 with its own login page for every request,
+    // `content-type` and all. `res.json()` on that rejects with a SyntaxError,
+    // and that rejection used to leave the page blank the same way.
+    server.use(
+      http.get('https://api.github.com/repos/ai-do/khoa-hoc/git/trees/HEAD', () =>
+        new HttpResponse('<html><body>Đăng nhập Wi-Fi khách sạn</body></html>', {
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
+    );
+
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.findings[0].code).toBe('GIT_BAD_RESPONSE');
+    expect(describeFinding(r.findings[0])).toMatch(/wi-?fi|đăng nhập|không đọc được/i);
+  });
+
+  it('tệp trên máy không đọc được nữa (rút USB, tệp bị sửa sau khi chọn)', async () => {
+    const file = zipFile(validZip());
+    // What Chromium actually throws when the bytes behind a picked File are
+    // gone by the time they are asked for.
+    Object.defineProperty(file, 'arrayBuffer', {
+      value: () => Promise.reject(new DOMException('The requested file could not be read', 'NotReadableError')),
+    });
+
+    const r = await importCourse({ kind: 'file', file });
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.findings[0].code).toBe('FILE_READ_FAILED');
+    expect(describeFinding(r.findings[0])).toMatch(/không đọc được/i);
+  });
+
+  it('kể cả khi `onStage` của NGƯỜI GỌI tự ném — trang gọi nó trong flushSync, và một render hỏng ném ở đúng đó', async () => {
+    // The last net. `flushSync(() => setStage(next))` runs React's render
+    // synchronously inside this module's `await`, so a component that throws
+    // throws HERE. Without the net that is once again an unhandled rejection
+    // and once again a blank screen.
+    const r = await importCourse(
+      { kind: 'file', file: zipFile(validZip()) },
+      {
+        onStage: () => {
+          throw new Error('render hỏng trong flushSync');
+        },
+      },
+    );
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.findings[0].code).toBe('UNEXPECTED');
+    expect(describeFinding(r.findings[0])).toMatch(/render hỏng trong flushSync/);
+  });
+});
+
+/* ====================================================================== *
  * From a public git repo
  * ====================================================================== */
 
@@ -518,6 +631,29 @@ describe('describeFinding', () => {
     expect(describeFinding({ code: 'MA_LA', path: '.', detail: 'chi tiết' })).toMatch(/[a-zà-ỹ]{4,}/i);
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * Helpers
+ * ------------------------------------------------------------------ */
+
+/**
+ * A response body that starts arriving and then stops — the network failure
+ * a `Content-Length` cannot protect you from.
+ *
+ * A stream rather than a shorter body on purpose: a body that is merely
+ * SHORT resolves `arrayBuffer()` happily and fails later, at the unzip. The
+ * failure being reproduced here is the one where `arrayBuffer()` itself
+ * rejects, which is what a dropped connection does, and which is what used
+ * to escape this module entirely.
+ */
+function cutOffBody(): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(1024));
+      controller.error(new Error('kết nối bị cắt giữa chừng'));
+    },
+  });
+}
 
 /* ------------------------------------------------------------------ *
  * Helpers that build byte layouts measured from real archives

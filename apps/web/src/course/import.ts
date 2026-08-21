@@ -141,6 +141,7 @@ export interface ImportOptions {
 export const IMPORT_FINDING_CODES = [
   'BAD_URL',
   'FETCH_FAILED',
+  'FILE_READ_FAILED',
   'HTTP_ERROR',
   'NOT_A_ZIP',
   'ZIP64_UNSUPPORTED',
@@ -150,9 +151,11 @@ export const IMPORT_FINDING_CODES = [
   'GIT_HOST_UNSUPPORTED',
   'GIT_REPO_UNREACHABLE',
   'GIT_RATE_LIMITED',
+  'GIT_BAD_RESPONSE',
   'GIT_TREE_TRUNCATED',
   'GIT_TOO_MANY_FILES',
   'WRITE_FAILED',
+  'UNEXPECTED',
 ] as const;
 
 export type ImportFindingCode = (typeof IMPORT_FINDING_CODES)[number];
@@ -219,6 +222,7 @@ export function describeFinding(f: Finding): string {
 const CARRIES_ITS_OWN_DETAIL = new Set<string>([
   'BAD_URL',
   'FETCH_FAILED',
+  'FILE_READ_FAILED',
   'HTTP_ERROR',
   'ZIP64_UNSUPPORTED',
   'PACKAGE_ROOT_AMBIGUOUS',
@@ -226,8 +230,10 @@ const CARRIES_ITS_OWN_DETAIL = new Set<string>([
   'GIT_HOST_UNSUPPORTED',
   'GIT_REPO_UNREACHABLE',
   'GIT_RATE_LIMITED',
+  'GIT_BAD_RESPONSE',
   'GIT_TOO_MANY_FILES',
   'WRITE_FAILED',
+  'UNEXPECTED',
 ]);
 
 /**
@@ -264,6 +270,7 @@ const VIETNAMESE: Readonly<Record<ImportFindingCode | FindingCode, string>> = {
   /* --- this module ---------------------------------------------------- */
   BAD_URL: 'Đường dẫn này không dùng được.',
   FETCH_FAILED: 'Không tải được.',
+  FILE_READ_FAILED: 'Không đọc được tệp bạn chọn.',
   HTTP_ERROR: 'Máy chủ từ chối yêu cầu.',
   NOT_A_ZIP: 'Tệp này không phải là một tệp .zip đọc được. Hãy chắc rằng bạn chọn đúng gói .zip của khóa học.',
   ZIP64_UNSUPPORTED: 'Tệp .zip này dùng định dạng zip64, tuhoc chưa đọc được.',
@@ -273,10 +280,12 @@ const VIETNAMESE: Readonly<Record<ImportFindingCode | FindingCode, string>> = {
   GIT_HOST_UNSUPPORTED: 'tuhoc chỉ nhập trực tiếp được từ GitHub.',
   GIT_REPO_UNREACHABLE: 'Không mở được repo này.',
   GIT_RATE_LIMITED: 'GitHub đang tạm chặn vì có quá nhiều yêu cầu từ mạng của bạn.',
+  GIT_BAD_RESPONSE: 'Câu trả lời nhận được không phải của GitHub.',
   GIT_TREE_TRUNCATED:
     'Repo này quá lớn để đọc hết danh sách tệp trong một lần. Hãy tải .zip của repo về máy rồi nhập từ tệp.',
   GIT_TOO_MANY_FILES: 'Repo này có quá nhiều tệp để nhập trực tiếp.',
   WRITE_FAILED: 'Không lưu được gói vào bộ nhớ của trình duyệt.',
+  UNEXPECTED: 'Có lỗi ngoài dự kiến khi nhập gói. Hãy thử lại; nếu vẫn vậy, đây là chi tiết kỹ thuật để báo lỗi:',
 };
 
 /* ------------------------------------------------------------------ *
@@ -359,6 +368,21 @@ function httpUrl(raw: string): URL | null {
   return url.protocol === 'http:' || url.protocol === 'https:' ? url : null;
 }
 
+/**
+ * The bytes at a URL, or a finding.
+ *
+ * **`arrayBuffer()` is inside the `try`, and that is the whole point of this
+ * shape.** The first version of this function wrapped only `fetch(url)`,
+ * which reads as "the network call is the risky part" and is wrong: `fetch`
+ * resolves as soon as the HEADERS arrive, and the body streams in afterwards.
+ * A connection that dies halfway through — the commonest network failure
+ * there is — therefore rejects at `arrayBuffer()`, several lines below where
+ * anybody was looking. Measured in review against a server answering
+ * `HTTP/1.1 200` with a correct `Content-Length` and then resetting at
+ * 200 000 bytes of an 18.6 MiB package: the rejection escaped `importCourse`,
+ * reached the page as an `unhandledrejection`, and drew NOTHING. The reader
+ * pressed the button and the page went back to how it was.
+ */
 async function fetchBytes(url: string): Promise<{ bytes: Uint8Array } | { error: Finding }> {
   let res: Response;
   try {
@@ -369,7 +393,11 @@ async function fetchBytes(url: string): Promise<{ bytes: Uint8Array } | { error:
   if (!res.ok) {
     return { error: finding('HTTP_ERROR', url, `Máy chủ trả về HTTP ${res.status}.`) };
   }
-  return { bytes: new Uint8Array(await res.arrayBuffer()) };
+  try {
+    return { bytes: new Uint8Array(await res.arrayBuffer()) };
+  } catch (cause) {
+    return { error: finding('FETCH_FAILED', url, bodyCutOffDetail(cause)) };
+  }
 }
 
 /** A thrown value as a short parenthetical — never the whole stack. */
@@ -393,6 +421,22 @@ function fetchFailedDetail(cause: unknown): string {
   return (
     'Có thể bạn đang ngoại tuyến, hoặc máy chủ chứa tệp không cho phép trang khác tải trực tiếp (CORS). ' +
     `Trình duyệt không cho biết là trường hợp nào. (${describeThrown(cause)})`
+  );
+}
+
+/**
+ * A body that started arriving and then stopped — a DIFFERENT sentence from
+ * {@link fetchFailedDetail} on purpose.
+ *
+ * By the time this fires the server has already answered, so CORS and "you
+ * are offline" are both ruled out and repeating them would send the reader
+ * to check two things that are fine. What is left is a connection that broke
+ * mid-download, and the useful advice is the one that fits it: try again.
+ */
+function bodyCutOffDetail(cause: unknown): string {
+  return (
+    'Máy chủ đã bắt đầu gửi tệp rồi kết nối đứt giữa chừng, nên gói tải về không đầy đủ. ' +
+    `Hãy thử lại — thường lần sau là được. (${describeThrown(cause)})`
   );
 }
 
@@ -502,7 +546,25 @@ async function fetchGitHubRepo(
     return { error: finding('HTTP_ERROR', at, `GitHub trả về HTTP ${res.status}.`) };
   }
 
-  const body = (await res.json()) as { truncated?: boolean; tree?: TreeEntry[] };
+  // Inside a `try` for the same reason `arrayBuffer()` is in `fetchBytes`:
+  // `res.ok` says the response arrived, not that it is the response that was
+  // asked for. A Wi-Fi captive portal answers 200 with its own login page for
+  // EVERY request — `content-type` and all — and `res.json()` on that rejects
+  // with a SyntaxError, from a line nobody was guarding.
+  let body: { truncated?: boolean; tree?: TreeEntry[] };
+  try {
+    body = (await res.json()) as { truncated?: boolean; tree?: TreeEntry[] };
+  } catch (cause) {
+    return {
+      error: finding(
+        'GIT_BAD_RESPONSE',
+        at,
+        'Máy chủ trả về nội dung không đọc được ở chỗ đáng lẽ là dữ liệu của GitHub. ' +
+          'Nếu bạn đang dùng Wi-Fi công cộng, có thể mạng đó đang chặn bằng một trang đăng nhập — ' +
+          `hãy đăng nhập vào mạng rồi thử lại. (${describeThrown(cause)})`,
+      ),
+    };
+  }
   if (body.truncated === true) {
     return { error: finding('GIT_TREE_TRUNCATED', at, '') };
   }
@@ -640,15 +702,38 @@ function readArchive(zip: Uint8Array): { files: Map<string, Uint8Array> } | { er
 /**
  * Brings one course package into this browser's library.
  *
- * Resolves — it does not throw — for every failure a reader can cause:
- * a wrong file, a dead link, a private repo, a package with mistakes in it.
- * `findings` is the complete list, so one pass shows an author everything
- * there is to fix.
+ * **Resolves — it does not throw. Ever.** Not only for the failures a reader
+ * can cause (a wrong file, a dead link, a private repo, a package with
+ * mistakes in it) but for anything at all, including a bug in here: see the
+ * `catch` below for why the narrower promise was not enough, and
+ * `import.test.ts`'s "kết nối chết giữa chừng" block for the five cases that
+ * pin it. `findings` is the complete list, so one pass shows an author
+ * everything there is to fix.
  *
  * On success the package is in `db.packages` and `course/loader.ts` will
  * answer for it immediately, offline, in the same tick.
  */
 export async function importCourse(src: ImportSource, options: ImportOptions = {}): Promise<ImportResult> {
+  try {
+    return await runImport(src, options);
+  } catch (cause) {
+    // The net under the whole thing, and it is not decoration: the sentence
+    // above is a CONTRACT, and every caller in this app trusts it by having
+    // no `catch` of its own. Three specific escapes were found and closed one
+    // by one (a cut response body, a captive portal's HTML where JSON was
+    // expected, a File whose bytes are gone) — each of them was a blank
+    // screen in a real browser, and each was invisible to the suite because
+    // no test asserted the contract itself. Closing only those three would
+    // leave the fourth to be found the same way, by somebody who is not
+    // being paid to look. A reader is owed a sentence for ANY failure,
+    // including one nobody predicted, so this returns the thrown message
+    // rather than swallowing it: a bug report that quotes a real error is
+    // worth more than a page that stayed silent.
+    return fail('UNEXPECTED', PACKAGE_ROOT, `(${describeThrown(cause)})`);
+  }
+}
+
+async function runImport(src: ImportSource, options: ImportOptions): Promise<ImportResult> {
   const announce = stageAnnouncer(options.onStage);
 
   const collected = await collect(src, announce);
@@ -716,7 +801,22 @@ async function collect(
   await announce('fetching');
   let zip: Uint8Array;
   if (src.kind === 'file') {
-    zip = new Uint8Array(await src.file.arrayBuffer());
+    // A picked `File` is a HANDLE, not bytes: the read happens here, and by
+    // here the USB stick can be gone, the file can have been replaced, or the
+    // sandbox can have lost permission to it. Chromium rejects with a
+    // `NotReadableError`, which used to leave the page blank.
+    try {
+      zip = new Uint8Array(await src.file.arrayBuffer());
+    } catch (cause) {
+      return {
+        error: finding(
+          'FILE_READ_FAILED',
+          src.file.name,
+          'Tệp có thể đã bị di chuyển, bị đổi, hoặc ổ đĩa chứa nó đã tháo ra sau khi bạn chọn. ' +
+            `Hãy chọn lại tệp. (${describeThrown(cause)})`,
+        ),
+      };
+    }
   } else {
     if (httpUrl(src.url) === null) {
       return { error: finding('BAD_URL', src.url, 'Chỉ nhận đường dẫn bắt đầu bằng http:// hoặc https://.') };
