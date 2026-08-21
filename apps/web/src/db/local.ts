@@ -280,8 +280,97 @@ export function writeLocalStorage(key: LocalStorageKey, value: string | null): v
  * more.
  */
 export async function clearLocalData(): Promise<void> {
+  clearGeneration += 1;
   for (const key of USER_CONTENT_KEYS) writeLocalStorage(key, null);
   await Promise.all(db.tables.map((table) => table.clear()));
+}
+
+/* ------------------------------------------------------------------ *
+ * The offline-read marker
+ * ------------------------------------------------------------------ */
+
+/**
+ * `db.meta` key holding the last instant `GET /me` confirmed a signed-in
+ * user ON THIS DEVICE, ISO-8601.
+ *
+ * It exists for exactly one reader: `<RequireAuth>`, on a COLD page load
+ * with no network. The session cookie is `HttpOnly`, so `GET /me` is the
+ * only way this app can learn whether anybody is signed in — and when that
+ * request never reaches a server, the honest answer is "unknown", not
+ * "logged out". Task 7 made a pinned course readable offline; without
+ * something durable saying "somebody WAS signed in here", the reader could
+ * only ever be opened by a tab that was already open when the network
+ * died, which is half a promise (spec §2.6).
+ *
+ * **It lives in `db.meta` on purpose, and that is the whole safety
+ * argument.** `clearLocalData()` empties `db.tables`, so this row is erased
+ * by both auth transitions with no line written for it and nothing to
+ * remember — the failure P2 fell into was a store of user state that the
+ * clearing function had never heard of. This is deliberately not a new
+ * table and emphatically not a new `localStorage` key.
+ *
+ * **It holds NO identity — an instant, nothing else.** Not a user id, not
+ * an email, not a name. That is what keeps the worst case cheap: even a row
+ * that somehow outlived its session can only say *somebody* was signed in
+ * here at T, so there is nothing in it to render at the next person. What
+ * it unlocks is the rest of THIS browser's database, which the same
+ * `clearLocalData()` empties in the same call — so an offline render can
+ * only ever show the current local session's own data.
+ */
+export const SESSION_VERIFIED_KEY = 'sessionVerifiedAt';
+
+/**
+ * Bumped by every `clearLocalData()`, before it touches anything.
+ *
+ * `rememberSessionVerified` is the only durable write in this app that can
+ * be in flight while a session ends — `GET /me` can settle at any moment,
+ * including the moment after `useLogout` cleared the browser. This is the
+ * same shape of guard `sync/engine.ts` uses for exactly the same reason
+ * (`syncEpoch`: a response that arrives after the clear must discard its
+ * write rather than land it), and the same failure it prevents: a row of
+ * the departing session re-created a tick after the browser was declared
+ * clean.
+ *
+ * Module-level, therefore per-tab. That is a real limit and it is the same
+ * one `docs/carried-forward.md` records as C-1 for the sync engine's own
+ * epoch — a SECOND tab's in-flight write is not covered here either. What
+ * makes it survivable in this particular case is what the row holds: an
+ * instant and no identity, in a database the arriving session clears again
+ * on its own way in.
+ */
+let clearGeneration = 0;
+
+/**
+ * Records that `GET /me` just confirmed a signed-in user here.
+ *
+ * `at` is injectable for tests only; production always means "now".
+ *
+ * The generation check after the write is the point, not bookkeeping: if a
+ * `clearLocalData()` ran at any moment during the `put`, this row is a
+ * leftover of a session that has ended, and it deletes itself. Checking
+ * only BEFORE the write would leave the exact window the check exists to
+ * close.
+ */
+export async function rememberSessionVerified(at: Date = new Date()): Promise<void> {
+  const generation = clearGeneration;
+  await db.meta.put({ key: SESSION_VERIFIED_KEY, value: at.toISOString() });
+  if (clearGeneration !== generation) await db.meta.delete(SESSION_VERIFIED_KEY);
+}
+
+/**
+ * The marker as a parsed instant, or `null` for "this device has no such
+ * marker" — which includes a row whose value does not parse.
+ *
+ * Unparseable reads as absent rather than as `NaN`: every comparison
+ * against `NaN` is `false`, so the caller would still fail closed, but by
+ * accident. `null` makes the safe answer the deliberate one, and it is the
+ * same choice `mergeRow` makes about never comparing these strings raw.
+ */
+export async function readSessionVerifiedAt(): Promise<number | null> {
+  const row = await db.meta.get(SESSION_VERIFIED_KEY);
+  if (row === undefined) return null;
+  const at = Date.parse(row.value);
+  return Number.isNaN(at) ? null : at;
 }
 
 /**

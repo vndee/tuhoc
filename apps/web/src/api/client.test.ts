@@ -13,7 +13,7 @@ vi.mock('./navigation', () => ({
   redirectToLogin: vi.fn(),
 }));
 
-import { api, ApiError, describeAuthError } from './client';
+import { api, ApiError, describeAuthError, serverAnswered } from './client';
 import { redirectToLogin } from './navigation';
 
 const server = setupServer();
@@ -131,6 +131,51 @@ describe('api.get/api.post', () => {
   it('a response with an empty body (e.g. POST /auth/logout) resolves without throwing', async () => {
     server.use(http.post('/auth/logout', () => new HttpResponse(null, { status: 200 })));
     await expect(api.post('/auth/logout')).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * The classifier `<RequireAuth>` leans on to tell "the server said no" from
+ * "no server said anything" (Task 7b). Every case here is a REAL failure
+ * driven through the real `api.get`, not a hand-built error object: the
+ * distinction is only worth anything if it survives the actual shapes fetch
+ * produces.
+ */
+describe('serverAnswered — did an HTTP response ever arrive?', () => {
+  it('true for every HTTP status, including the ones that are not 401', async () => {
+    for (const status of [400, 401, 403, 404, 409, 429, 500, 502, 503]) {
+      server.use(http.get('/probe', () => HttpResponse.json({ error: 'x' }, { status })));
+      const error = await api.get('/probe', { redirectOn401: false }).catch((e: unknown) => e);
+      expect(serverAnswered(error), `status ${status}`).toBe(true);
+    }
+  });
+
+  it('false when the transport fails — this is what offline, DNS failure and a blocked request all collapse to', async () => {
+    // `HttpResponse.error()` is msw's network-level failure: `fetch` rejects
+    // with a bare `TypeError`, carrying no status and no body. That is
+    // exactly what a browser hands back for a dead network, an unresolvable
+    // host, a refused connection, and a request a CORS preflight or an
+    // extension blocked — the browser deliberately does not tell a page
+    // which, so this one branch is all four.
+    server.use(http.get('/gone', () => HttpResponse.error()));
+
+    const error = await api.get('/gone').catch((e: unknown) => e);
+    expect(error).not.toBeInstanceOf(ApiError);
+    expect(serverAnswered(error)).toBe(false);
+  });
+
+  it('false for anything that is not an ApiError at all, so an unexpected throw is never read as an answer', () => {
+    expect(serverAnswered(new TypeError('Failed to fetch'))).toBe(false);
+    expect(serverAnswered(new Error('boom'))).toBe(false);
+    expect(serverAnswered(undefined)).toBe(false);
+    expect(serverAnswered({ status: 401 })).toBe(false);
+  });
+
+  it('a transport failure does NOT trigger redirectToLogin — nothing said the session is dead', async () => {
+    server.use(http.get('/gone-2', () => HttpResponse.error()));
+
+    await expect(api.get('/gone-2')).rejects.toThrow();
+    expect(redirectToLogin).not.toHaveBeenCalled();
   });
 });
 
