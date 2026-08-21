@@ -41,6 +41,43 @@ Ghi lại lúc kết thúc P1 (nhánh `p1-platform-core`, 37 commit, hợp nhấ
   thay đổi Go: cổng vẫn chạy, vẫn báo xanh, chỉ là không nhìn vào thứ nó tưởng đang nhìn.
 - **Cổng nghiệm thu luôn rebuild image API** (`docker compose up -d --build`). Đừng "tối ưu" bằng cách pre-build rồi bỏ `--build` — đó chính là lỗ hổng khiến cổng từng mù với mọi thay đổi Go.
 
+## 2B. Nợ kết chuyển từ P2 — hai mục review tổng thể tìm ra
+
+### P2-C1 · Last-write-wins áp theo DÒNG, không theo TRƯỜNG — và P2 là thứ đưa văn xuôi người dùng vào
+
+Đo được trên **hai thiết bị thật** (review tổng thể P2, có ngăn xếp đầy đủ):
+
+> Máy A xoá một ghi chú. Máy B **chưa kịp kéo về tombstone** nên vẫn thấy ghi chú, và người dùng
+> sửa chữ trên đó. Kết quả: **ghi chú SỐNG LẠI trên cả hai máy**, `deletedAt` về `null`.
+
+Doc của `remove` nói tombstone "propagates the deletion" — **không đúng vô điều kiện**.
+
+Nguy hiểm hơn ở đường `reattach`: cùng cơ chế đó sẽ **âm thầm nuốt mất chữ** người dùng vừa gõ ở
+thiết bị kia. Không exception, không cảnh báo, chỉ là một phiên bản thắng.
+
+**Vì sao P1 không gặp:** P1 chỉ đặt `progress` — **một boolean** — dưới quy tắc này. Mất một
+boolean thì cùng lắm là mất dấu tích "đã đọc". **P2 là giai đoạn đầu tiên đưa VĂN XUÔI người dùng
+vào cùng quy tắc**, và mất văn xuôi thì không lấy lại được.
+
+Sửa đúng = hợp nhất theo TRƯỜNG (hoặc tombstone thắng tuyệt đối), tức đổi giao thức đồng bộ cả hai
+phía — không phải việc vá trước khi hợp nhất. **Phải quyết ở giai đoạn sau.** Đừng để nó im lặng.
+
+### P2-C2 · Spec §5 hứa những thứ KHÔNG task nào được giao xây — và chúng HIỆN TRÊN MỌI TRANG
+
+Toàn bộ 13 gạch đầu dòng về annotation của §5 **đều tồn tại và đã được thấy chạy**. Nhưng nửa
+thuộc P1 thì không, và người dùng nhìn thấy:
+
+- thanh bên in nguyên chuỗi giữ chỗ **`Tiến độ sẽ hiện ở đây`**;
+- ô tìm chương ở trạng thái **`disabled`**;
+- `#progbar` **không ai ghi vào** ⇒ vĩnh viễn 0%;
+- `a.nav-item.active` có CSS nhưng **không ai set** ⇒ không bao giờ sáng;
+- `/c/:course` thiếu "tiến độ từng phần";
+- thiếu phím tắt `/` và `Escape` vốn có ở bản v1 một-file.
+
+Khác **C-2** (`GET /courses`) ở một điểm quan trọng: **không mục nào trong số này từng được ghi
+vào tài liệu nào**. Đây là cùng lớp lỗi với C-2 — *spec liệt kê, không ai được giao, không ai phát
+hiện* — và lần này nó **hiển thị ra màn hình**.
+
 ## 3. Nợ kỹ thuật đã ghi nhận, chấp nhận mang theo
 
 - `TestPool` nằm trong `internal/store` (không phải `internal/storetest`), kéo `testing` + ~15 package testcontainers/docker vào đồ thị phụ thuộc của binary production 17MB trên image `FROM scratch`. Không có chi phí runtime (linker loại bỏ) nhưng công cụ quét bảo mật sẽ báo CVE của testcontainers cho service này. Sửa = di chuyển file, nhưng đổi tên interface mà 3 task phụ thuộc.

@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as ts from 'typescript';
@@ -208,16 +208,39 @@ function label(file: string): string {
 }
 
 /**
- * `packages/course-kit/runtime.js` runs on every reader route, in this
- * origin, with the same access to every store below — it is just loaded as
- * a classic `<script src>` instead of imported (it attaches globals; see
- * `reader/useCourseKit.ts`). A store opened there would be exactly as
- * invisible to `clearLocalData()` as one opened in `src/`, and exactly as
- * easy to miss, since nothing under `src/` would mention it.
+ * Classic-script JavaScript that runs on reader routes, in this origin, with
+ * the same access to every store below — loaded as `<script src>` instead of
+ * imported (it attaches globals; see `reader/useCourseKit.ts`). A store
+ * opened there would be exactly as invisible to `clearLocalData()` as one
+ * opened in `src/`, and exactly as easy to miss, since nothing under `src/`
+ * would mention it.
  *
- * `vendor/` next to it is KaTeX, third-party and not ours to police.
+ * This is a GLOB, not a file list, and that is the point. The first version
+ * of this scan named `packages/course-kit/runtime.js` alone. Every word of
+ * its reasoning applied verbatim to `courses/<id>/viz.js` — 3,159 lines,
+ * same origin, same `<script src>`, equally unmentioned in `src/` — which
+ * was simply not scanned. P2's overall review caught it. A rule that names
+ * one file instead of the class it belongs to holds only until the second
+ * member of the class appears, and here the count grows with every course
+ * the registry ever accepts.
+ *
+ * `vendor/` is excluded: KaTeX, third-party, not ours to police.
  */
-const COURSE_KIT_RUNTIME = resolve(SRC_DIR, '../../../packages/course-kit/runtime.js');
+function classicScripts(): string[] {
+  const roots = [resolve(SRC_DIR, '../../../packages/course-kit'), resolve(SRC_DIR, '../../../courses')];
+  const out: string[] = [];
+  const walk = (dir: string): void => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'vendor' || entry.name === 'node_modules') continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('.js')) out.push(full);
+    }
+  };
+  roots.forEach(walk);
+  return out;
+}
 
 /**
  * Files this scan does NOT read, and why each one is safe to skip.
@@ -245,7 +268,7 @@ function productionSourceFiles(): string[] {
     }
   };
   walk(SRC_DIR);
-  out.push(COURSE_KIT_RUNTIME);
+  out.push(...classicScripts());
   return out.sort();
 }
 
