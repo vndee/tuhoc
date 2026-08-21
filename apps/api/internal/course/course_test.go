@@ -76,6 +76,10 @@ func newOwner(t *testing.T, pool *pgxpool.Pool, label string) uuid.UUID {
 
 // samplePackage builds a valid Package for ownerID. Callers override
 // whatever field the case under test is actually about.
+//
+// It still fills in OwnerID even though Put ignores that field: the
+// round-trip assertions read it back, and one subtest below sets it to a
+// *different* owner on purpose to prove the field cannot steer a write.
 func samplePackage(ownerID uuid.UUID, courseID, version string) course.Package {
 	return course.Package{
 		OwnerID:  ownerID,
@@ -127,7 +131,7 @@ func TestPutThenGetRoundTrips(t *testing.T) {
 	want := samplePackage(owner, "***REMOVED***", "1.2.3")
 
 	before := time.Now().UTC().Add(-time.Minute)
-	if err := repo.Put(ctx, want); err != nil {
+	if err := repo.Put(ctx, owner, want); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
 
@@ -204,7 +208,7 @@ func TestOwnerCannotReadAnotherOwnersPackage(t *testing.T) {
 
 	pkgA := samplePackage(ownerA, courseID, version)
 	pkgA.Title = "A's private import"
-	if err := repo.Put(ctx, pkgA); err != nil {
+	if err := repo.Put(ctx, ownerA, pkgA); err != nil {
 		t.Fatalf("Put as A: %v", err)
 	}
 
@@ -260,7 +264,7 @@ func TestListVersionsSortsSemverNotLexically(t *testing.T) {
 	const courseID = "***REMOVED***"
 
 	for _, v := range []string{"1.10.0", "1.0.0", "1.9.0"} {
-		if err := repo.Put(ctx, samplePackage(owner, courseID, v)); err != nil {
+		if err := repo.Put(ctx, owner, samplePackage(owner, courseID, v)); err != nil {
 			t.Fatalf("Put %s: %v", v, err)
 		}
 	}
@@ -288,7 +292,7 @@ func TestRepoContracts(t *testing.T) {
 
 	t.Run("Get reports a missing version as not found", func(t *testing.T) {
 		owner := newOwner(t, pool, "missing")
-		if err := repo.Put(ctx, samplePackage(owner, "c1", "1.0.0")); err != nil {
+		if err := repo.Put(ctx, owner, samplePackage(owner, "c1", "1.0.0")); err != nil {
 			t.Fatalf("Put: %v", err)
 		}
 
@@ -310,7 +314,7 @@ func TestRepoContracts(t *testing.T) {
 			{"aa-first-course", "1.10.0"},
 			{"aa-first-course", "1.2.0"},
 		} {
-			if err := repo.Put(ctx, samplePackage(owner, spec.courseID, spec.version)); err != nil {
+			if err := repo.Put(ctx, owner, samplePackage(owner, spec.courseID, spec.version)); err != nil {
 				t.Fatalf("Put %s@%s: %v", spec.courseID, spec.version, err)
 			}
 		}
@@ -365,7 +369,7 @@ func TestRepoContracts(t *testing.T) {
 
 		first := samplePackage(owner, "c-replace", "1.0.0")
 		first.Title = "first import"
-		if err := repo.Put(ctx, first); err != nil {
+		if err := repo.Put(ctx, owner, first); err != nil {
 			t.Fatalf("Put first: %v", err)
 		}
 
@@ -373,7 +377,7 @@ func TestRepoContracts(t *testing.T) {
 		second.Title = "re-imported"
 		second.Blob = append(sampleBlob(), 'X')
 		second.Bytes = sampleUncompressedBytes + 1
-		if err := repo.Put(ctx, second); err != nil {
+		if err := repo.Put(ctx, owner, second); err != nil {
 			t.Fatalf("Put second (same version): %v", err)
 		}
 
@@ -400,19 +404,66 @@ func TestRepoContracts(t *testing.T) {
 		}
 	})
 
+	// The owner a write lands under comes from the ownerID argument — the
+	// authenticated caller — and from nowhere else. This subtest is the
+	// review's measured attack turned into a control: an attacker fills in
+	// the victim's id in the one place a request body could reach,
+	// Package.OwnerID, and calls Put as itself. Before Put took an ownerID
+	// argument the measurement was
+	// `err=<nil> victimRowTitle="PWNED BY ATTACKER" attackerRows=0`; the
+	// forged field must now be inert.
+	t.Run("Put ignores an OwnerID field the caller did not authenticate as", func(t *testing.T) {
+		victim := newOwner(t, pool, "forge-victim")
+		attacker := newOwner(t, pool, "forge-attacker")
+
+		legit := samplePackage(victim, "c-forge", "1.0.0")
+		legit.Title = "victim's own import"
+		if err := repo.Put(ctx, victim, legit); err != nil {
+			t.Fatalf("Put as victim: %v", err)
+		}
+
+		forged := samplePackage(attacker, "c-forge", "1.0.0")
+		forged.Title = "PWNED BY ATTACKER"
+		forged.OwnerID = victim // the field an attacker controls
+		if err := repo.Put(ctx, attacker, forged); err != nil {
+			t.Fatalf("Put as attacker: %v", err)
+		}
+
+		stillVictims, err := repo.Get(ctx, victim, "c-forge", "1.0.0")
+		if err != nil {
+			t.Fatalf("Get as victim: %v", err)
+		}
+		if stillVictims.Title != "victim's own import" {
+			t.Errorf("victim's row was overwritten by a forged Package.OwnerID: want %q got %q",
+				"victim's own import", stillVictims.Title)
+		}
+
+		// Anti-vacuity: the write did happen — under the attacker's own id.
+		mine, err := repo.Get(ctx, attacker, "c-forge", "1.0.0")
+		if err != nil {
+			t.Fatalf("Get as attacker: want the attacker's own row, got %v", err)
+		}
+		if mine.Title != "PWNED BY ATTACKER" {
+			t.Errorf("attacker's own row: want %q got %q", "PWNED BY ATTACKER", mine.Title)
+		}
+		if mine.OwnerID != attacker {
+			t.Errorf("stored owner_id: want the ownerID argument %s, got %s", attacker, mine.OwnerID)
+		}
+	})
+
 	t.Run("Put by one owner never disturbs another owner's same-named version", func(t *testing.T) {
 		ownerA := newOwner(t, pool, "overwrite-a")
 		ownerB := newOwner(t, pool, "overwrite-b")
 
 		a := samplePackage(ownerA, "c-shared", "1.0.0")
 		a.Title = "A's copy"
-		if err := repo.Put(ctx, a); err != nil {
+		if err := repo.Put(ctx, ownerA, a); err != nil {
 			t.Fatalf("Put as A: %v", err)
 		}
 
 		b := samplePackage(ownerB, "c-shared", "1.0.0")
 		b.Title = "B's copy"
-		if err := repo.Put(ctx, b); err != nil {
+		if err := repo.Put(ctx, ownerB, b); err != nil {
 			t.Fatalf("Put as B: %v", err)
 		}
 
@@ -439,7 +490,7 @@ func TestRepoContracts(t *testing.T) {
 
 		// Inserted in an order that is neither lexical nor correct.
 		for _, v := range []string{"1.0.0", "2.0.0-rc.10", "1.0.0-rc.2", "2.0.0-rc.2", "1.0.0-rc.1"} {
-			if err := repo.Put(ctx, samplePackage(owner, courseID, v)); err != nil {
+			if err := repo.Put(ctx, owner, samplePackage(owner, courseID, v)); err != nil {
 				t.Fatalf("Put %s: %v", v, err)
 			}
 		}

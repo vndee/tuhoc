@@ -12,7 +12,9 @@
 //     package. See the migration (0002_course_packages.up.sql) for the
 //     trade-off; the consequence for this file is that no method takes a
 //     (courseID, version) pair without an ownerID beside it, and none
-//     ever should.
+//     ever should. That ownerID is always an *argument* of the method,
+//     including on the write path — never a field of the value being
+//     written. See Repo below for why the distinction is the whole point.
 //
 //  2. Version ordering happens in Go, not in SQL. `ORDER BY version` is a
 //     string sort, which puts 1.10.0 before 1.9.0 — wrong, with no error
@@ -47,7 +49,14 @@ var ErrNotFound = errors.New("course: package not found")
 type Package struct {
 	CourseID string
 	Version  string
-	OwnerID  uuid.UUID
+
+	// OwnerID is filled in on values coming *out* of Get and
+	// ListForOwner, and is ignored on the way in: Put stores its ownerID
+	// argument and never reads this field. It is not a second way to say
+	// who is writing — there is no second way, deliberately. A request
+	// body that names an owner_id (or a handler that binds a body
+	// straight into a Package) therefore cannot reach a row.
+	OwnerID uuid.UUID
 
 	Tier  string // "content" or "interactive" (enforced by a CHECK constraint)
 	Lang  string
@@ -86,15 +95,23 @@ type Package struct {
 	CreatedAt time.Time
 }
 
-// Repo is the storage interface the HTTP layer depends on. Every method
-// takes ownerID as its own argument rather than reading it from a
-// Package field, so a handler physically cannot pass a caller-supplied
-// owner by forgetting to overwrite one: the owner comes from the
-// authenticated session at the call site, in the open.
+// Repo is the storage interface the HTTP layer depends on. Every method,
+// the single write included, takes ownerID as its own argument rather
+// than reading it from a Package field, so a handler physically cannot
+// pass a caller-supplied owner by forgetting to overwrite one: the owner
+// comes from the authenticated session at the call site, in the open.
+// This is the same shape sync.Repo.PushBatch uses, for the same reason.
+//
+// This comment once made that claim while Put alone took the owner from
+// p.OwnerID. A review measured the gap rather than reading it: an
+// attacker who declared the victim's id in that field overwrote the
+// victim's row whole, err=<nil>. The fix was to move Put to the shape the
+// comment described, not to soften the comment — an authenticated
+// identity must never be read out of attacker-controlled data.
 type Repo interface {
-	// Put stores p, replacing any package the same owner already has at
-	// the same (courseID, version).
-	Put(ctx context.Context, p Package) error
+	// Put stores p under ownerID, replacing any package that owner
+	// already has at the same (courseID, version). p.OwnerID is ignored.
+	Put(ctx context.Context, ownerID uuid.UUID, p Package) error
 	// Get returns one package, or ErrNotFound.
 	Get(ctx context.Context, ownerID uuid.UUID, courseID, version string) (Package, error)
 	// ListForOwner returns every package ownerID holds, without blobs.
@@ -136,6 +153,10 @@ func NewRepo(pool *pgxpool.Pool) *PostgresRepo {
 // a WHERE guard, but because such a collision cannot be expressed. Narrow
 // the conflict target and that property is silently lost.
 //
+// $1 is Put's ownerID argument, the authenticated caller. It is never
+// p.OwnerID: that would make the row's identity a function of the payload
+// being written, which is exactly what the property above is protecting.
+//
 // created_at is absent from both the column list and the SET clause: the
 // column default supplies it on insert, and a replacement deliberately
 // leaves the original in place.
@@ -147,14 +168,17 @@ SET tier=EXCLUDED.tier, lang=EXCLUDED.lang, title=EXCLUDED.title,
     manifest=EXCLUDED.manifest, blob=EXCLUDED.blob, bytes=EXCLUDED.bytes;
 `
 
-// Put stores p for p.OwnerID, replacing that owner's existing package at
-// the same (CourseID, Version) if there is one.
-func (r *PostgresRepo) Put(ctx context.Context, p Package) error {
+// Put stores p for ownerID — the authenticated caller — replacing that
+// owner's existing package at the same (CourseID, Version) if there is
+// one. p.OwnerID is ignored: whatever it holds, the row is written under
+// ownerID, so a forged owner in the payload has no effect at all rather
+// than an effect nobody notices.
+func (r *PostgresRepo) Put(ctx context.Context, ownerID uuid.UUID, p Package) error {
 	_, err := r.pool.Exec(ctx, upsertPackageSQL,
-		p.OwnerID, p.CourseID, p.Version, p.Tier, p.Lang, p.Title, p.Manifest, p.Blob, p.Bytes)
+		ownerID, p.CourseID, p.Version, p.Tier, p.Lang, p.Title, p.Manifest, p.Blob, p.Bytes)
 	if err != nil {
 		return fmt.Errorf("course: put package (owner=%s course=%s version=%s): %w",
-			p.OwnerID, p.CourseID, p.Version, err)
+			ownerID, p.CourseID, p.Version, err)
 	}
 	return nil
 }
