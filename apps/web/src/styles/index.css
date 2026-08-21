@@ -1313,3 +1313,175 @@ mark.ann {
     display: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   The update dialog (S1 Task 10): what taking a new version of a course would
+   cost this reader's notes, shown before anything is committed.
+
+   Centred rather than a bottom sheet like `.ann-sheet`, because the two ask for
+   different things. The sheet is a note the reader is reading alongside the
+   chapter; this is a decision with two answers and nothing behind it worth
+   looking at. z-index 91/90: above everything the reader may already have open
+   (the note sheet is 80/79, the mobile nav 70/60), because it is the only thing
+   on screen that is waiting for them.
+
+   Sized in `min()` against the viewport so a phone gets margins and a desktop
+   does not get a line 1200px wide; `max-height` + `overflow-y` because the
+   orphan list is as long as the damage is. */
+.cu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.cu-dialog {
+  position: fixed;
+  z-index: 91;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(80vh, 640px);
+  overflow-y: auto;
+  padding: 20px 22px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  font-family: var(--sans);
+  color: var(--ink-2);
+}
+
+/* The dialog takes focus on open so Escape works without a click first
+   (see UpdateDialog.tsx). It is a container, not a control, so the focus ring
+   would be noise — the heading below is what the reader is looking at. */
+.cu-dialog:focus {
+  outline: none;
+}
+
+.cu-title {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.cu-versions {
+  margin: 2px 0 14px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.cu-status {
+  margin: 0 0 14px;
+  font-size: 13.5px;
+  color: var(--ink-3);
+}
+
+/* The one line the whole screen exists for. */
+.cu-summary {
+  margin: 0 0 12px;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.cu-error {
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #e0453c;
+}
+
+.cu-orphans {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  border-left: 2px solid var(--rule-strong);
+}
+
+.cu-orphans li {
+  padding: 4px 0 4px 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.cu-orphan-where {
+  display: block;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+/* One line of the lost quote, so the reader can tell which note this is
+   without the list turning into a second copy of the chapter. */
+.cu-orphan-quote {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+.cu-note {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.cu-note b {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.cu-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.cu-confirm,
+.cu-cancel {
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  padding: 6px 14px;
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cu-confirm {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.cu-confirm:disabled {
+  border-color: var(--rule);
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.cu-cancel:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.cu-confirm:focus-visible,
+.cu-cancel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media print {
+  .cu-dialog,
+  .cu-scrim {
+    display: none;
+  }
+}

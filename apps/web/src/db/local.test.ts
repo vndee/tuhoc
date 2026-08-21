@@ -736,6 +736,31 @@ const HTML_SINKS_ALLOWED: readonly {
     times: 1,
     why: 'the chapter fragment — the one string in this app that IS markup, and the only one a course author is allowed to write',
   },
+  {
+    sink: 'innerHTML',
+    file: join('apps', 'web', 'src', 'course', 'version.ts'),
+    times: 1,
+    // Added by S1 Task 10, and deliberately NOT a reopening of ruling S1-F8.
+    // The ruling's condition is "no MANIFEST field ever reaches an HTML sink",
+    // and this sink is fed the same category of string ChapterView's is: a
+    // chapter fragment, read out of `PackageRow.files[...]`. The manifest
+    // supplies the KEY into that record (`chapter.file`), never the value —
+    // so every manifest string is still a React text node everywhere in this
+    // app, and the validator's decision not to scan manifests for markup is
+    // still free.
+    //
+    // Two further properties of THIS use, neither of which ChapterView's has:
+    // the container is created by `resolveChapter`, never inserted into the
+    // document, and dropped when the function returns — so the parsed markup
+    // is never rendered, never laid out, and no handler on it can ever fire;
+    // and it exists to measure notes against a chapter the reader has not
+    // taken yet, which has to project to the SAME string the reader's page
+    // projected (see `course/version.ts`'s `CourseKitUnavailableError` for the
+    // measurement). Parsing it by some route the scanner above does not
+    // recognise — `DOMParser`, a `<template>` — would satisfy this test while
+    // making the injection invisible to it, which is worse than an entry here.
+    why: 'the chapter fragment again, parsed into a detached container that is never inserted into the document, to resolve anchors against a version not yet taken',
+  },
 ];
 
 /**

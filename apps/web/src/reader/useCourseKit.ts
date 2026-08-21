@@ -40,7 +40,23 @@ function loadScript(src: string): Promise<void> {
 // injection.
 let runtimeTrioPromise: Promise<void> | null = null;
 
-function injectRuntimeTrio(): Promise<void> {
+/**
+ * The shared trio, loaded at most once per app lifetime, as a plain promise.
+ *
+ * Exported (Task 10) because `useCourseKit` is not the only thing that needs
+ * `window.CourseKit`, and the second caller is not a component. `course/version.ts`
+ * resolves a reader's anchors against a chapter of a version they have not taken
+ * yet, and an anchor's stored quote describes the chapter AFTER
+ * `CourseKit.renderKatex` has run — one `'￼'` per formula rather than the
+ * literal `$…$` source. Measured on the real p1-5 with 30 notes: previewing
+ * without the trio reported 26 orphans where 4 was the truth, and 17 of those
+ * were paragraphs the update did not touch at all.
+ *
+ * A second injector living in that file would be a second copy of the
+ * "these globals must be attached exactly once, in this order" rule — the
+ * rule the module-level singleton below exists to enforce.
+ */
+export function ensureCourseKitRuntime(): Promise<void> {
   if (runtimeTrioPromise) return runtimeTrioPromise;
 
   runtimeTrioPromise = (async () => {
@@ -89,16 +105,16 @@ const vizPromisesBySrc = new Map<string, Promise<void>>();
  * chapter renderer are what a prose course needs.
  */
 function injectCourseKit(vizSrc: string | null): Promise<void> {
-  if (vizSrc === null) return injectRuntimeTrio();
+  if (vizSrc === null) return ensureCourseKitRuntime();
 
   const cached = vizPromisesBySrc.get(vizSrc);
   if (cached) return cached;
 
-  // injectRuntimeTrio() must be called synchronously here (not inside the
+  // ensureCourseKitRuntime() must be called synchronously here (not inside the
   // .then below) so a second synchronous call for the same script — the
   // StrictMode double-invoke case — sees this Map entry already set
   // before either promise has had a chance to settle.
-  const promise = injectRuntimeTrio().then(() => loadScript(vizSrc));
+  const promise = ensureCourseKitRuntime().then(() => loadScript(vizSrc));
 
   promise.catch(() => {
     vizPromisesBySrc.delete(vizSrc);
