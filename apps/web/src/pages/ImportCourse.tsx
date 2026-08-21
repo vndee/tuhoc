@@ -42,9 +42,12 @@ export function ImportCourse() {
   const [done, setDone] = useState<
     { courseId: string; version: string; rerootedFrom?: string; droppedFiles?: number } | null
   >(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [cancelled, setCancelled] = useState(false);
   const [zipUrl, setZipUrl] = useState('');
   const [gitUrl, setGitUrl] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
+  const abort = useRef<AbortController | null>(null);
 
   const busy = stage !== null;
 
@@ -68,10 +71,27 @@ export function ImportCourse() {
   async function run(source: ImportSource) {
     setFindings(null);
     setDone(null);
+    setCancelled(false);
+    setProgress(null);
     setStage('fetching');
+    const controller = new AbortController();
+    abort.current = controller;
     try {
-      const result = await importCourse(source, { onStage: announceStage });
-      if (result.ok) {
+      const result = await importCourse(source, {
+        onStage: announceStage,
+        // No `flushSync` here, and the difference is not an oversight: this
+        // fires between network round trips with the main thread idle, so
+        // React gets a paint of its own. `onStage` is the one that is
+        // immediately followed by a second of synchronous work.
+        onProgress: (done, total) => setProgress({ done, total }),
+        signal: controller.signal,
+      });
+      if (!result.ok && result.findings.length === 1 && result.findings[0].code === 'CANCELLED') {
+        // A cancellation is not a rejected package. Putting it under "Không
+        // nhập được gói này" would tell a reader their file was bad when what
+        // happened is that they pressed the button they were offered.
+        setCancelled(true);
+      } else if (result.ok) {
         setDone({
           courseId: result.courseId,
           version: result.version,
@@ -102,6 +122,8 @@ export function ImportCourse() {
       ]);
     } finally {
       setStage(null);
+      setProgress(null);
+      abort.current = null;
       if (fileInput.current) fileInput.current.value = '';
     }
   }
@@ -190,7 +212,32 @@ export function ImportCourse() {
       </section>
 
       <div className="import-status" role="status" aria-live="polite">
-        {busy && <p className="import-busy">{STAGE_TEXT[stage]}</p>}
+        {busy && (
+          <p className="import-busy">
+            {STAGE_TEXT[stage]}
+            {/*
+              The repo route makes one request per file, and that is a wait
+              worth counting rather than hiding: 313 files took 20.04 s in
+              review, for 188 KB — the cost is round trips, so it grows with
+              the file count and nothing here makes it fast. A static line
+              for twenty seconds reads as a hung page.
+            */}
+            {progress && ` ${progress.done}/${progress.total} tệp.`}
+          </p>
+        )}
+        {/*
+          The one control that is NOT `disabled={busy}` — before this there
+          was no way to stop an import except closing the tab. Offered only
+          while fetching, because that is the only stage it can actually
+          interrupt: the scan holds the main thread, so a "Huỷ" that did
+          nothing during it would be a lie in button form.
+        */}
+        {stage === 'fetching' && (
+          <button type="button" className="btn" onClick={() => abort.current?.abort()}>
+            Huỷ
+          </button>
+        )}
+        {cancelled && <p className="import-note">Đã huỷ nhập gói. Không có gì được lưu lại.</p>}
         {done && (
           <p className="import-ok">
             Đã nhập <strong>{done.courseId}</strong> phiên bản {done.version}.{' '}
@@ -217,8 +264,16 @@ export function ImportCourse() {
         )}
       </div>
 
+      {/*
+        `role="alert"` and not merely a heading: this block is a SIBLING of
+        the `role="status"` region, so before this a screen-reader user
+        pressed "Nhập", heard the waiting state, heard it disappear, and was
+        told nothing at all about why the package was refused. An alert is
+        the right politeness level too — the reader asked for this and the
+        answer is that it did not happen.
+      */}
       {findings && findings.length > 0 && (
-        <div className="import-findings">
+        <div className="import-findings" role="alert">
           <h2 className="import-way-h">Không nhập được gói này</h2>
           <p className="import-note">
             {findings.length === 1

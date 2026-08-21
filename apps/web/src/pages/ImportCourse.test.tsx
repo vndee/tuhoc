@@ -146,6 +146,12 @@ it('nói ra bằng tiếng Việt vì sao gói bị từ chối — không phả
   expect(message).toBeInTheDocument();
   expect(document.body.textContent).not.toContain('SCRIPT_TAG');
   expect(await db.packages.count()).toBe(0);
+
+  // And it is ANNOUNCED. The list sits outside the `role="status"` region,
+  // so without a live role of its own a screen-reader user heard the waiting
+  // state, heard it go, and never heard why the package was refused.
+  const alert = screen.getByRole('alert');
+  expect(alert).toContainElement(message);
 });
 
 it('nêu HẾT các vấn đề trong một lần, và nói có bao nhiêu cái', async () => {
@@ -253,6 +259,65 @@ it('kể cả khi `importCourse` phá vỡ hợp đồng và NÉM, trang vẫn n
   // BLANK — the one outcome the missing `catch` produced.
   expect(await screen.findByText(/hợp đồng bị phá: importCourse đã ném/)).toBeInTheDocument();
   expect(screen.getByText(/không nhập được gói này/i)).toBeInTheDocument();
+});
+
+it('đếm tệp trong lúc tải repo, và cho HUỶ — nút duy nhất không bị `disabled={busy}`', async () => {
+  // Measured in review: 313 files took 20.04 s behind one static line
+  // "Đang tải gói…", with no per-file progress and no way out — every input
+  // and button on the page is disabled while busy, so the only exit was
+  // closing the tab.
+  // Nine files, because blobs go out eight at a time: the first batch
+  // finishes and reports, the ninth hangs where a slow repo would leave a
+  // reader waiting.
+  const manifestJson = JSON.stringify(manifest(), null, 2);
+  let release: (() => void) | undefined;
+  const assets = Array.from({ length: 7 }, (_, i) => `assets/${i}.txt`);
+  server.use(
+    http.get('https://api.github.com/repos/ai-do/khoa-hoc/git/trees/HEAD', () =>
+      HttpResponse.json({
+        sha: 'x',
+        truncated: false,
+        tree: [
+          { path: 'manifest.json', type: 'blob', mode: '100644', size: manifestJson.length },
+          ...assets.map((path) => ({ path, type: 'blob', mode: '100644', size: 1 })),
+          { path: 'chapters/c1.html', type: 'blob', mode: '100644', size: 30 },
+        ],
+      }),
+    ),
+    http.get('https://raw.githubusercontent.com/ai-do/khoa-hoc/HEAD/manifest.json', () =>
+      new HttpResponse(encode(manifestJson) as BlobPart),
+    ),
+    http.get('https://raw.githubusercontent.com/ai-do/khoa-hoc/HEAD/assets/:name', () =>
+      new HttpResponse(encode('x') as BlobPart),
+    ),
+    http.get('https://raw.githubusercontent.com/ai-do/khoa-hoc/HEAD/chapters/c1.html', async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return new HttpResponse(encode('<h1 class="ch-title">Chương một</h1>') as BlobPart);
+    }),
+  );
+  const user = userEvent.setup();
+  renderPage();
+
+  await user.type(screen.getByLabelText(/đường dẫn repo/i), 'https://github.com/ai-do/khoa-hoc');
+  await user.click(screen.getByRole('button', { name: /nhập từ repo/i }));
+
+  // The count, on screen, in the live region — not a static line.
+  const live = document.querySelector('[role="status"]');
+  await waitFor(() => expect(live?.textContent).toMatch(/8\/9 tệp/));
+
+  const cancel = await screen.findByRole('button', { name: /^huỷ$/i });
+  expect(cancel).toBeEnabled();
+
+  await user.click(cancel);
+
+  expect(await screen.findByText(/đã huỷ nhập gói/i)).toBeInTheDocument();
+  // Cancelling is not a rejected package: the reader must not be told their
+  // file was bad because they pressed the button they were offered.
+  expect(screen.queryByText(/không nhập được gói này/i)).not.toBeInTheDocument();
+  expect(await db.packages.count()).toBe(0);
+  release?.();
 });
 
 it('không để bấm nhập lần hai khi lần một chưa xong', async () => {

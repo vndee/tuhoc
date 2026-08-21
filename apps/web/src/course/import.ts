@@ -149,6 +149,37 @@ export interface ImportOptions {
    * one task when it did not. See {@link stageAnnouncer}.
    */
   onStage?: (stage: ImportStage) => void;
+
+  /**
+   * How many of a repo's files have been downloaded, out of how many.
+   *
+   * Only the repo route calls this — it is the only one that makes one
+   * request per file — and it is the difference between a truthful wait and
+   * a frozen page. Measured in review, real network, real Chromium: 25 files
+   * took 3.67 s and 313 files took 20.04 s for 188 KB of data, because the
+   * cost is round trips rather than bytes. Nothing here makes that fast.
+   * What it can do is stop lying about it.
+   *
+   * Unlike {@link onStage} this does NOT need `flushSync`: it fires between
+   * network round trips, with the main thread idle, so React's ordinary
+   * scheduling gets a paint on its own. The `flushSync` rule exists because
+   * a stage announcement is immediately followed by a second of synchronous
+   * work; this is not.
+   */
+  onProgress?: (done: number, total: number) => void;
+
+  /**
+   * Stops an import in flight.
+   *
+   * The reason this exists is the same measurement: a repo import can run
+   * for a minute, and before this there was no way to stop one — every
+   * control on the page is `disabled={busy}`, so the only exit was closing
+   * the tab. Note what it can and cannot interrupt: the fetch loop, yes; the
+   * `validatePackage` scan, no, because that holds the main thread and
+   * nothing else runs while it does. That is the honest boundary and the UI
+   * is written to it.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -178,6 +209,7 @@ export const IMPORT_FINDING_CODES = [
   'GIT_TREE_TRUNCATED',
   'GIT_TOO_MANY_FILES',
   'WRITE_FAILED',
+  'CANCELLED',
   'UNEXPECTED',
 ] as const;
 
@@ -313,6 +345,7 @@ const VIETNAMESE: Readonly<Record<ImportFindingCode | FindingCode, string>> = {
     'Repo này quá lớn để đọc hết danh sách tệp trong một lần. Hãy tải .zip của repo về máy rồi nhập từ tệp.',
   GIT_TOO_MANY_FILES: 'Repo này có quá nhiều tệp để nhập trực tiếp.',
   WRITE_FAILED: 'Không lưu được gói vào bộ nhớ của trình duyệt.',
+  CANCELLED: 'Đã huỷ nhập gói. Không có gì được lưu lại.',
   UNEXPECTED: 'Có lỗi ngoài dự kiến khi nhập gói. Hãy thử lại; nếu vẫn vậy, đây là chi tiết kỹ thuật để báo lỗi:',
 };
 
@@ -459,11 +492,12 @@ function httpUrl(raw: string): URL | null {
  * reached the page as an `unhandledrejection`, and drew NOTHING. The reader
  * pressed the button and the page went back to how it was.
  */
-async function fetchBytes(url: string): Promise<{ bytes: Uint8Array } | { error: Finding }> {
+async function fetchBytes(url: string, signal?: AbortSignal): Promise<{ bytes: Uint8Array } | { error: Finding }> {
   let res: Response;
   try {
-    res = await fetch(url);
+    res = await fetch(url, { signal });
   } catch (cause) {
+    if (aborted(cause)) return { error: cancelled() };
     return { error: finding('FETCH_FAILED', url, fetchFailedDetail(cause)) };
   }
   if (!res.ok) {
@@ -472,8 +506,18 @@ async function fetchBytes(url: string): Promise<{ bytes: Uint8Array } | { error:
   try {
     return { bytes: new Uint8Array(await res.arrayBuffer()) };
   } catch (cause) {
+    if (aborted(cause)) return { error: cancelled() };
     return { error: finding('FETCH_FAILED', url, bodyCutOffDetail(cause)) };
   }
+}
+
+/** What `fetch` throws when its signal fires — not a failure to report as one. */
+function aborted(cause: unknown): boolean {
+  return (cause as { name?: unknown } | null)?.name === 'AbortError';
+}
+
+function cancelled(): Finding {
+  return finding('CANCELLED', PACKAGE_ROOT, '');
 }
 
 /** A thrown value as a short parenthetical — never the whole stack. */
@@ -525,16 +569,47 @@ function bodyCutOffDetail(cause: unknown): string {
  *
  * The byte budget is the real fence and it is applied first; this is about
  * REQUESTS. A repo of ten thousand one-byte files fits inside 20 MB and would
- * still be ten thousand round trips at somebody else's CDN. The largest real
- * course in this repo (`courses/***REMOVED***`, 44 chapters plus its
- * assets) is 46 files, so 1000 is more than twenty times the only real
- * datapoint available and is a round number for the same reason
- * `MAX_ATTRS_PER_TAG` is.
+ * still be ten thousand round trips at somebody else's CDN.
+ *
+ * **300, and the number comes from a stopwatch.** It was 1000, chosen as
+ * "twenty times the only real datapoint" (this repo's own 46-file course)
+ * when nobody had timed the loop. Timed in review, real network, real
+ * Chromium, this exact shape at `GIT_FETCH_CONCURRENCY = 8`:
+ *
+ *     git-lfs/lfs-test-server    25 files  →   3.67 s
+ *     github/gitignore          313 files  →  20.04 s   (188 KB of data)
+ *
+ * Round trips, not bytes: about 64 ms per file amortised. 1000 files is
+ * therefore a minute of somebody's afternoon, and a ceiling of a minute is
+ * not a ceiling, it is a place where people give up. Twenty seconds is
+ * already at the edge of what a progress counter can carry, so that is where
+ * this stops. 300 is still six times the only real course anybody has, and
+ * the finding names the way out — download the `.zip`, import the file —
+ * which has no such limit because it is one request.
+ *
+ * Firing a thousand consecutive requests at `raw.githubusercontent.com` was
+ * also never a polite thing to do; that CDN has limits of its own.
  */
-const MAX_GIT_FILES = 1000;
+export const MAX_GIT_FILES = 300;
 
 /** How many blob fetches are in flight at once. */
 const GIT_FETCH_CONCURRENCY = 8;
+
+/**
+ * Extra attempts for a blob whose fetch was REJECTED, before giving up.
+ *
+ * Across three hundred requests a transient failure stops being an edge case
+ * and becomes the expected case, and the loop's old behaviour was to return
+ * on the first one — so a single hiccup at file 300 threw away the other
+ * 299 and the nineteen seconds they cost. Two retries turn the common
+ * version of that into a delay instead of a restart.
+ *
+ * Only a rejected `fetch` is retried. An HTTP status is a DECISION: a 404 is
+ * 404 again a moment later, and retrying it would just triple the wait
+ * before the same message. The cancel signal is checked between batches, so
+ * a reader who is done waiting is not held by retries either.
+ */
+const GIT_BLOB_RETRIES = 2;
 
 export interface GitTarget {
   owner: string;
@@ -621,16 +696,19 @@ interface TreeEntry {
 async function fetchGitHubRepo(
   repo: GitTarget,
   announce: (stage: ImportStage) => Promise<void>,
+  options: ImportOptions = {},
 ): Promise<{ files: Map<string, Uint8Array>; rerootedFrom?: string } | { error: Finding }> {
   const treeUrl = `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}/git/trees/${encodeURIComponent(repo.ref)}?recursive=1`;
   const at = `${repo.owner}/${repo.repo}`;
+  const { signal } = options;
 
   await announce('fetching');
 
   let res: Response;
   try {
-    res = await fetch(treeUrl, { headers: { Accept: 'application/vnd.github+json' } });
+    res = await fetch(treeUrl, { headers: { Accept: 'application/vnd.github+json' }, signal });
   } catch (cause) {
+    if (aborted(cause)) return { error: cancelled() };
     return { error: finding('FETCH_FAILED', at, fetchFailedDetail(cause)) };
   }
 
@@ -753,19 +831,36 @@ async function fetchGitHubRepo(
   const files = new Map<string, Uint8Array>();
 
   for (let i = 0; i < blobs.length; i += GIT_FETCH_CONCURRENCY) {
+    // Between batches, not inside one: a batch already in flight is eight
+    // requests that will resolve on their own, and tearing them down halfway
+    // buys nothing a reader can perceive.
+    if (signal?.aborted === true) return { error: cancelled() };
+
     const batch = blobs.slice(i, i + GIT_FETCH_CONCURRENCY);
     const results = await Promise.all(
       batch.map((entry) =>
-        fetchBytes(`${rawBase}/${entry.path.split('/').map(encodeURIComponent).join('/')}`),
+        fetchBlob(`${rawBase}/${entry.path.split('/').map(encodeURIComponent).join('/')}`, signal),
       ),
     );
     for (const [n, result] of results.entries()) {
       if ('error' in result) return { error: result.error };
       files.set(batch[n].path.slice(prefix.length), result.bytes);
     }
+    options.onProgress?.(files.size, blobs.length);
   }
 
   return { files, rerootedFrom: repo.subdir === '' ? undefined : repo.subdir };
+}
+
+/** One blob, with {@link GIT_BLOB_RETRIES} more goes if the network drops it. */
+async function fetchBlob(url: string, signal?: AbortSignal): Promise<{ bytes: Uint8Array } | { error: Finding }> {
+  let last = await fetchBytes(url, signal);
+  for (let attempt = 0; attempt < GIT_BLOB_RETRIES; attempt++) {
+    if (!('error' in last) || last.error.code !== 'FETCH_FAILED') return last;
+    if (signal?.aborted === true) return { error: cancelled() };
+    last = await fetchBytes(url, signal);
+  }
+  return last;
 }
 
 /** True for a path with any dot-prefixed segment — `.github/workflows/ci.yml` included. */
@@ -907,7 +1002,7 @@ export async function importCourse(src: ImportSource, options: ImportOptions = {
 async function runImport(src: ImportSource, options: ImportOptions): Promise<ImportResult> {
   const announce = stageAnnouncer(options.onStage);
 
-  const collected = await collect(src, announce);
+  const collected = await collect(src, announce, options);
   if ('error' in collected) return { ok: false, findings: [collected.error] };
 
   const rooted = rootPackage(collected.files);
@@ -964,6 +1059,7 @@ async function runImport(src: ImportSource, options: ImportOptions): Promise<Imp
 async function collect(
   src: ImportSource,
   announce: (stage: ImportStage) => Promise<void>,
+  options: ImportOptions,
 ): Promise<{ files: Map<string, Uint8Array>; rerootedFrom?: string } | { error: Finding }> {
   if (src.kind === 'gitUrl') {
     const targets = parseGitHubUrl(src.url);
@@ -982,10 +1078,10 @@ async function collect(
     // precisely the question the next candidate asks differently. Anything
     // else — rate limit, symlink, too many files — is a real answer about a
     // real ref and re-asking would only produce a second, worse message.
-    let last = await fetchGitHubRepo(first, announce);
+    let last = await fetchGitHubRepo(first, announce, options);
     for (const next of targets.slice(1)) {
       if (!('error' in last) || last.error.code !== 'GIT_REPO_UNREACHABLE') break;
-      last = await fetchGitHubRepo(next, announce);
+      last = await fetchGitHubRepo(next, announce, options);
     }
     return last;
   }
@@ -1013,7 +1109,7 @@ async function collect(
     if (httpUrl(src.url) === null) {
       return { error: finding('BAD_URL', src.url, 'Chỉ nhận đường dẫn bắt đầu bằng http:// hoặc https://.') };
     }
-    const fetched = await fetchBytes(src.url);
+    const fetched = await fetchBytes(src.url, options.signal);
     if ('error' in fetched) return { error: fetched.error };
     zip = fetched.bytes;
   }

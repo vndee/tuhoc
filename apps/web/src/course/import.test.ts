@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../db/local';
-import { describeFinding, IMPORT_FINDING_CODES, importCourse, type ImportStage } from './import';
+import { describeFinding, IMPORT_FINDING_CODES, MAX_GIT_FILES, importCourse, type ImportStage } from './import';
 import { loadChapter, loadManifest } from './loader';
 
 /* ------------------------------------------------------------------ *
@@ -915,6 +915,156 @@ describe('nhập từ repo GitHub công khai', () => {
     expect(r.findings[0].code).toBe('GIT_PATH_NOT_FOUND');
     expect(describeFinding(r.findings[0])).toContain('khong-co');
     expect(describeFinding(r.findings[0])).not.toMatch(/riêng tư/i);
+  });
+
+  /* ------------------------------------------------------------------ *
+   * The cost of one request per file, and what a reader is given while
+   * it is being paid
+   * ------------------------------------------------------------------ */
+
+  /** A repo of `count` one-byte files plus a valid package, served wholesale. */
+  function serveManyFiles(count: number): void {
+    const manifestJson = JSON.stringify(manifest(), null, 2);
+    const tree = [
+      { path: 'manifest.json', type: 'blob', mode: '100644', size: manifestJson.length },
+      { path: 'chapters/c1.html', type: 'blob', mode: '100644', size: CHAPTER_HTML.length },
+      ...Array.from({ length: count }, (_, i) => ({
+        path: `assets/${i}.txt`,
+        type: 'blob',
+        mode: '100644',
+        size: 1,
+      })),
+    ];
+    server.use(
+      http.get(TREE, () => HttpResponse.json({ sha: 'x', truncated: false, tree })),
+      http.get(`${RAW}/manifest.json`, () => new HttpResponse(encode(manifestJson) as BlobPart)),
+      http.get(`${RAW}/chapters/c1.html`, () => new HttpResponse(encode(CHAPTER_HTML) as BlobPart)),
+      http.get(`${RAW}/assets/:name`, () => new HttpResponse(encode('x') as BlobPart)),
+    );
+  }
+
+  it('kể tiến độ theo TỆP, không để người dùng nhìn một dòng tĩnh suốt hai mươi giây', async () => {
+    // Measured in review, real network, real Chromium, this exact loop shape:
+    // 25 tệp → 3,67 s; 313 tệp → 20,04 s for 188 KB of data. The cost is
+    // almost entirely round trips, so it scales with FILE COUNT and there is
+    // nothing to make it fast. What there is, is telling the truth about it.
+    const seen: [number, number][] = [];
+    serveManyFiles(20);
+
+    const r = await importCourse(
+      { kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' },
+      { onProgress: (done, total) => seen.push([done, total]) },
+    );
+
+    expect(r.ok).toBe(true);
+    expect(seen.length).toBeGreaterThan(1);
+    expect(seen[seen.length - 1]).toEqual([22, 22]);
+    // Monotonic, and never claiming more than there are.
+    for (const [i, [done, total]] of seen.entries()) {
+      expect(total).toBe(22);
+      expect(done).toBeGreaterThan(i === 0 ? 0 : seen[i - 1][0]);
+      expect(done).toBeLessThanOrEqual(total);
+    }
+  });
+
+  it('huỷ được giữa chừng — và không để lại gì trong Dexie', async () => {
+    // Every control on the page is `disabled={busy}`, so before this there
+    // was no way to stop a 313-file import except closing the tab.
+    serveManyFiles(40);
+    const controller = new AbortController();
+
+    const r = await importCourse(
+      { kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' },
+      { signal: controller.signal, onProgress: () => controller.abort() },
+    );
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.findings[0].code).toBe('CANCELLED');
+    expect(await db.packages.count()).toBe(0);
+  });
+
+  it('trần số tệp là một CHỐT, không phải một con số trong comment', async () => {
+    // Without the fence this repo imports cleanly: the manifest and its one
+    // chapter are both served, and the rest is padding. So a green test here
+    // means the ceiling really refused, not that something else went wrong.
+    serveManyFiles(MAX_GIT_FILES);
+
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.findings[0].code).toBe('GIT_TOO_MANY_FILES');
+    expect(r.findings[0].detail).toContain(String(MAX_GIT_FILES));
+    expect(describeFinding(r.findings[0])).toMatch(/\.zip/i);
+    expect(await db.packages.count()).toBe(0);
+  });
+
+  it('ngay dưới trần thì vẫn nhập — trần là một hàng rào, không phải một cái bẫy', async () => {
+    serveManyFiles(MAX_GIT_FILES - 2);
+
+    await expect(
+      importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' }),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it('một cú nấc mạng ở giữa được thử lại, thay vì vứt bỏ cả công sức đã tải', async () => {
+    // The measured shape of this failure: 313 files, 20 seconds, and one
+    // blob failing at file 300 threw all of it away because `fetchGitHubRepo`
+    // returned on the first error. Across hundreds of requests a transient
+    // failure is not an edge case, it is the expected case.
+    const manifestJson = JSON.stringify(manifest(), null, 2);
+    let attempts = 0;
+    server.use(
+      http.get(TREE, () =>
+        HttpResponse.json({
+          sha: 'x',
+          truncated: false,
+          tree: [
+            { path: 'manifest.json', type: 'blob', mode: '100644', size: manifestJson.length },
+            { path: 'chapters/c1.html', type: 'blob', mode: '100644', size: CHAPTER_HTML.length },
+          ],
+        }),
+      ),
+      http.get(`${RAW}/manifest.json`, () => new HttpResponse(encode(manifestJson) as BlobPart)),
+      http.get(`${RAW}/chapters/c1.html`, () => {
+        attempts += 1;
+        return attempts === 1 ? HttpResponse.error() : new HttpResponse(encode(CHAPTER_HTML) as BlobPart);
+      }),
+    );
+
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+
+    expect(r.ok).toBe(true);
+    expect(attempts).toBe(2);
+  });
+
+  it('KHÔNG thử lại một câu trả lời DỨT KHOÁT — 404 lần hai vẫn là 404', async () => {
+    // Retrying a deterministic answer just multiplies the wait before the
+    // same message. Only a rejected `fetch` — the one that means "the network
+    // did not carry this" — is worth a second go.
+    const manifestJson = JSON.stringify(manifest(), null, 2);
+    let attempts = 0;
+    server.use(
+      http.get(TREE, () =>
+        HttpResponse.json({
+          sha: 'x',
+          truncated: false,
+          tree: [{ path: 'manifest.json', type: 'blob', mode: '100644', size: manifestJson.length }],
+        }),
+      ),
+      http.get(`${RAW}/manifest.json`, () => {
+        attempts += 1;
+        return new HttpResponse(null, { status: 404 });
+      }),
+    );
+
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.findings[0].code).toBe('HTTP_ERROR');
+    expect(attempts).toBe(1);
   });
 
   it('từ chối một máy chủ git KHÁC GitHub, và nói ra lối đi thay thế', async () => {
