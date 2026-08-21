@@ -172,6 +172,7 @@ export const IMPORT_FINDING_CODES = [
   'UNPACKABLE_ENTRY',
   'GIT_HOST_UNSUPPORTED',
   'GIT_REPO_UNREACHABLE',
+  'GIT_PATH_NOT_FOUND',
   'GIT_RATE_LIMITED',
   'GIT_BAD_RESPONSE',
   'GIT_TREE_TRUNCATED',
@@ -252,6 +253,7 @@ const CARRIES_ITS_OWN_DETAIL = new Set<string>([
   'UNPACKABLE_ENTRY',
   'GIT_HOST_UNSUPPORTED',
   'GIT_REPO_UNREACHABLE',
+  'GIT_PATH_NOT_FOUND',
   'GIT_RATE_LIMITED',
   'GIT_BAD_RESPONSE',
   'GIT_TOO_MANY_FILES',
@@ -304,6 +306,7 @@ const VIETNAMESE: Readonly<Record<ImportFindingCode | FindingCode, string>> = {
   UNPACKABLE_ENTRY: 'Repo có mục không đóng gói được.',
   GIT_HOST_UNSUPPORTED: 'tuhoc chỉ nhập trực tiếp được từ GitHub.',
   GIT_REPO_UNREACHABLE: 'Không mở được repo này.',
+  GIT_PATH_NOT_FOUND: 'Repo mở được, nhưng không tìm thấy thư mục bạn trỏ tới.',
   GIT_RATE_LIMITED: 'GitHub đang tạm chặn vì có quá nhiều yêu cầu từ mạng của bạn.',
   GIT_BAD_RESPONSE: 'Câu trả lời nhận được không phải của GitHub.',
   GIT_TREE_TRUNCATED:
@@ -533,36 +536,68 @@ const MAX_GIT_FILES = 1000;
 /** How many blob fetches are in flight at once. */
 const GIT_FETCH_CONCURRENCY = 8;
 
-interface GitRepo {
+export interface GitTarget {
   owner: string;
   repo: string;
   ref: string;
+  /** The directory inside the repo holding the course; `''` for all of it. */
+  subdir: string;
 }
 
 /**
- * A GitHub repo URL, or `null` if it is not one.
+ * What a GitHub URL could mean, likeliest first — empty if it is not one.
  *
  * `HEAD` as the default ref, not `main`: it is what GitHub resolves to the
  * repo's own default branch, so a repo still on `master` — or on anything
  * else — works without a second probe. Both the trees API and
  * `raw.githubusercontent.com` accept it.
+ *
+ * ## Why a LIST, and not one answer
+ *
+ * `/tree/a/b/c` is genuinely ambiguous and GitHub's URL does not resolve it:
+ * `a/b/c` can be one branch whose name contains slashes, or branch `a` and
+ * the directory `b/c` inside it. Only the repo knows. The first version
+ * assumed the first reading always, which is correct for `release/2026` and
+ * catastrophic for the URL GitHub's own "copy link" button hands you while
+ * you are looking at a folder. Measured in review on the real public repo
+ * `github/gitignore`:
+ *
+ *     https://github.com/github/gitignore/tree/main/Global
+ *     → ref "main/Global" → git/trees/main%2FGlobal → 404
+ *     → "tuhoc chỉ nhập được từ repo Git CÔNG KHAI. Repo riêng tư cần token…"
+ *
+ * A public repo, told to its owner's face that it is private — and the
+ * layout that URL describes, a course living in a subdirectory, could not be
+ * imported by this route at all.
+ *
+ * So: both readings, whole-ref first. Whole-ref first and not the other way
+ * round because it is what works today, and a fallback that only runs after
+ * a 404 cannot make a working case worse. The cost is one extra request out
+ * of GitHub's 60-per-hour anonymous budget, paid only when the first reading
+ * turns out to be wrong.
  */
-export function parseGitHubUrl(raw: string): GitRepo | null {
+export function parseGitHubUrl(raw: string): GitTarget[] {
   const url = httpUrl(raw);
-  if (url === null) return null;
-  if (url.hostname !== 'github.com' && url.hostname !== 'www.github.com') return null;
+  if (url === null) return [];
+  if (url.hostname !== 'github.com' && url.hostname !== 'www.github.com') return [];
 
   const segments = url.pathname.split('/').filter((s) => s !== '');
   const [owner, repoRaw, kind, ...rest] = segments;
-  if (owner === undefined || repoRaw === undefined) return null;
+  if (owner === undefined || repoRaw === undefined) return [];
 
   const repo = repoRaw.endsWith('.git') ? repoRaw.slice(0, -'.git'.length) : repoRaw;
-  if (repo === '') return null;
+  if (repo === '') return [];
 
   // `/tree/<ref>` and `/blob/<ref>` are what the "copy link" button in
   // GitHub's own UI produces while looking at a branch or a tag.
-  const ref = (kind === 'tree' || kind === 'blob') && rest.length > 0 ? rest.join('/') : 'HEAD';
-  return { owner, repo, ref };
+  if ((kind !== 'tree' && kind !== 'blob') || rest.length === 0) {
+    return [{ owner, repo, ref: 'HEAD', subdir: '' }];
+  }
+  const both: GitTarget[] = [{ owner, repo, ref: rest.join('/'), subdir: '' }];
+  if (rest.length > 1) {
+    both.push({ owner, repo, ref: rest[0], subdir: rest.slice(1).join('/') });
+  }
+  return both;
 }
 
 interface TreeEntry {
@@ -584,9 +619,9 @@ interface TreeEntry {
  * the same tree read over HTTP.
  */
 async function fetchGitHubRepo(
-  repo: GitRepo,
+  repo: GitTarget,
   announce: (stage: ImportStage) => Promise<void>,
-): Promise<{ files: Map<string, Uint8Array> } | { error: Finding }> {
+): Promise<{ files: Map<string, Uint8Array>; rerootedFrom?: string } | { error: Finding }> {
   const treeUrl = `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}/git/trees/${encodeURIComponent(repo.ref)}?recursive=1`;
   const at = `${repo.owner}/${repo.repo}`;
 
@@ -642,19 +677,50 @@ async function fetchGitHubRepo(
     return { error: finding('GIT_TREE_TRUNCATED', at, '') };
   }
 
-  const blobs = (body.tree ?? []).filter((e) => e.type === 'blob' && !isHidden(e.path));
+  const prefix = repo.subdir === '' ? '' : `${repo.subdir}/`;
+  const inScope = (body.tree ?? []).filter((e) => e.path.startsWith(prefix) && !isHidden(e.path));
+
+  if (prefix !== '' && inScope.length === 0) {
+    return {
+      error: finding(
+        'GIT_PATH_NOT_FOUND',
+        at,
+        `Repo mở được, nhưng trong nhánh "${repo.ref}" không có thư mục "${repo.subdir}". Hãy kiểm tra lại đường dẫn.`,
+      ),
+    };
+  }
 
   // A symlink or a submodule is a path that means one thing inside the repo
   // and nothing at all inside a package — the same reason the CLI throws
   // `UnpackableEntryError` rather than following or dropping it.
-  const unpackable = blobs.filter((e) => e.mode !== '100644' && e.mode !== '100755');
+  //
+  // **`type === 'commit'` is tested BEFORE the blob filter, and that ordering
+  // is the whole fix.** A submodule is not a blob: `git/trees` gives it
+  // `type: "commit"`, so filtering to blobs first threw it away and the
+  // `160000` test below could never fire — the rejection was dead code, and
+  // what actually happened to a repo with submodules was that their contents
+  // vanished without a word. Measured on `WebAssembly/wabt` (7 submodules):
+  // `byType { blob: 1877, commit: 7, tree: 82 }`, and the import answered
+  // `GIT_TOO_MANY_FILES`. Silent is the dangerous half: `validatePackage`
+  // checks the chapter files a manifest names, not assets, so a course
+  // keeping its images in a submodule imported clean and 404s forever.
+  const blobs = inScope.filter((e) => e.type === 'blob');
+  const unpackable = [
+    ...inScope.filter((e) => e.type === 'commit' || e.mode === '160000'),
+    ...blobs.filter((e) => e.mode !== '100644' && e.mode !== '100755'),
+  ];
   const firstBad = unpackable[0];
   if (firstBad !== undefined) {
     return {
       error: finding(
         'UNPACKABLE_ENTRY',
         firstBad.path,
-        `${unpackable.length} mục là symlink hoặc submodule; gói course chỉ chứa tệp thường.`,
+        `${unpackable.length} mục là symlink hoặc submodule; gói course chỉ chứa tệp thường. ` +
+          // This one fires on somebody ELSE's repo — measured on the real
+          // public `github/gitignore`, which has three symlinks — so the
+          // reader usually cannot fix the cause. Every other repo-route
+          // finding names the way out; this one did not.
+          'Nếu bạn không sửa được repo này, hãy tải .zip của nó về máy rồi dùng "Từ tệp trên máy".',
       ),
     };
   }
@@ -695,11 +761,11 @@ async function fetchGitHubRepo(
     );
     for (const [n, result] of results.entries()) {
       if ('error' in result) return { error: result.error };
-      files.set(batch[n].path, result.bytes);
+      files.set(batch[n].path.slice(prefix.length), result.bytes);
     }
   }
 
-  return { files };
+  return { files, rerootedFrom: repo.subdir === '' ? undefined : repo.subdir };
 }
 
 /** True for a path with any dot-prefixed segment — `.github/workflows/ci.yml` included. */
@@ -885,7 +951,11 @@ async function runImport(src: ImportSource, options: ImportOptions): Promise<Imp
     ok: true,
     courseId: manifest.id,
     version: manifest.version,
-    rerootedFrom: rooted.rerootedFrom,
+    // Two things can re-root a package and both are worth saying: the repo
+    // route was pointed at a subdirectory, and/or the archive held the
+    // package one or more levels down. Joined, so what the reader is told is
+    // the path they would have to walk themselves.
+    rerootedFrom: [collected.rerootedFrom, rooted.rerootedFrom].filter((p) => p !== undefined).join('/') || undefined,
     droppedFiles: rooted.droppedFiles,
   };
 }
@@ -894,10 +964,11 @@ async function runImport(src: ImportSource, options: ImportOptions): Promise<Imp
 async function collect(
   src: ImportSource,
   announce: (stage: ImportStage) => Promise<void>,
-): Promise<{ files: Map<string, Uint8Array> } | { error: Finding }> {
+): Promise<{ files: Map<string, Uint8Array>; rerootedFrom?: string } | { error: Finding }> {
   if (src.kind === 'gitUrl') {
-    const repo = parseGitHubUrl(src.url);
-    if (repo === null) {
+    const targets = parseGitHubUrl(src.url);
+    const first = targets[0];
+    if (first === undefined) {
       return {
         error: finding(
           'GIT_HOST_UNSUPPORTED',
@@ -906,7 +977,17 @@ async function collect(
         ),
       };
     }
-    return fetchGitHubRepo(repo, announce);
+    // Each reading of the URL is tried in turn, and only a 404 moves on:
+    // that is the one answer meaning "this ref does not exist", which is
+    // precisely the question the next candidate asks differently. Anything
+    // else — rate limit, symlink, too many files — is a real answer about a
+    // real ref and re-asking would only produce a second, worse message.
+    let last = await fetchGitHubRepo(first, announce);
+    for (const next of targets.slice(1)) {
+      if (!('error' in last) || last.error.code !== 'GIT_REPO_UNREACHABLE') break;
+      last = await fetchGitHubRepo(next, announce);
+    }
+    return last;
   }
 
   await announce('fetching');

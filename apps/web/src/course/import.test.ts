@@ -762,6 +762,161 @@ describe('nhập từ repo GitHub công khai', () => {
     expect(await db.packages.count()).toBe(1);
   });
 
+  it('từ chối SUBMODULE thật sự — không bỏ nó đi im lặng rồi nhập nửa gói', async () => {
+    // A submodule appears in `git/trees` with `type: "commit"`, and the old
+    // filter kept only `type === 'blob'` BEFORE testing the mode — so the
+    // `160000` check below it could never run and the whole rejection was
+    // dead code. Measured on `WebAssembly/wabt` (7 submodules declared in
+    // `.gitmodules`): `byType { blob: 1877, commit: 7, tree: 82 }`, and the
+    // import answered `GIT_TOO_MANY_FILES`, not `UNPACKABLE_ENTRY`.
+    //
+    // Why it matters is this test's own shape: the package below VALIDATES.
+    // `validatePackage` only checks chapter files the manifest names, not
+    // assets, so a course keeping its images in a submodule imported
+    // successfully with the images silently missing — "a course that opens,
+    // lists forty chapters, and 404s on chapter nine forever", which this
+    // module's own header promises to rule out.
+    const manifestJson = JSON.stringify(manifest(), null, 2);
+    serveRepo(
+      [
+        { path: 'manifest.json', type: 'blob', mode: '100644', size: manifestJson.length },
+        { path: 'chapters/c1.html', type: 'blob', mode: '100644', size: CHAPTER_HTML.length },
+        { path: 'assets', type: 'commit', mode: '160000' },
+      ],
+      { 'manifest.json': manifestJson, 'chapters/c1.html': CHAPTER_HTML },
+    );
+
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.findings.map((f) => f.code)).toContain('UNPACKABLE_ENTRY');
+    expect(r.findings[0].path).toBe('assets');
+    expect(await db.packages.count()).toBe(0);
+  });
+
+  it('`UNPACKABLE_ENTRY` nêu lối đi thay thế — nó bắn trên repo của người khác, mà người đọc không sửa được', async () => {
+    // Measured on the real public `github/gitignore`: three symlinks, so a
+    // reader who pastes that link gets this finding about a repo they do not
+    // own and cannot change. `GIT_TOO_MANY_FILES` and `GIT_TREE_TRUNCATED`
+    // both name the way out; this one did not.
+    const manifestJson = JSON.stringify(manifest(), null, 2);
+    serveRepo(
+      [
+        { path: 'manifest.json', type: 'blob', mode: '100644', size: manifestJson.length },
+        { path: 'chapters/c1.html', type: 'blob', mode: '120000', size: 12 },
+      ],
+      { 'manifest.json': manifestJson },
+    );
+
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(describeFinding(r.findings[0])).toMatch(/\.zip/i);
+  });
+
+  it('URL thư mục con của GitHub (nút "copy link" khi đang xem một thư mục) nhập được', async () => {
+    // Measured in review against the real public repo `github/gitignore`:
+    //   https://github.com/github/gitignore/tree/main/Global
+    //   → { ref: "main/Global" } → git/trees/main%2FGlobal → 404
+    //   → "Không mở được repo này. tuhoc chỉ nhập được từ repo Git CÔNG KHAI…"
+    // A public repo, told it is private. And the layout it describes — the
+    // course living in a subdirectory — could not be imported by the repo
+    // route at all.
+    const manifestJson = JSON.stringify(manifest(), null, 2);
+    server.use(
+      // The whole ref, tried first, is not a branch.
+      http.get('https://api.github.com/repos/ai-do/kho/git/trees/main%2Fkhoa', () =>
+        HttpResponse.json({ message: 'Not Found' }, { status: 404 }),
+      ),
+      http.get('https://api.github.com/repos/ai-do/kho/git/trees/main', () =>
+        HttpResponse.json({
+          sha: 'x',
+          truncated: false,
+          tree: [
+            { path: 'README.md', type: 'blob', mode: '100644', size: 9 },
+            { path: 'khoa/manifest.json', type: 'blob', mode: '100644', size: manifestJson.length },
+            { path: 'khoa/chapters/c1.html', type: 'blob', mode: '100644', size: CHAPTER_HTML.length },
+          ],
+        }),
+      ),
+      http.get('https://raw.githubusercontent.com/ai-do/kho/main/khoa/manifest.json', () =>
+        new HttpResponse(encode(manifestJson) as BlobPart),
+      ),
+      http.get('https://raw.githubusercontent.com/ai-do/kho/main/khoa/chapters/c1.html', () =>
+        new HttpResponse(encode(CHAPTER_HTML) as BlobPart),
+      ),
+    );
+
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/kho/tree/main/khoa' });
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.courseId).toBe(COURSE_ID);
+    // Said out loud, like every other re-rooting: `README.md` did not come
+    // along, and the reader is told which folder was used.
+    expect(r.rerootedFrom).toBe('khoa');
+    const row = await db.packages.get(`${COURSE_ID}@1.0.0`);
+    expect(Object.keys(row!.files).sort()).toEqual(['chapters/c1.html', 'manifest.json']);
+  });
+
+  it('nhánh có dấu `/` trong tên vẫn được thử TRƯỚC — không đánh đổi ca cũ lấy ca mới', async () => {
+    // `release/2026` is one branch, not a branch plus a folder, and GitHub's
+    // URL cannot tell the two apart. Trying the whole thing first means a
+    // repo that works today still works, and the split is only ever a
+    // FALLBACK after a 404. The counter is the assertion: one API call.
+    const manifestJson = JSON.stringify(manifest(), null, 2);
+    let treeCalls = 0;
+    server.use(
+      http.get('https://api.github.com/repos/ai-do/kho/git/trees/release%2F2026', () => {
+        treeCalls += 1;
+        return HttpResponse.json({
+          sha: 'x',
+          truncated: false,
+          tree: [
+            { path: 'manifest.json', type: 'blob', mode: '100644', size: manifestJson.length },
+            { path: 'chapters/c1.html', type: 'blob', mode: '100644', size: CHAPTER_HTML.length },
+          ],
+        });
+      }),
+      http.get('https://raw.githubusercontent.com/ai-do/kho/release/2026/manifest.json', () =>
+        new HttpResponse(encode(manifestJson) as BlobPart),
+      ),
+      http.get('https://raw.githubusercontent.com/ai-do/kho/release/2026/chapters/c1.html', () =>
+        new HttpResponse(encode(CHAPTER_HTML) as BlobPart),
+      ),
+    );
+
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/kho/tree/release/2026' });
+
+    expect(r.ok).toBe(true);
+    expect(treeCalls).toBe(1);
+  });
+
+  it('thư mục con KHÔNG TỒN TẠI được nói đúng tên, chứ không bị gọi là "repo riêng tư"', async () => {
+    server.use(
+      http.get('https://api.github.com/repos/ai-do/kho/git/trees/main%2Fkhong-co', () =>
+        HttpResponse.json({ message: 'Not Found' }, { status: 404 }),
+      ),
+      http.get('https://api.github.com/repos/ai-do/kho/git/trees/main', () =>
+        HttpResponse.json({
+          sha: 'x',
+          truncated: false,
+          tree: [{ path: 'README.md', type: 'blob', mode: '100644', size: 9 }],
+        }),
+      ),
+    );
+
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/kho/tree/main/khong-co' });
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.findings[0].code).toBe('GIT_PATH_NOT_FOUND');
+    expect(describeFinding(r.findings[0])).toContain('khong-co');
+    expect(describeFinding(r.findings[0])).not.toMatch(/riêng tư/i);
+  });
+
   it('từ chối một máy chủ git KHÁC GitHub, và nói ra lối đi thay thế', async () => {
     const r = await importCourse({ kind: 'gitUrl', url: 'https://gitlab.com/ai-do/khoa-hoc' });
     expect(r.ok).toBe(false);
