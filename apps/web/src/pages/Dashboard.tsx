@@ -62,7 +62,7 @@ function useStats() {
   });
 }
 
-export function coursesQueryKey() {
+function coursesQueryKey() {
   return ['courses'] as const;
 }
 
