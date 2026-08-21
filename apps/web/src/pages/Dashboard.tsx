@@ -147,6 +147,14 @@ export function Dashboard() {
         </div>
         <div className="dash-user">
           {meQuery.data && <span className="dash-user-name">{meQuery.data.name}</span>}
+          {/*
+            The only way in to `/import` (Task 8). A route with no link is a
+            route nobody uses: this page's own empty state has told readers
+            to "nhập một gói course" since Task 7 without ever saying where.
+          */}
+          <Link to="/import" className="btn">
+            Nhập khóa học
+          </Link>
           <button type="button" className="btn" onClick={() => void logout()}>
             Đăng xuất
           </button>
@@ -175,7 +183,7 @@ export function Dashboard() {
       */}
       {courseIds.length === 0 && !coursesQuery.isPending && (
         <p className="dash-stats-note">
-          Thư viện của bạn chưa có khóa học nào. Nhập một gói course (.zip) để bắt đầu.
+          Thư viện của bạn chưa có khóa học nào. <Link to="/import">Nhập một gói course (.zip)</Link> để bắt đầu.
         </p>
       )}
     </div>

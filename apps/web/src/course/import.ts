@@ -1,0 +1,786 @@
+/**
+ * How a course package gets INTO this browser — the one door for all three
+ * ways a reader can bring one: a `.zip` on their disk, a `.zip` at a URL, and
+ * a public GitHub repo.
+ *
+ * Everything upstream of this file decides what a valid package IS
+ * (`packages/course-format`), and everything downstream reads one
+ * (`course/loader.ts`, `db/local.ts`'s `packages` table). This module is the
+ * seam, and it owes three things to both sides:
+ *
+ * 1. **It never writes half a package.** A package is checked completely
+ *    before a single row is written, and it is written with one `put`. The
+ *    failure this rules out is the one nobody notices: a course that opens,
+ *    lists forty chapters, and 404s on chapter nine forever.
+ * 2. **It reports EVERY problem at once.** `validatePackage` was built to do
+ *    that (see its own doc comment); throwing away all but the first finding
+ *    here would waste it and send an author back for one rebuild per mistake.
+ * 3. **It says things a reader can act on.** Both layers below speak in
+ *    English SCREAMING_CODES — that is right for a CLI and for CI. A learner
+ *    pasting a link is owed a sentence. {@link describeFinding} is that
+ *    translation, and `import.test.ts` fails if a code exists without one.
+ *
+ * ## Public repos only, and why that is the feature rather than a shortcut
+ *
+ * A private repo needs an access token, which means this platform would hold
+ * a long-lived secret belonging to the reader — the exact thing spec §1.4
+ * removed, under a new name. Someone whose course lives in a private repo
+ * downloads its `.zip` and imports the file: same result, nobody holding
+ * anybody's secret. The UI says so out loud (`pages/ImportCourse.tsx`), and
+ * so does the finding a failed repo lookup produces, because GitHub answers
+ * **404 for a private repo and for a repo that does not exist alike** — it
+ * will not confirm a private repo's existence to an anonymous caller — so a
+ * bare "404" would leave the reader guessing between a typo and a permission
+ * they cannot grant.
+ *
+ * ## Why the repo path reads the git tree instead of downloading a zipball
+ *
+ * MEASURED, not chosen for taste. `codeload.github.com` — where every
+ * `/archive/*.zip`, `/zipball` and `/tarball` URL ends up after its redirect
+ * — answers with `access-control-allow-origin: https://render.githubusercontent.com`.
+ * A browser `fetch` from this app's origin is therefore blocked by CORS, and
+ * no amount of URL-shaping changes that: the check applies to the FINAL
+ * response of a redirect chain, so `api.github.com/repos/…/zipball`
+ * (`access-control-allow-origin: *` on its 302) does not help either.
+ *
+ * What does answer `*` is `api.github.com/repos/{owner}/{repo}/git/trees/{ref}`
+ * and `raw.githubusercontent.com`. So: one API request for the whole tree,
+ * then one CDN request per file. That costs more round trips than an archive
+ * would, and buys two things back — the tree states every blob's SIZE, so the
+ * byte budget is enforced **before** anything is downloaded (a debt
+ * `validate.ts` names explicitly), and only ONE of the requests counts
+ * against GitHub's 60-per-hour anonymous API limit.
+ *
+ * ## Cost, and where it is paid — measured in a real browser
+ *
+ * `validatePackage` tokenizes every byte in the package, binary entries
+ * included (an image contains `0x3C` often enough that its "no `<` in here"
+ * shortcut never fires), and it is synchronous. Chromium, on a VALID
+ * 19.71 MiB / 197-entry package built from this repo's own fixture chapters,
+ * ten samples across two sessions:
+ *
+ *     unpackZip          141 – 189 ms
+ *     validatePackage    926 – 983 ms
+ *
+ * Treat those as an order of magnitude, not a budget: they were taken on a
+ * heavily loaded machine (see task-8-report.md for the caveat and for what
+ * in this file's design does NOT depend on them).
+ *
+ * That is the main thread, held. It is **not** removed by anything in this
+ * module — {@link stageAnnouncer} only makes the waiting state reach the
+ * screen first, which it demonstrably did not before (see that function).
+ * Removing the freeze itself needs the scan in a Worker, and that trade is
+ * left open rather than taken here: `apps/web` runs its whole suite in jsdom,
+ * which has no `Worker`, so a worker path would be a shipped path no test in
+ * this repo executes — and this app's own history (docs/carried-forward.md
+ * §2) is one of gates that looked green because they ran nothing. A bounded,
+ * labelled ~1.2 s stall at the very top of the budget is the smaller cost;
+ * the number is written down here so whoever revisits it starts from a
+ * measurement.
+ */
+
+import {
+  MANIFEST_PATH,
+  MAX_UNCOMPRESSED_BYTES,
+  UnsafeArchiveError,
+  parseManifest,
+  unpackZip,
+  validatePackage,
+  type Finding,
+  type FindingCode,
+} from '@tuhoc/course-format';
+
+import { db, type PackageRow } from '../db/local';
+
+/* ------------------------------------------------------------------ *
+ * The shapes
+ * ------------------------------------------------------------------ */
+
+/**
+ * Where a package is coming from.
+ *
+ * `gitUrl` is **public repos only** — see this module's header. It is a
+ * separate variant from `zipUrl` rather than a URL sniff on one field
+ * because the two fail for completely different reasons and owe the reader
+ * completely different sentences.
+ */
+export type ImportSource =
+  | { kind: 'file'; file: File }
+  | { kind: 'zipUrl'; url: string }
+  | { kind: 'gitUrl'; url: string };
+
+export type ImportResult =
+  | { ok: true; courseId: string; version: string }
+  | { ok: false; findings: readonly Finding[] };
+
+/** What the importer is doing right now, for an honest waiting state. */
+export type ImportStage = 'fetching' | 'unpacking' | 'checking' | 'saving';
+
+export interface ImportOptions {
+  /**
+   * Called before each phase begins, after which the import gives the event
+   * loop a full turn so the browser can draw whatever this put on screen.
+   *
+   * A React caller must therefore commit SYNCHRONOUSLY here — `flushSync`,
+   * not a bare `setState`. Ending the task lets the browser paint what the
+   * DOM says; it does not make React's scheduler have run by then, and
+   * measurement in real Chromium showed the commit and the scan landing in
+   * one task when it did not. See {@link stageAnnouncer}.
+   */
+  onStage?: (stage: ImportStage) => void;
+}
+
+/**
+ * Codes this module can emit, on top of the ones
+ * `packages/course-format` defines.
+ *
+ * Exported for the same reason `FINDING_CODES` is: so
+ * {@link describeFinding} can be checked against the complete list rather
+ * than against the subset somebody remembered.
+ */
+export const IMPORT_FINDING_CODES = [
+  'BAD_URL',
+  'FETCH_FAILED',
+  'HTTP_ERROR',
+  'NOT_A_ZIP',
+  'ZIP64_UNSUPPORTED',
+  'DUPLICATE_ENTRY',
+  'PACKAGE_ROOT_AMBIGUOUS',
+  'UNPACKABLE_ENTRY',
+  'GIT_HOST_UNSUPPORTED',
+  'GIT_REPO_UNREACHABLE',
+  'GIT_RATE_LIMITED',
+  'GIT_TREE_TRUNCATED',
+  'GIT_TOO_MANY_FILES',
+  'WRITE_FAILED',
+] as const;
+
+export type ImportFindingCode = (typeof IMPORT_FINDING_CODES)[number];
+
+/** Path used by findings about the package as a whole, matching `validate.ts`. */
+const PACKAGE_ROOT = '.';
+
+function finding(code: string, path: string, detail: string): Finding {
+  return { code, path, detail };
+}
+
+function fail(code: string, path: string, detail: string): ImportResult {
+  return { ok: false, findings: [finding(code, path, detail)] };
+}
+
+/* ------------------------------------------------------------------ *
+ * Vietnamese, for a reader
+ * ------------------------------------------------------------------ */
+
+/**
+ * One finding, as a sentence a learner can act on.
+ *
+ * The two layers below this one speak English codes and English detail
+ * strings on purpose — they serve a CLI and a CI job as well as this app,
+ * and `SCRIPT_TAG` is the right thing to print next to a diff. It is not the
+ * right thing to put in front of somebody who just dragged a file onto a web
+ * page, which is why this exists and why `import.test.ts` walks
+ * `FINDING_CODES` + {@link IMPORT_FINDING_CODES} and fails on any code
+ * without an entry here.
+ *
+ * `detail` is appended where it names the specific thing that is wrong (a
+ * path, a status, a version string) and dropped where it would only restate
+ * the sentence in English.
+ */
+export function describeFinding(f: Finding): string {
+  const where = f.path && f.path !== PACKAGE_ROOT ? ` (${f.path})` : '';
+  const text = (VIETNAMESE as Readonly<Record<string, string | undefined>>)[f.code];
+  if (text === undefined) {
+    return `Gói có một vấn đề chưa được mô tả${where}: ${f.detail}`;
+  }
+  return CARRIES_ITS_OWN_DETAIL.has(f.code) ? `${text}${where} ${f.detail}` : `${text}${where}`;
+}
+
+/**
+ * Codes whose `detail` is written in this file, in Vietnamese, and adds
+ * something the headline sentence cannot say — a status code, a repo's
+ * declared size, the alternative route to take.
+ *
+ * Nothing from `packages/course-format` is in here, and that is the point.
+ * Its details are English technical strings meant for a CLI diff and a CI
+ * log, so appending them produced lines like
+ *
+ *     Số phiên bản của khóa học không đúng dạng X.Y.Z. (manifest.json#/version)
+ *     not a semver version: "khong-phai-semver"
+ *
+ * — a Vietnamese sentence with an English fragment glued on, which is the
+ * same failure as showing the bare code, one step later. Caught by looking
+ * at the real screen, not by a test; there is now a test
+ * (`import.test.ts`, "không rò một chữ tiếng Anh nào") so it stays caught.
+ * What the reader gets instead is the sentence plus `path`, and `path` for
+ * these is a JSON Pointer into their own manifest — it locates the bad value
+ * exactly, in the file they are about to open anyway.
+ */
+const CARRIES_ITS_OWN_DETAIL = new Set<string>([
+  'BAD_URL',
+  'FETCH_FAILED',
+  'HTTP_ERROR',
+  'ZIP64_UNSUPPORTED',
+  'PACKAGE_ROOT_AMBIGUOUS',
+  'UNPACKABLE_ENTRY',
+  'GIT_HOST_UNSUPPORTED',
+  'GIT_REPO_UNREACHABLE',
+  'GIT_RATE_LIMITED',
+  'GIT_TOO_MANY_FILES',
+  'WRITE_FAILED',
+]);
+
+/**
+ * Typed as the EXHAUSTIVE map of both code sets, not as
+ * `Record<string, string>`: that makes a missing entry a red `tsc -b` rather
+ * than a code leaking to a reader as `TAG_ATTR_FLOOD`. The lookup in
+ * {@link describeFinding} widens it back, because `Finding.code` is a plain
+ * string and a package built against a newer rule set can carry a code this
+ * build has never heard of.
+ */
+const VIETNAMESE: Readonly<Record<ImportFindingCode | FindingCode, string>> = {
+  /* --- packages/course-format, every tier ---------------------------- */
+  EMPTY_PACKAGE: 'Gói này rỗng — không có tệp nào bên trong.',
+  TOO_LARGE: `Gói vượt trần ${Math.round(MAX_UNCOMPRESSED_BYTES / (1024 * 1024))} MB sau khi giải nén.`,
+  PATH_ESCAPE: 'Một tệp trong gói trỏ ra ngoài thư mục gói. Gói này không an toàn để mở.',
+  MANIFEST_MISSING: `Gói thiếu ${MANIFEST_PATH} ở thư mục gốc — đó là tệp mô tả khóa học.`,
+  MANIFEST_PARSE: `${MANIFEST_PATH} không phải JSON hợp lệ.`,
+  MANIFEST_FIELD: `${MANIFEST_PATH} thiếu một trường bắt buộc hoặc trường đó sai kiểu.`,
+  SEMVER: 'Số phiên bản của khóa học không đúng dạng X.Y.Z.',
+  RUNTIME_RANGE: 'Khóa học yêu cầu một phiên bản runtime mà ứng dụng này không hỗ trợ.',
+  DUPLICATE_CHAPTER_ID: 'Hai chương dùng chung một mã id.',
+  CHAPTER_FILE_MISSING: 'Mục lục nhắc tới một tệp chương không có trong gói.',
+
+  /* --- packages/course-format, tier "content" only -------------------- */
+  SCRIPT_TAG: 'Chương này chứa thẻ <script>. Khóa học hạng "content" chỉ được chứa chữ và hình, không chứa mã chạy được.',
+  EVENT_HANDLER_ATTR:
+    'Chương này có thuộc tính bắt sự kiện (onclick, onerror…), tức là mã chạy được. Khóa học hạng "content" không được phép.',
+  JAVASCRIPT_URL: 'Chương này có liên kết javascript:, tức là mã chạy được. Khóa học hạng "content" không được phép.',
+  EMBEDDED_FRAME: 'Chương này nhúng một trang khác (iframe/embed/object). Khóa học hạng "content" không được phép.',
+  FORM_TAG: 'Chương này có biểu mẫu <form>. Khóa học hạng "content" không được phép — biểu mẫu gửi dữ liệu đi nơi khác.',
+  JS_FILE_IN_PACKAGE: 'Gói chứa tệp JavaScript, trong khi khóa học tự khai là hạng "content" (chỉ chữ và hình).',
+  TAG_ATTR_FLOOD: 'Một thẻ HTML trong gói mang quá nhiều thuộc tính để có thể là một tài liệu thật.',
+
+  /* --- this module ---------------------------------------------------- */
+  BAD_URL: 'Đường dẫn này không dùng được.',
+  FETCH_FAILED: 'Không tải được.',
+  HTTP_ERROR: 'Máy chủ từ chối yêu cầu.',
+  NOT_A_ZIP: 'Tệp này không phải là một tệp .zip đọc được. Hãy chắc rằng bạn chọn đúng gói .zip của khóa học.',
+  ZIP64_UNSUPPORTED: 'Tệp .zip này dùng định dạng zip64, tuhoc chưa đọc được.',
+  DUPLICATE_ENTRY: 'Trong gói có hai tệp trùng tên nhau, nên không biết tệp nào mới là thật.',
+  PACKAGE_ROOT_AMBIGUOUS: 'Không rõ khóa học nào trong tệp này là khóa học bạn muốn nhập.',
+  UNPACKABLE_ENTRY: 'Repo có mục không đóng gói được.',
+  GIT_HOST_UNSUPPORTED: 'tuhoc chỉ nhập trực tiếp được từ GitHub.',
+  GIT_REPO_UNREACHABLE: 'Không mở được repo này.',
+  GIT_RATE_LIMITED: 'GitHub đang tạm chặn vì có quá nhiều yêu cầu từ mạng của bạn.',
+  GIT_TREE_TRUNCATED:
+    'Repo này quá lớn để đọc hết danh sách tệp trong một lần. Hãy tải .zip của repo về máy rồi nhập từ tệp.',
+  GIT_TOO_MANY_FILES: 'Repo này có quá nhiều tệp để nhập trực tiếp.',
+  WRITE_FAILED: 'Không lưu được gói vào bộ nhớ của trình duyệt.',
+};
+
+/* ------------------------------------------------------------------ *
+ * Finding the package root
+ * ------------------------------------------------------------------ */
+
+/**
+ * The package root, re-rooted if it is not the archive root.
+ *
+ * A package is defined by having `manifest.json` at its top, and almost
+ * nothing in the world hands you an archive shaped that way:
+ *
+ * - **Every GitHub zipball** puts the whole tree under `{repo}-{ref}/`. There
+ *   is no option to turn that off.
+ * - **Finder's "Compress"** (`ditto -c -k --sequesterRsrc --keepParent`) puts
+ *   it under the folder's own name, and parks AppleDouble sidecars under a
+ *   SECOND top-level directory, `__MACOSX/`. Measured: the fixture package
+ *   compressed that way fails `MANIFEST_MISSING`, which is a true statement
+ *   about the wrong thing.
+ *
+ * So "strip the single common top-level directory" is not the rule — there
+ * are two of them. The rule is the definition itself: the package root is the
+ * directory that has a `manifest.json` directly in it. That is decidable, it
+ * is checkable, and when more than one directory qualifies this refuses
+ * instead of picking one, which is the same discipline `zip.ts` applies to an
+ * index it cannot read.
+ *
+ * Entries outside the chosen root are dropped, and that is the point rather
+ * than a side effect: `__MACOSX/` is macOS metadata, it is never named by a
+ * manifest, and carrying it into `db.packages` would store junk on a
+ * reader's device forever.
+ */
+function rootPackage(files: ReadonlyMap<string, Uint8Array>): { files: Map<string, Uint8Array> } | { error: Finding } {
+  if (files.has(MANIFEST_PATH)) return { files: new Map(files) };
+
+  const roots = new Set<string>();
+  for (const name of files.keys()) {
+    const cut = name.lastIndexOf(`/${MANIFEST_PATH}`);
+    if (cut > 0 && cut + MANIFEST_PATH.length + 1 === name.length && !name.slice(0, cut).includes('/')) {
+      roots.add(name.slice(0, cut));
+    }
+  }
+
+  // None: leave the archive exactly as it is and let `validatePackage` say
+  // `MANIFEST_MISSING`. Inventing a different message here would just be a
+  // second, worse copy of a rule that already has one.
+  const [only] = roots;
+  if (only === undefined) return { files: new Map(files) };
+
+  if (roots.size > 1) {
+    return {
+      error: finding(
+        'PACKAGE_ROOT_AMBIGUOUS',
+        PACKAGE_ROOT,
+        `tệp này chứa ${roots.size} khóa học (${[...roots].sort().join(', ')}); hãy nhập từng gói một.`,
+      ),
+    };
+  }
+
+  const prefix = `${only}/`;
+  const out = new Map<string, Uint8Array>();
+  for (const [name, bytes] of files) {
+    if (name.startsWith(prefix)) out.set(name.slice(prefix.length), bytes);
+  }
+  return { files: out };
+}
+
+/* ------------------------------------------------------------------ *
+ * Getting the bytes
+ * ------------------------------------------------------------------ */
+
+/** `http:`/`https:` only — anything else never reaches `fetch`. */
+function httpUrl(raw: string): URL | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  return url.protocol === 'http:' || url.protocol === 'https:' ? url : null;
+}
+
+async function fetchBytes(url: string): Promise<{ bytes: Uint8Array } | { error: Finding }> {
+  let res: Response;
+  try {
+    res = await fetch(url);
+  } catch (cause) {
+    return { error: finding('FETCH_FAILED', url, fetchFailedDetail(cause)) };
+  }
+  if (!res.ok) {
+    return { error: finding('HTTP_ERROR', url, `Máy chủ trả về HTTP ${res.status}.`) };
+  }
+  return { bytes: new Uint8Array(await res.arrayBuffer()) };
+}
+
+/** A thrown value as a short parenthetical — never the whole stack. */
+function describeThrown(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
+/**
+ * What a rejected `fetch` means, said out loud.
+ *
+ * The browser will not tell the page which of these happened — a CORS
+ * refusal and a dead network are the same opaque `TypeError: Failed to
+ * fetch`, deliberately, so that a page cannot use fetch failures to probe a
+ * network it cannot otherwise see. Listing both beats printing the
+ * `TypeError`, which names neither. CORS is first because it is the one a
+ * reader will actually hit: most static hosts do not send
+ * `access-control-allow-origin`, and neither does GitHub's own
+ * `codeload.github.com` — see this module's header.
+ */
+function fetchFailedDetail(cause: unknown): string {
+  return (
+    'Có thể bạn đang ngoại tuyến, hoặc máy chủ chứa tệp không cho phép trang khác tải trực tiếp (CORS). ' +
+    `Trình duyệt không cho biết là trường hợp nào. (${describeThrown(cause)})`
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * A public GitHub repo
+ * ------------------------------------------------------------------ */
+
+/**
+ * Ceiling on how many files a repo import will fetch.
+ *
+ * The byte budget is the real fence and it is applied first; this is about
+ * REQUESTS. A repo of ten thousand one-byte files fits inside 20 MB and would
+ * still be ten thousand round trips at somebody else's CDN. The largest real
+ * course in this repo (`courses/***REMOVED***`, 44 chapters plus its
+ * assets) is 46 files, so 1000 is more than twenty times the only real
+ * datapoint available and is a round number for the same reason
+ * `MAX_ATTRS_PER_TAG` is.
+ */
+const MAX_GIT_FILES = 1000;
+
+/** How many blob fetches are in flight at once. */
+const GIT_FETCH_CONCURRENCY = 8;
+
+interface GitRepo {
+  owner: string;
+  repo: string;
+  ref: string;
+}
+
+/**
+ * A GitHub repo URL, or `null` if it is not one.
+ *
+ * `HEAD` as the default ref, not `main`: it is what GitHub resolves to the
+ * repo's own default branch, so a repo still on `master` — or on anything
+ * else — works without a second probe. Both the trees API and
+ * `raw.githubusercontent.com` accept it.
+ */
+export function parseGitHubUrl(raw: string): GitRepo | null {
+  const url = httpUrl(raw);
+  if (url === null) return null;
+  if (url.hostname !== 'github.com' && url.hostname !== 'www.github.com') return null;
+
+  const segments = url.pathname.split('/').filter((s) => s !== '');
+  const [owner, repoRaw, kind, ...rest] = segments;
+  if (owner === undefined || repoRaw === undefined) return null;
+
+  const repo = repoRaw.endsWith('.git') ? repoRaw.slice(0, -'.git'.length) : repoRaw;
+  if (repo === '') return null;
+
+  // `/tree/<ref>` and `/blob/<ref>` are what the "copy link" button in
+  // GitHub's own UI produces while looking at a branch or a tag.
+  const ref = (kind === 'tree' || kind === 'blob') && rest.length > 0 ? rest.join('/') : 'HEAD';
+  return { owner, repo, ref };
+}
+
+interface TreeEntry {
+  path: string;
+  type: string;
+  mode: string;
+  size?: number;
+}
+
+/**
+ * Every packable file in a public repo, keyed by repo-relative path.
+ *
+ * Hidden entries are skipped at any depth, exactly as
+ * `tools/tuhoc-cli/src/readdir.ts` skips them when packing a directory: a
+ * course repo has a `.github/`, a `.gitignore` and often a `.DS_Store`, none
+ * of which are part of the course, and `.git/` alone would blow the byte
+ * budget and report `TOO_LARGE` — a true finding about entirely the wrong
+ * thing. The CLI made that call for the same tree read off a disk; this is
+ * the same tree read over HTTP.
+ */
+async function fetchGitHubRepo(
+  repo: GitRepo,
+  announce: (stage: ImportStage) => Promise<void>,
+): Promise<{ files: Map<string, Uint8Array> } | { error: Finding }> {
+  const treeUrl = `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}/git/trees/${encodeURIComponent(repo.ref)}?recursive=1`;
+  const at = `${repo.owner}/${repo.repo}`;
+
+  await announce('fetching');
+
+  let res: Response;
+  try {
+    res = await fetch(treeUrl, { headers: { Accept: 'application/vnd.github+json' } });
+  } catch (cause) {
+    return { error: finding('FETCH_FAILED', at, fetchFailedDetail(cause)) };
+  }
+
+  if (res.status === 404) {
+    return {
+      error: finding(
+        'GIT_REPO_UNREACHABLE',
+        at,
+        'tuhoc chỉ nhập được từ repo Git CÔNG KHAI. Repo riêng tư cần token truy cập, và tuhoc cố ý không giữ token của bạn — ' +
+          'nếu khóa học nằm trong repo riêng tư, hãy tải .zip của repo về máy rồi dùng "Từ tệp trên máy". Kết quả giống hệt. ' +
+          'GitHub trả cùng một câu trả lời cho repo riêng tư và repo không tồn tại, nên cũng hãy kiểm tra lại đường dẫn.',
+      ),
+    };
+  }
+  if (res.status === 403 || res.status === 429) {
+    return {
+      error: finding('GIT_RATE_LIMITED', at, 'Hãy thử lại sau ít phút, hoặc tải .zip của repo về máy rồi nhập từ tệp.'),
+    };
+  }
+  if (!res.ok) {
+    return { error: finding('HTTP_ERROR', at, `GitHub trả về HTTP ${res.status}.`) };
+  }
+
+  const body = (await res.json()) as { truncated?: boolean; tree?: TreeEntry[] };
+  if (body.truncated === true) {
+    return { error: finding('GIT_TREE_TRUNCATED', at, '') };
+  }
+
+  const blobs = (body.tree ?? []).filter((e) => e.type === 'blob' && !isHidden(e.path));
+
+  // A symlink or a submodule is a path that means one thing inside the repo
+  // and nothing at all inside a package — the same reason the CLI throws
+  // `UnpackableEntryError` rather than following or dropping it.
+  const unpackable = blobs.filter((e) => e.mode !== '100644' && e.mode !== '100755');
+  const firstBad = unpackable[0];
+  if (firstBad !== undefined) {
+    return {
+      error: finding(
+        'UNPACKABLE_ENTRY',
+        firstBad.path,
+        `${unpackable.length} mục là symlink hoặc submodule; gói course chỉ chứa tệp thường.`,
+      ),
+    };
+  }
+
+  if (blobs.length > MAX_GIT_FILES) {
+    return {
+      error: finding(
+        'GIT_TOO_MANY_FILES',
+        at,
+        `${blobs.length} tệp, trần là ${MAX_GIT_FILES}. Hãy tải .zip của repo về máy rồi nhập từ tệp.`,
+      ),
+    };
+  }
+
+  // The budget, applied BEFORE a byte is downloaded — the tree states every
+  // blob's size, so this is free here, and it is the debt `validate.ts`'s
+  // own comment leaves to its caller.
+  const declared = blobs.reduce((sum, e) => sum + (e.size ?? 0), 0);
+  if (declared > MAX_UNCOMPRESSED_BYTES) {
+    return {
+      error: finding(
+        'TOO_LARGE',
+        PACKAGE_ROOT,
+        `Repo khai báo ${declared} byte.`,
+      ),
+    };
+  }
+
+  const rawBase = `https://raw.githubusercontent.com/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}/${repo.ref.split('/').map(encodeURIComponent).join('/')}`;
+  const files = new Map<string, Uint8Array>();
+
+  for (let i = 0; i < blobs.length; i += GIT_FETCH_CONCURRENCY) {
+    const batch = blobs.slice(i, i + GIT_FETCH_CONCURRENCY);
+    const results = await Promise.all(
+      batch.map((entry) =>
+        fetchBytes(`${rawBase}/${entry.path.split('/').map(encodeURIComponent).join('/')}`),
+      ),
+    );
+    for (const [n, result] of results.entries()) {
+      if ('error' in result) return { error: result.error };
+      files.set(batch[n].path, result.bytes);
+    }
+  }
+
+  return { files };
+}
+
+/** True for a path with any dot-prefixed segment — `.github/workflows/ci.yml` included. */
+function isHidden(path: string): boolean {
+  return path.split('/').some((segment) => segment.startsWith('.'));
+}
+
+/* ------------------------------------------------------------------ *
+ * Reading an archive
+ * ------------------------------------------------------------------ */
+
+/** `PK\x06\x07` — the zip64 end-of-central-directory locator. */
+const ZIP64_LOCATOR = [0x50, 0x4b, 0x06, 0x07] as const;
+
+/**
+ * Whether an archive carries a zip64 locator near its end.
+ *
+ * Only ever used to IMPROVE A MESSAGE. `unpackZip` refuses these archives and
+ * that refusal is not being softened here — it is the security gate Task 2
+ * measured, and this module reads archives from arbitrary URLs, which is
+ * precisely the population it was hardened against. What this buys is that a
+ * reader whose `zip -fz` archive is refused reads "this .zip uses zip64"
+ * instead of "archive index is not readable".
+ *
+ * Scoped to the last 64 KiB + the two zip64 records, because that is the only
+ * region the footer can be in (the archive comment is at most 0xFFFF bytes)
+ * and because scanning a 20 MB buffer for a 4-byte pattern to phrase an error
+ * message would be the wrong trade.
+ */
+function hasZip64Locator(zip: Uint8Array): boolean {
+  const from = Math.max(0, zip.length - (0xffff + 98));
+  for (let at = zip.length - 4; at >= from; at--) {
+    if (
+      zip[at] === ZIP64_LOCATOR[0] &&
+      zip[at + 1] === ZIP64_LOCATOR[1] &&
+      zip[at + 2] === ZIP64_LOCATOR[2] &&
+      zip[at + 3] === ZIP64_LOCATOR[3]
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function readArchive(zip: Uint8Array): { files: Map<string, Uint8Array> } | { error: Finding } {
+  try {
+    return { files: unpackZip(zip) };
+  } catch (cause) {
+    if (!(cause instanceof UnsafeArchiveError)) throw cause;
+
+    if (cause.code === 'MALFORMED' && hasZip64Locator(zip)) {
+      return {
+        error: finding(
+          'ZIP64_UNSUPPORTED',
+          PACKAGE_ROOT,
+          'Hãy nén lại bằng công cụ zip thông thường (không dùng tuỳ chọn -fz / force-zip64), hoặc đóng gói bằng `tuhoc pack`.',
+        ),
+      };
+    }
+    if (cause.code === 'MALFORMED') return { error: finding('NOT_A_ZIP', cause.entry, '') };
+    if (cause.code === 'TOO_LARGE') {
+      return { error: finding('TOO_LARGE', cause.entry, `Đã đọc ${cause.bytesRead} byte thì dừng.`) };
+    }
+    // PATH_ESCAPE and DUPLICATE_ENTRY carry the same names `validate.ts` uses.
+    return { error: finding(cause.code, cause.entry, '') };
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * The one public entry point
+ * ------------------------------------------------------------------ */
+
+/**
+ * Brings one course package into this browser's library.
+ *
+ * Resolves — it does not throw — for every failure a reader can cause:
+ * a wrong file, a dead link, a private repo, a package with mistakes in it.
+ * `findings` is the complete list, so one pass shows an author everything
+ * there is to fix.
+ *
+ * On success the package is in `db.packages` and `course/loader.ts` will
+ * answer for it immediately, offline, in the same tick.
+ */
+export async function importCourse(src: ImportSource, options: ImportOptions = {}): Promise<ImportResult> {
+  const announce = stageAnnouncer(options.onStage);
+
+  const collected = await collect(src, announce);
+  if ('error' in collected) return { ok: false, findings: [collected.error] };
+
+  const rooted = rootPackage(collected.files);
+  if ('error' in rooted) return { ok: false, findings: [rooted.error] };
+
+  await announce('checking');
+  const result = validatePackage(rooted.files);
+  if (!result.ok) return { ok: false, findings: result.findings };
+
+  const manifestBytes = rooted.files.get(MANIFEST_PATH);
+  /* istanbul ignore next — validatePackage already refused a package without one. */
+  if (manifestBytes === undefined) {
+    return fail('MANIFEST_MISSING', MANIFEST_PATH, '');
+  }
+  const parsed = parseManifest(new TextDecoder('utf-8').decode(manifestBytes));
+  if ('error' in parsed) return { ok: false, findings: [parsed.error] };
+  const { manifest } = parsed;
+
+  await announce('saving');
+  const row: PackageRow = {
+    key: `${manifest.id}@${manifest.version}`,
+    courseId: manifest.id,
+    version: manifest.version,
+    manifest,
+    files: Object.fromEntries(rooted.files),
+    // Importing a version IS pinning it: the reader asked for this one, just
+    // now. `course/loader.ts` reads the most recent pin.
+    pinnedAt: new Date().toISOString(),
+  };
+
+  try {
+    // ONE write. There is no earlier partial write to undo, which is why this
+    // module reads and checks everything before it touches Dexie at all —
+    // a half-written course is one that opens and then 404s forever.
+    await db.packages.put(row);
+  } catch (cause) {
+    return fail('WRITE_FAILED', PACKAGE_ROOT, `(${describeThrown(cause)})`);
+  }
+
+  return { ok: true, courseId: manifest.id, version: manifest.version };
+}
+
+/** Everything up to and including "we now hold the package's files". */
+async function collect(
+  src: ImportSource,
+  announce: (stage: ImportStage) => Promise<void>,
+): Promise<{ files: Map<string, Uint8Array> } | { error: Finding }> {
+  if (src.kind === 'gitUrl') {
+    const repo = parseGitHubUrl(src.url);
+    if (repo === null) {
+      return {
+        error: finding(
+          'GIT_HOST_UNSUPPORTED',
+          src.url,
+          'Với mọi nơi khác, hãy tải .zip của kho về máy rồi dùng "Từ tệp trên máy" — kết quả giống hệt.',
+        ),
+      };
+    }
+    return fetchGitHubRepo(repo, announce);
+  }
+
+  await announce('fetching');
+  let zip: Uint8Array;
+  if (src.kind === 'file') {
+    zip = new Uint8Array(await src.file.arrayBuffer());
+  } else {
+    if (httpUrl(src.url) === null) {
+      return { error: finding('BAD_URL', src.url, 'Chỉ nhận đường dẫn bắt đầu bằng http:// hoặc https://.') };
+    }
+    const fetched = await fetchBytes(src.url);
+    if ('error' in fetched) return { error: fetched.error };
+    zip = fetched.bytes;
+  }
+
+  await announce('unpacking');
+  return readArchive(zip);
+}
+
+/**
+ * Says what is about to happen, and then ENDS THE TASK so the browser can
+ * draw it before the next phase takes the thread.
+ *
+ * ## Measured, because the obvious version does not work
+ *
+ * The first draft called `onStage(...)` and carried straight on into
+ * `validatePackage`. Driven in real Chromium against a valid 19.71 MiB
+ * package, a `MessageChannel` heartbeat — one macrotask per hop, so every
+ * gap in it is one long task — recorded this:
+ *
+ *     ONE task, 266949 → 268416
+ *     the "Đang kiểm tra nội dung gói…" DOM mutation lands INSIDE it, at 266950
+ *     "Đang giải nén…" never appeared at all — overwritten before it committed
+ *
+ * The React commit and the scan were the SAME TASK, so the waiting state
+ * never reached the screen: the reader got a frozen page still showing the
+ * previous line. This is an ORDERING fact rather than a timing one, so it
+ * does not depend on how loaded the machine was. And no test in the suite
+ * could see it: jsdom has no compositor and no long tasks, which is exactly
+ * why the brief asks for a real browser. After the fix, same probe, same
+ * package:
+ *
+ *     "Đang giải nén…" commits at 49806.3, heartbeat hop at 49806.4,
+ *                      THEN the unpack task
+ *     "Đang kiểm tra…" commits at 50024.0, heartbeat hop at 50024.0,
+ *                      THEN the scan task
+ *
+ * A heartbeat hop between the commit and the work is a task boundary, and a
+ * task boundary is where the browser gets to draw.
+ *
+ * Two things had to change:
+ *
+ * 1. **A macrotask boundary after every stage, not just before the scan.**
+ *    A promise microtask is not enough — a resolved promise's continuation
+ *    runs inside the same task, before any rendering opportunity — so this
+ *    is `setTimeout(…, 0)`. The unpack phase gets one too: it was measured
+ *    at 146–207 ms on the same package, which is its own visible stall, and
+ *    without a boundary "Đang giải nén…" was overwritten by the next stage
+ *    before it was ever committed.
+ * 2. **The caller has to commit synchronously.** Ending the task lets the
+ *    browser paint whatever the DOM says; it does not make React's own
+ *    scheduler have run by then. `pages/ImportCourse.tsx` therefore wraps
+ *    its `setStage` in `flushSync`, and says so at the call site.
+ *
+ * The residual freeze is the scan itself and is not removed by any of this —
+ * see this module's header on what that costs and what would remove it.
+ */
+function stageAnnouncer(onStage: ((stage: ImportStage) => void) | undefined): (stage: ImportStage) => Promise<void> {
+  return async (stage) => {
+    onStage?.(stage);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  };
+}
