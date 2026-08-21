@@ -64,11 +64,29 @@ type Package struct {
 
 	// Manifest is carried as raw JSON end to end (request body -> here ->
 	// jsonb column and back) and is never unmarshaled into a Go struct by
-	// this package, which has no reason to understand its shape. Note that
-	// jsonb is a parsed representation: what comes back out is
-	// semantically identical to what went in, but key order and
-	// whitespace are not preserved, so callers must compare manifests by
-	// value rather than by bytes.
+	// this package, which has no reason to understand its shape.
+	//
+	// jsonb stores a parsed document, not the bytes handed to it. What
+	// comes back is semantically equivalent but rarely byte-identical:
+	// key order is not preserved, insignificant whitespace is dropped,
+	// numbers are renormalised (1e2 comes back as 100), and — measured on
+	// a real database, not assumed — DUPLICATE KEYS ARE COLLAPSED
+	// SILENTLY: {"a":1,"a":2} is stored as {"a":2}, no error, no warning.
+	// Callers must therefore compare manifests by value, never by bytes.
+	//
+	// The consequence for the tasks that follow: an integrity hash of a
+	// package must be taken over Blob, which round-trips byte for byte,
+	// and NEVER over a manifest that has been through jsonb. Such a hash
+	// changes between write and read for reasons that look like data
+	// corruption and are not.
+	//
+	// jsonb is also stricter than encoding/json rather than merely
+	// lossier: a manifest that json.Valid accepts can be rejected
+	// outright. The measured case is a \u0000 escape inside a string —
+	// Postgres answers SQLSTATE 22P05, "unsupported Unicode escape
+	// sequence" — which Put surfaces as a wrapped driver error, since this
+	// layer has no typed error for a caller-supplied payload it cannot
+	// store.
 	Manifest json.RawMessage
 
 	// Blob is the package .zip exactly as uploaded, byte for byte.
@@ -84,6 +102,12 @@ type Package struct {
 	// straight through. This layer stores whatever the caller computed
 	// while expanding the archive and enforces no limit of its own; the
 	// limit belongs at the ingest boundary, where the number is produced.
+	//
+	// The schema does pin the one invariant that duplicates no policy
+	// number: CHECK (bytes >= 0). A negative size is not a small package,
+	// it is a corrupt row that quietly falsifies every later SUM over a
+	// user's library, and a review measured -1 being stored without
+	// complaint before the constraint existed.
 	Bytes int64
 
 	// CreatedAt is assigned by the database when the row is first

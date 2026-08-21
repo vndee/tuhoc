@@ -377,6 +377,12 @@ func TestRepoContracts(t *testing.T) {
 		second.Title = "re-imported"
 		second.Blob = append(sampleBlob(), 'X')
 		second.Bytes = sampleUncompressedBytes + 1
+		// Tier and lang are re-imported too. They are easy to leave out of
+		// the upsert's SET clause — no test noticed their absence until a
+		// review mutated them away — and a package that keeps a stale tier
+		// forever is rendered by the wrong reader with no error anywhere.
+		second.Tier = "interactive"
+		second.Lang = "en"
 		if err := repo.Put(ctx, owner, second); err != nil {
 			t.Fatalf("Put second (same version): %v", err)
 		}
@@ -393,6 +399,12 @@ func TestRepoContracts(t *testing.T) {
 		}
 		if got.Bytes != second.Bytes {
 			t.Errorf("Bytes: want %d got %d", second.Bytes, got.Bytes)
+		}
+		if got.Tier != second.Tier {
+			t.Errorf("Tier not refreshed on replace: want %q got %q", second.Tier, got.Tier)
+		}
+		if got.Lang != second.Lang {
+			t.Errorf("Lang not refreshed on replace: want %q got %q", second.Lang, got.Lang)
 		}
 
 		versions, err := repo.ListVersions(ctx, owner, "c-replace")
@@ -506,6 +518,111 @@ func TestRepoContracts(t *testing.T) {
 		want := []string{"1.0.0-rc.1", "1.0.0-rc.2", "1.0.0", "2.0.0-rc.2", "2.0.0-rc.10"}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("ListVersions: want %v got %v", want, got)
+		}
+	})
+
+	// ListVersions filters on TWO columns, and the second one had no
+	// control: every owner elsewhere in this file holds exactly one
+	// course, so dropping "AND course_id = $2" changed no result anywhere.
+	// A review measured the gap — ListVersions(owner, "course-alpha")
+	// returning [1.0.0 1.1.0 7.0.0 8.0.0] — and this is the case that
+	// closes it: one owner, two courses, versions that cannot be confused
+	// for each other. The failure it guards against is not cross-account
+	// leakage (owner_id survives) but the quiet kind: a caller taking the
+	// last element as "newest" is handed a version that does not exist for
+	// the course it asked about, and the Get that follows 404s.
+	t.Run("ListVersions is scoped to one course, not to the whole owner", func(t *testing.T) {
+		owner := newOwner(t, pool, "twocourses")
+		for _, spec := range []struct{ courseID, version string }{
+			{"course-alpha", "1.0.0"},
+			{"course-alpha", "1.1.0"},
+			{"course-beta", "7.0.0"},
+			{"course-beta", "8.0.0"},
+		} {
+			if err := repo.Put(ctx, owner, samplePackage(owner, spec.courseID, spec.version)); err != nil {
+				t.Fatalf("Put %s@%s: %v", spec.courseID, spec.version, err)
+			}
+		}
+
+		alpha, err := repo.ListVersions(ctx, owner, "course-alpha")
+		if err != nil {
+			t.Fatalf("ListVersions alpha: %v", err)
+		}
+		if want := []string{"1.0.0", "1.1.0"}; !reflect.DeepEqual(alpha, want) {
+			t.Errorf("ListVersions(course-alpha): want %v got %v — versions of another "+
+				"course this owner holds must not appear", want, alpha)
+		}
+
+		// Symmetric, so the assertion cannot be satisfied by a filter that
+		// happens to pin the first course inserted.
+		beta, err := repo.ListVersions(ctx, owner, "course-beta")
+		if err != nil {
+			t.Fatalf("ListVersions beta: %v", err)
+		}
+		if want := []string{"7.0.0", "8.0.0"}; !reflect.DeepEqual(beta, want) {
+			t.Errorf("ListVersions(course-beta): want %v got %v", want, beta)
+		}
+	})
+
+	// ErrNotFound must mean "this owner has no such package" and nothing
+	// else. Widening the pgx.ErrNoRows check to "any error" passes every
+	// other test in this file, because no other test ever makes the query
+	// itself fail — and the consequence is a database outage rendered as a
+	// 404 telling the user their package does not exist. A cancelled
+	// context is the cheapest real infrastructure failure to produce.
+	t.Run("Get reports an infrastructure failure as itself, not as not found", func(t *testing.T) {
+		owner := newOwner(t, pool, "infra")
+		if err := repo.Put(ctx, owner, samplePackage(owner, "c-infra", "1.0.0")); err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+
+		dead, cancel := context.WithCancel(ctx)
+		cancel()
+
+		got, err := repo.Get(dead, owner, "c-infra", "1.0.0")
+		if err == nil {
+			t.Fatalf("Get on a cancelled context: want an error, got package %+v", got)
+		}
+		if errors.Is(err, course.ErrNotFound) {
+			t.Errorf("Get on a cancelled context returned ErrNotFound (%v): a caller cannot "+
+				"tell a broken database from a missing package, and will answer 404", err)
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("Get on a cancelled context: want an error wrapping context.Canceled, got %v", err)
+		}
+
+		// Anti-vacuity: the row is there, and a healthy call still reads it.
+		// Without this, a Get that always failed would pass the above.
+		if _, err := repo.Get(ctx, owner, "c-infra", "1.0.0"); err != nil {
+			t.Fatalf("Get with a live context: want the package back, got %v", err)
+		}
+	})
+
+	// bytes is an uncompressed total, so a negative value is not a small
+	// package, it is corrupt data — and it poisons any sum a later task
+	// computes over a library. The ingest ceiling stays out of this layer
+	// (that number belongs where it is produced, and duplicating it is how
+	// two copies drift), but "not negative" costs one CHECK and duplicates
+	// nothing.
+	t.Run("Put refuses a negative Bytes", func(t *testing.T) {
+		owner := newOwner(t, pool, "negbytes")
+
+		bad := samplePackage(owner, "c-negative", "1.0.0")
+		bad.Bytes = -1
+		if err := repo.Put(ctx, owner, bad); err == nil {
+			t.Errorf("Put with Bytes=-1: want an error, got nil")
+		}
+		if _, err := repo.Get(ctx, owner, "c-negative", "1.0.0"); !errors.Is(err, course.ErrNotFound) {
+			t.Errorf("a rejected Put must leave no row behind: Get returned %v", err)
+		}
+
+		// Anti-vacuity, and the boundary itself: zero is a legal size (an
+		// empty package is odd, not corrupt), so the constraint must be
+		// >= 0 and not > 0.
+		zero := samplePackage(owner, "c-zero-bytes", "1.0.0")
+		zero.Bytes = 0
+		if err := repo.Put(ctx, owner, zero); err != nil {
+			t.Errorf("Put with Bytes=0: want it stored, got %v", err)
 		}
 	})
 
