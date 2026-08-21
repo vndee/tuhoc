@@ -1129,6 +1129,52 @@ function rng(seed: number): () => number {
   };
 }
 
+/**
+ * Ngân sách CHẠY cho hai bài chương-thật dưới đây. Không phải một khẳng định,
+ * và không có khẳng định nào về tốc độ ở đây — cùng loại với ruling P2-F16.
+ *
+ * Vì sao con số cũ (60 s) chưa đủ, đo chứ không đoán. Thân bài "tô 40 ghi
+ * chú" là CPU thuần, đồng bộ từ đầu đến cuối: không `waitFor`, không hẹn giờ,
+ * không I/O. Đây là phân rã một lần chạy nhàn (tổng 5 344 ms):
+ *
+ *     renderChapter (KaTeX thật, 263 công thức)      256 ms
+ *     normalizeContainer                              38 ms
+ *     paintAll (40 ghi chú)                           68 ms
+ *     paintedQuote × 40   (khẳng định "đúng chỗ")  1 552 ms
+ *     holesInside  × 40   (khẳng định "không thủng")1 641 ms
+ *     unpaint      × 40   (khẳng định "khôi phục") 1 667 ms
+ *     (loadKatex chỉ 11 ms — KHÔNG có phần nhập nguội nào để hâm sẵn, nên
+ *      cách chữa của `syncLifecycle.test.tsx` không áp được vào đây)
+ *
+ * Ba dòng tốn nhất là ba khẳng định trung tâm của bài. Không cắt được dòng
+ * nào mà không làm yếu bài, nên thứ phải sửa là cái trần.
+ *
+ * Đo trên máy này, `bun run test` đầy đủ (thời gian THỰC của thân bài; lưu ý
+ * con số vitest in ra khi nó CẮT một bài là lúc nó bỏ cuộc, không phải lúc
+ * bài xong — nên mọi số dưới đây lấy từ những lượt chạy KHÔNG bị cắt):
+ *
+ *     máy rảnh (load 13–30)                      8 268 – 17 342 ms, 10 lượt
+ *     16 tiến trình quay CPU trên 8 lõi (load 34–58,
+ *       đúng mức tải lần nghiệm thu báo đỏ)  41 190 / 43 461 ms ← 69–72 % trần cũ
+ *     20 tiến trình quay CPU (load 66–130)      31 861 – 60 121 ms, 12 lượt
+ *
+ * Trần cũ 60 s nằm ngay giữa dải đó. Ở mức tải người dùng gặp nó chỉ còn
+ * ~1,4×, và lượt đo 60 121 ms ở trên là một lượt **xanh với trần mới** mà
+ * trần cũ đã cắt. Trước khi sửa, cùng điều kiện ấy cho 3 lượt đỏ trên 8, đúng
+ * nguyên văn "Test timed out in 60000ms.".
+ *
+ * Con số mới lấy theo tỉ lệ mà repo này đã chấp nhận: `testTimeout` 30 s của
+ * `vite.config.ts` phủ những thân bài nhàn dưới 1 s, tức ≥30×. Áp đúng tỉ lệ
+ * ấy cho thân bài ~6,4 s ⇒ ≥193 s; làm tròn lên 240 s. So lại: 4,0× lần tệ
+ * nhất từng đo được (60 121 ms) và 13,8× lần tệ nhất khi không ép tải.
+ *
+ * Nới trần này không giấu được gì. Thân bài đồng bộ nên thứ duy nhất một
+ * `testTimeout` bắt được ở đây là vòng lặp vô hạn trong `paint`/`unpaint`/
+ * `normalize` — mà vòng lặp vô hạn thì không ngân sách hữu hạn nào "bắt"
+ * được, chỉ là báo sớm hay muộn. Mọi khẳng định bên dưới giữ nguyên từng chữ.
+ */
+const REAL_CHAPTER_MS = 240_000;
+
 describe('chương thật p1-5.html với KaTeX thật', () => {
   const SOURCE = readFileSync(CHAPTER, 'utf8');
 
@@ -1188,9 +1234,7 @@ describe('chương thật p1-5.html với KaTeX thật', () => {
     expect(host.querySelectorAll('[data-ann-ids]')).toHaveLength(0);
     expect(host.querySelectorAll('.ann-hl')).toHaveLength(0);
     expect(host.innerHTML).toBe(originalHtml);
-    // Ngân sách chạy, không phải một khẳng định được nới lỏng: dựng KaTeX
-    // thật cho cả chương rồi kiểm 40 ghi chú tốn vài giây trong jsdom.
-  }, 60_000);
+  }, REAL_CHAPTER_MS);
 
   it('tô rồi gỡ theo thứ tự NGẪU NHIÊN vẫn khôi phục nguyên trạng', () => {
     const host = renderChapter(SOURCE);
@@ -1218,5 +1262,5 @@ describe('chương thật p1-5.html với KaTeX thật', () => {
     }
     for (const id of order) unpaint(id, host);
     expect(host.innerHTML).toBe(originalHtml);
-  }, 60_000);
+  }, REAL_CHAPTER_MS);
 });

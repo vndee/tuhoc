@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, getConfig, render, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { StrictMode, useEffect, useState } from 'react';
@@ -260,9 +260,18 @@ describe('ChapterView', () => {
    * (select, then look) instead of looking again at the result of a single
    * dispatch. `renderChapterAndSettle` should already make the first attempt
    * enough; this is what makes that "should" unable to matter.
+   *
+   * The deadline is read from testing-library's own config rather than
+   * written here as a number. It used to be a literal `1000`, which is the
+   * value RTL's default happened to have — so this loop looked like it
+   * shared the suite's wait budget while actually being the one wall clock
+   * in this file that `configure({ asyncUtilTimeout })` in
+   * `src/test/setup.ts` could not reach. Raising that budget for the whole
+   * suite and leaving a hidden 1000 ms here would have fixed every wait in
+   * this file except the one the failing test goes through.
    */
   async function selectAndOpenToolbar(text: string): Promise<HTMLElement> {
-    const deadline = Date.now() + 1000;
+    const deadline = Date.now() + getConfig().asyncUtilTimeout;
     let container = selectInChapter(text);
     while (!screen.queryByRole('toolbar') && Date.now() < deadline) {
       await act(async () => {});
