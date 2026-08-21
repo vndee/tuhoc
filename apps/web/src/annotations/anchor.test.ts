@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type Anchor,
   anchorToRange,
+  hasFindableText,
   isMapStale,
   levenshtein,
   selectionToAnchor,
@@ -366,6 +367,67 @@ describe('selectionToAnchor — tạo anchor', () => {
     expect(a.exact.match(/￼/g)).toHaveLength(1);
     expect(a.exact).not.toContain('DKL');
     expect(a.exact).not.toContain('mathnormal');
+  });
+});
+
+/**
+ * `hasFindableText` — the one question `./OrphanPanel`'s reattach asks before
+ * it overwrites a quote that already exists (review finding C1).
+ *
+ * Two claims, and the second is the one worth having:
+ *
+ *  1. A quote made of nothing but formula stand-ins names nothing. Every
+ *     formula in a chapter is the same single character down here, so `"￼"`
+ *     is findable in the way `""` is — and chapter p1-5 of the real course
+ *     has 263 of them.
+ *  2. **Creating** an annotation on a formula stays legal. Task 1's fix made
+ *     "a drag inside a formula selects the whole formula" deliberate; this
+ *     predicate is a rule about REPLACING an existing quote, and if it ever
+ *     leaks into `selectionToAnchor` the last test here goes red.
+ */
+describe('hasFindableText — trích dẫn nào còn tìm lại được', () => {
+  it('chuỗi chỉ gồm ký tự thế chỗ công thức (và khoảng trắng) thì KHÔNG', () => {
+    expect(hasFindableText('￼')).toBe(false);
+    expect(hasFindableText('￼￼￼')).toBe(false);
+    expect(hasFindableText(' ￼ ￼ ')).toBe(false);
+    expect(hasFindableText('')).toBe(false);
+    expect(hasFindableText('   ')).toBe(false);
+  });
+
+  it('chỉ cần MỘT ký tự không phải công thức là còn tìm được — kể cả số và dấu câu', () => {
+    expect(hasFindableText('Định lý mã hoá kênh')).toBe(true);
+    expect(hasFindableText('￼ với p = 1/2')).toBe(true);
+    expect(hasFindableText('x￼')).toBe(true);
+    // Deliberately narrow: the claim is "not everything here is a formula",
+    // not "there is a letter here". Widening it would start refusing
+    // selections a reader can perfectly well find again.
+    expect(hasFindableText('2026')).toBe(true);
+    expect(hasFindableText('— ￼')).toBe(true);
+  });
+
+  it('một công thức HIỂN THỊ thật, qua đúng đường một đoạn chọn đi: anchor hợp lệ, nhưng không tìm lại được', () => {
+    // The reviewer's drag, in fixture form: a `.katex-display` subtree, which
+    // `normalize.ts` stands in for with exactly one character.
+    const m = normalizeContainer(el(`<div id="c"><p>Trước.</p>${katexSpan('H(X)', 'H(X)', true)}<p>Sau.</p></div>`));
+    const f = m.flat.indexOf('￼');
+    expect(f).toBeGreaterThanOrEqual(0);
+
+    const a = anchorAt(m, f, f + 1)!;
+    // NOT null — which is exactly why `if (!anchor)` was not enough of a gate.
+    expect(a).not.toBeNull();
+    expect(a.exact).toBe('￼');
+    expect(hasFindableText(a.exact)).toBe(false);
+
+    // Ties the two private copies of the stand-in character together — one in
+    // `normalize.ts`, one in `anchor.ts`. If either drifts, `a.exact` stops
+    // being the character this predicate strips, and this line goes red.
+    expect(m.flat[f]).toBe(a.exact);
+  });
+
+  it('đường TẠO MỚI không bị đụng: selectionToAnchor vẫn nhận một đoạn chọn toàn công thức', () => {
+    const m = normalizeContainer(el(`<div id="c"><p>Trước.</p>${katexSpan('H(X)', 'H(X)', true)}<p>Sau.</p></div>`));
+    const f = m.flat.indexOf('￼');
+    expect(selectionToAnchor(m, flatToDom(m, f, f + 1)!, 'p')).toMatchObject({ exact: '￼', color: 'p' });
   });
 });
 

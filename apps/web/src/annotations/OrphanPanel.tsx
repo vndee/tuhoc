@@ -76,7 +76,37 @@
  * where it always was: open the note, and use the card's own "Xóa ghi chú".
  *
  * ---------------------------------------------------------------------
- * 5. Known limit, written down rather than designed around
+ * 5. A rescue may not cost the note the one field it cannot get back
+ * ---------------------------------------------------------------------
+ * `anchor.exact` is the reader's last clue about where their note used to
+ * belong — it is literally what "Xem exact gốc" hands back so they can go
+ * hunting through the rebuilt chapter by hand. `reattach` overwrites it.
+ *
+ * That is fine when the new selection has words in it. It is not fine when the
+ * new selection is a FORMULA: `normalize.ts` stands a whole `.katex` subtree
+ * in for one `'￼'`, so the reader's 109 characters of prose become a single
+ * character that is identical to all 263 other formulas in the chapter. The
+ * note then leaves `orphans` — taking "Gắn lại" and "Xem exact gốc" with it —
+ * with nothing findable stored, no undo, and one outbox row of that to every
+ * other device. Measured on a real browser, and it is the ordinary drag: in a
+ * course about information theory, "my note is about THIS equation" is the
+ * first thing a reader tries.
+ *
+ * So the reattach path refuses an anchor whose `exact` is nothing but formula
+ * stand-ins and spaces (`hasFindableText`, in `./anchor`), in two places:
+ *
+ *   - the selection watcher does not OFFER the button, and says why instead,
+ *     because inviting a reader to press something and then refusing them is
+ *     worse than never inviting them;
+ *   - `confirmReattach` refuses again before writing, because that is the
+ *     gate that holds however the click arrived — a stale render, a selection
+ *     that moved between paint and click, a keyboard activation.
+ *
+ * The CREATE path is untouched. Annotating a formula is a feature (Task 1
+ * made it one on purpose); trading an existing quote away for one is not.
+ *
+ * ---------------------------------------------------------------------
+ * 6. Known limit, written down rather than designed around
  * ---------------------------------------------------------------------
  * `reader.css` hides `#rail` outright below 1241px, so on a phone this panel
  * is not reachable at all — same as the TOC and, in its column form, the
@@ -87,7 +117,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type Anchor, selectionToAnchor } from './anchor';
+import { type Anchor, hasFindableText, selectionToAnchor } from './anchor';
 import { isMapStale, type NormMap, normalizeContainer, rangeToFlat } from './normalize';
 import { selectionRange } from './SelectionToolbar';
 import {
@@ -146,6 +176,30 @@ const PREVIEW_MAX = 60;
 
 const REATTACH_FAILED = 'Không gắn lại được. Hãy bôi chọn lại rồi thử lần nữa.';
 
+/**
+ * Said when the reader's new selection is nothing but formulas.
+ *
+ * It names what happened and what to do about it, in that order, because the
+ * reader has done nothing wrong — they dragged across the equation their note
+ * is about, which is the most reasonable thing to do in this course. What they
+ * cannot know without being told is that a formula is a single stand-in
+ * character down here, so the quote they are about to store would match every
+ * other formula in the chapter equally well. See the file doc, section 5.
+ */
+const REATTACH_NO_WORDS =
+  'Đoạn bạn chọn chỉ gồm công thức. Hãy chọn thêm chữ xung quanh để ghi chú tìm lại được chỗ này.';
+
+/**
+ * What the reattach bar has to say about the current selection.
+ *
+ * A discriminated union rather than two pieces of state, so "the confirm
+ * button is offered" and "why it is not offered" cannot disagree: there is
+ * exactly one value, and only one of its shapes carries a preview.
+ */
+type Candidate =
+  | { readonly kind: 'ok'; readonly preview: string }
+  | { readonly kind: 'unusable'; readonly why: string };
+
 function preview(text: string): string {
   const flat = text.replace(/\s+/g, ' ').trim();
   return flat.length > PREVIEW_MAX ? `${flat.slice(0, PREVIEW_MAX - 1)}…` : flat;
@@ -166,11 +220,17 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
   /** Which row has its full `exact` opened. One at a time: the box is tall,
    * and the reason to open it is to copy one quote and go looking for it. */
   const [shown, setShown] = useState<string | null>(null);
-  /** A short echo of the selection the reader has made, or `null` when there
-   * is nothing anchorable selected. Doubles as "is the confirm button
-   * offered", so the button can never be present with nothing behind it. */
-  const [candidate, setCandidate] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  /** What this rescue thinks of the reader's current selection, or `null` when
+   * there is nothing selected at all. Doubles as "is the confirm button
+   * offered" — only the `'ok'` shape carries a preview — so the button can
+   * never be present with nothing behind it, and a selection that is anchorable
+   * but not STORABLE (see the file doc, section 5) says so instead of being
+   * silently ignored. */
+  const [candidate, setCandidate] = useState<Candidate | null>(null);
+  /** The message from the last refused attempt, or `null`. A string rather
+   * than a flag because the two refusals a reader can hit call for different
+   * things of them: try the drag again, or widen it. */
+  const [failure, setFailure] = useState<string | null>(null);
 
   /** The map for the CURRENT `(root, revision)`, rebuilt whenever a paint has
    * invalidated it. See the file doc, section 2. */
@@ -216,7 +276,7 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
   useEffect(() => {
     rangeRef.current = null;
     setCandidate(null);
-    setFailed(false);
+    setFailure(null);
     if (!root || !reattaching) return;
     const onSelectionChange = (): void => {
       const range = selectionRange(root);
@@ -228,13 +288,23 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
       const map = mapFor();
       // `rangeToFlat` is the only door (ruling P2-F6): `null` here is every
       // reason there is not to offer the button, in one answer.
-      if (!map || !rangeToFlat(map, range)) {
+      const span = map ? rangeToFlat(map, range) : null;
+      if (!map || !span) {
         rangeRef.current = null;
         setCandidate(null);
         return;
       }
+      // Formulas only: anchorable, but not worth an existing quote. Read off
+      // `map.flat` rather than by building the anchor, because this runs on
+      // every `selectionchange` — the raw flat slice and the projected `exact`
+      // differ only in whitespace, which this question does not turn on.
+      if (!hasFindableText(map.flat.slice(span.from, span.to))) {
+        rangeRef.current = null;
+        setCandidate({ kind: 'unusable', why: REATTACH_NO_WORDS });
+        return;
+      }
       rangeRef.current = range.cloneRange();
-      setCandidate(preview(range.toString()));
+      setCandidate({ kind: 'ok', preview: preview(range.toString()) });
     };
     const doc = root.ownerDocument ?? document;
     doc.addEventListener('selectionchange', onSelectionChange);
@@ -258,7 +328,7 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
     if (!root || !target) return;
     const range = selectionRange(root) ?? rangeRef.current;
     if (!range || range.collapsed || !root.contains(range.commonAncestorContainer)) {
-      setFailed(true);
+      setFailure(REATTACH_FAILED);
       return;
     }
     const map = mapFor();
@@ -271,7 +341,19 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
       // drag across the gap between two paragraphs). Storing it anyway would
       // move the note from "cannot be found" to "cannot be found, and now
       // points somewhere else too".
-      setFailed(true);
+      setFailure(REATTACH_FAILED);
+      return;
+    }
+    // And the same sentence again for the case that DOES parse: a quote made
+    // only of formula stand-ins is findable in the way `""` is findable. This
+    // check is here, on the write, and not only on the button, because this is
+    // the only place that holds however the click arrived — the selection can
+    // move between the render that offered the button and the click that
+    // presses it, and that race is the one that costs `exact` (file doc,
+    // section 5). The reader keeps the mode, the selection, the note and the
+    // old quote; nothing is written and nothing reaches the outbox.
+    if (!hasFindableText(anchor.exact)) {
+      setFailure(REATTACH_NO_WORDS);
       return;
     }
 
@@ -286,7 +368,7 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
       // failed silently would look exactly like one that worked until the next
       // page load.
       console.error('OrphanPanel: could not reattach the note', error);
-      setFailed(true);
+      setFailure(REATTACH_FAILED);
     }
   }, [root, target, mapFor, reattach, onReattachingChange]);
 
@@ -405,11 +487,18 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
             <span className="ann-reattach-what">
               Gắn lại: <b>{quoteOf(target.anchor, PREVIEW_MAX)}</b>
             </span>
-            {candidate === null ? (
-              <span className="ann-reattach-hint">Bôi chọn đoạn văn mới trong chương.</span>
-            ) : (
+            {candidate === null && <span className="ann-reattach-hint">Bôi chọn đoạn văn mới trong chương.</span>}
+            {/* Anchorable, but not worth the quote it would replace. Says so
+                where the button would have been, so the reader can widen the
+                selection instead of being invited to destroy something. */}
+            {candidate?.kind === 'unusable' && (
+              <span className="ann-reattach-hint ann-reattach-why" role="status">
+                {candidate.why}
+              </span>
+            )}
+            {candidate?.kind === 'ok' && (
               <>
-                <span className="ann-reattach-preview">“{candidate}”</span>
+                <span className="ann-reattach-preview">“{candidate.preview}”</span>
                 <button
                   type="button"
                   className="ann-reattach-ok"
@@ -421,9 +510,9 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
                 </button>
               </>
             )}
-            {failed && (
+            {failure !== null && (
               <span className="ann-reattach-error" role="alert">
-                {REATTACH_FAILED}
+                {failure}
               </span>
             )}
             <button type="button" className="ann-reattach-cancel" onClick={() => onReattachingChange(null)}>

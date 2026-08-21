@@ -453,6 +453,36 @@ export function selectionToAnchor(map: NormMap, range: Range, color: AnchorColor
   };
 }
 
+/**
+ * Whether a quote has anything in it that could ever find its way back.
+ *
+ * A formula is ONE character in this module's world — `ATOMIC_CHAR`, the
+ * object-replacement stand-in `normalize.ts` puts in place of a whole
+ * `.katex`/`.katex-display` subtree — and every formula in the chapter is
+ * that same character. So `"￼"` is a quote in the way `""` is one: the exact
+ * tier matches all 263 of chapter p1-5's formulas at once, the fuzzy tier is
+ * within edit distance 1 of most of the rest, and nothing downstream can
+ * choose between them. `false` here means "this string names nothing".
+ *
+ * Deliberately NOT a rule inside `selectionToAnchor`. Making a NEW note on a
+ * formula is a FEATURE: Task 1's fix turned "a drag inside a formula selects
+ * nothing" into "it selects the whole formula" on purpose, and there the
+ * reader gets a note they knowingly placed, with `prefix`/`suffix` doing the
+ * distinguishing. The one caller of this predicate is `./OrphanPanel`'s
+ * reattach, where the trade is different in kind: an `exact` that already
+ * exists and has words in it would be REPLACED by one that has none, on the
+ * single path whose entire purpose is to preserve it, with no undo and one
+ * outbox row to every other device.
+ *
+ * The claim is deliberately narrow — "there is not one character here that is
+ * not a formula placeholder or a space". Digits and punctuation count as
+ * findable: widening this to "must contain a letter" would start refusing
+ * selections a reader can perfectly well locate again.
+ */
+export function hasFindableText(exact: string): boolean {
+  return exact.split(ATOMIC_CHAR).join('').trim().length > 0;
+}
+
 /** The three strings an anchor is searched by, normalized into the same
  * projection space the chapter is searched in. Defensive because
  * `AnnotationRow.anchor` is `unknown` all the way from the server's

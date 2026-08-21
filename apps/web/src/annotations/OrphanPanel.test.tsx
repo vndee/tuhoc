@@ -63,6 +63,30 @@ const REMOVED_SHORT = `<p>${Q_LOST_SHORT} theo entropy có điều kiện.</p>`;
 const TARGET_FIRST = 'Entropy đo lượng thông tin';
 const TARGET_THIRD = 'Kênh nhiễu làm giảm dung lượng';
 
+/**
+ * A DISPLAY FORMULA, in the only shape that matters here: `normalize.ts`
+ * matches `.katex-display` with `ATOMIC_SELECTOR` and stands the whole subtree
+ * in for exactly ONE `'￼'` in the flat text — whatever it renders as, and
+ * whether or not KaTeX itself ever ran. Chapter `p1-5` of the real course has
+ * 263 of these nodes, which is why "the reader dragged across a formula" is
+ * the ordinary case and not the exotic one.
+ */
+const FORMULA = '<p class="katex-display" data-testid="formula"><span class="katex">H(X) = -Σ p log p</span></p>';
+const PROSE_MATH = [PROSE, FORMULA].join('\n');
+
+/**
+ * The test's own, independent restatement of "is there anything in this quote
+ * a search could ever find again": strip the formula stand-ins, strip the
+ * spaces, see if a single character is left.
+ *
+ * Deliberately NOT imported from `./anchor`. This is the invariant the whole
+ * of C1 is about, and a test that asserts it by calling the very function
+ * under test would stay green if that function were changed to `() => true`.
+ */
+function hasWordsInIt(exact: string): boolean {
+  return exact.replace(/￼/g, '').trim().length > 0;
+}
+
 /** Builds a real `Anchor` through `./anchor`, from a DETACHED copy of some
  * content — the same way `MarginCards.test.tsx` and `useAnnotations.test.tsx`
  * do, and for the same reason: a hand-written `{exact, prefix, suffix}`
@@ -205,6 +229,43 @@ function selectInChapter(text: string): void {
     return;
   }
   throw new Error(`không tìm thấy ${JSON.stringify(text)} trong chương đã render`);
+}
+
+/**
+ * Put the whole of `node` in the selection — the drag that lands on a display
+ * formula. `selectNode`, not a text offset pair: a `.katex-display` subtree is
+ * off-limits to `normalize.ts`'s walker by construction, so its INSIDE has no
+ * flat offsets to select between. This is what a reader's mouse produces when
+ * it crosses a rendered formula.
+ */
+function selectNodeInChapter(node: Node, { announce = true }: { announce?: boolean } = {}): void {
+  const range = document.createRange();
+  range.selectNode(node);
+  const apply = (): void => {
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    if (announce) document.dispatchEvent(new Event('selectionchange'));
+  };
+  if (announce) act(apply);
+  else apply();
+}
+
+function formulaNode(): HTMLElement {
+  const el = chapterRoot().querySelector<HTMLElement>('[data-testid="formula"]');
+  if (!el) throw new Error('chương chưa render công thức');
+  return el;
+}
+
+/** The reattach bar, or `null`. Identified by its own role+name rather than by
+ * a class, so a test cannot be satisfied by a bar that is on screen but
+ * unusable. */
+function reattachBar(): HTMLElement | null {
+  return screen.queryByRole('group', { name: 'Gắn lại ghi chú' });
+}
+
+function confirmButton(): HTMLElement | null {
+  return screen.queryByRole('button', { name: /gắn vào đây/i });
 }
 
 /** "Gắn lại" on one orphan, then select `target`, then confirm. The whole
@@ -425,5 +486,126 @@ describe('OrphanPanel — ghi chú mồ côi là dữ liệu, không phải rác
     const row = await db.annotations.get('n1');
     expect(row!.deletedAt).toBeNull();
     expect(await db.outbox.count()).toBe(0);
+  });
+});
+
+/**
+ * C1: the rescue must never cost the note the one field that cannot be
+ * reconstructed.
+ *
+ * `anchor.exact` is what "Xem exact gốc" hands back to a reader so they can go
+ * looking for their own paragraph by hand. A reattach that overwrites 109
+ * characters of prose with a single formula stand-in does not merely fail to
+ * help — it removes the last clue, takes the note OUT of the orphan list (so
+ * both "Gắn lại" and "Xem exact gốc" disappear with it), and pushes one outbox
+ * row of that to every other device. There is no undo.
+ *
+ * The narrow claim being defended here, and it is narrow on purpose:
+ * annotating a formula is a legitimate thing to do and Task 1 deliberately
+ * made it possible — that path is untouched. What may not happen is the
+ * RESCUE path trading a quote that has words in it for one that has none.
+ */
+describe('OrphanPanel — cứu hộ không được phá thứ nó đang cứu (C1)', () => {
+  it('bôi chọn trúng một công thức: panel KHÔNG mời "Gắn vào đây", và nói vì sao', async () => {
+    await seed(makeAnchor(REMOVED_LONG, Q_LOST_LONG), 'ghi chú về công thức này');
+    render(<Harness html={PROSE_MATH} />);
+    await waitForOrphans(1);
+
+    fireEvent.click(within(orphanRow('n1')).getByRole('button', { name: 'Gắn lại' }));
+    selectNodeInChapter(formulaNode());
+
+    // Inviting and then refusing is the worst of both: the reader has already
+    // decided the rescue worked by the time anything says otherwise.
+    await waitFor(() => expect(reattachBar()).toBeInTheDocument());
+    expect(confirmButton()).not.toBeInTheDocument();
+    expect(screen.getByText(/chỉ gồm công thức/i)).toBeInTheDocument();
+
+    // And the mode stays alive, with the note untouched, so the reader can
+    // simply widen the selection.
+    expect(orphanRow('n1')).toBeInTheDocument();
+    const row = await db.annotations.get('n1');
+    expect((row!.anchor as Anchor).exact).toBe(Q_LOST_LONG);
+    expect(row!.updatedAt).toBe('2026-08-19T09:30:00.000Z');
+    expect(await db.outbox.count()).toBe(0);
+  });
+
+  it('nút đã hiện rồi mà đoạn chọn đổi sang công thức: lệnh GHI vẫn từ chối, exact giữ nguyên từng byte', async () => {
+    const before = await seed(makeAnchor(REMOVED_LONG, Q_LOST_LONG), 'chữ của người đọc');
+    render(<Harness html={PROSE_MATH} />);
+    await waitForOrphans(1);
+
+    fireEvent.click(within(orphanRow('n1')).getByRole('button', { name: 'Gắn lại' }));
+    selectInChapter(TARGET_FIRST);
+    const confirm = await screen.findByRole('button', { name: /gắn vào đây/i });
+
+    // The selection moves without the component being told — the shape of
+    // every "the button was right when it was drawn" race there is. The button
+    // on screen is now offering a paragraph nobody has selected, and
+    // `confirmReattach` reads the LIVE selection, on purpose.
+    selectNodeInChapter(formulaNode(), { announce: false });
+    fireEvent.click(confirm);
+    await act(async () => {});
+
+    // The gate that matters is the one on the WRITE, not the one on the
+    // button: it is the only one that holds however the click arrived.
+    expect(screen.getByText(/chỉ gồm công thức/i)).toBeInTheDocument();
+    const row = await db.annotations.get('n1');
+    expect((row!.anchor as Anchor).exact).toBe(Q_LOST_LONG);
+    expect(row!.anchor).toEqual(before.anchor);
+    expect(row!.updatedAt).toBe(before.updatedAt);
+    expect(row!.note).toBe('chữ của người đọc');
+    expect(row!.deletedAt).toBeNull();
+    expect(await db.outbox.count()).toBe(0);
+
+    // Still rescuable, which is the whole point: the row never left the list,
+    // so backing out of this attempt hands both of its controls straight back.
+    // (The C1 bug took the note OUT of `orphans`, and "Gắn lại" and "Xem exact
+    // gốc" went with it.)
+    expect(within(orphanRow('n1')).getByRole('button', { name: /xem exact gốc/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^hủy$/i }));
+    await waitFor(() => expect(reattachBar()).not.toBeInTheDocument());
+    expect(within(orphanRow('n1')).getByRole('button', { name: 'Gắn lại' })).toBeInTheDocument();
+    const exactBox = within(orphanRow('n1')).getByRole('button', { name: /xem exact gốc/i });
+    fireEvent.click(exactBox);
+    expect((within(orphanRow('n1')).getByRole('textbox', { name: /đoạn văn gốc/i }) as HTMLTextAreaElement).value).toBe(
+      Q_LOST_LONG,
+    );
+  });
+
+  it('gắn lại KHÔNG BAO GIỜ làm exact nghèo đi: sau mọi lần thử, trích dẫn vẫn còn chữ tìm lại được', async () => {
+    await seed(makeAnchor(REMOVED_LONG, Q_LOST_LONG), 'ghi chú một');
+    render(<Harness html={PROSE_MATH} />);
+    await waitForOrphans(1);
+
+    const start = await db.annotations.get('n1');
+    expect(hasWordsInIt((start!.anchor as Anchor).exact)).toBe(true);
+
+    fireEvent.click(within(orphanRow('n1')).getByRole('button', { name: 'Gắn lại' }));
+
+    // Every drag a reader might make on a chapter that is mostly formulas, in
+    // the order they would make them: the formula alone, then the formula
+    // again after a good selection has already armed the button, then real
+    // prose. The invariant is checked after EACH one, not only at the end —
+    // an `exact` that went to "￼" and came back would still have been on
+    // every other device in between.
+    for (const attempt of [0, 1]) {
+      if (attempt === 1) selectInChapter(TARGET_FIRST);
+      selectNodeInChapter(formulaNode(), { announce: attempt === 0 });
+      const button = confirmButton();
+      if (button) fireEvent.click(button);
+      await act(async () => {});
+      const row = await db.annotations.get('n1');
+      expect(hasWordsInIt((row!.anchor as Anchor).exact)).toBe(true);
+    }
+
+    // The rescue the reader eventually makes still works, and it is the one
+    // that had words in it.
+    selectInChapter(TARGET_FIRST);
+    fireEvent.click(await screen.findByRole('button', { name: /gắn vào đây/i }));
+    await waitForPlaced(1);
+    const done = await db.annotations.get('n1');
+    expect((done!.anchor as Anchor).exact).toBe(TARGET_FIRST);
+    expect(hasWordsInIt((done!.anchor as Anchor).exact)).toBe(true);
+    expect(await db.outbox.count()).toBe(1);
   });
 });

@@ -1055,6 +1055,19 @@ mark.ann {
   color: #e0453c;
 }
 
+/* The refusal that is NOT an error: the reader's drag landed on a formula, and
+   a quote made only of formula stand-ins would name every formula in the
+   chapter equally. It sits where "Gắn vào đây" would have been, so it reads as
+   the reason the button is missing rather than as a complaint. Wider than
+   `.ann-reattach-preview` because it is a sentence, and `flex-basis: 100%` so
+   it wraps onto its own line instead of squeezing the "Hủy" button off the
+   bar on a narrow window. */
+.ann-reattach-why {
+  flex: 1 1 100%;
+  max-width: 100%;
+  line-height: 1.45;
+}
+
 .ann-reattach-ok,
 .ann-reattach-cancel {
   border: 1px solid var(--rule-strong);
