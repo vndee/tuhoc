@@ -39,7 +39,9 @@ export function ImportCourse() {
   const queryClient = useQueryClient();
   const [stage, setStage] = useState<ImportStage | null>(null);
   const [findings, setFindings] = useState<readonly Finding[] | null>(null);
-  const [done, setDone] = useState<{ courseId: string; version: string } | null>(null);
+  const [done, setDone] = useState<
+    { courseId: string; version: string; rerootedFrom?: string; droppedFiles?: number } | null
+  >(null);
   const [zipUrl, setZipUrl] = useState('');
   const [gitUrl, setGitUrl] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
@@ -70,7 +72,12 @@ export function ImportCourse() {
     try {
       const result = await importCourse(source, { onStage: announceStage });
       if (result.ok) {
-        setDone({ courseId: result.courseId, version: result.version });
+        setDone({
+          courseId: result.courseId,
+          version: result.version,
+          rerootedFrom: result.rerootedFrom,
+          droppedFiles: result.droppedFiles,
+        });
         // The library and this course's manifest are both now stale: the
         // Dashboard lists what it last saw, and `loadManifest` is cached per
         // course id. Without this, a reader who imports a course and clicks
@@ -188,6 +195,24 @@ export function ImportCourse() {
           <p className="import-ok">
             Đã nhập <strong>{done.courseId}</strong> phiên bản {done.version}.{' '}
             <Link to={`/c/${done.courseId}`}>Mở khóa học</Link>
+          </p>
+        )}
+        {/*
+          What was imported is not always what was handed in, and the reader
+          is the one who has to be able to tell. `course/import.ts` re-roots
+          an archive whose package sits inside a folder — every GitHub
+          zipball, everything Finder's "Compress" produces — and drops
+          whatever was outside that folder. Both halves are said here,
+          because a silent reinterpretation of somebody's file is
+          indistinguishable from a bug the first time it picks wrong: an
+          archive holding a course and a sample of one, imported without a
+          word, gives no way to know which arrived.
+        */}
+        {done?.rerootedFrom && (
+          <p className="import-note">
+            Gói nằm trong thư mục <code>{done.rerootedFrom}/</code> của tệp bạn chọn, nên tuhoc đã lấy thư mục đó làm
+            gốc gói
+            {done.droppedFiles ? ` và bỏ qua ${done.droppedFiles} tệp nằm ngoài nó` : ''}.
           </p>
         )}
       </div>

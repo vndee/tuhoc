@@ -110,7 +110,27 @@ export type ImportSource =
   | { kind: 'gitUrl'; url: string };
 
 export type ImportResult =
-  | { ok: true; courseId: string; version: string }
+  | {
+      ok: true;
+      courseId: string;
+      version: string;
+      /**
+       * The directory inside the archive the package was actually found in,
+       * when that was not the archive root — see {@link rootPackage}.
+       *
+       * Present so the transformation can be SAID OUT LOUD. Re-rooting is
+       * this module reinterpreting what the reader handed it, and a silent
+       * reinterpretation is the kind of helpfulness that is indistinguishable
+       * from a bug: a reader whose archive holds two courses, or whose real
+       * package sits next to a sample one, has no way to tell which of them
+       * they just installed. `undefined` when the archive was already a
+       * package, because a note that appears every time is a note nobody
+       * reads.
+       */
+      rerootedFrom?: string;
+      /** How many files sat outside that directory and were left behind. */
+      droppedFiles?: number;
+    }
   | { ok: false; findings: readonly Finding[] };
 
 /** What the importer is doing right now, for an honest waiting state. */
@@ -316,41 +336,89 @@ const VIETNAMESE: Readonly<Record<ImportFindingCode | FindingCode, string>> = {
  * Entries outside the chosen root are dropped, and that is the point rather
  * than a side effect: `__MACOSX/` is macOS metadata, it is never named by a
  * manifest, and carrying it into `db.packages` would store junk on a
- * reader's device forever.
+ * reader's device forever. How many were dropped is REPORTED rather than
+ * assumed harmless — see {@link ImportResult}.
+ *
+ * ## Three levels, shallowest wins, and neither hidden nor `__MACOSX`
+ *
+ * The first version looked exactly one level down, which covered a zipball
+ * and Finder and nothing else. Measured in review: a repo that keeps its
+ * course in a subdirectory (`repo-main/khoa/manifest.json` after zipballing)
+ * failed `MANIFEST_MISSING` — "the package has no manifest.json at its root"
+ * — a true sentence about entirely the wrong thing. Each level is one more
+ * level of guessing, so the search stops at three, which is what the real
+ * world actually produces: a zipball prefix, a Finder wrapper, one
+ * subdirectory. Past that, `MANIFEST_MISSING` is the honest answer.
+ *
+ * Searching deeper makes ambiguity cheap in a way one level never did — a
+ * package that ships a sample course underneath itself now has two
+ * candidates — so the SHALLOWEST depth with any candidate is the one that
+ * decides, and only a tie THERE is ambiguous. Anything below the package
+ * root is content, not a rival.
+ *
+ * And two kinds of directory are never candidates, whatever they contain:
+ * dot-prefixed ones, because `fetchGitHubRepo` and `tuhoc pack` both drop
+ * every hidden entry and two doors into the same library must not disagree
+ * about what a package is (`.pkg/manifest.json` imported happily before
+ * this); and `__MACOSX`, because Finder mirrors the package's own tree
+ * inside it, so a package with `manifest.json` at its root arrives with a
+ * `__MACOSX/manifest.json` beside it and was refused as "2 khóa học".
  */
-function rootPackage(files: ReadonlyMap<string, Uint8Array>): { files: Map<string, Uint8Array> } | { error: Finding } {
+
+/** How many directory levels down the search for a package root will go. */
+const MAX_ROOT_DEPTH = 3;
+
+/** Directory names that are never a package root, whatever is inside them. */
+function neverARoot(segment: string): boolean {
+  return segment === '' || segment.startsWith('.') || segment === '__MACOSX';
+}
+
+interface Rooted {
+  files: Map<string, Uint8Array>;
+  rerootedFrom?: string;
+  droppedFiles?: number;
+}
+
+function rootPackage(files: ReadonlyMap<string, Uint8Array>): Rooted | { error: Finding } {
   if (files.has(MANIFEST_PATH)) return { files: new Map(files) };
 
-  const roots = new Set<string>();
+  const suffix = `/${MANIFEST_PATH}`;
+  /** Candidate roots, keyed by how many directory levels deep they are. */
+  const byDepth = new Map<number, Set<string>>();
   for (const name of files.keys()) {
-    const cut = name.lastIndexOf(`/${MANIFEST_PATH}`);
-    if (cut > 0 && cut + MANIFEST_PATH.length + 1 === name.length && !name.slice(0, cut).includes('/')) {
-      roots.add(name.slice(0, cut));
-    }
+    if (!name.endsWith(suffix)) continue;
+    const dir = name.slice(0, name.length - suffix.length);
+    const segments = dir.split('/');
+    if (segments.length > MAX_ROOT_DEPTH || segments.some(neverARoot)) continue;
+    const atDepth = byDepth.get(segments.length) ?? new Set<string>();
+    atDepth.add(dir);
+    byDepth.set(segments.length, atDepth);
   }
 
   // None: leave the archive exactly as it is and let `validatePackage` say
   // `MANIFEST_MISSING`. Inventing a different message here would just be a
   // second, worse copy of a rule that already has one.
-  const [only] = roots;
-  if (only === undefined) return { files: new Map(files) };
+  if (byDepth.size === 0) return { files: new Map(files) };
 
-  if (roots.size > 1) {
+  const roots = [...(byDepth.get(Math.min(...byDepth.keys())) ?? [])].sort();
+  if (roots.length > 1) {
     return {
       error: finding(
         'PACKAGE_ROOT_AMBIGUOUS',
         PACKAGE_ROOT,
-        `tệp này chứa ${roots.size} khóa học (${[...roots].sort().join(', ')}); hãy nhập từng gói một.`,
+        `tệp này chứa ${roots.length} khóa học (${roots.join(', ')}); hãy nhập từng gói một.`,
       ),
     };
   }
 
+  const only = roots[0];
   const prefix = `${only}/`;
   const out = new Map<string, Uint8Array>();
   for (const [name, bytes] of files) {
     if (name.startsWith(prefix)) out.set(name.slice(prefix.length), bytes);
   }
-  return { files: out };
+  const dropped = files.size - out.size;
+  return { files: out, rerootedFrom: only, droppedFiles: dropped > 0 ? dropped : undefined };
 }
 
 /* ------------------------------------------------------------------ *
@@ -776,7 +844,13 @@ async function runImport(src: ImportSource, options: ImportOptions): Promise<Imp
     return fail('WRITE_FAILED', PACKAGE_ROOT, `(${describeThrown(cause)})`);
   }
 
-  return { ok: true, courseId: manifest.id, version: manifest.version };
+  return {
+    ok: true,
+    courseId: manifest.id,
+    version: manifest.version,
+    rerootedFrom: rooted.rerootedFrom,
+    droppedFiles: rooted.droppedFiles,
+  };
 }
 
 /** Everything up to and including "we now hold the package's files". */

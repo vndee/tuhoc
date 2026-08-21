@@ -248,6 +248,123 @@ describe('gói do công cụ khác đóng', () => {
     expect(Object.keys(row!.files).sort()).toEqual(['chapters/c1.html', 'manifest.json']);
   });
 
+  it('NÓI RA rằng gói nằm trong một thư mục con, và bao nhiêu tệp bị bỏ lại', async () => {
+    // Ruling: re-rooting stays at the import layer "nhưng phải HIỆN RA cho
+    // người dùng… không được im lặng". Measured in review on a real browser
+    // with a real Finder-Compress archive: the whole page said "Đã nhập
+    // bat-bien-vong-lap phiên bản 1.0.0" and not one word about the folder it
+    // had been unwrapped from or the four files it had thrown away —
+    // `ImportResult` had nowhere to put either.
+    const nested = new Map<string, Uint8Array>();
+    for (const [name, bytes] of packageFiles()) nested.set(`${COURSE_ID}/${name}`, bytes);
+    nested.set('__MACOSX/bat-bien-vong-lap/._manifest.json', new Uint8Array([0x00, 0x05, 0x16, 0x07]));
+    nested.set('__MACOSX/bat-bien-vong-lap/._c1.html', new Uint8Array([0x00, 0x05, 0x16, 0x07]));
+
+    const r = await importCourse({ kind: 'file', file: zipFile(packZip(nested)) });
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rerootedFrom).toBe(COURSE_ID);
+    expect(r.droppedFiles).toBe(2);
+  });
+
+  it('không nói gì khi KHÔNG có gì để nói — gói đã ở gốc kho', async () => {
+    // The complement. A note that appears on every import is a note nobody
+    // reads, and "we moved your package" is a lie when nothing was moved.
+    const r = await importCourse({ kind: 'file', file: zipFile(validZip()) });
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rerootedFrom).toBeUndefined();
+    expect(r.droppedFiles).toBeUndefined();
+  });
+
+  it('tìm được gói LỒNG HAI TẦNG (repo giữ khoá học trong thư mục con, rồi tải zipball)', async () => {
+    // `repo-main/khoa/manifest.json`. Measured in review as `MANIFEST_MISSING`
+    // — "Gói thiếu manifest.json ở thư mục gốc" — which is a true sentence
+    // about entirely the wrong thing: the package HAS a manifest, two levels
+    // down. A repo that keeps its course in a subdirectory and gets zipballed
+    // is exactly this shape.
+    const nested = new Map<string, Uint8Array>();
+    for (const [name, bytes] of packageFiles()) nested.set(`repo-main/khoa/${name}`, bytes);
+
+    const r = await importCourse({ kind: 'file', file: zipFile(packZip(nested)) });
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rerootedFrom).toBe('repo-main/khoa');
+  });
+
+  it('dừng tìm ở một độ sâu có lý do, thay vì lục cả kho', async () => {
+    // Four levels. The bound is not squeamishness: each level of the search
+    // is a level of "this archive is not shaped like a package and we are
+    // guessing", and the deeper it goes the more likely the thing it finds is
+    // a sample, a fixture, or a vendored copy rather than the course. Three
+    // is what the real world produces — a zipball prefix, plus a Finder
+    // wrapper, plus one subdirectory — so four is where guessing stops and
+    // `MANIFEST_MISSING` gets to say what it means.
+    const deep = new Map<string, Uint8Array>();
+    for (const [name, bytes] of packageFiles()) deep.set(`a/b/c/d/${name}`, bytes);
+
+    const r = await importCourse({ kind: 'file', file: zipFile(packZip(deep)) });
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.findings.map((f) => f.code)).toContain('MANIFEST_MISSING');
+  });
+
+  it('gốc NÔNG NHẤT thắng — một gói mang theo khoá học mẫu vẫn nhập được', async () => {
+    // `repo-main/manifest.json` plus `repo-main/vi-du/manifest.json`. Both
+    // are candidates once the search goes deeper than one level, and calling
+    // that ambiguous would break a perfectly ordinary layout. The shallower
+    // one is the package; anything below it is content.
+    const withSample = new Map<string, Uint8Array>();
+    for (const [name, bytes] of packageFiles()) {
+      withSample.set(`repo-main/${name}`, bytes);
+      withSample.set(`repo-main/vi-du/${name}`, bytes);
+    }
+
+    const r = await importCourse({ kind: 'file', file: zipFile(packZip(withSample)) });
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rerootedFrom).toBe('repo-main');
+  });
+
+  it('KHÔNG nhận một thư mục ẩn làm gốc gói — đường zip và đường git phải cùng một luật', async () => {
+    // `.pkg/manifest.json` imported successfully before this: the repo path
+    // filters every dot-prefixed segment (`isHidden`, same rule as
+    // `tuhoc pack`) and the archive path did not, so the two doors disagreed
+    // about what a package even is. A course does not live in a hidden
+    // directory; `.git/`, `.github/` and `.vscode/` do.
+    const hidden = new Map<string, Uint8Array>();
+    for (const [name, bytes] of packageFiles()) hidden.set(`.pkg/${name}`, bytes);
+
+    const r = await importCourse({ kind: 'file', file: zipFile(packZip(hidden)) });
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.findings.map((f) => f.code)).toContain('MANIFEST_MISSING');
+    expect(await db.packages.count()).toBe(0);
+  });
+
+  it('`__MACOSX/manifest.json` không biến một gói hợp lệ thành gói nhập nhằng', async () => {
+    // Finder parks AppleDouble sidecars under `__MACOSX/`, mirroring the
+    // package's own tree — so a package whose root holds `manifest.json` gets
+    // a `__MACOSX/manifest.json` beside it. That is metadata, never a course,
+    // and counting it as a second candidate turned a valid archive into
+    // `PACKAGE_ROOT_AMBIGUOUS ("2 khóa học (__MACOSX, khoa)")`.
+    const finder = new Map<string, Uint8Array>();
+    for (const [name, bytes] of packageFiles()) finder.set(`khoa/${name}`, bytes);
+    finder.set('__MACOSX/manifest.json', new Uint8Array([0x00, 0x05, 0x16, 0x07]));
+
+    const r = await importCourse({ kind: 'file', file: zipFile(packZip(finder)) });
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rerootedFrom).toBe('khoa');
+  });
+
   it('từ chối — chứ không đoán — khi HAI thư mục đều có manifest.json', async () => {
     const two = new Map<string, Uint8Array>();
     for (const [name, bytes] of packageFiles()) {

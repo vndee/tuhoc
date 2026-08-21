@@ -111,6 +111,28 @@ it('nhập một gói từ tệp và mời người dùng mở khóa học ngay'
   expect(await db.packages.count()).toBe(1);
 });
 
+it('NÓI RA trên màn hình rằng gói nằm trong một thư mục con, và bao nhiêu tệp bị bỏ lại', async () => {
+  // Ruling: re-rooting may stay at the import layer "nhưng phải HIỆN RA cho
+  // người dùng… không được im lặng". Measured in review on a real browser
+  // with a real `ditto --keepParent` archive: scanning the WHOLE of
+  // `document.body.innerText` for the folder name found nothing — the page
+  // said only "Đã nhập bat-bien-vong-lap phiên bản 1.0.0".
+  const user = userEvent.setup();
+  renderPage();
+
+  const nested = new Map<string, Uint8Array>([
+    [`${COURSE_ID}/manifest.json`, encode(JSON.stringify(manifest(), null, 2))],
+    [`${COURSE_ID}/chapters/c1.html`, encode('<h1 class="ch-title">Chương một</h1>')],
+    ['__MACOSX/bat-bien-vong-lap/._manifest.json', new Uint8Array([0x00, 0x05, 0x16, 0x07])],
+  ]);
+  await user.upload(fileInput(), zipFile(packZip(nested)));
+
+  await screen.findByRole('link', { name: /mở khóa học/i });
+  const note = screen.getByText(/gói nằm trong thư mục/i);
+  expect(note.textContent).toContain(COURSE_ID);
+  expect(note.textContent).toMatch(/1 tệp/);
+});
+
 it('nói ra bằng tiếng Việt vì sao gói bị từ chối — không phải mã lỗi', async () => {
   const user = userEvent.setup();
   renderPage();
