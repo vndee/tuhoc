@@ -209,4 +209,19 @@ describe('describeAuthError', () => {
     expect(describeAuthError(new TypeError('Failed to fetch'))).toMatch(/kết nối|lỗi/i);
     expect(describeAuthError('boom')).toMatch(/kết nối|lỗi/i);
   });
+
+  it('the transport-failure message names BOTH causes — not just "check your network" (ruling S1-F25)', () => {
+    // `serverAnswered` documents that offline, DNS failure, a refused
+    // connection and a CORS refusal all arrive as the same bare `TypeError`,
+    // with the browser deliberately refusing to say which. This string is
+    // what a visitor sees when that happens on a COLD load, before anything
+    // else on the page exists — so if it names only the network, a
+    // misconfigured deploy tells every visitor their wifi is bad and neither
+    // they nor the operator ever learns otherwise. That is the invisible
+    // failure S1-F25 is about; the fix is one clause, and this is what keeps
+    // it from being tidied away.
+    const msg = describeAuthError(new TypeError('Failed to fetch'));
+    expect(msg).toMatch(/ngoại tuyến|mạng/i);
+    expect(msg).toMatch(/cấu hình|CORS/i);
+  });
 });

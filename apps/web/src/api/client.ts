@@ -202,5 +202,14 @@ export function describeAuthError(error: unknown): string {
           : 'Đã xảy ra lỗi không xác định. Vui lòng thử lại.';
     }
   }
-  return 'Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối mạng.';
+  // No response ever arrived (see `serverAnswered`). The old wording here was
+  // "Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối mạng." — one
+  // cause, stated as fact, and it was the WRONG one often enough to matter:
+  // ruling S1-F25 records that a CORS refusal in production is byte-for-byte
+  // this same bare `TypeError`, so a misconfigured deploy told every visitor
+  // their wifi was bad and nobody — reader or operator — ever saw the real
+  // fault. Naming both possibilities costs one clause and is the only honest
+  // thing this function can say, because the browser genuinely does not tell
+  // the page which one it was.
+  return 'Không thể kết nối tới máy chủ. Có thể bạn đang ngoại tuyến, hoặc máy chủ đang bị cấu hình sai (CORS/DNS).';
 }
