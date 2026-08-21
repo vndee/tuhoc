@@ -151,6 +151,16 @@ func (h *Handler) Post(c *fiber.Ctx) error {
 			"error":  "package contents exceed the size ceiling once expanded",
 			"detail": err.Error(),
 		})
+	case errors.Is(err, ErrQuotaExceeded):
+		// 507, not 413. Both mean "this will not be stored", but they are
+		// different problems with different fixes: 413 says shrink this
+		// package, 507 says the library is full. err.Error() names the
+		// numbers, and they are the caller's own — how much of their own
+		// library they have used.
+		return c.Status(fiber.StatusInsufficientStorage).JSON(fiber.Map{
+			"error":  "the library is full",
+			"detail": err.Error(),
+		})
 	case errors.Is(err, ErrInvalidPackage):
 		// The reason is written by usecase.go from fixed phrases (see
 		// InvalidPackageError), never by a driver, so it is safe to

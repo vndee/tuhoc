@@ -1455,6 +1455,13 @@ func (s stubRepo) ListVersions(context.Context, uuid.UUID, string) ([]string, er
 	return []string{}, nil
 }
 
+// UsedBytesExcluding reports an empty library, so the quota never fires in
+// the classification cases this stub exists for: they are about what Put's
+// error becomes, and a package refused before Put would never reach one.
+func (s stubRepo) UsedBytesExcluding(context.Context, uuid.UUID, string, string) (int64, error) {
+	return 0, nil
+}
+
 // TestCourseHTTPContracts holds every HTTP case the five named tests
 // above do not reach, under a single shared container.
 func TestCourseHTTPContracts(t *testing.T) {
@@ -1658,6 +1665,77 @@ func TestCourseHTTPContracts(t *testing.T) {
 		}
 		if string(body) != legalBody {
 			t.Errorf("GET %q: want %q got %q", legal, legalBody, body)
+		}
+	})
+
+	// A review named the shape of this: course_id and version come from a
+	// client-supplied manifest, ON CONFLICT DO UPDATE only stops an exact
+	// key repeat, and nothing anywhere summed a user's bytes — so one
+	// authenticated account could mint unbounded (id, version) pairs, each
+	// one a blob row of up to 20 MiB. Task 5 added CHECK (bytes >= 0)
+	// precisely so such a SUM could be trusted; this is the code that
+	// finally takes it.
+	//
+	// The library is filled by writing rows straight to SQL with a large
+	// `bytes` and a token blob, rather than by uploading MaxOwnerBytes of
+	// real packages: the quantity under test is the SUM, and a test that
+	// moved hundreds of megabytes to assert one comparison would be
+	// measuring the fixture.
+	t.Run("a library that is already full refuses another package", func(t *testing.T) {
+		app := newTestApp(pool)
+		cookie, ownerID := registerUser(t, app, "quota")
+
+		fill := func(courseID, version string, size int64) {
+			t.Helper()
+			if _, err := pool.Exec(ctx,
+				`INSERT INTO course_packages (owner_id,course_id,version,tier,lang,title,manifest,blob,bytes)
+				 VALUES ($1,$2,$3,'content','vi','filler','{}','\x504b0304'::bytea,$4)`,
+				ownerID, courseID, version, size); err != nil {
+				t.Fatalf("fill %s@%s: %v", courseID, version, err)
+			}
+		}
+
+		// One byte of headroom: everything but the very smallest package
+		// is now refused.
+		fill("c-filler", "1.0.0", course.MaxOwnerBytes-1)
+
+		before := countRowsFor(t, pool, ownerID)
+		resp, raw := postPackage(t, app, cookie, "/courses", validPackage(t, "c-overquota", "1.0.0"), nil)
+		if resp.StatusCode != fiber.StatusInsufficientStorage {
+			t.Fatalf("import into a full library: want 507 got %d body=%s", resp.StatusCode, raw)
+		}
+		if after := countRowsFor(t, pool, ownerID); after != before {
+			t.Errorf("a refused import moved the row count from %d to %d", before, after)
+		}
+
+		// 507, not 413: "your library is full, remove something" and "this
+		// package is too big, shrink it" are different problems with
+		// different fixes, and a client that could not tell them apart
+		// would give the wrong advice. The ceiling case still answers 413
+		// — TestPostRejectsPackageOverLimit pins that.
+		if resp.StatusCode == http.StatusRequestEntityTooLarge {
+			t.Errorf("a full library and an oversized package must not share a status code")
+		}
+
+		// Re-importing a version the owner ALREADY holds is a replacement,
+		// not an addition: the row it overwrites must not be counted
+		// against the incoming package, or an owner near the ceiling could
+		// never fix a typo in a course they already have — and there is no
+		// delete endpoint to get them unstuck.
+		reResp, reRaw := postPackage(t, app, cookie, "/courses", validPackage(t, "c-filler", "1.0.0"), nil)
+		if reResp.StatusCode != http.StatusCreated {
+			t.Fatalf("re-importing a version already held: want 201 got %d body=%s", reResp.StatusCode, reRaw)
+		}
+
+		// Anti-vacuity: with the library emptied, an ordinary import is
+		// accepted again — the 507s above were the quota, not a handler
+		// that had started refusing everything.
+		if _, err := pool.Exec(ctx, `DELETE FROM course_packages WHERE owner_id = $1`, ownerID); err != nil {
+			t.Fatalf("empty the library: %v", err)
+		}
+		okResp, okRaw := postPackage(t, app, cookie, "/courses", validPackage(t, "c-underquota", "1.0.0"), nil)
+		if okResp.StatusCode != http.StatusCreated {
+			t.Fatalf("import into an empty library: want 201 got %d body=%s", okResp.StatusCode, okRaw)
 		}
 	})
 

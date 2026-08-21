@@ -143,6 +143,10 @@ type Repo interface {
 	// ListVersions returns ownerID's versions of courseID, oldest first
 	// by semver precedence.
 	ListVersions(ctx context.Context, ownerID uuid.UUID, courseID string) ([]string, error)
+	// UsedBytesExcluding returns the total uncompressed bytes ownerID
+	// holds, NOT counting (courseID, version) — the row a Put of that
+	// package would replace rather than add.
+	UsedBytesExcluding(ctx context.Context, ownerID uuid.UUID, courseID, version string) (int64, error)
 }
 
 // PostgresRepo is the Postgres-backed Repo. Like internal/sync's
@@ -205,6 +209,35 @@ func (r *PostgresRepo) Put(ctx context.Context, ownerID uuid.UUID, p Package) er
 			ownerID, p.CourseID, p.Version, err)
 	}
 	return nil
+}
+
+// UsedBytesExcluding sums the uncompressed sizes of everything ownerID
+// holds except (courseID, version).
+//
+// The exclusion is what makes it usable as a quota input. Put is an
+// upsert, so re-importing a version the owner already has REPLACES a row
+// rather than adding one; counting the row about to be overwritten would
+// charge an owner twice for a package they hold once, and an owner near
+// the ceiling could then never re-import anything (there is no delete
+// endpoint to get them unstuck). Pass "" for both to get the plain total —
+// no row has an empty course_id.
+//
+// This method carries no policy of its own: it answers "how much" and the
+// caller owns "how much is too much" (see usecase.go's MaxOwnerBytes),
+// keeping this file free of business rules the way the rest of it is.
+//
+// COALESCE because SUM over no rows is NULL, not 0 — a brand-new owner
+// would otherwise fail the Scan rather than report an empty library.
+func (r *PostgresRepo) UsedBytesExcluding(ctx context.Context, ownerID uuid.UUID, courseID, version string) (int64, error) {
+	var total int64
+	err := r.pool.QueryRow(ctx,
+		`SELECT COALESCE(SUM(bytes), 0) FROM course_packages
+		 WHERE owner_id = $1 AND NOT (course_id = $2 AND version = $3)`,
+		ownerID, courseID, version).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("course: used bytes for owner %s: %w", ownerID, err)
+	}
+	return total, nil
 }
 
 // Get returns the single package identified by (ownerID, courseID,

@@ -88,6 +88,32 @@ const MaxUncompressedBytes int64 = 20 * 1024 * 1024
 // framing around it, not for extra content.
 const MaxUploadBytes int64 = MaxUncompressedBytes + (1 << 20)
 
+// MaxOwnerBytes is how much one user's library may hold in total,
+// measured in the same uncompressed bytes as MaxUncompressedBytes and
+// stored in course_packages.bytes.
+//
+// It is the answer to a hole a review named: course_id and version come
+// from a manifest the CLIENT supplies, and ON CONFLICT DO UPDATE only
+// stops an exact key repeat, so one authenticated account could mint
+// unbounded (id, version) pairs and each one is a blob row of up to
+// 20 MiB. Nothing summed those rows anywhere. Task 5's
+// CHECK (bytes >= 0) was added precisely so this sum could be trusted —
+// a negative row would silently buy an attacker room — and this is the
+// first code to take it.
+//
+// A total, rather than a count of packages: the resource at risk is disk,
+// and ten 20 MiB packages and two hundred 1 MiB ones are the same problem
+// to a database and very different problems to a count. 200 MiB is ten
+// full-size packages, or a few dozen ordinary ones; a self-study library
+// that outgrows it is a product decision to revisit here, in one place.
+//
+// It is deliberately NOT a rate limit. A request budget does not close
+// this hole — an attacker who uploads ten packages a minute fills the
+// same disk, only slower — which is why the two defenses are separate:
+// this bounds storage, and internal/server's per-session upload limiter
+// bounds the work an upload costs whether or not it is ever stored.
+const MaxOwnerBytes int64 = 200 * 1024 * 1024
+
 // manifestPath is where a manifest must live: the package ROOT. A
 // manifest one directory down is a package that was zipped from one level
 // too high, and is rejected rather than searched for — see
@@ -101,6 +127,14 @@ const manifestPath = "manifest.json"
 // different advice: a too-large package is well-formed and needs its
 // images shrinking, not its JSON fixing.
 var ErrTooLarge = errors.New("course: package exceeds the uncompressed size ceiling")
+
+// ErrQuotaExceeded means the owner's library has no room left for this
+// package. It is separate from ErrTooLarge for the same reason ErrTooLarge
+// is separate from ErrInvalidPackage: a different status (507 vs 413) and,
+// more usefully, a different fix — "remove a course you no longer read"
+// rather than "shrink this one's images". A client that could not tell
+// the two apart would give the wrong advice.
+var ErrQuotaExceeded = errors.New("course: the owner's library is full")
 
 // ErrInvalidPackage is the sentinel behind every structural rejection.
 // Match it with errors.Is; to show the caller WHICH rule failed, pull out
@@ -186,6 +220,28 @@ func (uc *Usecase) Import(ctx context.Context, ownerID uuid.UUID, zipBytes []byt
 	p, err := validatePackage(zipBytes)
 	if err != nil {
 		return "", "", err
+	}
+
+	// The quota is checked here, after validation and before the write:
+	// after, because the size that counts is the one the expansion just
+	// measured (and because (courseID, version) — the row this import may
+	// REPLACE — is not known until the manifest is read); before, because
+	// a package that will not fit must not reach storage at all.
+	//
+	// Not one transaction with the write, deliberately: making it atomic
+	// means either an explicit lock on the owner's rows or pushing the
+	// policy number into SQL, and the race it would close is small and
+	// bounded — N imports landing at once can overshoot by at most N ×
+	// MaxUncompressedBytes, and internal/server's per-session upload
+	// limiter bounds N. The hole this closes is unbounded growth, not a
+	// 20 MiB overshoot.
+	used, err := uc.repo.UsedBytesExcluding(ctx, ownerID, p.courseID, p.version)
+	if err != nil {
+		return "", "", err
+	}
+	if used+p.uncompressed > MaxOwnerBytes {
+		return "", "", fmt.Errorf("%w: it holds %d of %d bytes and this package adds %d",
+			ErrQuotaExceeded, used, MaxOwnerBytes, p.uncompressed)
 	}
 
 	stored := Package{

@@ -3,6 +3,7 @@ package sync
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -25,6 +26,45 @@ import (
 // it carries no correctness meaning (an equivalent-instant, differently-
 // zoned string would compare identically wherever it matters).
 const timeLayout = time.RFC3339Nano
+
+// MaxPushBytes is the ceiling on POST /sync's request body, applied as a
+// route-scoped middleware in internal/server rather than as fiber's
+// app-wide BodyLimit.
+//
+// It restores what this endpoint always had. fiber's default BodyLimit is
+// 4 MiB and /sync inherited it, until POST /courses needed a 21 MiB
+// ceiling for course packages — and fiber v2's BodyLimit is an APP
+// setting, so raising it for one route raised it for every route. A
+// review measured the consequence for this one: the number of progress
+// items a single request could carry went from ~39 303 to ~204 919, a
+// 5.21× widening of an endpoint that had nothing to do with the change.
+//
+// 4 MiB is not a number this handler needs; it is the number it had. The
+// bound that matters for the work this handler does is MaxItemsPerPush.
+const MaxPushBytes int64 = 4 << 20
+
+// MaxItemsPerPush is the ceiling on progress + annotations in ONE request.
+//
+// A byte limit cannot stand in for it. An item can be shrunk far below
+// its realistic size (an object carrying nothing but a parseable
+// updatedAt is under 40 bytes), so the number of items a body can hold is
+// not a function of the body's size — a review's own arithmetic put
+// ~39 303 realistic items in 4 MiB, and the floor is several times that.
+// Each item is one tx.Exec inside a SINGLE transaction (see
+// Repo.PushBatch), holding one of the pool's 4–8 connections for the
+// duration, while every other route needs that pool just to validate a
+// session cookie. This is the bound on that, and the byte limit above is
+// the bound on the ~20× RAM amplification BodyParser costs.
+//
+// The number is chosen against the client, not against an attacker: the
+// web client (apps/web/src/sync/engine.ts) sends its WHOLE outbox in one
+// request with no chunking, so a cap it can exceed strands a long-offline
+// device permanently — it would 413 forever and never drain. 10 000
+// items is over 80 hours of continuous active reading at one heartbeat
+// per 30 s, far beyond any realistic offline window. Lowering it is a
+// client change first (chunked flushes), a server change second; that
+// pairing is recorded in docs/carried-forward.md.
+const MaxItemsPerPush = 10000
 
 // Handler holds the HTTP-layer concerns for sync: parsing requests,
 // shaping responses, and status codes. It owns no SQL (that's repo.go) and
@@ -144,6 +184,17 @@ func (h *Handler) Push(c *fiber.Ctx) error {
 	var req pushRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	// Before the per-item loop below, so an over-cap batch is never parsed
+	// into rows, and before Usecase.Push, so it never opens a transaction.
+	// The two arrays are counted together because they are written in ONE
+	// transaction: what is being bounded is that transaction, not either
+	// array on its own.
+	if n := len(req.Progress) + len(req.Annotations); n > MaxItemsPerPush {
+		return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{
+			"error": fmt.Sprintf("a push carries at most %d items; this one has %d — send it in smaller batches", MaxItemsPerPush, n),
+		})
 	}
 
 	progressRows := make([]ProgressRow, len(req.Progress))
