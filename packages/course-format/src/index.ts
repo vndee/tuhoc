@@ -18,3 +18,6 @@ export {
   validatePackage,
 } from './validate';
 export type { Finding, FindingCode, ValidationResult } from './validate';
+
+export { UnsafeArchiveError, packZip, unpackZip } from './zip';
+export type { UnsafeArchiveCode } from './zip';

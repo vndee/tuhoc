@@ -241,8 +241,12 @@ function finding(code: FindingCode, path: string, detail: string): Finding {
  * Misses: percent-encoded traversal (`%2e%2e/`) and Unicode look-alikes. Those
  * are decoded by whoever decodes them, not by this module — a consumer must
  * never URL-decode an entry name before extraction.
+ *
+ * Exported because `zip.ts` asks the same question of a zip entry name before
+ * it inflates it, and two implementations of "does this path leave the package"
+ * is one answer too many — the whole reason this file is the single copy.
  */
-function escapesPackage(path: string): boolean {
+export function escapesPackage(path: string): boolean {
   if (path.length === 0) return true;
   if (path.includes('\\')) return true;
   if (path.startsWith('/')) return true;
