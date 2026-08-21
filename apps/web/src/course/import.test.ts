@@ -1,5 +1,7 @@
+/// <reference types="node" />
 import { packZip, FINDING_CODES } from '@tuhoc/course-format';
 import { http, HttpResponse } from 'msw';
+import { readFileSync } from 'node:fs';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../db/local';
@@ -379,18 +381,79 @@ describe('gói do công cụ khác đóng', () => {
     expect(describeFinding(r.findings[0])).toMatch(/khoa-a|khoa-b|hai|nhiều/i);
   });
 
-  it('giải thích được kho zip64 bị từ chối, thay vì nói "archive index is not readable"', async () => {
-    // `zip -fz` (Info-ZIP, forced zip64) writes a zip64 end-of-central-
-    // directory record and a zip64 locator between the index and the footer,
-    // and sets the footer's index offset to the 0xFFFFFFFF sentinel.
-    // `unpackZip` refuses that archive — deliberately; it is the security
-    // gate of Task 2 and is not being loosened here. What IS this module's
-    // business is that the reader gets a sentence they can act on.
-    const r = await importCourse({ kind: 'file', file: zipFile(withZip64Tail(validZip())) });
+  it('kho `zip -r -fz` THẬT nhập được — đo lại tại HEAD, không phải nhớ lại từ nhánh cũ', async () => {
+    // `apps/web/fixtures/zip64-forced-package.zip`, sinh bằng:
+    //   cd fixtures/courses/bat-bien-vong-lap
+    //   zip -r -fz -X ../../../apps/web/fixtures/zip64-forced-package.zip . -x '.*'
+    //
+    // Task 8 measured this archive as REFUSED and wrote a `ZIP64_UNSUPPORTED`
+    // message around that measurement. The measurement was honest and is now
+    // wrong: `0273c88` (Task 2's zip64 fix) is NOT an ancestor of the commit
+    // Task 8 was built on — the two met at the merge — so at HEAD
+    // `centralDirectoryNames` reads the zip64 record and this archive opens.
+    // A test that keeps saying otherwise is a test pinning a fiction.
+    const zip = fixture('zip64-forced-package.zip');
+    // The fixture has to actually BE the shape being claimed, or this passes
+    // for the wrong reason: the footer's index offset is the 0xFFFFFFFF
+    // sentinel, i.e. "the real offset is in the zip64 record".
+    const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+    expect(view.getUint32(zip.length - 22 + 16, true)).toBe(0xffffffff);
+
+    const r = await importCourse({ kind: 'file', file: zipFile(zip) });
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.courseId).toBe(COURSE_ID);
+  });
+
+  it('kho zip64 tuhoc THẬT SỰ chưa đọc được vẫn được giải thích bằng chữ "zip64"', async () => {
+    // Which archives are those, now that `zip -fz` opens? The ones whose
+    // zip64 record says something `unpackZip` refuses to guess at: over
+    // 65,535 entries (the entry count becomes the 0xFFFF sentinel), an index
+    // starting past 4 GiB, or a v2 record with an extensible data sector.
+    //
+    // This is the first of those, and every byte except two comes from the
+    // real Info-ZIP archive above — patching the count is how an archive with
+    // 65,536 entries looks at the exact place the decision is made, without
+    // committing an archive with 65,536 entries.
+    const zip = fixture('zip64-forced-package.zip');
+    new DataView(zip.buffer, zip.byteOffset, zip.byteLength).setUint16(zip.length - 22 + 10, 0xffff, true);
+
+    const r = await importCourse({ kind: 'file', file: zipFile(zip) });
+
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings.map((f) => f.code)).toContain('ZIP64_UNSUPPORTED');
     expect(r.findings[0].detail).toMatch(/zip64/i);
+    // And it must NOT still be telling people to stop using `-fz`: that was
+    // true when it was written and is now advice about the wrong thing.
+    expect(r.findings[0].detail).not.toMatch(/-fz|force-zip64/);
+    expect(await db.packages.count()).toBe(0);
+  });
+
+  it('kho chứa TỆP NÉN LỒNG NHAU: nói đúng chuyện, và không trích một đường dẫn KHÔNG CÓ trong gói', async () => {
+    // `apps/web/fixtures/nested-archive.zip` — see `nested-archive.py` next to
+    // it for exactly how it is written and why both of its properties are
+    // ordinary. It passes `unzip -t` and `python -m zipfile --test`.
+    //
+    // Ruling S1-F26 kept the byte-counting fence but required the message to
+    // say "gói chứa tệp nén lồng nhau" rather than a bare MALFORMED. What was
+    // measured in review instead was WORSE than a bare code, twice over: the
+    // sentence said the file "is not a readable .zip", which is false and
+    // sends the reader off to re-download it forever; and it quoted
+    // `[Content_Types].xml`, a path that exists only INSIDE their Word
+    // document and nowhere in their package, so they go hunting for a file
+    // that is not there.
+    const r = await importCourse({ kind: 'file', file: zipFile(fixture('nested-archive.zip')) });
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.findings.map((f) => f.code)).toContain('ARCHIVE_INDEX_MISMATCH');
+
+    const shown = describeFinding(r.findings[0]);
+    expect(shown).toMatch(/tệp nén lồng nhau/i);
+    expect(shown).not.toMatch(/không phải là một tệp \.zip/i);
+    expect(shown).not.toContain('[Content_Types].xml');
     expect(await db.packages.count()).toBe(0);
   });
 
@@ -773,37 +836,22 @@ function cutOffBody(): ReadableStream<Uint8Array> {
 }
 
 /* ------------------------------------------------------------------ *
- * Helpers that build byte layouts measured from real archives
+ * Real bytes from real tools
  * ------------------------------------------------------------------ */
 
 /**
- * Re-writes a zip the way Info-ZIP's `zip -fz` does: a zip64
- * end-of-central-directory record (`PK\x06\x06`, 56 bytes) and a zip64
- * locator (`PK\x06\x07`, 20 bytes) are spliced in between the index and the
- * footer, and the footer's "offset of central directory" field is replaced
- * by the 0xFFFFFFFF sentinel that says "read it from the zip64 record".
+ * An archive written by a tool that is not this repo's CLI, read from
+ * `apps/web/fixtures/`.
  *
- * Copied from a hexdump of a REAL `zip -r -fz` archive of
- * `fixtures/courses/bat-bien-vong-lap` — see task-8-report.md. Only the
- * shape matters to the reader under test (it stops at the sentinel offset),
- * so the two records' bodies are zero-filled rather than filled in.
+ * vitest runs with cwd = `apps/web` (its config lives there), the same
+ * arrangement `packages/course-format`'s own `fixture()` relies on. The
+ * command or program that produced each file is written at the case that
+ * uses it, because a hand-built imitation only ever proves that the
+ * imitation is readable — which is exactly how this file previously came to
+ * pin a zip64 archive shape that no tool on earth emits.
+ *
+ * A fresh copy per call: two of these cases patch the bytes they are given.
  */
-function withZip64Tail(zip: Uint8Array): Uint8Array {
-  const EOCD_SIZE = 22;
-  const eocd = zip.length - EOCD_SIZE;
-  const out = new Uint8Array(zip.length + 56 + 20);
-  out.set(zip.subarray(0, eocd), 0);
-
-  const view = new DataView(out.buffer);
-  // zip64 end of central directory record
-  view.setUint32(eocd, 0x06064b50, true);
-  view.setUint32(eocd + 4, 44, true); // size of the remainder of this record
-  // zip64 end of central directory locator
-  view.setUint32(eocd + 56, 0x07064b50, true);
-  view.setUint32(eocd + 56 + 8, eocd, true); // relative offset of the zip64 EOCD record
-
-  // The original footer, with its index offset replaced by the sentinel.
-  out.set(zip.subarray(eocd), eocd + 56 + 20);
-  view.setUint32(eocd + 56 + 20 + 16, 0xffffffff, true);
-  return out;
+function fixture(name: string): Uint8Array {
+  return new Uint8Array(readFileSync(`fixtures/${name}`));
 }

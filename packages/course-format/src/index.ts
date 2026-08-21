@@ -19,5 +19,5 @@ export {
 } from './validate';
 export type { Finding, FindingCode, ValidationResult } from './validate';
 
-export { UnsafeArchiveError, packZip, unpackZip } from './zip';
+export { LOCAL_NAME_NOT_INDEXED, UnsafeArchiveError, packZip, unpackZip } from './zip';
 export type { UnsafeArchiveCode } from './zip';

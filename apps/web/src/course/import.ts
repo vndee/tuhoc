@@ -80,6 +80,7 @@
  */
 
 import {
+  LOCAL_NAME_NOT_INDEXED,
   MANIFEST_PATH,
   MAX_UNCOMPRESSED_BYTES,
   UnsafeArchiveError,
@@ -165,6 +166,7 @@ export const IMPORT_FINDING_CODES = [
   'HTTP_ERROR',
   'NOT_A_ZIP',
   'ZIP64_UNSUPPORTED',
+  'ARCHIVE_INDEX_MISMATCH',
   'DUPLICATE_ENTRY',
   'PACKAGE_ROOT_AMBIGUOUS',
   'UNPACKABLE_ENTRY',
@@ -245,6 +247,7 @@ const CARRIES_ITS_OWN_DETAIL = new Set<string>([
   'FILE_READ_FAILED',
   'HTTP_ERROR',
   'ZIP64_UNSUPPORTED',
+  'ARCHIVE_INDEX_MISMATCH',
   'PACKAGE_ROOT_AMBIGUOUS',
   'UNPACKABLE_ENTRY',
   'GIT_HOST_UNSUPPORTED',
@@ -293,7 +296,9 @@ const VIETNAMESE: Readonly<Record<ImportFindingCode | FindingCode, string>> = {
   FILE_READ_FAILED: 'Không đọc được tệp bạn chọn.',
   HTTP_ERROR: 'Máy chủ từ chối yêu cầu.',
   NOT_A_ZIP: 'Tệp này không phải là một tệp .zip đọc được. Hãy chắc rằng bạn chọn đúng gói .zip của khóa học.',
-  ZIP64_UNSUPPORTED: 'Tệp .zip này dùng định dạng zip64, tuhoc chưa đọc được.',
+  ZIP64_UNSUPPORTED: 'Tệp .zip này dùng một phần của định dạng zip64 mà tuhoc chưa đọc được.',
+  ARCHIVE_INDEX_MISMATCH:
+    'Gói này chứa tệp nén lồng nhau (một .zip bên trong — .docx, .xlsx và .pptx đều là .zip), nên mục lục của kho và dòng byte của nó không khớp nhau.',
   DUPLICATE_ENTRY: 'Trong gói có hai tệp trùng tên nhau, nên không biết tệp nào mới là thật.',
   PACKAGE_ROOT_AMBIGUOUS: 'Không rõ khóa học nào trong tệp này là khóa học bạn muốn nhập.',
   UNPACKABLE_ENTRY: 'Repo có mục không đóng gói được.',
@@ -712,12 +717,22 @@ const ZIP64_LOCATOR = [0x50, 0x4b, 0x06, 0x07] as const;
 /**
  * Whether an archive carries a zip64 locator near its end.
  *
- * Only ever used to IMPROVE A MESSAGE. `unpackZip` refuses these archives and
- * that refusal is not being softened here — it is the security gate Task 2
- * measured, and this module reads archives from arbitrary URLs, which is
- * precisely the population it was hardened against. What this buys is that a
- * reader whose `zip -fz` archive is refused reads "this .zip uses zip64"
- * instead of "archive index is not readable".
+ * Only ever used to IMPROVE A MESSAGE, and the message it improves is
+ * narrower than it once was. At the commit Task 8 was built on, `unpackZip`
+ * refused every zip64 archive including the ordinary `zip -fz` one, and this
+ * existed so that reader read "this .zip uses zip64" instead of "archive
+ * index is not readable". **That is no longer the situation.** Task 2's
+ * `0273c88` is not an ancestor of the commit this file was written on; both
+ * are ancestors of HEAD, and at HEAD `centralDirectoryNames` reads the zip64
+ * record. Re-measured against a real `zip -r -fz` archive of this repo's own
+ * fixture course: it IMPORTS (`apps/web/fixtures/zip64-forced-package.zip`,
+ * pinned by `import.test.ts`).
+ *
+ * What still reaches this branch is the zip64 that `unpackZip` refuses to
+ * GUESS at: over 65,535 entries, an index starting past 4 GiB, or a v2
+ * record with an extensible data sector. The advice therefore no longer says
+ * "do not use `-fz`" — that would be a confident sentence about entirely the
+ * wrong cause, which is the failure mode this module keeps having to fix.
  *
  * Scoped to the last 64 KiB + the two zip64 records, because that is the only
  * region the footer can be in (the archive comment is at most 0xFFFF bytes)
@@ -745,12 +760,34 @@ function readArchive(zip: Uint8Array): { files: Map<string, Uint8Array> } | { er
   } catch (cause) {
     if (!(cause instanceof UnsafeArchiveError)) throw cause;
 
+    // A nested archive, said out loud — ruling S1-F26. The fence stays
+    // exactly where it was; only the sentence changes, and it had to: what
+    // the reader was shown was "this is not a readable .zip file" for an
+    // archive `unzip -t`, `python zipfile` and Finder all open happily,
+    // followed by `([Content_Types].xml)` — a path from inside their own
+    // Word document, which is not in their package at all. One false
+    // statement and one wild goose chase. See {@link LOCAL_NAME_NOT_INDEXED}
+    // for why this is the honest reading of that refusal, and note the path:
+    // `PACKAGE_ROOT`, never `cause.entry`, because `cause.entry` is exactly
+    // the name that does not exist in the package.
+    if (cause.code === 'MALFORMED' && cause.detail === LOCAL_NAME_NOT_INDEXED) {
+      return {
+        error: finding(
+          'ARCHIVE_INDEX_MISMATCH',
+          PACKAGE_ROOT,
+          'tuhoc đòi mục lục và dòng byte của kho khớp nhau từng tên — đó là hàng rào chặn kho "hai mặt", loại kho mà ' +
+            'trình quét đọc ra một đằng còn trình giải nén đọc ra một nẻo. Hãy bỏ các tệp nén ra khỏi gói (hoặc nén ' +
+            'chúng lại thành thư mục thường), rồi đóng gói bằng `tuhoc pack`.',
+        ),
+      };
+    }
     if (cause.code === 'MALFORMED' && hasZip64Locator(zip)) {
       return {
         error: finding(
           'ZIP64_UNSUPPORTED',
           PACKAGE_ROOT,
-          'Hãy nén lại bằng công cụ zip thông thường (không dùng tuỳ chọn -fz / force-zip64), hoặc đóng gói bằng `tuhoc pack`.',
+          'Kho zip64 thông thường thì tuhoc đọc được; kho này dùng phần mà tuhoc từ chối đoán — quá 65.535 mục, ' +
+            'mục lục nằm quá mốc 4 GiB, hoặc bản ghi zip64 phiên bản 2. Hãy đóng gói bằng `tuhoc pack`.',
         ),
       };
     }

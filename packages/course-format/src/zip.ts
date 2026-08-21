@@ -121,6 +121,22 @@ export class UnsafeArchiveError extends Error {
   /** The offending entry name, or `'.'` when the archive as a whole is at fault. */
   readonly entry: string;
   /**
+   * Why, in English, for a CLI diff and a CI log — the same audience
+   * {@link code} is written for.
+   *
+   * Exposed as a field, not only baked into `message`, because one consumer
+   * has to tell two `MALFORMED` refusals apart in order to say something
+   * TRUE to a human: {@link LOCAL_NAME_NOT_INDEXED} is a perfectly ordinary
+   * archive whose byte stream and index disagree (a package carrying a
+   * `.docx` written by a streaming zip tool does it), while the others really
+   * are "this is not a readable zip". `apps/web` used to print the latter
+   * sentence for both, and quote an entry name that came from INSIDE the
+   * nested document, so the reader went looking for a file that was not in
+   * their package. Comparing against the exported constant rather than
+   * against a copied string means the two move together.
+   */
+  readonly detail: string;
+  /**
    * How many bytes had been decompressed when this was thrown.
    *
    * Not decoration: on a `TOO_LARGE` this is the evidence that the ceiling was
@@ -135,9 +151,27 @@ export class UnsafeArchiveError extends Error {
     this.name = 'UnsafeArchiveError';
     this.code = code;
     this.entry = entry;
+    this.detail = detail;
     this.bytesRead = bytesRead;
   }
 }
+
+/**
+ * The refusal that means "the archive's two halves disagree", not "this is
+ * not a zip".
+ *
+ * A local header announcing a name the index does not list is how a polyglot
+ * archive makes a scanner and an unpacker see different files — that is why
+ * it is refused. It is ALSO what an entirely honest package looks like when
+ * it carries a nested archive (`.docx`, `.xlsx`, an inner `.zip`) that was
+ * written by a streaming zip tool: the inner archive's own `PK\x03\x04`
+ * headers sit in the byte stream, this reader walks local headers, and it
+ * finds files the index never listed. Both are refused, identically and
+ * deliberately; only the SENTENCE shown to a human differs, which is why
+ * this string is exported instead of being matched by hand. See
+ * `apps/web/src/course/import.ts`.
+ */
+export const LOCAL_NAME_NOT_INDEXED = 'a local header announces a name the archive index does not list';
 
 /**
  * Compressed bytes handed to the reader per push. See the table in the module
@@ -480,7 +514,7 @@ export function unpackZip(zip: Uint8Array): Map<string, Uint8Array> {
     // file which passed the gate and the file everyone else sees are not the
     // same file. Names, not just how many of them, and it costs one Set lookup.
     if (!indexed.has(name)) {
-      fail('MALFORMED', name, 'a local header announces a name the archive index does not list');
+      fail('MALFORMED', name, LOCAL_NAME_NOT_INDEXED);
       return;
     }
 
