@@ -492,6 +492,207 @@ describe('mục lục và local header phải khai cùng những cái tên', () 
 });
 
 // ---------------------------------------------------------------------------
+// Kho do CÔNG CỤ NGOÀI đóng — byte thật, không phải bản dựng lại bằng tay.
+//
+// Mọi fixture dưới đây nằm trong `fixtures/`, do Info-ZIP 3.0 (`/usr/bin/zip`
+// của macOS) sinh ra, và mỗi cái đều QUA `unzip -t`, `python zipfile` và
+// `ditto -x -k`. Lệnh sinh ra chúng ghi ngay tại từng ca — dựng lại được, và
+// một bản dựng lại bằng tay thì không chứng minh được điều đang cần chứng
+// minh: rằng công cụ người ta thật sự dùng viết ra hình dạng này.
+//
+// Vì sao gói này phải đọc được chúng: `unpackZip` không chỉ đọc gói do CLI của
+// repo sinh ra. Task 8 nhập gói từ URL bất kỳ và từ GitHub (zipball), tức đúng
+// loại kho do công cụ ngoài đóng, và mỗi lần từ chối OAN ở đây là một gói hợp
+// lệ mà người dùng không mở được.
+// ---------------------------------------------------------------------------
+
+describe('kho do công cụ ngoài đóng', () => {
+  it('(a) `zip -fz`: EOCD khai cdoff = 0xFFFFFFFF, offset THẬT nằm trong bản ghi zip64', () => {
+    // Sinh bằng:  printf '{"id":"demo"}' > manifest.json && zip -fz q.zip manifest.json
+    //
+    // `-fz` là "dùng zip64 kể cả khi không cần". Info-ZIP khi đó đặt trường
+    // "offset của mục lục" trong EOCD thành sentinel 0xFFFFFFFF và ghi offset
+    // thật vào bản ghi zip64 — nên một trình đọc chỉ nhìn EOCD sẽ nhảy tới
+    // 4 GiB và không thấy gì.
+    const zip = fixture('zip64-forced.zip');
+    expect(u32le(zip, zip.length - 22 + 16), 'fixture phải THẬT SỰ mang sentinel').toBe(0xffffffff);
+    const out = unpackZip(zip);
+    expect([...out.keys()]).toEqual(['manifest.json']);
+    expect(new TextDecoder('utf-8').decode(out.get('manifest.json'))).toBe('{"id":"demo"}');
+  });
+
+  it('(b) `cat tệp | zip out.zip -`: KHÔNG một cờ nào cả — và vẫn là zip64', () => {
+    // Sinh bằng:  printf '{"id":"demo"}' > manifest.json && cat manifest.json | zip q.zip -
+    //
+    // Đây mới là ca đáng lo. Không ai gõ cờ nào; Info-ZIP tự chèn bản ghi zip64
+    // vì đọc từ ống thì nó chưa biết kích thước. Ống một tệp vào `zip` là thao
+    // tác hoàn toàn bình thường, nên "chỉ kho lạ mới có zip64" là sai.
+    //
+    // Và cdoff ở đây KHÔNG phải sentinel: khoảng thừa 76 byte là toàn bộ vấn
+    // đề, tách hẳn khỏi ca (a).
+    const zip = fixture('zip64-stdin.zip');
+    expect(u32le(zip, zip.length - 22 + 16), 'ca này KHÔNG được dựa vào nhánh sentinel').not.toBe(0xffffffff);
+    const out = unpackZip(zip);
+    // `zip out.zip -` đặt tên mục là "-"; đó là tên Info-ZIP viết ra, không
+    // phải lựa chọn của bài test. Tên có hợp lệ cho một gói khoá học hay không
+    // là việc của `validate.ts`, không phải của tầng container.
+    expect([...out.keys()]).toEqual(['-']);
+    expect(new TextDecoder('utf-8').decode(out.get('-'))).toBe('{"id":"demo"}');
+  });
+
+  it('phép so tập TÊN vẫn chạy trên kho zip64 — không phải "thấy zip64 thì thôi"', () => {
+    // Nếu bản sửa nới bằng cách BỎ QUA mục lục khi gặp zip64, hai ca trên vẫn
+    // xanh còn luật đắt nhất của module thì tắt lặng lẽ. Cùng phép vá, cùng
+    // helper như khối ở trên, chỉ khác là kho mang bản ghi zip64.
+    const forged = renameInCentralDirectory(fixture('zip64-stdin.zip'), '-', 'x');
+    const err = catchUnsafe(() => unpackZip(forged));
+    expect(err.code).toBe('MALFORMED');
+    expect(err.bytesRead, 'bất đồng tên phải chặn TRƯỚC khi bung byte nào').toBe(0);
+  });
+
+  it('`zip -r` tên tiếng Việt, bit 11 TẮT: hai nửa phải cùng đọc từng byte một', () => {
+    // Sinh bằng:  mkdir -p chapters && printf '<h1>Bai hoc</h1>' > 'chapters/bài-học-số-1.html'
+    //             && zip -r q.zip chapters
+    //
+    // Info-ZIP 3.0 trên macOS ghi tên bằng byte UTF-8 nhưng KHÔNG bật bit 11
+    // của general purpose flag. `fflate` đọc local header theo đúng bit đó, tức
+    // từng byte một, nên `centralDirectoryNames` bắt buộc phải làm y hệt —
+    // nếu nó luôn giải mã UTF-8 thì mọi gói tiếng Việt do `zip -r` đóng đều
+    // thành MALFORMED. Đó chính là lý do đoạn doc của `decodeEntryName` viện ra
+    // và cho tới ca này thì KHÔNG test nào ghim.
+    const zip = fixture('infozip-vietnamese.zip');
+    const out = unpackZip(zip);
+    // Tên trả về là byte UTF-8 đọc từng byte một — xấu, nhưng đó là điều
+    // `fflate` thấy, và điều bài test này ghim là HAI NỬA THẤY GIỐNG NHAU.
+    // Mục `chapters/` là 0 byte, mang tên thư mục, nên bị bỏ đúng như mọi kho
+    // khác: 2 mục trong mục lục, 1 tệp trong Map.
+    expect([...out.keys()]).toEqual([latin1(enc('chapters/bài-học-số-1.html'))]);
+    expect(new TextDecoder('utf-8').decode([...out.values()][0])).toBe('<h1>Bai hoc</h1>');
+  });
+
+  it('`zip -c` bình luận RIÊNG từng mục: bước nhảy phải cộng cả độ dài bình luận', () => {
+    // Sinh bằng:  printf 'AAAA' > a.txt && zip q.zip a.txt
+    //             && printf 'ghi chu\n' | zip -c q.zip a.txt
+    //
+    // Bản ghi mục lục có ba trường độ dài biến thiên (tên, extra, bình luận) và
+    // bước nhảy phải cộng đủ ba. Bỏ số hạng bình luận thì chỉ những kho CÓ bình
+    // luận mới sai — mà `packZip` không bao giờ ghi bình luận, nên trước ca này
+    // cả lưới test không có kho nào như vậy.
+    const out = unpackZip(fixture('entry-comments.zip'));
+    expect([...out.keys()]).toEqual(['a.txt']);
+    expect(new TextDecoder('utf-8').decode(out.get('a.txt'))).toBe('AAAA');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bản sửa ở trên là "nhận ĐÚNG một hình dạng", KHÔNG phải "bỏ qua byte thừa".
+// Khối này là phần chứng minh câu đó — mỗi ca dựng đúng thứ mà một bản nới quá
+// tay sẽ cho lọt.
+// ---------------------------------------------------------------------------
+
+describe('chỉ ĐÚNG hình dạng zip64 được nhận, byte thừa khác vẫn bị từ chối', () => {
+  it('ĐỐI CHỨNG: 76 byte thừa KHÔNG PHẢI zip64 vẫn bị từ chối — luật là hình dạng, không phải độ dài', () => {
+    // Đúng 56 + 20 byte, y hệt khoảng trống một cặp zip64 EOCD + locator để
+    // lại, nhưng nội dung là rác. Một bản sửa chỉ so `eocd - at === 76` sẽ nhận
+    // kho này; hình dạng thật thì không.
+    const spliced = spliceBeforeEocd(packZip(new Map([['a.txt', enc('AAAA')]])), new Uint8Array(76).fill(0x41));
+    expect(catchUnsafe(() => unpackZip(spliced)).code).toBe('MALFORMED');
+  });
+
+  it('ĐỐI CHỨNG: bản ghi zip64 THIẾU locator (còn 56 byte) bị từ chối', () => {
+    // Kho thật của ca (b), cắt bỏ đúng 20 byte locator ở cuối. Bản ghi zip64
+    // vẫn còn nguyên và vẫn bắt đầu bằng `PK\x06\x06`, nên ca này ghim rằng
+    // phép nhận đòi CẢ CẶP chứ không chỉ chữ ký đầu.
+    const zip = fixture('zip64-stdin.zip');
+    const eocd = zip.length - 22;
+    const cut = new Uint8Array(zip.length - 20);
+    cut.set(zip.subarray(0, eocd - 20), 0);
+    cut.set(zip.subarray(eocd), eocd - 20);
+    expect(catchUnsafe(() => unpackZip(cut)).code).toBe('MALFORMED');
+  });
+
+  it('ĐỐI CHỨNG: chữ ký của locator bị bẻ (khoảng thừa vẫn đủ 76 byte) bị từ chối', () => {
+    // Kho thật của ca (b), giữ nguyên mọi độ dài, chỉ bẻ 4 byte chữ ký
+    // `PK\x06\x07`. Nhận theo "đủ 76 byte và mở đầu bằng PK\x06\x06" sẽ cho lọt;
+    // nhận theo HÌNH DẠNG thì không.
+    const zip = fixture('zip64-stdin.zip').slice();
+    const locator = zip.length - 22 - 20;
+    zip[locator + 3] = 0x09; // vẫn "PK\x06", không còn là locator
+    expect(catchUnsafe(() => unpackZip(zip)).code).toBe('MALFORMED');
+  });
+
+  it('ĐỐI CHỨNG: bản ghi zip64 khai độ dài KHÁC 44 bị từ chối, không bị đoán chỗ kết thúc', () => {
+    // Trường độ dài của chính bản ghi zip64 là thứ làm cho hằng số 56 được ĐỌC
+    // ra từ kho chứ không phải giả định. Một bản ghi mang extensible data sector
+    // (zip64 v2) dài hơn 56, và cái duy nhất module này biết chắc là nó KHÔNG
+    // biết bản ghi đó kết thúc ở đâu.
+    const zip = fixture('zip64-stdin.zip').slice();
+    const record = zip.length - 22 - 20 - 56;
+    zip[record + 4] = 60; // khai 60 thay vì 44
+    expect(catchUnsafe(() => unpackZip(zip)).code).toBe('MALFORMED');
+  });
+
+  it('ĐỐI CHỨNG: cdoff = 0xFFFFFFFF mà KHÔNG có bản ghi zip64 nào bị từ chối', () => {
+    // Sentinel là một lời hứa "offset thật nằm ở bản ghi zip64". Không có bản
+    // ghi đó thì không có gì để đọc, và đoán là điều module này không làm.
+    //
+    // Ca này KHÔNG chỉ là vệ sinh. Nếu chỗ đọc offset zip64 được tin mà không
+    // hỏi trước "bản ghi có thật không", nó đọc byte ở `eocd + 48`, và khi kho
+    // mang CHÚ THÍCH thì những byte đó là của kẻ viết kho — xem ca ngay dưới.
+    const zip = packZip(new Map([['a.txt', enc('AAAA')]])).slice();
+    const at = zip.length - 22 + 16;
+    zip[at] = zip[at + 1] = zip[at + 2] = zip[at + 3] = 0xff;
+    expect(catchUnsafe(() => unpackZip(zip)).code).toBe('MALFORMED');
+  });
+
+  it('offset zip64 KHÔNG được lấy từ chú thích của kho — sentinel + chú thích dựng sẵn', () => {
+    // Kho hợp lệ, đổi cdoff thành sentinel, rồi gắn một CHÚ THÍCH 40 byte đặt
+    // đúng chỗ mà `eocd + 48` và `eocd + 52` rơi vào, mang offset THẬT của mục
+    // lục. Một bản đọc bản ghi zip64 mà không kiểm bản ghi có tồn tại hay không
+    // sẽ đọc trúng chú thích, thấy một offset hợp lệ, và NHẬN kho này — tức
+    // nhận một trường do kẻ viết kho đặt vào chỗ nó không thuộc về.
+    const good = packZip(new Map([['a.txt', enc('AAAA')]]));
+    const eocd0 = good.length - 22;
+    const cdStart = u32le(good, eocd0 + 16); // offset thật, trước khi bị che
+    const COMMENT = 40;
+    const zip = new Uint8Array(good.length + COMMENT);
+    zip.set(good, 0);
+    const eocd = eocd0;
+    zip[eocd + 16] = zip[eocd + 17] = zip[eocd + 18] = zip[eocd + 19] = 0xff; // cdoff = sentinel
+    zip[eocd + 20] = COMMENT & 0xff; // độ dài chú thích, vẫn chạm đúng cuối tệp
+    zip[eocd + 21] = (COMMENT >> 8) & 0xff;
+    for (let i = 0; i < 4; i++) zip[eocd + 48 + i] = (cdStart >>> (8 * i)) & 0xff; // nửa thấp
+    for (let i = 0; i < 4; i++) zip[eocd + 52 + i] = 0; // nửa cao
+    expect(catchUnsafe(() => unpackZip(zip)).code).toBe('MALFORMED');
+  });
+
+  it('offset mục lục vượt 4 GiB bị TỪ CHỐI, không bị cắt cụt cho vừa', () => {
+    // Bản ghi zip64 mang offset u64. Gói này chỉ địa chỉ hoá được 32 bit, nên
+    // nửa cao khác 0 là chỗ nó phải nói "không đọc được" thay vì lặng lẽ dùng
+    // nửa thấp và đọc trúng một mục lục ở chỗ hoàn toàn khác.
+    const zip = fixture('zip64-forced.zip').slice();
+    const record = zip.length - 22 - 20 - 56;
+    zip[record + 52] = 1; // nửa cao của "offset mục lục" = 1 → 4 GiB
+    expect(catchUnsafe(() => unpackZip(zip)).code).toBe('MALFORMED');
+  });
+
+  it('chữ ký `PK\\x01\\x02` của bản ghi mục lục bị bẻ → mục lục không đọc được', () => {
+    // `python zipfile` nói `BadZipFile: Bad magic number for central directory`
+    // và `unzip` nói `zipfile corrupt` trên đúng những byte này. Nếu gói này
+    // KHÔNG kiểm chữ ký, nó đọc chiều dài tên từ chỗ ngẫu nhiên và có thể vẫn
+    // ráp ra một tập tên khớp — tức nhận một kho mọi công cụ khác từ chối.
+    const zip = packZip(new Map([['manifest.json', enc('{}')]])).slice();
+    let at = -1;
+    for (let i = 0; i + 4 <= zip.length; i++) {
+      if (zip[i] === 0x50 && zip[i + 1] === 0x4b && zip[i + 2] === 0x01 && zip[i + 3] === 0x02) at = i;
+    }
+    expect(at, 'kho phải có đúng một bản ghi mục lục để bẻ').toBeGreaterThan(0);
+    zip[at + 2] = 0x09; // vẫn "PK", không còn là bản ghi mục lục
+    expect(catchUnsafe(() => unpackZip(zip)).code).toBe('MALFORMED');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Vòng tròn — nội dung phải quay về NGUYÊN VẸN, không chỉ "gần đúng".
 // ---------------------------------------------------------------------------
 
@@ -662,6 +863,54 @@ it('mã ĐƯỢC SHIP không import "node:" — d.ts của test đã mở cửa 
 // ---------------------------------------------------------------------------
 // Trợ giúp.
 // ---------------------------------------------------------------------------
+
+/**
+ * Byte thật của một kho do công cụ ngoài đóng, đọc từ `fixtures/`.
+ *
+ * vitest chạy với cwd = `packages/course-format` (xem Makefile: test-format).
+ * Lệnh sinh ra từng tệp được ghi tại ca dùng nó; không tệp nào được viết bằng
+ * tay, vì một bản mô phỏng chỉ chứng minh được rằng bản mô phỏng đọc được.
+ */
+function fixture(name: string): Uint8Array {
+  return readFileSync(`fixtures/${name}`);
+}
+
+/**
+ * Từng byte một, đúng như `fflate.strFromU8(bytes, true)` giải mã tên trong
+ * local header khi bit 11 tắt — KHÔNG phải windows-1252.
+ */
+function latin1(bytes: Uint8Array): string {
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return s;
+}
+
+/** Một u32 little-endian, để một ca test khẳng định được fixture nó nghĩ mình có. */
+function u32le(b: Uint8Array, at: number): number {
+  return (
+    (((b[at] as number) | ((b[at + 1] as number) << 8) | ((b[at + 2] as number) << 16) | ((b[at + 3] as number) << 24)) >>>
+      0)
+  );
+}
+
+/**
+ * Chèn `junk` vào GIỮA bản ghi cuối của mục lục và bản ghi EOCD.
+ *
+ * Trường độ dài chú thích của EOCD không đổi và vẫn chạm đúng cuối tệp, số mục
+ * vẫn khớp, local header còn nguyên — nên đây là chỗ duy nhất còn lại để giấu
+ * byte, và cũng đúng chỗ một cặp zip64 EOCD + locator nằm.
+ *
+ * Chỉ dùng cho kho `packZip` sinh ra: chúng không có chú thích, nên EOCD là 22
+ * byte cuối.
+ */
+function spliceBeforeEocd(zip: Uint8Array, junk: Uint8Array): Uint8Array {
+  const eocd = zip.length - 22;
+  const out = new Uint8Array(zip.length + junk.length);
+  out.set(zip.subarray(0, eocd), 0);
+  out.set(junk, eocd);
+  out.set(zip.subarray(eocd), eocd + junk.length);
+  return out;
+}
 
 /** Bắt `UnsafeArchiveError` và bắt cả việc KHÔNG có gì được ném. */
 function catchUnsafe(fn: () => unknown): UnsafeArchiveError {

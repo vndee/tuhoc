@@ -80,7 +80,10 @@
  *   `manifest.json` while its index said `../../evil.js`: this reader accepted
  *   it and the other four each listed the escape. The earlier note here that
  *   closing that needed "a second parser" was wrong by about twenty lines —
- *   see {@link centralDirectoryNames}. What is still NOT compared is entry
+ *   see {@link centralDirectoryNames}. The one thing that walk tolerates
+ *   between the index and the footer is a zip64 record and its locator, which
+ *   `zip -fz` writes on request and `cat file | zip out.zip -` writes without
+ *   being asked; see {@link hasZip64Tail}. What is still NOT compared is entry
  *   *contents*: an index that agrees on every name but points at different
  *   bytes is not detected. Written down rather than handled — and narrower than
  *   it sounds, because the duplicate-name rule and the count cross-check
@@ -219,6 +222,52 @@ const CENTRAL_SIZE = 46;
 /** Bit 11 of the general purpose flag: the entry name is UTF-8. */
 const UTF8_NAME_FLAG = 0x800;
 
+/** `PK\x06\x06` — the zip64 end-of-central-directory record, as a little-endian u32. */
+const ZIP64_EOCD_SIG = 0x06064b50;
+/** `PK\x06\x07` — the zip64 end-of-central-directory locator, as a little-endian u32. */
+const ZIP64_LOCATOR_SIG = 0x07064b50;
+/** A zip64 end-of-central-directory record carrying no extensible data sector. */
+const ZIP64_EOCD_SIZE = 56;
+/** The record's own length field, which does not count its signature or itself. */
+const ZIP64_EOCD_SIZE_FIELD = ZIP64_EOCD_SIZE - 12;
+/** The locator that follows it, which is fixed width. */
+const ZIP64_LOCATOR_SIZE = 20;
+/** Record plus locator: everything that may sit between the index and the footer. */
+const ZIP64_TAIL_SIZE = ZIP64_EOCD_SIZE + ZIP64_LOCATOR_SIZE;
+/** A u32 field holding this means "the real value is in the zip64 record". */
+const ZIP64_SENTINEL = 0xffffffff;
+
+/**
+ * Whether a zip64 record and its locator — and nothing else — sit immediately
+ * in front of the footer.
+ *
+ * This is not zip64 support and does not want to be. It recognises exactly ONE
+ * shape, the one Info-ZIP writes, and every archive that is not that shape is
+ * refused exactly as before. The shape has to be recognised because it turns up
+ * in archives nobody asked to be zip64:
+ *  - `zip -fz` — asked for, and then the footer's index offset is
+ *    {@link ZIP64_SENTINEL} rather than a real one;
+ *  - `cat file | zip out.zip -` — **no flag at all**. Info-ZIP writes the
+ *    record whenever it did not know the size before it started, which is what
+ *    reading from a pipe means. Piping one file into `zip` is an ordinary thing
+ *    to do, so "only strange archives carry zip64" is false.
+ * Both are accepted by `unzip -t`, `python zipfile` and `ditto`, and both were
+ * read by this module before the index cross-check landed. Refusing them was a
+ * regression, not a policy — see `fixtures/` and `zip.test.ts`.
+ *
+ * Three things are required, not one: the record's signature, its own declared
+ * length (so the `56` above is read out of the archive rather than assumed — a
+ * record carrying a v2 extensible data sector is longer and is refused rather
+ * than guessed at), and the locator's signature right behind it.
+ */
+function hasZip64Tail(zip: Uint8Array, eocd: number): boolean {
+  const at = eocd - ZIP64_TAIL_SIZE;
+  if (at < 0) return false;
+  if (u32(zip, at) !== ZIP64_EOCD_SIG) return false;
+  if (u32(zip, at + 4) !== ZIP64_EOCD_SIZE_FIELD || u32(zip, at + 8) !== 0) return false;
+  return u32(zip, at + ZIP64_EOCD_SIZE) === ZIP64_LOCATOR_SIG;
+}
+
 const utf8 = new TextDecoder('utf-8');
 
 /**
@@ -229,6 +278,11 @@ const utf8 = new TextDecoder('utf-8');
  * "disagree" and every such package would be refused — a gate that is safe
  * because it says no to everything. Latin-1 is one `String.fromCharCode` per
  * byte, not `windows-1252`, because that is what `fflate` does.
+ *
+ * Not a hypothetical: Info-ZIP 3.0 writes UTF-8 name bytes with bit 11 OFF, so
+ * `zip -r` over a directory of Vietnamese file names takes the Latin-1 branch
+ * on both sides. `fixtures/infozip-vietnamese.zip` is one such archive and the
+ * test that reads it is what stops this branch from being deleted.
  */
 function decodeEntryName(bytes: Uint8Array, isUtf8: boolean): string {
   if (isUtf8) return utf8.decode(bytes);
@@ -241,31 +295,50 @@ function decodeEntryName(bytes: Uint8Array, isUtf8: boolean): string {
  * Every name the archive's index claims, or `null` if the index is unreadable.
  *
  * `count` records are walked from the offset the end-of-central-directory
- * record gives, and they must end exactly where that record begins: a gap
- * between the last index entry and the index's own footer is the same trick as
- * bytes before the first local header, one reader's padding being another
- * reader's file.
+ * record gives, and they must end exactly where the index's own tail begins: a
+ * gap between the last index entry and that tail is the same trick as bytes
+ * before the first local header, one reader's padding being another reader's
+ * file.
  *
- * Not a general zip64 parser and not trying to be — an archive whose index does
- * not sit plainly in front of its footer is refused rather than guessed at, and
- * this module already refuses zip64 entry counts a few lines up.
+ * "The tail" is the footer itself, unless a zip64 record and its locator sit in
+ * front of it — see {@link hasZip64Tail} for which archives carry one and why
+ * that is not exotic. That pair is the ONLY thing allowed in the gap; 76 bytes
+ * of anything else are refused exactly as before, and so is the pair with its
+ * locator removed. When the footer's index offset is the zip64 sentinel the
+ * real offset is read out of that record — a sentinel with no record behind it
+ * is a promise the archive did not keep, and is refused rather than guessed at.
+ *
+ * Still not a general zip64 parser: entry counts that overflow u16 are refused a
+ * few lines up, and an index that starts past 4 GiB is refused below.
  */
 function centralDirectoryNames(zip: Uint8Array, eocd: number, count: number): Set<string> | null {
-  const start = u32(zip, eocd + 16);
+  const zip64 = hasZip64Tail(zip, eocd);
+  const end = zip64 ? eocd - ZIP64_TAIL_SIZE : eocd;
+
+  let start = u32(zip, eocd + 16);
+  if (start === ZIP64_SENTINEL) {
+    if (!zip64) return null;
+    // The high half of the zip64 record's u64 offset. Non-zero means the index
+    // starts past 4 GiB, which this module cannot address and will not truncate
+    // its way into pretending it can.
+    if (u32(zip, end + 52) !== 0) return null;
+    start = u32(zip, end + 48);
+  }
+
   const names = new Set<string>();
   let at = start;
   for (let i = 0; i < count; i++) {
-    if (at < 0 || at + CENTRAL_SIZE > eocd) return null;
+    if (at < 0 || at + CENTRAL_SIZE > end) return null;
     if (u32(zip, at) !== CENTRAL_SIG) return null;
     const nameLength = u16(zip, at + 28);
     const nameAt = at + CENTRAL_SIZE;
-    if (nameAt + nameLength > eocd) return null;
+    if (nameAt + nameLength > end) return null;
     names.add(
       decodeEntryName(zip.subarray(nameAt, nameAt + nameLength), (u16(zip, at + 8) & UTF8_NAME_FLAG) !== 0),
     );
     at = nameAt + nameLength + u16(zip, at + 30) + u16(zip, at + 32);
   }
-  return at === eocd ? names : null;
+  return at === end ? names : null;
 }
 
 /**
