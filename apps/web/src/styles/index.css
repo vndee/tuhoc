@@ -1092,6 +1092,77 @@ mark.ann {
   outline-offset: 1px;
 }
 
+/* The narrow-screen signal (P2 Task 7, review fix I1). Everything about the
+   orphan panel lives inside `#rail`, which is `display:none` below 1241px —
+   measured on a real browser at 390/1024/1240, `body.innerText` contained the
+   word "Mồ côi" nowhere, so an orphaned note was the ONE class of note that is
+   indistinguishable from a deleted one on a phone.
+
+   Bottom of the viewport rather than the top: the topbar is sticky and already
+   crowded there, and this is not urgent enough to take the reading position's
+   place. z-index 55 puts it above the sticky topbar (40) and Task 5's toolbar
+   (50) but below the mobile nav (60/70) and the note sheet (79/80) — anything
+   the reader has deliberately opened covers it.
+
+   The component only renders it below the breakpoint; this rule is the belt to
+   that braces, and it is written the same way `#rail`'s own rule is so the two
+   cannot disagree at the boundary pixel. */
+.ann-orphan-away {
+  position: fixed;
+  /* `left: 10px; right: 10px` + `margin: 0 auto`, NOT the `left: 50%;
+     transform: translateX(-50%)` the reattach bar uses: a shrink-to-fit fixed
+     box anchored at `left: 50%` can only ever be half the viewport wide, which
+     measured 195px of usable width on a 390px phone and wrapped this sentence
+     onto three lines. Centred between two insets instead, so the strip is as
+     wide as the phone allows and as wide as it needs on a desktop. */
+  left: 10px;
+  right: 10px;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 55;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 520px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.ann-orphan-away b {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.ann-orphan-away-hide {
+  flex: 0 0 auto;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  padding: 3px 10px;
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ann-orphan-away-hide:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (min-width: 1241px) {
+  .ann-orphan-away {
+    display: none;
+  }
+}
+
 /* Belt and braces: `#rail` is already hidden here, so this only matters if
    something ever renders the column outside the rail. */
 @media (max-width: 1240px) {
@@ -1104,6 +1175,7 @@ mark.ann {
   .rail-tabs,
   .ann-cards,
   .ann-orphans,
+  .ann-orphan-away,
   .ann-reattach,
   .ann-sheet,
   .ann-sheet-scrim {

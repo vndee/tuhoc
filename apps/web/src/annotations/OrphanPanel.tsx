@@ -106,18 +106,36 @@
  * made it one on purpose); trading an existing quote away for one is not.
  *
  * ---------------------------------------------------------------------
- * 6. Known limit, written down rather than designed around
+ * 6. Below 1241px: still no rescue, but no longer any silence
  * ---------------------------------------------------------------------
  * `reader.css` hides `#rail` outright below 1241px, so on a phone this panel
- * is not reachable at all — same as the TOC and, in its column form, the
- * margin cards. Nothing is lost there (orphans are never written to, so they
- * are all still waiting on a wider screen), but nothing can be rescued there
- * either. A bottom-sheet form of this panel is the fix; it is a second surface
- * with its own selection story and it is not in this task.
+ * has a rect of 0×0 and is out of the accessibility tree with it — same as the
+ * TOC and, in its column form, the margin cards. Nothing is lost there
+ * (orphans are never written to, so they are all still waiting on a wider
+ * screen), but nothing can be rescued there either, and a bottom-sheet form of
+ * this panel is a second surface with its own selection story that is not in
+ * this task.
+ *
+ * What IS here is the signal. Measured on real Chromium at 390, 1024 and 1240:
+ * `#rail` computes to `display:none`, this section's rect is 0×0 and its
+ * `offsetParent` is null, so it is out of the accessibility tree too — while a
+ * PLACED note at the same widths is reachable through Task 6's bottom sheet.
+ * An orphan was the one class of note that a phone cannot tell apart from a
+ * deleted one. The count was already correct; it was only behind
+ * `display:none`. `OrphanAway` below portals it out of the rail, where the
+ * reader can see it, and says the one useful thing there is to say — come back
+ * on a wider screen.
+ *
+ * (Not measured by grepping `document.body.innerText` for "Mồ côi", though
+ * that is the obvious probe and it does answer "absent". `innerText` applies
+ * `text-transform`, and `.ann-orphans-h` is uppercase, so that probe answers
+ * "absent" at 1440 as well, where the panel is plainly on screen. The rect and
+ * the hit test are what the claim rests on.)
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type Anchor, hasFindableText, selectionToAnchor } from './anchor';
+import { useWideRail } from './MarginCards';
 import { isMapStale, type NormMap, normalizeContainer, rangeToFlat } from './normalize';
 import { selectionRange } from './SelectionToolbar';
 import {
@@ -206,6 +224,35 @@ function preview(text: string): string {
 }
 
 /**
+ * The signal a reader below 1241px gets instead of the panel: how many notes
+ * are waiting, and where to go to deal with them.
+ *
+ * Portalled out of `#rail` because `#rail` is `display:none` at these widths —
+ * that is the whole problem — and `role="status"` with an `aria-label` so a
+ * screen reader announces it once when it appears and can find it again by
+ * name afterwards.
+ *
+ * Dismissable, and the dismissal is component state that is NOT persisted: a
+ * fixed strip that a reader cannot get rid of while reading a chapter is its
+ * own kind of rude, and a dismissal written to storage would be a new place
+ * data lives (ruling P2-F17) to save a reader one tap per chapter. It comes
+ * back on the next chapter, which is the right cadence for "there is still
+ * something waiting for you".
+ */
+function OrphanAway({ count, onHide }: { count: number; onHide: () => void }) {
+  return (
+    <div className="ann-orphan-away" role="status" aria-label="Ghi chú chưa gắn lại được">
+      <span>
+        <b>{count}</b> ghi chú chưa gắn lại được. Mở chương này trên màn hình rộng hơn để nối lại.
+      </span>
+      <button type="button" className="ann-orphan-away-hide" onClick={onHide}>
+        Ẩn
+      </button>
+    </div>
+  );
+}
+
+/**
  * The list of notes this chapter could not place, and the way to put one back.
  *
  * Renders nothing at all when there are no orphans: a permanent "Mồ côi (0)"
@@ -231,6 +278,10 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
    * than a flag because the two refusals a reader can hit call for different
    * things of them: try the drag again, or widen it. */
   const [failure, setFailure] = useState<string | null>(null);
+  /** The `revision` this reader dismissed the narrow-screen signal for. See
+   * `OrphanAway`: a new chapter is a new reason to mention it. */
+  const [awayHiddenFor, setAwayHiddenFor] = useState<number | null>(null);
+  const wide = useWideRail();
 
   /** The map for the CURRENT `(root, revision)`, rebuilt whenever a paint has
    * invalidated it. See the file doc, section 2. */
@@ -521,6 +572,12 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
           </div>,
           doc.body,
         )}
+      {/* The narrow-screen signal: everything above this line is inside
+          `#rail`, which does not exist below 1241px. See the file doc,
+          section 6. */}
+      {!wide &&
+        awayHiddenFor !== revision &&
+        createPortal(<OrphanAway count={orphans.length} onHide={() => setAwayHiddenFor(revision)} />, doc.body)}
     </>
   );
 }

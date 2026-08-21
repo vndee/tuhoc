@@ -74,6 +74,17 @@ const TARGET_THIRD = 'Kênh nhiễu làm giảm dung lượng';
 const FORMULA = '<p class="katex-display" data-testid="formula"><span class="katex">H(X) = -Σ p log p</span></p>';
 const PROSE_MATH = [PROSE, FORMULA].join('\n');
 
+/** Wide enough for `#rail` to exist at all — `reader.css` hides it under
+ * `@media (max-width:1240px)` and jsdom's own default is 1024, i.e. the phone
+ * branch. Every test about the rail PANEL therefore has to say so out loud;
+ * the ones about the narrow-screen signal set their own width. */
+const WIDE = 1400;
+const PHONE = 390;
+
+function setViewportWidth(px: number): void {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: px });
+}
+
 /**
  * The test's own, independent restatement of "is there anything in this quote
  * a search could ever find again": strip the formula stand-ins, strip the
@@ -282,11 +293,13 @@ beforeEach(async () => {
   await clearLocalData();
   document.body.innerHTML = '';
   seq = 0;
+  setViewportWidth(WIDE);
 });
 
 afterEach(async () => {
   await clearLocalData();
   window.getSelection()?.removeAllRanges();
+  setViewportWidth(1024);
 });
 
 describe('OrphanPanel — ghi chú mồ côi là dữ liệu, không phải rác', () => {
@@ -607,5 +620,74 @@ describe('OrphanPanel — cứu hộ không được phá thứ nó đang cứu 
     expect((done!.anchor as Anchor).exact).toBe(TARGET_FIRST);
     expect(hasWordsInIt((done!.anchor as Anchor).exact)).toBe(true);
     expect(await db.outbox.count()).toBe(1);
+  });
+});
+
+/**
+ * I1: below 1241px `reader.css` hides `#rail` outright, so this whole panel —
+ * heading, count, rows, both buttons — has a rect of 0×0 and is out of the
+ * accessibility tree with it. Measured on a real browser at 390, 1024 and
+ * 1240: `document.body.innerText` contains the word "Mồ côi" nowhere, and the
+ * mobile nav drawer says nothing about notes either.
+ *
+ * What is fixed here is the SIGNAL, not the rescue surface. A bottom-sheet
+ * rescue is a second selection story and a separate task; being told "three of
+ * your notes are waiting on a wider screen" costs nothing and is the
+ * difference between data that is out of reach and data that looks deleted.
+ */
+describe('OrphanPanel — màn hẹp phải BIẾT là mình có ghi chú đang chờ', () => {
+  it('dưới 1241px: một tín hiệu NGOÀI rãnh, mang đúng số ghi chú và nói phải làm gì', async () => {
+    setViewportWidth(PHONE);
+    await seed(makeAnchor(REMOVED_LONG, Q_LOST_LONG), 'một');
+    await seed(makeAnchor(REMOVED_SHORT, Q_LOST_SHORT), 'hai');
+    render(<Harness html={PROSE} />);
+    await waitForOrphans(2);
+
+    const alert = await screen.findByRole('status', { name: /ghi chú chưa gắn lại được/i });
+    // Outside `#rail` — anything inside it is `display:none` at this width and
+    // would be exactly as invisible as the count on the tab already is.
+    expect(document.querySelector('[data-testid="rail"]')!.contains(alert)).toBe(false);
+    expect(alert.textContent).toContain('2');
+    // And it says where to go, because there is nothing to do here.
+    expect(alert.textContent).toMatch(/màn hình rộng/i);
+  });
+
+  it('từ 1241px: không có tín hiệu — mục "Mồ côi" đã ở ngay trên màn hình rồi', async () => {
+    setViewportWidth(WIDE);
+    await seed(makeAnchor(REMOVED_LONG, Q_LOST_LONG), 'một');
+    render(<Harness html={PROSE} />);
+    await waitForOrphans(1);
+
+    expect(screen.getByRole('region', { name: /mồ côi/i })).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: /ghi chú chưa gắn lại được/i })).not.toBeInTheDocument();
+  });
+
+  it('chương lành trên màn hẹp: không có tín hiệu nào cả', async () => {
+    setViewportWidth(PHONE);
+    await seed(makeAnchor(PROSE, TARGET_FIRST), 'ghi chú bình thường');
+    render(<Harness html={PROSE} />);
+    await waitForPlaced(1);
+
+    expect(screen.getByTestId('orphan-count')).toHaveTextContent('0');
+    expect(screen.queryByRole('status', { name: /ghi chú chưa gắn lại được/i })).not.toBeInTheDocument();
+  });
+
+  it('"Ẩn" tắt tín hiệu và KHÔNG ghi gì — mồ côi vẫn nguyên vẹn dưới đó', async () => {
+    setViewportWidth(PHONE);
+    await seed(makeAnchor(REMOVED_LONG, Q_LOST_LONG), 'ghi chú quý');
+    render(<Harness html={PROSE} />);
+    await waitForOrphans(1);
+
+    const alert = await screen.findByRole('status', { name: /ghi chú chưa gắn lại được/i });
+    fireEvent.click(within(alert).getByRole('button', { name: /ẩn/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('status', { name: /ghi chú chưa gắn lại được/i })).not.toBeInTheDocument(),
+    );
+    const row = await db.annotations.get('n1');
+    expect(row!.deletedAt).toBeNull();
+    expect(row!.note).toBe('ghi chú quý');
+    expect(row!.updatedAt).toBe('2026-08-19T09:30:00.000Z');
+    expect(await db.outbox.count()).toBe(0);
   });
 });

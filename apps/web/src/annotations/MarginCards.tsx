@@ -318,7 +318,17 @@ function isWide(view: Window): boolean {
   return view.innerWidth >= WIDE_MIN_PX;
 }
 
-function useWideRail(): boolean {
+/**
+ * True while `#rail` exists, kept current as the window is resized.
+ *
+ * Exported for `./OrphanPanel`, which asks the same question for the opposite
+ * reason: this component builds a card column only when the rail is there,
+ * that one puts up a "your notes are waiting on a wider screen" signal only
+ * when it is not. A second copy of the breakpoint would be a pair of rules
+ * that can disagree at exactly one pixel — the same class of drift
+ * `ATOMIC_SELECTOR` and `selectionRange` are each shared to avoid.
+ */
+export function useWideRail(): boolean {
   const [wide, setWide] = useState(() => (typeof window === 'undefined' ? true : isWide(window)));
   useEffect(() => {
     const update = (): void => setWide(isWide(window));
