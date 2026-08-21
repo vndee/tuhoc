@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom';
 import { RequireAuth } from './auth/RequireAuth';
 import { CourseHome } from './pages/CourseHome';
 import { Dashboard } from './pages/Dashboard';
+import { ImportCourse } from './pages/ImportCourse';
 import { Login } from './pages/Login';
 import { Reader } from './pages/Reader';
 
@@ -33,6 +34,22 @@ export function AppRoutes() {
         }
       />
       <Route path="/login" element={<Login />} />
+      {/*
+        `/import` sits behind RequireAuth like everything else, and for the
+        same reason the others do rather than out of habit: an import writes
+        into `db.packages`, which `clearLocalData()` empties on every auth
+        transition (see db/local.ts). A package imported while logged out
+        would be deleted by the next sign-in, which is a worse experience
+        than being asked to sign in first.
+      */}
+      <Route
+        path="/import"
+        element={
+          <RequireAuth>
+            <ImportCourse />
+          </RequireAuth>
+        }
+      />
       <Route
         path="/c/:courseId"
         element={

@@ -20,7 +20,22 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /*
+     * The TypeScript half of `vite.config.ts`'s `@tuhoc/course-format`
+     * alias. Both halves are required and neither implies the other: Vite
+     * rewrites the path at bundle time, `tsc -b` resolves it at check time,
+     * and a missing entry here is a red build rather than a silent miss.
+     *
+     * No `baseUrl`: it is deprecated as of TypeScript 6 (TS5101, which this
+     * project's `tsc -b` reports as an ERROR, not a warning), and since 5.4 a
+     * relative `paths` entry is resolved against the directory holding this
+     * file — which is exactly what is wanted here.
+     */
+    "paths": {
+      "@tuhoc/course-format": ["../../packages/course-format/src/index.ts"]
+    }
   },
   "include": ["src"]
 }

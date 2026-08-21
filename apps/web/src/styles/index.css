@@ -236,6 +236,137 @@
   fill: var(--ink-2);
 }
 
+/* S1 Task 8 — /import. Same placement and token rules as the .dash-* block
+   above: reader.css stays the ported v1 stylesheet, and anything the app
+   adds on top lives here and borrows v1's tokens.
+
+   Every row is a `flex-wrap: wrap` with a `min-width` on the text input
+   rather than a media query. The narrow case here is not a phone-sized
+   viewport, it is the reader sidebar being open on a laptop — the shell's
+   own breakpoint is 1240px (see the bottom of this file), so the content
+   column gets narrow long before any `max-width: 640px` rule would fire.
+   Wrapping on content width covers both without a second number to keep in
+   step with the shell's. */
+.import-page {
+  max-width: 44rem;
+}
+
+.import-way {
+  margin: 0 0 26px;
+}
+
+.import-way-h {
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin: 0 0 8px;
+}
+
+.import-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.import-label {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  flex: 0 0 auto;
+}
+
+.import-input {
+  font-family: var(--sans);
+  font-size: 13px;
+  padding: 7px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--ink);
+  /* Grow to fill the row, but never force the row wider than its column:
+     without `min-width: 0` a flex item refuses to shrink below its content
+     width and a long pasted URL pushes the button off screen. */
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.import-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.import-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--sans);
+  font-size: 13px;
+}
+
+.import-file input[type='file'] {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  max-width: 100%;
+}
+
+.import-note {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-3);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 10px 0 0;
+}
+
+.import-status:empty {
+  display: none;
+}
+
+.import-busy,
+.import-ok {
+  font-family: var(--sans);
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+.import-busy {
+  color: var(--ink-2);
+}
+
+.import-ok {
+  color: var(--good);
+}
+
+.import-findings {
+  margin: 22px 0 0;
+  border-top: 1px solid var(--rule);
+  padding-top: 18px;
+}
+
+.import-finding-list {
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin: 10px 0 0;
+  padding-left: 20px;
+}
+
+.import-finding-list li {
+  margin: 0 0 8px;
+  /* A finding's detail can carry a path or a URL with no spaces in it;
+     without this it widens the whole page instead of wrapping. */
+  overflow-wrap: anywhere;
+}
+
 /* P2 Task 3 — highlight painter (src/annotations/painter.ts).
    The task brief names `src/styles/shell.css`; no such file exists in this
    repo — the app's own stylesheet is THIS one, and it is the file that
