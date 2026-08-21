@@ -4,3 +4,6 @@ dist/
 *.local
 __pycache__/
 apps/api/bin/
+
+# Worktree tạm do harness tạo cho agent chạy song song — không thuộc mã nguồn.
+.claude/worktrees/
