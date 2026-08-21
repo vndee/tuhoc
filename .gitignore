@@ -7,3 +7,10 @@ apps/api/bin/
 
 # Worktree tạm do harness tạo cho agent chạy song song — không thuộc mã nguồn.
 .claude/worktrees/
+
+# Gói course do `make pack` / `tuhoc pack` ghi ra. Mặc định của CLI là
+# <tên-thư-mục>.zip trong thư mục hiện tại, nên `make pack DIR=…` chạy từ gốc
+# repo sẽ để lại một tệp .zip ở đây. Chỉ bỏ qua ở GỐC (`/*.zip`), không bỏ qua
+# ở mọi nơi: gói fixture mà Task 8/12 cần commit nằm sâu trong cây và phải
+# thêm được bình thường.
+/*.zip

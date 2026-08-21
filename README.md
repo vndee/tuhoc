@@ -10,8 +10,21 @@ A multi-course self-study platform designed to aggregate, organize, and deliver 
 | `make dev-web` | Start the web development server (Bun) |
 | `make test-api` | Run API tests |
 | `make test-web` | Run web tests |
+| `make test-format` | Run course-format rule set tests (vitest + `tsc -b`) |
+| `make test-cli` | Run packaging CLI tests (vitest + `tsc -b`) |
+| `make pack DIR=courses/***REMOVED***` | Validate a course directory and write its `.zip` |
 | `make test-extract` | Run content extraction tests |
 | `make extract` | Extract course content from source material |
+
+## Authoring a course
+
+A course is a detachable package: a directory with a `manifest.json`, its
+chapters, and nothing that has to live in this repo. `tools/tuhoc-cli` is the
+front door for it — `bun tools/tuhoc-cli/src/index.ts init my-course` scaffolds
+a valid skeleton, and `make pack DIR=my-course` checks it against the shared
+rule set in `packages/course-format` and writes the zip, printing every problem
+at once (with the file and the fix) instead of failing one rebuild at a time.
+Format reference: `docs/course-format.md`.
 
 ## Documentation
 
