@@ -61,12 +61,26 @@ async function parseBody(res: Response): Promise<unknown> {
   }
 }
 
-async function request<T>(
+/**
+ * Everything a request to this API has in common — the base URL, the
+ * session cookie, the 401 policy, and turning a non-2xx into an `ApiError`
+ * — up to but NOT including how the successful body is read.
+ *
+ * Split out from `request` so that `api.bytes` can share all of it: a
+ * course package's files are opaque bytes (the server labels every one of
+ * them `application/octet-stream`, deliberately — see apps/api's
+ * course/handler.go), and running them through `parseBody`'s
+ * text-then-JSON path would corrupt anything that is not UTF-8 text. The
+ * alternative — a second `fetch` call site — is a second copy of the
+ * base URL and the 401 rule, which is exactly what this module exists to
+ * prevent.
+ */
+async function send(
   method: 'GET' | 'POST',
   path: string,
   body: unknown,
   options: RequestOptions,
-): Promise<T> {
+): Promise<Response> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
     credentials: 'include',
@@ -82,7 +96,16 @@ async function request<T>(
     throw new ApiError(res.status, await parseBody(res));
   }
 
-  return (await parseBody(res)) as T;
+  return res;
+}
+
+async function request<T>(
+  method: 'GET' | 'POST',
+  path: string,
+  body: unknown,
+  options: RequestOptions,
+): Promise<T> {
+  return (await parseBody(await send(method, path, body, options))) as T;
 }
 
 /**
@@ -96,6 +119,19 @@ export const api = {
   get: <T,>(path: string, options: RequestOptions = {}): Promise<T> => request<T>('GET', path, undefined, options),
   post: <T,>(path: string, body?: unknown, options: RequestOptions = {}): Promise<T> =>
     request<T>('POST', path, body, options),
+  /**
+   * A GET whose response is BYTES. Same transport as `get` — base URL,
+   * cookie, 401 policy, `ApiError` — and no parsing.
+   *
+   * The one caller today is `api/courses.ts`, reading files out of a stored
+   * course package. Those files are chapter HTML, images and (for an
+   * `interactive` package) JavaScript; the server hands every one of them
+   * back as `application/octet-stream` with `nosniff`, and the reader is
+   * what decides what the bytes are. Anything that decoded them here would
+   * be guessing on the reader's behalf.
+   */
+  bytes: async (path: string, options: RequestOptions = {}): Promise<Uint8Array> =>
+    new Uint8Array(await (await send('GET', path, undefined, options)).arrayBuffer()),
 };
 
 /**
