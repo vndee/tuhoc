@@ -20,14 +20,50 @@
  * it misses; that list is written down so nobody mistakes this for a
  * sanitizer.
  *
- * ## Why text scanning and not DOM parsing
+ * ## Why an HTML parser, and why the tokenizer specifically
  *
- * This package runs in Node (CLI, CI) as well as in the browser, so there is no
- * `DOMParser` to lean on and no dependency is worth adding for one. Every HTML
- * rule below is therefore a regex over decoded text. That is a real trade: it
- * over-matches inside `<pre>` samples and comments, and it under-matches
- * against deliberate obfuscation. Both directions are documented at each rule.
+ * The first version of this file scanned with regexes, because the package runs
+ * in Node (CLI, CI) as well as in the browser and there is no `DOMParser` in
+ * either half of that intersection. Three independent bypasses were then
+ * measured against it, each one running real JavaScript in Chromium through the
+ * reader's own `container.innerHTML = html`:
+ *
+ *   1. `<img/onerror=…>` and `<img src="x"onerror=…>` — HTML separates
+ *      attributes with `/` and with a closing quote, not only with whitespace;
+ *   2. `<img title="a>b" onerror=x src=y>` — a `>` inside a quoted value ends
+ *      the tag as far as `[^>]*` is concerned, and it never sees the handler;
+ *   3. renaming `chapter.file` to `c1.txt` — the scan was keyed on the file
+ *      extension, so the rules simply did not run.
+ *
+ * (1) and (2) are the same bug twice: a text scan trying to reproduce where the
+ * HTML tokenizer thinks one attribute stops and the next starts. Patching the
+ * regex a third time would buy the next round of bypasses, not the last one.
+ * So the boundaries are no longer guessed — they come from `parse5`, the HTML5
+ * parser `jsdom` is built on: plain JavaScript, no DOM, no Node built-ins, and
+ * measured running unchanged in Chromium — the whole rule set was bundled for
+ * the browser and re-run there, zero page errors, same findings (see
+ * `task-1-report.md`, "vòng sửa 1").
+ *
+ * We use parse5's **tokenizer**, not its tree builder, and that is a decision
+ * with a measurement behind it. A tree is built for one insertion context, and
+ * every context drops something different: fragment parsing discards
+ * `<body onload=…>` (which runs when a chapter file is opened directly as a
+ * document), document parsing discards a bare `<td onclick=…>`, and both
+ * discard `<select><img onerror=…></select>`. Neither is a superset of the
+ * other. The token stream is a superset of both — every attribute the HTML
+ * tokenizer builds, in every context, with character references already
+ * decoded exactly as a browser decodes them. Over-approximating is the right
+ * direction here: this tier's promise is that the package *cannot* execute
+ * code, so a miss is fatal and a false positive costs one reviewer glance.
+ *
+ * The cost is that `Tokenizer` is marked `@internal` by parse5 even though it
+ * is exported and typed from the package root. `parse5` is therefore pinned to
+ * an exact version in `package.json`, and the C1/C2 tests in `validate.test.ts`
+ * are what would go red if a future version changed the contract.
  */
+
+import { Tokenizer } from 'parse5';
+import type { Token, TokenHandler } from 'parse5';
 
 import type { Chapter, Manifest } from './types';
 
@@ -95,9 +131,6 @@ const SEMVER_RE =
  */
 const RUNTIME_RANGE_RE = /^\^(0|[1-9]\d*)(?:\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?)?$/;
 
-/** Files the content-tier text scan reads. `.svg` is in the list because SVG carries script and event handlers too. */
-const SCANNED_MARKUP_RE = /\.(?:html?|xhtml|svg)$/i;
-
 /**
  * Files that are executable in a browser by being loaded. `.mjs`/`.cjs`/`.jsx`
  * are included alongside the `*.js` the rule names — same executable content,
@@ -140,110 +173,144 @@ function escapesPackage(path: string): boolean {
   return path.split('/').some((segment) => segment === '..');
 }
 
+/** Tags whose mere presence is `EMBEDDED_FRAME`. */
+const EMBEDDED_FRAME_TAGS = new Set(['iframe', 'object', 'embed', 'frame', 'frameset']);
+
 /**
- * Decode **numeric** character references only — `&#106;` and `&#x6a;`.
+ * An event-handler attribute NAME. The tokenizer lowercases attribute names, so
+ * `ONERROR` arrives here as `onerror`.
  *
- * Named references (`&colon;`, `&Tab;`, `&NewLine;`) are deliberately NOT
- * decoded: the full named table is ~2,200 entries and this module refuses to
- * carry a dependency. The gap is listed in the miss table below rather than
- * papered over, because a partial decoder that pretends to be complete is worse
- * than one that says what it does.
+ * Every event handler content attribute HTML defines is `on` + two or more
+ * ASCII letters and nothing else, so this matches all of them, and no
+ * non-handler attribute in HTML or SVG is spelled that way. A name written with
+ * a character reference (`&#111;nclick=`) is NOT matched and is NOT a bypass:
+ * parsers decode character references in attribute VALUES, never in attribute
+ * NAMES — the browser builds an attribute literally called `&#111;nclick`, and
+ * never runs it.
  */
-function decodeNumericEntities(s: string): string {
-  return s.replace(/&#(x[0-9a-f]+|\d+);?/gi, (whole: string, body: string) => {
-    const cp = body[0]?.toLowerCase() === 'x' ? Number.parseInt(body.slice(1), 16) : Number.parseInt(body, 10);
-    if (!Number.isInteger(cp) || cp < 0 || cp > 0x10ffff) return whole;
-    return String.fromCodePoint(cp);
-  });
+const EVENT_HANDLER_NAME_RE = /^on[a-z]{2,}$/;
+
+/**
+ * `JAVASCRIPT_URL`, decided the way a browser decides it: drop the whitespace
+ * and C0 controls a URL parser ignores, then look at the scheme.
+ *
+ * Character references are already gone by the time a value reaches here —
+ * parse5 decodes them during tokenization exactly as a browser does, which is
+ * what makes `&#106;avascript:` **and** the named `java&Tab;script:` fall out of
+ * this for free, without the ~2,200-entry named table the old hand-rolled
+ * decoder refused to carry.
+ *
+ * Applied to EVERY attribute value, not to a list of URL-bearing attribute
+ * names. The list would have had to include `<animate to="javascript:…">`,
+ * which rewrites an `<a href>` at run time, and then whatever the next such
+ * attribute turns out to be. Checking them all costs nothing and cannot be
+ * out-of-date. Its one false positive — prose that starts an attribute value
+ * with the word, `title="javascript: ngôn ngữ…"` — is in the table below.
+ */
+function isJavascriptUrlValue(value: string): boolean {
+  return value.replace(/[\s\u0000-\u001f]/g, '').toLowerCase().startsWith('javascript:');
 }
 
 /**
- * `JAVASCRIPT_URL`: pull each URL-bearing attribute value out and normalize it
- * the way a browser would before deciding it is a scheme — decode numeric
- * entities, drop whitespace and C0 control characters — then look at the
- * scheme. Testing the raw text for the literal string `javascript:` would miss
- * `java&#9;script:` and `&#106;avascript:`, which are the two oldest filter
- * bypasses there are.
+ * Fixed report order, so two runs over the same file list their findings the
+ * same way regardless of where in the document each one was seen.
  */
-function hasJavascriptUrl(text: string): boolean {
-  const attr = /\b(?:href|src|action|formaction|xlink:href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
-  for (let m = attr.exec(text); m !== null; m = attr.exec(text)) {
-    const raw = m[1] ?? m[2] ?? m[3] ?? '';
-    // `\s` covers tab/newline/form-feed; the explicit range adds the rest of
-    // the C0 controls, which browsers also ignore inside a URL.
-    const normalized = decodeNumericEntities(raw)
-      .replace(/[\s\u0000-\u001f]/g, '')
-      .toLowerCase();
-    if (normalized.startsWith('javascript:')) return true;
-  }
-  return false;
-}
+const CONTENT_TIER_RULES: readonly (readonly [FindingCode, string])[] = [
+  ['SCRIPT_TAG', 'tier "content" must not contain a <script> tag'],
+  ['EVENT_HANDLER_ATTR', 'tier "content" must not contain an inline on*= event handler'],
+  ['JAVASCRIPT_URL', 'tier "content" must not contain a javascript: URL'],
+  ['EMBEDDED_FRAME', 'tier "content" must not embed a frame (<iframe>/<object>/<embed>)'],
+  ['FORM_TAG', 'tier "content" must not contain a <form> tag'],
+];
 
 /**
- * The content-tier text rules, kept in one function so the catch/miss table
- * stays next to the regexes it describes.
+ * The content-tier rules, run over parse5's token stream.
  *
- * Every row below was **measured**, not assumed — each is a case that was run
- * through this function and observed.
+ * Only START TAGS are inspected. Text, comments, doctypes and end tags carry
+ * nothing a browser executes: measured in Chromium, `<div id=t>x</div
+ * onclick="…">` builds an element whose attribute list is exactly `["id"]` and
+ * clicking it runs nothing, and a comment's contents are inert. That single
+ * distinction — markup vs. text — is what a regex could not draw and what makes
+ * a chapter that *teaches* HTML publishable at this tier (see the table).
  *
- * | rule                 | catches                                                                     | misses                                                       |
- * |----------------------|-----------------------------------------------------------------------------|--------------------------------------------------------------|
- * | `SCRIPT_TAG`         | `<script` in any case, with or without attributes; also inside `.svg`        | nothing known for the literal tag                            |
- * | `EVENT_HANDLER_ATTR` | `on*=` inside an opening tag; across newlines; uppercase; after a `>` that   | a handler whose *name* is entity-escaped (`&#111;nclick=`) —  |
- * |                      | sits inside a quoted attribute value; `<svg onload=>`                       | not a real bypass: parsers do not decode attribute NAMES     |
- * | `JAVASCRIPT_URL`     | `href`/`src`/`action`/`formaction`/`xlink:href`, quoted or bare, with the    | named entities (`java&Tab;script:`); `data:text/html` URLs,  |
- * |                      | scheme split by whitespace/controls or written with numeric entities        | which have no code in this rule set at all                   |
- * | `EMBEDDED_FRAME`     | `<iframe`/`<object`/`<embed`/`<frame`/`<frameset`                           | nothing known for the literal tags                           |
- * | `FORM_TAG`           | `<form`                                                                     | nothing known                                                |
+ * Every row below was **measured**, not assumed: each is a case that was run
+ * through this function and observed, and the false-positive rows were run
+ * through it twice, once escaped and once not.
  *
- * **Not covered by any rule**, and therefore the registry reviewer's job:
+ * | rule                 | catches                                                                      | misses                                                                     |
+ * |----------------------|------------------------------------------------------------------------------|----------------------------------------------------------------------------|
+ * | `SCRIPT_TAG`         | a `<script` START tag, any case, with or without attributes, anywhere in any  | a lone `</script>` end tag — it starts nothing; `<script` written as text   |
+ * |                      | entry of the package, including unescaped inside `<pre><code>`               | (`&lt;script`), which is exactly what a chapter about HTML wants            |
+ * | `EVENT_HANDLER_ATTR` | any attribute named `on`+letters on any start tag, however it is separated    | a handler NAME written with a character reference (`&#111;nclick=`) — not a |
+ * |                      | from the previous one (space, newline, `/`, a closing quote), quoted or bare, | bypass: measured in Chromium, the element keeps an attribute literally      |
+ * |                      | upper or lower case, behind a `>` trapped in a quoted value, on `<body>`/     | named `&#111;nerror` and does not fire; a handler attached from script      |
+ * |                      | `<html>` (which run when a chapter file is opened directly as a document)     | (`el.onclick = …`), which needs the JavaScript this tier already forbids    |
+ * | `JAVASCRIPT_URL`     | any attribute value on any start tag whose scheme normalizes to               | a `javascript:` URL that is not at the START of the value, notably CSS      |
+ * |                      | `javascript:` — numeric and named character references, whitespace- and       | `style="background:url(javascript:…)"` (no current browser executes it);    |
+ * |                      | control-split schemes, unquoted values, `xlink:href`, and attributes that are | `data:text/html` URLs, which have no code in this rule set at all           |
+ * |                      | not URLs by name at all (`<animate attributeName=href to=javascript:…>`)      |                                                                             |
+ * | `EMBEDDED_FRAME`     | a start tag named `iframe`/`object`/`embed`/`frame`/`frameset`                | nothing known for those start tags                                          |
+ * | `FORM_TAG`           | a `<form` start tag                                                          | nothing known                                                               |
+ *
+ * **Where it looks:** every entry in the package, decoded as UTF-8 with
+ * replacement — no extension list, no "this one looks binary" skip. Round 1 of
+ * review broke the old extension-keyed scan by renaming `chapter.file` to
+ * `c1.txt`, and any content-sniffing skip is the same hole wearing a hat: a PNG
+ * with live markup in a `tEXt` chunk is still a package entry a consumer may
+ * decide to render. Tokenizing a few megabytes of image bytes is cheap, and
+ * random bytes cannot spell `<img … onerror=` by accident.
+ *
+ * **Deliberate over-approximation.** The tokenizer is run in its default state,
+ * so the raw-text bodies the TREE builder would switch on — `<script>`,
+ * `<style>`, `<textarea>`, `<title>` — are tokenized as markup here. That can
+ * only ever over-report (a `<textarea>` containing `<img onerror=…>` is flagged
+ * although a browser would show it as text), never under-report, and
+ * over-reporting is the direction this tier can afford. Two more, both
+ * measured: `manifest.json` is scanned like every other entry, so a course
+ * whose *title* contains a raw `<script>` is flagged; and an attribute value
+ * that merely begins with the word — `title="javascript: một ngôn ngữ"` — is
+ * flagged as `JAVASCRIPT_URL`. The escape from all of these is the same one a
+ * chapter needs anyway to render: escape the markup.
+ *
+ * **Not covered by any rule**, and therefore still the registry reviewer's job:
  * `<meta http-equiv="refresh">` redirects, external `<link>`/`<img>`/CSS
  * `url()` references (not executable, but still a network call the reader never
- * asked for), and `data:` URLs.
- *
- * On false positives: they are accepted on purpose. `EVENT_HANDLER_ATTR` in
- * particular fires on any `on*="…"` in the file, so a chapter that quotes
- * handler markup *unescaped* is flagged. That is the right way round — a
- * `content` package's whole promise is that it cannot execute code, so a
- * missed handler breaks the tier outright while a false positive costs one
- * reviewer glance. A chapter that needs to *show* such markup escapes it
- * (`&lt;div onclick=…`), which it had to do to render correctly anyway, and the
- * escaped form is not flagged.
+ * asked for), `data:` URLs, a `.js` file renamed to an extension `JS_FILE_RE`
+ * does not know (harmless at this tier only because loading it would need a
+ * `<script>` tag, which is flagged), and an entry that is not UTF-8 — a UTF-16
+ * chapter is decoded to mojibake here and reads as clean, which is safe only
+ * for as long as every consumer decodes it as UTF-8 too, exactly as
+ * `Response.text()` and this module both do.
  */
 function scanHtmlText(path: string, text: string): Finding[] {
+  const seen = new Set<FindingCode>();
+  const ignore = (): void => {};
+
+  const handler: TokenHandler = {
+    onStartTag(token: Token.TagToken): void {
+      if (token.tagName === 'script') seen.add('SCRIPT_TAG');
+      if (EMBEDDED_FRAME_TAGS.has(token.tagName)) seen.add('EMBEDDED_FRAME');
+      if (token.tagName === 'form') seen.add('FORM_TAG');
+      for (const attr of token.attrs) {
+        if (EVENT_HANDLER_NAME_RE.test(attr.name)) seen.add('EVENT_HANDLER_ATTR');
+        if (isJavascriptUrlValue(attr.value)) seen.add('JAVASCRIPT_URL');
+      }
+    },
+    onEndTag: ignore,
+    onComment: ignore,
+    onDoctype: ignore,
+    onCharacter: ignore,
+    onNullCharacter: ignore,
+    onWhitespaceCharacter: ignore,
+    onEof: ignore,
+  };
+
+  new Tokenizer({}, handler).write(text, true);
+
   const out: Finding[] = [];
-
-  if (/<script\b/i.test(text)) {
-    out.push(finding('SCRIPT_TAG', path, 'tier "content" must not contain a <script> tag'));
+  for (const [code, detail] of CONTENT_TIER_RULES) {
+    if (seen.has(code)) out.push(finding(code, path, detail));
   }
-
-  // Two patterns, because one is not enough:
-  //  (a) inside an opening tag — `<div onclick=x>`, including unquoted values,
-  //      but it stops at the first `>`, so it misses
-  //      `<div title="a>b" onclick="x()">`;
-  //  (b) any `on*=` assigned a QUOTED value, anywhere in the file — which
-  //      catches exactly that case, at the cost of also flagging quoted handler
-  //      markup written out in prose.
-  const inOpeningTag = /<[a-z][^>]*?\son[a-z]{2,}\s*=/is;
-  const quotedHandler = /\son[a-z]{2,}\s*=\s*["']/i;
-  if (inOpeningTag.test(text) || quotedHandler.test(text)) {
-    out.push(
-      finding('EVENT_HANDLER_ATTR', path, 'tier "content" must not contain an inline on*= event handler'),
-    );
-  }
-
-  if (hasJavascriptUrl(text)) {
-    out.push(finding('JAVASCRIPT_URL', path, 'tier "content" must not contain a javascript: URL'));
-  }
-  if (/<(?:iframe|object|embed|frame|frameset)\b/i.test(text)) {
-    out.push(
-      finding('EMBEDDED_FRAME', path, 'tier "content" must not embed a frame (<iframe>/<object>/<embed>)'),
-    );
-  }
-  if (/<form\b/i.test(text)) {
-    out.push(finding('FORM_TAG', path, 'tier "content" must not contain a <form> tag'));
-  }
-
   return out;
 }
 
@@ -324,8 +391,11 @@ function checkManifestFields(value: unknown): Finding[] {
         // `num` is a DISPLAY label ("0.1", "2.3"), and an unnumbered chapter is
         // a supported case, not a defect: the appendix of
         // `courses/***REMOVED***` ships `"num": ""` today, and the reader
-        // already branches on it in six places (`chapter.num ? … : ''` in
-        // ChapterView.tsx, `chapter.num || '·'` in CourseNav.tsx). Requiring a
+        // already branches on it in five places — four ternaries in
+        // ChapterView.tsx (385, 485, 511, 520) and `chapter.num || '·'` at
+        // CourseNav.tsx:46. (An earlier draft of this comment said six; the
+        // sixth hit was a `useEffect` dependency array, which handles nothing.
+        // Counted again by hand for review round 1.) Requiring a
         // non-empty value here would have forced the packaging CLI to invent a
         // number that the UI then has to render. Found by running this rule set
         // against the real package (task brief, step 5) — the rule was wrong,
@@ -498,8 +568,19 @@ export function validatePackage(files: ReadonlyMap<string, Uint8Array>): Validat
         findings.push(finding('JS_FILE_IN_PACKAGE', path, 'tier "content" must not ship JavaScript files'));
       }
     }
+    // EVERY entry, with no extension list and no binary skip — see
+    // {@link scanHtmlText}. The previous version read only `.html?/.xhtml/.svg`
+    // and nothing constrains the extension of `chapter.file`, so renaming a
+    // chapter to `c1.txt` switched all five rules off at once.
     for (const [path, bytes] of files) {
-      if (!SCANNED_MARKUP_RE.test(path)) continue;
+      // The one shortcut taken, and it is a proof rather than a heuristic: a
+      // start tag cannot exist without a U+003C, 0x3C is that character and
+      // nothing else in UTF-8 (continuation bytes are all >= 0x80), a
+      // character reference decodes to a character token and never re-enters
+      // the tag-open state, and an invalid byte decodes to U+FFFD. No `<` byte
+      // therefore means no start tag, and every content rule reads start tags.
+      // It is what keeps a 20 MB image out of the tokenizer.
+      if (!bytes.includes(0x3c)) continue;
       findings.push(...scanHtmlText(path, decoder.decode(bytes)));
     }
   }

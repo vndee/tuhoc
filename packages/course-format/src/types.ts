@@ -39,8 +39,12 @@ export interface Part {
  *
  * - `content` — HTML/CSS/images only. No JavaScript of any kind: the
  *   content-tier rules in `validate.ts` reject `<script>`, `on*=` handlers,
- *   `javascript:` URLs, frames, forms, and `*.js` files outright. A `content`
- *   package that passes validation cannot execute code in the reader.
+ *   `javascript:` URLs, frames, forms, and `*.js` files outright — over every
+ *   entry in the package, using a real HTML tokenizer rather than a text scan,
+ *   after review round 1 measured three ways past the text scan. Read
+ *   `scanHtmlText`'s catch/miss table before treating that as a security
+ *   guarantee: it is the first fence, and the registry's human review is the
+ *   one that has to hold.
  * - `interactive` — may ship JavaScript (the simulations in
  *   `courses/***REMOVED***/viz.js` are why this tier exists). Validation
  *   deliberately does NOT try to sanitize that code; the guarantee for this

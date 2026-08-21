@@ -97,6 +97,30 @@ describe('luật chung', () => {
     expect(r.findings.map((f) => f.code)).not.toContain('TOO_LARGE');
   });
 
+  it('MAX_UNCOMPRESSED_BYTES là ĐÚNG 20 MiB — con số, không phải quan hệ', () => {
+    // Both threshold tests above compute their fixtures FROM this constant, so
+    // they measure the boundary rule and not the budget: raising the constant
+    // to 200 MiB left the whole suite green (review round 1, mutant M14).
+    // This line is what makes the number itself a decision somebody has to
+    // change on purpose.
+    expect(MAX_UNCOMPRESSED_BYTES).toBe(20 * 1024 * 1024);
+  });
+
+  it('MANIFEST_FIELD: chuỗi bắt buộc RỖNG bị bắt, không chỉ chuỗi vắng mặt', () => {
+    // Mutating `isNonEmptyString` down to `typeof v === 'string'` also left the
+    // suite green (review round 1, mutant M23): every existing fixture omitted
+    // the field instead of setting it to "". An empty `license` or `id` is the
+    // shape a generator produces when a template variable does not resolve.
+    for (const key of ['id', 'title', 'lang', 'version', 'runtime', 'license'] as const) {
+      const findings = validatePackage(withChapter('<p>a</p>', { [key]: '' })).findings;
+      expect(findings.map((f) => f.path), `empty "${key}" must be rejected`)
+        .toContain(`manifest.json#/${key}`);
+    }
+    expect(codesOf(withChapter('<p>a</p>', { authors: [{ name: '' }] }))).toContain('MANIFEST_FIELD');
+    // …and the deliberate exception stays: `description` MAY be empty.
+    expect(validatePackage(withChapter('<p>a</p>', { description: '' })).ok).toBe(true);
+  });
+
   it('PATH_ESCAPE: đường dẫn tuyệt đối và dấu gạch ngược cũng bị chặn', () => {
     expect(codesOf(withChapter('<p>a</p>').set('/etc/passwd', enc('x')))).toContain('PATH_ESCAPE');
     expect(codesOf(withChapter('<p>a</p>').set('a\\b.txt', enc('x')))).toContain('PATH_ESCAPE');
@@ -244,16 +268,20 @@ describe("luật riêng của hạng 'content'", () => {
   });
 
   it('EVENT_HANDLER_ATTR: văn xuôi nhắc tới "onclick =" NGOÀI thẻ thì không bị bắt', () => {
-    // The regex anchors inside an opening tag on purpose — a chapter that
-    // *writes about* event handlers is the common case in a course.
+    // Prose that talks *about* event handlers is the common case in a course,
+    // and the parser settles it without a rule of its own: this is a character
+    // token, not a start tag with an attribute.
     const r = validatePackage(withChapter('<p>Thuộc tính onclick = mã chạy khi bấm.</p>'));
     expect(r).toEqual({ ok: true, findings: [] });
   });
 
   it('EVENT_HANDLER_ATTR: handler nấp sau dấu ">" trong giá trị thuộc tính có nháy', () => {
     // Measured miss of the first draft: `[^>]*` stops at the `>` inside
-    // `title="a>b"`, so the handler after it was never seen. The second,
-    // looser pattern (any `on*="…"`) exists for exactly this.
+    // `title="a>b"`, so the handler after it was never seen. Patched once with
+    // a second pattern that required the handler value to be QUOTED, which
+    // review round 1 then walked around by dropping the quotes — see the C2
+    // block below. A tokenizer knows a `>` inside a quoted value is not the
+    // end of the tag, and needs no pattern for it at all.
     expect(codesOf(withChapter('<div title="a>b" onclick="x()">z</div>'))).toContain('EVENT_HANDLER_ATTR');
   });
 
@@ -334,6 +362,171 @@ describe("luật riêng của hạng 'content'", () => {
       ['chapters/c1.html', enc('<script>alert(1)</script>')],
     ]));
     expect(codes).toEqual(['MANIFEST_PARSE']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review round 1 — the three measured bypasses of the regex scan, verbatim.
+//
+// Every case below was run in Chromium through `container.innerHTML = html`
+// (the reader's real injection path, ChapterView.tsx:335) and OBSERVED TO
+// EXECUTE while `validatePackage` returned zero findings. They are the reason
+// this module parses HTML instead of guessing where one attribute ends and the
+// next begins. Do not "simplify" the scan back to a regex.
+// ---------------------------------------------------------------------------
+
+describe('C1 — HTML separates attributes with more than whitespace', () => {
+  // `<img/onerror=…>`: `/` in a start tag is a parse error
+  // (`unexpected-solidus-in-tag`) and the character is REPROCESSED in the
+  // before-attribute-name state, so the handler is a real attribute.
+  it('dấu "/" tách thuộc tính: <img/onerror=…>', () => {
+    expect(codesOf(withChapter('<img/onerror=window.C1() src="no-1.png">'))).toContain('EVENT_HANDLER_ATTR');
+  });
+
+  // `…"onerror=…`: the closing quote of a value also ends the attribute
+  // (`missing-whitespace-between-attributes`, likewise reprocessed).
+  it('nháy đóng tách thuộc tính: <img src="x"onerror=…>', () => {
+    expect(codesOf(withChapter('<img src="no-2.png"onerror=window.C2()>'))).toContain('EVENT_HANDLER_ATTR');
+  });
+
+  it('cả hai cùng lúc trong SVG: <svg/onload=…>', () => {
+    expect(codesOf(withChapter('<svg/onload=window.C5()></svg>'))).toContain('EVENT_HANDLER_ATTR');
+  });
+});
+
+describe('C2 — an UNQUOTED handler behind a ">" trapped in an attribute value', () => {
+  it('nháy kép: <img title="a>b" onerror=… src=…>', () => {
+    expect(codesOf(withChapter('<img title="a>b" onerror=window.C8() src="no-3.png">'))).toContain('EVENT_HANDLER_ATTR');
+  });
+
+  it('nháy đơn: <img title=\'a>b\' onerror=… src=…>', () => {
+    expect(codesOf(withChapter("<img title='a>b' onerror=window.C9() src='no-4.png'>"))).toContain('EVENT_HANDLER_ATTR');
+  });
+});
+
+describe('C3 — the scan may not be keyed on a file extension', () => {
+  // The old scan only read `.html?/.xhtml/.svg`. No rule constrains the
+  // extension of `chapter.file`, and `loadChapter` fetches whatever the
+  // manifest names, so renaming the chapter turned off all five content rules.
+  const payload = '<script>a()</script><img src=x onerror="a()">';
+  const chapterNamed = (file: string) =>
+    new Map([
+      ['manifest.json', MANIFEST({
+        parts: [{ title: 'P', chapters: [{ id: 'c1', num: '1', title: 'T', short: 'T', file }] }],
+      })],
+      [file, enc(payload)],
+    ]);
+
+  for (const file of [
+    'chapters/c1.txt', 'chapters/c1.md', 'chapters/c1.xhtm',
+    'chapters/c1.html.bak', 'chapters/c1.htmlx', 'chapters/c1',
+  ]) {
+    it(`đổi tên chương thành "${file}" KHÔNG tắt được luật nào`, () => {
+      const codes = codesOf(chapterNamed(file));
+      expect(codes).toContain('SCRIPT_TAG');
+      expect(codes).toContain('EVENT_HANDLER_ATTR');
+    });
+  }
+
+  it('tệp không phải chương cũng được quét — không có danh sách đuôi nào cả', () => {
+    // `assets/notes.md` is never fetched by today's reader, but "today's
+    // reader" is not a rule. Scanning every entry is what makes the scope
+    // impossible to rename around.
+    const codes = codesOf(withChapter('<p>a</p>').set('assets/notes.md', enc(payload)));
+    expect(codes).toContain('SCRIPT_TAG');
+    expect(codes).toContain('EVENT_HANDLER_ATTR');
+  });
+
+  it('tệp NHỊ PHÂN cũng đi qua bộ quét, không bị bỏ vì "trông giống ảnh"', () => {
+    // A PNG whose tEXt chunk carries live markup is a real shape: the byte
+    // scan must not skip an entry because it has NUL bytes or an image
+    // extension. Decoding is lossy on purpose — a byte that is not UTF-8 can
+    // never be part of `<img … onerror=`, so the replacement character costs
+    // nothing here.
+    const png = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+      ...enc('<img src=x onerror="a()">'),
+      0x00, 0xff, 0xfe,
+    ]);
+    expect(codesOf(withChapter('<p>a</p>').set('assets/hinh.png', png))).toContain('EVENT_HANDLER_ATTR');
+  });
+});
+
+describe('B — a chapter that TEACHES HTML must be publishable at tier content', () => {
+  // The documented escape hatch ("escape it and it is not flagged") did not
+  // work: escaping only `<`/`>` — what every HTML generator does, and the only
+  // form used by the 44 chapters that ship today — still left ` onclick="` in
+  // the text, and the regex had no way to tell text from markup. A parser
+  // does: escaped markup is a character token, live markup is a start tag.
+  const teaching = [
+    '<h2>Sự kiện trong HTML</h2>',
+    '<p>Muốn chạy mã khi người dùng bấm, ta viết:</p>',
+    '<pre><code>&lt;button onclick="chao()"&gt;Bấm tôi&lt;/button&gt;</code></pre>',
+    '<pre><code>&lt;a href="javascript:void(0)"&gt;Không đi đâu cả&lt;/a&gt;</code></pre>',
+  ].join('\n');
+
+  it('escape kiểu thường (chỉ < và >) là ĐỦ — 0 finding', () => {
+    expect(validatePackage(withChapter(teaching))).toEqual({ ok: true, findings: [] });
+  });
+
+  it('escape bằng nháy đơn cũng đủ', () => {
+    expect(validatePackage(withChapter("<pre><code>&lt;button onclick='go()'&gt;x&lt;/button&gt;</code></pre>")).ok)
+      .toBe(true);
+  });
+
+  it('văn xuôi nhắc javascript: trong <code> KHÔNG bị báo', () => {
+    expect(validatePackage(withChapter('<p>Đừng viết <code>href="javascript:void(0)"</code>.</p>')).ok).toBe(true);
+  });
+
+  it('ĐỐI CHỨNG: đúng nội dung đó KHÔNG escape thì vẫn bị chặn', () => {
+    // The other half of the measurement. "Escaped is clean" only means
+    // something if "unescaped is flagged" is measured next to it.
+    expect(codesOf(withChapter('<p><button onclick="chao()">Bấm tôi</button></p>'))).toContain('EVENT_HANDLER_ATTR');
+    expect(codesOf(withChapter('<p><a href="javascript:void(0)">x</a></p>'))).toContain('JAVASCRIPT_URL');
+  });
+
+  it('ĐỐI CHỨNG: payload thô nhét trong <code> vẫn bị chặn — vùng code KHÔNG được miễn trừ', () => {
+    // A tempting cheap fix was "ignore whatever is inside <pre>/<code>". That
+    // is a hole: markup inside <code> that is NOT escaped is live markup.
+    // Parsing gets both halves right without any region rule.
+    expect(codesOf(withChapter('<pre><code><img src=x onerror="a()"></code></pre>')))
+      .toContain('EVENT_HANDLER_ATTR');
+  });
+});
+
+describe('những gì bộ quét cũ bỏ sót vì nó không phải parser', () => {
+  it('entity CÓ TÊN trong URL: java&Tab;script: — parser giải mã, regex thì không', () => {
+    expect(codesOf(withChapter('<a href="java&Tab;script:alert(1)">x</a>'))).toContain('JAVASCRIPT_URL');
+  });
+
+  it('<body onload=…> — chạy khi mở thẳng tệp chương như một tài liệu', () => {
+    expect(codesOf(withChapter('<body onload=alert(1)>hi'))).toContain('EVENT_HANDLER_ATTR');
+  });
+
+  it('<!--> đóng comment sớm rồi tiêm markup sống', () => {
+    expect(codesOf(withChapter('<!--><img src=x onerror=alert(1)>-->'))).toContain('EVENT_HANDLER_ATTR');
+  });
+
+  it('comment THẬT thì không bị báo — nội dung trong comment không chạy', () => {
+    expect(validatePackage(withChapter('<!-- <img src=x onerror=alert(1)> -->')).ok).toBe(true);
+  });
+
+  it('thuộc tính trên THẺ ĐÓNG không bị báo — trình duyệt vứt chúng đi', () => {
+    // Only START tags are inspected, and that is a decision, not an oversight:
+    // measured in Chromium, `<div id=t>x</div onclick="…">` builds an element
+    // whose attribute list is exactly ["id"] — the end tag's attributes are a
+    // parse error the tree builder discards, and clicking it runs nothing.
+    // Without this line the mutant "treat end tags like start tags" survives:
+    // the whole suite stays green because that mutation only over-reports.
+    expect(validatePackage(withChapter('<div id="t">x</div onclick="alert(1)">')).ok).toBe(true);
+  });
+
+  it('javascript: ở thuộc tính KHÔNG phải href/src cũng bị bắt (<animate to=…>)', () => {
+    // The SVG animation route to a javascript: URL: `<animate>` rewrites the
+    // <a> element's href at run time. Scanning every attribute value costs
+    // nothing and closes it.
+    expect(codesOf(withChapter('<svg><a><animate attributeName="href" to="javascript:alert(1)"/><text>x</text></a></svg>')))
+      .toContain('JAVASCRIPT_URL');
   });
 });
 
