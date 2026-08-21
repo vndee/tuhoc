@@ -10,6 +10,7 @@ import { describeCourseError, loadManifest, manifestQueryKey } from '../course/l
 import type { Manifest } from '../course/types';
 import { db } from '../db/local';
 import { useProgress } from '../progress/useProgress';
+import { EmptyLibrary } from './Library';
 
 interface DayStat {
   date: string;
@@ -148,6 +149,13 @@ export function Dashboard() {
         <div className="dash-user">
           {meQuery.data && <span className="dash-user-name">{meQuery.data.name}</span>}
           {/*
+            The only way in to `/library` (Task 9), for the same reason the
+            `/import` link below it exists at all.
+          */}
+          <Link to="/library" className="btn">
+            Thư viện
+          </Link>
+          {/*
             The only way in to `/import` (Task 8). A route with no link is a
             route nobody uses: this page's own empty state has told readers
             to "nhập một gói course" since Task 7 without ever saying where.
@@ -180,12 +188,20 @@ export function Dashboard() {
         "we do not know yet", and flashing "you have no courses" at a
         learner who has several is worse than showing nothing for a
         moment.
+
+        The state itself is `<EmptyLibrary>` (pages/Library.tsx) rather than
+        a line of prose local to this file, and that is ruling S1-F17 being
+        applied where it actually lands: `/` is what a brand-new account
+        opens, so this IS the front door, and Task 6's deletion of
+        `KNOWN_COURSE_IDS` means every new reader stands here with nothing.
+        One sentence pointing at /import was the old answer; the shared
+        component names why the library is empty (a deliberate choice —
+        §9.5), hands over the action, and lists the three ways in. Sharing
+        it with `/library` is the point: two copies of a front door drift,
+        and the copy that drifts is the one nobody who already has courses
+        ever sees.
       */}
-      {courseIds.length === 0 && !coursesQuery.isPending && (
-        <p className="dash-stats-note">
-          Thư viện của bạn chưa có khóa học nào. <Link to="/import">Nhập một gói course (.zip)</Link> để bắt đầu.
-        </p>
-      )}
+      {courseIds.length === 0 && !coursesQuery.isPending && <EmptyLibrary />}
     </div>
   );
 }

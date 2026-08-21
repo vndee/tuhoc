@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { configure, getConfig, render, screen, waitFor } from '@testing-library/react';
+import { configure, getConfig, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
@@ -281,6 +281,43 @@ describe('Dashboard', () => {
     const links = screen.getAllByRole('link').filter((a) => a.getAttribute('href') === '/import');
     expect(links.length, 'không còn lối vào /import nào trên Bảng điều khiển').toBeGreaterThanOrEqual(2);
     expect(links.map((a) => a.textContent).join(' ')).toMatch(/nhập/i);
+  }, OVERSUBSCRIBED_MS);
+
+  it('có lối vào /library — Task 9 thêm một route, và một route không ai bấm tới được là một tính năng không tồn tại', async () => {
+    // Same argument as the /import test directly above, which was written
+    // after mutation testing deleted both of THOSE links with the whole
+    // suite staying green. `/library` arrives with the identical exposure:
+    // one door, on this page.
+    server.use(http.get('/courses', () => HttpResponse.json([])));
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+
+    renderDashboard();
+
+    await screen.findByText(/chưa có khóa học nào/i);
+    const links = screen.getAllByRole('link').filter((a) => a.getAttribute('href') === '/library');
+    expect(links.length, 'không còn lối vào /library nào trên Bảng điều khiển').toBeGreaterThanOrEqual(1);
+    expect(links.map((a) => a.textContent).join(' ')).toMatch(/thư viện/i);
+  }, OVERSUBSCRIBED_MS);
+
+  it('trạng thái rỗng của Bảng điều khiển là MÀN HÌNH ĐẦU TIÊN của người dùng mới — phải nói ba cách nhập, không chỉ một dòng chữ (ruling S1-F17)', async () => {
+    // Task 6 deleted `KNOWN_COURSE_IDS`, so this is literally what a brand
+    // new account opens onto. Before Task 9 it was one sentence with a link;
+    // the sentence stays (the assertion above still passes) but the state now
+    // also says WHY the library is empty — §9.5 chose to ship no course,
+    // because a seeded one would hide a broken import path — and names the
+    // three ways in, including the one that works with no network at all.
+    server.use(http.get('/courses', () => HttpResponse.json([])));
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+
+    renderDashboard();
+
+    await screen.findByText(/chưa có khóa học nào/i);
+    expect(screen.getAllByText(/\.zip/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/github/i)).toBeInTheDocument();
+    // The registry's place is held by words, not by a link that goes
+    // nowhere: subsystem 3 has not built it.
+    const registryNote = screen.getByText(/registry|kho khóa học cộng đồng/i);
+    expect(within(registryNote).queryByRole('link')).not.toBeInTheDocument();
   }, OVERSUBSCRIBED_MS);
 
   it('does not flash the empty-library note while GET /courses is still in flight', async () => {

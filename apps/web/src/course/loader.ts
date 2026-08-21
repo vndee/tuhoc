@@ -207,14 +207,33 @@ export function describeCourseError(error: unknown): string {
  */
 const VERSION_ORDER = new Intl.Collator('en', { numeric: true });
 
-async function pinnedPackage(courseId: string): Promise<PackageRow | undefined> {
-  const rows = await db.packages.where('courseId').equals(courseId).toArray();
-  if (rows.length === 0) return undefined;
+/**
+ * The pin rule above, as a pure function over anything that carries a
+ * `version` and a `pinnedAt`.
+ *
+ * Exported because the rule has a SECOND reader now: `pages/Library.tsx`
+ * prints the version beside each course, and the version it prints has to
+ * be the one this module will actually open. A library that computed
+ * "which version" by its own similar-looking rule would be free to drift —
+ * and the drift would be invisible, because both numbers look plausible.
+ * One function, one answer.
+ *
+ * `rows` must be non-empty; the callers both check first, and returning a
+ * sentinel for an empty list would only move that check somewhere it is
+ * easier to forget.
+ */
+export function pickPinned<T extends { version: string; pinnedAt: string }>(rows: readonly T[]): T {
   return rows.reduce((best, row) => {
     const byPin = Date.parse(row.pinnedAt) - Date.parse(best.pinnedAt);
     if (byPin !== 0) return byPin > 0 ? row : best;
     return VERSION_ORDER.compare(row.version, best.version) > 0 ? row : best;
   });
+}
+
+async function pinnedPackage(courseId: string): Promise<PackageRow | undefined> {
+  const rows = await db.packages.where('courseId').equals(courseId).toArray();
+  if (rows.length === 0) return undefined;
+  return pickPinned(rows);
 }
 
 /**
