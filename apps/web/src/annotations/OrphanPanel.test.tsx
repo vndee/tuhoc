@@ -74,6 +74,25 @@ const TARGET_THIRD = 'Kênh nhiễu làm giảm dung lượng';
 const FORMULA = '<p class="katex-display" data-testid="formula"><span class="katex">H(X) = -Σ p log p</span></p>';
 const PROSE_MATH = [PROSE, FORMULA].join('\n');
 
+/**
+ * A SECOND chapter, sharing not one sentence with `PROSE`, for the map-cache
+ * test. `<div ref>` identity never changes when `ChapterView` swaps a chapter
+ * (its own doc says so), and every Text node the old map recorded keeps its
+ * `.data.length` after being DETACHED — so `isMapStale` answers "fresh" across
+ * a chapter swap and `revision` is the only thing that can tell the two apart.
+ */
+const PROSE_OTHER = [
+  '<h2>Chương khác hẳn</h2>',
+  '<p>Bất biến dữ liệu là điều kiện tiên quyết của mọi phép đồng bộ.</p>',
+  '<p>Hàng đợi gửi đi ghi lại đúng một dòng cho mỗi thay đổi thật.</p>',
+].join('\n');
+const TARGET_OTHER = 'Bất biến dữ liệu';
+
+/** Exactly `ORPHAN_QUOTE_MAX` characters — the boundary itself, which is the
+ * one input that tells `> max` and `>= max` apart. */
+const Q_EXACT_80 = 'Kênh nhị phân đối xứng có dung lượng phụ thuộc vào xác suất lật bit của kênh này';
+const REMOVED_EXACT_80 = `<p>${Q_EXACT_80} và một câu nữa.</p>`;
+
 /** Wide enough for `#rail` to exist at all — `reader.css` hides it under
  * `@media (max-width:1240px)` and jsdom's own default is 1024, i.e. the phone
  * branch. Every test about the rail PANEL therefore has to say so out loud;
@@ -499,6 +518,82 @@ describe('OrphanPanel — ghi chú mồ côi là dữ liệu, không phải rác
     const row = await db.annotations.get('n1');
     expect(row!.deletedAt).toBeNull();
     expect(await db.outbox.count()).toBe(0);
+  });
+
+  it('trích dẫn dài ĐÚNG BẰNG 80 ký tự không bị cắt — biên là thứ duy nhất phân biệt > và >=', async () => {
+    await seed(makeAnchor(REMOVED_EXACT_80, Q_EXACT_80), 'vừa khít');
+    render(<Harness html={PROSE} />);
+    await waitForOrphans(1);
+
+    expect(ORPHAN_QUOTE_MAX).toBe(80);
+    expect(Q_EXACT_80).toHaveLength(80);
+    const quote = within(orphanRow('n1')).getByTestId('orphan-quote-n1');
+    // The whole 80, with no ellipsis: `flat.length > max` is what makes the
+    // budget a budget rather than a budget minus one.
+    expect(quote.textContent).toBe(Q_EXACT_80);
+    expect(quote.textContent).not.toContain('…');
+  });
+
+  it('phím Escape thoát chế độ gắn lại — và thoát là một phép ĐỌC', async () => {
+    await seed(makeAnchor(REMOVED_LONG, Q_LOST_LONG), 'ghi chú quý');
+    render(<Harness html={PROSE} />);
+    await waitForOrphans(1);
+
+    fireEvent.click(within(orphanRow('n1')).getByRole('button', { name: 'Gắn lại' }));
+    expect(reattachBar()).toBeInTheDocument();
+    selectInChapter(TARGET_FIRST);
+    expect(await screen.findByRole('button', { name: /gắn vào đây/i })).toBeInTheDocument();
+
+    // The only way out of a global mode that does not need a mouse. "Hủy" has
+    // had a test since the task landed; this one did not, and a keyboard exit
+    // that silently stopped working is invisible to everyone who uses a mouse.
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    await waitFor(() => expect(reattachBar()).not.toBeInTheDocument());
+    expect(orphanRow('n1')).toBeInTheDocument();
+    const row = await db.annotations.get('n1');
+    expect(row!.note).toBe('ghi chú quý');
+    expect(row!.updatedAt).toBe('2026-08-19T09:30:00.000Z');
+    expect(row!.deletedAt).toBeNull();
+    expect(await db.outbox.count()).toBe(0);
+  });
+
+  it('cứu ở chương SAU không được dùng lại bản đồ của chương TRƯỚC, dù mọi node cũ vẫn giữ nguyên độ dài (P2-F8)', async () => {
+    await seed(makeAnchor(REMOVED_LONG, Q_LOST_LONG), 'ghi chú xuyên chương');
+    const view = render(<Harness html={PROSE} />);
+    await waitForOrphans(1);
+
+    // Build the cache against chapter ONE: the selectionchange handler is what
+    // calls `mapFor()`, so a rescue has to get as far as a live selection.
+    fireEvent.click(within(orphanRow('n1')).getByRole('button', { name: 'Gắn lại' }));
+    selectInChapter(TARGET_FIRST);
+    expect(await screen.findByRole('button', { name: /gắn vào đây/i })).toBeInTheDocument();
+
+    // Chapter TWO, into the same `<div>` — element identity never changes when
+    // a chapter is swapped (`ChapterView.tsx`'s own doc). The rescue in flight
+    // is dropped, which is the designed behaviour and not what is under test
+    // here; what survives the swap is `mapRef`, which is a ref.
+    //
+    // `isMapStale` cannot see the swap: it compares each tracked Text node's
+    // `.data.length` against what the map recorded, and a DETACHED node keeps
+    // its data. Every length still agrees, and every node is gone. `revision`
+    // is the only thing left that can tell the two chapters apart.
+    view.rerender(<Harness html={PROSE_OTHER} />);
+    await waitFor(() => expect(reattachBar()).not.toBeInTheDocument());
+    await waitForOrphans(1);
+
+    // A NEW rescue, in the new chapter.
+    fireEvent.click(within(orphanRow('n1')).getByRole('button', { name: 'Gắn lại' }));
+    selectInChapter(TARGET_OTHER);
+    fireEvent.click(await screen.findByRole('button', { name: /gắn vào đây/i }));
+    await waitForPlaced(1);
+
+    // The rescue landed in the chapter the reader is actually looking at, with
+    // that chapter's words in it — not chapter one's.
+    expect(paintedText('n1')).toBe(TARGET_OTHER);
+    const row = await db.annotations.get('n1');
+    expect((row!.anchor as Anchor).exact).toBe(TARGET_OTHER);
+    expect(row!.note).toBe('ghi chú xuyên chương');
   });
 });
 
