@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { FINDING_CODES, MAX_UNCOMPRESSED_BYTES, parseManifest, validatePackage } from './validate';
+import {
+  FINDING_CODES,
+  MAX_ATTRS_PER_TAG,
+  MAX_UNCOMPRESSED_BYTES,
+  parseManifest,
+  validatePackage,
+} from './validate';
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const MANIFEST = (over: Record<string, unknown> = {}) => enc(JSON.stringify({
@@ -18,6 +24,17 @@ const withChapter = (chapter: string, over: Record<string, unknown> = {}) =>
   ]);
 
 const codesOf = (files: ReadonlyMap<string, Uint8Array>) => validatePackage(files).findings.map((f) => f.code);
+
+/**
+ * `<img a0=1 a1=1 … >` — n attributes with DISTINCT names on exactly one start
+ * tag. Distinct matters: HTML drops a repeat of a name it already has, so
+ * `'a=1 '.repeat(n)` is one attribute n times and reaches no ceiling at all.
+ */
+const tagWithAttrs = (n: number, extra = ''): string => {
+  const attrs = new Array<string>(n);
+  for (let i = 0; i < n; i++) attrs[i] = `a${i}=1`;
+  return `<img ${attrs.join(' ')}${extra}>`;
+};
 
 // ---------------------------------------------------------------------------
 // The five cases from the task brief, verbatim.
@@ -494,6 +511,260 @@ describe('B — a chapter that TEACHES HTML must be publishable at tier content'
   });
 });
 
+// ---------------------------------------------------------------------------
+// Review round 2 — N1: the fix for the regex bypasses bought a DoS.
+//
+// parse5 drops duplicate attributes by scanning the attribute list it has built
+// so far, once per attribute (`tokenizer/index.js:336`, `getTokenAttr`). That is
+// O(n²) in the number of attributes on ONE start tag. Measured on HEAD 64c6459,
+// before this block existed: 64,000 attributes = 552 KiB = 2.6% of the 20 MiB
+// budget took 19,228 ms in Bun and 6,030 ms on the Chromium main thread, while
+// the SAME byte count spread over many small tags took 38 ms / 28 ms. Size is
+// not the discriminator, so TOO_LARGE cannot fence it; the old regex scan did
+// the 4.7 MiB version in 21 ms.
+//
+// The budget assertions below are the point of these tests. Do not relax them
+// into a plain "expect(codes).toContain(...)": a rule that is correct and takes
+// six seconds is the bug this block exists to catch.
+// ---------------------------------------------------------------------------
+
+describe('N1 — một thẻ mở nhồi thuộc tính không được làm treo bộ kiểm định', () => {
+  /**
+   * Đo `validatePackage` trên đúng một chương, trả về mã finding + mili giây.
+   *
+   * `Date.now()` and not `performance.now()`: this package's `env.d.ts`
+   * declares only the two Encoding globals on purpose, and the difference
+   * being measured here is 8,500 ms against 1,000 ms — a clock with 1 ms
+   * resolution has three digits to spare.
+   */
+  const timed = (chapter: string): { codes: string[]; ms: number } => {
+    const files = withChapter(chapter);
+    const t0 = Date.now();
+    const codes = codesOf(files);
+    return { codes, ms: Date.now() - t0 };
+  };
+
+  // The timeout is deliberately far above the budget: when this regresses the
+  // failure should read "took 19228 ms, expected < 1000" and not "test timed
+  // out", because the number is the finding.
+  it('64.000 thuộc tính trên MỘT thẻ (552 KiB) bị chặn TRONG ngân sách thời gian', { timeout: 120_000 }, () => {
+    const { codes, ms } = timed(tagWithAttrs(64_000));
+    expect(codes, 'thẻ nhồi thuộc tính phải sinh finding').toContain('TAG_ATTR_FLOOD');
+    expect(ms, `mất ${ms.toFixed(0)} ms — bậc hai đã quay lại`).toBeLessThan(1000);
+  });
+
+  it('CÙNG số byte trải trên NHIỀU thẻ vẫn tuyến tính và vẫn sạch', { timeout: 120_000 }, () => {
+    // The control that proves the fence is on the right axis. This payload is
+    // the same size as the one above and is legitimate markup; if a "fix" ever
+    // fences total bytes or total attributes instead of attributes-per-tag,
+    // this row is what goes red.
+    const unit = '<img a=1 b=2 c=3 d=4>';
+    const { codes, ms } = timed(unit.repeat(Math.ceil((533 * 1024) / unit.length)));
+    expect(codes).toEqual([]);
+    expect(ms, `mất ${ms.toFixed(0)} ms`).toBeLessThan(1000);
+  });
+
+  it('MAX_ATTRS_PER_TAG là ĐÚNG 1024 — con số, không phải quan hệ', () => {
+    // Every other test here computes its fixture FROM the constant, so they
+    // measure the boundary rule and would stay green with the ceiling raised to
+    // a million — which would restore the DoS. This line is what makes the
+    // number itself something a person has to change on purpose. It was chosen
+    // from measured corpora (see the constant's own doc comment): the largest
+    // attribute count any real input produced was 257, from minified JS
+    // tokenized as markup; real HTML topped out at 7.
+    expect(MAX_ATTRS_PER_TAG).toBe(1024);
+  });
+
+  it('biên: ĐÚNG trần thì sạch, trần + 1 thì báo', () => {
+    expect(codesOf(withChapter(tagWithAttrs(MAX_ATTRS_PER_TAG)))).toEqual([]);
+    expect(codesOf(withChapter(tagWithAttrs(MAX_ATTRS_PER_TAG + 1)))).toEqual(['TAG_ATTR_FLOOD']);
+  });
+
+  it('biên rộng: 257 thuộc tính — ca lành LỚN NHẤT đo được — vẫn sạch', () => {
+    // `apps/web/dist/assets/index-*.js`, 376 KB of minified JavaScript, yields
+    // one pseudo start tag with 257 "attributes" when tokenized as markup, and
+    // this scan tokenizes every entry on purpose. A ceiling below that would
+    // reject a package for shipping a normal bundle.
+    expect(codesOf(withChapter(tagWithAttrs(257)))).toEqual([]);
+  });
+
+  it('thuộc tính TRÙNG TÊN không tính vào trần — HTML vốn vứt bản trùng đi', () => {
+    // `'a=1 '.repeat(n)` is ONE attribute written n times, not n attributes.
+    // Counting the discarded repeats would make the ceiling trivially reachable
+    // by a document that is merely sloppy.
+    expect(codesOf(withChapter(`<img ${'a=1 '.repeat(MAX_ATTRS_PER_TAG * 4)}>`))).toEqual([]);
+  });
+
+  it('khử trùng lặp giữ bản ĐẦU TIÊN — đúng như trình duyệt, nên bản sau là đồ chết', () => {
+    // The O(1) name set replaces parse5's linear `getTokenAttr` scan, so the
+    // rule it encodes is now this module's to keep: HTML keeps the FIRST
+    // occurrence of a repeated attribute name. Measured consequence, pinned
+    // here from the outside — a `javascript:` URL hidden in a SECOND `alt=`
+    // never reaches the DOM, so it is correctly not reported…
+    expect(validatePackage(withChapter('<img alt="an toàn" alt="javascript:alert(1)">')).ok).toBe(true);
+    // …while the same value in the FIRST `alt=` is the live one, and is.
+    expect(codesOf(withChapter('<img alt="javascript:alert(1)" alt="an toàn">'))).toContain('JAVASCRIPT_URL');
+    // A duplicate name must not stop the attributes AFTER it being read.
+    expect(codesOf(withChapter('<div id="a" id="b" onclick="x()">z</div>'))).toContain('EVENT_HANDLER_ATTR');
+  });
+
+  it('vượt trần NUỐT các luật khác trên CHÍNH thẻ đó — nhưng gói vẫn hỏng', () => {
+    // The honest gap, written down instead of left to be discovered. Past the
+    // ceiling the attributes are neither stored nor inspected, so an `onerror=`
+    // hidden behind 1024 filler attributes is NOT reported as
+    // EVENT_HANDLER_ATTR. It does not need to be: TAG_ATTR_FLOOD is itself a
+    // finding, so `ok` is false and the package is refused. The tier's promise
+    // is kept by rejecting the file, not by understanding it.
+    const r = validatePackage(withChapter(tagWithAttrs(MAX_ATTRS_PER_TAG + 1, ' onerror=alert(1)')));
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.code)).toEqual(['TAG_ATTR_FLOOD']);
+  });
+
+  it('trần áp cho MỖI thẻ, không phải cho cả tệp', () => {
+    // Ten tags each just under the ceiling is a lot of attributes and still not
+    // a flood: a per-file total would flag this, and it is legitimate.
+    const many = Array.from({ length: 10 }, () => tagWithAttrs(MAX_ATTRS_PER_TAG - 1)).join('\n');
+    expect(codesOf(withChapter(many))).toEqual([]);
+  });
+
+  it('sổ tên thuộc tính được ĐẶT LẠI ở mỗi thẻ — không rò từ thẻ này sang thẻ kia', () => {
+    // The O(1) name set is per-tag state, and per-tag state that is not reset
+    // is a miss, not just untidiness: without the reset the second `alt=` below
+    // looks like a duplicate of the first tag's and is dropped unexamined, so a
+    // live `javascript:` URL goes unreported.
+    expect(codesOf(withChapter('<img alt="an toàn"><img alt="javascript:alert(1)">'))).toContain('JAVASCRIPT_URL');
+    // …and the mirror image: a full tag must not spend the NEXT tag's budget.
+    expect(validatePackage(withChapter(`${tagWithAttrs(MAX_ATTRS_PER_TAG)}<p b=1>`)).ok).toBe(true);
+    expect(validatePackage(withChapter(`${tagWithAttrs(MAX_ATTRS_PER_TAG)}</p a=1>`)).ok).toBe(true);
+  });
+
+  it('THẺ ĐÓNG nhồi thuộc tính cũng bị chặn — cùng một đường tokenize', { timeout: 120_000 }, () => {
+    // End tags carry nothing a browser executes, so no CONTENT rule reads them
+    // (pinned elsewhere) — but the tokenizer still builds their attribute list,
+    // so the quadratic ran there too. The resource fence is not a content rule
+    // and does apply.
+    const attrs = new Array<string>(64_000);
+    for (let i = 0; i < 64_000; i++) attrs[i] = `a${i}=1`;
+    const { codes, ms } = timed(`</p ${attrs.join(' ')}>`);
+    expect(codes).toContain('TAG_ATTR_FLOOD');
+    expect(ms, `mất ${ms.toFixed(0)} ms`).toBeLessThan(1000);
+  });
+
+  it("hạng 'interactive' không tokenize gì cả, nên không có đường DoS này", { timeout: 120_000 }, () => {
+    // Where the fence is NOT needed, and why: `validatePackage` only tokenizes
+    // for tier "content". Pinned so that a future task moving the scan out of
+    // that branch has to look at this line first.
+    const files = new Map([
+      ['manifest.json', MANIFEST({ tier: 'interactive' })],
+      ['chapters/c1.html', enc(tagWithAttrs(64_000))],
+    ]);
+    const t0 = Date.now();
+    const r = validatePackage(files);
+    expect(r).toEqual({ ok: true, findings: [] });
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review round 2 — N2: manifest.json is DATA, and scanning data for markup is a
+// category error. Mutant M40 ("stop excluding manifest.json") survived the whole
+// suite before this block existed, so the behaviour was pinned in neither
+// direction. It is pinned in both here.
+// ---------------------------------------------------------------------------
+
+describe('N2 — manifest.json được LOẠI TRỪ khỏi luật markup, CÓ CHỦ Ý', () => {
+  it('CÓ CHỦ Ý, KHÔNG PHẢI SƠ SUẤT: <script>/<form>/<iframe> trong tiêu đề & mô tả KHÔNG bị báo', () => {
+    // Why this is safe: `manifest.title` and `manifest.description` reach the
+    // screen as React text nodes (CourseHome.tsx:46-47, Dashboard.tsx:250) and
+    // as `aria-label`, never as innerHTML — the string is inert.
+    // Why the old behaviour had to go: a course ABOUT web forms could not name
+    // the tags it teaches, and there was no escape. `&lt;form&gt;` passed the
+    // gate and then rendered as the literal characters `&lt;form&gt;` in the
+    // catalog, because a text node is never un-escaped. Flagging it left the
+    // author with no correct spelling at all.
+    for (const description of [
+      'Khoá học về thẻ <form> và cách gửi dữ liệu',
+      'Nhúng nội dung bằng <iframe> và <object>',
+      'Vì sao <script> lại nằm cuối <body>',
+    ]) {
+      expect(validatePackage(withChapter('<p>a</p>', { description })).ok, description).toBe(true);
+    }
+    expect(validatePackage(withChapter('<p>a</p>', { title: 'Thẻ <script> trong HTML' })).ok).toBe(true);
+    // …including a payload that WOULD be live markup in a chapter file.
+    expect(validatePackage(withChapter('<p>a</p>', {
+      description: '<img src=x onerror=alert(1)><a href="javascript:alert(1)">x</a>',
+    })).ok).toBe(true);
+  });
+
+  it('loại trừ là theo ĐƯỜNG DẪN manifest.json, không phải theo đuôi .json', () => {
+    // The exception is about one file whose meaning this module defines, not
+    // about a file type. Any other entry — `.json` included — is still content
+    // some consumer may render, and C3 is the lesson about keying on names.
+    expect(codesOf(withChapter('<p>a</p>').set('data/cauhoi.json', enc('{"q":"<img src=x onerror=a()>"}'))))
+      .toContain('EVENT_HANDLER_ATTR');
+    expect(codesOf(withChapter('<p>a</p>').set('chapters/manifest.json', enc('<script>a</script>'))))
+      .toContain('SCRIPT_TAG');
+  });
+
+  it('luật CẤU TRÚC của manifest thì KHÔNG được nới — chỉ năm luật HTML thôi nghỉ đọc nó', () => {
+    // The other half of the decision. Excluding the manifest from the markup
+    // rules must not quietly exclude it from the rules that are actually about
+    // it; if a future edit skips the file too early, this is what goes red.
+    expect(codesOf(new Map([['manifest.json', enc('{ hong')]]))).toContain('MANIFEST_PARSE');
+    expect(codesOf(withChapter('<p>a</p>', { license: '' }))).toContain('MANIFEST_FIELD');
+    expect(codesOf(withChapter('<p>a</p>', { version: '1.0' }))).toContain('SEMVER');
+    expect(codesOf(withChapter('<p>a</p>', { runtime: 'latest' }))).toContain('RUNTIME_RANGE');
+    expect(codesOf(new Map([['manifest.json', MANIFEST()]]))).toContain('CHAPTER_FILE_MISSING');
+  });
+});
+
+describe('N3/N4 — ba dạng dương tính giả, và lối thoát KHÁC NHAU của từng dạng', () => {
+  it('dạng 1 — ví dụ markup sống: escape LÀ lối thoát và nó chạy được', () => {
+    expect(codesOf(withChapter('<p><button onclick="chao()">Bấm</button></p>'))).toContain('EVENT_HANDLER_ATTR');
+    expect(validatePackage(withChapter('<p>&lt;button onclick="chao()"&gt;Bấm&lt;/button&gt;</p>')).ok).toBe(true);
+  });
+
+  it('dạng 2 — entry KHÔNG PHẢI HTML bị chặn oan, và KHÔNG có escape nào', () => {
+    // Markdown, JSON data and CSS comments do not escape HTML, because in their
+    // own formats there is nothing to escape. The scan reads package entries,
+    // not fenced blocks. Deliberate — the alternative is C3's hole — but it was
+    // missing from the table, so pin the rows.
+    const md = '# Bài\n\n```html\n<iframe src="x"></iframe>\n<form></form>\n```\n';
+    expect(codesOf(withChapter('<p>a</p>').set('src/c1.md', enc(md)))).toEqual(['EMBEDDED_FRAME', 'FORM_TAG']);
+    expect(codesOf(withChapter('<p>a</p>').set('data/q.json', enc('{"q":"<img src=x onerror=\\"a()\\">"}'))))
+      .toEqual(['EVENT_HANDLER_ATTR']);
+    expect(codesOf(withChapter('<p>a</p>').set('css/x.css', enc('/* <img src=x onerror="a()"> */\n.a{color:red}'))))
+      .toEqual(['EVENT_HANDLER_ATTR']);
+
+    // The other half: entries that look markup-ish and are correctly clean.
+    const clean: [string, string][] = [
+      ['css/y.css', 'a[href^="javascript:"]{color:red}'],
+      ['css/z.css', '.a::before{content:"<"}'],
+      ['h.svg', '<svg xmlns="http://www.w3.org/2000/svg"><style>.a{fill:red}</style><rect class="a"/></svg>'],
+      ['LICENSE', 'MIT License\n\nCopyright (c) 2026\n'],
+      ['ok.md', 'Viết `&lt;form&gt;` để hiện chữ.\n'],
+    ];
+    for (const [path, body] of clean) {
+      expect(validatePackage(withChapter('<p>a</p>').set(path, enc(body))).ok, path).toBe(true);
+    }
+  });
+
+  it('dạng 3 — văn xuôi trong GIÁ TRỊ thuộc tính: escape KHÔNG cứu được', () => {
+    // The sentence this replaces promised "escape the markup" for every false
+    // positive. Measured false: the tokenizer decodes character references
+    // inside attribute values exactly as a browser does, so the escaped form is
+    // flagged too.
+    expect(codesOf(withChapter('<abbr title="javascript: ngôn ngữ">JS</abbr>'))).toContain('JAVASCRIPT_URL');
+    expect(codesOf(withChapter('<abbr title="&#106;avascript: ngôn ngữ">JS</abbr>'))).toContain('JAVASCRIPT_URL');
+    expect(codesOf(withChapter('<img alt="javascript: ví dụ" src="a.png">'))).toContain('JAVASCRIPT_URL');
+
+    // The three ways out that DO work, each measured.
+    expect(validatePackage(withChapter('<p>&lt;abbr title="javascript: ngôn ngữ"&gt;</p>')).ok).toBe(true);
+    expect(validatePackage(withChapter('<p>javascript: là một scheme</p>')).ok).toBe(true);
+    expect(validatePackage(withChapter('<abbr title="ngôn ngữ javascript:">JS</abbr>')).ok).toBe(true);
+  });
+});
+
 describe('những gì bộ quét cũ bỏ sót vì nó không phải parser', () => {
   it('entity CÓ TÊN trong URL: java&Tab;script: — parser giải mã, regex thì không', () => {
     expect(codesOf(withChapter('<a href="java&Tab;script:alert(1)">x</a>'))).toContain('JAVASCRIPT_URL');
@@ -635,6 +906,7 @@ it('mọi code trong FINDING_CODES đều được ít nhất một fixture sinh
   feed(withChapter(
     '<script>a</script><div onclick="b()"></div><a href="javascript:c">l</a><iframe src="d"></iframe><form></form>',
   ).set('e.js', enc('x')));
+  feed(withChapter(tagWithAttrs(MAX_ATTRS_PER_TAG + 1)));
   feed(new Map([
     ['manifest.json', MANIFEST({
       parts: [

@@ -57,9 +57,24 @@
  * code, so a miss is fatal and a false positive costs one reviewer glance.
  *
  * The cost is that `Tokenizer` is marked `@internal` by parse5 even though it
- * is exported and typed from the package root. `parse5` is therefore pinned to
- * an exact version in `package.json`, and the C1/C2 tests in `validate.test.ts`
- * are what would go red if a future version changed the contract.
+ * is exported and typed from the package root, and {@link BoundedTokenizer}
+ * goes one level further in by overriding three of its `protected` methods.
+ * `parse5` is therefore pinned to an exact version in `package.json`; `tsc -b`
+ * is a real gate over this file, so a changed member signature is a red build
+ * rather than a silent miss; and the C1/C2, duplicate-attribute and N1 timing
+ * tests in `validate.test.ts` are what would go red if a future version changed
+ * the behaviour behind an unchanged signature.
+ *
+ * ## What this module does NOT promise about resources
+ *
+ * It is synchronous and it runs to completion. Even a well-behaved package at
+ * the full {@link MAX_UNCOMPRESSED_BYTES} budget was measured at 2.8–4.2 s of
+ * blocked main thread on a slow machine, which is a frozen tab. Task 8 must
+ * call this off the main thread (a Worker) or slice it per entry with a yield.
+ * {@link MAX_ATTRS_PER_TAG} removes the *super-linear* case, not the linear
+ * one: the caller still owes this module a byte budget, applied BEFORE the
+ * bytes get here — the same debt the `MAX_UNCOMPRESSED_BYTES` comment names for
+ * zip bombs.
  */
 
 import { Tokenizer } from 'parse5';
@@ -101,6 +116,7 @@ export const FINDING_CODES = [
   'EMBEDDED_FRAME',
   'FORM_TAG',
   'JS_FILE_IN_PACKAGE',
+  'TAG_ATTR_FLOOD',
 ] as const;
 
 export type FindingCode = (typeof FINDING_CODES)[number];
@@ -112,6 +128,66 @@ export type FindingCode = (typeof FINDING_CODES)[number];
  * through. The caller inflates first, then asks this module.
  */
 export const MAX_UNCOMPRESSED_BYTES = 20 * 1024 * 1024;
+
+/**
+ * Ceiling on the number of attributes **one start tag** may carry.
+ *
+ * ## Why there has to be a ceiling
+ *
+ * `parse5` implements the spec's "drop duplicate attributes" rule by scanning
+ * the attribute list built so far, once per attribute
+ * (`tokenizer/index.js:336`, `getTokenAttr`). That is O(n²) in the attributes
+ * on a single tag, and it was measured to hang every consumer of this module:
+ * 64,000 attributes — 552 KiB, **2.6% of {@link MAX_UNCOMPRESSED_BYTES}** —
+ * took 6.0 s on the Chromium main thread, i.e. a dead tab, while the *same
+ * byte count* spread over ordinary small tags took 28 ms. Total size is
+ * therefore not the discriminator and `TOO_LARGE` cannot fence this;
+ * attributes-per-tag is the axis, so that is the axis with a limit on it.
+ *
+ * ## What the ceiling is for, and what it is NOT for
+ *
+ * It is **not** what makes the scan fast. {@link BoundedTokenizer} removes the
+ * quadratic itself, and once that is gone the ceiling barely moves the clock:
+ * measured on the worst adversarial payload that fits the 20 MiB budget — every
+ * tag stuffed to exactly the ceiling, i.e. an attacker deliberately staying
+ * one attribute under the rule — 1024 costs 1,114 ms and 65,536 costs 1,242 ms.
+ * For comparison a *benign* 20 MiB tag-dense package costs 797 ms, so the
+ * attacker's remaining leverage is ~1.3×, not the 14,000× N1 measured.
+ *
+ * What it does buy is **memory**, and that is a DoS of its own. 1,747,285
+ * attributes on one tag — a single 17.3 MiB entry, inside this module's own
+ * budget — peaks at 1,322 MiB of RSS with no ceiling and 733 MiB with this one,
+ * while also running 2,049 ms instead of 875 ms. A gigabyte of attribute
+ * objects is an out-of-memory kill on a phone or a CI container.
+ *
+ * Second, it turns "this is not a document" into a finding a human can read
+ * rather than a slow success.
+ *
+ * ## Where the number comes from
+ *
+ * Measured, not guessed — the largest attribute count on any single start tag
+ * across every real corpus at hand:
+ *
+ * | corpus                                                    | max attrs on one tag |
+ * |-----------------------------------------------------------|---------------------|
+ * | the 44 shipping chapters of `courses/***REMOVED***` |   **2**             |
+ * | `favicon.svg` (real hand-authored SVG)                     |   **7**             |
+ * | the whole real package, incl. `viz.js` (176 KB, minified)  |  **70**             |
+ * | `***REMOVED***.html`, the 1.9 MiB single-file source | **141**             |
+ * | `apps/web/dist` (376 KB minified JS + 398 KB CSS)          | **257**             |
+ *
+ * Note where the big numbers come from: not from markup, but from minified
+ * JavaScript, which this scan tokenizes as markup on purpose (see
+ * {@link scanHtmlText}, "deliberate over-approximation") and which turns
+ * `for(i=0;i<o;++c){var …}` into a pseudo start tag with 257 "attributes".
+ * Real HTML tops out at 7.
+ *
+ * 1024 is **4× the largest value any benign input produced** and ~150× the
+ * largest that genuine markup produced. A document does not reach it by being
+ * long, only by being built to. It is a round number on purpose: a limit that
+ * looks derived invites someone to re-derive it from one new sample.
+ */
+export const MAX_ATTRS_PER_TAG = 1024;
 
 /** Path used by findings that are about the package as a whole, not one file. */
 const PACKAGE_ROOT = '.';
@@ -205,7 +281,10 @@ const EVENT_HANDLER_NAME_RE = /^on[a-z]{2,}$/;
  * which rewrites an `<a href>` at run time, and then whatever the next such
  * attribute turns out to be. Checking them all costs nothing and cannot be
  * out-of-date. Its one false positive — prose that starts an attribute value
- * with the word, `title="javascript: ngôn ngữ…"` — is in the table below.
+ * with the word, `title="javascript: ngôn ngữ…"` — is case 3 in the table
+ * below, and note there that escaping is NOT the way out of that one: the
+ * decoding described above is exactly why `title="&#106;avascript: …"` is
+ * flagged as well.
  */
 function isJavascriptUrlValue(value: string): boolean {
   return value.replace(/[\s\u0000-\u001f]/g, '').toLowerCase().startsWith('javascript:');
@@ -221,7 +300,91 @@ const CONTENT_TIER_RULES: readonly (readonly [FindingCode, string])[] = [
   ['JAVASCRIPT_URL', 'tier "content" must not contain a javascript: URL'],
   ['EMBEDDED_FRAME', 'tier "content" must not embed a frame (<iframe>/<object>/<embed>)'],
   ['FORM_TAG', 'tier "content" must not contain a <form> tag'],
+  [
+    'TAG_ATTR_FLOOD',
+    `a single start tag carries more than ${MAX_ATTRS_PER_TAG} attributes, which no document does by accident`,
+  ],
 ];
+
+/**
+ * `parse5`'s tokenizer with its duplicate-attribute check made O(1) and with a
+ * ceiling on attributes per tag. Both halves of review round 2's N1.
+ *
+ * ### What is replaced, and why it cannot stay
+ *
+ * The base class runs, once per attribute:
+ *
+ * ```js
+ * if (getTokenAttr(token, this.currentAttr.name) === null) token.attrs.push(this.currentAttr);
+ * else this._err(ERR.duplicateAttribute);
+ * ```
+ *
+ * `getTokenAttr` is a linear walk of `token.attrs`, so a tag with *n*
+ * attributes costs n²/2 string comparisons. That is the entire DoS: 552 KiB of
+ * one tag = 6.0 s in Chromium, 19.2 s in Bun, versus 28 ms for the same bytes
+ * as ordinary tags. A `Set` of names decides the identical question — "have I
+ * already got an attribute with this name?" — in constant time, which makes the
+ * scan linear in the input for every shape of input.
+ *
+ * The **semantics are unchanged and that is testable**: HTML keeps the FIRST
+ * occurrence of a repeated attribute name and discards the rest, which is what
+ * `getTokenAttr(...) === null` decides and what `seen.has(name)` decides.
+ * `validate.test.ts` pins it from the outside (a `javascript:` value hidden in a
+ * *second* `alt=` is dropped by a browser, so it is dropped here too).
+ *
+ * Only the ceiling changes behaviour: past {@link MAX_ATTRS_PER_TAG}, further
+ * attributes on that tag are neither stored nor inspected, and
+ * {@link attrFlood} goes true. That is a real gap in the scan and it is closed
+ * by the report rather than by the scan: `TAG_ATTR_FLOOD` is itself a finding,
+ * so a package that floods a tag fails validation whatever else the tag hides.
+ * The tier's promise ("this package cannot execute code") is kept by rejecting
+ * it, not by understanding it.
+ *
+ * ### The parse5 coupling
+ *
+ * This subclass reaches one level deeper into `parse5` than calling the
+ * tokenizer does: it overrides three `protected` members and touches
+ * `currentToken`/`currentAttr`. `parse5` is pinned to an exact version and
+ * `tsc -b` is a real gate over this file, so a changed signature is a red
+ * build, not a silent miss; a changed *meaning* (when `_leaveAttrName` fires)
+ * is what the duplicate-attribute and C1/C2 tests are for.
+ */
+class BoundedTokenizer extends Tokenizer {
+  /** Attribute names already accepted for the tag currently being built. */
+  private readonly seenAttrNames = new Set<string>();
+
+  /** True once any one tag in this run went past {@link MAX_ATTRS_PER_TAG}. */
+  public attrFlood = false;
+
+  protected override _createStartTagToken(): void {
+    this.seenAttrNames.clear();
+    super._createStartTagToken();
+  }
+
+  protected override _createEndTagToken(): void {
+    this.seenAttrNames.clear();
+    super._createEndTagToken();
+  }
+
+  protected override _leaveAttrName(): void {
+    const token = this.currentToken;
+    // Narrowing for the type checker: `_leaveAttrName` is only ever reached
+    // with a tag token current.
+    if (token === null || !('attrs' in token)) return;
+
+    const name = this.currentAttr.name;
+    if (this.seenAttrNames.has(name)) return; // duplicate — HTML keeps the first
+    if (this.seenAttrNames.size >= MAX_ATTRS_PER_TAG) {
+      this.attrFlood = true;
+      return;
+    }
+    this.seenAttrNames.add(name);
+    token.attrs.push(this.currentAttr);
+    // The base method also records a source location here. This module builds
+    // its tokenizer with `{}`, so `sourceCodeLocationInfo` is off, `location`
+    // is null and that branch is unreachable — nothing is being dropped.
+  }
+}
 
 /**
  * The content-tier rules, run over parse5's token stream.
@@ -251,6 +414,12 @@ const CONTENT_TIER_RULES: readonly (readonly [FindingCode, string])[] = [
  * |                      | not URLs by name at all (`<animate attributeName=href to=javascript:…>`)      |                                                                             |
  * | `EMBEDDED_FRAME`     | a start tag named `iframe`/`object`/`embed`/`frame`/`frameset`                | nothing known for those start tags                                          |
  * | `FORM_TAG`           | a `<form` start tag                                                          | nothing known                                                               |
+ * | `TAG_ATTR_FLOOD`     | one start tag past {@link MAX_ATTRS_PER_TAG} attributes. A resource fence,    | nothing — it is not a rule about what executes. It does SWALLOW the four    |
+ * |                      | not a rule about content: see {@link BoundedTokenizer} for the DoS it closes  | rules above on that one tag, whose remaining attributes are never read; the |
+ * |                      |                                                                              | package still fails, under this code instead of theirs                      |
+ * | *non-HTML entries*   | there is no such rule and that is the point: the five rules above read EVERY  | — see "the false positives" below, case 2                                   |
+ * |                      | entry, so a `.md` source, a `.json` data file or a `.css` comment is markup   |                                                                             |
+ * |                      | if it looks like markup                                                      |                                                                             |
  *
  * **Where it looks:** every entry in the package, decoded as UTF-8 with
  * replacement — no extension list, no "this one looks binary" skip. Round 1 of
@@ -260,17 +429,50 @@ const CONTENT_TIER_RULES: readonly (readonly [FindingCode, string])[] = [
  * decide to render. Tokenizing a few megabytes of image bytes is cheap, and
  * random bytes cannot spell `<img … onerror=` by accident.
  *
+ * **The one entry it does NOT look at is `manifest.json`** — see the comment at
+ * the call site in {@link validatePackage}. Short version: the manifest is JSON
+ * data whose fields the reader renders as text, markup in them is therefore
+ * inert, and scanning it produced false positives with no correct spelling
+ * available to the author. That is an exception about what the bytes *are*, not
+ * about what they are called: every other `.json` entry is still scanned.
+ *
  * **Deliberate over-approximation.** The tokenizer is run in its default state,
  * so the raw-text bodies the TREE builder would switch on — `<script>`,
  * `<style>`, `<textarea>`, `<title>` — are tokenized as markup here. That can
  * only ever over-report (a `<textarea>` containing `<img onerror=…>` is flagged
  * although a browser would show it as text), never under-report, and
- * over-reporting is the direction this tier can afford. Two more, both
- * measured: `manifest.json` is scanned like every other entry, so a course
- * whose *title* contains a raw `<script>` is flagged; and an attribute value
- * that merely begins with the word — `title="javascript: một ngôn ngữ"` — is
- * flagged as `JAVASCRIPT_URL`. The escape from all of these is the same one a
- * chapter needs anyway to render: escape the markup.
+ * over-reporting is the direction this tier can afford.
+ *
+ * **The false positives, and the way out of each.** There is no single escape;
+ * an earlier draft of this comment claimed there was, and review round 2
+ * measured that claim false (N4). Three distinct shapes, all measured on this
+ * code:
+ *
+ *   1. *Live markup written as an example.* `<button onclick="chao()">` in a
+ *      chapter is flagged. **Escaping works**, and it is the escape a chapter
+ *      needs anyway in order to render: `&lt;button onclick="chao()"&gt;` is a
+ *      character token, not a start tag, and is clean.
+ *   2. *A non-HTML entry whose own format does not escape.* A markdown source
+ *      shipped beside the built chapter is flagged for a fenced ```html block,
+ *      a `.json` data file for an HTML snippet it carries as a string, and a
+ *      `.css` file for markup inside a comment — the scan sees a package entry,
+ *      not a fenced block or a comment in some other language. **Escaping is
+ *      not available**: escaping a markdown fence changes what markdown
+ *      renders. Ship the built output without the sources, or publish at tier
+ *      `interactive`. (Measured clean next to those: CSS
+ *      `a[href^="javascript:"]`, CSS `content:"<"`, real SVG including an
+ *      export with `<style>`, plain-text LICENSE/CHANGELOG, and an escaped
+ *      `.md`.) This is the price of C3's lesson that a scan may not be keyed on
+ *      a file extension, and it is the right side to err on.
+ *   3. *Prose that merely begins an attribute VALUE with the word.*
+ *      `<abbr title="javascript: một ngôn ngữ">` is flagged `JAVASCRIPT_URL`,
+ *      and **escaping does not help here**: character references in an
+ *      attribute value are decoded during tokenization exactly as a browser
+ *      decodes them, so `title="&#106;avascript: …"` is flagged too (measured).
+ *      The ways out are to escape the WHOLE tag so it stops being a tag
+ *      (measured clean), to move the word out of the attribute into the text
+ *      (prose is a character token and is never read as an attribute), or to
+ *      reword so the value does not START with the scheme.
  *
  * **Not covered by any rule**, and therefore still the registry reviewer's job:
  * `<meta http-equiv="refresh">` redirects, external `<link>`/`<img>`/CSS
@@ -305,7 +507,9 @@ function scanHtmlText(path: string, text: string): Finding[] {
     onEof: ignore,
   };
 
-  new Tokenizer({}, handler).write(text, true);
+  const tokenizer = new BoundedTokenizer({}, handler);
+  tokenizer.write(text, true);
+  if (tokenizer.attrFlood) seen.add('TAG_ATTR_FLOOD');
 
   const out: Finding[] = [];
   for (const [code, detail] of CONTENT_TIER_RULES) {
@@ -572,7 +776,34 @@ export function validatePackage(files: ReadonlyMap<string, Uint8Array>): Validat
     // {@link scanHtmlText}. The previous version read only `.html?/.xhtml/.svg`
     // and nothing constrains the extension of `chapter.file`, so renaming a
     // chapter to `c1.txt` switched all five rules off at once.
+    //
+    // The ONE exception is `manifest.json`, and it is an exception about what
+    // the bytes ARE, not about what they are called. Every other entry is a
+    // file some consumer may decide to render; the manifest is a JSON document
+    // whose shape THIS module defines, and whose fields the reader renders as
+    // TEXT — `{manifest.title}` / `{manifest.description}` in
+    // `apps/web/src/pages/CourseHome.tsx:46-47` and `Dashboard.tsx:250`, plus
+    // `aria-label={manifest.title}`. React escapes all of those. Running markup
+    // rules over them was a category error with no way out for the author: a
+    // course about web forms could not put `<form>` in its own description
+    // (FORM_TAG), and writing `&lt;form&gt;` to get past the gate only made the
+    // catalog display the literal string `&lt;form&gt;`, because nothing ever
+    // un-escapes it. Both halves measured in review round 2 (N2).
+    //
+    // THE INVARIANT THIS RESTS ON: manifest fields are rendered as text. If a
+    // consumer ever feeds `manifest.title`/`description` — or any other
+    // manifest string — to `innerHTML`, `dangerouslySetInnerHTML` or an
+    // equivalent, this exclusion becomes a hole, and closing it here again is
+    // not the fix: the fix is that the consumer escapes what it injects. Task 7
+    // touches `loader.ts` and carries the note to put the matching fence on the
+    // `apps/web` side.
+    //
+    // Structural manifest rules are UNAFFECTED: MANIFEST_MISSING,
+    // MANIFEST_PARSE, MANIFEST_FIELD, SEMVER, RUNTIME_RANGE,
+    // DUPLICATE_CHAPTER_ID, CHAPTER_FILE_MISSING and PATH_ESCAPE all still read
+    // this file. Only the five HTML rules stop looking at it.
     for (const [path, bytes] of files) {
+      if (path === MANIFEST_PATH) continue;
       // The one shortcut taken, and it is a proof rather than a heuristic: a
       // start tag cannot exist without a U+003C, 0x3C is that character and
       // nothing else in UTF-8 (continuation bytes are all >= 0x80), a
