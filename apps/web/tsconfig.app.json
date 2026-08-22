@@ -34,7 +34,12 @@
      * file — which is exactly what is wanted here.
      */
     "paths": {
-      "@tuhoc/course-format": ["../../packages/course-format/src/index.ts"]
+      "@tuhoc/course-format": ["../../packages/course-format/src/index.ts"],
+      // Nửa TypeScript của alias `@vault-protocol` trong `vite.config.ts`. Chỉ
+      // KIỂU của giao thức postMessage đi qua đây — xem chú thích dài hơn ở
+      // chính vite.config.ts về việc vì sao không được alias thêm thứ gì khác
+      // của apps/vault vào trang chính.
+      "@vault-protocol": ["../vault/src/protocol.ts"]
     }
   },
   "include": ["src"]
