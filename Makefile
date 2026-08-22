@@ -17,7 +17,33 @@ test-api: ; cd apps/api && go test ./...
 # — since task 13 that is the PUBLIC sample package `so-dau-phay-dong`, which
 # lives in this repo at `fixtures/courses/` but is read from the `courses/`
 # working directory. See the `courses` target below.
-test-web: courses ; cd apps/web && bun run test
+#
+# `bun run typecheck` (`tsc -b`) chạy TRƯỚC vitest, thêm ở Task 4 của hệ thống
+# con 3, và lý do là một phép đo chứ không phải sự đồng bộ hình thức với bốn
+# target dưới đây:
+#
+#   apps/vault           → typecheck
+#   packages/course-format → typecheck
+#   tools/tuhoc-cli      → typecheck
+#   tools/registry       → typecheck
+#   apps/web             → KHÔNG. `bun run test` = vitest, và vitest KHÔNG kiểm kiểu.
+#
+# Tức là thư mục LỚN NHẤT repo là thư mục duy nhất không có cổng kiểu, ở đúng
+# hình dạng năm cổng mù đã ghi trong docs/carried-forward.md. Nó không phải giả
+# thuyết: báo cáo Task 3 §0.2 ghi lại một ca `bun run test` XANH trong khi
+# `tsc -b` thoát 2 trên cùng cây mã (fixture khai sai `generatedBy`), và cổng
+# duy nhất bắt được là một lệnh gõ tay.
+#
+# Với hệ song ngữ thì khoảng trống ấy đắt hơn nữa: lời hứa "không khoá dịch nào
+# được phép thiếu ở một ngôn ngữ" được cưỡng chế BẰNG KIỂU (`en: Messages`), nên
+# nếu không có ai chạy `tsc` thì lời hứa ấy không có cổng nào cả. Đã đo, hai
+# chiều, khôi phục trong cùng lệnh shell với `shasum` khớp: xoá một khoá trong
+# `src/i18n/messages/en.ts` → TS2741, thoát **2**; thêm một khoá → TS2353, thoát
+# **2**; khôi phục → thoát **0**.
+#
+# `tsc -b`, KHÔNG `tsc --noEmit`: `--noEmit` không đi xuống project reference và
+# đã tạo ra một cổng rỗng, luôn xanh, trong repo này (docs/carried-forward.md §2).
+test-web: courses ; cd apps/web && bun run typecheck && bun run test
 # apps/vault — kho khoá ở origin riêng. BA cổng: `tsc -b` cho kiểu, `oxlint`
 # cho mã, vitest cho hành vi. KHÔNG phụ thuộc `courses`: kho khoá không bao giờ
 # chạm tới nội dung course — nó chỉ giữ key và gọi nhà cung cấp.

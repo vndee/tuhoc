@@ -622,9 +622,18 @@ describe('the localStorage key registry', () => {
    * a key has to be a decision made HERE, out loud, on one side of the
    * line or the other.
    */
+  /**
+   * Tripped a second time by subsystem 3's Task 4, which added
+   * `itbook-lang` — and, as with `packages` above, the list was changed ON
+   * PURPOSE rather than the assertion being "fixed". The classification
+   * argument is written out at the constant itself: the interface language
+   * describes this DEVICE, so `clearLocalData()` must leave it alone, and
+   * `i18n/LanguageProvider.test.tsx` proves that it does rather than
+   * leaving it true by luck.
+   */
   it('classifies every key, with nothing on both lists', () => {
     expect([...USER_CONTENT_KEYS]).toEqual(['itbook-note-draft']);
-    expect([...DEVICE_PREFERENCE_KEYS]).toEqual(['itbook-theme']);
+    expect([...DEVICE_PREFERENCE_KEYS]).toEqual(['itbook-theme', 'itbook-lang']);
 
     const all = [...USER_CONTENT_KEYS, ...DEVICE_PREFERENCE_KEYS];
     expect(new Set(all).size).toBe(all.length);

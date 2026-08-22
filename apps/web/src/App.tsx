@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { useMe } from './api/useMe';
+import { LanguageProvider } from './i18n/LanguageProvider';
+import { LanguageSwitcher } from './i18n/LanguageSwitcher';
 import { AppRoutes } from './routes';
 import { ErrorBoundary } from './shell/ErrorBoundary';
 import { Rail } from './shell/Rail';
@@ -22,9 +24,16 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <ThemeProvider>
-          <AppShell />
-        </ThemeProvider>
+        {/* Ngoài <ThemeProvider>: ngôn ngữ là thứ MỌI thứ khác vẽ bằng, kể cả
+            nhãn của nút chủ đề khi Task 5 bóc nó. Cả hai đều là tuỳ chọn của
+            THIẾT BỊ (db/local.ts's DEVICE_PREFERENCE_KEYS) và không phụ thuộc
+            nhau, nên thứ tự này chỉ là chiều phụ thuộc tương lai, không phải
+            một ràng buộc hôm nay. */}
+        <LanguageProvider>
+          <ThemeProvider>
+            <AppShell />
+          </ThemeProvider>
+        </LanguageProvider>
       </BrowserRouter>
     </QueryClientProvider>
   );
@@ -44,7 +53,18 @@ function AppShell() {
   return (
     <Shell
       sidebar={<Sidebar />}
-      topbar={<Topbar theme={theme} onToggleTheme={toggleTheme} onMenuClick={toggleMobileNav} />}
+      topbar={
+        <>
+          <Topbar theme={theme} onToggleTheme={toggleTheme} onMenuClick={toggleMobileNav} />
+          {/* Gắn ở khe `topbar` chứ không trong <Topbar>: <Topbar> nhận mọi
+              thứ qua props và được ba tệp test render trực tiếp, nên cho nó
+              đọc Context sẽ bắt ba tệp ấy phải dựng provider mà chẳng đo thêm
+              được gì. Ở đây điều khiển vẫn nằm trong `#topbar` thật, và
+              LanguageProvider.test.tsx's "CỬA" chứng minh người dùng bấm tới
+              được nó qua <App/>. */}
+          <LanguageSwitcher />
+        </>
+      }
       rail={<Rail />}
     >
       {/* Inside <Shell>, not outside: a render error in one page should leave
