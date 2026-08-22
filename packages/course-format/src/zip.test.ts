@@ -809,21 +809,24 @@ describe('packZip sinh byte tái lập được', () => {
 // Gói THẬT. Sáu phép đo sai trong dự án này đã bị bác bỏ ở đúng bước này.
 // ---------------------------------------------------------------------------
 
-describe('gói thật: courses/***REMOVED***', () => {
+describe('gói thật: courses/so-dau-phay-dong', () => {
   /** vitest chạy với cwd = `packages/course-format` (xem Makefile: test-format). */
-  const ROOT = '../../courses/***REMOVED***';
+  const ROOT = '../../courses/so-dau-phay-dong';
 
   const readReal = (): Map<string, Uint8Array> => {
-    // Từ task 11, course KHÔNG nằm trong repo nữa — `courses/` là thư mục làm
-    // việc, nội dung tới từ một .zip trong kho ngoài cây git (spec §2B.1).
-    // Vắng gói thì khối này ĐỎ, không skip và không đổi sang dữ liệu bịa: cái
-    // đang đo ở đây là 46 tệp thật đi qua pack/unpack không sai một byte, và
-    // một bản dựng tay thì đo lại chính bản dựng tay. Chỉ có câu chữ là thêm —
-    // `ENOENT` cũng đỏ, nhưng nó không nói phải gõ gì.
+    // `courses/` là thư mục LÀM VIỆC, không phải nguồn — nội dung tới từ
+    // `fixtures/courses/so-dau-phay-dong.zip`, một gói mẫu công khai được
+    // commit và do `tuhoc pack` ghi ra (task 13). Trước task 13 chỗ này đọc
+    // giáo trình riêng tư, thứ không có trên bản clone của người khác.
+    //
+    // Vắng gói đã bung thì khối này ĐỎ, không skip và không đổi sang dữ liệu
+    // bịa: cái đang đo ở đây là 10 tệp thật đi qua pack/unpack không sai một
+    // byte, và một bản dựng tay thì đo lại chính bản dựng tay. Chỉ có câu chữ
+    // là thêm — `ENOENT` cũng đỏ, nhưng nó không nói phải gõ gì.
     if (!existsSync(ROOT)) {
       throw new Error(
-        `Chưa có nội dung course thật ở ${ROOT} (cwd: packages/course-format).\n` +
-          'Nạp về bằng `make courses` từ gốc repo — xem docs/publishing.md §1.',
+        `Chưa bung gói mẫu ra ${ROOT} (cwd: packages/course-format).\n` +
+          'Bung bằng `make courses` từ gốc repo — gói NẰM TRONG repo, xem docs/publishing.md §1.',
       );
     }
     const files = new Map<string, Uint8Array>();
@@ -837,22 +840,73 @@ describe('gói thật: courses/***REMOVED***', () => {
     return files;
   };
 
-  // 1.263.009 lúc viết; +164 byte ở task 11 khi manifest lên v2 (`tier`,
-  // `license`, `authors`, `generatedBy`); −3 byte khi chủ course xác nhận
-  // `generatedBy` là "ai" chứ không phải phỏng đoán "mixed" của agent.
-  // Con số này ĐÃ làm đúng việc của nó một lần: nó là thứ duy nhất trong repo
-  // bắt được rằng manifest vừa đổi.
-  const REAL_BYTES = 1_263_170;
+  // Lịch sử con số này, vì nó là thứ duy nhất trong repo từng bắt được rằng
+  // một manifest vừa đổi mà không ai nói:
+  //   1.263.009  giáo trình riêng, 46 tệp, lúc viết
+  //   1.263.170  +164 ở task 11 (manifest lên v2: tier/license/authors/
+  //              generatedBy), −3 khi chủ course xác nhận generatedBy là "ai"
+  //     190.348  task 13: đổi hẳn ngữ liệu sang gói mẫu công khai, 10 tệp
+  //     190.693  +345 khi cổng viz.spec.ts bắt được `vline(..., null, ...)`
+  //              trong viz.js của gói và bản vá được đóng gói lại
+  //
+  // Nó phải được ĐO LẠI sau mỗi lần đóng gói lại `fixtures/courses/
+  // so-dau-phay-dong`, không được nới thành `toBeGreaterThan`: một con số
+  // chính xác là thứ duy nhất phân biệt "gói đổi vì có người sửa nó" với
+  // "gói đọc hụt vài tệp".
+  const REAL_BYTES = 190_693;
+  const REAL_ENTRIES = 10;
 
-  it(`46 tệp, ${REAL_BYTES.toLocaleString('vi-VN')} byte — con số, để một gói đọc hụt không lặng lẽ qua`, () => {
+  /**
+   * Vân tay NỘI DUNG, không phải kích thước — và nó có mặt vì một mutant sống
+   * sót ở task 13.
+   *
+   * Đối chứng đo được: thêm MỘT byte vào `chapters/appx.html` làm bài trên đỏ
+   * (190.348 → 190.349). Đổi MỘT byte mà giữ nguyên độ dài — `chính` thành
+   * `Chính` trong một tiêu đề — thì **cả khối này xanh**. Tổng byte và số tệp
+   * không nhìn thấy nội dung, nên "gói mẫu là dữ liệu test của cả repo" chỉ
+   * được canh bằng độ dài.
+   *
+   * FNV-1a 32 bit, gấp theo THỨ TỰ TÊN ĐÃ SẮP XẾP, tính ngay tại chỗ: không
+   * thêm `node:crypto` vào `node-test-env.d.ts`, vì một khai báo module môi
+   * trường thì cả dự án nhìn thấy và bài kiểm ở cuối tệp này tồn tại để bịt
+   * đúng cửa đó. Không cần chống va chạm có chủ ý — thứ đang được canh là sửa
+   * nhầm, không phải kẻ tấn công.
+   */
+  const REAL_FNV1A = 0x75bb05a3;
+
+  const fingerprint = (files: Map<string, Uint8Array>): number => {
+    let h = 0x811c9dc5;
+    const mix = (byte: number): void => {
+      h ^= byte;
+      h = Math.imul(h, 0x01000193) >>> 0;
+    };
+    for (const name of [...files.keys()].sort()) {
+      for (let i = 0; i < name.length; i++) mix(name.charCodeAt(i) & 0xff);
+      mix(0);
+      for (const b of files.get(name)!) mix(b);
+      mix(0);
+    }
+    return h >>> 0;
+  };
+
+  it(`${REAL_ENTRIES} tệp, ${REAL_BYTES.toLocaleString('vi-VN')} byte — con số, để một gói đọc hụt không lặng lẽ qua`, () => {
     const files = readReal();
-    expect(files.size).toBe(46);
+    expect(files.size).toBe(REAL_ENTRIES);
     let total = 0;
     for (const b of files.values()) total += b.byteLength;
     expect(total).toBe(REAL_BYTES);
   });
 
-  it('pack → unpack khớp TỪNG BYTE cho cả 46 tệp', () => {
+  it('vân tay nội dung — để một byte đổi mà độ dài không đổi cũng không lặng lẽ qua', () => {
+    expect(
+      fingerprint(readReal()),
+      'nội dung gói mẫu đã đổi. Nếu là cố ý: đóng gói lại, chạy `make courses`, rồi cập nhật ' +
+        'REAL_BYTES và REAL_FNV1A theo số ĐO ĐƯỢC. Nếu không cố ý: `courses/` đang lệch khỏi ' +
+        'fixtures/courses/so-dau-phay-dong.zip.',
+    ).toBe(REAL_FNV1A);
+  });
+
+  it(`pack → unpack khớp TỪNG BYTE cho cả ${REAL_ENTRIES} tệp`, () => {
     const files = readReal();
     const zip = packZip(files);
     expect(zip.byteLength).toBeLessThan(files.size === 0 ? 1 : REAL_BYTES); // thật sự có nén

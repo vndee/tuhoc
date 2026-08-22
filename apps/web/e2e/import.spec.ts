@@ -5,7 +5,9 @@ import { COURSE_TITLE, PASSWORD, expectVizRendered, freshEmail, isBenignAuthChec
  * Cổng nghiệm thu của hệ thống con 1: **gói thật, qua đường import thật**.
  *
  * Task 11 bóc `courses/***REMOVED***/` ra khỏi repo và biến nó thành gói
- * import đầu tiên của chính tác giả. Điều đó chỉ có nghĩa nếu đường import
+ * import đầu tiên của chính tác giả; task 13 thay ngữ liệu ấy bằng gói mẫu
+ * công khai `so-dau-phay-dong` để bản clone của người khác cũng chạy được cổng
+ * này. Cả hai lần, điều được kiểm không đổi: đường import chỉ có nghĩa nếu nó
  * **được dùng thật**, chứ không được ưu ái bằng một lối đi riêng. Ba tệp e2e
  * kia (`p1`, `p2`, `viz`) đều đọc course qua `/courses/<id>/...`, tức thư mục
  * tĩnh mà app này ship — không tệp nào trong số đó đi qua `db.packages`. Nên
@@ -34,30 +36,47 @@ import { COURSE_TITLE, PASSWORD, expectVizRendered, freshEmail, isBenignAuthChec
  *
  * ## Vắng gói thì tệp này ĐỎ
  *
- * Không skip. Gói riêng tư, và người khác clone repo sẽ không có nó — nhưng một
- * cổng nghiệm thu tự tắt khi không có dữ liệu để nghiệm thu thì im lặng đúng
- * lúc nó phải lên tiếng. `realCoursePackageZip` ném ra câu chỉ đúng việc phải
- * làm. Xem docs/publishing.md §1.3.
+ * Không skip. Một cổng nghiệm thu tự tắt khi không có dữ liệu để nghiệm thu
+ * thì im lặng đúng lúc nó phải lên tiếng. `realCoursePackageZip` ném ra câu chỉ
+ * đúng việc phải làm. Khác với trước task 13, gói bây giờ **được commit**
+ * (`fixtures/courses/so-dau-phay-dong.zip`), nên vắng nó nghĩa là cây làm việc
+ * hỏng, không phải "máy này không phải máy của tác giả". Xem
+ * docs/publishing.md §1.3.
  */
 
-const COURSE_ID = '***REMOVED***';
-/** Chương p2-10 — cùng chương `p2.spec.ts` dùng, vì nó có cả mô phỏng lẫn đoạn văn xuôi thuần. */
-const CHAPTER_ID = 'p2-10';
-/** `defineViz` trong viz.js của gói. Con số này là cổng thoát §10 của spec. */
-const REGISTERED_VIZ_COUNT = 59;
-/** Mô phỏng của p2-10; `p1.spec.ts` cũng dùng nó, với cùng ngưỡng pixel riêng. */
-const CHAPTER_VIZ = 'waterfill';
+const COURSE_ID = 'so-dau-phay-dong';
+/** Chương p2-2 — cùng chương `p2.spec.ts` dùng, vì nó có cả mô phỏng lẫn đoạn văn xuôi thuần. */
+const CHAPTER_ID = 'p2-2';
 /**
- * Một `<p>` cấp cao nhất, KHÔNG nằm trong `<details>` gấp lại, của p2-10 —
- * cùng đoạn `p2.spec.ts` bôi vàng. Xem chú thích ở tệp đó về vì sao "cấp cao
- * nhất" là điều kiện bắt buộc chứ không phải tuỳ chọn.
+ * Số `defineViz(...)` trong viz.js của gói. Đếm trên tệp, không phỏng đoán;
+ * `viz.spec.ts` đọc lại con số này TỪ MÁY CHỦ và so bằng tập hợp, nên hai chỗ
+ * không thể trôi khác nhau mà không có cái nào đỏ.
  */
-const PARA = 'Ràng buộc công suất không phải chi tiết kỹ thuật';
+const REGISTERED_VIZ_COUNT = 9;
+/** Mô phỏng của p2-2; `p1.spec.ts` cũng dùng nó, với cùng ngưỡng pixel riêng. */
+const CHAPTER_VIZ = 'sum-drift';
+/**
+ * Một `<p>` cấp cao nhất của p2-2, và ba điều kiện — cả ba đo trên tệp, và
+ * điều kiện thứ ba do chính lượt chạy đầu của gói này dạy ra:
+ *
+ *  1. **Không nằm trong `<details>` gấp lại.** Xem chú thích ở `p2.spec.ts`.
+ *  2. **Không có `$…$`.** Công thức thu về một ký tự `'￼'` trong phép chiếu
+ *     mà neo sống trong đó, nên một đoạn toàn công thức không neo được.
+ *  3. **Không có thẻ con nào** — không `<b>`, không `<code>`. Cử chỉ ở đây là
+ *     triple-click, tức chọn TRỌN đoạn, và `paintAll` tạo một `<mark>` cho
+ *     mỗi mạch chữ liền nhau. Đoạn có `<b>` ở giữa cho **ba** `<mark>` chứ
+ *     không phải một, và khẳng định "một ghi chú → một vệt tô" bên dưới đỏ.
+ *     Đó là hành vi đúng của painter; điều kiện thuộc về đoạn văn được chọn.
+ */
+const PARA = 'Có Mệnh đề 2.4, thuật toán Kahan là bốn dòng';
 
 test.describe('gói thật đi qua màn hình Import (cổng nghiệm thu hệ thống con 1)', () => {
-  // Import gồm: đọc ~440 KB từ đĩa, giải nén 46 tệp, tokenize từng byte, ghi
-  // IndexedDB — rồi mới tới render chương và một vòng vẽ canvas. 90s mặc định
-  // của config là cho p1.spec.ts.
+  // Import gồm: đọc ~67 KB từ đĩa, giải nén 10 tệp, tokenize từng byte, ghi
+  // IndexedDB — rồi mới tới render chương và một vòng vẽ canvas. Gói mẫu nhỏ
+  // hơn giáo trình riêng cũ (440 KB, 46 tệp) nên ngân sách này rộng rãi hơn
+  // trước, và nó được giữ nguyên có chủ ý: nó là ngân sách CHẠY, không phải
+  // một khẳng định về tốc độ, và siết nó lại chỉ đổi lấy một cổng hay đỏ vì
+  // máy bận. 90s mặc định của config là cho p1.spec.ts.
   test.setTimeout(180_000);
 
   test('nhập .zip từ máy → thư viện gắn nhãn interactive → chương đọc được, mô phỏng chạy từ CHÍNH gói, ghi chú hoạt động', async ({ page }) => {

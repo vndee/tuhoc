@@ -550,19 +550,35 @@ describe('mặt tiền dòng lệnh', () => {
 });
 
 // ---------------------------------------------------------------------------
-// The real package. Deliberately does NOT hard-code a verdict: at the time of
-// writing `courses/***REMOVED***` is still a v1 manifest and fails on the
-// four new fields, and task 11 adds them. What must hold either way is that the
-// CLI's exit code is the RULE SET's verdict — that is the wire this task exists
-// to connect, and it stays pinned across task 11.
+// The real package. Deliberately does NOT hard-code a verdict: what must hold
+// is that the CLI's exit code is the RULE SET's verdict rather than a second
+// rule set of its own — that is the wire this task exists to connect, and it
+// has now stayed pinned across two changes of ngữ liệu (task 11 moved the
+// private textbook out of the repo, task 13 replaced it with the public sample
+// package `so-dau-phay-dong`).
+//
+// Reads `courses/`, the WORKING directory, not `fixtures/` — deliberately.
+// `courses/` holds what `make courses` unpacked from the zip, so this measures
+// the CLI against bytes that made a full round trip through pack/unpack, which
+// is what a contributor's own directory actually is. Missing means red with a
+// message, not skipped.
 // ---------------------------------------------------------------------------
 
-describe('gói thật courses/***REMOVED***', () => {
+describe('gói thật courses/so-dau-phay-dong', () => {
   it('mã thoát của CLI = phán quyết của validatePackage, không phải luật thứ hai', async () => {
-    const real = join(REPO_ROOT, 'courses', '***REMOVED***');
+    const real = join(REPO_ROOT, 'courses', 'so-dau-phay-dong');
+    if (!existsSync(real)) {
+      throw new Error(
+        `Chưa bung gói mẫu ra ${real}.\n` + 'Bung bằng `make courses` từ gốc repo — gói nằm trong repo tại fixtures/courses/.',
+      );
+    }
     const { files } = await readPackageDir(real, null);
     const expected = validatePackage(files).ok ? 0 : 1;
     const res = await runPack([real]);
     expect(res.code).toBe(expected);
+    // Gói mẫu này là dữ liệu test của cả repo, nên "hợp lệ" không phải chuyện
+    // để suy ra: nếu nó trượt bộ luật thì phép so ở trên vẫn xanh (0 === 0 hay
+    // 1 === 1) trong khi mọi thứ khác dựng trên nó đã hỏng.
+    expect(expected, 'gói mẫu phải đi qua bộ luật sạch — chạy `tuhoc pack` để xem findings').toBe(0);
   });
 });

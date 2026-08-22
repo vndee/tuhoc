@@ -50,8 +50,8 @@ import { PASSWORD, freshEmail, isBenignAuthCheck401, loginExistingUser, register
  * they need.
  */
 
-const COURSE_ID = '***REMOVED***';
-const CHAPTER_ID = 'p2-10';
+const COURSE_ID = 'so-dau-phay-dong';
+const CHAPTER_ID = 'p2-2';
 const CHAPTER_PATH = `/c/${COURSE_ID}/${CHAPTER_ID}`;
 
 /**
@@ -64,19 +64,32 @@ const CHAPTER_ASSET = `**/courses/${COURSE_ID}/chapters/${CHAPTER_ID}.html`;
 /**
  * The three paragraphs this suite drags across, by their opening words.
  *
- * All three are top-level `<p>` elements of `courses/***REMOVED***/
- * chapters/p2-10.html` — checked against the file, not assumed. "Top-level"
- * is load-bearing: that chapter has eleven `<details class="deriv">` blocks
- * whose paragraphs are collapsed by default, and a collapsed `<details>`
- * still hands `Range.getClientRects()` a plausible-looking rect at a
- * scroll offset the element is not actually at. A drag aimed at one of those
- * silently selects a completely different (and enormous) span of the
- * chapter. `selectParagraphByDrag` refuses one on purpose; these three are
- * chosen so it never has to.
+ * All three are top-level `<p>` elements of `courses/so-dau-phay-dong/
+ * chapters/p2-2.html` — checked against the file, not assumed. Two properties
+ * are load-bearing and both were measured before these three were picked.
+ *
+ * **Top-level.** That chapter has five `<details class="deriv">` blocks whose
+ * paragraphs are collapsed by default, and a collapsed `<details>` still hands
+ * `Range.getClientRects()` a plausible-looking rect at a scroll offset the
+ * element is not actually at. A drag aimed at one of those silently selects a
+ * completely different (and enormous) span of the chapter.
+ * `selectParagraphByDrag` refuses one on purpose; these three are chosen so it
+ * never has to.
+ *
+ * **Free of `$…$`.** The projection an anchor lives in collapses each KaTeX
+ * formula to a single `'￼'`, so a quote made of formula would fail
+ * `hasFindableText` and §4's rescue would be refused for the wrong reason.
+ * These three are plain prose end to end — which is a real constraint in a
+ * package averaging 182 inline formulas per chapter, and the reason p2-2 was
+ * chosen over the denser chapters.
+ *
+ * §3 also does string surgery on the raw HTML looking for `<p>` immediately
+ * followed by these openings, so they must be the literal first characters
+ * inside an attribute-less `<p>` tag.
  */
-const PARA_YELLOW = 'Ràng buộc công suất không phải chi tiết kỹ thuật';
-const PARA_GREEN = 'Công thức dung lượng có một cách đọc thuần túy hình học';
-const PARA_RESCUE = 'Muốn giải mã không lỗi, các quả cầu nhiễu phải rời nhau';
+const PARA_YELLOW = 'Thứ tự cộng không phải chi tiết cài đặt';
+const PARA_GREEN = 'Cận tuyến tính có một cách đọc rất thô nhưng đúng';
+const PARA_RESCUE = 'Muốn tổng đúng tới bit cuối, phải giữ lại phần bị mất';
 
 /** What §3's rebuilt chapter puts where the two annotated paragraphs were. */
 const REBUILT_MARKER = 'Đoạn này đã được viết lại trong bản chương mới.';
@@ -326,7 +339,7 @@ test.describe.serial('P2 definition-of-done gate — annotations', () => {
      *
      * The brief's sketch is "`page.evaluate` away the paragraph, then
      * reload". The reload is the part that makes that impossible: a reload
-     * re-fetches `/courses/.../p2-10.html` from the server and re-runs
+     * re-fetches `/courses/.../p2-2.html` from the server and re-runs
      * `innerHTML =`, so a DOM edit made beforehand is gone before any anchor
      * is resolved against it — the test would pass or fail for reasons that
      * have nothing to do with anchoring. Without the reload there is no fresh

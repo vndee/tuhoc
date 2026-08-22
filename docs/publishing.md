@@ -63,37 +63,48 @@ clone mới. Lệnh nói ra rồi thoát 0.
 
 ### 1.3 Chuyện gì xảy ra với test
 
-Năm tệp test đơn vị và năm tệp e2e đọc nội dung thật của course. Danh sách này
-**đo bằng cách bỏ thư mục course đi rồi chạy lại**, không phải bằng grep — grep
-cho ra 18 tệp có nhắc tới course, hầu hết trong chú thích:
+**Sáu** tệp test đơn vị và **bốn** tệp e2e đọc nội dung thật của một course.
+Danh sách này **đo bằng cách bỏ thư mục course đi rồi chạy lại**, không phải
+bằng grep — grep cho ra 18 tệp có nhắc tới course, hầu hết trong chú thích:
 
 | tệp | đọc gì |
 |---|---|
-| `apps/web/src/annotations/painter.test.ts` | `chapters/p1-5.html` (cấp module) |
-| `apps/web/src/annotations/anchor.test.ts` | `chapters/p1-5.html` (cấp module) |
-| `apps/web/src/course/version.test.ts` | `chapters/p1-5.html` (cấp module) |
-| `apps/web/src/annotations/SelectionToolbar.test.tsx` | `chapters/p1-5.html` (trong 1 test) |
-| `packages/course-format/src/zip.test.ts` | cả 46 tệp, pack → unpack từng byte |
-| `apps/web/e2e/helpers.ts`, `p1.spec.ts`, `p2.spec.ts`, `viz.spec.ts` | cả course, qua HTTP tĩnh |
+| `apps/web/src/annotations/painter.test.ts` | `chapters/p1-3.html` (cấp module) |
+| `apps/web/src/annotations/anchor.test.ts` | `chapters/p1-3.html` (cấp module) |
+| `apps/web/src/course/version.test.ts` | `chapters/p1-3.html` (cấp module) |
+| `apps/web/src/annotations/SelectionToolbar.test.tsx` | `chapters/p1-3.html` (trong 1 test) |
+| `packages/course-format/src/zip.test.ts` | cả 10 tệp, pack → unpack từng byte |
+| `tools/tuhoc-cli/src/pack.test.ts` | cả thư mục, mã thoát của CLI |
+| `apps/web/e2e/p1.spec.ts`, `p2.spec.ts`, `viz.spec.ts` | cả course, qua HTTP tĩnh |
 | `apps/web/e2e/import.spec.ts` | chính tệp `.zip`, qua màn hình Import |
 
-Ruling S1-F5 đếm bảy tệp đơn vị. Bốn trong bảy — `normalize`, `Dashboard`,
-`useLogout`, `session` — **không** đọc course (chúng chỉ nhắc trong chú thích,
-hoặc có một trường tên `courses` trong payload `/stats`), và hai tệp có đọc
-thì không nằm trong danh sách ấy: `version.test.ts` và `zip.test.ts`. Số đúng là
-**năm + năm**.
+Hai ruling trước đó đếm sai, mỗi cái sai một kiểu, nên đáng ghi lại cả hai:
 
-**Chúng không được đổi sang fixture bịa.** Lý do đo được, không phải khẩu hiệu:
-`version.test.ts` có 17 fixture prose viết tay đều xanh cả khi bỏ `renderKatex`,
-trong khi chương thật cho **26/30 orphan giả** — khối chú thích ngay trên
-`previewUpdate` trong tệp đó ghi lại con số. Trong hệ thống con này, chạy trên
-dữ liệu thật đã bác bỏ bảy phép đo mà fixture cho xanh hết.
+- **S1-F5** đếm bảy tệp đơn vị. Bốn trong bảy — `normalize`, `Dashboard`,
+  `useLogout`, `session` — **không** đọc course (chúng chỉ nhắc trong chú thích,
+  hoặc có một trường tên `courses` trong payload `/stats`), và hai tệp có đọc
+  thì không nằm trong danh sách ấy: `version.test.ts` và `zip.test.ts`.
+- Bản sửa của nó lại chốt **"năm + năm"**, và con số đó cũng sai — sai ở **cả
+  hai chiều**. Đo lại ở task 13 bằng đúng cách trên: `tools/tuhoc-cli/src/
+  pack.test.ts` là tệp đơn vị **thứ sáu** (nó đọc `courses/<id>/` để so mã thoát
+  CLI với phán quyết của bộ luật), còn `apps/web/e2e/helpers.ts` **không phải
+  tệp e2e thứ năm** — Playwright chỉ nhận `*.spec.ts` làm bài kiểm, nên nó là
+  một mô-đun trợ giúp. Số đúng là **sáu + bốn**; tổng mười thì đúng, nhưng đúng
+  vì hai sai số triệt tiêu nhau.
 
-Nên dữ liệu vẫn là dữ liệu thật, chỉ đổi chỗ cất. `make test-web`,
-`make test-format` và `make test-e2e` đều phụ thuộc mục tiêu `courses`, nên bước
-nạp chạy trước. Không có gói thì các tệp trên **đỏ** — không skip, không đổi
-sang dữ liệu giả — kèm câu chỉ đúng lệnh phải gõ
-(`apps/web/src/test/realCourse.ts`, `apps/web/e2e/helpers.ts`).
+**Chúng không được đổi sang HTML viết tay trong tệp test.** Lý do đo được, không
+phải khẩu hiệu: `version.test.ts` có 17 fixture prose viết tay đều xanh cả khi
+bỏ `renderKatex`, trong khi một chương thật thì không — khối chú thích ngay trên
+`previewUpdate` trong tệp đó ghi lại con số cho cả hai ngữ liệu. Trong hệ thống
+con này, chạy trên gói thật đã bác bỏ bảy phép đo mà fixture cho xanh hết.
+
+Từ **task 13**, ngữ liệu ấy là gói mẫu **công khai** `so-dau-phay-dong`
+(`fixtures/courses/`, có commit), không còn là giáo trình riêng tư. `make
+test-web`, `make test-format` và `make test-e2e` đều phụ thuộc mục tiêu
+`courses`, nên bước bung chạy trước và mười tệp trên xanh trên **mọi bản clone**.
+Không bung được thì chúng **đỏ** — không skip, không đổi sang dữ liệu giả — kèm
+câu chỉ đúng lệnh phải gõ (`apps/web/src/test/sampleCourse.ts`,
+`apps/web/e2e/helpers.ts`).
 
 `apps/web/e2e/import.spec.ts` là tệp MỚI, và là cổng nghiệm thu của cả hệ thống
 con: nó nhập chính tệp `.zip` qua màn hình Import rồi kiểm rằng chương đọc được,
@@ -102,8 +113,9 @@ tới `/courses/<id>/viz.js`). Ba tệp e2e cũ đều đọc course qua đườ
 ba xanh trong khi đường import gãy — và đã xanh như thế một lần thật, xem
 `resolveVizScriptUrl` trong `apps/web/src/course/loader.ts`.
 
-Bản clone của người khác sẽ thấy bốn tệp đó đỏ. Đó là trạng thái đúng: gói là
-của tác giả, họ không có nó. Xem §4.
+Trước task 13, bản clone của người khác thấy mười tệp đó đỏ, và đó là trạng
+thái đúng khi ngữ liệu là gói riêng của tác giả. Từ task 13 thì không còn:
+ngữ liệu là gói mẫu công khai nằm trong repo. Xem §4.
 
 ### 1.4 Sinh lại gói từ đầu
 
@@ -297,25 +309,29 @@ nằm trong pack.
 - [ ] Sáu chỗ trích mã ở §2.2 đã sửa theo `commit-map`
 - [ ] `.env` thật không bị theo dõi (`git ls-files | grep -c '^\.env$'` → `0`;
       `.env.example` thì được)
-- [ ] Bốn cổng test xanh trên máy có gói; và **biết trước** rằng trên máy không
-      có gói thì bốn tệp ở §1.3 sẽ đỏ, kèm hướng dẫn
+- [ ] Bốn cổng test xanh trên một cây làm việc **không có** kho gói riêng
+      (`TUHOC_COURSE_STORE` trỏ vào chỗ không tồn tại, `courses/` đã xoá) —
+      đó là bản clone mới, và từ task 13 nó phải xanh trọn vẹn
 
 ---
 
 ## 4. Người clone repo công khai sẽ thấy gì
 
-Một repo không có course nào. Đó là hình dạng đúng: nền tảng không đi kèm nội
-dung, nội dung là gói rời.
+Một repo không mang course nào **cho người dùng**. Đó là hình dạng đúng: nền
+tảng không đi kèm nội dung, nội dung là gói rời. Cái nó mang là **dữ liệu test**
+— hai gói mẫu công khai trong `fixtures/courses/`, do chính repo này soạn.
 
 - `make dev-web` chạy được; thư viện rỗng cho tới khi họ import gói của họ.
 - `bun run build` chạy được với `courses/` rỗng **và** với `courses/` không tồn
   tại (`apps/web/vite-plugins/courseAssets.ts`, `copyDirIfPresent`).
-- `make test-web`: 37/41 tệp xanh. Bốn tệp ở §1.3 đỏ, kèm câu nói rõ vì sao và
-  phải làm gì.
+- `make test-web`, `make test-format`, `make test-cli`, `make test-e2e`:
+  **xanh trọn vẹn**. Đo ở task 13 bằng cách xoá `courses/` và trỏ
+  `TUHOC_COURSE_STORE` vào một thư mục không tồn tại — 739 + 164 + 43 test đơn
+  vị và 8 bài e2e đều xanh.
 
-Điểm cuối là một đánh đổi có ý thức, không phải sót. Cách khác là để bốn tệp đó
-tự `skip` khi thiếu dữ liệu — nhưng một bộ test tự bỏ qua phần chạy trên dữ liệu
-thật, đúng lúc không có dữ liệu thật, thì im lặng ở chỗ nó phải lên tiếng, và
-trên màn hình nó trông y hệt lúc mọi thứ đều tốt. Nếu ngày nào đó có một course
-**công khai** làm mẫu, nó nên thay vào vai này, và khi ấy bốn tệp kia xanh cho
-mọi người.
+Trước task 13, mười tệp ở §1.3 đỏ trên bản clone của người khác, và đó là một
+đánh đổi có ý thức: cách khác là để chúng tự `skip` khi thiếu dữ liệu, nhưng một
+bộ test tự bỏ qua phần chạy trên dữ liệu thật, đúng lúc không có dữ liệu thật,
+thì im lặng ở chỗ nó phải lên tiếng. Task 13 gỡ được đánh đổi ấy theo đúng lối
+mà đoạn này đã hẹn: một course **công khai** làm mẫu thay vào vai ngữ liệu, và
+mười tệp kia xanh cho mọi người — mà không tệp nào phải hạ khẳng định xuống.

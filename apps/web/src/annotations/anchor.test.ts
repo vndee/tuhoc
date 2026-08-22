@@ -11,7 +11,7 @@ import {
   selectionToAnchor,
   StaleNormMapError,
 } from './anchor';
-import { realCourseFile } from '../test/realCourse';
+import { SAMPLE_CHAPTER, sampleCourseFile } from '../test/sampleCourse';
 import { flatToDom, normalizeContainer, rangeToFlat } from './normalize';
 
 /**
@@ -172,7 +172,7 @@ const MAX_DP_CELLS = 1_000_000;
  * khẳng định**, mà là `testTimeout` của vitest, và lý do đo được.
  *
  * Bài `40 đoạn chọn ngẫu nhiên…` nạp `vendor/katex.js` + `auto-render.js`
- * vào jsdom rồi render toàn bộ `p1-5.html`. Dưới `--maxWorkers=24` (24
+ * vào jsdom rồi render toàn bộ `p1-3.html`. Dưới `--maxWorkers=24` (24
  * worker vitest trên 8 lõi) nó **hỏng 3 / 24** lần chạy bộ đầy đủ, nguyên
  * văn `Error: Test timed out in 5000ms.` Đo bằng `--reporter=json` trên 12
  * lần chạy khác: cao nhất **3892 ms**, tức biên so với trần mặc định chỉ
@@ -1398,11 +1398,11 @@ describe('chi phí fuzzy — không được treo trình duyệt lúc mở chư�
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '../../../..');
-// Chương THẬT, không phải fixture — và từ task 11 nó không nằm trong repo nữa.
-// `realCourseFile` giải đường dẫn trong thư mục làm việc `courses/`, và ném ra
-// câu chỉ đúng lệnh phải chạy khi gói chưa được nạp về. Xem
-// apps/web/src/test/realCourse.ts.
-const CHAPTER = realCourseFile('chapters/p1-5.html');
+// Chương của một GÓI THẬT, không phải HTML viết trong tệp này.
+// `sampleCourseFile` giải đường dẫn trong thư mục làm việc `courses/`, và ném
+// ra câu chỉ đúng lệnh phải chạy khi gói chưa được bung. Xem
+// apps/web/src/test/sampleCourse.ts — kể cả vì sao course đổi ở task 13.
+const CHAPTER = sampleCourseFile(SAMPLE_CHAPTER);
 
 let katexLoaded = false;
 function loadKatex(): void {
@@ -1430,7 +1430,7 @@ function renderChapter(html: string): HTMLDivElement {
   return host;
 }
 
-describe('chương thật p1-5.html với KaTeX thật', () => {
+describe('chương thật p1-3.html của gói mẫu, với KaTeX thật', () => {
   const SOURCE = readFileSync(CHAPTER, 'utf8');
 
   it('40 đoạn chọn ngẫu nhiên: tạo anchor rồi giải lại, khớp 100%', () => {
@@ -1516,8 +1516,13 @@ describe('chương thật p1-5.html với KaTeX thật', () => {
       }
       if (r.endContainer !== r.startContainer) endsOutsideStartBlock++;
     }
-    // Đo được trên p1-5 với đúng hạt giống này: made=200, offset0=12 (6,0%),
-    // node toàn khoảng trắng=6 (3,0%), khác node bắt đầu=159 (79,5%).
+    // Đo lại sau mỗi lần đổi ngữ liệu, với đúng hạt giống này:
+    //   p1-5 (giáo trình riêng, task 1):  made=200, offset0=12 (6,0%),
+    //     node toàn khoảng trắng=6 (3,0%), khác node bắt đầu=159 (79,5%)
+    //   p1-3 (gói mẫu, task 13):          made=200, offset0=15 (7,5%),
+    //     node toàn khoảng trắng=7 (3,5%), khác node bắt đầu=157 (78,5%)
+    // Hai hồ sơ gần như trùng nhau — đó là điều kiện để các ngưỡng dưới đây
+    // giữ nguyên chứ không phải một sự trùng hợp đáng bỏ qua.
     expect(made).toBe(200);
     expect(endsAtOffsetZero).toBeGreaterThanOrEqual(5);
     expect(endsInWhitespaceNode).toBeGreaterThanOrEqual(3);

@@ -1,0 +1,185 @@
+<div class="ch-eyebrow">Phần II · Sai số dồn — Chương 2.2</div>
+<h1 class="ch-title">Cộng một triệu số</h1>
+<p class="ch-lede">Phép cộng là phép tính đầu tiên ai cũng học và là phép tính cuối cùng ai cũng nghĩ có thể sai. Chương này lấy đúng vòng lặp ba dòng mà bạn đã viết hàng trăm lần, chỉ ra rằng nó mất chính xác nhanh hơn bạn tưởng, rồi dựng ba cách sửa — mỗi cách trả một cái giá khác nhau, và biết chọn cái nào là toàn bộ kỹ năng.</p>
+
+<h2 id="vong-lap">Vòng lặp ba dòng</h2>
+
+<pre><code>double sum = 0;
+for (int i = 0; i &lt; n; i++)
+    sum += x[i];</code></pre>
+
+<p>Câu hỏi: sau $n$ vòng, kết quả cách tổng đúng bao xa? Ta có đủ công cụ để trả lời chính xác. Gọi $s_k$ là giá trị của biến <code>sum</code> sau $k$ vòng. Theo mô hình sai số chuẩn của Chương 1.3,</p>
+
+$$s_k \;=\; (s_{k-1} + x_k)(1 + \delta_k), \qquad |\delta_k| \le u .$$
+
+<div class="box thm"><div class="box-h">Định lý 2.3 — cận sai số của phép cộng xuôi</div>
+<p>Với $nu < 1$, tổng tính bằng vòng lặp trên thoả
+$$\left| s_n - \sum_{i=1}^{n} x_i \right| \;\le\; \gamma_{n-1} \sum_{i=1}^{n} |x_i|, \qquad \gamma_k := \frac{ku}{1-ku} \approx ku .$$
+Nói gọn: sai số tuyệt đối bị chặn xấp xỉ bởi $(n-1)\,u \sum |x_i|$ — <b>tuyến tính theo $n$</b>.</p></div>
+
+<details class="deriv"><summary>Chứng minh</summary><div class="deriv-body">
+<p>Khai triển đệ quy. Số hạng $x_i$ đi qua các phép làm tròn từ vòng $i$ tới vòng $n$, nên nó xuất hiện trong $s_n$ với hệ số $\prod_{j=i}^{n} (1+\delta_j)$ — trừ $x_1$ và $x_2$, cùng đi qua $n-1$ phép vì phép cộng đầu tiên gộp cả hai:
+$$s_n \;=\; \sum_{i=1}^{n} x_i \prod_{j=\max(i,2)}^{n} (1+\delta_j).$$</p>
+<p>Bổ đề tiêu chuẩn về tích các $(1+\delta)$: nếu $|\delta_j| \le u$ với $j = 1..k$ và $ku < 1$ thì
+$$\left| \prod_{j=1}^{k}(1+\delta_j) - 1 \right| \;\le\; \frac{ku}{1-ku} \;=\; \gamma_k .$$
+Chứng minh bổ đề bằng quy nạp: $(1+u)^k - 1 \le \gamma_k$ vì khai triển nhị thức bị chặn bởi chuỗi hình học $\sum_{m\ge1}(ku)^m$.</p>
+<p>Mỗi số hạng đi qua nhiều nhất $n-1$ phép làm tròn, nên
+$$\left| s_n - \sum x_i \right| \;\le\; \sum_{i=1}^{n} |x_i| \cdot \gamma_{n-1} . \qquad \square$$</p>
+<p>Chú ý cận này dùng $\sum|x_i|$ chứ không phải $\left|\sum x_i\right|$. Hai đại lượng ấy bằng nhau khi mọi số hạng cùng dấu, và <b>khác nhau tuỳ ý</b> khi có dấu trái ngược — đó là chỗ triệt tiêu ở Chương 2.1 quay lại: tỉ số $\sum|x_i| \big/ \left|\sum x_i\right|$ chính là số điều kiện của bài toán tổng.</p>
+</div></details>
+
+<p>Thứ tự cộng không phải chi tiết cài đặt mà là một biến của bài toán, và Định lý 2.3 nói cho ta biết vì sao: cận phụ thuộc vào <b>số phép làm tròn mà mỗi số hạng đi qua</b>, mà con số ấy do thứ tự quyết định. Số hạng cộng vào sớm đi qua nhiều phép làm tròn hơn số hạng cộng vào muộn, nên xếp các số hạng lớn ra sau là một cải thiện thật, dù nó không đổi bậc của cận.</p>
+
+<h2 id="vi-du">Một ví dụ mà cận trên là chặt</h2>
+
+<p>Cận tuyến tính có một cách đọc rất thô nhưng đúng: mỗi số hạng cộng thêm có thể làm hỏng thêm một chút, và với đủ nhiều số hạng thì "một chút" trở thành "tất cả". Ta dựng một dãy mà điều đó xảy ra đúng như vậy, không nhanh hơn cũng không chậm hơn.</p>
+
+<p>Lấy $x_1 = 10^{16}$ và $x_2 = x_3 = \cdots = x_n = 1$. Số $10^{16}$ nằm trong binade $[2^{53}, 2^{54})$, nơi $\operatorname{ulp} = 2$ theo Chương 1.2. Vì thế $10^{16} + 1$ rơi <b>đúng giữa</b> hai số máy, và luật hoà-về-chẵn của Chương 1.3 trả về $10^{16}$ — không đổi gì cả.</p>
+
+<p>Vòng lặp vì thế cộng $1$ vào $10^{16}$ đúng $n-1$ lần và không lần nào có tác dụng. Kết quả là $10^{16}$ chằn chặn, trong khi tổng đúng là $10^{16} + n - 1$. Sai số tuyệt đối bằng đúng $n-1$: tuyến tính, và bằng đúng cận của Định lý 2.3 tới một hằng số.</p>
+
+<div class="fig">
+  <div class="fig-head">
+    <div class="fig-num">Hình 2.2 · Tương tác</div>
+    <div class="fig-title">Ba cách cộng cùng một dãy</div>
+    <p class="fig-desc">Đồ thị trên là sai số tích luỹ theo số số hạng đã cộng; đồ thị dưới là sai số cuối cùng như một hàm của $n$. Kéo $n$ và nhìn cả hai cùng lúc — đường thẳng ở đồ thị dưới là chỗ Định lý 2.3 hiện ra thành hình.</p>
+  </div>
+  <div class="fig-body"><div data-viz="sum-drift"></div></div>
+  <div class="fig-foot">Ba đường kể ba câu chuyện khác nhau. Cộng xuôi đi thẳng lên, hệ số góc đúng bằng $1$ — mỗi số hạng mất trọn vẹn. Chia đôi đi ngang ở một mức thấp và <b>không tăng</b> theo $n$ trong dải này, vì các số $1$ được gộp với nhau trước khi gặp số lớn. Kahan nằm sát trục hoành: sai số bằng $0$ tới bit cuối. Cái giá tương ứng là số phép tính: một, một, và bốn lần phép cộng.</div>
+</div>
+
+<h2 id="chia-doi">Cách một: chia đôi</h2>
+
+<p>Sửa đầu tiên không đụng gì tới số học, chỉ đổi <b>hình dạng cây tính toán</b>. Thay vì cộng tuyến tính, chia dãy làm đôi, cộng đệ quy mỗi nửa, rồi cộng hai kết quả.</p>
+
+<pre><code>double sum_pairwise(const double *x, int lo, int hi) {
+    if (hi - lo &lt;= 8) {                 // ngưỡng chuyển sang vòng lặp
+        double s = 0;
+        for (int i = lo; i &lt; hi; i++) s += x[i];
+        return s;
+    }
+    int mid = (lo + hi) / 2;
+    return sum_pairwise(x, lo, mid) + sum_pairwise(x, mid, hi);
+}</code></pre>
+
+<p>Mỗi số hạng bây giờ đi qua $O(\log n)$ phép làm tròn thay vì $O(n)$, nên cận của Định lý 2.3 trở thành $\gamma_{\lceil \log_2 n\rceil} \sum|x_i|$. Với $n = 10^{6}$, đó là chênh lệch giữa hệ số $10^{6}$ và hệ số $20$ — <b>năm mươi ngàn lần</b>, đổi lấy đúng không phép tính nào thêm.</p>
+
+<p>Đây là lý do <code>numpy.sum</code>, <code>std::reduce</code> và mọi thư viện tính toán nghiêm túc đều cộng theo cây chứ không theo vòng lặp phẳng. Nó cũng giải thích một hiện tượng hay làm người ta bối rối: <b>cộng một mảng bằng thư viện cho kết quả khác với cộng bằng vòng lặp tự viết</b>, và kết quả của thư viện thường đúng hơn.</p>
+
+<div class="box warn"><div class="box-h">Chỗ hay hiểu sai — chia đôi không phải là "ổn định vô điều kiện"</div>
+<p>Cận $O(\log n)$ là cận <b>trường hợp tệ nhất theo $n$</b>, không phải một lời hứa về độ chính xác. Nó vẫn nhân với $\sum|x_i|$, nên với một dãy có số điều kiện lớn — nhiều số hạng lớn trái dấu triệt tiêu nhau — chia đôi vẫn cho kết quả tồi. Nó chữa <em>một</em> nguồn sai số, không phải mọi nguồn.</p>
+<p>Còn một chi tiết cài đặt hay bị bỏ qua: ngưỡng chuyển sang vòng lặp phẳng (ở đây là $8$) trực tiếp đi vào cận, vì trong mỗi lá vẫn là phép cộng xuôi. Ngưỡng $128$ chạy nhanh hơn ngưỡng $8$ và cho cận xấu hơn $16$ lần. Đây là một đổi chác giữa tốc độ và chính xác, được chôn trong một hằng số mà không tài liệu nào của thư viện nhắc tới.</p></div>
+
+<h2 id="kahan">Cách hai: giữ lại phần bị mất</h2>
+
+<p>Muốn tổng đúng tới bit cuối, phải giữ lại phần bị mất — và điều đáng ngạc nhiên là phần bị mất ấy <b>tính được</b> bằng chính số học dấu phẩy động, không cần độ chính xác cao hơn. Đó là ý tưởng của Kahan, và nó dựa trên một quan sát nhỏ mà ta phát biểu thành mệnh đề vì nó xứng đáng.</p>
+
+<div class="box thm"><div class="box-h">Mệnh đề 2.4 — phép cộng hai số biết phần dư của chính nó</div>
+<p>Cho $a$, $b$ là số máy với $|a| \ge |b|$. Đặt $t = \operatorname{fl}(a+b)$ và $r = \operatorname{fl}\big(\operatorname{fl}(t-a) - b\big)$. Khi đó $r$ là <b>chính xác</b> phần mà phép cộng đã đánh rơi:
+$$a + b \;=\; t - r \qquad \text{(đẳng thức toán học đúng tuyệt đối).}$$</p></div>
+
+<details class="deriv"><summary>Chứng minh phác thảo</summary><div class="deriv-body">
+<p>Đặt $d = t - a$, hiệu toán học. Vì $t = \operatorname{fl}(a+b)$ và $|b| \le |a|$, ta có $|t| \le 2|a|$ và $|t - a| \le |b| + \tfrac12\operatorname{ulp}(t)$, nên $t$ và $a$ nằm trong hai binade kề nhau — điều kiện của Bổ đề Sterbenz ở Chương 2.1. Vậy phép trừ $t - a$ <b>chính xác</b>, tức $\operatorname{fl}(t-a) = d$.</p>
+<p>Tiếp theo, $d - b = (t - a) - b = t - (a+b)$, đúng bằng sai số làm tròn của phép cộng đầu tiên. Đại lượng ấy có độ lớn không quá $\tfrac12\operatorname{ulp}(t)$, và có thể chứng minh nó biểu diễn được chính xác trong $p$ bit (nó là phần đuôi bị cắt của một tổng có nhiều nhất $2p$ bit, và phần đuôi ấy vừa trong $p$ bit khi $|b| \le |a|$). Nên phép trừ thứ hai cũng chính xác và $r = t - (a+b)$. $\square$</p>
+<p>Điều kiện $|a| \ge |b|$ là <b>bắt buộc</b>, và đây là chỗ cài đặt hay sai. Bỏ nó đi thì bước "phép trừ chính xác nhờ Sterbenz" sụp, $r$ không còn là phần dư đúng, và toàn bộ bù trừ trở thành nhiễu — nhưng thuật toán vẫn chạy, vẫn cho kết quả trông hợp lý, chỉ là không tốt hơn cộng xuôi bao nhiêu. Mục sau nói cách vá.</p>
+</div></details>
+
+<p>Có Mệnh đề 2.4, thuật toán Kahan là bốn dòng: cộng như thường, tính phần dư, và trừ phần dư ấy khỏi số hạng kế tiếp.</p>
+
+<pre><code>double sum_kahan(const double *x, int n) {
+    double s = 0, c = 0;                 // c: phần đã đánh rơi
+    for (int i = 0; i &lt; n; i++) {
+        double y = x[i] - c;             // trả lại phần nợ
+        double t = s + y;
+        c = (t - s) - y;                 // phần vừa đánh rơi
+        s = t;
+    }
+    return s;
+}</code></pre>
+
+<p>Cận sai số của nó là điều đáng chú ý nhất trong chương:</p>
+
+$$\left| s_n - \sum x_i \right| \;\le\; \big(2u + O(nu^2)\big) \sum_{i=1}^{n} |x_i| .$$
+
+<p>Hệ số là $2u$ — một <b>hằng số</b>, không phụ thuộc $n$ chút nào ở bậc chính. Cộng một triệu số cũng chính xác gần bằng cộng hai số. Cái giá là bốn phép cộng thay vì một, và mất khả năng vectơ hoá vì mỗi vòng phụ thuộc kết quả vòng trước.</p>
+
+<div class="box pitfall"><div class="box-h">Cạm bẫy — trình biên dịch có thể xoá thuật toán Kahan</div>
+<p>Nhìn vào dòng <code>c = (t - s) - y;</code> với con mắt đại số: $t = s + y$, nên $(t-s)-y = 0$. Một trình biên dịch được phép giả định số học kết hợp — <code>-ffast-math</code> của GCC và Clang, <code>/fp:fast</code> của MSVC — sẽ rút gọn nó thành $c = 0$ và <b>xoá sạch</b> phần bù trừ. Mã vẫn biên dịch, vẫn chạy, vẫn cho ra một con số, và con số ấy đúng bằng kết quả cộng xuôi.</p>
+<p>Đây là kiểu lỗi tệ nhất có thể: một thuật toán đúng bị vô hiệu hoá bởi một cờ tối ưu, không cảnh báo, không dấu hiệu, và chỉ lộ ra khi ai đó đo sai số. Cách phòng: đánh dấu các biến là <code>volatile</code>, tách hàm ra một đơn vị biên dịch không bật cờ ấy, hoặc dùng <code>#pragma float_control</code>. Cách phòng <b>tốt nhất</b> là đừng bật <code>-ffast-math</code> cho mã số học — nó cho phép trình biên dịch làm nhiều thứ hơn bạn tưởng, kể cả giả định không có $\mathrm{NaN}$ nào tồn tại.</p></div>
+
+<h2 id="neumaier">Cách ba: vá chỗ Kahan hỏng</h2>
+
+<p>Mệnh đề 2.4 đòi $|a| \ge |b|$. Vòng lặp Kahan không kiểm điều đó, và có một trường hợp nó bị vi phạm rõ ràng: khi $|x_i|$ <b>lớn hơn</b> tổng tích luỹ $s$. Điều này xảy ra thật — chẳng hạn dãy bắt đầu bằng nhiều số bé rồi đột ngột có một số khổng lồ.</p>
+
+<p>Neumaier vá bằng cách chọn nhánh theo độ lớn, và cộng phần bù vào <b>ở cuối</b> thay vì ở mỗi vòng:</p>
+
+$$e_i \;=\; \begin{cases} (s_{i-1} - t_i) + x_i, & |s_{i-1}| \ge |x_i|, \\[4pt] (x_i - t_i) + s_{i-1}, & |s_{i-1}| < |x_i|, \end{cases} \qquad \text{trả về}\quad t_n \;+\; \displaystyle\sum_{i=1}^{n} e_i ,$$
+
+<p>trong đó $t_i = \operatorname{fl}(s_{i-1} + x_i)$ là tổng chạy như thường và $e_i$ là phần đánh rơi ở bước $i$, tính theo nhánh nào giữ được điều kiện độ lớn của Mệnh đề 2.4. Toàn bộ phần bù được cộng <b>một lần ở cuối</b> — chi tiết ấy không phải để tiết kiệm, và bài tập cuối chương cho thấy nó chính là chỗ thuật toán này thắng.</p>
+
+<p>Với dãy $[1,\; 10^{100},\; 1,\; -10^{100}]$, tổng đúng là $2$. Cộng xuôi cho $0$. Kahan cũng cho $0$, vì phép cộng $10^{100}$ vào $s = 1$ vi phạm điều kiện độ lớn và phần bù bị tính sai. Neumaier cho đúng $2$.</p>
+
+<p>Ba cách và một mốc so sánh cuối cùng: nếu bạn cần tổng <b>làm tròn đúng</b> — tức bằng đúng $\operatorname{fl}$ của tổng toán học chính xác — thì có thuật toán cho nó, dùng một danh sách các phần dư không chồng lấn thay vì một biến bù. Nó chậm hơn nhiều lần và đúng tới bit cuối trong mọi trường hợp. Đó cũng là thuật toán mà mô phỏng ở Hình 2.2 dùng làm mốc "đúng", vì đo sai số bằng chính phép cộng đang bị đo thì không đo được gì.</p>
+
+<div class="tbl-wrap"><table class="tbl">
+<thead><tr><th>Cách</th><th>Cận sai số</th><th>Phép cộng mỗi phần tử</th><th>Vectơ hoá được?</th><th>Dùng khi</th></tr></thead>
+<tbody>
+<tr><td>cộng xuôi</td><td>$n u \sum|x_i|$</td><td>1</td><td>không (phụ thuộc chuỗi)</td><td>$n$ nhỏ, hoặc không quan tâm</td></tr>
+<tr><td>chia đôi</td><td>$u \log_2 n \sum|x_i|$</td><td>1</td><td>có</td><td><b>mặc định hợp lý</b></td></tr>
+<tr><td>Kahan</td><td>$2u \sum|x_i|$</td><td>4</td><td>không</td><td>cần chính xác, $n$ rất lớn</td></tr>
+<tr><td>Neumaier</td><td>$2u \sum|x_i|$</td><td>4–5</td><td>không</td><td>dãy có độ lớn chênh nhau nhiều</td></tr>
+<tr><td>tổng chính xác</td><td>$u \left|\sum x_i\right|$</td><td>$O(k)$ biến đổi</td><td>không</td><td>mốc so sánh, kiểm thử</td></tr>
+</tbody></table></div>
+
+<div class="keyfacts"><div class="box-h">Chốt chương</div>
+<ul>
+<li>Cộng xuôi có sai số bị chặn bởi $\gamma_{n-1}\sum|x_i| \approx n u \sum|x_i|$ — <b>tuyến tính theo $n$</b>, và cận ấy đạt được.</li>
+<li>Cận nhân với $\sum|x_i|$ chứ không phải $\left|\sum x_i\right|$; tỉ số giữa hai đại lượng là số điều kiện của bài toán tổng.</li>
+<li>Cộng theo cây đưa cận về $O(u \log n)$ mà <b>không thêm phép tính nào</b>. Đây là lý do thư viện và vòng lặp tự viết cho hai kết quả khác nhau.</li>
+<li>Mệnh đề 2.4: phép cộng hai số biết chính xác phần nó đánh rơi, miễn là $|a| \ge |b|$. Kahan là bốn dòng dựng trên đúng mệnh đề đó, và cho cận $2u$ không phụ thuộc $n$.</li>
+<li><code>-ffast-math</code> xoá thuật toán Kahan một cách âm thầm, vì $(t-s)-y$ rút gọn đại số về $0$.</li>
+<li>Điều kiện $|a| \ge |b|$ bị vi phạm khi một số hạng lớn hơn tổng tích luỹ; Neumaier vá đúng chỗ đó và không tốn thêm gì đáng kể.</li>
+</ul></div>
+
+<h2 id="bai-tap">Bài tập</h2>
+
+<div class="box ex"><div class="box-h">Bài 1 · Cận và thực tế · ★</div>
+<p>Cộng $n = 10^{6}$ số, mỗi số cỡ $1$, cùng dấu, bằng vòng lặp xuôi trong binary64.</p>
+<p>(a) Cận của Định lý 2.3 cho sai số tuyệt đối là bao nhiêu? Sai số tương đối?</p>
+<p>(b) Nếu chuyển sang chia đôi, hai con số ấy thành bao nhiêu?</p>
+<p>(c) Sai số <em>thực tế</em> của cộng xuôi thường nhỏ hơn cận ở (a) rất nhiều. Vì sao? Nêu điều kiện để cận trở nên chặt.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> $\sum|x_i| \approx 10^{6}$, $n u \approx 10^{6} \times 1{,}11\times10^{-16} = 1{,}11\times10^{-10}$. Sai số tuyệt đối $\le 1{,}11\times10^{-4}$. Chia cho tổng $\approx 10^{6}$ cho sai số tương đối $\le 1{,}11\times10^{-10}$ — mất khoảng sáu chữ số trong mười sáu.</p>
+<p><b>(b)</b> $\log_2 10^{6} \approx 20$, nên hệ số là $20u \approx 2{,}2\times10^{-15}$. Sai số tuyệt đối $\le 2{,}2\times10^{-9}$, tương đối $\le 2{,}2\times10^{-15}$ — mất chưa tới một chữ số.</p>
+<p><b>(c)</b> Cận giả định mọi $\delta_i$ đạt cực đại và cùng dấu. Trong thực tế chúng gần như độc lập và có dấu ngẫu nhiên nhờ luật hoà-về-chẵn ở Chương 1.3, nên chúng cộng lại như một bước ngẫu nhiên: sai số điển hình cỡ $\sqrt{n}\,u \sum|x_i|$ thay vì $n u \sum|x_i|$, tức nhỏ hơn ngàn lần ở đây.</p>
+<p>Cận trở nên chặt khi các $\delta_i$ <b>tương quan</b>. Ví dụ dãy ở phần thân chương: mọi phép cộng đều rơi vào cùng một trường hợp hoà và đều mất trọn số hạng, nên sai số đúng bằng $n-1$ chứ không phải $\sqrt{n}$. Đây là lý do không được thay cận trường hợp tệ nhất bằng ước lượng $\sqrt{n}$ trong mã sản xuất: dữ liệu có cấu trúc là chuyện thường, và cấu trúc chính là thứ phá vỡ giả thiết độc lập.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 2 · Chạy Kahan bằng tay · ★★</div>
+<p>Làm việc trong hệ đồ chơi $p = 4$ ($\varepsilon = 2^{-3} = 0{,}125$), làm tròn gần nhất hoà về chẵn. Cộng dãy $[1;\ 0{,}0625;\ 0{,}0625]$, tổng đúng là $1{,}125$.</p>
+<p>(a) Chạy vòng lặp xuôi. Kết quả và sai số?</p>
+<p>(b) Chạy Kahan, ghi lại $s$, $c$, $y$, $t$ sau mỗi vòng. Kết quả và sai số?</p>
+<p>(c) Đảo thứ tự thành $[0{,}0625;\ 0{,}0625;\ 1]$ và chạy lại vòng lặp xuôi. Nhận xét.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> $s = 1$. Cộng $0{,}0625$: tổng đúng $1{,}0625$ nằm chính giữa $1$ và $1{,}125$, hoà; định trị của $1$ là $1{,}000_2$, bit cuối $0$, chẵn — nên làm tròn về $1$. Cộng $0{,}0625$ lần nữa: y hệt, vẫn $1$. Kết quả $1$, sai số $0{,}125$, tức <b>một ULP trọn vẹn</b>.</p>
+<p><b>(b)</b> Vòng 1: $y = 1 - 0 = 1$; $t = 0 + 1 = 1$; $c = (1-0)-1 = 0$; $s = 1$.</p>
+<p>Vòng 2: $y = 0{,}0625 - 0 = 0{,}0625$; $t = \operatorname{fl}(1 + 0{,}0625) = 1$ (hoà về chẵn như trên); $c = (1 - 1) - 0{,}0625 = -0{,}0625$; $s = 1$.</p>
+<p>Vòng 3: $y = 0{,}0625 - (-0{,}0625) = 0{,}125$; $t = \operatorname{fl}(1 + 0{,}125) = 1{,}125$ chính xác; $c = (1{,}125 - 1) - 0{,}125 = 0$; $s = 1{,}125$.</p>
+<p>Kết quả $1{,}125$ — <b>đúng tuyệt đối</b>. Biến $c$ đã giữ nguyên phần bị đánh rơi ở vòng 2 và trả nó lại ở vòng 3, đúng chỗ mà nó cộng dồn đủ lớn để vượt ngưỡng làm tròn.</p>
+<p><b>(c)</b> $0{,}0625 + 0{,}0625 = 0{,}125$ chính xác; rồi $0{,}125 + 1 = 1{,}125$ chính xác. Kết quả đúng, bằng vòng lặp xuôi, không cần Kahan.</p>
+<p>Nhận xét đáng rút: <b>sắp xếp tăng dần theo trị tuyệt đối là một chiến lược thật</b>, và với dãy cùng dấu nó thường tốt. Nhưng nó tốn $O(n\log n)$ và hỏng với dãy có dấu trái ngược — sắp xếp lúc đó dồn các số cùng cỡ lại gần nhau và làm triệt tiêu ở Chương 2.1 nặng thêm. Không có chiến lược nào thắng ở mọi dữ liệu, và bảng ở cuối phần thân chương là cách chọn theo tình huống.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 3 · Dựng lại chỗ Kahan hỏng · ★★★</div>
+<p>(a) Chạy Kahan trên dãy $[1;\ 10^{100};\ 1;\ -10^{100}]$ trong binary64 và giải thích từng bước vì sao kết quả là $0$ chứ không phải $2$.</p>
+<p>(b) Chỉ rõ vòng nào vi phạm điều kiện $|a| \ge |b|$ của Mệnh đề 2.4, và điều gì sai đi sau đó.</p>
+<p>(c) Kiểm rằng Neumaier cho đúng $2$, bằng cách theo dõi biến bù qua bốn vòng.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Vòng 1: $s = 1$, $c = 0$. Vòng 2: $y = 10^{100}$; $t = \operatorname{fl}(1 + 10^{100}) = 10^{100}$, vì $1$ nhỏ hơn nửa ULP tại $10^{100}$ hàng trăm bậc; $c = (10^{100} - 1) - 10^{100}$. Phép trừ $10^{100} - 1$ cũng cho $10^{100}$, nên $c = 0$. Vòng 3: $y = 1$; $t = \operatorname{fl}(10^{100}+1) = 10^{100}$; $c = 0$ y như trên. Vòng 4: $y = -10^{100}$; $t = 0$ chính xác; $c = (0 - 10^{100}) + 10^{100} = 0$. Kết quả $0$.</p>
+<p><b>(b)</b> Vòng 2 và vòng 4. Ở vòng 2, $s = 1$ nhưng $y = 10^{100}$, tức $|s| \ll |y|$ — đúng chiều bị cấm. Điều sai đi là bước $t - s$: Bổ đề Sterbenz không áp dụng được, phép trừ ấy <b>không chính xác</b>, và $c$ không còn là phần dư mà là $0$. Cái $1$ bị đánh rơi biến mất khỏi sổ sách vĩnh viễn, đúng lúc thuật toán đang hứa sẽ giữ nó.</p>
+<p><b>(c)</b> Neumaier chọn nhánh theo độ lớn. Vòng 1: $t = 1$, nhánh $|s| \ge |x_i|$ với $s=0, x=1$ — thực ra $|s| < |x|$, nên dùng nhánh dưới: $c \mathrel{+}= (1 - 1) + 0 = 0$. Vòng 2: $|s| = 1 < 10^{100}$, nhánh dưới: $c \mathrel{+}= (10^{100} - 10^{100}) + 1 = 1$. <b>Đây là chỗ cái $1$ được cứu.</b> Vòng 3: $|s| = 10^{100} \ge 1$, nhánh trên: $c \mathrel{+}= (10^{100} - 10^{100}) + 1 = 1$, nên $c = 2$. Vòng 4: $t = 0$ chính xác, nhánh trên cho $c \mathrel{+}= (10^{100} - 0) + (-10^{100}) = 0$. Trả về $t + c = 0 + 2 = 2$. ✓</p>
+<p>Điều đáng chú ý về mặt thiết kế: cả hai thuật toán đều tính "phần bị mất", nhưng Kahan tiêu nó ngay ở vòng sau còn Neumaier tích nó lại và cộng một lần ở cuối. Chính sự hoãn ấy là cái cứu được ví dụ này — phần bù $1$ không có cơ hội nào sống sót nếu bị cộng vào $10^{100}$ ngay lập tức. Nguyên tắc chung: <b>giữ các đại lượng nhỏ ở cùng nhau càng lâu càng tốt</b>, và đó cũng chính là điều mà cộng theo cây làm về mặt cấu trúc.</p>
+</div></details>
+</div>

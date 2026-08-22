@@ -1,0 +1,153 @@
+<div class="ch-eyebrow">Phần 0 · Bài toán — Chương 0.1</div>
+<h1 class="ch-title">Vì sao 0,1 + 0,2 ≠ 0,3</h1>
+<p class="ch-lede">Ai cũng gặp dòng này một lần rồi cười trừ và đi tiếp. Đi tiếp là chỗ sai: đằng sau nó không phải một lỗi cài đặt của ngôn ngữ nào cả, mà là một quyết định thiết kế cố ý mà bạn sẽ phải sống chung suốt phần đời còn lại của mọi dòng mã tính toán bạn viết. Chương này biến câu đùa đó thành một câu hỏi trả lời được.</p>
+
+<h2 id="hien-tuong">Hiện tượng, trước khi có lời giải thích</h2>
+
+<p>Mở bất kỳ trình thông dịch nào — Python, JavaScript, Ruby, Java, C — và gõ phép cộng hiển nhiên nhất mà một đứa trẻ lớp ba làm được. Kết quả giống nhau ở tất cả, và nó không phải là điều bạn chờ đợi:</p>
+
+<pre><code>&gt;&gt;&gt; 0.1 + 0.2
+0.30000000000000004
+&gt;&gt;&gt; 0.1 + 0.2 == 0.3
+False</code></pre>
+
+<p>Phản xạ đầu tiên của gần như mọi người là quy tội cho phép cộng. Phản xạ đó sai, và biết nó sai ở đâu là toàn bộ nội dung của chương này. Phép cộng làm đúng nhiệm vụ của nó tới từng bit cuối cùng; thứ đã sai xảy ra sớm hơn, ngay lúc trình biên dịch đọc ba ký tự <code>0.1</code> trong mã nguồn của bạn và phải quyết định lưu chúng thành cái gì.</p>
+
+<p>Hãy hỏi máy xem nó thực sự đang giữ số nào. Hầu hết ngôn ngữ in số thực bằng chuỗi thập phân ngắn nhất mà đọc ngược lại vẫn ra đúng số ấy — một tiện ích rất tốt cho mắt người và rất tệ cho việc học, vì nó giấu đi đúng thứ đang cần nhìn. Ép nó in đủ hai mươi chữ số:</p>
+
+<pre><code>&gt;&gt;&gt; format(0.1, '.20f')
+0.10000000000000000555
+&gt;&gt;&gt; format(0.2, '.20f')
+0.20000000000000001110
+&gt;&gt;&gt; format(0.3, '.20f')
+0.29999999999999998890</code></pre>
+
+<p>Không số nào trong ba số đó là số bạn viết. Ba hằng số trong mã nguồn của bạn đã bị thay bằng ba số khác trước khi phép cộng đầu tiên kịp chạy. Câu hỏi <em>"vì sao tổng sai"</em> vì thế là một câu hỏi đặt nhầm chỗ; câu đặt đúng chỗ là <em>"vì sao ba hằng số bị thay"</em>.</p>
+
+<h2 id="ba-doi-hoi">Ba đòi hỏi, và thứ chúng ép ra</h2>
+
+<p>Ta sẽ không bắt đầu bằng định nghĩa của IEEE 754. Ta bắt đầu bằng việc tự thiết kế lấy nó, vì một định nghĩa được ép ra từ đòi hỏi thì nhớ được, còn một định nghĩa được tuyên bố thì chỉ tra lại được.</p>
+
+<p>Giả sử bạn phải cất một số thực vào $w$ bit — một con số cố định, chẳng hạn $w = 64$ — và bạn muốn ba điều sau, mỗi điều đều là thứ người dùng thật sự đòi hỏi:</p>
+
+<ol>
+<li><b>Dải rộng.</b> Cùng một kiểu dữ liệu phải cất được khối lượng của một electron và khối lượng của Mặt Trời. Không ai muốn đổi kiểu giữa chừng chỉ vì đại lượng đổi đơn vị.</li>
+<li><b>Sai số tương đối đều.</b> Đo một cây cầu sai một milimét thì chấp nhận được; đo một con vi khuẩn sai một milimét thì vô nghĩa. Cái phải giữ nhỏ là $\left|\hat x - x\right| / |x|$, không phải $\left|\hat x - x\right|$.</li>
+<li><b>Phần cứng làm được nhanh.</b> Phép cộng và phép nhân phải chạy trong vài chu kỳ, tức là so sánh và cộng số mũ phải là những phép nguyên đơn giản.</li>
+</ol>
+
+<p>Ba đòi hỏi này gần như không chừa lựa chọn nào. Đòi hỏi 1 loại bỏ ngay cách biểu diễn cố định dấu phẩy — nếu bạn dành $k$ bit cho phần thập phân thì số nhỏ nhất khác 0 bạn cất được là $2^{-k}$ và số lớn nhất là $2^{w-k}$, và tích của hai giới hạn ấy bị đóng đinh ở $2^{w}$ dù chia thế nào.</p>
+
+<p>Đòi hỏi 2 là cái quyết định. Sai số tương đối đều nghĩa là khoảng cách giữa hai số cất được kề nhau phải <b>tỉ lệ với độ lớn của chúng</b>, chứ không phải là một hằng số. Muốn thế thì lưới các giá trị biểu diễn được phải thưa dần khi đi ra xa gốc — và cách rẻ nhất để có một lưới như vậy là ghi mỗi số dưới dạng một phần định trị nhân với một luỹ thừa của cơ số:</p>
+
+$$\hat x \;=\; \pm\, m \cdot \beta^{\,e}, \qquad 1 \le m < \beta .$$
+
+<p>Đòi hỏi 3 chốt nốt hai lựa chọn còn lại. Cơ số $\beta = 2$, vì phần cứng nhị phân nhân với $2^e$ bằng cách cộng vào trường số mũ. Và $m$ có số chữ số cố định, vì độ dài thay đổi thì không cất vừa một ô nhớ cố định.</p>
+
+<div class="box def"><div class="box-h">Định nghĩa 0.1 — hệ dấu phẩy động</div>
+<p>Một <b>hệ dấu phẩy động</b> với cơ số $\beta$, độ chính xác $p$ và dải số mũ $[e_{\min}, e_{\max}]$ là tập hợp
+$$\mathbb{F} \;=\; \left\{\, \pm\, \beta^{e} \sum_{i=0}^{p-1} d_i \beta^{-i} \;:\; d_0 \in \{1,\dots\}, \; d_i \in \{0,\dots,\beta-1\}, \; e_{\min} \le e \le e_{\max} \right\} \cup \{0\}.$$
+Với $\beta = 2$ thì $d_0 = 1$ luôn đúng, nên chữ số đó <b>không cần cất</b> — đây là "bit ẩn" mà Chương 1.1 sẽ lấy lại một bit độ chính xác từ nó.</p></div>
+
+<div class="box intu"><div class="box-h">Đọc định nghĩa này thế nào</div>
+<p>Đừng đọc nó như một công thức. Đọc nó như một câu về hình học: $\mathbb{F}$ là một lưới trên trục số <b>không đều</b>. Trong mỗi khoảng $[2^{e}, 2^{e+1})$ — ta sẽ gọi là một <b>binade</b> — có đúng $2^{p-1}$ điểm, cách đều nhau. Sang binade kế tiếp, vẫn đúng chừng ấy điểm nhưng trải trên một khoảng dài gấp đôi, nên khoảng cách giữa hai điểm cũng gấp đôi. Toàn bộ những gì lạ lùng về số dấu phẩy động đều là hệ quả của một câu đó.</p></div>
+
+<h2 id="mot-phan-muoi">Và bây giờ, một phần mười</h2>
+
+<p>Với hình ảnh lưới trong đầu, câu hỏi mở đầu chương trở nên trả lời được trong ba dòng. Số $0{,}1$ có nằm trên lưới nhị phân không? Tức là, có tồn tại hai số nguyên $m$ và $e$ sao cho $m \cdot 2^{e} = 1/10$ không?</p>
+
+<div class="box thm"><div class="box-h">Mệnh đề 0.2</div>
+<p>Với $\beta = 2$, phân số $\dfrac{1}{10}$ không thuộc $\mathbb{F}$ với bất kỳ độ chính xác hữu hạn $p$ nào.</p></div>
+
+<details class="deriv"><summary>Chứng minh</summary><div class="deriv-body">
+<p>Giả sử ngược lại: $\dfrac{1}{10} = m \cdot 2^{e}$ với $m, e$ nguyên. Nhân chéo, $2^{-e} = 10 m = 2 \cdot 5 \cdot m$. Vế trái là một luỹ thừa của $2$, nên mọi ước nguyên tố của nó đều bằng $2$. Vế phải chia hết cho $5$. Vì $5$ nguyên tố và $5 \nmid 2^{-e}$, ta có mâu thuẫn. $\square$</p>
+<p>Lập luận này không nói gì riêng về $10$: nó nói rằng $\frac{a}{b}$ ở dạng tối giản nằm trên lưới nhị phân <b>khi và chỉ khi</b> $b$ là một luỹ thừa của $2$. Nên $0{,}5$, $0{,}25$, $0{,}75$ cất được chính xác, còn $0{,}1$, $0{,}2$, $0{,}3$ thì không — và cả ba con số trong ví dụ mở đầu đều rơi vào vế sau.</p>
+<p>Nói cách khác, cùng một hiện tượng đã quen thuộc với bạn từ trước: $\frac{1}{3}$ không viết hết được trong hệ thập phân, phải viết $0{,}333\ldots$ Hệ nhị phân cũng có tập phân số "viết hết được" của riêng nó, chỉ là tập đó nhỏ hơn — và $\frac{1}{10}$ nằm ngoài.</p>
+</div></details>
+
+<p>Vậy điều gì xảy ra khi trình biên dịch gặp <code>0.1</code>? Nó làm điều duy nhất còn lại: chọn phần tử của $\mathbb{F}$ gần $1/10$ nhất. Với binary64 thì phần tử đó là</p>
+
+$$\hat x \;=\; \frac{3602879701896397}{2^{55}} \;=\; 0{,}1000000000000000055511151231257827\ldots$$
+
+<p>và cách $1/10$ đúng $5{,}55 \times 10^{-18}$. Sai lệch ấy nhỏ hơn một phần mười sáu triệu tỉ, nhưng nó <b>khác không</b>, và mọi thứ còn lại chỉ là hệ quả số học của một khác biệt khác không.</p>
+
+<div class="fig">
+  <div class="fig-head">
+    <div class="fig-num">Hình 0.1 · Tương tác</div>
+    <div class="fig-title">Một số thập phân đáp xuống đâu trên lưới nhị phân</div>
+    <p class="fig-desc">Đổi số thập phân ở trên và nhìn hai thứ cùng lúc: dải xanh là tập <em>mọi</em> số thực được lưu thành cùng một số máy, và dòng "giá trị thực sự được lưu" là hai mươi chữ số mà cách in mặc định đã cắt đi.</p>
+  </div>
+  <div class="fig-body"><div data-viz="decimal-landing"></div></div>
+  <div class="fig-foot">Chú ý ba điều. Thứ nhất, $0{,}5$ đáp trúng vạch — nó là $2^{-1}$, nằm sẵn trên lưới. Thứ hai, $0{,}1$ và $0{,}2$ lệch về <b>cùng một phía</b> (lên trên), trong khi $0{,}3$ lệch xuống dưới; đó chính là lý do tổng của hai cái đầu vượt qua cái thứ ba thay vì bù trừ nhau. Thứ ba, độ rộng của dải xanh — tức ULP, đại lượng Chương 1.2 dành trọn cho — đổi khi bạn chuyển từ $0{,}3$ sang $1{,}1$, vì hai số ấy nằm ở hai binade khác nhau.</div>
+</div>
+
+<h2 id="tong-hai-so">Ráp lại: vì sao tổng dừng ở đúng con số đó</h2>
+
+<p>Bây giờ ta có đủ để đi hết ví dụ mở đầu, và đáng đi hết vì nó là bài tập mẫu cho toàn bộ phần còn lại của course. Máy làm ba việc, theo đúng thứ tự này.</p>
+
+<p><b>Việc thứ nhất</b> — thay $0{,}1$ bằng $\hat a$, phần tử gần nhất của $\mathbb{F}$. Ta đã biết $\hat a > 1/10$, lệch lên khoảng $5{,}55 \times 10^{-18}$.</p>
+
+<p><b>Việc thứ hai</b> — thay $0{,}2$ bằng $\hat b$. Vì $0{,}2 = 2 \times 0{,}1$ và phép nhân với $2$ chỉ dời số mũ, $\hat b = 2\hat a$ chính xác, nên $\hat b$ lệch lên gấp đôi, khoảng $1{,}11 \times 10^{-17}$.</p>
+
+<p><b>Việc thứ ba</b> — cộng $\hat a + \hat b$. Tổng toán học của hai số này là $3\hat a$, lệch lên khoảng $1{,}67 \times 10^{-17}$ so với $0{,}3$. Nhưng $3\hat a$ cần nhiều bit định trị hơn số bit có sẵn, nên kết quả còn phải làm tròn thêm một lần nữa về phần tử gần nhất của $\mathbb{F}$ — và lần làm tròn ấy đẩy nó lên tiếp, tới $0{,}30000000000000004441\ldots$</p>
+
+<p>Trong khi đó hằng số $0{,}3$ trong biểu thức so sánh của bạn được thay bằng $0{,}29999999999999998890\ldots$, tức lệch <b>xuống</b>. Hai số cách nhau đúng một ULP. Chúng khác nhau, nên <code>==</code> trả về <code>False</code>, và nó trả về đúng: hai chuỗi bit ấy thực sự khác nhau.</p>
+
+<div class="box pitfall"><div class="box-h">Cạm bẫy — "vậy thì cứ làm tròn kết quả trước khi so sánh"</div>
+<p>Đây là bản vá đầu tiên mà ai cũng nghĩ ra, và nó hỏng theo một cách rất khó thấy. Viết <code>round(a + b, 10) == round(c, 10)</code> chỉ dịch bài toán đi mười chữ số: vẫn tồn tại những cặp số mà hai vế rơi vào hai phía của mốc làm tròn thứ mười, và lúc đó bạn lại có đúng lỗi cũ, chỉ hiếm hơn nên khó tái hiện hơn.</p>
+<p>Điều bạn cần không phải một phép làm tròn mà là một <b>ngưỡng</b>, và chọn ngưỡng cho đúng là một quyết định có ít nhất ba câu trả lời tuỳ tình huống. Phụ lục dành trọn cho câu hỏi đó, và cố ý đặt ở cuối course: trước khi chọn ngưỡng, bạn cần biết ULP là gì (Chương 1.2) và sai số dồn tới đâu (Chương 2.2).</p></div>
+
+<div class="box warn"><div class="box-h">Chỗ hay hiểu sai — "dùng thập phân là hết lỗi"</div>
+<p>Đúng là kiểu thập phân — <code>decimal.Decimal</code> của Python, <code>BigDecimal</code> của Java — cất $0{,}1$ chính xác, và với tiền tệ thì đó là lựa chọn đúng. Nhưng nó <b>không</b> làm sai số biến mất; nó chỉ đổi tập phân số viết hết được từ "mẫu là luỹ thừa của $2$" sang "mẫu là luỹ thừa của $10$". $\frac{1}{3}$ vẫn không viết hết được, và $\sqrt{2}$ thì không hệ cơ số nào cứu nổi.</p>
+<p>Cái giá cũng thật: thập phân chạy chậm hơn nhị phân hàng chục lần vì không có mạch phần cứng cho nó. Quy tắc thực dụng là quy tắc về <b>nguồn gốc của số</b>, không phải về độ chính xác: đại lượng vốn dĩ là thập phân theo định nghĩa của con người (giá tiền, thuế suất) thì dùng thập phân; đại lượng đo được hoặc tính ra từ vật lý thì dùng nhị phân, vì bản thân phép đo đã có sai số lớn hơn nhiều.</p></div>
+
+<div class="keyfacts"><div class="box-h">Chốt chương</div>
+<ul>
+<li>Ba đòi hỏi — dải rộng, sai số <b>tương đối</b> đều, phần cứng làm nhanh — ép biểu diễn phải có dạng phần định trị nhân luỹ thừa của $2$, chứ không phải một lựa chọn tuỳ tiện của uỷ ban chuẩn hoá.</li>
+<li>$\frac{a}{b}$ tối giản cất được chính xác trong nhị phân <b>khi và chỉ khi</b> $b$ là luỹ thừa của $2$. Vì $10 = 2 \cdot 5$, mọi số thập phân "tròn" quen thuộc trừ các bội của $0{,}5$ đều không cất được.</li>
+<li>Sai số của <code>0.1 + 0.2</code> phát sinh <b>ba lần</b>: lúc đọc $0{,}1$, lúc đọc $0{,}2$, và lúc làm tròn tổng — chứ không phải một lần trong phép cộng.</li>
+<li>Lưới $\mathbb{F}$ thưa dần theo độ lớn: mỗi binade $[2^{e}, 2^{e+1})$ chứa cùng một số điểm nhưng trải trên khoảng dài gấp đôi.</li>
+<li>Đổi sang thập phân dời tập phân số biểu diễn được, không xoá sai số. Không hệ cơ số hữu hạn nào cất được $\sqrt{2}$.</li>
+</ul></div>
+
+<h2 id="bai-tap">Bài tập</h2>
+
+<div class="box ex"><div class="box-h">Bài 1 · Cái nào cất được chính xác · ★</div>
+<p>(a) Trong sáu số $0{,}5$, $0{,}125$, $0{,}2$, $0{,}75$, $2{,}5$, $0{,}7$, số nào thuộc $\mathbb{F}$ với $\beta = 2$? Trả lời bằng tiêu chuẩn của Mệnh đề 0.2, đừng thử trên máy.</p>
+<p>(b) Tổng của hai số cất được chính xác có luôn cất được chính xác không? Nếu có, chứng minh; nếu không, cho phản ví dụ với $p = 4$.</p>
+<p>(c) Đối chiếu câu (b) với dòng "sai số phát sinh ba lần" trong phần chốt chương. Trong ví dụ <code>0.1 + 0.2</code>, giả sử phép cộng nhận được hai số hạng <em>chính xác</em>; kết quả có còn sai không?</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Viết từng số ở dạng tối giản: $0{,}5 = \frac{1}{2}$ ✓, $0{,}125 = \frac{1}{8}$ ✓, $0{,}2 = \frac{1}{5}$ ✗, $0{,}75 = \frac{3}{4}$ ✓, $2{,}5 = \frac{5}{2}$ ✓, $0{,}7 = \frac{7}{10}$ ✗. Chú ý $2{,}5$: tử số có ước $5$ nhưng tiêu chuẩn nói về <b>mẫu</b>, và mẫu là $2$. Đây là chỗ hay nhầm nhất trong bài.</p>
+<p><b>(b)</b> Không. Với $p = 4$ (bốn bit định trị), cả $1{,}000_2 = 1$ và $0{,}001_2 = \frac{1}{8}$ đều cất được. Tổng là $1{,}001_2$, cần bốn bit định trị — vẫn vừa. Nhưng lấy $1$ và $2^{-4} = 0{,}0001_2$: tổng là $1{,}0001_2$, cần năm bit, không cất được, và phải làm tròn về $1$ hoặc về $1{,}001_2$.</p>
+<p>Điểm cần rút ra: cái hỏng không phải là các số hạng, mà là <b>khoảng cách giữa số mũ của chúng</b>. Hai số cùng độ lớn thì tổng thường cất được; hai số lệch nhau nhiều bậc thì gần như chắc chắn không. Chương 2.2 dựng toàn bộ nội dung của nó trên đúng quan sát này.</p>
+<p><b>(c)</b> Vẫn sai, nhưng chỉ sai một lần thay vì ba. Nếu $a = 1/10$ và $b = 1/5$ chính xác thì $a + b = 3/10$, mà $3/10$ tối giản có mẫu $10$ nên không thuộc $\mathbb{F}$ — kết quả vẫn phải làm tròn. Nói cách khác, ngay cả một máy tính có số hạng hoàn hảo cũng không trả về $0{,}3$; câu <code>0.1 + 0.2 == 0.3</code> hỏng vì <b>ba số đều không biểu diễn được</b>, chứ không phải vì phép cộng bẩn.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 2 · Đếm điểm trên lưới · ★★</div>
+<p>Xét hệ với $\beta = 2$, $p = 3$ (ba bit định trị kể cả bit ẩn), $e \in \{-1, 0, 1\}$, không xét số dưới chuẩn.</p>
+<p>(a) Liệt kê đủ mọi giá trị dương của hệ này. Có bao nhiêu cái?</p>
+<p>(b) Tính khoảng cách giữa hai giá trị kề nhau trong từng binade. Tỉ số giữa khoảng cách của binade lớn nhất và binade nhỏ nhất là bao nhiêu?</p>
+<p>(c) Số $1{,}3$ được làm tròn về giá trị nào? Sai số tuyệt đối và sai số tương đối là bao nhiêu? Làm lại với $13$ thay cho $1{,}3$ (dùng $e \in \{2,3\}$ để đủ dải) và so sánh hai sai số tương đối.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Định trị nhận bốn dạng $1{,}00_2 = 1$, $1{,}01_2 = 1{,}25$, $1{,}10_2 = 1{,}5$, $1{,}11_2 = 1{,}75$. Nhân lần lượt với $2^{-1}, 2^{0}, 2^{1}$:</p>
+<p>$e = -1$: $0{,}5$; $0{,}625$; $0{,}75$; $0{,}875$. &nbsp;&nbsp; $e = 0$: $1$; $1{,}25$; $1{,}5$; $1{,}75$. &nbsp;&nbsp; $e = 1$: $2$; $2{,}5$; $3$; $3{,}5$. Tổng cộng $12$ giá trị dương.</p>
+<p><b>(b)</b> Lần lượt $0{,}125$, $0{,}25$, $0{,}5$. Tỉ số là $4$, đúng bằng $2^{2}$ — hai lần gấp đôi cho hai lần chuyển binade. Tổng quát, tỉ số giữa binade cao nhất và thấp nhất là $2^{e_{\max} - e_{\min}}$.</p>
+<p><b>(c)</b> $1{,}3$ nằm giữa $1{,}25$ và $1{,}5$, gần $1{,}25$ hơn, nên làm tròn về $1{,}25$. Sai số tuyệt đối $0{,}05$; sai số tương đối $0{,}05 / 1{,}3 \approx 3{,}8\%$.</p>
+<p>Với $13$: cần $e = 3$, các giá trị là $8; 10; 12; 14$. Số $13$ nằm chính giữa $12$ và $14$ — một trường hợp hoà, và Chương 1.3 sẽ nói luật phá hoà chọn cái nào. Lấy $12$ thì sai số tuyệt đối là $1$, tức <b>gấp hai mươi lần</b> câu trên, nhưng sai số tương đối là $1/13 \approx 7{,}7\%$, chỉ gấp đôi.</p>
+<p>Đó chính là đòi hỏi 2 đang làm việc: sai số tuyệt đối nở ra cùng độ lớn của số, còn sai số tương đối thì bị chặn. Nếu bạn thấy phần so sánh này quen quen, đúng vậy — nó là hình bóng của định lý nửa ULP mà Chương 1.3 sẽ phát biểu và chứng minh đầy đủ.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 3 · Ba lần làm tròn, tách riêng từng lần · ★★★</div>
+<p>Trong ví dụ mở đầu ta nói sai số phát sinh ba lần. Hãy tách chúng ra bằng số.</p>
+<p>(a) Gọi $\hat a$, $\hat b$ là giá trị thực sự được lưu của $0{,}1$ và $0{,}2$. Chứng minh $\hat b = 2\hat a$ <em>chính xác</em>, không xấp xỉ.</p>
+<p>(b) Suy ra tổng toán học $\hat a + \hat b$ bằng $3\hat a$, và tính xem nó lệch bao nhiêu so với $0{,}3$.</p>
+<p>(c) Kết quả in ra là $0{,}30000000000000004441\ldots$, còn $3\hat a$ theo câu (b) là một số khác. Giải thích khoảng chênh còn lại, và nói rõ nó thuộc lần làm tròn thứ mấy.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Nhân với $2$ trong hệ nhị phân chỉ cộng $1$ vào số mũ và giữ nguyên phần định trị. Miễn là không tràn dải số mũ, phép nhân ấy <b>không làm mất bit nào</b>, nên nó chính xác. Còn lại phải kiểm rằng $\hat b$ — số máy gần $0{,}2$ nhất — đúng là $2\hat a$: vì phép nhân đôi là song ánh giữa binade chứa $0{,}1$ và binade chứa $0{,}2$ và nó bảo toàn thứ tự, ảnh của "gần nhất" là "gần nhất".</p>
+<p><b>(b)</b> $\hat a = \frac{1}{10} + \delta$ với $\delta \approx 5{,}5511 \times 10^{-18}$. Vậy $3\hat a = \frac{3}{10} + 3\delta \approx 0{,}3 + 1{,}6653 \times 10^{-17}$.</p>
+<p><b>(c)</b> Kết quả in ra lệch khỏi $0{,}3$ khoảng $4{,}44 \times 10^{-17}$, tức xa hơn $3\hat a$ chừng $2{,}78 \times 10^{-17}$. Khoảng chênh ấy là <b>lần làm tròn thứ ba</b>: $3\hat a$ cần nhiều bit định trị hơn $53$ bit có sẵn, nên phép cộng phải trả về số máy gần nó nhất, và số ấy nằm cao hơn.</p>
+<p>Kiểm chứng con số: ở lân cận $0{,}3$ ta có $2^{-2} \le 0{,}3 < 2^{-1}$, nên ULP bằng $2^{-2-52} = 2^{-54} \approx 5{,}55 \times 10^{-17}$. Khoảng chênh $2{,}78 \times 10^{-17}$ đúng bằng <b>nửa ULP</b> — tức lần làm tròn thứ ba đã trả cái giá tối đa mà Định lý 1.5 ở Chương 1.3 cho phép, không hơn. Đây là lý do đáng làm bài này: con số cuối cùng không phải một tai nạn, nó nằm đúng chỗ lý thuyết bảo nó phải nằm.</p>
+</div></details>
+</div>
