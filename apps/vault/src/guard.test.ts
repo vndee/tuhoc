@@ -787,14 +787,34 @@ describe('BẪY: KHÔNG thông điệp nào từ trang chính cấp được xá
 const LONGEST_REAL_CHAPTER = 19_343;
 const WHOLE_SAMPLE_COURSE = 117_872;
 
+/**
+ * Lời nhắc DÀI NHẤT mà ứng dụng thật sự gửi, sau khi Task 7 cắt bớt ngữ cảnh
+ * chương (`CHAPTER_CONTEXT_LIMIT = 8_000`). Đo bằng KaTeX thật trên chương thật,
+ * qua chính bộ dựng lời nhắc: **7.996** — và **11/11 chương đều bị cắt**.
+ *
+ * Vì sao con số này phải có mặt: trước khi Task 7 tồn tại, các khẳng định dưới
+ * đây neo vào `LONGEST_REAL_CHAPTER`, tức vào một lời nhắc **không bao giờ xảy
+ * ra nữa**. Chúng vẫn xanh — nhưng xanh vì lý do sai, đúng bài học đã ghi ở
+ * S2 Task 9: *một dây bẫy còn xanh không có nghĩa nó còn đo đúng thứ nó từng đo.*
+ *
+ * Ảnh chụp, không phải phép đo lúc chạy (cùng lý do với hai hằng trên). Lệnh
+ * sinh ra nó ở `task-7-8-report.md`.
+ */
+const LONGEST_REAL_PROMPT = 7_996;
+
 /** Số lời gọi mà ngân sách cho phép khi mỗi lời nhắc dài bằng **chương dài nhất
  *  thật**. Tính từ hằng số chứ không viết tay, để đổi ngưỡng thì bài kiểm đi
  *  theo thay vì đỏ oan. */
-const CALLS_PER_BUDGET = Math.floor(SESSION_CHAR_BUDGET / LONGEST_REAL_CHAPTER);
+const CALLS_PER_BUDGET = Math.floor(SESSION_CHAR_BUDGET / LONGEST_REAL_PROMPT);
 
-/** Một lời nhắc dài đúng bằng chương dài nhất thật, **mang ghi chú riêng tư ở
- *  đầu** — để bẫy `NOTE` trong `afterEach` vẫn đo đúng thứ nó đo. */
-const CHAPTER_PROMPT = NOTE + 'x'.repeat(LONGEST_REAL_CHAPTER - NOTE.length);
+/** Một lời nhắc dài đúng bằng lời nhắc DÀI NHẤT ứng dụng thật sự gửi, **mang
+ *  ghi chú riêng tư ở đầu** — để bẫy `NOTE` trong `afterEach` vẫn đo đúng thứ
+ *  nó đo.
+ *
+ *  Trước đây hằng này dài bằng **chương thô** (19.343). Đó là cỡ lời nhắc
+ *  không còn tồn tại sau khi Task 7 cắt ngữ cảnh, nên bẫy vẫn xanh nhưng đang
+ *  đo một tình huống không xảy ra. */
+const CHAPTER_PROMPT = NOTE + 'x'.repeat(LONGEST_REAL_PROMPT - NOTE.length);
 
 /**
  * Tổng số ký tự nội dung **đã thật sự rời khỏi máy**, đọc từ thân yêu cầu
@@ -819,21 +839,27 @@ describe('ngân sách KÝ TỰ mỗi phiên — nửa NGHIÊM TRỌNG của HC-3
     // Sàn: một lời nhắc dài bằng CHƯƠNG DÀI NHẤT THẬT phải đi lọt nhiều lần
     // trước khi phải bấm lại. Ngân sách chỉ đủ một hai chương là một con dấu
     // cao su — người dùng bấm liên tục và thôi đọc thứ mình đang bấm.
-    expect(SESSION_CHAR_BUDGET).toBeGreaterThanOrEqual(4 * LONGEST_REAL_CHAPTER);
+    // Neo vào lời nhắc THẬT, không vào chương thô: chương là nguyên liệu, lời
+    // nhắc mới là thứ rời khỏi máy. Sàn cũ (4 × chương = 77.372) mô tả một cỡ
+    // lời nhắc không còn tồn tại.
+    expect(SESSION_CHAR_BUDGET).toBeGreaterThanOrEqual(4 * LONGEST_REAL_PROMPT);
     // Trần: MỘT cú bấm không được mua quá nhiều. Mốc là **cả gói mẫu**: một lần
     // xác nhận không được đáng giá hơn "đọc trọn giáo trình ra ngoài" mấy lần.
     expect(SESSION_CHAR_BUDGET).toBeLessThanOrEqual(2 * WHOLE_SAMPLE_COURSE);
     // Và ngưỡng phải LỚN HƠN một lời nhắc thật dài nhất — nếu không thì lời gọi
     // hợp lệ đầu tiên đã bị chặn và tính năng chết ngay khi bật.
-    expect(SESSION_CHAR_BUDGET).toBeGreaterThan(LONGEST_REAL_CHAPTER);
+    expect(SESSION_CHAR_BUDGET).toBeGreaterThan(LONGEST_REAL_PROMPT);
+    // Và lời nhắc thật PHẢI nhỏ hơn chương thô — nếu không, nhánh cắt bớt của
+    // Task 7 không bao giờ chạy và con số trên là ảo.
+    expect(LONGEST_REAL_PROMPT).toBeLessThan(LONGEST_REAL_CHAPTER);
     expect(CALLS_PER_BUDGET).toBeGreaterThanOrEqual(4);
   });
 
   it('một lời nhắc dài bằng CHƯƠNG DÀI NHẤT THẬT vẫn đi được — người thật không bị chặn', () => {
     grantConsent();
-    const d = checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' });
+    const d = checkAndConsume({ chars: LONGEST_REAL_PROMPT, providerId: 'deepseek' });
     expect(d.allow).toBe(true);
-    expect(readActivity().calls[0].chars).toBe(LONGEST_REAL_CHAPTER);
+    expect(readActivity().calls[0].chars).toBe(LONGEST_REAL_PROMPT);
   });
 
   it('BẪY TRUNG TÂM CỦA TASK NÀY: trong hạn ngạch LỜI GỌI, tổng KÝ TỰ vẫn bị chặn', () => {
@@ -845,10 +871,10 @@ describe('ngân sách KÝ TỰ mỗi phiên — nửa NGHIÊM TRỌNG của HC-3
     let sent = 0;
     for (let i = 0; i < 40; i += 1) {
       clock += BUCKET_REFILL_MS * BUCKET_CAPACITY; // bucket đầy lại hoàn toàn
-      const d = checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' });
+      const d = checkAndConsume({ chars: LONGEST_REAL_PROMPT, providerId: 'deepseek' });
       if (d.allow) {
         allowed += 1;
-        sent += LONGEST_REAL_CHAPTER;
+        sent += LONGEST_REAL_PROMPT;
       }
     }
     expect(allowed).toBe(CALLS_PER_BUDGET);
@@ -860,10 +886,10 @@ describe('ngân sách KÝ TỰ mỗi phiên — nửa NGHIÊM TRỌNG của HC-3
     grantConsent();
     for (let i = 0; i < CALLS_PER_BUDGET; i += 1) {
       clock += BUCKET_REFILL_MS * BUCKET_CAPACITY;
-      expect(checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' }).allow).toBe(true);
+      expect(checkAndConsume({ chars: LONGEST_REAL_PROMPT, providerId: 'deepseek' }).allow).toBe(true);
     }
     clock += BUCKET_REFILL_MS * BUCKET_CAPACITY;
-    const d = checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' });
+    const d = checkAndConsume({ chars: LONGEST_REAL_PROMPT, providerId: 'deepseek' });
     expect(d.allow).toBe(false);
     expect(d.code).toBe('needs_consent');
     // Xác nhận đã bị RÚT: khung sẽ vẽ lại cái nút, nên người dùng có chỗ bấm.
@@ -873,7 +899,7 @@ describe('ngân sách KÝ TỰ mỗi phiên — nửa NGHIÊM TRỌNG của HC-3
     // Và người dùng THẬT phải dùng tiếp được sau khi bấm.
     grantConsent();
     clock += BUCKET_REFILL_MS * BUCKET_CAPACITY;
-    expect(checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' }).allow).toBe(true);
+    expect(checkAndConsume({ chars: LONGEST_REAL_PROMPT, providerId: 'deepseek' }).allow).toBe(true);
   });
 
   it('BẪY: bấm xác nhận LẠI làm mới ngân sách ký tự nhưng KHÔNG mở lại token bucket', () => {
@@ -894,12 +920,12 @@ describe('ngân sách KÝ TỰ mỗi phiên — nửa NGHIÊM TRỌNG của HC-3
     grantConsent();
     for (let i = 0; i < CALLS_PER_BUDGET; i += 1) {
       clock += BUCKET_REFILL_MS * BUCKET_CAPACITY;
-      checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' });
+      checkAndConsume({ chars: LONGEST_REAL_PROMPT, providerId: 'deepseek' });
     }
     vi.resetModules();
     const fresh = (await import('./guard')) as typeof import('./guard');
     clock += BUCKET_REFILL_MS * BUCKET_CAPACITY;
-    const d = fresh.checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' });
+    const d = fresh.checkAndConsume({ chars: LONGEST_REAL_PROMPT, providerId: 'deepseek' });
     expect(d.allow).toBe(false);
     expect(d.code).toBe('needs_consent');
   });
@@ -925,13 +951,13 @@ describe('ngân sách KÝ TỰ mỗi phiên — nửa NGHIÊM TRỌNG của HC-3
     // ngân sách thì một course độc chỉ cần spam TRƯỚC cú bấm là ngân sách của
     // người dùng đã cạn trước lời gọi thật đầu tiên.
     for (let i = 0; i < 50; i += 1) {
-      checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' });
+      checkAndConsume({ chars: LONGEST_REAL_PROMPT, providerId: 'deepseek' });
     }
     grantConsent();
     let allowed = 0;
     for (let i = 0; i < 40; i += 1) {
       clock += BUCKET_REFILL_MS * BUCKET_CAPACITY;
-      if (checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' }).allow) allowed += 1;
+      if (checkAndConsume({ chars: LONGEST_REAL_PROMPT, providerId: 'deepseek' }).allow) allowed += 1;
     }
     expect(allowed).toBe(CALLS_PER_BUDGET);
   });

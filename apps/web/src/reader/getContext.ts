@@ -32,6 +32,9 @@ export interface ChapterContextSource {
 
 let source: ChapterContextSource | null = null;
 
+import { normalizeContainer } from '../annotations/normalize';
+import { selectionExcerpt } from '../ai/prompts';
+
 /** Written by `ChapterView` only. Not part of the public reader contract — `getContext()` is. */
 export function setChapterContextSource(next: ChapterContextSource | null): void {
   source = next;
@@ -79,10 +82,20 @@ export function getContext(): ReaderContext {
 
   const context: ReaderContext = { courseId, chapterId, headingTrail, sectionHTML };
 
+  // KHÔNG dùng `sel.toString()`. Sau khi KaTeX render, `toString()` trên một
+  // đoạn có công thức trả về chuỗi MathML + nguồn TeX + glyph dán liền nhau —
+  // đo được trên chương thật: `"Chặn trên là 12ε2\tfrac{1}{2}\varepsilon^221​ε2
+  // cho mỗi phép cộng."`, tức công thức xuất hiện BA lần dưới ba dạng. Một mô
+  // hình nhận chuỗi ấy nhận rác.
+  //
+  // `selectionExcerpt` chiếu qua đúng phép phân đoạn của P2 rồi hoàn nguyên
+  // LaTeX từ `<annotation encoding="application/x-tex">`. Ổ cắm này chưa có
+  // consumer nào; nối nó vào phép chiếu đúng NGAY BÂY GIỜ là để người đầu tiên
+  // dùng nó không phải tự dựng lại `sel.toString()` một lần nữa.
   const sel = window.getSelection?.();
-  const selectionText = sel?.toString().trim();
-  if (selectionText && sel?.anchorNode && contentEl.contains(sel.anchorNode)) {
-    context.selection = selectionText;
+  if (sel && sel.rangeCount > 0 && sel.anchorNode && contentEl.contains(sel.anchorNode)) {
+    const excerpt = selectionExcerpt(normalizeContainer(contentEl), sel.getRangeAt(0));
+    if (excerpt) context.selection = excerpt.quote;
   }
 
   return context;
