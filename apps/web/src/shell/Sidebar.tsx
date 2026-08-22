@@ -95,7 +95,23 @@ export function Sidebar() {
           </svg>
           Tự học
         </p>
-        <p className="sb-sub">***REMOVED***</p>
+        {/*
+          The subtitle names the course that is open, and does not exist when
+          none is. It used to be the literal string "***REMOVED***" —
+          right back when the app shipped exactly one course, and a lie on
+          every screen after that: on `/library` it read as the name of the
+          library itself, on `/import` and the dashboard it named a course
+          nobody had opened, and with a different course open it named the
+          wrong one.
+
+          Keyed off `manifestQuery.data`, not off `courseId`: a manifest is
+          the only thing that knows a course's title (the id in the URL is a
+          slug, not a name), so the pending and failed states name nothing
+          rather than guess — guessing is how the original bug got in. That
+          silence is never the only thing on screen; `#nav` right below says
+          out loud which of those two states the sidebar is in.
+        */}
+        {manifestQuery.data && <p className="sb-sub">{manifestQuery.data.title}</p>}
         <div className="sb-search">
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <circle cx="9" cy="9" r="6.5" stroke="currentColor" strokeWidth="1.6" />

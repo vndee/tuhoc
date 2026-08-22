@@ -126,3 +126,52 @@ describe('Sidebar real course outline', () => {
     expect(await within(nav).findAllByRole('link')).toHaveLength(2);
   });
 });
+
+/**
+ * `.sb-sub` is the line under "Tự học" in the sidebar head. It used to be
+ * the literal string "***REMOVED***" — correct back when the app
+ * shipped exactly one course, and a lie on every screen afterwards: it
+ * named a course on `/library` (where it read as the name of the library
+ * itself), on `/import`, on the dashboard, and — worst — named the WRONG
+ * course while a different one was open.
+ *
+ * The rule these tests pin: `.sb-sub` names the course that is actually
+ * open, and does not exist otherwise. "Otherwise" deliberately includes
+ * the two in-between states of a course route, because a placeholder that
+ * guesses is how the original bug got in — the sidebar must not name a
+ * course until it has that course's own manifest in hand.
+ */
+describe('Sidebar subtitle (.sb-sub)', () => {
+  it('names the open course on /c/:courseId, from that course’s own manifest', async () => {
+    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(manifest)));
+    renderSidebar('/c/demo');
+
+    await waitFor(() => expect(document.querySelector('.sb-sub')?.textContent).toBe('Khóa học demo'));
+  });
+
+  it('names no course on a route without one (e.g. /library)', () => {
+    renderSidebar('/library');
+    expect(document.querySelector('.sb-sub')).toBeNull();
+  });
+
+  it('names no course while the manifest is still loading, rather than guessing one', async () => {
+    server.use(
+      http.get('/courses/demo/manifest.json', async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return HttpResponse.json(manifest);
+      }),
+    );
+    renderSidebar('/c/demo');
+
+    expect(document.querySelector('.sb-sub')).toBeNull();
+    await waitFor(() => expect(document.querySelector('.sb-sub')?.textContent).toBe('Khóa học demo'));
+  });
+
+  it('names no course when the manifest fails to load', async () => {
+    server.use(http.get('/courses/demo/manifest.json', () => new HttpResponse(null, { status: 404 })));
+    renderSidebar('/c/demo');
+
+    await within(document.getElementById('nav')!).findByText(/không tải được/i);
+    expect(document.querySelector('.sb-sub')).toBeNull();
+  });
+});
