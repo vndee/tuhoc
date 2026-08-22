@@ -14,6 +14,18 @@ import {
   RuntimeMismatchError,
 } from './loader';
 import type { Manifest } from './types';
+import { t as lookup, type Translate } from '../i18n';
+
+/**
+ * `t` đã gắn tiếng Việt.
+ *
+ * `describeFinding`, `describeCourseError`, `describeAuthError` và
+ * `importCourse` nhận ngôn ngữ bằng THAM SỐ từ Task 5 — chúng không phải
+ * component và cố ý không có context nào để đọc. Bơm `t` vào từ đây là cách
+ * duy nhất một bài kiểm chứng minh chúng dùng cái được truyền vào.
+ */
+const t: Translate = (key, ...args) => lookup('vi', key, ...args);
+
 
 const COURSE_ID = 'demo';
 
@@ -124,14 +136,14 @@ describe('loadManifest', () => {
 describe('describeCourseError', () => {
   it('describes a RuntimeMismatchError in Vietnamese, not the raw English Error#message', () => {
     const error = new RuntimeMismatchError('^2');
-    const description = describeCourseError(error);
+    const description = describeCourseError(error, t);
     expect(description).toMatch(/^Không tải được khóa học/);
     expect(description).not.toBe(error.message);
   });
 
   it('describes a 404 CourseFetchError distinctly from other HTTP statuses', () => {
-    const notFound = describeCourseError(new CourseFetchError('https://x/manifest.json', 404));
-    const serverError = describeCourseError(new CourseFetchError('https://x/manifest.json', 500));
+    const notFound = describeCourseError(new CourseFetchError('https://x/manifest.json', 404), t);
+    const serverError = describeCourseError(new CourseFetchError('https://x/manifest.json', 500), t);
     expect(notFound).toMatch(/^Không tải được khóa học/);
     expect(serverError).toMatch(/^Không tải được khóa học/);
     expect(notFound).not.toBe(serverError);
@@ -139,14 +151,14 @@ describe('describeCourseError', () => {
 
   it('describes a ManifestParseError in Vietnamese, not the raw English Error#message', () => {
     const error = new ManifestParseError('https://x/manifest.json', new SyntaxError('Unexpected token <'));
-    const description = describeCourseError(error);
+    const description = describeCourseError(error, t);
     expect(description).toMatch(/^Không tải được khóa học/);
     expect(description).not.toBe(error.message);
   });
 
   it('falls back to a generic Vietnamese message for anything else (e.g. a plain thrown value)', () => {
-    expect(describeCourseError('boom')).toMatch(/^Không tải được khóa học/);
-    expect(describeCourseError(new Error('some unrelated failure'))).toMatch(/^Không tải được khóa học/);
+    expect(describeCourseError('boom', t)).toMatch(/^Không tải được khóa học/);
+    expect(describeCourseError(new Error('some unrelated failure'), t)).toMatch(/^Không tải được khóa học/);
   });
 });
 
@@ -262,7 +274,7 @@ describe('the cached package is the first source', () => {
     await expect(failure).rejects.not.toBeInstanceOf(CourseFetchError);
     expect(fetchSpy).not.toHaveBeenCalled();
 
-    expect(describeCourseError(new PackageAssetError(COURSE_ID, '1.0.0', 'chapters/c1.html'))).toMatch(
+    expect(describeCourseError(new PackageAssetError(COURSE_ID, '1.0.0', 'chapters/c1.html'), t)).toMatch(
       /^Không tải được khóa học/,
     );
   });

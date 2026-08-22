@@ -402,4 +402,132 @@ export const en: Messages = {
   'update.applying': 'Updating…',
   'update.confirm': 'Update',
   'update.stay': (fromVersion: string) => `Stay on v${fromVersion}`,
+
+  /* ══════════════════════════════════════════════════════════════════════ *
+   * CHUỖI LỖI
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  'finding.undescribed': (where: string, detail: string) =>
+    `The package has a problem with no description yet${where}: ${detail}`,
+  'finding.EMPTY_PACKAGE': 'This package is empty — there are no files inside it.',
+  'finding.TOO_LARGE': (mb: string) => `The package exceeds the ${mb} MB ceiling once unpacked.`,
+  'finding.PATH_ESCAPE': 'A file in the package points outside the package directory. This package is not safe to open.',
+  'finding.MANIFEST_MISSING': (manifest: string) =>
+    `The package has no ${manifest} at its root — that is the file describing the course.`,
+  'finding.MANIFEST_PARSE': (manifest: string) => `${manifest} is not valid JSON.`,
+  'finding.MANIFEST_FIELD': (manifest: string) => `${manifest} is missing a required field, or that field has the wrong type.`,
+  'finding.SEMVER': 'The course version number is not in X.Y.Z form.',
+  'finding.RUNTIME_RANGE': 'The course requires a runtime version this app does not support.',
+  'finding.DUPLICATE_CHAPTER_ID': 'Two chapters share the same id.',
+  'finding.CHAPTER_FILE_MISSING': 'The table of contents names a chapter file that is not in the package.',
+  'finding.SCRIPT_TAG':
+    'This chapter contains a <script> tag. A “content” tier course may only contain text and images, never executable code.',
+  'finding.EVENT_HANDLER_ATTR':
+    'This chapter has event-handler attributes (onclick, onerror…), which are executable code. A “content” tier course may not.',
+  'finding.JAVASCRIPT_URL':
+    'This chapter has a javascript: link, which is executable code. A “content” tier course may not.',
+  'finding.EMBEDDED_FRAME':
+    'This chapter embeds another page (iframe/embed/object). A “content” tier course may not.',
+  'finding.FORM_TAG':
+    'This chapter has a <form>. A “content” tier course may not — a form sends data somewhere else.',
+  'finding.JS_FILE_IN_PACKAGE':
+    'The package contains JavaScript files while the course declares itself “content” tier (text and images only).',
+  'finding.TAG_ATTR_FLOOD': 'An HTML tag in the package carries too many attributes to be a real document.',
+  'finding.BAD_URL': 'This link cannot be used.',
+  'finding.FETCH_FAILED': 'Could not download it.',
+  'finding.FILE_READ_FAILED': 'Could not read the file you chose.',
+  'finding.HTTP_ERROR': 'The server refused the request.',
+  'finding.NOT_A_ZIP':
+    'This file is not a readable .zip. Make sure you picked the course’s .zip package.',
+  'finding.ZIP64_UNSUPPORTED': 'This .zip uses a part of the zip64 format that tuhoc cannot read yet.',
+  'finding.ARCHIVE_INDEX_MISMATCH':
+    'This package contains nested archives (a .zip inside — .docx, .xlsx and .pptx are all .zip), so the archive’s index and its byte stream disagree.',
+  'finding.DUPLICATE_ENTRY': 'The package has two files with the same name, so there is no way to tell which is real.',
+  'finding.PACKAGE_ROOT_AMBIGUOUS': 'It is unclear which course in this file is the one you meant to import.',
+  'finding.UNPACKABLE_ENTRY': 'The repository has entries that cannot be packaged.',
+  'finding.GIT_HOST_UNSUPPORTED': 'tuhoc can only import directly from GitHub.',
+  'finding.GIT_REPO_UNREACHABLE': 'Could not open this repository.',
+  'finding.GIT_PATH_NOT_FOUND': 'The repository opened, but the directory you pointed at was not found.',
+  'finding.GIT_RATE_LIMITED': 'GitHub is temporarily blocking because of too many requests from your network.',
+  'finding.GIT_BAD_RESPONSE': 'The answer that came back was not GitHub’s.',
+  'finding.GIT_TREE_TRUNCATED':
+    'This repository is too large to list in one request. Download the repository’s .zip and import from the file instead.',
+  'finding.GIT_TOO_MANY_FILES': 'This repository has too many files to import directly.',
+  'finding.WRITE_FAILED': 'Could not save the package into this browser’s storage.',
+  'finding.CANCELLED': 'The import was cancelled. Nothing was saved.',
+  'finding.UNEXPECTED':
+    'Something unexpected went wrong during the import. Try again; if it persists, here are the technical details to report:',
+
+  'import.detail.manyRoots': (count: string, roots: string) =>
+    `this file contains ${count} courses (${roots}); import them one package at a time.`,
+  'import.detail.httpStatus': (status: string) => `The server answered HTTP ${status}.`,
+  'import.detail.fetchFailed': (cause: string) =>
+    `You may be offline, or the server holding the file may not allow other pages to download it directly (CORS). The browser does not say which. (${cause})`,
+  'import.detail.bodyCutOff': (cause: string) =>
+    `The server started sending the file and the connection broke partway, so the download is incomplete. Try again — it usually works the second time. (${cause})`,
+  'import.detail.privateRepo':
+    'tuhoc can only import from PUBLIC Git repositories. A private repository needs an access token, and tuhoc deliberately does not hold your tokens — if the course lives in a private repository, download the repository’s .zip and use “From a file on this device”. The result is identical. GitHub answers the same way for a private repository and one that does not exist, so check the URL as well.',
+  'import.detail.rateLimited': 'Try again in a few minutes, or download the repository’s .zip and import from the file.',
+  'import.detail.githubStatus': (status: string) => `GitHub answered HTTP ${status}.`,
+  'import.detail.captivePortal': (cause: string) =>
+    `The server returned unreadable content where GitHub’s data should have been. If you are on public Wi-Fi, that network may be intercepting with a sign-in page — sign in to the network and try again. (${cause})`,
+  'import.detail.subdirMissing': (ref: string, subdir: string) =>
+    `The repository opened, but branch “${ref}” has no directory “${subdir}”. Check the URL.`,
+  'import.detail.unpackable': (count: string) =>
+    `${count} entries are symlinks or submodules; a course package holds only ordinary files. If you cannot fix this repository, download its .zip and use “From a file on this device”.`,
+  'import.detail.tooManyFiles': (count: string, cap: string) =>
+    `${count} files, the ceiling is ${cap}. Download the repository’s .zip and import from the file.`,
+  'import.detail.repoDeclaredBytes': (bytes: string) => `The repository declares ${bytes} bytes.`,
+  'import.detail.nestedArchive':
+    'tuhoc requires an archive’s index and byte stream to agree name for name — that is the fence against “two-faced” archives, the kind a scanner reads one way and an unpacker another. Remove the nested archives from the package (or repack them as ordinary directories), then package it with `tuhoc pack`.',
+  'import.detail.zip64':
+    'tuhoc reads ordinary zip64 archives; this one uses the part tuhoc refuses to guess at — over 65,535 entries, an index past the 4 GiB mark, or a zip64 version-2 record. Package it with `tuhoc pack`.',
+  'import.detail.bytesRead': (bytes: string) => `Stopped after reading ${bytes} bytes.`,
+  'import.detail.otherHost':
+    'For everywhere else, download the archive’s .zip and use “From a file on this device” — the result is identical.',
+  'import.detail.fileGone': (cause: string) =>
+    `The file may have been moved or changed, or the drive holding it may have been unmounted after you picked it. Pick the file again. (${cause})`,
+  'import.detail.schemeOnly': 'Only links starting with http:// or https:// are accepted.',
+  'import.detail.parenthetical': (cause: string) => `(${cause})`,
+
+  'course.error.runtimeMismatch': (required: string, got: string) =>
+    `Could not load the course: incompatible version (the app needs ${required}, the course declares “${got}”).`,
+  'course.error.notFound': 'Could not load the course: not found on the server.',
+  'course.error.http': (status: string) => `Could not load the course: the server reported an error (HTTP ${status}).`,
+  'course.error.parse': 'Could not load the course: the course data is malformed.',
+  'course.error.missingAsset':
+    'Could not load the course: the package stored on this device is missing this chapter’s file. Import the package again.',
+  'course.error.unknown': 'Could not load the course: an unknown error occurred.',
+
+  'auth.error.badRequest': 'Invalid request. Please check what you entered.',
+  'auth.error.credentials': 'Wrong email or password.',
+  'auth.error.emailTaken': 'That email is already registered. Sign in, or use a different address.',
+  'auth.error.tooManyAttempts': 'Too many attempts. Please wait a moment and try again.',
+  'auth.error.serverDown': 'The server is having trouble. Please try again later.',
+  'auth.error.unknown': 'An unknown error occurred. Please try again.',
+  'auth.error.unreachable':
+    'Could not reach the server. You may be offline, or the server may be misconfigured (CORS/DNS).',
+
+  'registry.error.notConfigured':
+    'No registry address is configured. Set the VITE_REGISTRY_URL environment variable (the registry’s base address, e.g. https://<org>.github.io/<repo>) at build time, or use the public registry once it exists.',
+  'registry.error.unsupportedSchema': (found: string, supported: string) =>
+    `The registry catalog uses format version ${found}, and the tuhoc build you are running only reads version ${supported}. The platform needs updating. The catalog is NOT read speculatively — guessing at an unknown format is the quietest way to be wrong.`,
+  'registry.error.notJson': (contentType: string) =>
+    `The registry address returned a web page rather than a catalog: the body of index.json is not JSON${contentType}. Usually the registry address is wrong, or the server served its own 404 page in place of the file.`,
+  'registry.error.malformed': (missing: string) =>
+    `The registry catalog parsed but is missing or mistyped at: ${missing}. This is a fault on the registry side, not on your machine.`,
+  'registry.error.http': (status: string) =>
+    `The registry answered ${status} for index.json. The registry address may be wrong, or the registry may be having trouble.`,
+  'registry.error.unreachable':
+    'Could not load the registry catalog. You may be offline, or the registry may be misconfigured (CORS/DNS).',
+
+  'catalog.title': 'Course catalog',
+  'catalog.lede': 'The community course store. Every package here has passed the same validation rules the platform runs.',
+  'catalog.yourLibrary': 'Your library',
+  'catalog.loading': 'Loading the catalog…',
+  'catalog.empty': 'The registry has no courses yet. The catalog loaded fine — it is empty.',
+  'catalog.listAria': 'Courses on the registry',
+  'catalog.versionCount': (count: string) => `${count} versions`,
+  'catalog.tier.unknownTitle':
+    'This package declares a tier the platform does not know, so nothing guarantees it contains no JavaScript.',
 };

@@ -29,7 +29,7 @@ export function Reader() {
     return <p className="ch-lede">{t('course.loading')}</p>;
   }
   if (manifestQuery.isError) {
-    return <p className="ch-lede">{describeCourseError(manifestQuery.error)}</p>;
+    return <p className="ch-lede">{describeCourseError(manifestQuery.error, t)}</p>;
   }
 
   // Keep the part title alongside each chapter only long enough to find the

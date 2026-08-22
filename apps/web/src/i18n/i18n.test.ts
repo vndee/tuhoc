@@ -397,13 +397,6 @@ const DEVELOPER_FACING: readonly { readonly file: string; readonly why: string }
  * một dòng trong diff mà người thẩm định nhìn thấy.
  */
 const NOT_YET_EXTRACTED: readonly string[] = [
-  'apps/web/src/api/client.ts',
-  'apps/web/src/api/stats.ts',
-  'apps/web/src/course/UpdateDialog.tsx',
-  'apps/web/src/course/import.ts',
-  'apps/web/src/course/loader.ts',
-  'apps/web/src/registry/Catalog.tsx',
-  'apps/web/src/registry/index.ts',
   // Nạp bằng `<script src>`, không phải `import` — nên nó KHÔNG import được
   // catalog. Bóc nó cần một cơ chế khác (ví dụ trang chính đặt sẵn một object
   // lên `window` trước khi nạp runtime). Ghi ra ở đây để Task 5 gặp nó như một

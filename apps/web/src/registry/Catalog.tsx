@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useLanguage } from '../i18n/LanguageProvider';
 import { describeRegistryError } from './index.ts';
 import type { RegistryEntry } from './types.ts';
 import { useRegistryIndex } from './useRegistry.ts';
@@ -35,6 +36,7 @@ import { useRegistryIndex } from './useRegistry.ts';
  * task out of `styles/index.css`, which nothing here needed to change.
  */
 export function Catalog({ registryBase }: { registryBase?: string }) {
+  const { t } = useLanguage();
   const query = useRegistryIndex({ base: registryBase });
   const courses = query.data?.courses ?? [];
 
@@ -42,31 +44,29 @@ export function Catalog({ registryBase }: { registryBase?: string }) {
     <div className="lib-page">
       <div className="lib-header">
         <div>
-          <h1 className="ch-title">Danh mục khóa học</h1>
-          <p className="ch-lede">
-            Kho khóa học cộng đồng. Mỗi gói ở đây đã đi qua đúng bộ luật kiểm định mà nền tảng dùng.
-          </p>
+          <h1 className="ch-title">{t('catalog.title')}</h1>
+          <p className="ch-lede">{t('catalog.lede')}</p>
         </div>
         <Link to="/library" className="btn">
-          Thư viện của bạn
+          {t('catalog.yourLibrary')}
         </Link>
       </div>
 
       {query.isPending && (
         <p className="lib-notice" role="status">
-          Đang tải danh mục…
+          {t('catalog.loading')}
         </p>
       )}
 
       {query.isError && (
         <p className="lib-notice lib-notice-server" role="alert">
-          {describeRegistryError(query.error)}
+          {describeRegistryError(query.error, t)}
         </p>
       )}
 
       {query.isSuccess && courses.length === 0 && (
         <p className="lib-notice" role="status">
-          Registry chưa có khóa học nào. Danh mục tải được bình thường — nó rỗng.
+          {t('catalog.empty')}
         </p>
       )}
 
@@ -80,7 +80,7 @@ export function Catalog({ registryBase }: { registryBase?: string }) {
         also the one most likely to offer a course that is no longer there.
       */}
       {!query.isError && courses.length > 0 && (
-        <ul className="lib-list" aria-label="Khóa học trên registry">
+        <ul className="lib-list" aria-label={t('catalog.listAria')}>
           {courses.map((course) => (
             <CatalogRow key={course.id} course={course} />
           ))}
@@ -91,6 +91,8 @@ export function Catalog({ registryBase }: { registryBase?: string }) {
 }
 
 function CatalogRow({ course }: { course: RegistryEntry }) {
+  const { t } = useLanguage();
+
   return (
     <li className="lib-item lib-item-registry">
       <div className="lib-item-head">
@@ -102,13 +104,13 @@ function CatalogRow({ course }: { course: RegistryEntry }) {
         <span className="lib-meta-sep" aria-hidden="true">
           ·
         </span>
-        <span className="lib-meta-part">phiên bản {course.latest}</span>
+        <span className="lib-meta-part">{t('library.meta.version', course.latest)}</span>
         {course.versions.length > 1 && (
           <>
             <span className="lib-meta-sep" aria-hidden="true">
               ·
             </span>
-            <span className="lib-meta-part">{course.versions.length} bản</span>
+            <span className="lib-meta-part">{t('catalog.versionCount', String(course.versions.length))}</span>
           </>
         )}
       </p>
@@ -133,11 +135,13 @@ function CatalogRow({ course }: { course: RegistryEntry }) {
  * what this ships" into a silent all-clear.
  */
 function TierBadge({ tier }: { tier: string }) {
+  const { t } = useLanguage();
+
   if (tier === 'content') {
     return (
       <span
         className="lib-tier lib-tier-content"
-        title="Hạng content: chỉ HTML, CSS, hình ảnh và công thức toán — không có JavaScript."
+        title={t('library.tier.contentTitle')}
       >
         content
       </span>
@@ -147,18 +151,18 @@ function TierBadge({ tier }: { tier: string }) {
     return (
       <span
         className="lib-tier lib-tier-code"
-        title="Hạng interactive (§1.2): khóa học này được phép chứa JavaScript, và mã đó chạy trong trình duyệt của bạn khi bạn đọc."
+        title={t('library.tier.interactiveTitle')}
       >
-        interactive — chạy mã JavaScript
+        {t('library.tier.interactiveLabel')}
       </span>
     );
   }
   return (
     <span
       className="lib-tier lib-tier-code"
-      title="Gói này khai một hạng nền tảng không biết, nên không có gì bảo đảm nó không chứa JavaScript."
+      title={t('catalog.tier.unknownTitle')}
     >
-      hạng không rõ — có thể chạy mã
+      {t('library.tier.unknownLabel')}
     </span>
   );
 }

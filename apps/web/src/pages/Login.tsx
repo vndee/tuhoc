@@ -255,7 +255,7 @@ function LoginForm({ onSuccess }: AuthFormProps) {
       const user = await api.post<Me>('/auth/login', { email, password }, { redirectOn401: false });
       await onSuccess(user);
     } catch (err) {
-      setError(describeAuthError(err));
+      setError(describeAuthError(err, t));
     } finally {
       setPending(false);
     }
@@ -315,7 +315,7 @@ function RegisterForm({ onSuccess }: AuthFormProps) {
       const user = await api.post<Me>('/auth/register', { email, password, name });
       await onSuccess(user);
     } catch (err) {
-      setError(describeAuthError(err));
+      setError(describeAuthError(err, t));
     } finally {
       setPending(false);
     }

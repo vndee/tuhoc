@@ -1,3 +1,4 @@
+import type { Translate } from '../i18n';
 import { redirectToLogin } from './navigation';
 
 /**
@@ -125,9 +126,12 @@ export class NotJsonError extends Error {
 
   constructor(status: number, contentType: string | null, bodyStart: string) {
     super(
-      `Máy chủ trả ${status} nhưng thân phản hồi không phải JSON` +
+      // Tiếng Anh KỸ THUẬT: `.message` của lớp lỗi này chỉ tới console và
+      // bug report — không màn hình nào vẽ nó. Cùng quy ước mà
+      // `course/loader.ts` viết ra cho các lớp lỗi của nó.
+      `Server answered ${status} but the response body is not JSON` +
         (contentType === null ? '' : ` (content-type: ${contentType})`) +
-        '. Thường là do một máy chủ SPA trả index.html cho đường dẫn API.',
+        '. Usually an SPA server returning index.html for an API path.',
     );
     this.name = 'NotJsonError';
     this.status = status;
@@ -232,21 +236,19 @@ export function serverAnswered(error: unknown): boolean {
  * apps/api/internal/auth/usecase.go) — this UI must not introduce a
  * distinction the backend went out of its way to hide.
  */
-export function describeAuthError(error: unknown): string {
+export function describeAuthError(error: unknown, t: Translate): string {
   if (error instanceof ApiError) {
     switch (error.status) {
       case 400:
-        return 'Yêu cầu không hợp lệ. Vui lòng kiểm tra lại thông tin đã nhập.';
+        return t('auth.error.badRequest');
       case 401:
-        return 'Email hoặc mật khẩu không đúng.';
+        return t('auth.error.credentials');
       case 409:
-        return 'Email này đã được đăng ký. Vui lòng đăng nhập hoặc dùng email khác.';
+        return t('auth.error.emailTaken');
       case 429:
-        return 'Bạn đã thử quá nhiều lần. Vui lòng đợi một chút rồi thử lại.';
+        return t('auth.error.tooManyAttempts');
       default:
-        return error.status >= 500
-          ? 'Máy chủ đang gặp sự cố. Vui lòng thử lại sau.'
-          : 'Đã xảy ra lỗi không xác định. Vui lòng thử lại.';
+        return t(error.status >= 500 ? 'auth.error.serverDown' : 'auth.error.unknown');
     }
   }
   // No response ever arrived (see `serverAnswered`). The old wording here was
@@ -258,5 +260,5 @@ export function describeAuthError(error: unknown): string {
   // fault. Naming both possibilities costs one clause and is the only honest
   // thing this function can say, because the browser genuinely does not tell
   // the page which one it was.
-  return 'Không thể kết nối tới máy chủ. Có thể bạn đang ngoại tuyến, hoặc máy chủ đang bị cấu hình sai (CORS/DNS).';
+  return t('auth.error.unreachable');
 }

@@ -38,7 +38,7 @@ export function CourseHome() {
   }
 
   if (manifestQuery.isError) {
-    return <p className="ch-lede">{describeCourseError(manifestQuery.error)}</p>;
+    return <p className="ch-lede">{describeCourseError(manifestQuery.error, t)}</p>;
   }
 
   const manifest = manifestQuery.data;

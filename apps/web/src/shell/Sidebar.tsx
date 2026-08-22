@@ -147,7 +147,7 @@ export function Sidebar() {
         {courseId == null && <p className="nav-empty">{t('sidebar.noCourseLoaded')}</p>}
         {courseId != null && manifestQuery.isPending && <p className="nav-empty">{t('course.loading')}</p>}
         {courseId != null && manifestQuery.isError && (
-          <p className="nav-empty">{describeCourseError(manifestQuery.error)}</p>
+          <p className="nav-empty">{describeCourseError(manifestQuery.error, t)}</p>
         )}
         {courseId != null && manifestQuery.data && (
           <CourseNav courseId={courseId} parts={manifestQuery.data.parts} doneChapterIds={doneChapterIds} />

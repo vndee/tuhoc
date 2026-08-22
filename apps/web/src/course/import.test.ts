@@ -10,6 +10,18 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { db } from '../db/local';
 import { describeFinding, IMPORT_FINDING_CODES, MAX_GIT_FILES, importCourse, type ImportStage } from './import';
 import { loadChapter, loadManifest } from './loader';
+import { t as lookup, type Translate } from '../i18n';
+
+/**
+ * `t` đã gắn tiếng Việt.
+ *
+ * `describeFinding`, `describeCourseError`, `describeAuthError` và
+ * `importCourse` nhận ngôn ngữ bằng THAM SỐ từ Task 5 — chúng không phải
+ * component và cố ý không có context nào để đọc. Bơm `t` vào từ đây là cách
+ * duy nhất một bài kiểm chứng minh chúng dùng cái được truyền vào.
+ */
+const t: Translate = (key, ...args) => lookup('vi', key, ...args);
+
 
 /* ------------------------------------------------------------------ *
  * Fixtures
@@ -97,7 +109,7 @@ beforeEach(() => db.packages.clear());
  * ====================================================================== */
 
 it('import gói hợp lệ từ tệp → vào thư viện, đọc được ngay', async () => {
-  const r = await importCourse({ kind: 'file', file: zipFile(validZip()) });
+  const r = await importCourse({ kind: 'file', file: zipFile(validZip()) }, { t });
 
   expect(r.ok).toBe(true);
   if (!r.ok) return;
@@ -117,7 +129,7 @@ it('import gói hợp lệ từ tệp → vào thư viện, đọc được ngay
 
 it('import gói KHÔNG hợp lệ → KHÔNG ghi gì vào Dexie và trả về mọi finding', async () => {
   const before = await db.packages.count();
-  const r = await importCourse({ kind: 'file', file: fileWithScriptTag() });
+  const r = await importCourse({ kind: 'file', file: fileWithScriptTag() }, { t });
   expect(r.ok).toBe(false);
   if (!r.ok) expect(r.findings.map((f) => f.code)).toContain('SCRIPT_TAG');
   expect(await db.packages.count()).toBe(before); // không ghi một phần
@@ -134,7 +146,7 @@ it('URL git riêng tư → thông báo GIẢI THÍCH ĐƯỢC, không phải l�
     ),
   );
 
-  const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/repo-rieng-tu' });
+  const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/repo-rieng-tu' }, { t });
   expect(r.ok).toBe(false);
   if (!r.ok) expect(r.findings[0].detail).toMatch(/công khai|tải \.zip/i);
 });
@@ -155,7 +167,7 @@ describe('một lần ghi, hoặc không lần nào', () => {
       ]),
     );
 
-    const r = await importCourse({ kind: 'file', file: zipFile(broken) });
+    const r = await importCourse({ kind: 'file', file: zipFile(broken) }, { t });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     const codes = r.findings.map((f) => f.code);
@@ -168,13 +180,13 @@ describe('một lần ghi, hoặc không lần nào', () => {
     server.use(http.get('https://vi-du.test/goi.zip', () => new HttpResponse(null, { status: 500 })));
 
     const before = await db.packages.count();
-    const r = await importCourse({ kind: 'zipUrl', url: 'https://vi-du.test/goi.zip' });
+    const r = await importCourse({ kind: 'zipUrl', url: 'https://vi-du.test/goi.zip' }, { t });
     expect(r.ok).toBe(false);
     expect(await db.packages.count()).toBe(before);
   });
 
   it('ghi ĐÚNG MỘT dòng cho một gói, và dòng đó mang đủ tệp của gói', async () => {
-    await importCourse({ kind: 'file', file: zipFile(validZip()) });
+    await importCourse({ kind: 'file', file: zipFile(validZip()) }, { t });
 
     expect(await db.packages.count()).toBe(1);
     const row = await db.packages.get(`${COURSE_ID}@1.0.0`);
@@ -193,7 +205,7 @@ describe('một lần ghi, hoặc không lần nào', () => {
 describe('onStage', () => {
   it('kể đủ bốn chặng, đúng thứ tự', async () => {
     const seen: ImportStage[] = [];
-    await importCourse({ kind: 'file', file: zipFile(validZip()) }, { onStage: (s) => seen.push(s) });
+    await importCourse({ kind: 'file', file: zipFile(validZip()) }, { t, onStage: (s) => seen.push(s) });
 
     expect(seen).toEqual(['fetching', 'unpacking', 'checking', 'saving']);
   });
@@ -209,6 +221,7 @@ describe('onStage', () => {
     await importCourse(
       { kind: 'file', file: zipFile(validZip()) },
       {
+        t,
         onStage: (s) => {
           order.push(`stage:${s}`);
           if (s === 'checking') setTimeout(() => order.push('macrotask-after-checking'), 0);
@@ -243,7 +256,7 @@ describe('gói do công cụ khác đóng', () => {
     // so "there is exactly one top-level entry" is not the rule that works.
     nested.set('__MACOSX/bat-bien-vong-lap-main/._manifest.json', new Uint8Array([0x00, 0x05, 0x16, 0x07]));
 
-    const r = await importCourse({ kind: 'file', file: zipFile(packZip(nested)) });
+    const r = await importCourse({ kind: 'file', file: zipFile(packZip(nested)) }, { t });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.courseId).toBe(COURSE_ID);
@@ -265,7 +278,7 @@ describe('gói do công cụ khác đóng', () => {
     nested.set('__MACOSX/bat-bien-vong-lap/._manifest.json', new Uint8Array([0x00, 0x05, 0x16, 0x07]));
     nested.set('__MACOSX/bat-bien-vong-lap/._c1.html', new Uint8Array([0x00, 0x05, 0x16, 0x07]));
 
-    const r = await importCourse({ kind: 'file', file: zipFile(packZip(nested)) });
+    const r = await importCourse({ kind: 'file', file: zipFile(packZip(nested)) }, { t });
 
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -276,7 +289,7 @@ describe('gói do công cụ khác đóng', () => {
   it('không nói gì khi KHÔNG có gì để nói — gói đã ở gốc kho', async () => {
     // The complement. A note that appears on every import is a note nobody
     // reads, and "we moved your package" is a lie when nothing was moved.
-    const r = await importCourse({ kind: 'file', file: zipFile(validZip()) });
+    const r = await importCourse({ kind: 'file', file: zipFile(validZip()) }, { t });
 
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -293,7 +306,7 @@ describe('gói do công cụ khác đóng', () => {
     const nested = new Map<string, Uint8Array>();
     for (const [name, bytes] of packageFiles()) nested.set(`repo-main/khoa/${name}`, bytes);
 
-    const r = await importCourse({ kind: 'file', file: zipFile(packZip(nested)) });
+    const r = await importCourse({ kind: 'file', file: zipFile(packZip(nested)) }, { t });
 
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -311,7 +324,7 @@ describe('gói do công cụ khác đóng', () => {
     const deep = new Map<string, Uint8Array>();
     for (const [name, bytes] of packageFiles()) deep.set(`a/b/c/d/${name}`, bytes);
 
-    const r = await importCourse({ kind: 'file', file: zipFile(packZip(deep)) });
+    const r = await importCourse({ kind: 'file', file: zipFile(packZip(deep)) }, { t });
 
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -329,7 +342,7 @@ describe('gói do công cụ khác đóng', () => {
       withSample.set(`repo-main/vi-du/${name}`, bytes);
     }
 
-    const r = await importCourse({ kind: 'file', file: zipFile(packZip(withSample)) });
+    const r = await importCourse({ kind: 'file', file: zipFile(packZip(withSample)) }, { t });
 
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -345,7 +358,7 @@ describe('gói do công cụ khác đóng', () => {
     const hidden = new Map<string, Uint8Array>();
     for (const [name, bytes] of packageFiles()) hidden.set(`.pkg/${name}`, bytes);
 
-    const r = await importCourse({ kind: 'file', file: zipFile(packZip(hidden)) });
+    const r = await importCourse({ kind: 'file', file: zipFile(packZip(hidden)) }, { t });
 
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -363,7 +376,7 @@ describe('gói do công cụ khác đóng', () => {
     for (const [name, bytes] of packageFiles()) finder.set(`khoa/${name}`, bytes);
     finder.set('__MACOSX/manifest.json', new Uint8Array([0x00, 0x05, 0x16, 0x07]));
 
-    const r = await importCourse({ kind: 'file', file: zipFile(packZip(finder)) });
+    const r = await importCourse({ kind: 'file', file: zipFile(packZip(finder)) }, { t });
 
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -377,11 +390,11 @@ describe('gói do công cụ khác đóng', () => {
       two.set(`khoa-b/${name}`, bytes);
     }
 
-    const r = await importCourse({ kind: 'file', file: zipFile(packZip(two)) });
+    const r = await importCourse({ kind: 'file', file: zipFile(packZip(two)) }, { t });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings.map((f) => f.code)).toContain('PACKAGE_ROOT_AMBIGUOUS');
-    expect(describeFinding(r.findings[0])).toMatch(/khoa-a|khoa-b|hai|nhiều/i);
+    expect(describeFinding(r.findings[0], t)).toMatch(/khoa-a|khoa-b|hai|nhiều/i);
   });
 
   it('kho `zip -r -fz` THẬT nhập được — đo lại tại HEAD, không phải nhớ lại từ nhánh cũ', async () => {
@@ -402,7 +415,7 @@ describe('gói do công cụ khác đóng', () => {
     const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
     expect(view.getUint32(zip.length - 22 + 16, true)).toBe(0xffffffff);
 
-    const r = await importCourse({ kind: 'file', file: zipFile(zip) });
+    const r = await importCourse({ kind: 'file', file: zipFile(zip) }, { t });
 
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -422,7 +435,7 @@ describe('gói do công cụ khác đóng', () => {
     const zip = fixture('zip64-forced-package.zip');
     new DataView(zip.buffer, zip.byteOffset, zip.byteLength).setUint16(zip.length - 22 + 10, 0xffff, true);
 
-    const r = await importCourse({ kind: 'file', file: zipFile(zip) });
+    const r = await importCourse({ kind: 'file', file: zipFile(zip) }, { t });
 
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -447,13 +460,13 @@ describe('gói do công cụ khác đóng', () => {
     // `[Content_Types].xml`, a path that exists only INSIDE their Word
     // document and nowhere in their package, so they go hunting for a file
     // that is not there.
-    const r = await importCourse({ kind: 'file', file: zipFile(fixture('nested-archive.zip')) });
+    const r = await importCourse({ kind: 'file', file: zipFile(fixture('nested-archive.zip')) }, { t });
 
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings.map((f) => f.code)).toContain('ARCHIVE_INDEX_MISMATCH');
 
-    const shown = describeFinding(r.findings[0]);
+    const shown = describeFinding(r.findings[0], t);
     expect(shown).toMatch(/tệp nén lồng nhau/i);
     expect(shown).not.toMatch(/không phải là một tệp \.zip/i);
     expect(shown).not.toContain('[Content_Types].xml');
@@ -461,11 +474,11 @@ describe('gói do công cụ khác đóng', () => {
   });
 
   it('nói "đây không phải tệp .zip" cho một tệp không phải zip, không ném UnsafeArchiveError ra ngoài', async () => {
-    const r = await importCourse({ kind: 'file', file: zipFile(encode('%PDF-1.7 …'), 'khoa-hoc.pdf') });
+    const r = await importCourse({ kind: 'file', file: zipFile(encode('%PDF-1.7 …'), 'khoa-hoc.pdf') }, { t });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings.map((f) => f.code)).toContain('NOT_A_ZIP');
-    expect(describeFinding(r.findings[0])).toMatch(/\.zip/i);
+    expect(describeFinding(r.findings[0], t)).toMatch(/\.zip/i);
   });
 });
 
@@ -479,7 +492,7 @@ describe('nhập từ URL', () => {
       http.get('https://vi-du.test/goi.zip', () => new HttpResponse(validZip() as BlobPart)),
     );
 
-    const r = await importCourse({ kind: 'zipUrl', url: 'https://vi-du.test/goi.zip' });
+    const r = await importCourse({ kind: 'zipUrl', url: 'https://vi-du.test/goi.zip' }, { t });
     expect(r.ok).toBe(true);
     expect(await db.packages.count()).toBe(1);
   });
@@ -487,7 +500,7 @@ describe('nhập từ URL', () => {
   it('nói rõ mã HTTP khi máy chủ từ chối', async () => {
     server.use(http.get('https://vi-du.test/goi.zip', () => new HttpResponse(null, { status: 404 })));
 
-    const r = await importCourse({ kind: 'zipUrl', url: 'https://vi-du.test/goi.zip' });
+    const r = await importCourse({ kind: 'zipUrl', url: 'https://vi-du.test/goi.zip' }, { t });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings[0].code).toBe('HTTP_ERROR');
@@ -497,7 +510,7 @@ describe('nhập từ URL', () => {
   it('nhắc tới CORS khi fetch tự nó hỏng — đó là lý do thường gặp nhất, và trình duyệt không nói ra', async () => {
     server.use(http.get('https://vi-du.test/goi.zip', () => HttpResponse.error()));
 
-    const r = await importCourse({ kind: 'zipUrl', url: 'https://vi-du.test/goi.zip' });
+    const r = await importCourse({ kind: 'zipUrl', url: 'https://vi-du.test/goi.zip' }, { t });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings[0].code).toBe('FETCH_FAILED');
@@ -505,7 +518,7 @@ describe('nhập từ URL', () => {
   });
 
   it('từ chối một URL không phải http(s) thay vì đưa nó cho fetch', async () => {
-    const r = await importCourse({ kind: 'zipUrl', url: 'javascript:alert(1)' });
+    const r = await importCourse({ kind: 'zipUrl', url: 'javascript:alert(1)' }, { t });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings[0].code).toBe('BAD_URL');
@@ -537,12 +550,12 @@ describe('kết nối chết giữa chừng — không ca nào được ném ra 
   it('thân phản hồi bị cắt giữa chừng (tải dở 20 MB trên 4G)', async () => {
     server.use(http.get('https://vi-du.test/goi.zip', () => new HttpResponse(cutOffBody())));
 
-    const r = await importCourse({ kind: 'zipUrl', url: 'https://vi-du.test/goi.zip' });
+    const r = await importCourse({ kind: 'zipUrl', url: 'https://vi-du.test/goi.zip' }, { t });
 
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings[0].code).toBe('FETCH_FAILED');
-    expect(describeFinding(r.findings[0]).length).toBeGreaterThan(20);
+    expect(describeFinding(r.findings[0], t).length).toBeGreaterThan(20);
     expect(await db.packages.count()).toBe(0);
   });
 
@@ -561,7 +574,7 @@ describe('kết nối chết giữa chừng — không ca nào được ném ra 
       ),
     );
 
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' }, { t });
 
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -580,12 +593,12 @@ describe('kết nối chết giữa chừng — không ca nào được ném ra 
       ),
     );
 
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' }, { t });
 
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings[0].code).toBe('GIT_BAD_RESPONSE');
-    expect(describeFinding(r.findings[0])).toMatch(/wi-?fi|đăng nhập|không đọc được/i);
+    expect(describeFinding(r.findings[0], t)).toMatch(/wi-?fi|đăng nhập|không đọc được/i);
   });
 
   it('tệp trên máy không đọc được nữa (rút USB, tệp bị sửa sau khi chọn)', async () => {
@@ -596,12 +609,12 @@ describe('kết nối chết giữa chừng — không ca nào được ném ra 
       value: () => Promise.reject(new DOMException('The requested file could not be read', 'NotReadableError')),
     });
 
-    const r = await importCourse({ kind: 'file', file });
+    const r = await importCourse({ kind: 'file', file }, { t });
 
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings[0].code).toBe('FILE_READ_FAILED');
-    expect(describeFinding(r.findings[0])).toMatch(/không đọc được/i);
+    expect(describeFinding(r.findings[0], t)).toMatch(/không đọc được/i);
   });
 
   it('kể cả khi `onStage` của NGƯỜI GỌI tự ném — trang gọi nó trong flushSync, và một render hỏng ném ở đúng đó', async () => {
@@ -612,6 +625,7 @@ describe('kết nối chết giữa chừng — không ca nào được ném ra 
     const r = await importCourse(
       { kind: 'file', file: zipFile(validZip()) },
       {
+        t,
         onStage: () => {
           throw new Error('render hỏng trong flushSync');
         },
@@ -621,7 +635,7 @@ describe('kết nối chết giữa chừng — không ca nào được ném ra 
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings[0].code).toBe('UNEXPECTED');
-    expect(describeFinding(r.findings[0])).toMatch(/render hỏng trong flushSync/);
+    expect(describeFinding(r.findings[0], t)).toMatch(/render hỏng trong flushSync/);
   });
 });
 
@@ -656,7 +670,7 @@ describe('nhập từ repo GitHub công khai', () => {
       { 'manifest.json': manifestJson, 'chapters/c1.html': CHAPTER_HTML },
     );
 
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' }, { t });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.courseId).toBe(COURSE_ID);
@@ -679,7 +693,7 @@ describe('nhập từ repo GitHub công khai', () => {
       { 'manifest.json': manifestJson, 'chapters/c1.html': CHAPTER_HTML },
     );
 
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' }, { t });
     expect(r.ok).toBe(true);
     const row = await db.packages.get(`${COURSE_ID}@1.0.0`);
     expect(Object.keys(row!.files).sort()).toEqual(['chapters/c1.html', 'manifest.json']);
@@ -694,7 +708,7 @@ describe('nhập từ repo GitHub công khai', () => {
       {},
     );
 
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' }, { t });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings.map((f) => f.code)).toContain('TOO_LARGE');
@@ -710,7 +724,7 @@ describe('nhập từ repo GitHub công khai', () => {
       { 'manifest.json': manifestJson },
     );
 
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' }, { t });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings.map((f) => f.code)).toContain('UNPACKABLE_ENTRY');
@@ -719,7 +733,7 @@ describe('nhập từ repo GitHub công khai', () => {
   it('nói rõ khi cây bị cắt bớt, thay vì nhập nửa repo', async () => {
     server.use(http.get(TREE, () => HttpResponse.json({ sha: 'x', truncated: true, tree: [] })));
 
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' }, { t });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings.map((f) => f.code)).toContain('GIT_TREE_TRUNCATED');
@@ -732,7 +746,7 @@ describe('nhập từ repo GitHub công khai', () => {
       ),
     );
 
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' }, { t });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings[0].code).toBe('GIT_RATE_LIMITED');
@@ -760,7 +774,7 @@ describe('nhập từ repo GitHub công khai', () => {
     );
 
     await expect(
-      importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc/tree/v2' }),
+      importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc/tree/v2' }, { t }),
     ).resolves.toMatchObject({ ok: true });
     expect(await db.packages.count()).toBe(1);
   });
@@ -789,7 +803,7 @@ describe('nhập từ repo GitHub công khai', () => {
       { 'manifest.json': manifestJson, 'chapters/c1.html': CHAPTER_HTML },
     );
 
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' }, { t });
 
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -812,11 +826,11 @@ describe('nhập từ repo GitHub công khai', () => {
       { 'manifest.json': manifestJson },
     );
 
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' }, { t });
 
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(describeFinding(r.findings[0])).toMatch(/\.zip/i);
+    expect(describeFinding(r.findings[0], t)).toMatch(/\.zip/i);
   });
 
   it('URL thư mục con của GitHub (nút "copy link" khi đang xem một thư mục) nhập được', async () => {
@@ -852,7 +866,7 @@ describe('nhập từ repo GitHub công khai', () => {
       ),
     );
 
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/kho/tree/main/khoa' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/kho/tree/main/khoa' }, { t });
 
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -891,7 +905,7 @@ describe('nhập từ repo GitHub công khai', () => {
       ),
     );
 
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/kho/tree/release/2026' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/kho/tree/release/2026' }, { t });
 
     expect(r.ok).toBe(true);
     expect(treeCalls).toBe(1);
@@ -911,13 +925,13 @@ describe('nhập từ repo GitHub công khai', () => {
       ),
     );
 
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/kho/tree/main/khong-co' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/kho/tree/main/khong-co' }, { t });
 
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings[0].code).toBe('GIT_PATH_NOT_FOUND');
-    expect(describeFinding(r.findings[0])).toContain('khong-co');
-    expect(describeFinding(r.findings[0])).not.toMatch(/riêng tư/i);
+    expect(describeFinding(r.findings[0], t)).toContain('khong-co');
+    expect(describeFinding(r.findings[0], t)).not.toMatch(/riêng tư/i);
   });
 
   /* ------------------------------------------------------------------ *
@@ -956,7 +970,7 @@ describe('nhập từ repo GitHub công khai', () => {
 
     const r = await importCourse(
       { kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' },
-      { onProgress: (done, total) => seen.push([done, total]) },
+      { t, onProgress: (done, total) => seen.push([done, total]) },
     );
 
     expect(r.ok).toBe(true);
@@ -978,7 +992,7 @@ describe('nhập từ repo GitHub công khai', () => {
 
     const r = await importCourse(
       { kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' },
-      { signal: controller.signal, onProgress: () => controller.abort() },
+      { t, signal: controller.signal, onProgress: () => controller.abort() },
     );
 
     expect(r.ok).toBe(false);
@@ -993,13 +1007,13 @@ describe('nhập từ repo GitHub công khai', () => {
     // means the ceiling really refused, not that something else went wrong.
     serveManyFiles(MAX_GIT_FILES);
 
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' }, { t });
 
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings[0].code).toBe('GIT_TOO_MANY_FILES');
     expect(r.findings[0].detail).toContain(String(MAX_GIT_FILES));
-    expect(describeFinding(r.findings[0])).toMatch(/\.zip/i);
+    expect(describeFinding(r.findings[0], t)).toMatch(/\.zip/i);
     expect(await db.packages.count()).toBe(0);
   });
 
@@ -1007,7 +1021,7 @@ describe('nhập từ repo GitHub công khai', () => {
     serveManyFiles(MAX_GIT_FILES - 2);
 
     await expect(
-      importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' }),
+      importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' }, { t }),
     ).resolves.toMatchObject({ ok: true });
   });
 
@@ -1036,7 +1050,7 @@ describe('nhập từ repo GitHub công khai', () => {
       }),
     );
 
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' }, { t });
 
     expect(r.ok).toBe(true);
     expect(attempts).toBe(2);
@@ -1062,7 +1076,7 @@ describe('nhập từ repo GitHub công khai', () => {
       }),
     );
 
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://github.com/ai-do/khoa-hoc' }, { t });
 
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -1071,11 +1085,11 @@ describe('nhập từ repo GitHub công khai', () => {
   });
 
   it('từ chối một máy chủ git KHÁC GitHub, và nói ra lối đi thay thế', async () => {
-    const r = await importCourse({ kind: 'gitUrl', url: 'https://gitlab.com/ai-do/khoa-hoc' });
+    const r = await importCourse({ kind: 'gitUrl', url: 'https://gitlab.com/ai-do/khoa-hoc' }, { t });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.findings[0].code).toBe('GIT_HOST_UNSUPPORTED');
-    expect(describeFinding(r.findings[0])).toMatch(/\.zip/i);
+    expect(describeFinding(r.findings[0], t)).toMatch(/\.zip/i);
   });
 });
 
@@ -1090,7 +1104,7 @@ describe('describeFinding', () => {
     // what stops a new rule over there from reaching a reader as a bare
     // SCREAMING_CODE over here.
     for (const code of [...FINDING_CODES, ...IMPORT_FINDING_CODES]) {
-      const text = describeFinding({ code, path: 'chapters/c1.html', detail: 'chi tiết kỹ thuật' });
+      const text = describeFinding({ code, path: 'chapters/c1.html', detail: 'chi tiết kỹ thuật' }, t);
       expect(text, `mã ${code} chưa có câu tiếng Việt`).not.toContain(code);
       expect(text.length, `mã ${code} chưa có câu tiếng Việt`).toBeGreaterThan(20);
     }
@@ -1107,7 +1121,7 @@ describe('describeFinding', () => {
     //   (manifest.json#/version) not a semver version: "khong-phai-semver"
     const ENGLISH = 'not a semver version: "khong-phai-semver"';
     for (const code of FINDING_CODES) {
-      const rendered = describeFinding({ code, path: 'manifest.json#/version', detail: ENGLISH });
+      const rendered = describeFinding({ code, path: 'manifest.json#/version', detail: ENGLISH }, t);
       expect(rendered, `mã ${code} kéo theo chi tiết tiếng Anh ra màn hình`).not.toContain(ENGLISH);
       // The pointer stays: it is what tells the author WHERE to look, and it
       // is not prose in any language.
@@ -1116,7 +1130,7 @@ describe('describeFinding', () => {
   });
 
   it('vẫn trả về câu đọc được cho một mã chưa biết', () => {
-    expect(describeFinding({ code: 'MA_LA', path: '.', detail: 'chi tiết' })).toMatch(/[a-zà-ỹ]{4,}/i);
+    expect(describeFinding({ code: 'MA_LA', path: '.', detail: 'chi tiết' }, t)).toMatch(/[a-zà-ỹ]{4,}/i);
   });
 });
 

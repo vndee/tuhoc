@@ -6,6 +6,7 @@ import { useMe } from '../api/useMe';
 import { rememberSessionVerified } from '../db/local';
 import { offlineSessionIsUsable } from './session';
 import { sessionWasSuperseded, subscribeToSessionChanges } from './sessionIdentity';
+import { useLanguage } from '../i18n/LanguageProvider';
 
 export interface RequireAuthProps {
   children: ReactNode;
@@ -106,6 +107,7 @@ const offlineSessionQueryKey = ['offline-session'] as const;
  * behaviour, and the window (see `./session.ts`) is what bounds it.
  */
 export function RequireAuth({ children }: RequireAuthProps) {
+  const { t } = useLanguage();
   const location = useLocation();
   const meQuery = useMe();
   const confirmedUserId = meQuery.data?.id ?? null;
@@ -178,7 +180,7 @@ export function RequireAuth({ children }: RequireAuthProps) {
 
   if (meQuery.isError) {
     if (!noResponseArrived) {
-      return <p className="ch-lede">{describeAuthError(meQuery.error)}</p>;
+      return <p className="ch-lede">{describeAuthError(meQuery.error, t)}</p>;
     }
     // Same trade as the pending branch above: one blank paint while the
     // local read settles, rather than flashing an outage message at a
@@ -189,7 +191,7 @@ export function RequireAuth({ children }: RequireAuthProps) {
     if (offlineSession.data === true) {
       return <>{children}</>;
     }
-    return <p className="ch-lede">{describeAuthError(meQuery.error)}</p>;
+    return <p className="ch-lede">{describeAuthError(meQuery.error, t)}</p>;
   }
 
   if (meQuery.data == null) {

@@ -15,6 +15,18 @@ vi.mock('./navigation', () => ({
 
 import { api, ApiError, describeAuthError, NotJsonError, serverAnswered } from './client';
 import { redirectToLogin } from './navigation';
+import { t as lookup, type Translate } from '../i18n';
+
+/**
+ * `t` đã gắn tiếng Việt.
+ *
+ * `describeFinding`, `describeCourseError`, `describeAuthError` và
+ * `importCourse` nhận ngôn ngữ bằng THAM SỐ từ Task 5 — chúng không phải
+ * component và cố ý không có context nào để đọc. Bơm `t` vào từ đây là cách
+ * duy nhất một bài kiểm chứng minh chúng dùng cái được truyền vào.
+ */
+const t: Translate = (key, ...args) => lookup('vi', key, ...args);
+
 
 const server = setupServer();
 
@@ -217,33 +229,33 @@ describe('serverAnswered — did an HTTP response ever arrive?', () => {
 
 describe('describeAuthError', () => {
   it('maps 401 to a Vietnamese message that does not reveal whether the email exists', () => {
-    const msg = describeAuthError(new ApiError(401, { error: 'invalid email or password' }));
+    const msg = describeAuthError(new ApiError(401, { error: 'invalid email or password' }), t);
     expect(msg).toMatch(/email|mật khẩu/i);
     expect(msg.toLowerCase()).not.toMatch(/không tồn tại|not found|khong ton tai/);
   });
 
   it('maps 409 to a distinct Vietnamese "email already registered" message', () => {
-    const msg409 = describeAuthError(new ApiError(409, { error: 'email already registered' }));
-    const msg401 = describeAuthError(new ApiError(401, { error: 'invalid email or password' }));
+    const msg409 = describeAuthError(new ApiError(409, { error: 'email already registered' }), t);
+    const msg401 = describeAuthError(new ApiError(401, { error: 'invalid email or password' }), t);
     expect(msg409).not.toBe(msg401);
     expect(msg409).toMatch(/email/i);
   });
 
   it('maps 429 to a distinct "try again later" Vietnamese message', () => {
-    const msg = describeAuthError(new ApiError(429, { error: 'rate limited' }));
+    const msg = describeAuthError(new ApiError(429, { error: 'rate limited' }), t);
     expect(msg).toMatch(/thử lại|đợi/i);
   });
 
   it('maps 500 to a distinct Vietnamese "server error" message, not the same copy as 401', () => {
-    const msg500 = describeAuthError(new ApiError(500, { error: 'registration failed' }));
-    const msg401 = describeAuthError(new ApiError(401, { error: 'invalid email or password' }));
+    const msg500 = describeAuthError(new ApiError(500, { error: 'registration failed' }), t);
+    const msg401 = describeAuthError(new ApiError(401, { error: 'invalid email or password' }), t);
     expect(msg500).not.toBe(msg401);
     expect(msg500).toMatch(/máy chủ|lỗi/i);
   });
 
   it('falls back to a generic Vietnamese message for a non-ApiError (e.g. network failure)', () => {
-    expect(describeAuthError(new TypeError('Failed to fetch'))).toMatch(/kết nối|lỗi/i);
-    expect(describeAuthError('boom')).toMatch(/kết nối|lỗi/i);
+    expect(describeAuthError(new TypeError('Failed to fetch'), t)).toMatch(/kết nối|lỗi/i);
+    expect(describeAuthError('boom', t)).toMatch(/kết nối|lỗi/i);
   });
 
   it('the transport-failure message names BOTH causes — not just "check your network" (ruling S1-F25)', () => {
@@ -256,7 +268,7 @@ describe('describeAuthError', () => {
     // they nor the operator ever learns otherwise. That is the invisible
     // failure S1-F25 is about; the fix is one clause, and this is what keeps
     // it from being tidied away.
-    const msg = describeAuthError(new TypeError('Failed to fetch'));
+    const msg = describeAuthError(new TypeError('Failed to fetch'), t);
     expect(msg).toMatch(/ngoại tuyến|mạng/i);
     expect(msg).toMatch(/cấu hình|CORS/i);
   });

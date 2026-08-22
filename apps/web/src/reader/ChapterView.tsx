@@ -568,7 +568,7 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
     return <p className="ch-lede">{t('reader.kitFailed')}</p>;
   }
   if (chapterQuery.isError) {
-    return <p className="ch-lede">{describeCourseError(chapterQuery.error)}</p>;
+    return <p className="ch-lede">{describeCourseError(chapterQuery.error, t)}</p>;
   }
   if (!courseKit.ready || chapterQuery.isPending) {
     return <p className="ch-lede">{t('reader.chapterLoading')}</p>;

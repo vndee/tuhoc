@@ -19,6 +19,7 @@ import { selectionToAnchor } from '../annotations/anchor';
 import { normalizeContainer } from '../annotations/normalize';
 import { type AnnotationRow, db, type PackageRow } from '../db/local';
 import { UpdateDialog } from './UpdateDialog';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 // Same reason as version.test.ts: jsdom never fires load/error for a
 // `<script src>`, so the real injector would hang rather than fail. Every test
@@ -143,15 +144,17 @@ function renderDialog(overrides: Partial<Parameters<typeof UpdateDialog>[0]> = {
   const onClose = vi.fn();
   const onUpdated = vi.fn();
   render(
-    <UpdateDialog
-      courseId={COURSE}
-      courseTitle="Bất biến vòng lặp"
-      fromVersion="1.0.0"
-      toVersion="1.1.0"
-      onClose={onClose}
-      onUpdated={onUpdated}
-      {...overrides}
-    />,
+    <LanguageProvider>
+      <UpdateDialog
+        courseId={COURSE}
+        courseTitle="Bất biến vòng lặp"
+        fromVersion="1.0.0"
+        toVersion="1.1.0"
+        onClose={onClose}
+        onUpdated={onUpdated}
+        {...overrides}
+      />
+    </LanguageProvider>,
   );
   return { onClose, onUpdated };
 }

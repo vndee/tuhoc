@@ -471,6 +471,153 @@ export const vi = {
   'update.applying': 'Đang cập nhật…',
   'update.confirm': 'Cập nhật',
   'update.stay': (fromVersion: string) => `Ở lại v${fromVersion}`,
+
+  /* ══════════════════════════════════════════════════════════════════════ *
+   * CHUỖI LỖI — `course/import.ts`, `course/loader.ts`, `api/client.ts`,
+   * `registry/`, `course/UpdateDialog.tsx`
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  /* ── một phát hiện của bộ kiểm định gói, thành CÂU (`describeFinding`) ── */
+
+  /**
+   * MỘT KHOÁ CHO MỖI MÃ PHÁT HIỆN. `course/import.ts` giữ bảng `code → khoá`,
+   * và `import.test.ts` đi hết `FINDING_CODES` + `IMPORT_FINDING_CODES` rồi đỏ
+   * ở bất kỳ mã nào không có mục — nên một mã mới không thể lặng lẽ rơi xuống
+   * câu "chưa được mô tả".
+   *
+   * Hai tham số của `finding.tooLarge`/`finding.manifestMissing` là HẰNG SỐ của
+   * mã (trần MB, tên tệp manifest), không phải chữ — chúng đi qua tham số để
+   * bản dịch đặt chúng ở đúng chỗ của ngữ pháp từng thứ tiếng.
+   */
+  'finding.undescribed': (where: string, detail: string) => `Gói có một vấn đề chưa được mô tả${where}: ${detail}`,
+  'finding.EMPTY_PACKAGE': 'Gói này rỗng — không có tệp nào bên trong.',
+  'finding.TOO_LARGE': (mb: string) => `Gói vượt trần ${mb} MB sau khi giải nén.`,
+  'finding.PATH_ESCAPE': 'Một tệp trong gói trỏ ra ngoài thư mục gói. Gói này không an toàn để mở.',
+  'finding.MANIFEST_MISSING': (manifest: string) => `Gói thiếu ${manifest} ở thư mục gốc — đó là tệp mô tả khóa học.`,
+  'finding.MANIFEST_PARSE': (manifest: string) => `${manifest} không phải JSON hợp lệ.`,
+  'finding.MANIFEST_FIELD': (manifest: string) => `${manifest} thiếu một trường bắt buộc hoặc trường đó sai kiểu.`,
+  'finding.SEMVER': 'Số phiên bản của khóa học không đúng dạng X.Y.Z.',
+  'finding.RUNTIME_RANGE': 'Khóa học yêu cầu một phiên bản runtime mà ứng dụng này không hỗ trợ.',
+  'finding.DUPLICATE_CHAPTER_ID': 'Hai chương dùng chung một mã id.',
+  'finding.CHAPTER_FILE_MISSING': 'Mục lục nhắc tới một tệp chương không có trong gói.',
+  'finding.SCRIPT_TAG':
+    'Chương này chứa thẻ <script>. Khóa học hạng "content" chỉ được chứa chữ và hình, không chứa mã chạy được.',
+  'finding.EVENT_HANDLER_ATTR':
+    'Chương này có thuộc tính bắt sự kiện (onclick, onerror…), tức là mã chạy được. Khóa học hạng "content" không được phép.',
+  'finding.JAVASCRIPT_URL':
+    'Chương này có liên kết javascript:, tức là mã chạy được. Khóa học hạng "content" không được phép.',
+  'finding.EMBEDDED_FRAME':
+    'Chương này nhúng một trang khác (iframe/embed/object). Khóa học hạng "content" không được phép.',
+  'finding.FORM_TAG':
+    'Chương này có biểu mẫu <form>. Khóa học hạng "content" không được phép — biểu mẫu gửi dữ liệu đi nơi khác.',
+  'finding.JS_FILE_IN_PACKAGE':
+    'Gói chứa tệp JavaScript, trong khi khóa học tự khai là hạng "content" (chỉ chữ và hình).',
+  'finding.TAG_ATTR_FLOOD': 'Một thẻ HTML trong gói mang quá nhiều thuộc tính để có thể là một tài liệu thật.',
+  'finding.BAD_URL': 'Đường dẫn này không dùng được.',
+  'finding.FETCH_FAILED': 'Không tải được.',
+  'finding.FILE_READ_FAILED': 'Không đọc được tệp bạn chọn.',
+  'finding.HTTP_ERROR': 'Máy chủ từ chối yêu cầu.',
+  'finding.NOT_A_ZIP':
+    'Tệp này không phải là một tệp .zip đọc được. Hãy chắc rằng bạn chọn đúng gói .zip của khóa học.',
+  'finding.ZIP64_UNSUPPORTED': 'Tệp .zip này dùng một phần của định dạng zip64 mà tuhoc chưa đọc được.',
+  'finding.ARCHIVE_INDEX_MISMATCH':
+    'Gói này chứa tệp nén lồng nhau (một .zip bên trong — .docx, .xlsx và .pptx đều là .zip), nên mục lục của kho và dòng byte của nó không khớp nhau.',
+  'finding.DUPLICATE_ENTRY': 'Trong gói có hai tệp trùng tên nhau, nên không biết tệp nào mới là thật.',
+  'finding.PACKAGE_ROOT_AMBIGUOUS': 'Không rõ khóa học nào trong tệp này là khóa học bạn muốn nhập.',
+  'finding.UNPACKABLE_ENTRY': 'Repo có mục không đóng gói được.',
+  'finding.GIT_HOST_UNSUPPORTED': 'tuhoc chỉ nhập trực tiếp được từ GitHub.',
+  'finding.GIT_REPO_UNREACHABLE': 'Không mở được repo này.',
+  'finding.GIT_PATH_NOT_FOUND': 'Repo mở được, nhưng không tìm thấy thư mục bạn trỏ tới.',
+  'finding.GIT_RATE_LIMITED': 'GitHub đang tạm chặn vì có quá nhiều yêu cầu từ mạng của bạn.',
+  'finding.GIT_BAD_RESPONSE': 'Câu trả lời nhận được không phải của GitHub.',
+  'finding.GIT_TREE_TRUNCATED':
+    'Repo này quá lớn để đọc hết danh sách tệp trong một lần. Hãy tải .zip của repo về máy rồi nhập từ tệp.',
+  'finding.GIT_TOO_MANY_FILES': 'Repo này có quá nhiều tệp để nhập trực tiếp.',
+  'finding.WRITE_FAILED': 'Không lưu được gói vào bộ nhớ của trình duyệt.',
+  'finding.CANCELLED': 'Đã huỷ nhập gói. Không có gì được lưu lại.',
+  'finding.UNEXPECTED':
+    'Có lỗi ngoài dự kiến khi nhập gói. Hãy thử lại; nếu vẫn vậy, đây là chi tiết kỹ thuật để báo lỗi:',
+
+  /* ── phần `detail` do chính `course/import.ts` dựng ────────────────────── */
+
+  'import.detail.manyRoots': (count: string, roots: string) =>
+    `tệp này chứa ${count} khóa học (${roots}); hãy nhập từng gói một.`,
+  'import.detail.httpStatus': (status: string) => `Máy chủ trả về HTTP ${status}.`,
+  'import.detail.fetchFailed': (cause: string) =>
+    `Có thể bạn đang ngoại tuyến, hoặc máy chủ chứa tệp không cho phép trang khác tải trực tiếp (CORS). Trình duyệt không cho biết là trường hợp nào. (${cause})`,
+  'import.detail.bodyCutOff': (cause: string) =>
+    `Máy chủ đã bắt đầu gửi tệp rồi kết nối đứt giữa chừng, nên gói tải về không đầy đủ. Hãy thử lại — thường lần sau là được. (${cause})`,
+  'import.detail.privateRepo':
+    'tuhoc chỉ nhập được từ repo Git CÔNG KHAI. Repo riêng tư cần token truy cập, và tuhoc cố ý không giữ token của bạn — nếu khóa học nằm trong repo riêng tư, hãy tải .zip của repo về máy rồi dùng "Từ tệp trên máy". Kết quả giống hệt. GitHub trả cùng một câu trả lời cho repo riêng tư và repo không tồn tại, nên cũng hãy kiểm tra lại đường dẫn.',
+  'import.detail.rateLimited': 'Hãy thử lại sau ít phút, hoặc tải .zip của repo về máy rồi nhập từ tệp.',
+  'import.detail.githubStatus': (status: string) => `GitHub trả về HTTP ${status}.`,
+  'import.detail.captivePortal': (cause: string) =>
+    `Máy chủ trả về nội dung không đọc được ở chỗ đáng lẽ là dữ liệu của GitHub. Nếu bạn đang dùng Wi-Fi công cộng, có thể mạng đó đang chặn bằng một trang đăng nhập — hãy đăng nhập vào mạng rồi thử lại. (${cause})`,
+  'import.detail.subdirMissing': (ref: string, subdir: string) =>
+    `Repo mở được, nhưng trong nhánh "${ref}" không có thư mục "${subdir}". Hãy kiểm tra lại đường dẫn.`,
+  'import.detail.unpackable': (count: string) =>
+    `${count} mục là symlink hoặc submodule; gói course chỉ chứa tệp thường. Nếu bạn không sửa được repo này, hãy tải .zip của nó về máy rồi dùng "Từ tệp trên máy".`,
+  'import.detail.tooManyFiles': (count: string, cap: string) =>
+    `${count} tệp, trần là ${cap}. Hãy tải .zip của repo về máy rồi nhập từ tệp.`,
+  'import.detail.repoDeclaredBytes': (bytes: string) => `Repo khai báo ${bytes} byte.`,
+  'import.detail.nestedArchive':
+    'tuhoc đòi mục lục và dòng byte của kho khớp nhau từng tên — đó là hàng rào chặn kho "hai mặt", loại kho mà trình quét đọc ra một đằng còn trình giải nén đọc ra một nẻo. Hãy bỏ các tệp nén ra khỏi gói (hoặc nén chúng lại thành thư mục thường), rồi đóng gói bằng `tuhoc pack`.',
+  'import.detail.zip64':
+    'Kho zip64 thông thường thì tuhoc đọc được; kho này dùng phần mà tuhoc từ chối đoán — quá 65.535 mục, mục lục nằm quá mốc 4 GiB, hoặc bản ghi zip64 phiên bản 2. Hãy đóng gói bằng `tuhoc pack`.',
+  'import.detail.bytesRead': (bytes: string) => `Đã đọc ${bytes} byte thì dừng.`,
+  'import.detail.otherHost':
+    'Với mọi nơi khác, hãy tải .zip của kho về máy rồi dùng "Từ tệp trên máy" — kết quả giống hệt.',
+  'import.detail.fileGone': (cause: string) =>
+    `Tệp có thể đã bị di chuyển, bị đổi, hoặc ổ đĩa chứa nó đã tháo ra sau khi bạn chọn. Hãy chọn lại tệp. (${cause})`,
+  'import.detail.schemeOnly': 'Chỉ nhận đường dẫn bắt đầu bằng http:// hoặc https://.',
+  'import.detail.parenthetical': (cause: string) => `(${cause})`,
+
+  /* ── tải khoá học (`course/loader.ts`) ─────────────────────────────────── */
+
+  'course.error.runtimeMismatch': (required: string, got: string) =>
+    `Không tải được khóa học: phiên bản không tương thích (ứng dụng cần ${required}, khóa học khai báo "${got}").`,
+  'course.error.notFound': 'Không tải được khóa học: không tìm thấy trên máy chủ.',
+  'course.error.http': (status: string) => `Không tải được khóa học: máy chủ báo lỗi (HTTP ${status}).`,
+  'course.error.parse': 'Không tải được khóa học: dữ liệu khóa học bị lỗi định dạng.',
+  'course.error.missingAsset':
+    'Không tải được khóa học: gói đã lưu trên máy thiếu tệp của chương này. Hãy nhập lại gói.',
+  'course.error.unknown': 'Không tải được khóa học: đã xảy ra lỗi không xác định.',
+
+  /* ── đăng nhập / mạng (`api/client.ts`) ────────────────────────────────── */
+
+  'auth.error.badRequest': 'Yêu cầu không hợp lệ. Vui lòng kiểm tra lại thông tin đã nhập.',
+  'auth.error.credentials': 'Email hoặc mật khẩu không đúng.',
+  'auth.error.emailTaken': 'Email này đã được đăng ký. Vui lòng đăng nhập hoặc dùng email khác.',
+  'auth.error.tooManyAttempts': 'Bạn đã thử quá nhiều lần. Vui lòng đợi một chút rồi thử lại.',
+  'auth.error.serverDown': 'Máy chủ đang gặp sự cố. Vui lòng thử lại sau.',
+  'auth.error.unknown': 'Đã xảy ra lỗi không xác định. Vui lòng thử lại.',
+  'auth.error.unreachable':
+    'Không thể kết nối tới máy chủ. Có thể bạn đang ngoại tuyến, hoặc máy chủ đang bị cấu hình sai (CORS/DNS).',
+
+  /* ── danh mục registry (`registry/`) ───────────────────────────────────── */
+
+  'registry.error.notConfigured':
+    'Chưa có địa chỉ registry. Đặt biến môi trường VITE_REGISTRY_URL (địa chỉ gốc của registry, ví dụ https://<tổ-chức>.github.io/<repo>) lúc build, hoặc dùng registry công khai khi nó sẵn sàng.',
+  'registry.error.unsupportedSchema': (found: string, supported: string) =>
+    `Danh mục registry dùng định dạng phiên bản ${found}, còn bản tuhoc bạn đang chạy chỉ đọc được phiên bản ${supported}. Nền tảng cần được cập nhật. Danh mục KHÔNG được đọc thử — đọc một định dạng lạ theo phỏng đoán là cách sai lặng lẽ nhất.`,
+  'registry.error.notJson': (contentType: string) =>
+    `Địa chỉ registry trả về một trang web chứ không phải danh mục: thân phản hồi của index.json không phải JSON${contentType}. Thường là do địa chỉ registry sai, hoặc máy chủ trả trang 404 của chính nó thay cho tệp.`,
+  'registry.error.malformed': (missing: string) =>
+    `Danh mục registry đọc được nhưng thiếu hoặc sai kiểu ở: ${missing}. Đây là lỗi ở phía registry, không phải ở máy bạn.`,
+  'registry.error.http': (status: string) =>
+    `Registry trả mã ${status} cho index.json. Địa chỉ registry có thể sai, hoặc registry đang gặp sự cố.`,
+  'registry.error.unreachable':
+    'Không tải được danh mục registry. Có thể bạn đang ngoại tuyến, hoặc registry đang bị cấu hình sai (CORS/DNS).',
+
+  'catalog.title': 'Danh mục khóa học',
+  'catalog.lede': 'Kho khóa học cộng đồng. Mỗi gói ở đây đã đi qua đúng bộ luật kiểm định mà nền tảng dùng.',
+  'catalog.yourLibrary': 'Thư viện của bạn',
+  'catalog.loading': 'Đang tải danh mục…',
+  'catalog.empty': 'Registry chưa có khóa học nào. Danh mục tải được bình thường — nó rỗng.',
+  'catalog.listAria': 'Khóa học trên registry',
+  'catalog.versionCount': (count: string) => `${count} bản`,
+  'catalog.tier.unknownTitle':
+    'Gói này khai một hạng nền tảng không biết, nên không có gì bảo đảm nó không chứa JavaScript.',
 };
 
 /** Hình dạng mà MỌI ngôn ngữ phải phủ đúng. Xem chú thích trên `vi`. */

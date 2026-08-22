@@ -55,7 +55,9 @@ export class MalformedStatsError extends Error {
   readonly missing: readonly string[];
 
   constructor(missing: readonly string[]) {
-    super(`Phản hồi /stats thiếu hoặc sai kiểu ở: ${missing.join(', ')}`);
+    // Tiếng Anh KỸ THUẬT, có chủ ý — xem chú thích ở đầu lớp. Câu cho người
+    // học là `dashboard.stats.error`, do `Dashboard` vẽ.
+    super(`/stats response missing or mistyped at: ${missing.join(', ')}`);
     this.name = 'MalformedStatsError';
     this.missing = missing;
   }
@@ -67,7 +69,7 @@ export class MalformedStatsError extends Error {
 export function assertStats(body: unknown): Stats {
   const missing: string[] = [];
   const o = (body ?? {}) as Partial<Record<keyof Stats, unknown>>;
-  if (typeof body !== 'object' || body === null) missing.push('(thân phản hồi không phải object)');
+  if (typeof body !== 'object' || body === null) missing.push('(response body is not an object)');
   else {
     if (typeof o.totalMinutes !== 'number') missing.push('totalMinutes');
     if (typeof o.streakDays !== 'number') missing.push('streakDays');

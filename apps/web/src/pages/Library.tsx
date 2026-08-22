@@ -328,7 +328,7 @@ function CourseRow({ row }: { row: LibraryRow }) {
       </p>
 
       {needsManifest && manifestQuery.isError && (
-        <p className="lib-row-note">{describeCourseError(manifestQuery.error)}</p>
+        <p className="lib-row-note">{describeCourseError(manifestQuery.error, t)}</p>
       )}
 
       {/*

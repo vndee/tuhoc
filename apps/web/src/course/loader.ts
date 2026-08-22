@@ -37,6 +37,7 @@
  */
 
 import { fetchPackage, listCourses, MANIFEST_FILE } from '../api/courses';
+import type { Translate } from '../i18n';
 import { db, type PackageRow } from '../db/local';
 import type { Manifest } from './types';
 
@@ -162,22 +163,22 @@ export function manifestQueryKey(courseId: string): readonly [string, string] {
  * `url`, `status`, `cause`, `required`/`got`) — not something to put in
  * front of a Vietnamese-language UI.
  */
-export function describeCourseError(error: unknown): string {
+export function describeCourseError(error: unknown, t: Translate): string {
   if (error instanceof RuntimeMismatchError) {
-    return `Không tải được khóa học: phiên bản không tương thích (ứng dụng cần ${error.required}, khóa học khai báo "${error.got}").`;
+    return t('course.error.runtimeMismatch', error.required, error.got);
   }
   if (error instanceof CourseFetchError) {
     return error.status === 404
-      ? 'Không tải được khóa học: không tìm thấy trên máy chủ.'
-      : `Không tải được khóa học: máy chủ báo lỗi (HTTP ${error.status}).`;
+      ? t('course.error.notFound')
+      : t('course.error.http', String(error.status));
   }
   if (error instanceof ManifestParseError) {
-    return 'Không tải được khóa học: dữ liệu khóa học bị lỗi định dạng.';
+    return t('course.error.parse');
   }
   if (error instanceof PackageAssetError) {
-    return 'Không tải được khóa học: gói đã lưu trên máy thiếu tệp của chương này. Hãy nhập lại gói.';
+    return t('course.error.missingAsset');
   }
-  return 'Không tải được khóa học: đã xảy ra lỗi không xác định.';
+  return t('course.error.unknown');
 }
 
 /* ------------------------------------------------------------------ *

@@ -209,7 +209,7 @@ function CourseCard({ courseId, statsCourses }: CourseCardProps) {
     return <div className="dash-card dash-card-pending">{t('dashboard.card.loading')}</div>;
   }
   if (manifestQuery.isError) {
-    return <div className="dash-card dash-card-error">{describeCourseError(manifestQuery.error)}</div>;
+    return <div className="dash-card dash-card-error">{describeCourseError(manifestQuery.error, t)}</div>;
   }
 
   const manifest: Manifest = manifestQuery.data;

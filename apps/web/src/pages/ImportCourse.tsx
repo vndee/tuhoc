@@ -81,6 +81,7 @@ export function ImportCourse() {
     abort.current = controller;
     try {
       const result = await importCourse(source, {
+        t,
         onStage: announceStage,
         // No `flushSync` here, and the difference is not an oversight: this
         // fires between network round trips with the main thread idle, so
@@ -293,7 +294,7 @@ export function ImportCourse() {
           </p>
           <ul className="import-finding-list">
             {findings.map((f, i) => (
-              <li key={`${f.code}:${f.path}:${i}`}>{describeFinding(f)}</li>
+              <li key={`${f.code}:${f.path}:${i}`}>{describeFinding(f, t)}</li>
             ))}
           </ul>
         </div>
