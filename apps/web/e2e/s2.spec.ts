@@ -492,11 +492,16 @@ async function signIn(page: Page): Promise<void> {
 /** Khung kho khoá, dưới dạng `Frame` (để `evaluate` được vào `localStorage` của
  *  origin kia) — không chỉ `FrameLocator`. */
 async function vaultFrame(page: Page): Promise<Frame> {
-  // `?lang=` là ĐƯỜNG DUY NHẤT kho khoá biết ngôn ngữ người đọc (Task 5): nó
-  // không đọc được `localStorage` của origin này, và đó là cả hàng rào. Vẫn
-  // so-bằng-đúng CẢ CHUỖI — một `src` mất tham số làm khung nói tiếng Việt
-  // cho người đã chọn tiếng Anh, và không có triệu chứng nào khác.
-  await expect(page.locator('[data-testid="vault-frame"]')).toHaveAttribute('src', `${vaultOrigin}/?lang=vi`);
+  // `src` của khung là một HẰNG SỐ — không tham số, không mảnh nào đổi theo
+  // trạng thái — và so-bằng-đúng CẢ CHUỖI là chỗ ràng buộc ấy được canh.
+  //
+  // Task 5 gắn `?lang=` vào đây để nói cho kho khoá biết ngôn ngữ người đọc.
+  // Task 7 đo cái giá: bất cứ thứ gì trong `src` mà đổi được đều làm trình
+  // duyệt NẠP LẠI tài liệu ở origin kho khoá — và tài liệu ấy chứa ô dán key.
+  // Đổi ngôn ngữ trong lúc đang gõ key ⇒ ô trống trơn. Ngôn ngữ từ nay đi bằng
+  // một thông điệp `kind: 'setLang'` (xem `apps/vault/src/protocol.ts`), và
+  // `s3.spec.ts` kịch bản 5b đo rằng key gõ dở sống sót qua một lần đổi.
+  await expect(page.locator('[data-testid="vault-frame"]')).toHaveAttribute('src', `${vaultOrigin}/`);
   await expect
     .poll(() => page.frames().some((f) => f.url().startsWith(vaultOrigin)), {
       message: `không có frame nào ở ${vaultOrigin} — kho khoá có nạp được không?`,
@@ -612,11 +617,16 @@ test('chưa cắm key: panel hỏi–đáp mời đi cấu hình, không phải 
   expect(page.url().startsWith(WEB_ORIGIN), `trang đang mở là ${page.url()}`).toBe(true);
 
   await openChapter(page);
-  // `?lang=` là ĐƯỜNG DUY NHẤT kho khoá biết ngôn ngữ người đọc (Task 5): nó
-  // không đọc được `localStorage` của origin này, và đó là cả hàng rào. Vẫn
-  // so-bằng-đúng CẢ CHUỖI — một `src` mất tham số làm khung nói tiếng Việt
-  // cho người đã chọn tiếng Anh, và không có triệu chứng nào khác.
-  await expect(page.locator('[data-testid="vault-frame"]')).toHaveAttribute('src', `${vaultOrigin}/?lang=vi`);
+  // `src` của khung là một HẰNG SỐ — không tham số, không mảnh nào đổi theo
+  // trạng thái — và so-bằng-đúng CẢ CHUỖI là chỗ ràng buộc ấy được canh.
+  //
+  // Task 5 gắn `?lang=` vào đây để nói cho kho khoá biết ngôn ngữ người đọc.
+  // Task 7 đo cái giá: bất cứ thứ gì trong `src` mà đổi được đều làm trình
+  // duyệt NẠP LẠI tài liệu ở origin kho khoá — và tài liệu ấy chứa ô dán key.
+  // Đổi ngôn ngữ trong lúc đang gõ key ⇒ ô trống trơn. Ngôn ngữ từ nay đi bằng
+  // một thông điệp `kind: 'setLang'` (xem `apps/vault/src/protocol.ts`), và
+  // `s3.spec.ts` kịch bản 5b đo rằng key gõ dở sống sót qua một lần đổi.
+  await expect(page.locator('[data-testid="vault-frame"]')).toHaveAttribute('src', `${vaultOrigin}/`);
 
   // Kho khoá RỖNG THẬT — không phải "chưa kịp nạp". Nếu chốt dưới xanh vì máy
   // này tình cờ đã có key từ một lần chạy khác thì nó xanh vì lý do sai.

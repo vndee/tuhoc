@@ -173,6 +173,29 @@ export class VaultClient {
     this.#pending.clear();
   }
 
+  /**
+   * Nói cho kho khoá biết người đọc đang dùng tiếng gì.
+   *
+   * **Một chiều, và vì thế nó không trả về `Promise`.** Giao thức không có hồi
+   * đáp nào cho `setLang` (xem `protocol.ts` cho câu trả lời S2-F8 đầy đủ), nên
+   * ở đây không có gì để `#track`, không đồng hồ nào để lên, không `id` nào để
+   * tương quan. Một chữ ký `Promise<void>` sẽ là một lời hứa rằng có ai đó bên
+   * kia đã nhận — và không ai hứa được điều đó.
+   *
+   * **Vì sao ngôn ngữ đi bằng thông điệp chứ không bằng `?lang=` trong `src`
+   * của khung** (đường mà Task 5 đã chọn và Task 7 đã đo): `src` đổi ⇒ trình
+   * duyệt nạp lại tài liệu ở origin kho khoá ⇒ **ô nhập key đang gõ dở bị xoá
+   * sạch**. Xem `shell/VaultFrame.tsx`.
+   *
+   * Bên nhận có thể **chưa tồn tại**: một khung chưa nạp xong không có trình
+   * nghe nào, và thông điệp rơi vào hư không mà không báo lỗi. Đó là lý do
+   * `VaultFrame.tsx` gửi lại ở sự kiện `load` của khung, chứ không phải một
+   * lần duy nhất lúc dựng client.
+   */
+  setLang(lang: Lang): void {
+    this.#send({ v: PROTOCOL_VERSION, id: newId(), kind: 'setLang', lang });
+  }
+
   /** Kho khoá đã được cấu hình chưa, và bằng nhà cung cấp/mô hình nào. Không
    *  trả về bí mật — giao thức không có trường nào chở được nó. */
   status(): Promise<VaultStatus> {

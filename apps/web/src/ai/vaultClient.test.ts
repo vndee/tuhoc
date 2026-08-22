@@ -360,6 +360,56 @@ describe('VaultClient — cancel huỷ THẬT, không chỉ ngừng cập nhật
   });
 });
 
+/**
+ * `setLang` — MỘT CHIỀU, VÀ SỰ MỘT CHIỀU ẤY LÀ THỨ PHẢI ĐO.
+ *
+ * Ngôn ngữ hiển thị của kho khoá đi bằng thông điệp thay vì bằng `?lang=` trên
+ * `src` của khung, vì `src` đổi thì trình duyệt nạp lại tài liệu ở origin kia
+ * và **xoá sạch ô dán key đang gõ dở** (Task 7 đo được cả đường bàn phím lẫn
+ * đường chuột). Cái giá của lựa chọn ấy là một thành viên mới trong một union
+ * đóng, và S2-F8 buộc thành viên ấy phải trả lời được *"nó có mang được key ra
+ * khỏi origin kho khoá không"*.
+ *
+ * Phía này canh nửa của nó: **không có gì để chờ.** Một `setLang` không tạo
+ * lời gọi treo, không lên đồng hồ, không có `id` nào đang đợi hồi đáp — nên
+ * không có chỗ nào cho một hồi đáp mang dữ liệu về mà lọt.
+ */
+describe('VaultClient — setLang là một chiều', () => {
+  it('gửi đúng hình dạng giao thức, với `targetOrigin` tường minh', () => {
+    const h = harness();
+    h.client.setLang('en');
+
+    expect(h.sent(0)).toEqual({
+      v: PROTOCOL_VERSION,
+      id: expect.any(String),
+      kind: 'setLang',
+      lang: 'en',
+    });
+    expect(h.targetOrigin(0)).toBe(VAULT);
+    expect(h.targetOrigin(0)).not.toBe('*');
+  });
+
+  it('KHÔNG để lại lời gọi nào đang chờ — hết giờ cũng không có gì để hỏng', () => {
+    vi.useFakeTimers();
+    const h = harness({ timeoutMs: 50 });
+    h.client.setLang('en');
+
+    // Nếu `setLang` lỡ đi qua `#track`, cây đồng hồ sẽ nổ ở đây và ném một
+    // `VaultError` không ai bắt — một lời hứa bị từ chối trong im lặng, đúng
+    // hạng lỗi mà `dispose()` phải dọn.
+    expect(() => {
+      vi.advanceTimersByTime(500);
+    }).not.toThrow();
+
+    // Và một hồi đáp mang ĐÚNG `id` của thông điệp ấy cũng không đánh thức gì:
+    // không có ai đăng ký, nên không có ai nghe.
+    const id = h.sent(0).id;
+    expect(() => {
+      h.reply({ v: PROTOCOL_VERSION, id, kind: 'done' });
+    }).not.toThrow();
+  });
+});
+
 describe('resolveVaultOrigin — cấu hình sai phải hỏng ỒN ÀO', () => {
   /**
    * Cùng lập luận Task 1 đã đo cho `resolveAllowedOrigin` ở phía kho khoá, áp
