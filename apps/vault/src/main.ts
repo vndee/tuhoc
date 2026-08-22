@@ -1,5 +1,6 @@
 import { PROTOCOL_VERSION, type VaultRequest, type VaultResponse } from './protocol';
 import { readPublicConfig } from './keystore';
+import { listProviders } from './providers';
 
 export interface HandlerDeps { allowedOrigin: string }
 
@@ -29,7 +30,10 @@ export function handleMessage(event: MessageEvent, deps: HandlerDeps): void {
 
   switch (req.kind) {
     case 'listProviders':
-      send({ v: 1, id: req.id, kind: 'providers', providers: [] }); // Task 3 điền
+      // `listProviders()` dựng object mới với ĐÚNG hai trường, không trả thẳng
+      // `Provider` — `Provider.chat` là một hàm, và *structured clone* của
+      // `postMessage` NÉM khi gặp hàm. Xem chú thích ở `providers/index.ts`.
+      send({ v: 1, id: req.id, kind: 'providers', providers: listProviders() });
       return;
     case 'status': {
       // `readPublicConfig`, KHÔNG `readConfig`. Đây là đường trang chính gọi
@@ -43,6 +47,20 @@ export function handleMessage(event: MessageEvent, deps: HandlerDeps): void {
       });
       return;
     }
+    // `chat` rơi vào đây, và đó là CỐ Ý của Task 3.
+    //
+    // Lớp nhà cung cấp (`providers/`) đã xong và đã được kiểm; thứ còn thiếu
+    // không phải mã gọi mạng mà là NGƯỜI GÁC trước nó. HC-3 nói rõ: kho khoá
+    // chặn TRỘM key chứ không chặn DÙNG key, và một course độc chạy ở trang
+    // chính vẫn `postMessage` được vào đây. Nối `chat` thẳng vào `fetch` lúc
+    // này là dựng đúng cái lỗ *confused deputy* mà Task 9 sinh ra để bịt: gọi
+    // bao nhiêu lần cũng được (đốt tiền người dùng) và gửi đi bất cứ gì (ghi
+    // chú riêng tư dưới danh nghĩa lời nhắc).
+    //
+    // Task 9 nối đường này, và khi nối thì nó đi qua token bucket + xác nhận
+    // phiên. Bài kiểm "một yêu cầu `chat` KHÔNG gây ra lời gọi mạng nào" ở
+    // `providers/providers.test.ts` canh đúng chỗ đó — và nó vẫn phải XANH sau
+    // Task 9, vì lời gọi đầu phiên trả `needs_consent` mà không gọi mạng.
     default:
       send({ v: 1, id: req.id, kind: 'error', code: 'unsupported_provider',
              message: 'Chưa hỗ trợ.' });
