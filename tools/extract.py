@@ -17,10 +17,26 @@ nó **thoát 1** và nêu đúng bốn trường ấy. Đó là câu trả lời
 lỗi: bốn trường đó là quyết định về việc phát hành (hạng tin cậy nào, giấy phép
 gì, tên ai, ai viết văn), và một script bóc chữ không có tư cách đoán hộ. Điền
 tay rồi pack — các bước đầy đủ ở docs/publishing.md §1.4.
-"""
-import argparse, json, pathlib, re, subprocess
 
-SRC_DEFAULT = "~/Documents/claude/Research/***REMOVED***.html"
+**Không có tệp nguồn mặc định, và `--id`/`--title`/`--description` là bắt
+buộc.** Trước đây cả bốn thứ ấy được viết cứng vào tệp này, trỏ thẳng vào bản
+v1 riêng tư của tác giả. Repo thì sắp công khai, nên một hằng số như thế là một
+dòng rò rỉ đi cùng mã ra ngoài (`make check-publish`, phép 4). Bốn giá trị ấy
+là **thuộc tính của tệp nguồn**, không phải của công cụ: mỗi bản v1 một-tệp có
+tên, mã và mô tả của riêng nó. Truyền chúng vào lúc chạy — và một bản v1 khác
+cũng dùng lại được công cụ này, thứ trước đây không làm được.
+
+    TUHOC_V1_SOURCE=~/duong/dan/ban-v1.html \\
+    python3 tools/extract.py --id ma-course --title "Tên course" \\
+        --description "Một câu mô tả." --out .
+
+`--source` đọc từ biến môi trường `TUHOC_V1_SOURCE` khi không truyền cờ, cùng
+kiểu với `TUHOC_COURSE_STORE` ở `scripts/course_workspace.py`: đường dẫn tới
+một hiện vật riêng tư thì thuộc về máy chạy, không thuộc về repo.
+"""
+import argparse, json, os, pathlib, re, subprocess
+
+V1_SOURCE_ENV = "TUHOC_V1_SOURCE"
 TPL_RE = re.compile(r'<script type="text/html" id="tpl-([\w-]+)">(.*?)</script>', re.S)
 CH_ROW = re.compile(r"\{id:'([\w-]+)',\s*part:'([^']*)',\s*num:'([^']*)',\s*title:'([^']*)',\s*short:'([^']*)'\}")
 
@@ -31,7 +47,9 @@ def registry(src: str):
     block = src[src.find("const CH = ["): src.find("];", src.find("const CH = ["))]
     return [dict(zip(("id","part","num","title","short"), m)) for m in CH_ROW.findall(block)]
 
-def build_manifest(src: str) -> dict:
+def build_manifest(src: str, *, course_id: str, title: str, description: str) -> dict:
+    """Manifest v1 cho `src`. Danh tính course (`course_id`/`title`/
+    `description`) đến từ người gọi — xem docstring đầu tệp."""
     parts, order = {}, []
     for row in registry(src):
         if row["id"] == "home": continue
@@ -39,8 +57,7 @@ def build_manifest(src: str) -> dict:
         if key not in parts: parts[key] = []; order.append(key)
         parts[key].append({"id": row["id"], "num": row["num"], "title": row["title"],
                            "short": row["short"], "file": f"chapters/{row['id']}.html"})
-    return {"id": "***REMOVED***", "title": "***REMOVED***",
-            "description": "Từ tiên đề Shannon đến định lượng bất định trong LLM",
+    return {"id": course_id, "title": title, "description": description,
             "lang": "vi", "version": "1.0.0", "runtime": "^1",
             "parts": [{"title": k, "chapters": parts[k]} for k in order]}
 
@@ -145,15 +162,25 @@ def _node_check(path: pathlib.Path):
         raise RuntimeError(f"node --check failed for {path}:\n{r.stderr}")
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--source", default=SRC_DEFAULT); ap.add_argument("--out", default=".")
+    ap = argparse.ArgumentParser(description="Bản v1 một-tệp → thư mục course + course-kit.")
+    ap.add_argument("--source", default=os.environ.get(V1_SOURCE_ENV),
+                    help=f"Bản v1 một-tệp. Mặc định lấy từ ${V1_SOURCE_ENV}.")
+    ap.add_argument("--id", required=True, help='`manifest.id` của course, ví dụ "so-dau-phay-dong".')
+    ap.add_argument("--title", required=True, help="`manifest.title` — tên hiển thị.")
+    ap.add_argument("--description", required=True, help="`manifest.description` — một câu, KHÔNG được rỗng.")
+    ap.add_argument("--out", default=".")
     a = ap.parse_args()
+    if not a.source:
+        ap.error(f"thiếu --source, và ${V1_SOURCE_ENV} cũng chưa đặt. "
+                 "Bản v1 là hiện vật nằm ngoài repo — xem docstring đầu tệp.")
     src = pathlib.Path(a.source).expanduser().read_text(encoding="utf-8")
     out = pathlib.Path(a.out)
-    root = out / "courses" / "***REMOVED***"
+    root = out / "courses" / a.id
     (root / "chapters").mkdir(parents=True, exist_ok=True)
     for cid, frag in extract_chapters(src).items():
         (root / "chapters" / f"{cid}.html").write_text(frag, encoding="utf-8")
-    (root / "manifest.json").write_text(json.dumps(build_manifest(src), ensure_ascii=False, indent=2), encoding="utf-8")
+    manifest = build_manifest(src, course_id=a.id, title=a.title, description=a.description)
+    (root / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     print("extracted:", len(extract_chapters(src)), "chapters")
 
     kit = out / "packages" / "course-kit"
