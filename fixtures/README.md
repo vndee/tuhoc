@@ -52,18 +52,31 @@ bun tools/tuhoc-cli/src/index.ts pack fixtures/courses/bat-bien-vong-lap \
 
 Lệnh phải thoát `0`. Nếu không, sửa **course**, đừng sửa luật.
 
-### Làm gói xấu và gói v1.1 cho Task 12
+### Gói xấu và gói v1.1 — dựng trong lúc chạy test, không commit
 
-Task 12 cần thêm hai biến thể; cả hai dựng từ gói này bằng một bước, và **đừng
-commit chúng** — dựng trong lúc chạy test là đúng, vì thứ đang được kiểm là phản
-ứng của hệ thống, không phải tệp:
+Task 12 cần thêm hai biến thể, và cả hai **được dựng trong `apps/web/e2e/s1.spec.ts`**
+chứ không nằm trong kho. Đó là quyết định chứ không phải tiết kiệm chỗ: thứ đang
+được kiểm là **phản ứng của hệ thống trước một gói có tính chất X**, còn một tệp
+`.zip` trong kho là một khẳng định về tính chất X mà không cổng nào kiểm lại.
 
-- **Gói xấu (kịch bản 2).** Chép thư mục, thêm `<script>alert(1)</script>` vào
-  một chương, rồi đóng gói bằng `packZip` trực tiếp — `tuhoc pack` sẽ **từ chối**
-  (đó là điểm của nó), nên gói xấu phải được dựng vòng qua CLI.
-- **Bản v1.1 (kịch bản 4).** Chép thư mục, đổi `version` thành `1.1.0`, sửa vài
-  câu trong `chapters/c1.html` để một số ghi chú mất neo, rồi `tuhoc pack` bình
-  thường.
+- **Gói xấu (kịch bản 2).** Đọc thư mục này, đổi `id`/`title` (để một phép ghi
+  lọt qua trở thành một hàng MỚI nhìn thấy được trong thư viện, thay vì âm thầm
+  đè lên hàng đang có), chèn `<script>alert(1)</script>` vào
+  `chapters/c2.html`, rồi đóng bằng `fflate` trực tiếp — `tuhoc pack` sẽ **từ
+  chối** gói này, và đó chính là điểm của nó, nên gói xấu phải đi vòng qua CLI.
+  Đã đối chứng ngoài trình duyệt: `validatePackage` trả đúng một finding,
+  `SCRIPT_TAG` tại `chapters/c2.html`.
+- **Bản v1.1 (kịch bản 4).** Đổi `version` thành `1.1.0` rồi sửa **đúng những
+  chuỗi mà trình duyệt vừa bôi chọn** trong `chapters/c1.html`: hai đoạn đổi một
+  từ (ghi chú tụt xuống "dịch nhẹ"), một đoạn viết lại hẳn (ghi chú "mất neo"),
+  ba đoạn không đụng tới. Neo lấy từ `getSelection()` của chính lượt chạy đó, vì
+  một phép sửa mù trên tệp nguồn có thể rơi ra ngoài trích dẫn của người đọc —
+  và khi ấy hộp thoại báo một con số khác mà cổng vẫn xanh.
+
+Chương `chapters/c1.html` vì thế **là ngữ liệu của kịch bản 4**: sáu đoạn văn nó
+bôi chọn được chọn theo ba tính chất đo trên tệp (nút văn bản đầu tiên dài hơn 40
+ký tự, không có `$…$` trong 40 ký tự đầu, không nằm trong `<details>` gập lại).
+Sửa chương này thì chạy lại `make test-e2e`, đừng sửa cổng.
 
 ## `courses/so-dau-phay-dong/`
 
