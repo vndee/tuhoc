@@ -22,8 +22,8 @@
  *
  * ## Course nào, và vì sao đổi
  *
- * Task 11 bóc `courses/***REMOVED***/` ra khỏi repo: nó là giáo trình
- * riêng tư của tác giả, repo thì sắp publish (spec §2B.1). Hệ quả là mười tệp
+ * Task 11 bóc giáo trình riêng tư của tác giả ra khỏi repo: nó là của riêng
+ * tác giả, repo thì sắp publish (spec §2B.1). Hệ quả là mười tệp
  * test — sáu đơn vị, bốn e2e — chỉ chạy được trên máy có gói đó, tức đỏ trên
  * mọi bản clone của người khác.
  *

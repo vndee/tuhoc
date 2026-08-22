@@ -43,9 +43,8 @@ export const FIX_HINTS: Record<FindingCode, string> = {
   // Longest hint in the table on purpose: this is the code a v1 manifest hits,
   // it hits it four times at once, and "sửa trường mà pointer chỉ tới" alone
   // would leave a contributor staring at four identical paragraphs. The four
-  // fields named here are exactly the ones v2 added — measured against the real
-  // package, `courses/***REMOVED***`, which fails on all four and nothing
-  // else.
+  // fields named here are exactly the ones v2 added — measured against a real
+  // v1 package, which fails on all four and nothing else.
   MANIFEST_FIELD:
     'Sửa đúng trường mà JSON pointer ở dòng "vị trí" chỉ tới.\n' +
     'Bốn trường v2 hay thiếu nhất, kèm ví dụ giá trị hợp lệ:\n' +
@@ -94,8 +93,8 @@ function locationLabel(path: string): string {
  * (so they know WHAT about it) — plus the hint, which says what to do next.
  *
  * The hint, and ONLY the hint, is printed once per code rather than once per
- * finding. Measured on the real package: `courses/***REMOVED***` produces
- * four `MANIFEST_FIELD` findings, and repeating the seven-line hint four times
+ * finding. Measured on a real v1 package: it produces exactly four
+ * `MANIFEST_FIELD` findings, and repeating the seven-line hint four times
  * made the report worse than the bare codes it replaced — the reader stops
  * reading a wall that repeats itself, which is the exact failure this whole
  * command exists to avoid. `vị trí` and `vấn đề` are still printed in full for

@@ -85,7 +85,7 @@ Course **8 chương** về số dấu phẩy động: hạng `interactive`, `lan
 `course-authoring` sinh ra ở Task 13).
 
 Nó ra đời để **thay giáo trình riêng tư làm ngữ liệu test**. Task 11 đưa
-`***REMOVED***` ra ngoài cây git, và hệ quả là mười tệp test chỉ chạy được
+giáo trình riêng tư ra ngoài cây git, và hệ quả là mười tệp test chỉ chạy được
 trên máy có gói đó. Gói này thế chỗ, và điều kiện nghiệm thu của nó không phải
 "hợp lệ" mà là **mang đúng những hình dạng đã bắt được lỗi thật**, ở tỉ lệ đo
 được từ giáo trình cũ. Bảng đối chiếu đầy đủ — kèm những hình dạng **cố ý

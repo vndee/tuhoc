@@ -1,5 +1,18 @@
 # Hệ thống con 1 — Gói course di động + course riêng tư
 
+> **Biên tập cho bản công khai — 2026-08-22.** Đây là một bản ghi **có ngày
+> tháng**, nên nó không được viết lại. Đúng một thứ bị thay, ở mọi chỗ nó xuất
+> hiện: danh tính giáo trình riêng tư của tác giả — `id`, `title`,
+> `description` — nay lần lượt là `«giáo-trình-riêng»`, `«Giáo trình riêng»`,
+> `«mô tả của giáo trình riêng»`. Mọi số đo, ngày tháng, quyết định, bước làm
+> và kết luận **giữ nguyên**; chỗ nào đọc thấy lạ thì đó là câu chữ gốc, không
+> phải chỗ bị cắt.
+>
+> Vì sao phải thay: repo này sắp công khai, và tài liệu đi cùng nó y như mã
+> (`make check-publish`, phép 4). Vì sao không xoá hẳn tệp: một bản ghi quyết
+> định bị giấu đi thì thôi là bản ghi. Vì sao khai báo thay vì sửa lặng lẽ:
+> sửa lặng lẽ một tài liệu có ngày tháng là làm giả nó.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Biến course từ một thư mục tĩnh nằm trong repo thành **gói cắm rời được**: tạo ra bằng CLI, kiểm định bằng một bộ luật, mang đi bằng tệp hoặc URL, import vào thư viện cá nhân, và giữ riêng tư nếu muốn.
@@ -204,7 +217,7 @@ Mỗi `code` trong hai danh sách trên phải có ít nhất một test. Run: `
 
 - [ ] **Step 5: Tự kiểm bằng dữ liệu thật**
 
-Chạy `validatePackage` trên **gói `courses/***REMOVED***` hiện có** (đọc từ đĩa vào Map). Nó là hạng `interactive` (có `viz.js`) và **chưa có các trường v2** — nên sẽ báo `MANIFEST_FIELD`. Đó là kết quả **đúng**, và Task 11 sẽ bổ sung các trường đó. Ghi số finding thực tế vào báo cáo; nếu có finding nào bạn không giải thích được, **DỪNG và báo** — nó nghĩa là luật sai chứ không phải dữ liệu sai.
+Chạy `validatePackage` trên **gói `courses/«giáo-trình-riêng»` hiện có** (đọc từ đĩa vào Map). Nó là hạng `interactive` (có `viz.js`) và **chưa có các trường v2** — nên sẽ báo `MANIFEST_FIELD`. Đó là kết quả **đúng**, và Task 11 sẽ bổ sung các trường đó. Ghi số finding thực tế vào báo cáo; nếu có finding nào bạn không giải thích được, **DỪNG và báo** — nó nghĩa là luật sai chứ không phải dữ liệu sai.
 
 - [ ] **Step 6: Commit**
 
@@ -310,7 +323,7 @@ Test thứ ba là chốt chống một lỗi rất dễ xảy ra: khung mẫu **
 
 - [ ] **Step 2: Viết skill.** CLI đảm bảo course **hợp lệ**; skill đảm bảo course **hay** — một registry đầy course hợp lệ mà nhạt thì vẫn thất bại. Skill phải mã hoá:
   - cấu trúc chương và manifest;
-  - **chuẩn sư phạm lấy chính giáo trình ***REMOVED*** làm mẫu**: xây trực giác trước hình thức, mỗi khái niệm có một câu hỏi "vì sao ta cần thứ này", bài tập có lời giải, mô phỏng chỉ khi khái niệm **cần nhìn thấy mới hiểu** chứ không trang trí;
+  - **chuẩn sư phạm lấy chính giáo trình riêng của tác giả làm mẫu**: xây trực giác trước hình thức, mỗi khái niệm có một câu hỏi "vì sao ta cần thứ này", bài tập có lời giải, mô phỏng chỉ khi khái niệm **cần nhìn thấy mới hiểu** chứ không trang trí;
   - luật hai hạng và hệ quả: chọn `content` thì được merge gần như tự động, chọn `interactive` thì phải chờ duyệt tay;
   - `lang` và `generatedBy` phải trung thực — người pull về dựa vào đó;
   - **bắt buộc chạy `tuhoc pack` trước khi coi là xong.**
@@ -405,7 +418,7 @@ GET  /courses/:id/@:version/*           → tài nguyên bên trong gói
 ```
 Tất cả **sau `auth.Require(deps.Pool)`** — không endpoint nào trả dữ liệu của người khác.
 
-**`GET /courses` đóng nợ C-2 của P1** (`docs/carried-forward.md`): spec §4 liệt kê endpoint này nhưng **không task nào của P1 được giao xây**, nên `Dashboard.tsx:27` phải hardcode `KNOWN_COURSE_IDS = ['***REMOVED***']`. Task này xoá dòng đó.
+**`GET /courses` đóng nợ C-2 của P1** (`docs/carried-forward.md`): spec §4 liệt kê endpoint này nhưng **không task nào của P1 được giao xây**, nên `Dashboard.tsx:27` phải hardcode `KNOWN_COURSE_IDS = ['«giáo-trình-riêng»']`. Task này xoá dòng đó.
 
 - [ ] **Step 1: Test FAIL trước** — bốn ca, ca cuối là ca bảo vệ:
 
@@ -597,7 +610,7 @@ it('sau khi áp dụng, ghi chú mất neo VẪN CÒN, chỉ là mồ côi', asy
 ### Task 11: Bóc giáo trình riêng tư ra khỏi repo
 
 **Files:**
-- Delete: `courses/***REMOVED***/**` (47 tệp, 1,3 MB)
+- Delete: `courses/«giáo-trình-riêng»/**` (47 tệp, 1,3 MB)
 - Modify: `apps/web/vite-plugins/courseAssets.ts`, `tools/extract.py`, `docs/deploy.md`
 - Create: `docs/publishing.md`
 
@@ -605,13 +618,13 @@ it('sau khi áp dụng, ghi chú mất neo VẪN CÒN, chỉ là mồ côi', asy
 
 **Được lợi kép:** giáo trình trở thành **course import đầu tiên** của chính tác giả ⇒ đường import được **dùng thật** thay vì được ưu ái bằng một đường đặc biệt. Nếu đường import có lỗi, ta phát hiện ngay trên dữ liệu ta quan tâm nhất, không phải sáu tháng sau từ một người lạ.
 
-- [ ] **Step 1: Nâng manifest lên v2 TRƯỚC KHI bóc ra.** Thêm `tier: "interactive"` (nó có `viz.js`), `license`, `authors`, `generatedBy`. Chạy `tuhoc pack courses/***REMOVED***` → phải thoát 0. **Nếu không pack được, DỪNG** — nghĩa là bộ luật Task 1 sai với dữ liệu thật, và đó là phát hiện quan trọng hơn task này.
+- [ ] **Step 1: Nâng manifest lên v2 TRƯỚC KHI bóc ra.** Thêm `tier: "interactive"` (nó có `viz.js`), `license`, `authors`, `generatedBy`. Chạy `tuhoc pack courses/«giáo-trình-riêng»` → phải thoát 0. **Nếu không pack được, DỪNG** — nghĩa là bộ luật Task 1 sai với dữ liệu thật, và đó là phát hiện quan trọng hơn task này.
 
 - [ ] **Step 2: Cất gói ra ngoài repo.** Chép `.zip` vừa pack sang một nơi **ngoài cây git** (ví dụ `~/Documents/claude/tuhoc-courses/`). **Xác nhận tệp tồn tại và mở được trước khi sang bước 3** — bước 3 là bước xoá.
 
 - [ ] **Step 3: Xoá khỏi cây làm việc và cập nhật mọi chỗ tham chiếu.**
 ```bash
-git rm -r courses/***REMOVED***
+git rm -r courses/«giáo-trình-riêng»
 ```
 Rồi: `courseAssets.ts` phải chạy được với `courses/` **rỗng** (đừng để nó ném khi không có course nào — lần chạy đầu của người clone repo là đúng trạng thái này); `tools/extract.py` giữ nguyên, nó là công cụ chuyển đổi một lần, chỉ cập nhật tài liệu để nói rõ đầu ra nay đi qua `tuhoc pack`.
 

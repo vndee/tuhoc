@@ -4,9 +4,9 @@
  * `toggleEx(chapterId, n)` by `n`, the box's 0-based position among ALL
  * `.box.ex` elements in DOM order (`querySelectorAll` order === source
  * order). Deliberately NOT parsed from the box's own heading text (e.g.
- * "Bài 1 · …"): the course content has exercise boxes with no numeral at
- * all (see `courses/***REMOVED***/chapters/*.html`'s "Danh mục cần
- * thuộc lòng" box) and any renumbering of exercises in the source content
+ * "Bài 1 · …"): real course content has exercise boxes with no numeral at
+ * all (measured on the v1 textbook this reader was ported from — its
+ * "Danh mục cần thuộc lòng" box) and any renumbering of exercises
  * would silently break a text-parsed index; DOM order over the fragment
  * `ChapterView` just set via `innerHTML` is stable and always present.
  *

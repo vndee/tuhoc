@@ -129,7 +129,7 @@ describe('Sidebar real course outline', () => {
 
 /**
  * `.sb-sub` is the line under "Tự học" in the sidebar head. It used to be
- * the literal string "***REMOVED***" — correct back when the app
+ * one course's title, written into the JSX — correct back when the app
  * shipped exactly one course, and a lie on every screen afterwards: it
  * named a course on `/library` (where it read as the name of the library
  * itself), on `/import`, on the dashboard, and — worst — named the WRONG

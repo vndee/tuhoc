@@ -119,11 +119,24 @@ ngữ liệu là gói mẫu công khai nằm trong repo. Xem §4.
 
 ### 1.4 Sinh lại gói từ đầu
 
-`tools/extract.py` là bộ chuyển đổi một lần từ bản v1 một-tệp. Nó vẫn chạy được:
+`tools/extract.py` là bộ chuyển đổi một lần từ bản v1 một-tệp. Nó vẫn chạy được,
+nhưng **không còn hằng số riêng tư nào viết cứng trong nó**: đường dẫn nguồn đến
+từ `$TUHOC_V1_SOURCE`, còn `id`/`title`/`description` là cờ bắt buộc. Đó là hệ
+quả của phép 4 ở `make check-publish` — một hằng số trỏ vào giáo trình riêng thì
+đi cùng mã ra công khai.
 
 ```bash
-make extract                                   # → courses/***REMOVED***/
+export TUHOC_V1_SOURCE=~/Documents/claude/Research/***REMOVED***.html
+python3 tools/extract.py --out . \
+  --id ***REMOVED*** \
+  --title "***REMOVED***" \
+  --description "Từ tiên đề Shannon đến định lượng bất định trong LLM"
+#                                              → courses/***REMOVED***/
 ```
+
+Cùng biến môi trường ấy mở khoá `make test-extract`; không đặt nó thì cả tệp
+`tools/test_extract.py` **bỏ qua có nêu lý do** thay vì đỏ bằng
+`FileNotFoundError` trên mọi bản clone.
 
 Nhưng nó ghi ra **manifest v1**. `tuhoc pack` trên đầu ra đó **thoát 1**, nêu
 đúng bốn trường v2 còn thiếu:
@@ -381,6 +394,40 @@ và `0003_drop_seed_course` xoá cái đã ghi. Sửa một migration đã áp *
 với golang-migrate — `schema_migrations` chỉ có `(version, dirty)`, không có cột
 checksum (`database/pgx/v5/pgx.go:465`, v4.19.1) — nhưng chính vì thế nó cũng
 không tự lan tới database cũ, và đó là khoảng trống `0003` lấp.
+
+### 2.8 Đường rò thứ năm: bản CŨ của những tệp vừa được dọn
+
+Phép 4 đo **cây làm việc**. Nó nói đúng câu nó nhận đo, và câu ấy không phải là
+"tên course có còn lấy lại được không". 79 chỗ nêu tên course đã được dọn khỏi
+mã, test và tài liệu (2026-08-22) — nhưng mỗi lần dọn là một commit, và **bản
+trước khi dọn vẫn nằm nguyên trong lịch sử**, ở ngoài `courses/`:
+
+```bash
+git log -S "***REMOVED***" --oneline --all | wc -l   # phải là 0 sau khi viết lại
+```
+
+`git filter-repo --invert-paths --path courses/` ở §2.3 **không chạm tới chúng**
+— cùng đúng cái lý do đã làm hỏng công thức ấy ba lần ở §2.7: bộ lọc theo đường
+dẫn chỉ thấy đường dẫn. `apps/web/src/test/Dashboard.test.tsx` không nằm dưới
+`courses/`, nên bản cũ của nó — có nguyên `id: '***REMOVED***'` — đi qua
+bộ lọc không suy suyển.
+
+Và phép kiểm "sau" ở §2.4 **không bắt được**: hai lệnh đầu giới hạn ở
+`-- courses/`, lệnh clone-mirror thì `grep` trên **tên object**, không phải nội
+dung blob. Cả ba đều câm trong khi `git log -S` in ra hàng chục commit.
+
+Hai cách đóng, chọn một, đừng nửa vời:
+
+- **Lọc theo nội dung**, không theo đường dẫn: `git filter-repo
+  --replace-text <tệp>` với chính hai dòng của `scripts/private-markers.txt`.
+  Nó viết lại mọi blob của mọi commit, nên nó cũng làm hỏng đúng những chỗ
+  §2.2 liệt kê — chạy nó **cùng lượt** với §2.3, không phải sau.
+- **Hoặc bắt đầu lại từ một commit gốc mới** (squash toàn bộ lịch sử trước khi
+  publish). Rẻ và chắc chắn, nhưng vứt đi đúng thứ §2.1 nói là tài sản thật của
+  repo. Đây là đánh đổi cần người quyết, không phải mặc định.
+
+Cho tới khi một trong hai được làm, đừng đọc "phép 4 xanh" là "tên course đã đi
+khỏi repo". Nó chỉ có nghĩa là tên course đã đi khỏi **cây làm việc**.
 
 ---
 

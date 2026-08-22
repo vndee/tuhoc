@@ -1,12 +1,25 @@
 # Tuhoc — Nền tảng tự học đa khóa học
 
+> **Biên tập cho bản công khai — 2026-08-22.** Đây là một bản ghi **có ngày
+> tháng**, nên nó không được viết lại. Đúng một thứ bị thay, ở mọi chỗ nó xuất
+> hiện: danh tính giáo trình riêng tư của tác giả — `id`, `title`,
+> `description` — nay lần lượt là `«giáo-trình-riêng»`, `«Giáo trình riêng»`,
+> `«mô tả của giáo trình riêng»`. Mọi số đo, ngày tháng, quyết định, bước làm
+> và kết luận **giữ nguyên**; chỗ nào đọc thấy lạ thì đó là câu chữ gốc, không
+> phải chỗ bị cắt.
+>
+> Vì sao phải thay: repo này sắp công khai, và tài liệu đi cùng nó y như mã
+> (`make check-publish`, phép 4). Vì sao không xoá hẳn tệp: một bản ghi quyết
+> định bị giấu đi thì thôi là bản ghi. Vì sao khai báo thay vì sửa lặng lẽ:
+> sửa lặng lẽ một tài liệu có ngày tháng là làm giả nó.
+
 **Ngày:** 2026-08-19 · **Trạng thái:** Đã duyệt thiết kế tổng thể, chờ review spec
-**Bối cảnh:** Xuất phát từ giáo trình tương tác "***REMOVED***" (single-file HTML 1.9MB, 45 chương, 59 mô phỏng canvas, 202 bài tập — đã tag `v1-single-file` tại repo `~/Documents/claude/Research`). Chủ nhân dùng để tự học trên nhiều thiết bị, sau này publish cho người khác dùng.
+**Bối cảnh:** Xuất phát từ một giáo trình tương tác **riêng tư** của tác giả (single-file HTML 1.9MB, 45 chương, 59 mô phỏng canvas, 202 bài tập — đã tag `v1-single-file` tại repo `~/Documents/claude/Research`). Chủ nhân dùng để tự học trên nhiều thiết bị, sau này publish cho người khác dùng.
 
 ## 1. Mục tiêu và phạm vi
 
 **Mục tiêu:**
-- Một website tự học chứa nhiều khóa học; giáo trình ***REMOVED*** là course đầu tiên.
+- Một website tự học chứa nhiều khóa học; giáo trình riêng của tác giả là course đầu tiên.
 - Đánh dấu "đã học", highlight + comment đoạn văn bản (hiển thị ở rãnh phải), track progress — đồng bộ qua nhiều thiết bị.
 - Chuẩn bị sẵn chỗ cắm AI agent (hỏi đáp, đào sâu nội dung đang học).
 - Về sau publish cho người dùng khác mà không phải đổi kiến trúc.
@@ -31,7 +44,7 @@ tuhoc/
 │                            #   - KaTeX (vendored) + auto-render
 │                            #   - CSS tokens/reader styles (port từ v1)
 ├── courses/
-│   └── ***REMOVED***/ # course package đầu tiên (tách từ v1 bằng tools/extract.py)
+│   └── «giáo-trình-riêng»/  # course package đầu tiên (tách từ v1 bằng tools/extract.py)
 ├── tools/
 │   └── extract.py           # one-shot: parse file v1 → course package + validate
 └── docs/superpowers/specs/
@@ -53,9 +66,9 @@ courses/<slug>/
 `manifest.json`:
 ```json
 {
-  "id": "***REMOVED***",
-  "title": "***REMOVED***",
-  "description": "Từ tiên đề Shannon đến định lượng bất định trong LLM",
+  "id": "«giáo-trình-riêng»",
+  "title": "«Giáo trình riêng»",
+  "description": "«mô tả của giáo trình riêng»",
   "lang": "vi",
   "version": "1.0.0",
   "runtime": "^1",

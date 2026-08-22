@@ -3,7 +3,7 @@
 
 ## Tại sao có tệp này
 
-`courses/***REMOVED***/` từng là 47 tệp được commit trong chính repo sắp
+Giáo trình riêng tư của tác giả từng là 47 tệp được commit trong chính repo sắp
 publish (spec §2B.1). Nó đã đi ra ngoài. Nhưng ba thứ trong repo vẫn cần **nội
 dung thật** của một course:
 

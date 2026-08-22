@@ -1,5 +1,18 @@
 # P1 — Platform Core Implementation Plan
 
+> **Biên tập cho bản công khai — 2026-08-22.** Đây là một bản ghi **có ngày
+> tháng**, nên nó không được viết lại. Đúng một thứ bị thay, ở mọi chỗ nó xuất
+> hiện: danh tính giáo trình riêng tư của tác giả — `id`, `title`,
+> `description` — nay lần lượt là `«giáo-trình-riêng»`, `«Giáo trình riêng»`,
+> `«mô tả của giáo trình riêng»`. Mọi số đo, ngày tháng, quyết định, bước làm
+> và kết luận **giữ nguyên**; chỗ nào đọc thấy lạ thì đó là câu chữ gốc, không
+> phải chỗ bị cắt.
+>
+> Vì sao phải thay: repo này sắp công khai, và tài liệu đi cùng nó y như mã
+> (`make check-publish`, phép 4). Vì sao không xoá hẳn tệp: một bản ghi quyết
+> định bị giấu đi thì thôi là bản ghi. Vì sao khai báo thay vì sửa lặng lẽ:
+> sửa lặng lẽ một tài liệu có ngày tháng là làm giả nó.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Nền tảng tự học chạy được: reader ngang trải nghiệm v1, auth, progress sync đa thiết bị, dashboard.
@@ -12,7 +25,7 @@
 
 ## Global Constraints
 
-- Nguồn extraction: `/Users/vndee/Documents/claude/Research/***REMOVED***.html` tại tag `v1-single-file` (commit f782323). KHÔNG sửa repo Research.
+- Nguồn extraction: `/Users/vndee/Documents/claude/Research/«giáo-trình-riêng».html` tại tag `v1-single-file` (commit f782323). KHÔNG sửa repo Research.
 - Validate gates của extract (spec §3): đủ 44 chương; 59 `data-viz` khớp 59 `defineViz`; số ký tự `$` từng chương giữ nguyên; không chương nào chứa chuỗi `</script`.
 - Chapter id giữ nguyên `p0-1`…`p4-10`, `appx` (spec §3).
 - Course content không nằm trong DB (spec §2).
@@ -34,7 +47,7 @@ tuhoc/
 │   ├── vendor/katex.js  vendor/auto-render.js  vendor/katex.css   # cắt từ v1
 │   ├── runtime.js                    # Plot engine + helpers + defineViz/initViz/renderKatex/REDRAWS (globals)
 │   └── reader.css                    # toàn bộ stylesheet v1
-├── courses/***REMOVED***/
+├── courses/«giáo-trình-riêng»/
 │   ├── manifest.json
 │   ├── chapters/p0-1.html … appx.html   (44 file)
 │   └── viz.js
@@ -80,7 +93,7 @@ dev-web:  ; cd apps/web && bun run dev
 test-api: ; cd apps/api && go test ./...
 test-web: ; cd apps/web && bun run test
 test-extract: ; cd tools && python3 -m pytest test_extract.py -v
-extract:  ; python3 tools/extract.py --source ~/Documents/claude/Research/***REMOVED***.html --out .
+extract:  ; python3 tools/extract.py --source ~/Documents/claude/Research/«giáo-trình-riêng».html --out .
 ```
 
 - [ ] **Step 3:** README.md: mô tả 1 đoạn + bảng lệnh trên + link spec.
@@ -90,7 +103,7 @@ extract:  ; python3 tools/extract.py --source ~/Documents/claude/Research/***REM
 
 ### Task 2: extract.py — chapters + manifest
 
-**Files:** Create: `tools/extract.py`, `tools/test_extract.py` · Output: `courses/***REMOVED***/{manifest.json,chapters/*.html}`
+**Files:** Create: `tools/extract.py`, `tools/test_extract.py` · Output: `courses/«giáo-trình-riêng»/{manifest.json,chapters/*.html}`
 
 **Interfaces:** Produces: `extract_chapters(src: str) -> dict[str, str]` (id→fragment HTML, không gồm `home`), `build_manifest(src: str) -> dict` (đúng schema spec §3), CLI `python3 tools/extract.py --source <file> --out <repo-root>` (idempotent, ghi đè).
 
@@ -116,7 +129,7 @@ def test_dollar_parity_and_no_script_close():
 
 def test_manifest_shape():
     m = build_manifest(SRC)
-    assert m["id"] == "***REMOVED***" and m["runtime"] == "^1"
+    assert m["id"] == "«giáo-trình-riêng»" and m["runtime"] == "^1"
     chapters = [c for p in m["parts"] for c in p["chapters"]]
     assert len(chapters) == 44
     assert chapters[0]["id"] == "p0-1" and chapters[-1]["id"] == "appx"
@@ -131,7 +144,7 @@ def test_manifest_shape():
 #!/usr/bin/env python3
 import argparse, json, pathlib, re
 
-SRC_DEFAULT = "~/Documents/claude/Research/***REMOVED***.html"
+SRC_DEFAULT = "~/Documents/claude/Research/«giáo-trình-riêng».html"
 TPL_RE = re.compile(r'<script type="text/html" id="tpl-([\w-]+)">(.*?)</script>', re.S)
 CH_ROW = re.compile(r"\{id:'([\w-]+)',\s*part:'([^']*)',\s*num:'([^']*)',\s*title:'([^']*)',\s*short:'([^']*)'\}")
 
@@ -150,8 +163,8 @@ def build_manifest(src: str) -> dict:
         if key not in parts: parts[key] = []; order.append(key)
         parts[key].append({"id": row["id"], "num": row["num"], "title": row["title"],
                            "short": row["short"], "file": f"chapters/{row['id']}.html"})
-    return {"id": "***REMOVED***", "title": "***REMOVED***",
-            "description": "Từ tiên đề Shannon đến định lượng bất định trong LLM",
+    return {"id": "«giáo-trình-riêng»", "title": "«Giáo trình riêng»",
+            "description": "«mô tả của giáo trình riêng»",
             "lang": "vi", "version": "1.0.0", "runtime": "^1",
             "parts": [{"title": k, "chapters": parts[k]} for k in order]}
 
@@ -159,7 +172,7 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--source", default=SRC_DEFAULT); ap.add_argument("--out", default=".")
     a = ap.parse_args()
     src = pathlib.Path(a.source).expanduser().read_text(encoding="utf-8")
-    root = pathlib.Path(a.out) / "courses" / "***REMOVED***"
+    root = pathlib.Path(a.out) / "courses" / "«giáo-trình-riêng»"
     (root / "chapters").mkdir(parents=True, exist_ok=True)
     for cid, frag in extract_chapters(src).items():
         (root / "chapters" / f"{cid}.html").write_text(frag, encoding="utf-8")
@@ -169,14 +182,14 @@ def main():
 if __name__ == "__main__": main()
 ```
 
-- [ ] **Step 4:** `make test-extract` → PASS. Chạy `make extract`, kiểm tra `courses/***REMOVED***/chapters/` có 44 file.
+- [ ] **Step 4:** `make test-extract` → PASS. Chạy `make extract`, kiểm tra `courses/«giáo-trình-riêng»/chapters/` có 44 file.
 - [ ] **Step 5:** Commit: `feat(tools): extract chapters + manifest from v1`
 
 ---
 
 ### Task 3: extract.py — course-kit runtime + viz.js
 
-**Files:** Modify: `tools/extract.py`, `tools/test_extract.py` · Output: `packages/course-kit/{vendor/*,runtime.js,reader.css}`, `courses/***REMOVED***/viz.js`
+**Files:** Modify: `tools/extract.py`, `tools/test_extract.py` · Output: `packages/course-kit/{vendor/*,runtime.js,reader.css}`, `courses/«giáo-trình-riêng»/viz.js`
 
 **Interfaces:** Produces: file `runtime.js` (classic script) expose globals `Plot, defineViz, VIZ, PAL, cssv, mix, fmt, slider, seg, checkbox, button, ctrlRow, readout, legendRow, KL, Hb, H, …` (mọi helper v1) và `window.CourseKit = { initViz(root), renderKatex(root), REDRAWS }`. `viz.js` (classic script) chỉ chứa 59 `defineViz(...)`. `reader.css` = stylesheet v1 nguyên vẹn.
 
@@ -211,7 +224,7 @@ window.CourseKit = { initViz, renderKatex, REDRAWS, VIZ };
 ```
 
   Lưu ý: `initViz` v1 gọi `$$('[data-viz]', root)` — helpers `$`/`$$` đã nằm trong CORE UTILITIES nên giữ nguyên. Trong `main()` ghi các file output + chạy `node --check` cho runtime.js và viz.js (subprocess; fail thì raise).
-- [ ] **Step 4:** `make test-extract` → PASS; `make extract`; `node --check packages/course-kit/runtime.js && node --check courses/***REMOVED***/viz.js` → OK.
+- [ ] **Step 4:** `make test-extract` → PASS; `make extract`; `node --check packages/course-kit/runtime.js && node --check courses/«giáo-trình-riêng»/viz.js` → OK.
 - [ ] **Step 5:** Commit: `feat(tools): extract course-kit runtime, vendor katex, viz.js`
 
 ---
@@ -280,7 +293,7 @@ CREATE TABLE events (
   course_id text NOT NULL, chapter_id text NOT NULL,
   kind text NOT NULL, meta jsonb NOT NULL DEFAULT '{}', at timestamptz NOT NULL);
 CREATE INDEX idx_events_user_at ON events (user_id, at);
-INSERT INTO courses (id, title) VALUES ('***REMOVED***', '***REMOVED***');
+INSERT INTO courses (id, title) VALUES ('«giáo-trình-riêng»', '«Giáo trình riêng»');
 ```
 
 - [ ] **Step 2: Test fail:** `store_test.go` — TestPool spin container `postgres:16-alpine`, MigrateUp, rồi `SELECT count(*) FROM courses` = 1.
@@ -344,7 +357,7 @@ WHERE EXCLUDED.updated_at > annotations.updated_at
 ```json
 { "totalMinutes": 372, "streakDays": 5,
   "days": [{"date":"2026-08-19","minutes":42}],
-  "courses": [{"courseId":"***REMOVED***","minutes":372,"chaptersDone":12}] }
+  "courses": [{"courseId":"«giáo-trình-riêng»","minutes":372,"chaptersDone":12}] }
 ```
 
 Quy đổi: mỗi heartbeat = 0.5 phút (interval 30s). `days` = 30 ngày gần nhất. Streak = số ngày liên tiếp tính từ hôm nay có ≥1 heartbeat.
@@ -481,14 +494,14 @@ mergeRow(local, incoming): Row                                   // pure: update
 test('P1 DoD: đọc + sync 2 thiết bị', async ({ browser }) => {
   const a = await browser.newContext(); const p1 = await a.newPage();
   await p1.goto('/login'); await register(p1, 'e2e@tuhoc.dev', 'secret123');
-  await p1.goto('/c/***REMOVED***/p2-10');
+  await p1.goto('/c/«giáo-trình-riêng»/p2-10');
   await expect(p1.locator('.katex').first()).toBeVisible();
   await expect(p1.locator('[data-viz="waterfill"] canvas')).toBeVisible();
   const errors: string[] = []; p1.on('pageerror', e => errors.push(String(e)));
   await p1.click('#mark-btn'); await p1.waitForTimeout(16000);      // chờ 1 chu kỳ sync
   const b = await browser.newContext(); const p2 = await b.newPage();
   await login(p2, 'e2e@tuhoc.dev', 'secret123');
-  await p2.goto('/c/***REMOVED***');
+  await p2.goto('/c/«giáo-trình-riêng»');
   await expect(p2.locator('[data-ch="p2-10"].done')).toBeVisible(); // tiến độ hiện trên "thiết bị 2"
   expect(errors).toEqual([]);
 });

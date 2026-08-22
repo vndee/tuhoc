@@ -248,8 +248,8 @@ describe('fetchPackage — a package that LIES about its tier', () => {
 
   it('does NOT refuse a manifest missing the registry-facing v2 fields — the server accepts those today', async () => {
     // `license`/`authors`/`generatedBy` are absent from the fixture manifest at
-    // the top of this file, and from `courses/***REMOVED***`'s own v1
-    // manifest. `apps/api`'s usecase.go does not require them either. Turning
+    // the top of this file, and from the v1 manifests `tools/extract.py`
+    // emits. `apps/api`'s usecase.go does not require them either. Turning
     // this boundary into a v2 gate would make packages the server legitimately
     // stored unreadable on the device that stored them — a format migration,
     // taken by accident inside a security fix.

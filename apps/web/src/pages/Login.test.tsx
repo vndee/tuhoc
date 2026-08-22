@@ -228,7 +228,7 @@ function SyncLifecycleProbe({ onSyncCouldStart }: { onSyncCouldStart: () => void
 /** Puts one row in every local table, so "the tables are empty" can never pass vacuously. */
 async function seedPreviousUsersLocalData(): Promise<void> {
   await db.progress.put({
-    courseId: '***REMOVED***',
+    courseId: 'so-dau-phay-dong',
     chapterId: 'p2-10',
     status: 'read',
     done: true,
@@ -236,7 +236,7 @@ async function seedPreviousUsersLocalData(): Promise<void> {
   });
   await db.annotations.put({
     id: '22222222-2222-4222-8222-222222222222',
-    courseId: '***REMOVED***',
+    courseId: 'so-dau-phay-dong',
     chapterId: 'p2-10',
     anchor: {},
     note: "previous user's private note",
@@ -244,7 +244,7 @@ async function seedPreviousUsersLocalData(): Promise<void> {
     updatedAt: '2026-08-19T10:00:00.000Z',
     deletedAt: null,
   });
-  await db.outbox.add({ table: 'progress', row: { courseId: '***REMOVED***', chapterId: 'p2-10' } });
+  await db.outbox.add({ table: 'progress', row: { courseId: 'so-dau-phay-dong', chapterId: 'p2-10' } });
   await db.outbox.add({ table: 'events', row: { kind: 'heartbeat' } });
   await db.meta.put({ key: 'syncCursor', value: '2026-08-19T10:00:00Z' });
 }

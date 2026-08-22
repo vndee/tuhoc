@@ -58,7 +58,7 @@ thư mục con đó). Đây là bản đầy đủ:
   "license": "CC-BY-4.0",
   "authors": [{ "name": "Nguyễn Văn A", "url": "https://github.com/nguyenvana" }],
   "generatedBy": "human",
-  "translationOf": "vndee/***REMOVED***",
+  "translationOf": "vndee/so-dau-phay-dong",
   "parts": [
     {
       "title": "Phần I · Đếm",
@@ -230,7 +230,7 @@ chạy mã, nhưng vẫn là một yêu cầu mạng người đọc không xin)
 **Trần 20 MiB, tính theo kích thước ĐÃ giải nén** (20 × 1024 × 1024 =
 20.971.520 byte), tổng mọi tệp trong gói. Tính theo kích thước nén thì một zip
 bom vài kilobyte sẽ lọt, nên trần đặt ở phía đã giải nén. Để so sánh: giáo trình
-44 chương của `***REMOVED***` nặng khoảng 1,3 MB thô. Nếu bạn chạm trần,
+44 chương của một giáo trình thật nặng khoảng 1,3 MB thô. Nếu bạn chạm trần,
 gần như chắc chắn là do ảnh chưa nén.
 
 Trần ấy áp cả khi **mở** gói: trình đọc dừng giải nén ngay khi tổng vượt ngưỡng,
@@ -299,7 +299,7 @@ Registry là một repo GitHub công khai. Mỗi course là một thư mục. Đ
 một PR thêm thư mục đó.
 
 **Tên trên registry là `<tài-khoản-github>/<mã-course>`** — ví dụ
-`vndee/***REMOVED***`. Nhờ tiền tố tài khoản, `id` của bạn chỉ cần duy nhất
+`vndee/so-dau-phay-dong`. Nhờ tiền tố tài khoản, `id` của bạn chỉ cần duy nhất
 trong phạm vi tài khoản bạn; không có cơ quan cấp phát tên nào cả.
 
 Quy trình:
@@ -348,9 +348,9 @@ Không nhồi hai ngôn ngữ vào một gói. Bản dịch có `id` riêng, `la
 
 ```json
 {
-  "id": "information-theory",
+  "id": "floating-point",
   "lang": "en",
-  "translationOf": "vndee/***REMOVED***"
+  "translationOf": "vndee/so-dau-phay-dong"
 }
 ```
 

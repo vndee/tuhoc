@@ -23,7 +23,8 @@ export interface Chapter {
   id: string;
   /**
    * Display label, e.g. "0.1" — **may be the empty string** for a chapter that
-   * carries no number (the appendix of `courses/***REMOVED***` does).
+   * carries no number (the appendix of `fixtures/courses/so-dau-phay-dong`
+   * does).
    * The reader already branches on that; see `CourseNav.tsx`'s `num || '·'`.
    */
   num: string;
@@ -50,8 +51,8 @@ export interface Part {
  *   `scanHtmlText`'s catch/miss table before treating that as a security
  *   guarantee: it is the first fence, and the registry's human review is the
  *   one that has to hold.
- * - `interactive` — may ship JavaScript (the simulations in
- *   `courses/***REMOVED***/viz.js` are why this tier exists). Validation
+ * - `interactive` — may ship JavaScript (the canvas simulations a course
+ *   ships in its own `viz.js` are why this tier exists). Validation
  *   deliberately does NOT try to sanitize that code; the guarantee for this
  *   tier comes from human review at the registry, not from this module.
  *

@@ -4,7 +4,7 @@ import { COURSE_TITLE, PASSWORD, expectVizRendered, freshEmail, isBenignAuthChec
 /**
  * Cổng nghiệm thu của hệ thống con 1: **gói thật, qua đường import thật**.
  *
- * Task 11 bóc `courses/***REMOVED***/` ra khỏi repo và biến nó thành gói
+ * Task 11 bóc giáo trình riêng tư của tác giả ra khỏi repo và biến nó thành gói
  * import đầu tiên của chính tác giả; task 13 thay ngữ liệu ấy bằng gói mẫu
  * công khai `so-dau-phay-dong` để bản clone của người khác cũng chạy được cổng
  * này. Cả hai lần, điều được kiểm không đổi: đường import chỉ có nghĩa nếu nó

@@ -10,7 +10,7 @@
  *     Library   = GET /courses  ∪  db.packages
  *
  * Measured, same session, seconds apart: the Dashboard showed a card reading
- * *"***REMOVED*** · 1/44 chương · 42 phút"* while `/library` showed zero
+ * *"<tên khoá học> · 1/44 chương · 42 phút"* while `/library` showed zero
  * rows under the heading *"Thư viện của bạn đang trống"* and advised the reader
  * to import the course they were in the middle of reading. Neither screen was
  * lying about its own inputs; they simply disagreed about the question.

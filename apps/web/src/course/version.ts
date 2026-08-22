@@ -228,10 +228,11 @@ async function readVersion(courseId: string, version: string): Promise<VersionFi
  * stored quote describes the chapter as the READER saw it, which is after
  * `ChapterView`'s pipeline has run `CourseKit.renderKatex` over it: every
  * formula is one `'￼'` in the projection `anchor.ts` searches, not the `$…$`
- * source that is sitting in the package. Measured on the real p1-5 of
- * `courses/***REMOVED***` with 30 notes, of which 29 quote a formula —
- * 20 paragraphs untouched, 6 copy-edited, 4 deleted (`version.test.ts`'s last
- * block; the second row is that suite run with this one call removed):
+ * source that is sitting in the package. Measured on one real, formula-dense
+ * chapter of a real packed course carrying 30 notes, 29 of which quote a
+ * formula — 20 paragraphs untouched, 6 copy-edited, 4 deleted
+ * (`version.test.ts`'s last block; the second row is that suite run with
+ * this one call removed):
  *
  *     with renderKatex     20 exact ·  6 fuzzy ·  4 orphan   (the truth)
  *     without               1 exact ·  3 fuzzy · 26 orphan

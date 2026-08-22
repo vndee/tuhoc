@@ -100,7 +100,7 @@ func samplePackage(ownerID uuid.UUID, courseID, version string) course.Package {
 		Version:  version,
 		Tier:     "content",
 		Lang:     "vi",
-		Title:    "***REMOVED***",
+		Title:    "Số dấu phẩy động",
 		Manifest: json.RawMessage(fmt.Sprintf(
 			`{"id":%q,"version":%q,"lang":"vi","chapters":["p0-1","p0-2"]}`, courseID, version)),
 		Blob:  sampleBlob(),
@@ -141,7 +141,7 @@ func TestPutThenGetRoundTrips(t *testing.T) {
 	ctx := context.Background()
 
 	owner := newOwner(t, pool, "roundtrip")
-	want := samplePackage(owner, "***REMOVED***", "1.2.3")
+	want := samplePackage(owner, "so-dau-phay-dong", "1.2.3")
 
 	before := time.Now().UTC().Add(-time.Minute)
 	if err := repo.Put(ctx, owner, want); err != nil {
@@ -216,7 +216,7 @@ func TestOwnerCannotReadAnotherOwnersPackage(t *testing.T) {
 	ownerA := newOwner(t, pool, "leak-a")
 	ownerB := newOwner(t, pool, "leak-b")
 
-	const courseID = "***REMOVED***"
+	const courseID = "so-dau-phay-dong"
 	const version = "1.0.0"
 
 	pkgA := samplePackage(ownerA, courseID, version)
@@ -274,7 +274,7 @@ func TestListVersionsSortsSemverNotLexically(t *testing.T) {
 	ctx := context.Background()
 
 	owner := newOwner(t, pool, "semver")
-	const courseID = "***REMOVED***"
+	const courseID = "so-dau-phay-dong"
 
 	for _, v := range []string{"1.10.0", "1.0.0", "1.9.0"} {
 		if err := repo.Put(ctx, owner, samplePackage(owner, courseID, v)); err != nil {
@@ -794,7 +794,7 @@ func manifestDoc(courseID, version string, chapterFiles ...string) map[string]an
 	}
 	return map[string]any{
 		"id":          courseID,
-		"title":       "***REMOVED***",
+		"title":       "Số dấu phẩy động",
 		"description": "Một câu mô tả.",
 		"lang":        "vi",
 		"version":     version,

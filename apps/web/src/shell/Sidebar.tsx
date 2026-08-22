@@ -97,7 +97,7 @@ export function Sidebar() {
         </p>
         {/*
           The subtitle names the course that is open, and does not exist when
-          none is. It used to be the literal string "***REMOVED***" —
+          none is. It used to be one course's title, written into the JSX —
           right back when the app shipped exactly one course, and a lie on
           every screen after that: on `/library` it read as the name of the
           library itself, on `/import` and the dashboard it named a course
