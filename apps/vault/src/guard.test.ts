@@ -3,6 +3,7 @@ import {
   BUCKET_CAPACITY,
   BUCKET_REFILL_MS,
   MAX_LOG_ENTRIES,
+  SESSION_CHAR_BUDGET,
   checkAndConsume,
   clearActivity,
   grantConsent,
@@ -733,5 +734,300 @@ describe('BẪY: KHÔNG thông điệp nào từ trang chính cấp được xá
     for (const h of hostile) send(h, reply);
     expect(hasConsent()).toBe(false);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ═══════════════ 7. Ngân sách KÝ TỰ mỗi phiên (Task 9b) ═══════════════
+
+/**
+ * **Vì sao có mục này.** Người dựng Task 9 tự đo và tự kết luận rằng người gác
+ * của họ **không chạm được nửa nghiêm trọng hơn của HC-3**. Nguyên văn báo cáo
+ * của họ: *"đốt tiền thì đã đắt; tuồn ghi chú thì chưa"*.
+ *
+ * Lý do rất cụ thể và không tranh cãi được: token bucket đếm **SỐ LẦN GỌI**
+ * (8 liên tiếp, 1 token/6 s), **không đếm SỐ KÝ TỰ**. Trong đúng hạn ngạch ấy,
+ * một course độc vẫn gửi được **~10 lời nhắc DÀI TUỲ Ý mỗi phút** — tức là toàn
+ * bộ ghi chú riêng tư của người học có thể đi hết trong vài phút mà **không lời
+ * gọi nào bị từ chối**. Cú bấm xác nhận không cứu được: nó là **một cú bấm cho
+ * cả phiên**, và người dùng sẽ bấm, vì họ muốn dùng AI.
+ *
+ * Vì vậy: kho khoá đếm **tổng số ký tự đã gửi** trong phiên, và vượt ngưỡng thì
+ * **đòi bấm xác nhận lại** — không chặn vĩnh viễn, vì người dùng thật vẫn phải
+ * dùng được.
+ *
+ * ─────────────────────── ĐO CÁI GÌ, VÀ ĐO THẾ NÀO ───────────────────────
+ *
+ * **Đếm lời gọi `fetch` THẬT, và đếm số ký tự TRÊN DÂY — không đếm hồi đáp.**
+ * Task 9 đã chứng minh vì sao bằng một phép đo: mutant *"gọi mạng rồi mới trả
+ * `rate_limited`"* cho **hồi đáp y hệt** (92 × `rate_limited`) trong khi số lời
+ * gọi `fetch` nhảy từ 8 lên **100**. Một bài kiểm đếm hồi đáp sẽ xanh trọn vẹn
+ * trong khi người dùng bị đốt tiền đủ 100 lần. Cùng lập luận áp cho ký tự: thứ
+ * duy nhất đáng đếm là **số ký tự đã rời khỏi máy**, nên `charsOnTheWire()` đọc
+ * thẳng **thân yêu cầu `fetch`**, không đọc nhật ký và không đọc hồi đáp.
+ */
+
+// ───────── phép đo trên GÓI MẪU THẬT, không phải phán đoán ─────────
+
+/**
+ * Đo ngày **2026-08-22** trên `fixtures/courses/`, bằng parse5, lấy phần **văn
+ * bản** (bỏ `<script>`/`<style>`, gộp khoảng trắng) — tức đúng thứ người đọc
+ * nhìn thấy và đúng thứ Task 7 sẽ nhét vào lời nhắc:
+ *
+ * ```
+ * so-dau-phay-dong   8 chương   dài nhất 19.343   trung bình 14.734   cả gói 117.872
+ * bat-bien-vong-lap  3 chương   dài nhất 12.814   trung bình 12.561   cả gói  37.684
+ * ```
+ *
+ * **Hai con số dưới đây là ẢNH CHỤP, không phải phép đo chạy lại mỗi lần test.**
+ * `apps/vault/tsconfig.json` cố ý không có `types: ["node"]`, nên tệp này không
+ * đọc được `fixtures/` lúc chạy mà không kéo theo một thay đổi cấu hình build.
+ * Lệnh đã sinh ra chúng nằm trong `task-9b-report.md §2`; nếu gói mẫu đổi, phải
+ * chạy lại lệnh ấy và sửa ở đây.
+ */
+const LONGEST_REAL_CHAPTER = 19_343;
+const WHOLE_SAMPLE_COURSE = 117_872;
+
+/** Số lời gọi mà ngân sách cho phép khi mỗi lời nhắc dài bằng **chương dài nhất
+ *  thật**. Tính từ hằng số chứ không viết tay, để đổi ngưỡng thì bài kiểm đi
+ *  theo thay vì đỏ oan. */
+const CALLS_PER_BUDGET = Math.floor(SESSION_CHAR_BUDGET / LONGEST_REAL_CHAPTER);
+
+/** Một lời nhắc dài đúng bằng chương dài nhất thật, **mang ghi chú riêng tư ở
+ *  đầu** — để bẫy `NOTE` trong `afterEach` vẫn đo đúng thứ nó đo. */
+const CHAPTER_PROMPT = NOTE + 'x'.repeat(LONGEST_REAL_CHAPTER - NOTE.length);
+
+/**
+ * Tổng số ký tự nội dung **đã thật sự rời khỏi máy**, đọc từ thân yêu cầu
+ * `fetch`. Đây là con số duy nhất trả lời được câu hỏi của HC-3 (*"bao nhiêu
+ * ghi chú của tôi đã đi ra ngoài?"*) — nhật ký và hồi đáp đều không trả lời được.
+ */
+function charsOnTheWire(spy: { mock: { calls: unknown[][] } }): number {
+  let n = 0;
+  for (const call of spy.mock.calls) {
+    const init = call[1] as { body?: unknown } | undefined;
+    if (typeof init?.body !== 'string') continue;
+    const parsed = JSON.parse(init.body) as { messages?: Array<{ content?: unknown }> };
+    for (const m of parsed.messages ?? []) {
+      if (typeof m.content === 'string') n += m.content.length;
+    }
+  }
+  return n;
+}
+
+describe('ngân sách KÝ TỰ mỗi phiên — nửa NGHIÊM TRỌNG của HC-3', () => {
+  it('ngưỡng đến từ PHÉP ĐO trên gói mẫu thật, không phải một con số nghĩ ra', () => {
+    // Sàn: một lời nhắc dài bằng CHƯƠNG DÀI NHẤT THẬT phải đi lọt nhiều lần
+    // trước khi phải bấm lại. Ngân sách chỉ đủ một hai chương là một con dấu
+    // cao su — người dùng bấm liên tục và thôi đọc thứ mình đang bấm.
+    expect(SESSION_CHAR_BUDGET).toBeGreaterThanOrEqual(4 * LONGEST_REAL_CHAPTER);
+    // Trần: MỘT cú bấm không được mua quá nhiều. Mốc là **cả gói mẫu**: một lần
+    // xác nhận không được đáng giá hơn "đọc trọn giáo trình ra ngoài" mấy lần.
+    expect(SESSION_CHAR_BUDGET).toBeLessThanOrEqual(2 * WHOLE_SAMPLE_COURSE);
+    // Và ngưỡng phải LỚN HƠN một lời nhắc thật dài nhất — nếu không thì lời gọi
+    // hợp lệ đầu tiên đã bị chặn và tính năng chết ngay khi bật.
+    expect(SESSION_CHAR_BUDGET).toBeGreaterThan(LONGEST_REAL_CHAPTER);
+    expect(CALLS_PER_BUDGET).toBeGreaterThanOrEqual(4);
+  });
+
+  it('một lời nhắc dài bằng CHƯƠNG DÀI NHẤT THẬT vẫn đi được — người thật không bị chặn', () => {
+    grantConsent();
+    const d = checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' });
+    expect(d.allow).toBe(true);
+    expect(readActivity().calls[0].chars).toBe(LONGEST_REAL_CHAPTER);
+  });
+
+  it('BẪY TRUNG TÂM CỦA TASK NÀY: trong hạn ngạch LỜI GỌI, tổng KÝ TỰ vẫn bị chặn', () => {
+    // Đồng hồ được đẩy đủ xa giữa mỗi lời gọi để token bucket **luôn đầy** —
+    // nghĩa là bucket KHÔNG từ chối lấy một lời gọi nào. Thứ duy nhất còn chặn
+    // được là ngân sách ký tự. Gỡ ngân sách ra thì cả 40 lời gọi đều đi lọt.
+    grantConsent();
+    let allowed = 0;
+    let sent = 0;
+    for (let i = 0; i < 40; i += 1) {
+      clock += BUCKET_REFILL_MS * BUCKET_CAPACITY; // bucket đầy lại hoàn toàn
+      const d = checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' });
+      if (d.allow) {
+        allowed += 1;
+        sent += LONGEST_REAL_CHAPTER;
+      }
+    }
+    expect(allowed).toBe(CALLS_PER_BUDGET);
+    expect(allowed).toBeLessThan(40);
+    expect(sent).toBeLessThanOrEqual(SESSION_CHAR_BUDGET);
+  });
+
+  it('vượt ngân sách ⇒ ĐÒI XÁC NHẬN LẠI (`needs_consent`), không phải chặn vĩnh viễn', () => {
+    grantConsent();
+    for (let i = 0; i < CALLS_PER_BUDGET; i += 1) {
+      clock += BUCKET_REFILL_MS * BUCKET_CAPACITY;
+      expect(checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' }).allow).toBe(true);
+    }
+    clock += BUCKET_REFILL_MS * BUCKET_CAPACITY;
+    const d = checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' });
+    expect(d.allow).toBe(false);
+    expect(d.code).toBe('needs_consent');
+    // Xác nhận đã bị RÚT: khung sẽ vẽ lại cái nút, nên người dùng có chỗ bấm.
+    // Không có phần này thì `needs_consent` là một ngõ cụt.
+    expect(hasConsent()).toBe(false);
+
+    // Và người dùng THẬT phải dùng tiếp được sau khi bấm.
+    grantConsent();
+    clock += BUCKET_REFILL_MS * BUCKET_CAPACITY;
+    expect(checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' }).allow).toBe(true);
+  });
+
+  it('BẪY: bấm xác nhận LẠI làm mới ngân sách ký tự nhưng KHÔNG mở lại token bucket', () => {
+    // Nếu cú bấm cũng nạp đầy bucket thì nút "Cho phép" thành nút "Bỏ giới hạn
+    // tần suất" — cùng hình dạng với cái bẫy `clearActivity` của Task 9.
+    grantConsent();
+    for (let i = 0; i < BUCKET_CAPACITY; i += 1) checkAndConsume({ chars: 1, providerId: 'deepseek' });
+    expect(checkAndConsume({ chars: 1, providerId: 'deepseek' }).code).toBe('rate_limited');
+    grantConsent();
+    expect(checkAndConsume({ chars: 1, providerId: 'deepseek' }).code).toBe('rate_limited');
+  });
+
+  it('BẪY: ngân sách sống trong Ô NHỚ, nên NẠP LẠI KHUNG không cấp ngân sách mới', async () => {
+    // Cùng lỗ hổng mà Task 9 đã tìm ra cho bucket, theo đúng đường đó: trang
+    // chính điều khiển `iframe.src`, nên một biến trong module đầy lại sau mỗi
+    // lần nạp khung — trong khi xác nhận thì vẫn còn. Một ngân sách trong bộ
+    // nhớ là **không có ngân sách gì cả**.
+    grantConsent();
+    for (let i = 0; i < CALLS_PER_BUDGET; i += 1) {
+      clock += BUCKET_REFILL_MS * BUCKET_CAPACITY;
+      checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' });
+    }
+    vi.resetModules();
+    const fresh = (await import('./guard')) as typeof import('./guard');
+    clock += BUCKET_REFILL_MS * BUCKET_CAPACITY;
+    const d = fresh.checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' });
+    expect(d.allow).toBe(false);
+    expect(d.code).toBe('needs_consent');
+  });
+
+  it('FAIL CLOSED: không ghi được ngân sách ⇒ TỪ CHỐI, không phải cho qua', () => {
+    grantConsent();
+    const orig = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      k: string,
+      v: string,
+    ) {
+      if (k.includes('consent')) throw new DOMException('QuotaExceededError');
+      return orig.call(this, k, v);
+    });
+    // Không cộng được số ký tự vừa gửi nghĩa là không đếm được nữa; cho qua
+    // trong tình huống đó là bỏ hẳn ngân sách. Cùng chính sách với bucket.
+    expect(checkAndConsume({ chars: 10, providerId: 'deepseek' }).allow).toBe(false);
+  });
+
+  it('lời gọi BỊ TỪ CHỐI không tiêu ngân sách ký tự', () => {
+    // Chưa xác nhận: 50 lời gọi khổng lồ bị chặn. Nếu chúng vẫn bị tính vào
+    // ngân sách thì một course độc chỉ cần spam TRƯỚC cú bấm là ngân sách của
+    // người dùng đã cạn trước lời gọi thật đầu tiên.
+    for (let i = 0; i < 50; i += 1) {
+      checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' });
+    }
+    grantConsent();
+    let allowed = 0;
+    for (let i = 0; i < 40; i += 1) {
+      clock += BUCKET_REFILL_MS * BUCKET_CAPACITY;
+      if (checkAndConsume({ chars: LONGEST_REAL_CHAPTER, providerId: 'deepseek' }).allow) allowed += 1;
+    }
+    expect(allowed).toBe(CALLS_PER_BUDGET);
+  });
+
+  it('một lời nhắc MỘT MÌNH vượt cả ngân sách bị chặn — và KHÔNG làm mất xác nhận', () => {
+    // Chống KẸT CHẾT: nếu lời nhắc khổng lồ cũng rút xác nhận thì người dùng
+    // bấm lại, gửi lại, bị chặn lại — bấm mãi không thoát. Ở đây phiên vẫn sống
+    // và các lời gọi bình thường vẫn đi được.
+    grantConsent();
+    const d = checkAndConsume({ chars: SESSION_CHAR_BUDGET + 1, providerId: 'deepseek' });
+    expect(d.allow).toBe(false);
+    expect(hasConsent()).toBe(true);
+    expect(checkAndConsume({ chars: 10, providerId: 'deepseek' }).allow).toBe(true);
+  });
+
+  it('số ký tự KHÔNG ĐO ĐƯỢC (NaN, âm, Infinity) ⇒ TỪ CHỐI, không phải coi như 0', () => {
+    // `NaN + x > NGƯỠNG` là `false`, nên coi một số vô lý là 0 sẽ mở một đường
+    // đi vòng qua ngân sách. Kho khoá không cho đi ra thứ nó không đo được.
+    grantConsent();
+    for (const bad of [Number.NaN, -1, Number.POSITIVE_INFINITY]) {
+      expect(checkAndConsume({ chars: bad, providerId: 'deepseek' }).allow).toBe(false);
+    }
+    expect(readActivity().calls).toEqual([]);
+  });
+
+  it('ngân sách nằm ở sessionStorage cùng bản ghi xác nhận — hết phiên là hết', () => {
+    grantConsent();
+    checkAndConsume({ chars: 4242, providerId: 'deepseek' });
+    let inLocal = 0;
+    for (let i = 0; i < localStorage.length; i += 1) {
+      if ((localStorage.key(i) ?? '').includes('consent')) inLocal += 1;
+    }
+    expect(inLocal).toBe(0);
+    // Số đã tiêu phải thật sự nằm trong ô nhớ, không nằm trong một biến.
+    expect(sessionStorage.getItem('tuhoc.vault.guard.consent') ?? '').toContain('4242');
+  });
+
+  it('FAIL CLOSED: bản ghi xác nhận KHÔNG đọc được số đã tiêu ⇒ đòi bấm lại', () => {
+    // Hình dạng thật của tình huống này: một tab đang mở qua một lần deploy,
+    // giữ lại bản ghi `{at}` của bản cũ (chưa có trường `chars`). Coi nó là
+    // "đã tiêu 0" là cấp một ngân sách mới miễn phí. Đọc không ra ⇒ bấm lại.
+    sessionStorage.setItem('tuhoc.vault.guard.consent', JSON.stringify({ at: clock }));
+    const d = checkAndConsume({ chars: 10, providerId: 'deepseek' });
+    expect(d.allow).toBe(false);
+    expect(d.code).toBe('needs_consent');
+    expect(hasConsent()).toBe(false);
+  });
+
+  it('ô nhớ xác nhận HỎNG HẲN (không phải JSON) cũng đòi bấm lại, và không ném', () => {
+    sessionStorage.setItem('tuhoc.vault.guard.consent', '{khong-phai-json');
+    expect(() => checkAndConsume({ chars: 10, providerId: 'deepseek' })).not.toThrow();
+    expect(checkAndConsume({ chars: 10, providerId: 'deepseek' }).allow).toBe(false);
+  });
+});
+
+describe('ngân sách ký tự, đo TRÊN DÂY qua đường `chat` thật', () => {
+  beforeEach(() => {
+    writeConfig({ providerId: 'deepseek', model: 'deepseek-chat', apiKey: KEY });
+  });
+
+  it('BẪY CỦA BRIEF: 40 lời nhắc dài, bucket LUÔN ĐẦY ⇒ `fetch` chỉ chạy đúng số lần ngân sách cho', async () => {
+    // Đây là bài kiểm mà cả task này xoay quanh, và nó cố ý dựng đúng tình
+    // huống mà Task 9 **không** chặn được: token bucket không từ chối lấy một
+    // lời gọi nào (đồng hồ được đẩy đủ xa), key đã cắm, nhà cung cấp hợp lệ,
+    // xác nhận đã bấm. Task 9 nguyên bản cho cả 40 lời nhắc đi ra.
+    grantConsent();
+    const fetchSpy = vi.fn(async () => okStream(sseBody('x')));
+    vi.stubGlobal('fetch', fetchSpy);
+    const reply = vi.fn();
+    for (let i = 0; i < 40; i += 1) {
+      clock += BUCKET_REFILL_MS * BUCKET_CAPACITY;
+      send(chatRequest({ id: `b${i}`, messages: [{ role: 'user', content: CHAPTER_PROMPT }] }), reply);
+    }
+    await settle(reply, 40);
+
+    // ĐẾM LỜI GỌI MẠNG THẬT — không đếm hồi đáp. Task 9 đã đo được rằng một
+    // cài đặt gọi mạng rồi mới từ chối cho hồi đáp y hệt.
+    expect(fetchSpy).toHaveBeenCalledTimes(CALLS_PER_BUDGET);
+    expect(fetchSpy.mock.calls.length).toBeLessThan(40);
+    // Và đếm SỐ KÝ TỰ ĐÃ RỜI KHỎI MÁY, đọc từ thân yêu cầu.
+    expect(charsOnTheWire(fetchSpy)).toBeLessThanOrEqual(SESSION_CHAR_BUDGET);
+  });
+
+  it('ngưỡng MỚI không che mất giới hạn tần suất cũ: lời nhắc NGẮN vẫn dừng ở BUCKET_CAPACITY', async () => {
+    // Bài học Task 9: *một dây bẫy còn xanh không có nghĩa nó còn đo đúng thứ
+    // nó từng đo.* Chiều ngược lại cũng phải giữ — ngân sách ký tự không được
+    // trở thành thứ DUY NHẤT còn chặn. Với lời nhắc ngắn, ngân sách còn xa mới
+    // chạm, nên thứ chặn phải vẫn là token bucket.
+    grantConsent();
+    const fetchSpy = vi.fn(async () => okStream(sseBody('x')));
+    vi.stubGlobal('fetch', fetchSpy);
+    const reply = vi.fn();
+    for (let i = 0; i < 100; i += 1) send(chatRequest({ id: `s${i}` }), reply);
+    await settle(reply, 100);
+    expect(fetchSpy).toHaveBeenCalledTimes(BUCKET_CAPACITY);
+    expect(charsOnTheWire(fetchSpy)).toBeLessThan(SESSION_CHAR_BUDGET);
+    expect(hasConsent()).toBe(true); // ngân sách chưa hề bị chạm tới
   });
 });
