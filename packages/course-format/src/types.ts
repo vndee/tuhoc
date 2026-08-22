@@ -10,8 +10,13 @@
  * v2 is a strict superset of v1: every v1 field survives unchanged with the
  * same meaning, so a v1 manifest fails v2 validation only on the *new* required
  * fields (`tier`, `license`, `authors`, `generatedBy`), never on a changed one.
- * `courses/***REMOVED***/manifest.json` is still a v1 manifest at the time
- * of writing; task 11 adds the v2 fields to it.
+ *
+ * Measured on the one real v1 manifest that existed — the author's own textbook
+ * — the rule set returned exactly four findings, all `MANIFEST_FIELD`, one per
+ * new field. Task 11 added those four and the package packed clean; it is not
+ * in this repo any more (see `docs/publishing.md`). `tools/extract.py` still
+ * emits a v1 manifest on purpose, so that path still exercises the four
+ * findings.
  */
 
 export interface Chapter {

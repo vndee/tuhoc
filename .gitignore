@@ -14,3 +14,20 @@ apps/api/bin/
 # ở mọi nơi: gói fixture mà Task 8/12 cần commit nằm sâu trong cây và phải
 # thêm được bình thường.
 /*.zip
+
+# `courses/` là THƯ MỤC LÀM VIỆC, không phải mã nguồn (spec §2B.1, task 11).
+#
+# Course không còn sống trong repo này. Một course là một gói rời: `tuhoc pack`
+# ghi ra `.zip`, người học import `.zip` đó qua màn hình Import. Cái nằm ở đây
+# chỉ là bản đã bung của một gói, để `vite dev` phục vụ được `/courses/...` và
+# để các test chạy trên **dữ liệu thật** thay vì fixture bịa ra.
+#
+# Nạp lại nó bằng `make courses` (xem scripts/course_workspace.py). Xoá cả thư
+# mục cũng không mất gì — nguồn là các `.zip` trong kho ngoài repo.
+#
+# Được viết theo lối "bỏ qua tất cả rồi trừ ra", không phải `courses/*.zip` hay
+# một danh sách tên course: danh sách sẽ luôn đi sau thực tế, và cái giá của
+# việc đi sau ở ĐÚNG thư mục này là commit nhầm một course riêng tư — thứ mà
+# xoá ở commit sau không cứu được.
+/courses/*
+!/courses/.gitkeep

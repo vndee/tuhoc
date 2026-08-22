@@ -1,4 +1,23 @@
 #!/usr/bin/env python3
+"""Bộ chuyển đổi MỘT LẦN: bản v1 một-tệp → một thư mục course + course-kit.
+
+Nó đã chạy đúng một lần và không nằm trong build nào. Giữ lại vì nó là bản ghi
+duy nhất về cách bản v1 được cắt ra, và vì cắt lại được là cách rẻ nhất để kiểm
+một nghi ngờ về nội dung.
+
+**Đầu ra không còn là thứ được commit.** Từ task 11, `courses/` là thư mục làm
+việc bị `.gitignore` bỏ qua toàn bộ (spec §2B.1: giáo trình riêng tư không được
+nằm trong repo sắp publish). Cái được giữ là một tệp `.zip` trong kho ngoài cây
+git; đường đi từ thư mục sang `.zip` là `tuhoc pack`, và đường đi ngược lại vào
+máy người đọc là màn hình Import của app — không phải một thư mục trong repo.
+
+**Manifest tệp này ghi ra là v1**, tức thiếu bốn trường bắt buộc của v2 —
+`tier`, `license`, `authors`, `generatedBy` — nên `tuhoc pack` trên đầu ra của
+nó **thoát 1** và nêu đúng bốn trường ấy. Đó là câu trả lời đúng chứ không phải
+lỗi: bốn trường đó là quyết định về việc phát hành (hạng tin cậy nào, giấy phép
+gì, tên ai, ai viết văn), và một script bóc chữ không có tư cách đoán hộ. Điền
+tay rồi pack — các bước đầy đủ ở docs/publishing.md §1.4.
+"""
 import argparse, json, pathlib, re, subprocess
 
 SRC_DEFAULT = "~/Documents/claude/Research/***REMOVED***.html"

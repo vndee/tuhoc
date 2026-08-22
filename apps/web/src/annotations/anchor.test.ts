@@ -11,6 +11,7 @@ import {
   selectionToAnchor,
   StaleNormMapError,
 } from './anchor';
+import { realCourseFile } from '../test/realCourse';
 import { flatToDom, normalizeContainer, rangeToFlat } from './normalize';
 
 /**
@@ -1397,7 +1398,11 @@ describe('chi phí fuzzy — không được treo trình duyệt lúc mở chư�
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '../../../..');
-const CHAPTER = resolve(REPO, 'courses/***REMOVED***/chapters/p1-5.html');
+// Chương THẬT, không phải fixture — và từ task 11 nó không nằm trong repo nữa.
+// `realCourseFile` giải đường dẫn trong thư mục làm việc `courses/`, và ném ra
+// câu chỉ đúng lệnh phải chạy khi gói chưa được nạp về. Xem
+// apps/web/src/test/realCourse.ts.
+const CHAPTER = realCourseFile('chapters/p1-5.html');
 
 let katexLoaded = false;
 function loadKatex(): void {

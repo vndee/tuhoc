@@ -67,6 +67,38 @@ function copyDir(src: string, dest: string) {
 }
 
 /**
+ * `copyDir`, but a source directory that is not there is a normal state rather
+ * than a build failure.
+ *
+ * That is only true of ONE of the two directories this plugin copies, and the
+ * asymmetry is the point:
+ *
+ *   - `packages/course-kit` is source. It is committed, `runtime.js` and the
+ *     KaTeX vendor bundle are what every chapter renders through, and a build
+ *     that quietly shipped without it would produce a site whose every page is
+ *     blank formulas. Missing there must stay loud, so it does NOT come
+ *     through here.
+ *   - `courses/` is a **working directory**, not source (see `.gitignore`).
+ *     Since task 11 no course lives in this repo; a course is a detachable
+ *     package the reader imports from a `.zip`. A fresh clone therefore has an
+ *     empty `courses/` — or none at all, if someone deleted the directory that
+ *     only holds a `.gitkeep` — and `bun run build` has to work in exactly
+ *     that state. `fs.cpSync` throws ENOENT on a missing source, which would
+ *     turn the ordinary case into a red build.
+ *
+ * An empty directory already worked before this; what is new is tolerating the
+ * directory being absent.
+ */
+function copyDirIfPresent(src: string, dest: string) {
+  if (!fs.existsSync(src)) {
+    fs.rmSync(dest, { recursive: true, force: true });
+    fs.mkdirSync(dest, { recursive: true });
+    return;
+  }
+  copyDir(src, dest);
+}
+
+/**
  * Makes packages/course-kit/* reachable at /course-kit/... and courses/*
  * reachable at /courses/... in BOTH `vite dev` and `vite build` output.
  *
@@ -80,6 +112,13 @@ function copyDir(src: string, dest: string) {
  *     gives explicit, verifiable control in both modes with zero extra
  *     dependencies, and both are covered by an explicit fetch-and-check step
  *     (see task report) rather than assumed to work.
+ *
+ * Since task 11, `courses/` is empty in a fresh clone: no course lives in this
+ * repo any more, and what appears there locally is a package someone unpacked
+ * with `make courses`. Both halves have to be fine with that — `serveDir`
+ * already was (a missing file falls through to `next()`, which is a 404, the
+ * right answer for a course nobody imported), and the build half is now too;
+ * see `copyDirIfPresent`.
  */
 export function courseAssets(): Plugin {
   let resolvedConfig: ResolvedConfig;
@@ -106,7 +145,7 @@ export function courseAssets(): Plugin {
         ? resolvedConfig.build.outDir
         : path.join(resolvedConfig.root, resolvedConfig.build.outDir);
       copyDir(COURSE_KIT_DIR, path.join(outDir, 'course-kit'));
-      copyDir(COURSES_DIR, path.join(outDir, 'courses'));
+      copyDirIfPresent(COURSES_DIR, path.join(outDir, 'courses'));
     },
   };
 }

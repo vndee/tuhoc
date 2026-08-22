@@ -426,6 +426,63 @@ export async function loadChapter(courseId: string, file: string): Promise<strin
 }
 
 /**
+ * The one file name a package uses for its simulations. Fixed, not read from
+ * the manifest: `packages/course-kit/runtime.js` is what `defineViz` lives in
+ * and `tools/extract.py` is what writes the file, and both spell it this way.
+ */
+const VIZ_FILE = 'viz.js';
+
+/**
+ * Blob URLs handed out for cached packages' `viz.js`, one per course.
+ *
+ * The cache is not an optimization — it is what makes `useCourseKit` work.
+ * That hook dedupes script injection **by URL** (`vizPromisesBySrc`), so a
+ * fresh `URL.createObjectURL` per call would inject the same script once per
+ * mount: `defineViz` re-run 59 times, and `runtime.js`'s registry growing a
+ * duplicate entry for every visit to a chapter. One stable URL per course is
+ * the contract that hook is written against.
+ *
+ * Keyed by `courseId`, holding the version it was made from, so that
+ * `applyUpdate` swapping in a new package version revokes the superseded blob
+ * instead of serving last version's simulations forever.
+ *
+ * Known limit, stated rather than hidden: `clearLocalData()` empties
+ * `db.packages` without going through here, so a blob for a course cleared
+ * that way stays alive until the document goes. That is one ~170 KB object per
+ * course per session, and closing it properly would mean `db/local.ts`
+ * importing this module, which already imports `db/local.ts`. `revokeVizScriptUrls`
+ * is exported for whoever needs to break that tie.
+ */
+const vizBlobUrls = new Map<string, { version: string; url: string }>();
+
+function vizBlobUrl(courseId: string, version: string, bytes: Uint8Array): string {
+  const existing = vizBlobUrls.get(courseId);
+  if (existing) {
+    if (existing.version === version) return existing.url;
+    URL.revokeObjectURL(existing.url);
+  }
+  // `type` matters: a blob served without a JavaScript MIME type is refused by
+  // `<script src>` in browsers that enforce `X-Content-Type-Options`-style
+  // checks on blob URLs, and the failure surfaces as a load error rather than
+  // as anything that names the cause.
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'text/javascript' }));
+  vizBlobUrls.set(courseId, { version, url });
+  return url;
+}
+
+/**
+ * Release every blob URL this module is holding.
+ *
+ * Called by tests between cases; also the hook for any caller that knows the
+ * cached packages have gone away (see the note on `vizBlobUrls`). Safe to call
+ * when there is nothing to release.
+ */
+export function revokeVizScriptUrls(): void {
+  for (const { url } of vizBlobUrls.values()) URL.revokeObjectURL(url);
+  vizBlobUrls.clear();
+}
+
+/**
  * Where `courseId`'s own `viz.js` lives, or `null` when this course has
  * none — the same two-source question as the manifest and the chapters,
  * asked about the one file that is loaded as a `<script src>` rather than
@@ -444,19 +501,43 @@ export async function loadChapter(courseId: string, file: string): Promise<strin
  * consumed as a `<script src>`, which the browser resolves against the
  * document, and `fetch` is the only thing here that needs an origin.
  *
- * **A cached package always answers `null`, including an `interactive`
- * one**, and that is a limit rather than an oversight. `/courses/<id>/viz.js`
- * serves the directory this app ships — for an imported package it is
- * either a 404 or, worse, a DIFFERENT course's script. The package's own
- * `viz.js` is sitting in `files`, and running it would mean handing
- * package-supplied JavaScript a `<script>` tag on this origin, which is a
- * decision about trust (see apps/api's course/handler.go on why every asset
- * is served as opaque bytes) and belongs to whoever builds that, in a task
- * that can weigh it. Until then an interactive package renders its prose
- * and skips its simulations — visibly incomplete, rather than stuck.
+ * **The question is "does this package HAVE a viz.js", not "is this package
+ * local"** — and the difference between those two is a bug this function
+ * shipped with. The first version answered `null` for every cached package,
+ * `interactive` ones included, which closed S1-F14 and opened a hole the
+ * same size: an imported `interactive` course rendered its prose and ran
+ * zero of its simulations, `viz.js` never requested. Measured on the real
+ * 46-file textbook after task 11 took it out of the repo — 0 canvases, 0
+ * registered viz — which is precisely the path the whole subsystem was
+ * built to serve. What S1-F14 actually needed was "a content package must
+ * not hang waiting for a file it does not have by definition", and that is
+ * the `files[VIZ_FILE] === undefined` branch below, kept exactly.
+ *
+ * `/courses/<id>/viz.js` is still wrong for a cached package — it serves
+ * the directory this app ships, so for an imported course it is a 404 or,
+ * worse, a DIFFERENT course's script. The package's own bytes are right
+ * there in `files`, so they are served from there, as a blob URL.
+ *
+ * **On trust.** A blob URL inherits the origin of the document that created
+ * it, so this script runs same-origin — exactly the trust
+ * `/courses/<id>/viz.js` already carries, not a widening of it. And it only
+ * ever happens for `tier: 'interactive'`, the tier spec §1.2 defines as
+ * "may ship JavaScript, and the guarantee comes from human review at the
+ * registry rather than from the validator". A `content` package cannot
+ * reach this line: `validate.ts`'s `JS_FILE_IN_PACKAGE` rejects a `.js`
+ * file at that tier, so `files['viz.js']` is absent and the branch above
+ * returns `null`.
  */
 export async function resolveVizScriptUrl(courseId: string): Promise<string | null> {
   const cached = await pinnedPackage(courseId);
-  if (cached) return null;
-  return `/courses/${encodeURIComponent(courseId)}/viz.js`;
+  if (!cached) return `/courses/${encodeURIComponent(courseId)}/viz.js`;
+
+  const bytes = cached.files[VIZ_FILE];
+  // No viz.js in the package — a `content` course, which is most of them.
+  // This is ruling S1-F14's case and its answer is unchanged: `null`, so
+  // `useCourseKit` reports `ready: true` off the shared trio alone instead
+  // of parking forever on a file that does not exist.
+  if (bytes === undefined) return null;
+
+  return vizBlobUrl(courseId, cached.version, bytes);
 }

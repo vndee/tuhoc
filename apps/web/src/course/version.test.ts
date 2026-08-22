@@ -29,6 +29,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { selectionToAnchor } from '../annotations/anchor';
 import { normalizeContainer } from '../annotations/normalize';
 import { type AnnotationRow, db, type PackageRow } from '../db/local';
+import { readRealCourseFile, REAL_COURSE_ID } from '../test/realCourse';
 import { loadManifest } from './loader';
 import { applyUpdate, CourseKitUnavailableError, previewUpdate } from './version';
 
@@ -519,9 +520,11 @@ describe('previewUpdate — the chapter renderer', () => {
  * are the copy-edited ones, 4 are the genuinely deleted ones.
  */
 
-const CHAPTER = resolve(REPO, 'courses/***REMOVED***/chapters/p1-5.html');
-const REAL_HTML = readFileSync(CHAPTER, 'utf8');
-const REAL_COURSE = '***REMOVED***';
+// Chương THẬT, không phải fixture — và từ task 11 nó không nằm trong repo nữa.
+// `readRealCourseFile` đọc trong thư mục làm việc `courses/`, và ném ra câu chỉ
+// đúng lệnh phải chạy khi gói chưa được nạp về. Xem apps/web/src/test/realCourse.ts.
+const REAL_HTML = readRealCourseFile('chapters/p1-5.html');
+const REAL_COURSE = REAL_COURSE_ID;
 
 function realManifest(version: string): Record<string, unknown> {
   return {

@@ -1,4 +1,7 @@
 import { expect, type ConsoleMessage, type Locator, type Page } from '@playwright/test';
+import { existsSync, readdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 /**
  * Shared fixtures for the two Playwright suites in this directory:
@@ -17,6 +20,46 @@ import { expect, type ConsoleMessage, type Locator, type Page } from '@playwrigh
 export const PASSWORD = 'secret123';
 /** courses/***REMOVED***/manifest.json's `title` — also the `<nav aria-label>` CourseHome renders it into (see courseHomeChapterLink below). */
 export const COURSE_TITLE = '***REMOVED***';
+
+/**
+ * Đường tới tệp `.zip` của gói course thật, trong kho NGOÀI cây git.
+ *
+ * Task 11: course không nằm trong repo nữa (spec §2B.1 — giáo trình riêng tư
+ * trong một repo sắp publish, và xoá ở commit sau không cứu được). Kho mặc định
+ * `~/Documents/claude/tuhoc-courses`, đổi bằng `TUHOC_COURSE_STORE`. `p1`,
+ * `p2` và `viz` đọc bản đã bung ở `courses/` (`make courses` bung hộ, và
+ * `make test-e2e` gọi nó trước); `import.spec.ts` cần chính tệp `.zip`, vì thứ
+ * nó kiểm là người dùng chọn tệp ở màn hình Import.
+ *
+ * Ném — không skip — khi kho không có gói. Xem đầu `import.spec.ts`.
+ */
+export function realCoursePackageZip(): string {
+  const store = resolve(
+    process.env.TUHOC_COURSE_STORE ?? join(homedir(), 'Documents', 'claude', 'tuhoc-courses'),
+  );
+  const zips = existsSync(store) ? readdirSync(store).filter((n) => n.toLowerCase().endsWith('.zip')).sort() : [];
+  const match = zips.find((n) => n.startsWith(`${REAL_COURSE_ID}-`)) ?? zips.find((n) => n.startsWith(REAL_COURSE_ID));
+  if (!match) {
+    throw new Error(
+      [
+        `Không tìm thấy gói "${REAL_COURSE_ID}" (*.zip) trong kho: ${store}`,
+        '',
+        'Cổng nghiệm thu này chạy trên GÓI THẬT, không phải fixture. Course không nằm',
+        'trong repo nữa — xem docs/publishing.md §1.',
+        '',
+        'Có thư mục course rồi thì pack vào kho:',
+        `    bun tools/tuhoc-cli/src/index.ts pack courses/${REAL_COURSE_ID} \\`,
+        `      -o ${join(store, `${REAL_COURSE_ID}-1.0.0.zip`)}`,
+        '',
+        'Kho ở nơi khác: đặt TUHOC_COURSE_STORE.',
+      ].join('\n'),
+    );
+  }
+  return join(store, match);
+}
+
+/** `manifest.id` của giáo trình — cũng là tên thư mục `make courses` bung ra. */
+export const REAL_COURSE_ID = '***REMOVED***';
 
 /** A unique account per run (down to the millisecond) — this suite runs against a fresh, empty database each time (see compose.e2e.yml's no-volume policy), but uniqueness costs nothing and protects a developer running it twice against a stack they forgot to tear down. */
 export function freshEmail(): string {
