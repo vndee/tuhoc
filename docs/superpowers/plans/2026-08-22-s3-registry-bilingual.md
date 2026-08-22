@@ -63,6 +63,30 @@ Ràng buộc kèm theo: CI **phải chạy đúng `packages/course-format`**, kh
 định tổng đã đo *"một bộ luật, ba nơi"* thực ra là **ba bản bất đồng ở 7/12 hàng**. Đừng tạo bản thứ
 tư.
 
+### HC-2b. Registry là repo RIÊNG — nó lấy bộ luật ở đâu (quyết định 2026-08-22)
+
+Người cài đặt Task 1 nêu đúng câu hỏi và **cố ý không tự quyết**: workflow hiện sống trong repo nền
+tảng với `REGISTRY_ROOT: fixtures/courses`, nên **cổng registry và sáu tệp unit test đang dùng chung
+một cây course**. Nếu registry thật sự là repo riêng, cách nó lấy `packages/course-format` quyết định
+việc *"một bộ luật, một bản"* có sống sót hay không.
+
+Ba đường và vì sao chọn đường thứ ba:
+
+| đường | vấn đề |
+|---|---|
+| git submodule | người đóng góp phải `--recursive`; quên là CI chạy trên bộ luật rỗng — **im lặng**, đúng hình dạng cổng mù |
+| vendor một bản chép | tạo **bản thứ tư**. Thẩm định tổng đã đo ba bản bất đồng **7/12 hàng**; đừng thêm |
+| **CI của registry checkout repo nền tảng ở một tag đã ghim** ✅ | một bản duy nhất; tag làm việc đổi luật thành **hành động có chủ ý**; không cần hạ tầng publish |
+
+**Trạng thái hiện tại là đúng và có ích, không phải tạm bợ:** workflow trong repo nền tảng, trỏ vào
+`fixtures/courses`, là **phép tự kiểm của chính cái cổng ấy** — nó chứng minh bộ luật chặn được gói
+xấu, trên gói thật, mỗi PR. Repo registry riêng là hiện vật **chưa tồn tại**; khi dựng, CI của nó
+checkout repo này ở tag đã ghim rồi chạy `tools/registry`.
+
+**Ràng buộc kèm theo:** khi tạo repo registry, `REGISTRY_ROOT` của nó trỏ vào cây course của chính
+nó, **không** vào `fixtures/`. Hai cổng khi ấy đo hai thứ khác nhau — một cổng đo *bộ luật còn cắn
+không*, một cổng đo *gói cộng đồng có sạch không* — và cả hai đều cần.
+
 ### HC-3. `lang` hôm nay chỉ để hiển thị, chưa lọc được gì
 
 Đo: `lang` chỉ xuất hiện ở `apps/web/src/pages/Library.tsx` hai chỗ, cả hai để **vẽ chữ**. Không có
