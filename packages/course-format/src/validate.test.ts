@@ -977,11 +977,12 @@ describe('parseManifest', () => {
 
 describe('manifest v1 hiện có', () => {
   it('chỉ hụt đúng bốn trường mới của v2 — không hỏng ở trường nào của v1', () => {
-    // The exact shape of `courses/***REMOVED***/manifest.json` today.
+    // The exact shape of a v1 manifest as `tools/extract.py` writes one —
+    // what the first real package of this project carried before task 11.
     // This encodes the v1→v2 gap as a test so task 11 knows precisely what it
     // has to add, and so a future edit that breaks a v1 field is visible here.
     const v1 = enc(JSON.stringify({
-      id: '***REMOVED***', title: '***REMOVED***', description: 'x',
+      id: 'giao-trinh-v1', title: 'Giáo trình v1', description: 'x',
       lang: 'vi', version: '1.0.0', runtime: '^1',
       parts: [
         { title: 'Phần 0', chapters: [{ id: 'p0-1', num: '0.1', title: 'T', short: 'S', file: 'chapters/p0-1.html' }] },

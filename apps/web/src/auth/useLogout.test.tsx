@@ -100,7 +100,7 @@ describe('useLogout', () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(meQueryKey, { id: 'u1', email: 'a@b.com', name: 'A' });
     queryClient.setQueryData(['stats'], { totalMinutes: 123, streakDays: 7, days: [], courses: [] });
-    queryClient.setQueryData(['course', '***REMOVED***'], { title: '***REMOVED***' });
+    queryClient.setQueryData(['course', 'so-dau-phay-dong'], { title: 'Số dấu phẩy động' });
 
     const { result } = renderHook(() => useLogout(), { wrapper: wrapper(queryClient) });
     await act(async () => {
@@ -108,7 +108,7 @@ describe('useLogout', () => {
     });
 
     expect(queryClient.getQueryData(['stats'])).toBeUndefined();
-    expect(queryClient.getQueryData(['course', '***REMOVED***'])).toBeUndefined();
+    expect(queryClient.getQueryData(['course', 'so-dau-phay-dong'])).toBeUndefined();
     // `me` is deliberately the one entry NOT removed — it is overwritten
     // with `null` instead, so the app-wide `useMe()` observer that drives
     // <RequireAuth> and the sync lifecycle is never left pointing at a

@@ -37,12 +37,12 @@ describe('clearSession — the one door out of a session', () => {
   it('empties the in-memory half too — the cache entries that really do hold the departing user’s data', async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(['stats'], { streak: 9, totalMinutes: 420 });
-    queryClient.setQueryData(['course', '***REMOVED***'], { title: 'của người trước' });
+    queryClient.setQueryData(['course', 'so-dau-phay-dong'], { title: 'của người trước' });
 
     await clearSession(queryClient);
 
     expect(queryClient.getQueryData(['stats'])).toBeUndefined();
-    expect(queryClient.getQueryData(['course', '***REMOVED***'])).toBeUndefined();
+    expect(queryClient.getQueryData(['course', 'so-dau-phay-dong'])).toBeUndefined();
   });
 
   it('spares `me`, because both call sites overwrite it on the very next line', async () => {

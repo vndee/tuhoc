@@ -23,8 +23,8 @@ function catalogManifest(): Manifest {
   // and the course reaches the Dashboard the same way every other course
   // does now — because the catalog endpoint named it.
   return {
-    id: '***REMOVED***',
-    title: '***REMOVED***',
+    id: 'so-dau-phay-dong',
+    title: 'Số dấu phẩy động',
     description: 'desc',
     lang: 'vi',
     version: '1.0.0',
@@ -140,12 +140,12 @@ function catalogEntry(id: string, title: string) {
 }
 
 beforeEach(() => {
-  server.use(http.get('/courses/***REMOVED***/manifest.json', () => HttpResponse.json(catalogManifest())));
+  server.use(http.get('/courses/so-dau-phay-dong/manifest.json', () => HttpResponse.json(catalogManifest())));
   // The default catalog. Tests that care about the catalog itself
   // override this; the rest get a learner who holds one course, which is
   // the same starting state every test in this file had back when the
   // Dashboard hardcoded that id.
-  server.use(http.get('/courses', () => HttpResponse.json([catalogEntry('***REMOVED***', '***REMOVED***')])));
+  server.use(http.get('/courses', () => HttpResponse.json([catalogEntry('so-dau-phay-dong', 'Số dấu phẩy động')])));
 });
 beforeEach(clearAll);
 afterEach(clearAll);
@@ -252,7 +252,7 @@ describe('Dashboard', () => {
 
     renderDashboard();
 
-    expect(await screen.findByText('***REMOVED***')).toBeInTheDocument();
+    expect(await screen.findByText('Số dấu phẩy động')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/0\s*\/\s*1/)).toBeInTheDocument());
   }, OVERSUBSCRIBED_MS);
 
