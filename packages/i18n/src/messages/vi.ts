@@ -619,6 +619,32 @@ export const vi = {
   'catalog.tier.unknownTitle':
     'Gói này khai một hạng nền tảng không biết, nên không có gì bảo đảm nó không chứa JavaScript.',
 
+  /* ── HC-3: lọc theo ngôn ngữ ───────────────────────────────────────────
+   *
+   * `lang` của một course là một NHÃN TỰ DO lấy từ manifest — course viết
+   * bằng ngôn ngữ nào cũng được, và `registry/types.ts` ghi rõ *"Nothing
+   * translates on it"*. Nên chỉ CHỮ QUANH bộ lọc nằm ở đây; bản thân nhãn
+   * (`vi`, `en`, `fr`, …) được vẽ nguyên văn như registry khai.
+   */
+  'catalog.filter.lang': 'Ngôn ngữ của khóa học',
+  'catalog.filter.allLangs': 'Tất cả ngôn ngữ',
+  'catalog.filter.count': (shown: string, total: string) => `Đang hiện ${shown} trong ${total} khóa học.`,
+
+  /* ── HC-3: kéo về ──────────────────────────────────────────────────────── */
+
+  'catalog.pull.action': 'Kéo về thư viện',
+  'catalog.pull.busy': (title: string) => `Đang kéo ${title} về…`,
+  'catalog.pull.done': (title: string, version: string) => `Đã kéo ${title} phiên bản ${version} về thiết bị này. `,
+  'catalog.pull.open': 'Mở khóa học',
+  'catalog.pull.failed': (title: string) => `Không kéo được ${title} về:`,
+  /**
+   * Câu nói ra HẬU QUẢ AN NINH của hạng `interactive`, ở đúng chỗ nó còn kịp
+   * đổi một quyết định: cạnh cái nút, TRƯỚC khi bấm. Sau khi kéo về thì mã
+   * đã nằm trên máy người đọc và một câu cảnh báo chỉ còn là một lời xin lỗi.
+   */
+  'catalog.pull.interactiveWarning':
+    'Gói này được phép chạy JavaScript trong trình duyệt của bạn khi bạn mở nó.',
+
   /* ── runtime của trang đọc (`packages/course-kit/runtime.js`) ──────────── */
 
   /**

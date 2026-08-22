@@ -531,6 +531,22 @@ export const en: Messages = {
   'catalog.tier.unknownTitle':
     'This package declares a tier the platform does not know, so nothing guarantees it contains no JavaScript.',
 
+  /* ── HC-3: lọc theo ngôn ngữ ───────────────────────────────────────────── */
+
+  'catalog.filter.lang': 'Course language',
+  'catalog.filter.allLangs': 'All languages',
+  'catalog.filter.count': (shown: string, total: string) => `Showing ${shown} of ${total} courses.`,
+
+  /* ── HC-3: kéo về ──────────────────────────────────────────────────────── */
+
+  'catalog.pull.action': 'Pull into your library',
+  'catalog.pull.busy': (title: string) => `Pulling ${title}…`,
+  'catalog.pull.done': (title: string, version: string) => `Pulled ${title} version ${version} onto this device. `,
+  'catalog.pull.open': 'Open the course',
+  'catalog.pull.failed': (title: string) => `Could not pull ${title}:`,
+  'catalog.pull.interactiveWarning':
+    'This package is allowed to run JavaScript in your browser when you open it.',
+
   /* ── runtime của trang đọc ─────────────────────────────────────────────── */
 
   'courseKit.vizMissing': (name: string) => `[simulation "${name}" is not ready]`,

@@ -1,8 +1,17 @@
+import { useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Link } from 'react-router-dom';
+import { coursesQueryKey } from '../api/courses';
+import { describeFinding, type ImportStage } from '../course/import';
+import { manifestQueryKey } from '../course/loader';
 import { useLanguage } from '../i18n/LanguageProvider';
-import { describeRegistryError } from './index.ts';
+import { configuredRegistryBase, describeRegistryError } from './index.ts';
+import { pullFromRegistry } from './pull.ts';
 import type { RegistryEntry } from './types.ts';
 import { useRegistryIndex } from './useRegistry.ts';
+import type { Finding } from '@tuhoc/course-format';
+import type { MessageKey } from '../i18n';
 
 /**
  * `/catalog` — the community registry, browsed from one fetched file.
@@ -34,11 +43,88 @@ import { useRegistryIndex } from './useRegistry.ts';
  * moves between them, and a second visual vocabulary for the same object is
  * how two screens drift into looking like two products. It also keeps this
  * task out of `styles/index.css`, which nothing here needed to change.
+ *
+ * ## HC-3: the half of `lang` that never existed
+ *
+ * Spec §4.2 says the catalog *"filters and displays"* on `lang`. Measured
+ * before this change, `lang` appeared in exactly two places in the whole app
+ * — both in `pages/Library.tsx`, both drawing text. Nothing read it to decide
+ * anything. {@link LangFilter} is the missing half, and the two rules it
+ * follows are both written down elsewhere in this subsystem:
+ *
+ *   1. **The options come from the data, never from `LANGS`.** A course's
+ *      `lang` is a free-form label from its manifest (`registry/types.ts`:
+ *      *"Nothing translates on it"*) — a course may be written in any
+ *      language, while `LANGS` is the two languages the *interface* speaks.
+ *      Filtering by the interface's list would make a French course
+ *      unreachable by a control that appeared to work.
+ *   2. **Filtering never hides silently.** `registry/index.ts` refuses to drop
+ *      a malformed entry and render the rest, because *"a course silently
+ *      invisible with no message anywhere"* is the shape of this project's
+ *      five recorded blind gates. A filter hides courses by design, so it has
+ *      to say how many, every time, and be undoable in one click.
  */
+/**
+ * One shared empty array, so `courses` keeps a STABLE identity while the query
+ * is pending.
+ *
+ * `query.data?.courses ?? []` allocates a fresh array on every render, which
+ * makes any `useMemo` keyed on it recompute every time — a memo that measures
+ * nothing. `oxlint`'s `exhaustive-deps` says so out loud, and the honest fix is
+ * the stable value rather than a suppression: TanStack Query hands back the
+ * same `courses` reference for as long as the data is unchanged, so with this
+ * the memo tracks exactly what it claims to.
+ */
+const NO_COURSES: readonly RegistryEntry[] = [];
+
+/**
+ * The registry a ROW must pull from — the same one the index came from.
+ *
+ * `useRegistryIndex({ base: undefined })` falls through to
+ * `configuredRegistryBase()` inside `fetchRegistryIndex`, so in a real build
+ * the prop is absent and the base lives only in the env var. A row that read
+ * the prop and defaulted to `''` would build `/courses/<id>/<v>.zip` —
+ * relative to **this app's** origin, not the registry's. That is not a 404
+ * a reader could diagnose: an SPA host answers an unknown path with its own
+ * `index.html`, so the importer would report `NOT_A_ZIP` on a package that is
+ * perfectly fine and sitting somewhere else entirely. Exactly the `815a472`
+ * shape — HTML arriving where bytes were expected — one layer down.
+ *
+ * `null` when nothing is configured, and the `try` is the whole reason this is
+ * a function: `configuredRegistryBase()` THROWS in that case, and throwing
+ * during render is how this screen would hand its job to `<ErrorBoundary>`.
+ * The query has already failed with the same error and the catalog is already
+ * showing the sentence that names `VITE_REGISTRY_URL`, so there is nothing to
+ * say here — and no rows to say it on.
+ */
+function pullBase(prop: string | undefined): string | null {
+  if (prop !== undefined) return prop;
+  try {
+    return configuredRegistryBase();
+  } catch {
+    return null;
+  }
+}
+
 export function Catalog({ registryBase }: { registryBase?: string }) {
   const { t } = useLanguage();
   const query = useRegistryIndex({ base: registryBase });
-  const courses = query.data?.courses ?? [];
+  const courses = query.data?.courses ?? NO_COURSES;
+  const base = pullBase(registryBase);
+
+  /** `''` is "all". Not `null`, so it is the `<select>`'s value directly. */
+  const [lang, setLang] = useState('');
+
+  // Sorted, so the control's order does not depend on the order the registry
+  // happened to list courses in — two indexes with the same courses must give
+  // the same control.
+  const langs = useMemo(() => [...new Set(courses.map((c) => c.lang))].sort(), [courses]);
+
+  // A label can leave the index between renders (the registry republished, or
+  // the query settled into an error). Holding a filter nobody can see the
+  // control for would show an empty list with no way back.
+  const active = langs.includes(lang) ? lang : '';
+  const shown = active === '' ? courses : courses.filter((c) => c.lang === active);
 
   return (
     <div className="lib-page">
@@ -70,6 +156,27 @@ export function Catalog({ registryBase }: { registryBase?: string }) {
         </p>
       )}
 
+      {!query.isError && courses.length > 0 && (
+        <div className="lib-filter">
+          <label htmlFor="catalog-lang">{t('catalog.filter.lang')}</label>
+          <select id="catalog-lang" value={active} onChange={(e) => setLang(e.target.value)}>
+            <option value="">{t('catalog.filter.allLangs')}</option>
+            {langs.map((code) => (
+              // The label is drawn EXACTLY as the manifest wrote it. Mapping
+              // `vi` to "Tiếng Việt" would need a table of every language a
+              // contributor might use, and would quietly print the wrong name
+              // for anything not in it.
+              <option key={code} value={code}>
+                {code}
+              </option>
+            ))}
+          </select>
+          <span className="lib-meta" data-testid="catalog-filter-count" role="status">
+            {t('catalog.filter.count', String(shown.length), String(courses.length))}
+          </span>
+        </div>
+      )}
+
       {/*
         `!query.isError` is load-bearing, not defensive noise. TanStack Query
         KEEPS the last successful `data` when a later fetch fails, so without
@@ -79,10 +186,10 @@ export function Catalog({ registryBase }: { registryBase?: string }) {
         thing it warns about, side by side. The stalest possible catalog is
         also the one most likely to offer a course that is no longer there.
       */}
-      {!query.isError && courses.length > 0 && (
+      {!query.isError && base !== null && shown.length > 0 && (
         <ul className="lib-list" aria-label={t('catalog.listAria')}>
-          {courses.map((course) => (
-            <CatalogRow key={course.id} course={course} />
+          {shown.map((course) => (
+            <CatalogRow key={course.id} course={course} base={base} />
           ))}
         </ul>
       )}
@@ -90,8 +197,67 @@ export function Catalog({ registryBase }: { registryBase?: string }) {
   );
 }
 
-function CatalogRow({ course }: { course: RegistryEntry }) {
+/** Which sentence goes with which phase of `importCourse`. */
+const STAGE_KEY: Readonly<Record<ImportStage, MessageKey>> = {
+  fetching: 'import.stage.fetching',
+  unpacking: 'import.stage.unpacking',
+  checking: 'import.stage.checking',
+  saving: 'import.stage.saving',
+};
+
+type PullState =
+  | { phase: 'idle' }
+  | { phase: 'running'; stage: ImportStage }
+  | { phase: 'done'; version: string }
+  | { phase: 'failed'; findings: readonly Finding[] };
+
+function CatalogRow({ course, base }: { course: RegistryEntry; base: string }) {
   const { t } = useLanguage();
+  const queryClient = useQueryClient();
+  const [pull, setPull] = useState<PullState>({ phase: 'idle' });
+
+  async function run() {
+    // `flushSync`, for the reason `pages/ImportCourse.tsx` measured in a real
+    // browser: `importCourse` ends its task after each stage so the browser
+    // can draw, but ending the task does not make React's scheduler have run
+    // by then. Without this the stage line commits inside the same task as
+    // the ~1 s validation scan and is never seen.
+    flushSync(() => setPull({ phase: 'running', stage: 'fetching' }));
+    let result;
+    try {
+      result = await pullFromRegistry(course, {
+        // Resolved ONCE by the parent, from the same value the index was
+        // fetched with — see `pullBase`. A row must never re-derive it: a
+        // course listed by one registry being downloaded from another is a
+        // supply-chain swap with a plausible-looking URL.
+        base,
+        t,
+        onStage: (stage) => flushSync(() => setPull({ phase: 'running', stage })),
+      });
+    } catch (cause) {
+      // `importCourse` promises never to throw and has its own net, so getting
+      // here means that promise was broken. A page must still say something
+      // rather than trust a contract — `pages/ImportCourse.tsx` reached this
+      // branch as a BLANK SCREEN once, from a response body cut mid-package.
+      setPull({
+        phase: 'failed',
+        findings: [{ code: 'UNEXPECTED', path: '.', detail: `(${cause instanceof Error ? cause.message : String(cause)})` }],
+      });
+      return;
+    }
+
+    if (result.ok) {
+      setPull({ phase: 'done', version: result.version });
+      // The library and this course's manifest are both stale now — same two
+      // invalidations `pages/ImportCourse.tsx` does, for the same reason: a
+      // reader who pulls and clicks straight through would otherwise get the
+      // copy that was there before.
+      await queryClient.invalidateQueries({ queryKey: coursesQueryKey() });
+      await queryClient.invalidateQueries({ queryKey: manifestQueryKey(result.courseId) });
+    } else {
+      setPull({ phase: 'failed', findings: result.findings });
+    }
+  }
 
   return (
     <li className="lib-item lib-item-registry">
@@ -115,6 +281,58 @@ function CatalogRow({ course }: { course: RegistryEntry }) {
         )}
       </p>
       {course.description !== '' && <p className="lib-row-note">{course.description}</p>}
+
+      {/*
+        The security sentence sits HERE — between the labels and the button,
+        before the click, in the row it is about. `TierBadge`'s `title` says
+        the same thing but only to a reader who hovers, and this is the one
+        moment where the information can still change a decision: after the
+        pull the JavaScript is already on the reader's device.
+      */}
+      {course.tier === 'interactive' && (
+        <p className="lib-row-note lib-tier-warning">{t('catalog.pull.interactiveWarning')}</p>
+      )}
+
+      <div className="lib-item-actions">
+        <button
+          type="button"
+          className="btn"
+          disabled={pull.phase === 'running' || pull.phase === 'done'}
+          onClick={() => void run()}
+        >
+          {t('catalog.pull.action')}
+        </button>
+
+        {pull.phase === 'running' && (
+          <span className="lib-meta" role="status">
+            {t(STAGE_KEY[pull.stage])}
+          </span>
+        )}
+
+        {pull.phase === 'done' && (
+          <span className="lib-meta" role="status">
+            {t('catalog.pull.done', course.title, pull.version)}
+            <Link to={`/c/${course.id}`}>{t('catalog.pull.open')}</Link>
+          </span>
+        )}
+      </div>
+
+      {/*
+        Every finding, not the first. `validatePackage` was built to report all
+        of them at once (see its doc comment), and a registry package that
+        fails here is one whose author needs the whole list — the same
+        courtesy `pages/ImportCourse.tsx` extends to a dragged file.
+      */}
+      {pull.phase === 'failed' && (
+        <div className="lib-notice lib-notice-server" role="alert">
+          <p>{t('catalog.pull.failed', course.title)}</p>
+          <ul>
+            {pull.findings.map((f, i) => (
+              <li key={`${f.code}-${f.path}-${i}`}>{describeFinding(f, t)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </li>
   );
 }
