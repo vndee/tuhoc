@@ -34,9 +34,9 @@ const CHAPTER_VIZ = 'sum-drift';
  *   sees that progress on a second device. The reading experience is not
  *   worse than the original single-file textbook.
  *
- * Chapter/selector choice. Task 17 named p2-10 ("Kênh Gaussian và
- * water-filling") and `[data-viz="waterfill"]` of the private textbook as the
- * contractual selectors earlier tasks were told to preserve. Task 13 moved the
+ * Chapter/selector choice. Task 17 named one chapter of the private textbook,
+ * and the `[data-viz]` simulation inside it, as the contractual selectors
+ * earlier tasks were told to preserve. Task 13 moved the
  * ngữ liệu to the public sample package `so-dau-phay-dong`, and picked its
  * replacement by the same criterion rather than by convenience: p2-2 ("Cộng
  * một triệu số") is the chapter that has BOTH an interactive simulation and

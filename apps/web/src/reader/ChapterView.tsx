@@ -201,8 +201,8 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
   // both need the same prev/next targets and both must stop working the
   // moment this chapter is no longer on screen.
   //
-  // The `t`/`T` theme shortcut (debt #2, v1 parity —
-  // `***REMOVED***.html:11170`) rides the SAME keydown handler and
+  // The `t`/`T` theme shortcut (debt #2, v1 parity — the v1 single-file
+  // source, line 11170) rides the SAME keydown handler and
   // the SAME "not while typing in a form field" guard, rather than a
   // second global listener: v1 itself has exactly one keydown handler for
   // all of these shortcuts, and `toggleTheme` here is the identical
@@ -256,7 +256,7 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
   // above, since `#mark-btn` is sibling chrome rendered by `<Topbar>`, not
   // a node this component's own JSX ever produces. Visual state (`.on`
   // class, ○/✓ icon, label) mirrors v1's `syncMark()` exactly
-  // (`***REMOVED***.html`'s own mark-btn wiring) and is re-applied
+  // (the v1 single-file source's own mark-btn wiring) and is re-applied
   // whenever `isRead` for THIS chapter changes — including a change that
   // did not originate from this button (e.g. a remote sync pull marking
   // the chapter read from another device while it's open here).

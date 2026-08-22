@@ -22,8 +22,8 @@ function toggle(): void {
  * `@media (max-width:980px)` and paint a dimmed backdrop behind it
  * (`body.nav-open #sidebar`, `body.nav-open::after`).
  *
- * Ported from the v1 single-file app's own listeners (see
- * ***REMOVED***.html's boot script):
+ * Ported from the v1 single-file app's own listeners (see that file's
+ * boot script):
  *   - `#menu-btn` click toggles the class;
  *   - Escape closes it;
  *   - tapping the backdrop closes it — v1 detects this the same way, as

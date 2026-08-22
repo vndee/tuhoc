@@ -170,10 +170,10 @@ export const MAX_UNCOMPRESSED_BYTES = 20 * 1024 * 1024;
  *
  * | corpus                                                    | max attrs on one tag |
  * |-----------------------------------------------------------|---------------------|
- * | the 44 shipping chapters of `courses/***REMOVED***` |   **2**             |
+ * | the 44 shipping chapters of a real packed textbook         |   **2**             |
  * | `favicon.svg` (real hand-authored SVG)                     |   **7**             |
  * | the whole real package, incl. `viz.js` (176 KB, minified)  |  **70**             |
- * | `***REMOVED***.html`, the 1.9 MiB single-file source | **141**             |
+ * | that textbook's 1.9 MiB single-file v1 source              | **141**             |
  * | `apps/web/dist` (376 KB minified JS + 398 KB CSS)          | **257**             |
  *
  * Note where the big numbers come from: not from markup, but from minified
@@ -615,7 +615,7 @@ function checkManifestFields(value: unknown): Finding[] {
         }
         // `num` is a DISPLAY label ("0.1", "2.3"), and an unnumbered chapter is
         // a supported case, not a defect: the appendix of
-        // `courses/***REMOVED***` ships `"num": ""` today, and the reader
+        // `fixtures/courses/so-dau-phay-dong` ships `"num": ""` today, and the reader
         // already branches on it in five places — four ternaries in
         // ChapterView.tsx (385, 485, 511, 520) and `chapter.num || '·'` at
         // CourseNav.tsx:46. (An earlier draft of this comment said six; the

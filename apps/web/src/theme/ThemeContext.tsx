@@ -11,7 +11,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 /**
  * The SINGLE owner of `useTheme()`'s state for the whole app. This exists
  * because of a debt carried from Task 11: the reader's `t`/`T` keyboard
- * shortcut (v1 parity — `***REMOVED***.html:11170`) needs to call
+ * shortcut (v1 parity — the v1 single-file source, line 11170) needs to call
  * the exact same `toggle` that drives `#theme-btn`'s icon in the topbar.
  * `theme` is React state owned by `AppShell` (`App.tsx`) — a second,
  * independent `useTheme()` call inside `ChapterView` would create its OWN
