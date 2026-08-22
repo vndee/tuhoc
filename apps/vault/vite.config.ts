@@ -23,6 +23,11 @@ export default defineConfig({
     // jsdom chứ không phải node: `localStorage` (Task 2) và `MessageEvent`
     // (task này) là API của trình duyệt.
     environment: 'jsdom',
+    // Bắt buộc: dưới Node 25, `localStorage` mà vitest để lại trong môi trường
+    // jsdom là một `{}` rỗng, không có `getItem`/`setItem`/`clear`. Tệp này lắp
+    // lại `Storage` THẬT của jsdom. Phép đo và nguyên nhân nằm ở đầu tệp; chốt
+    // "môi trường test có Storage thật" nằm trong `keystore.test.ts`.
+    setupFiles: ['./src/test-setup.ts'],
     include: ['src/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],
   },
