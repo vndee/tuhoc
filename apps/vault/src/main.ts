@@ -1,4 +1,5 @@
 import { PROTOCOL_VERSION, type VaultRequest, type VaultResponse } from './protocol';
+import { readPublicConfig } from './keystore';
 
 export interface HandlerDeps { allowedOrigin: string }
 
@@ -30,6 +31,18 @@ export function handleMessage(event: MessageEvent, deps: HandlerDeps): void {
     case 'listProviders':
       send({ v: 1, id: req.id, kind: 'providers', providers: [] }); // Task 3 điền
       return;
+    case 'status': {
+      // `readPublicConfig`, KHÔNG `readConfig`. Đây là đường trang chính gọi
+      // được tự do — không giới hạn tần suất, không cần xác nhận — nên nó không
+      // được phép nạp key vào bộ nhớ, dù chỉ để rồi vứt đi. Xem chú thích ở
+      // `keystore.ts` và bài kiểm "BẪY: đường status KHÔNG ĐỌC ô nhớ chứa key".
+      const pub = readPublicConfig();
+      send({
+        v: 1, id: req.id, kind: 'status', configured: pub !== null,
+        providerId: pub?.providerId, model: pub?.model,
+      });
+      return;
+    }
     default:
       send({ v: 1, id: req.id, kind: 'error', code: 'unsupported_provider',
              message: 'Chưa hỗ trợ.' });
