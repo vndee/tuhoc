@@ -446,7 +446,10 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
     const redraws = CourseKit.REDRAWS;
     const redrawsBefore = redraws.length;
     CourseKit.renderKatex(container);
-    CourseKit.initViz(container);
+    CourseKit.initViz(container, {
+      vizMissing: (name) => t('courseKit.vizMissing', name),
+      vizFailed: t('courseKit.vizFailed'),
+    });
     const redrawsAfter = redraws.length;
 
     // Rail TOC, ported from v1's buildRail(): one entry per h2/h3, keeping

@@ -378,7 +378,12 @@ const DEVELOPER_FACING: readonly { readonly file: string; readonly why: string }
 ];
 
 /**
- * ALLOWLIST THU HẸP DẦN — Task 5 phải làm nó RỖNG.
+ * ALLOWLIST THU HẸP DẦN — **RỖNG từ Task 5**, và nó phải ở lại rỗng.
+ *
+ * Task 4 mở sổ này với 37 mục; Task 5 xoá mục cuối cùng. Danh sách rỗng KHÔNG
+ * có nghĩa là bỏ được: từ lúc này nó là ràng buộc *"không tệp nào dưới bốn cây
+ * quét được phép có một chuỗi cứng"*, và mỗi lần ai đó muốn thêm một dòng vào
+ * đây là một lần người thẩm định phải đọc lý do.
  *
  * Đây là một DANH SÁCH TỆP, không phải một ngưỡng đếm, và lý do là lập luận mà
  * `db/local.test.ts` dùng để liệt kê năm bảng Dexie **theo tên** thay vì đếm
@@ -394,14 +399,14 @@ const DEVELOPER_FACING: readonly { readonly file: string; readonly why: string }
  *
  * Chiều thứ hai là thứ biến sổ này thành một bánh cóc thay vì một tờ giấy dán
  * tường: nó không thể mục ruỗng trong im lặng, và mỗi lần bóc xong một tệp là
- * một dòng trong diff mà người thẩm định nhìn thấy.
+ * một dòng trong diff mà người thẩm định nhìn thấy. Ở trạng thái rỗng, chiều
+ * thứ nhất là thứ còn làm việc, mỗi ngày, cho mọi task sau.
  */
 const NOT_YET_EXTRACTED: readonly string[] = [
   // Nạp bằng `<script src>`, không phải `import` — nên nó KHÔNG import được
   // catalog. Bóc nó cần một cơ chế khác (ví dụ trang chính đặt sẵn một object
   // lên `window` trước khi nạp runtime). Ghi ra ở đây để Task 5 gặp nó như một
   // quyết định, không phải như một bất ngờ.
-  'packages/course-kit/runtime.js',
 ];
 
 describe('cổng chặn chuỗi cứng', () => {

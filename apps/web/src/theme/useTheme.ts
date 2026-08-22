@@ -18,7 +18,12 @@ declare global {
     // <script src="/course-kit/runtime.js"> (Task 11). Not present on every
     // route (e.g. dashboard, login), so every access must be optional.
     CourseKit?: {
-      initViz: (root: ParentNode) => void;
+      /**
+       * Chữ đi vào bằng THAM SỐ: `runtime.js` được nạp bằng `<script src>`
+       * nên nó không `import` được catalog, và nó cố ý không giữ một bản
+       * lùi viết cứng nào. Thiếu `strings` ⇒ nó NÉM (`TypeError`).
+       */
+      initViz: (root: ParentNode, strings: { vizMissing: (name: string) => string; vizFailed: string }) => void;
       renderKatex: (root: ParentNode) => void;
       REDRAWS: Array<() => void>;
       VIZ: Record<string, (node: Element) => void>;

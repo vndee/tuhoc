@@ -368,18 +368,40 @@ function vizNotice(node, cls, style, message){
   node.appendChild(el('div', {class: cls, style: style, text: message}));
 }
 
-function initViz(root){
+/**
+ * CHỮ ĐI VÀO TỪ TRANG CHỦ, và tệp này KHÔNG giữ một bản dịch nào.
+ *
+ * `runtime.js` được nạp bằng `<script src>`, không bằng `import` (xem
+ * `reader/useCourseKit.ts`), nên nó không `import` được catalog — và nó
+ * KHÔNG được phép có một bản lùi viết cứng: một bản lùi như thế là đúng
+ * cái "chuỗi cứng, chỉ ở chỗ cổng không với tới" mà cây quét thứ ba của
+ * `i18n.test.ts` tồn tại để chặn — và nó sẽ hiện ra bằng SAI ngôn ngữ cho
+ * một người đọc đã chọn ngôn ngữ khác, trong im lặng.
+ *
+ * Nên chữ là THAM SỐ của `initViz`, và thiếu nó là một lỗi LẬP TRÌNH ném
+ * ồn ào — không phải một câu tiếng Việt lặng lẽ rơi ra. Câu ném dưới đây
+ * là tiếng Anh kỹ thuật, cho người đang mở DevTools, không cho người học.
+ */
+function requireStrings(strings){
+  if(!strings || typeof strings.vizMissing !== 'function' || typeof strings.vizFailed !== 'string'){
+    throw new TypeError('CourseKit.initViz(root, strings): the host page must supply {vizMissing(name), vizFailed}');
+  }
+  return strings;
+}
+
+function initViz(root, strings){
+  const say = requireStrings(strings);
   $$('[data-viz]', root).forEach(node=>{
     const name = node.dataset.viz;
     if(node.dataset.done) return;
     const fn = VIZ[name];
     if(!fn){ vizNotice(node, 'small muted', 'padding:20px;font-family:var(--sans)',
-      '[mô phỏng "'+name+'" chưa sẵn sàng]'); return; }
+      say.vizMissing(name)); return; }
     node.dataset.done='1';
     try{ fn(node); }
     catch(e){ console.error('viz '+name, e);
       vizNotice(node, 'small', 'padding:16px;font-family:var(--sans);color:var(--ink-3)',
-        'Không dựng được mô phỏng này trong trình duyệt hiện tại.'); }
+        say.vizFailed); }
   });
 }
 

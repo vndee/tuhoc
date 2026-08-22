@@ -618,6 +618,17 @@ export const vi = {
   'catalog.versionCount': (count: string) => `${count} bản`,
   'catalog.tier.unknownTitle':
     'Gói này khai một hạng nền tảng không biết, nên không có gì bảo đảm nó không chứa JavaScript.',
+
+  /* ── runtime của trang đọc (`packages/course-kit/runtime.js`) ──────────── */
+
+  /**
+   * Hai câu HIỆN RA TRONG TRANG ĐỌC từ một tệp nạp bằng `<script src>`, không
+   * bằng `import` — nên tệp ấy không đọc được catalog. Chữ được TRUYỀN VÀO
+   * `CourseKit.initViz(root, strings)` bởi `reader/ChapterView.tsx`, và
+   * `runtime.js` NÉM nếu thiếu thay vì lùi về một bản viết cứng.
+   */
+  'courseKit.vizMissing': (name: string) => `[mô phỏng "${name}" chưa sẵn sàng]`,
+  'courseKit.vizFailed': 'Không dựng được mô phỏng này trong trình duyệt hiện tại.',
 };
 
 /** Hình dạng mà MỌI ngôn ngữ phải phủ đúng. Xem chú thích trên `vi`. */

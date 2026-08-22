@@ -530,4 +530,9 @@ export const en: Messages = {
   'catalog.versionCount': (count: string) => `${count} versions`,
   'catalog.tier.unknownTitle':
     'This package declares a tier the platform does not know, so nothing guarantees it contains no JavaScript.',
+
+  /* ── runtime của trang đọc ─────────────────────────────────────────────── */
+
+  'courseKit.vizMissing': (name: string) => `[simulation "${name}" is not ready]`,
+  'courseKit.vizFailed': 'This simulation could not be built in your current browser.',
 };
