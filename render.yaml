@@ -53,3 +53,23 @@ services:
       # Paste in the Neon pooled connection string (see docs/deploy.md).
       - key: DATABASE_URL
         sync: false
+      # GITHUB_TOKEN is a secret, and the only one this server holds that is
+      # its OWN rather than a user's: a read-only, fine-grained PAT scoped
+      # to the registry repository's Discussions, used to embed those
+      # threads on course pages. It is NOT an exception to the promise that
+      # a reader's AI provider key never touches this server — see the
+      # comment at its declaration in apps/api/internal/config/config.go,
+      # and .env.example for the three ways the two differ.
+      #
+      # `sync: false` for the same reason as DATABASE_URL: Render prompts
+      # once and never reads it back from this file.
+      #
+      # Leaving it unset is a supported state, not a broken one: the
+      # discussions section degrades to "could not load" and every other
+      # part of the app is unaffected. That is the correct configuration
+      # until a public registry repository exists (docs/deploy.md §5c).
+      - key: GITHUB_TOKEN
+        sync: false
+      # Not a secret — it names a public repository. "owner/name".
+      - key: GITHUB_DISCUSSIONS_REPO
+        value: ""

@@ -360,6 +360,71 @@ func TestNoRequestStructAcceptsAKey(t *testing.T) {
 	}
 }
 
+// ── DANH SÁCH CHO PHÉP CỦA PHÉP QUÉT LỜI GỌI RA NGOÀI ───────────────────
+//
+// Ngày ghi trong chú thích của TestAPIProductCodeMakesNoOutboundCall đã tới:
+// hệ thống con 4 nhúng đọc GitHub Discussions (spec §5), nên **một** tệp sản
+// phẩm phải gọi ra ngoài. Cách xử lý mà chú thích ấy chỉ định — và đã được
+// làm ở đây — là thêm một danh sách cho phép HẸP, không phải xoá phép quét.
+//
+// HẸP tới mức nào, nói bằng thứ đo được:
+//
+//   - Khoá là ĐƯỜNG DẪN TUYỆT ĐỐI TÍNH TỪ GỐC REPO, khớp CHÍNH XÁC. Không
+//     tiền tố thư mục, không glob, không "mọi thứ dưới internal/discuss/".
+//     Một tệp proxy mới — apps/api/internal/aiproxy/client.go,
+//     apps/aiproxy/main.go, hay ngay cả internal/discuss/proxy.go — KHÔNG
+//     nằm trong bản đồ này nên vẫn ĐỎ. Đó là tính chất phải giữ, và
+//     TestOutboundAllowlistStaysNarrow đo nó bằng nguồn tổng hợp ở mỗi lần
+//     chạy chứ không bằng lời hứa trong chú thích này.
+//   - Giá trị là danh sách needle CỤ THỂ được tha, không phải "tha tất".
+//     `internal/discuss/client.go` được phép import `"net/http"` và không
+//     được phép dùng `resty.new(` hay một fasthttp client — nếu nó mọc thêm,
+//     phép quét đỏ đúng vào tệp đã-được-cho-phép.
+//   - Mỗi mục còn phải TỰ KHAI ĐÍCH ĐẾN trong nguồn (allowlistDestinations).
+//     Đây là phần trả lời thẳng vào mutant mà chính chú thích của phép quét
+//     nêu tên: "một proxy đặt tên trường là k và đọc base URL từ biến môi
+//     trường". Một tệp được cho phép mà KHÔNG viết host của nó ra thành hằng
+//     trong mã thì không ai grep được nó gọi đi đâu, nên nó mất quyền được
+//     cho phép và phép quét đỏ.
+//
+// VÌ SAO ĐÍCH ĐẾN NÀY KHÔNG PHẢI MỘT NHÀ CUNG CẤP AI: api.github.com phục vụ
+// các luồng thảo luận CÔNG KHAI của repo registry. Thông tin xác thực dùng ở
+// đó là token của MÁY CHỦ với GitHub (config.Config.GitHubToken), không phải
+// key của người dùng với nhà cung cấp AI, và không request nào từ trình duyệt
+// cung cấp, thay thế hay đọc được nó. Lời hứa ở spec §3.2 KHÔNG bị nới: hai
+// phép quét kia — host nhà cung cấp và trường mang key — vẫn áp cho tệp này
+// y như mọi tệp khác, KHÔNG có ngoại lệ nào, nên đường "client gửi key lên"
+// và đường "server gọi nhà cung cấp AI" vẫn khoá kín như trước.
+var outboundAllowlist = map[string][]string{
+	"apps/api/internal/discuss/client.go": {`"net/http"`},
+}
+
+// allowlistDestinations: mọi tệp trong outboundAllowlist phải chứa ít nhất
+// một trong các chuỗi này. Đây là "đích đến phải grep được" thành ràng buộc.
+var allowlistDestinations = []string{"api.github.com"}
+
+// scanOutbound là scan() cho lời gọi ra ngoài, đã trừ danh sách cho phép.
+// Tách ra để chính nó chạy được trên nguồn tổng hợp — xem
+// TestOutboundAllowlistStaysNarrow.
+func scanOutbound(sources map[string]string) []string {
+	var hits []string
+	for _, hit := range scan(sources, outboundCallSites, true) {
+		path, needle, _ := strings.Cut(hit, ": ")
+		allowed := false
+		for _, n := range outboundAllowlist[path] {
+			if strings.EqualFold(n, needle) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			hits = append(hits, hit)
+		}
+	}
+	sort.Strings(hits)
+	return hits
+}
+
 // Lớp không phụ thuộc tên nhà cung cấp.
 //
 // Chỉ áp cho mã SẢN PHẨM: các tệp *_test.go dùng net/http và httptest một cách
@@ -371,12 +436,162 @@ func TestNoRequestStructAcceptsAKey(t *testing.T) {
 // một danh sách cho phép hẹp ngay tại đây kèm chú thích nói rõ vì sao đích đến
 // không phải một nhà cung cấp AI — chứ không phải xoá test này. Bắt người ta
 // dừng lại một nhịp chính là toàn bộ giá trị của nó.
+//
+// Ngày ấy đã tới ở hệ thống con 4 (Discussions). Xem outboundAllowlist ngay
+// trên đây: một mục, một tệp, một needle. Ba chốt dưới đây giữ cho nó không
+// nở ra trong im lặng.
 func TestAPIProductCodeMakesNoOutboundCall(t *testing.T) {
-	for _, hit := range scan(goSources(t), outboundCallSites, true) {
+	sources := goSources(t)
+
+	for _, hit := range scanOutbound(sources) {
 		t.Errorf("%s — mã sản phẩm của API không gọi ra ngoài. Một proxy AI bắt "+
 			"buộc phải gọi ra ngoài, nên chốt này bắt được cả proxy đặt tên trường "+
 			"là \"k\" và lấy base URL từ biến môi trường — thứ mà danh sách host "+
 			"không bao giờ bắt được. Nếu lời gọi này thật sự KHÔNG tới nhà cung "+
-			"cấp AI, thêm nó vào danh sách cho phép ngay trên hàm này, kèm lý do.", hit)
+			"cấp AI, thêm nó vào danh sách cho phép ngay trên hàm này, kèm lý do "+
+			"— và đọc chú thích của outboundAllowlist trước: khoá là đường dẫn "+
+			"khớp CHÍNH XÁC, giá trị là needle cụ thể, và tệp phải tự khai đích "+
+			"đến ra thành hằng trong mã.", hit)
+	}
+
+	// Chốt 1 — mục ÔI THIU. Một mục trỏ tới tệp không còn tồn tại là một lỗ
+	// đang chờ: ai đó đổi tên tệp, mục ở lại, rồi một ngày có tệp mới trùng
+	// tên và nó được tha miễn phí. Bắt phải xoá mục MỘT CÁCH CÓ Ý THỨC, cùng
+	// lập luận với scanSentinels.
+	for path := range outboundAllowlist {
+		if _, ok := sources[path]; !ok {
+			t.Errorf("outboundAllowlist có mục cho %q nhưng phép quét không thấy "+
+				"tệp ấy. Nếu tệp đã bị xoá hoặc đổi tên, XOÁ mục này — đừng để "+
+				"lại, vì nó sẽ tha miễn phí cho tệp tiếp theo trùng tên.", path)
+		}
+	}
+
+	// Chốt 2 — ĐÍCH ĐẾN phải grep được. Đây là câu trả lời trực tiếp cho
+	// mutant "đọc base URL từ biến môi trường": một tệp được cho phép gọi ra
+	// ngoài mà không viết host của nó ra thành hằng thì không phép quét nguồn
+	// nào biết nó gọi đi đâu, nên nó không được cho phép nữa.
+	for path := range outboundAllowlist {
+		src, ok := sources[path]
+		if !ok {
+			continue // đã báo ở chốt 1
+		}
+		named := false
+		for _, d := range allowlistDestinations {
+			if strings.Contains(src, strings.ToLower(d)) {
+				named = true
+				break
+			}
+		}
+		if !named {
+			t.Errorf("%s được cho phép gọi ra ngoài nhưng KHÔNG nhắc tới đích đến "+
+				"nào trong %v. Một tệp lấy base URL từ biến môi trường trông y "+
+				"hệt thế này, và đó đúng là mutant mà phép quét này tồn tại để "+
+				"bắt. Viết host ra thành hằng trong mã, hoặc bỏ mục cho phép.",
+				path, allowlistDestinations)
+		}
+	}
+}
+
+// TestOutboundAllowlistStaysNarrow chứng minh — bằng nguồn tổng hợp, ở MỌI
+// lần chạy — rằng danh sách cho phép không nuốt mất thứ phép quét tồn tại để
+// bắt.
+//
+// Không có bài này, "hẹp" chỉ là một tính từ trong chú thích. Một lần sửa
+// tưởng như vô hại (đổi so khớp đường dẫn thành HasPrefix, hoặc để giá trị
+// rỗng nghĩa là "tha tất") sẽ giữ nguyên màu xanh của
+// TestAPIProductCodeMakesNoOutboundCall trên cây mã sạch hôm nay, và lặng lẽ
+// mở cửa cho đúng cái proxy mà hệ thống con 2 đã cấm hai lần.
+func TestOutboundAllowlistStaysNarrow(t *testing.T) {
+	const proxy = `package main
+import "net/http"
+type c struct{ k string }
+const base = "" // base URL lấy từ biến môi trường, không có host nào trong nguồn
+`
+	// Một tệp được cho phép, viết đúng như tệp thật: có needle được tha VÀ
+	// tự khai đích đến.
+	const allowed = `package discuss
+import "net/http"
+const APIURL = "https://api.github.com/graphql"
+`
+
+	cases := []struct {
+		name     string
+		path     string
+		src      string
+		wantHits bool
+	}{
+		{
+			name:     "chính tệp được cho phép thì im lặng",
+			path:     "apps/api/internal/discuss/client.go",
+			src:      allowed,
+			wantHits: false,
+		},
+		{
+			// Tình huống trong chú thích của chính phép quét: một proxy AI
+			// đặt tên trường là "k" và lấy base URL từ biến môi trường.
+			name:     "proxy ở gói MỚI vẫn đỏ",
+			path:     "apps/api/internal/aiproxy/client.go",
+			src:      proxy,
+			wantHits: true,
+		},
+		{
+			// Cạnh nguy hiểm nhất: CÙNG thư mục với tệp được cho phép. Một
+			// phép so khớp theo tiền tố thư mục sẽ tha cả cái này.
+			name:     "proxy CÙNG thư mục với tệp được cho phép vẫn đỏ",
+			path:     "apps/api/internal/discuss/proxy.go",
+			src:      proxy,
+			wantHits: true,
+		},
+		{
+			// Module Go thứ hai — đúng đường dự phòng qua server mà chủ dự án
+			// đã cấm hai lần, và lý do goSources neo ở gốc repo.
+			name:     "module thứ hai ở apps/aiproxy vẫn đỏ",
+			path:     "apps/aiproxy/main.go",
+			src:      proxy,
+			wantHits: true,
+		},
+		{
+			// Đường dẫn khác hoa/thường hoặc lệch một ký tự KHÔNG được coi là
+			// khớp: khớp chính xác nghĩa là chính xác.
+			name:     "đường dẫn gần giống nhưng không khớp vẫn đỏ",
+			path:     "apps/api/internal/discuss/client2.go",
+			src:      allowed,
+			wantHits: true,
+		},
+		{
+			// Tệp được cho phép, nhưng mọc thêm một cách gọi ra ngoài KHÔNG
+			// nằm trong danh sách needle được tha.
+			name:     "needle ngoài danh sách, ngay trong tệp được cho phép, vẫn đỏ",
+			path:     "apps/api/internal/discuss/client.go",
+			src:      allowed + "\nvar cl = resty.New()\n",
+			wantHits: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := scanOutbound(map[string]string{tc.path: strings.ToLower(tc.src)})
+			if tc.wantHits && len(got) == 0 {
+				t.Errorf("%s: danh sách cho phép đã nở ra — nguồn này PHẢI bị bắt "+
+					"nhưng scanOutbound im lặng. Đây là lỗ mà phép quét lời gọi ra "+
+					"ngoài tồn tại để bịt.", tc.path)
+			}
+			if !tc.wantHits && len(got) != 0 {
+				t.Errorf("%s: bị bắt nhầm: %v — một dây bẫy đỏ sẵn thì không ai tin.",
+					tc.path, got)
+			}
+		})
+	}
+
+	// Chiều còn lại của "hẹp": danh sách cho phép phải NHỎ. Nó không phải
+	// một con số thẩm mỹ — mỗi mục là một tệp sản phẩm được quyền gọi ra
+	// ngoài, và toàn bộ giá trị của phép quét nằm ở chỗ danh sách ấy đếm
+	// được bằng mắt. Nếu một ngày cần mục thứ ba, hãy nâng con số này CÙNG
+	// với một chú thích nói vì sao, chứ đừng để nó trôi.
+	const maxAllowlistEntries = 2
+	if len(outboundAllowlist) > maxAllowlistEntries {
+		t.Errorf("outboundAllowlist có %d mục (trần %d). Mỗi mục là một tệp sản "+
+			"phẩm được phép gọi ra ngoài; một danh sách dài là một danh sách "+
+			"không ai đọc nữa.", len(outboundAllowlist), maxAllowlistEntries)
 	}
 }

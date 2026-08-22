@@ -8,12 +8,20 @@ import (
 )
 
 // clearAPIEnv ensures each test starts from a clean slate: t.Setenv only
-// sets vars the test cares about, but Load reads all four, so a value
-// leaking from the outer environment (e.g. a developer's shell) would
+// sets vars the test cares about, but Load reads every one of these, so a
+// value leaking from the outer environment (e.g. a developer's shell) would
 // make a "default" case flaky.
+//
+// GITHUB_TOKEN is the one on this list most likely to be set for unrelated
+// reasons — `gh auth` and many CI runners export it — so leaving it out
+// would make TestLoad_GitHubDiscussionsAreOffByDefault pass or fail
+// depending on whose machine ran it.
 func clearAPIEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"PORT", "DATABASE_URL", "CORS_ORIGIN", "COOKIE_SECURE"} {
+	for _, k := range []string{
+		"PORT", "DATABASE_URL", "CORS_ORIGIN", "COOKIE_SECURE",
+		"GITHUB_TOKEN", "GITHUB_DISCUSSIONS_REPO",
+	} {
 		t.Setenv(k, "")
 	}
 }
@@ -83,6 +91,37 @@ func TestLoad_CookieSecureCases(t *testing.T) {
 				t.Fatalf("COOKIE_SECURE=%q: want %v got %v", tc.raw, tc.want, got)
 			}
 		})
+	}
+}
+
+// TestLoad_GitHubDiscussionsAreOffByDefault pins the behaviour every local
+// checkout and today's production depend on: absent GitHub configuration is
+// a NORMAL state, not a misconfiguration.
+//
+// It reads as trivial and is not. The alternative shapes are all things
+// this repo has done elsewhere for good reasons and which would be wrong
+// here — a default value (there is no sensible default repository), a
+// fail-closed like parseCookieSecure (nothing to fail closed to), or a
+// start-up error (the API would refuse to boot over one section of one
+// page). Writing the passthrough down as a test is what keeps somebody
+// from "fixing" it into one of those later.
+func TestLoad_GitHubDiscussionsAreOffByDefault(t *testing.T) {
+	clearAPIEnv(t)
+
+	cfg := Load()
+	if cfg.GitHubToken != "" || cfg.GitHubDiscussionsRepo != "" {
+		t.Fatalf("unset: want both empty, got token=%q repo=%q",
+			cfg.GitHubToken, cfg.GitHubDiscussionsRepo)
+	}
+
+	t.Setenv("GITHUB_TOKEN", "github_pat_example")
+	t.Setenv("GITHUB_DISCUSSIONS_REPO", "vndee/tuhoc-registry")
+	cfg = Load()
+	if cfg.GitHubToken != "github_pat_example" {
+		t.Errorf("GITHUB_TOKEN: want passthrough, got %q", cfg.GitHubToken)
+	}
+	if cfg.GitHubDiscussionsRepo != "vndee/tuhoc-registry" {
+		t.Errorf("GITHUB_DISCUSSIONS_REPO: want passthrough, got %q", cfg.GitHubDiscussionsRepo)
 	}
 }
 

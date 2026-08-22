@@ -5,6 +5,7 @@ package server
 
 import (
 	"io"
+	"log"
 	"runtime/debug"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/vndee/tuhoc-api/internal/auth"
 	"github.com/vndee/tuhoc-api/internal/config"
 	"github.com/vndee/tuhoc-api/internal/course"
+	"github.com/vndee/tuhoc-api/internal/discuss"
 	"github.com/vndee/tuhoc-api/internal/rating"
 	"github.com/vndee/tuhoc-api/internal/stats"
 	// appsync is internal/sync under an explicit alias, not its default
@@ -285,6 +287,27 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	ratingHandler := rating.NewHandler(rating.NewUsecase(rating.NewRepo(deps.Pool)))
 	app.Get("/ratings", auth.Require(deps.Pool), ratingHandler.List)
 	app.Put("/ratings/:registryId", auth.Require(deps.Pool), ratingHandler.Put)
+
+	// Discussions. Read-only: this API never writes to GitHub, and the
+	// "post a comment" button in the web client is a link to github.com,
+	// not a route here. There is deliberately no POST to add.
+	//
+	// Behind auth.Require like everything else, and here for a reason of
+	// its own: the GitHub token is the PLATFORM'S, so the quota it spends
+	// is shared by every reader (see discuss/cache.go's Budget). Requiring
+	// a session does not make that ration per-user — it is global, and it
+	// must be — but it does keep an anonymous flood from spending it.
+	//
+	// A misconfigured GITHUB_DISCUSSIONS_REPO is logged and the feature
+	// runs switched off rather than aborting start-up. Discussions are one
+	// section of one page; refusing to boot the whole API over them would
+	// convert a cosmetic misconfiguration into an outage, which is the
+	// same trade this package makes everywhere else.
+	discussHandler, err := discuss.NewHandlerForConfig(cfg.GitHubToken, cfg.GitHubDiscussionsRepo)
+	if err != nil {
+		log.Printf("server: discussions disabled: %v", err)
+	}
+	app.Get("/discussions/:registryId", auth.Require(deps.Pool), discussHandler.Thread)
 
 	return app
 }
