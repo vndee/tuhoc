@@ -559,17 +559,23 @@ describe('anchorToRange — tầng 1: khớp chính xác', () => {
 
 describe('anchorToRange — tầng 2: fuzzy', () => {
   it('sửa 1 ký tự chính tả trong exact ⇒ fuzzy = true, vẫn tìm đúng chỗ', () => {
-    const before = '<div><p>Phần trả thừa chính là số bit lãng phí mỗi ký hiệu vì dùng sai mô hình.</p></div>';
-    const after = '<div><p>Phần trả thừa chính là số bit lãng phí mỗi ký hiệu vì dùng sai mô hìnk.</p></div>';
+    // Câu này từng chép nguyên văn một câu của giáo trình RIÊNG TƯ. Phép quét
+    // xuất xứ trong `scripts/check_publishable.py` (phép 5) bắt được, và nó là
+    // phép duy nhất bắt được: đoạn văn không kèm tên course nên mọi phép quét
+    // theo tên đều mù. Ngữ liệu bây giờ lấy từ gói mẫu công khai
+    // `fixtures/courses/so-dau-phay-dong`. Hình dạng bài test không đổi — một
+    // ký tự sai chính tả ở TỪ CUỐI của đoạn exact.
+    const before = '<div><p>Phần dôi ra chính là nửa ULP mà phép làm tròn đã cắt đi ở bước cuối.</p></div>';
+    const after = '<div><p>Phần dôi ra chính là nửa ULP mà phép làm tròn đã cắt đi ở bước cuốk.</p></div>';
     const m1 = normalizeContainer(el(before));
-    const i = m1.flat.indexOf('vì dùng sai mô hình');
-    const a = anchorAt(m1, i, i + 'vì dùng sai mô hình'.length)!;
+    const i = m1.flat.indexOf('đã cắt đi ở bước cuối');
+    const a = anchorAt(m1, i, i + 'đã cắt đi ở bước cuối'.length)!;
 
     const m2 = normalizeContainer(el(after));
     const hit = anchorToRange(m2, a)!;
     expect(hit).not.toBeNull();
     expect(hit.fuzzy).toBe(true);
-    expect(describeResolved(m2, hit.range)).toBe('vì dùng sai mô hìnk');
+    expect(describeResolved(m2, hit.range)).toBe('đã cắt đi ở bước cuốk');
   });
 
   it('chèn thêm một từ vào GIỮA exact ⇒ fuzzy tìm được đoạn đã dài ra', () => {

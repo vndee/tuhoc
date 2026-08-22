@@ -1,6 +1,6 @@
 ---
 name: course-authoring
-description: Use when writing, generating, or revising a course package for the tuhoc platform — soạn course, viết giáo trình, sinh chương học, đóng gói course, tuhoc pack. Encodes the chapter/manifest structure, the pedagogical standard measured from the shipping ***REMOVED*** textbook, the two-tier security rule, and the mandatory `tuhoc pack` gate.
+description: Use when writing, generating, or revising a course package for the tuhoc platform — soạn course, viết giáo trình, sinh chương học, đóng gói course, tuhoc pack. Encodes the chapter/manifest structure, the pedagogical standard measured from the sample package in fixtures/courses/, the two-tier security rule, and the mandatory `tuhoc pack` gate.
 ---
 
 # Soạn course cho tuhoc
@@ -93,46 +93,69 @@ gói thư viện nào, kể cả ở hạng `content`.
 
 ## Chuẩn sư phạm
 
-Rút từ `courses/***REMOVED***/` — 44 chương đang chạy thật, trung bình
-24 KB HTML mỗi chương. Mọi con số dưới đây là **đếm được từ cây tệp đó**, không
-phải chủ trương suông. Chúng là mức sàn, không phải mức trần.
+Mọi con số dưới đây là **đếm được**, không phải chủ trương suông — và bạn đếm
+lại được ngay, vì ngữ liệu nằm trong repo:
+
+```bash
+make courses                                   # bung fixtures/courses/*.zip
+cd courses/so-dau-phay-dong/chapters
+grep -o '<summary>Lời giải' *.html | wc -l     # 21
+grep -o 'class="box-h">Bài ' *.html | wc -l    # 21  → 21/21, xem §3
+```
+
+Gói mẫu ấy — `fixtures/courses/so-dau-phay-dong/`, 8 chương, hạng `interactive`,
+CC-BY-4.0 — **do chính skill này sinh ra**, nên nó vừa là ví dụ vừa là bằng
+chứng rằng bộ chuẩn này viết ra được thành course thật. Ngưỡng của từng mục
+được chốt lần đầu bằng cách đếm trên một giáo trình 44 chương lớn hơn; nguồn ấy
+riêng tư và **không** nằm trong repo, nên mọi ví dụ và mọi con số ở đây đã được
+đo lại trên gói mẫu công khai. Nếu con số nào không khớp khi bạn chạy lại, tin
+phép đo của bạn và sửa dòng này.
+
+Chúng là mức sàn, không phải mức trần.
 
 ### 1. Bắt đầu bằng câu hỏi, không bằng định nghĩa
 
 Đây là luật số một, và nó là thứ tách một chương khỏi một mục từ điển.
 
-44/44 chương mở bằng đúng ba dòng: `ch-eyebrow` (định vị), `h1.ch-title`, và
+8/8 chương mở bằng đúng ba dòng: `ch-eyebrow` (định vị), `h1.ch-title`, và
 `ch-lede`. Đoạn `ch-lede` **không tóm tắt chương** — nó nói vì sao chương tồn
-tại. Ba ví dụ thật:
+tại. Ba ví dụ thật, từ gói mẫu:
 
-> "Trước khi có công thức, cần một câu hỏi đúng. Shannon không hỏi 'thông tin
-> nghĩa là gì' — ông hỏi 'cần bao nhiêu ký hiệu nhị phân để bên nhận tái tạo
-> được điều bên gửi muốn nói'. Đổi câu hỏi đó là toàn bộ cú nhảy." (Chương 0.1)
+> "Ai cũng gặp dòng này một lần rồi cười trừ và đi tiếp. Đi tiếp là chỗ sai:
+> đằng sau nó không phải một lỗi cài đặt của ngôn ngữ nào cả, mà là một quyết
+> định thiết kế cố ý mà bạn sẽ phải sống chung suốt phần đời còn lại của mọi
+> dòng mã tính toán bạn viết." (Chương 0.1)
 
-> "Đây là chương biến entropy từ 'một công thức' thành 'một sự thật về tổ hợp'."
-> (Chương 1.8)
+> "Phép cộng là phép tính đầu tiên ai cũng học và là phép tính cuối cùng ai cũng
+> nghĩ có thể sai." (Chương 2.2)
 
-> "Giờ ta khai thác công thức. Mục tiêu: biết chính xác $H$ nằm ở đâu, biến
-> thiên thế nào, và có hình dạng gì trên simplex — vì hầu hết trực giác sai về
-> bất định đến từ việc chưa bao giờ nhìn thấy mặt cong của $H$." (Chương 1.2)
+> "Câu 'kết quả này sai khoảng $10^{-9}$' gần như luôn là một câu vô nghĩa, và
+> biết vì sao nó vô nghĩa là bước đầu tiên để nói được điều gì đó đúng. Sai
+> $10^{-9}$ khi đại lượng cỡ $10^{-12}$ là sai hoàn toàn; sai $10^{-9}$ khi đại
+> lượng cỡ $10^{6}$ là chính xác hơn mức phần cứng có thể đạt." (Chương 1.2)
 
-Chú ý dòng thứ ba: nó nói thẳng **lỗi sai mà chương này chữa**. Đó là dạng
-`ch-lede` mạnh nhất.
+Chú ý dòng thứ ba: nó nói thẳng **lỗi sai mà chương này chữa**, và nói bằng một
+ví dụ chứ không bằng một lời hứa. Đó là dạng `ch-lede` mạnh nhất.
 
-**Phản ví dụ — đừng viết:** *"Chương này giới thiệu khái niệm entropy và các
-tính chất cơ bản của nó."* Câu đó không nói người đọc thiếu gì.
+**Phản ví dụ — đừng viết:** *"Chương này giới thiệu khái niệm ULP và các tính
+chất cơ bản của nó."* Câu đó không nói người đọc thiếu gì.
 
 ### 2. Định nghĩa phải được **ép ra**, không được **tuyên bố**
 
-Mẫu hình mạnh nhất trong giáo trình mẫu, và mẫu hình mà course do AI sinh hay bỏ
-qua nhất. Chương 0.1 không nói "độ bất ngờ được định nghĩa là $-\log p$". Nó:
+Mẫu hình mạnh nhất, và mẫu hình mà course do AI sinh hay bỏ qua nhất. Chương 1.2
+của gói mẫu không mở bằng "ULP được định nghĩa là $2^{\lfloor\log_2|x|\rfloor-p+1}$".
+Nó:
 
-1. Đặt câu hỏi: gán cho mỗi biến cố một đại lượng "bất ngờ" phụ thuộc duy nhất
-   vào $p$.
-2. Nêu **ba đòi hỏi tự nhiên** người đọc gật đầu ngay: hiếm thì bất ngờ hơn;
-   chắc chắn thì không bất ngờ; hai biến cố độc lập thì cộng được.
-3. Rồi mới chứng minh rằng ba đòi hỏi đó **chỉ có một nghiệm**: $-c\log p$.
-4. Rồi nói $c$ chỉ là chọn đơn vị (bit / nat / hartley).
+1. Đặt câu hỏi: cần một đơn vị để câu "kết quả này sai khoảng $10^{-9}$" có
+   nghĩa.
+2. Thử **sai số tuyệt đối** — hỏng, vì $10^{-9}$ nói hai điều khác hẳn nhau tuỳ
+   độ lớn của đại lượng.
+3. Thử **sai số tương đối** — khá hơn, nhưng vẫn hỏng ở hai chỗ: không định
+   nghĩa được tại $0$, và nó không cho biết kết quả cách **số máy đúng** bao
+   nhiêu bước, mà đó mới là thứ ta cần khi hỏi "hàm căn bậc hai này có làm tròn
+   đúng không".
+4. Rồi mới một câu: *"Đơn vị giải quyết cả hai là đơn vị của chính cái lưới"* —
+   và định nghĩa rơi ra như thứ **duy nhất** còn lại.
 
 Người đọc rời khỏi mục đó với cảm giác **họ có thể đã tự tìm ra công thức** —
 đó là cảm giác cần nhắm tới. Với mỗi định nghĩa bạn định viết, hỏi: *đòi hỏi
@@ -141,82 +164,92 @@ bạn chưa hiểu đủ để dạy nó.
 
 ### 3. Bài tập **luôn** có lời giải
 
-Đếm được: **202/202** bài tập trong giáo trình mẫu có `<details class="deriv">`
-chứa lời giải. Một trăm phần trăm. Bài tập không lời giải là bài tập bỏ đi —
-người tự học không có ai để hỏi.
+Đếm được: **21/21** bài tập trong gói mẫu có `<details class="deriv">` chứa lời
+giải. Một trăm phần trăm. Bài tập không lời giải là bài tập bỏ đi — người tự học
+không có ai để hỏi.
 
 Ba tính chất khác, cũng đếm được:
 
-- **Có mức khó**, đánh bằng sao trong tiêu đề hộp: `Bài 1 · Hai mươi câu hỏi
-  trên nguồn lệch · ★` cho tới `★★★★`. Đủ bốn mức trong cùng một chương là bình
-  thường.
+- **Có mức khó**, đánh bằng sao trong tiêu đề hộp. Gói mẫu chia đều 7 bài ★,
+  7 bài ★★, 7 bài ★★★, và mỗi chương có đủ ba mức: `Bài 1 · Tính ULP bằng tay ·
+  ★` → `Bài 3 · Cài đặt nextafter và bẫy của nó · ★★★`. Lên tới `★★★★` là bình
+  thường ở chương khó.
 - **Chia câu (a)/(b)/(c)** — một bài dẫn người đọc qua ba bước, thay vì ba bài
   rời rạc.
-- **Nối ngược vào chương.** Bài 1(c) của Chương 0.1 yêu cầu "đối chiếu với biên
-  $[H(Y), H(Y)+1)$ **nêu trong chương**". Bài tập kiểm chứng một khẳng định vừa
-  đọc, không phải một bài toán ở đâu rơi xuống.
+- **Nối ngược vào chương.** `Bài 2 · Vá Định lý 1.2 cho số âm · ★★` bắt người
+  đọc sửa chính định lý vừa đọc ở đầu chương, tại đúng chỗ chương đã tự thú là
+  nó chỉ đúng cho số không âm. Bài tập kiểm chứng một khẳng định vừa đọc, không
+  phải một bài toán ở đâu rơi xuống.
 
-Lời giải viết **đầy đủ**, không phải đáp số. Lời giải mẫu của Bài 1(b) không chỉ
-đưa chiến lược hỏi mà còn giải thích vì sao nó tối ưu, và Bài 2(c) kết thúc bằng
-một đoạn bình luận về ý nghĩa con số vừa tính. Đó là chỗ dạy nhiều nhất.
+Lời giải viết **đầy đủ**, không phải đáp số: nêu cả *vì sao* cách làm ấy đúng,
+và kết bằng một câu bình luận về ý nghĩa con số vừa tính. Đó là chỗ dạy nhiều
+nhất.
 
-Số lượng: 3–5 bài mỗi chương là mức của giáo trình mẫu. Ít hơn 2 thì chương chưa
-kiểm được gì.
+Số lượng: **3 bài mỗi chương** là mức của gói mẫu (phụ lục có **0**, và đúng —
+phụ lục là bảng tra, không phải chương). 3–5 là dải hợp lý. Ít hơn 2 thì chương
+chưa kiểm được gì.
 
 ### 4. Mô phỏng chỉ khi **phải nhìn mới hiểu**
 
-58 hình trên 44 chương — trung bình 1,3, phần lớn chương có **một**, không chương
-nào quá 3, và phụ lục có **không**. Hình là thứ chương phải **giành được**, không
-phải thứ mặc định có.
+8 hình trên 8 chương — trung bình **1,0**, phần lớn chương có **một**, không
+chương nào quá 2, và phụ lục có **không**. Hình là thứ chương phải **giành
+được**, không phải thứ mặc định có.
 
 Thử nghiệm để quyết: *bỏ hình này đi thì đoạn văn còn giải thích được không?*
-Còn thì bỏ. Hình 0.1 (trò chơi hai mươi câu hỏi) tồn tại vì "chiến lược tối ưu
-chia đôi **khối lượng xác suất**, không phải chia đôi **số phần tử**" là câu mà
-đọc thì gật đầu, mà chơi thì mới tin.
+Còn thì bỏ. Hình 0.1 của gói mẫu (ba số trên trục thực, phóng tới mức thấy được
+lưới) tồn tại vì "$0{,}1$ và $0{,}2$ lệch **lên**, còn $0{,}3$ lệch **xuống**"
+là câu mà đọc thì gật đầu, mà nhìn mới tin.
 
 Mỗi hình mang **bốn** phần chứ không chỉ một khung vẽ: `fig-num`, `fig-title`,
 `fig-desc` (nói trước cần nhìn cái gì) và `fig-foot` (nói sau đã thấy được cái
 gì). Phần `fig-foot` là phần đắt nhất và là phần hay bị bỏ:
 
-> "Khi phân phối gần đều, mọi câu hỏi đều 'đắt' như nhau và ta cần
-> $\approx\log_2 n$ câu. Khi phân phối lệch, một câu hỏi khéo có thể kết thúc trò
-> chơi ngay — entropy tụt xuống tương ứng."
+> "Ba đường kể ba câu chuyện khác nhau. Cộng xuôi đi thẳng lên, hệ số góc đúng
+> bằng $1$ — mỗi số hạng mất trọn vẹn. Chia đôi đi ngang ở một mức thấp và không
+> tăng theo $n$ trong dải này […]. Kahan nằm sát trục hoành: sai số bằng $0$ tới
+> bit cuối. Cái giá tương ứng là số phép tính: một, một, và bốn lần phép cộng."
 
 Hình không có `fig-foot` là hình chưa dạy gì.
 
 **Bẫy chết người:** `<div data-viz="…"></div>` **chỉ chạy ở hạng `interactive`**
 và chỉ khi `viz.js` của course định nghĩa đúng tên đó. Chép một thẻ `data-viz`
-từ giáo trình mẫu sang course hạng `content` sẽ **qua được `tuhoc pack`** — nó
-chỉ là một `<div>` rỗng — rồi hiện ra một ô trắng trong trình đọc. Bộ kiểm định
-không bắt được lỗi này; chỉ bạn bắt được. Ở hạng `content`, hình là **SVG nội
-tuyến** hoặc ảnh.
+từ một gói `interactive` (gói mẫu có 8 thẻ như thế) sang course hạng `content`
+sẽ **qua được `tuhoc pack`** — nó chỉ là một `<div>` rỗng — rồi hiện ra một ô
+trắng trong trình đọc. Bộ kiểm định không bắt được lỗi này; chỉ bạn bắt được. Ở
+hạng `content`, hình là **SVG nội tuyến** hoặc ảnh.
 
 ### 5. Nói ra chỗ người ta hay sai
 
-Đếm được: 13 hộp `box warn` + 9 hộp `box pitfall`. Chúng không phải trang trí —
-mỗi hộp là một lỗi thật, gọi tên thật. Ví dụ thật:
+Đếm được: **8** hộp `box warn` + **7** hộp `box pitfall` trên 8 chương, và
+**8/8** chương có ít nhất một. Chúng không phải trang trí — mỗi hộp là một lỗi
+thật, gọi tên thật:
 
-> **Cạm bẫy thường gặp** — "Một chuỗi bit ngẫu nhiên đều có entropy cực đại,
-> nhưng chẳng 'nói' gì cả. […] Đại lượng $H$ đo **chi phí mô tả**, không đo
-> **giá trị**."
+> **Chỗ hay sai — ULP tại luỹ thừa của 2 có hai định nghĩa.** "Không có định
+> nghĩa nào sai; chúng phục vụ hai câu hỏi khác nhau. Nhưng một cận sai số phát
+> biểu bằng '$0{,}5$ ULP' có ý nghĩa khác hẳn tuỳ theo tác giả dùng cái nào, và
+> sự khác biệt rơi đúng vào các điểm mà kiểm thử hay chọn làm ca thử."
 
-Tiêu đề các hộp cảnh báo khác trong giáo trình mẫu — chú ý chúng cụ thể đến mức
-nào: *"Perplexity phụ thuộc tokenizer — lỗi so sánh phổ biến"*, *"Điều kiện
-KHÔNG luôn làm giảm mutual information"*, *"Thiên lệch độ dài — và vì sao 'chuẩn
-hóa theo độ dài' không vô tội"*.
+Tiêu đề các hộp khác trong gói mẫu — chú ý chúng cụ thể đến mức nào:
+*"Cạm bẫy — trình biên dịch có thể xoá thuật toán Kahan"*, *"Chỗ hay hiểu sai —
+'làm tròn đúng' không có nghĩa là 'kết quả đúng'"*, *"Cạm bẫy — vùng dưới chuẩn
+có thể chậm hơn một trăm lần"*, *"Chỗ hay sai — định lý này nói về số KHÔNG
+ÂM"*.
 
 Một chương không có chỗ nào cảnh báo thì hoặc chủ đề quá nhạt, hoặc bạn chưa
 dạy nó cho ai bao giờ.
 
 ### 6. Buộc chương vào phần còn lại của course
 
-336 tham chiếu chéo dạng "Chương N.M" trên 44 chương; 43/44 chương có ít nhất
-một. Cả hai chiều đều quan trọng:
+**64** tham chiếu chéo dạng "Chương N.M" trên 8 chương; **8/8** chương có ít
+nhất một. Cả hai chiều đều quan trọng:
 
-- **Trả nợ về sau:** "Chương 2.2 sẽ nói con số đó nằm trong $[H(X), H(X)+1)$" —
-  đặt một câu hỏi mà chương này chưa trả được, và hẹn chỗ trả.
-- **Thu nợ đã vay:** "như Chương 1.6 (data-processing) sẽ cho biết chính xác ta
-  được và mất gì khi làm vậy".
+- **Trả nợ về sau:** "…độ rộng của dải xanh — tức ULP, đại lượng **Chương 1.2**
+  dành trọn cho — đổi khi bạn chuyển từ $0{,}3$ sang $1{,}1$" — đặt một câu hỏi
+  mà chương này chưa trả được, và hẹn chỗ trả.
+- **Thu nợ đã vay:** "**Chương 0.1** đặt câu hỏi này ở dòng thứ ba và cố ý không
+  trả lời, vì trả lời tử tế cần ULP (**Chương 1.2**), cần mô hình sai số
+  (**Chương 1.3**) và cần biết sai số dồn tới đâu (**Chương 2.2**). Bây giờ đủ
+  rồi."
 
 Course không có tham chiếu chéo là một tập bài giảng rời, không phải một giáo
 trình. Nếu chương 3 của bạn không cần gì từ chương 1 thì hoặc thứ tự sai, hoặc
@@ -224,28 +257,30 @@ trình. Nếu chương 3 của bạn không cần gì từ chương 1 thì hoặ
 
 ### 7. Đóng chương bằng thứ mang đi được
 
-43/44 chương kết bằng hộp `keyfacts` "Chốt chương": 4–5 gạch đầu dòng, mỗi dòng
+8/8 chương kết bằng hộp `keyfacts` "Chốt chương": 4–5 gạch đầu dòng, mỗi dòng
 là một **câu khẳng định** người đọc mang đi được, không phải một chủ đề đã bàn.
 
-Đúng: "Ba tiên đề (giảm, $\iota(1)=0$, cộng tính) ép độ bất ngờ phải là
-$-c\log p$."
-Sai: "Chúng ta đã tìm hiểu về các tiên đề của độ bất ngờ."
+Đúng: "Tỉ số $\operatorname{ulp}(x)/|x|$ luôn nằm trong
+$\left(2^{-p}, 2^{1-p}\right]$ — nên đổi giữa 'ULP' và 'sai số tương đối' luôn
+kèm một bất định gấp đôi."
+Sai: "Chúng ta đã tìm hiểu về ULP và các tính chất của nó."
 
 ### 8. Độ sâu là bắt buộc, độ dài thì không
 
-Trung bình 24 KB HTML, 4,7 mục `<h2>` mỗi chương. Nhưng thứ tạo ra độ sâu không
-phải số chữ — mà là **255 khối `details.deriv`**: chứng minh đầy đủ, gấp lại
-được. Giáo trình mẫu không bao giờ nói "có thể chứng minh được rằng…" rồi đi
-tiếp. Nó bỏ chứng minh vào khối gập, viết trọn, và người đọc chọn có mở hay
-không.
+Trung bình **20,5 KB** HTML, **5,4** mục `<h2>` mỗi chương (43 mục trên 8
+chương, **tất cả** đều có `id`). Nhưng thứ tạo ra độ sâu không phải số chữ — mà
+là **30 khối `details.deriv`**: chứng minh đầy đủ, gấp lại được. Gói mẫu không
+bao giờ nói "có thể chứng minh được rằng…" rồi đi tiếp. Nó bỏ chứng minh vào
+khối gập, viết trọn, và người đọc chọn có mở hay không.
 
 Đó là cách giải quyết mâu thuẫn giữa "đừng làm người mới ngợp" và "đừng nói dối
 người giỏi": **viết cả hai tầng, để người đọc chọn tầng.**
 
-Chương 0.1 còn đi xa hơn — Bài 3 yêu cầu chứng minh lại Mệnh đề 0.1 với giả
-thiết yếu hơn (đo được thay vì đơn điệu), rồi giải thích vì sao **không có** giả
-thiết đó thì kết luận sai. Chương thừa nhận điều kiện kỹ thuật của chính nó thay
-vì giấu đi.
+Chương 1.1 của gói mẫu còn đi xa hơn: nó phát biểu Định lý 1.2 (đơn điệu theo
+chuỗi bit), rồi ngay dưới đặt một hộp `box warn` nói định lý ấy **chỉ đúng cho
+số không âm**, rồi giao Bài 2 bắt người đọc vá lại cho số âm. Chương thừa nhận
+điều kiện kỹ thuật của chính nó thay vì giấu đi — và biến chỗ thừa nhận thành
+bài tập.
 
 ---
 
