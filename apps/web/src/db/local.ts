@@ -177,8 +177,20 @@ export const USER_CONTENT_KEYS = ['itbook-note-draft'] as const;
  * that runs before any module loads (that is what prevents a flash of the
  * wrong palette). It cannot import this constant; `db/local.test.ts` pins
  * the two together instead.
+ *
+ * `itbook-lang` (subsystem 3, Task 4) is the second entry and lands on this
+ * side of the line for the same reason: the interface language is a property
+ * of the person reading this screen right now, not of the account they are
+ * signed into. A shared laptop that flipped back to Vietnamese every time
+ * somebody signed in would be worse, and there is nothing private in "en".
+ *
+ * It is also the answer to "remember the choice PER DEVICE, do not sync it":
+ * this list is exactly the set of keys `clearLocalData()` leaves alone, and
+ * nothing in `sync/engine.ts` reads `localStorage` at all — the sync path is
+ * `db.outbox`, which `i18n/LanguageProvider.test.tsx` asserts stays empty
+ * across a language change.
  */
-export const DEVICE_PREFERENCE_KEYS = ['itbook-theme'] as const;
+export const DEVICE_PREFERENCE_KEYS = ['itbook-theme', 'itbook-lang'] as const;
 
 /**
  * Every `localStorage` key this app is allowed to touch.
