@@ -8,7 +8,7 @@ import { readConfig, readPublicConfig } from './keystore';
 import { getProvider, listProviders } from './providers';
 import { ProviderError, type ChatMessage, type Provider } from './providers/types';
 import { checkAndConsume } from './guard';
-import { LANG_PARAM, currentLang, setVaultLang, t } from './lang';
+import { currentLang, setVaultLang, t } from './lang';
 import { defaultSettingsDeps, renderSettings } from './ui/Settings';
 
 export interface HandlerDeps {
@@ -19,6 +19,12 @@ export interface HandlerDeps {
    *  phải tiện nghi: một nhật ký chỉ vẽ lúc nạp trang là một nhật ký đứng yên
    *  trong đúng lúc đáng nhìn nhất — lúc có thứ gì đó đang gọi liên tục. */
   onActivity?: () => void;
+  /** Gọi sau khi ngôn ngữ đổi, để màn cấu hình dịch lại CHỮ của nó.
+   *
+   *  Nó phải là *dịch lại*, không phải *vẽ lại*: `renderSettings` bắt đầu bằng
+   *  `root.textContent = ''`, nên vẽ lại ở đây sẽ xoá đúng cái ô key mà thay
+   *  đổi này sinh ra để cứu. Xem `SettingsHandle.retranslate`. */
+  onLangChange?: () => void;
 }
 
 /** Tách khỏi `addEventListener` để test gọi thẳng được. Trả về void: mọi hồi đáp
@@ -81,6 +87,30 @@ export function handleMessage(event: MessageEvent, deps: HandlerDeps): void {
     // hợp lệ, nên thứ duy nhất còn chặn lời gọi mạng là xác nhận đầu phiên.
     case 'chat':
       handleChat(req, req.id, deps, send);
+      return;
+    /**
+     * NGÔN NGỮ HIỂN THỊ — một chiều ĐI VÀO, và không có `send` nào ở nhánh này.
+     *
+     * Sự vắng mặt của `send` là **cả cơ chế**, không phải một chỗ chưa viết
+     * xong: câu hỏi mà S2-F8 buộc người đọc hỏi về mọi thông điệp mới là
+     * *"thông điệp này có mang được key ra khỏi origin kho khoá không"*, và
+     * một nhánh không hồi đáp thì không có đường nào để mang gì về. Câu trả
+     * lời đầy đủ nằm tại chỗ khai báo trong `protocol.ts`.
+     *
+     * Nhánh này **không đọc keystore** — không `readConfig`, không
+     * `readPublicConfig`, không chạm `localStorage`. Nó đổi một biến ở tầm
+     * module rồi bảo màn cấu hình **dịch lại chữ**. Nó cố ý KHÔNG vẽ lại màn
+     * ấy: `renderSettings` mở đầu bằng `root.textContent = ''`, nên một lần vẽ
+     * lại ở đây sẽ xoá đúng cái ô key mà thay đổi này sinh ra để cứu.
+     *
+     * `req.lang` đi thẳng vào `setVaultLang` mà không kiểm trước: hàm ấy nhận
+     * `string | null | undefined` và lọc qua `normalizeLang`, nên `undefined`
+     * (thông điệp thiếu trường) và một chuỗi bịa đều rơi về `DEFAULT_LANG`.
+     * Phép lọc nằm ở một chỗ, không hai.
+     */
+    case 'setLang':
+      applyLang(req.lang);
+      deps.onLangChange?.();
       return;
     default:
       send({ v: 1, id: req.id, kind: 'error', code: 'unsupported_provider',
@@ -261,25 +291,39 @@ export function resolveAllowedOrigin(env: { VITE_APP_ORIGIN?: string }): string 
 }
 
 /**
- * Ngôn ngữ hiển thị của kho khoá, đọc từ `?lang=` mà trang chính gắn vào `src`
- * của khung. Xem `./lang.ts` cho lý do đầy đủ; ba điểm cần nhớ ở đây:
+ * Ngôn ngữ hiển thị của kho khoá — áp một mã ngôn ngữ chưa tin được.
  *
- *   - **đọc TRƯỚC `resolveAllowedOrigin`**, vì hàm ấy ném bằng chữ của catalog;
+ * Ba điểm cần nhớ:
+ *
  *   - **không tin đầu vào**: `setVaultLang` lọc qua `normalizeLang`, và giá trị
  *     xấu nhất một trang lạ đạt được là hiển thị sai ngôn ngữ;
- *   - **không đi qua giao thức**: `VaultRequest` là union đóng, và ngôn ngữ
- *     hiển thị không đáng một thay đổi giao thức (S2-F8).
+ *   - **`<html lang>` đi theo**, vì trình đọc màn hình chọn giọng theo nó;
+ *   - **nó KHÔNG vẽ lại gì**. Việc dịch lại màn hình là của `onLangChange`, và
+ *     tách ra để `handleMessage` kiểm được mà không cần một DOM có thật.
  *
- * Tách khỏi khối khởi động để test gọi được — cùng lý do và cùng khuôn với
- * `resolveAllowedOrigin`.
+ * Đường vào duy nhất là nhánh `setLang` của `handleMessage`. `?lang=` — đường
+ * của Task 5 — **đã bị bỏ**: nó nằm trong `src` của khung, nên đổi ngôn ngữ
+ * làm khung nạp lại và xoá sạch ô nhập key. Xem `./lang.ts`.
  */
-export function applyLangFromLocation(search: string): void {
-  setVaultLang(new URLSearchParams(search).get(LANG_PARAM));
+export function applyLang(raw: string | null | undefined): void {
+  setVaultLang(raw);
   if (typeof document !== 'undefined') document.documentElement.lang = currentLang();
 }
 
 if (typeof window !== 'undefined' && !import.meta.env.VITEST) {
-  applyLangFromLocation(window.location.search);
+  /*
+   * CÁI GIÁ ĐÃ NHẬN KHI BỎ `?lang=`, nói ra thay vì để im.
+   *
+   * Trước đây `applyLangFromLocation` chạy TRƯỚC dòng này, vì `resolveAllowedOrigin`
+   * ném bằng chữ của catalog và câu ném ấy khi đó đọc được đúng tiếng người dùng.
+   * Từ nay ngôn ngữ chỉ tới SAU khi tài liệu đã nạp (một thông điệp không thể tới
+   * sớm hơn thế), nên **câu ném lúc khởi động luôn ở `DEFAULT_LANG`**.
+   *
+   * Đổi được: nó nói với NGƯỜI DEPLOY, không với người học — cùng hạng với ba câu
+   * ném của `headers.ts` mà cổng i18n đã xếp là "chỉ hiện cho người chạy build".
+   * Người đọc một kho khoá cấu hình sai không thấy câu này; họ thấy một khung
+   * trống, và trang chính nói "bản này không có AI".
+   */
   const allowedOrigin = resolveAllowedOrigin(import.meta.env);
 
   // Màn cấu hình (form nhập key) + khung xác nhận + nhật ký được vẽ ngay lúc
@@ -305,5 +349,17 @@ if (typeof window !== 'undefined' && !import.meta.env.VITEST) {
       }
     : undefined;
 
-  window.addEventListener('message', (e) => handleMessage(e, { allowedOrigin, onActivity: repaint }));
+  // `retranslate`, KHÔNG `renderSettings` lần hai — cùng lập luận với dòng trên,
+  // và đây là chỗ nó đắt nhất: thông điệp `setLang` tới ĐÚNG lúc người dùng có
+  // thể đang gõ key, vì bộ chọn ngôn ngữ của trang chính vẫn bấm/Tab tới được
+  // trong lúc lớp phủ đang mở.
+  const retranslate = ui
+    ? () => {
+        ui.retranslate();
+      }
+    : undefined;
+
+  window.addEventListener('message', (e) =>
+    handleMessage(e, { allowedOrigin, onActivity: repaint, onLangChange: retranslate }),
+  );
 }

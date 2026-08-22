@@ -73,6 +73,22 @@ export interface SettingsHandle {
    *  một cách phá tính năng mà không cổng nào hỏi tới. `settings.test.ts` có
    *  bẫy cho đúng chỗ này. */
   repaintPanel: () => void;
+  /**
+   * Dịch lại MỌI chữ của màn hình sang ngôn ngữ hiện tại — **tại chỗ**.
+   *
+   * Đây là lý do nó tồn tại, và nó là một ràng buộc chứ không phải một cách
+   * viết: `renderSettings` mở đầu bằng `root.textContent = ''`, nên "đổi ngôn
+   * ngữ = gọi lại `renderSettings`" sẽ **xoá sạch ô nhập key đang gõ dở** —
+   * đúng cái lỗi mà việc bỏ `?lang=` khỏi `src` của khung sinh ra để chữa.
+   * Task 7 đo được nó ở đường bàn phím (16 lần Tab từ ô key là tới bộ chọn
+   * ngôn ngữ của trang chính); nếu hàm này vẽ lại thì lỗi ấy vẫn còn nguyên,
+   * chỉ đổi chỗ gây ra.
+   *
+   * Nó KHÔNG chạm `secretInput.value`, không đọc nó, không cất nó đi đâu để
+   * rồi trả lại — **node của ô key không bị thay**. Không có bản sao thứ hai
+   * nào của key được tạo ra ở đây, kể cả trong một biến cục bộ sống một dòng.
+   */
+  retranslate: () => void;
   /** Chờ hành động đang chạy (chỉ "Kiểm tra kết nối" là bất đồng bộ). Chỉ để
    *  test có chỗ bám; giao diện thật không gọi. */
   whenIdle: () => Promise<void>;
@@ -117,27 +133,43 @@ function el(tag: string, text?: string): HTMLElement {
   return node;
 }
 
-function field(labelText: string, control: HTMLElement, hint?: string): HTMLElement {
+/**
+ * Một mẩu chữ, dưới dạng **cách lấy nó** chứ không dưới dạng chữ đã lấy.
+ *
+ * Toàn bộ màn hình này được dựng từ những hàm như vậy thay vì từ `string`, và
+ * đó là điều duy nhất làm `retranslate()` khả thi mà không phải vẽ lại DOM:
+ * một `string` chỉ biết ngôn ngữ tại lúc gọi `t()`, còn một `() => string`
+ * biết ngôn ngữ tại lúc *chạy lại*.
+ */
+type Text = () => string;
+
+function field(label: Text, control: HTMLElement, hint: Text | undefined, bind: Bind): HTMLElement {
   const wrap = el('div');
   wrap.className = 'vault-field';
-  const label = el('label', labelText) as HTMLLabelElement;
+  const labelEl = el('label') as HTMLLabelElement;
+  bind(labelEl, label);
   const id = `vault-${control.dataset.role ?? 'x'}`;
   control.id = id;
-  label.htmlFor = id;
-  wrap.appendChild(label);
+  labelEl.htmlFor = id;
+  wrap.appendChild(labelEl);
   wrap.appendChild(control);
   if (hint !== undefined) {
-    const h = el('p', hint);
+    const h = el('p');
     h.className = 'vault-hint';
+    bind(h, hint);
     wrap.appendChild(h);
   }
   return wrap;
 }
 
-function button(role: string, text: string): HTMLButtonElement {
-  const b = el('button', text) as HTMLButtonElement;
+/** Gắn một mẩu chữ vào một node, và ghi nhớ mối nối ấy để dịch lại được. */
+type Bind = (node: HTMLElement, text: Text) => void;
+
+function button(role: string, text: Text, bind: Bind): HTMLButtonElement {
+  const b = el('button') as HTMLButtonElement;
   b.type = 'button';
   b.dataset.role = role;
+  bind(b, text);
   return b;
 }
 
@@ -151,10 +183,40 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
   const providers = deps.listProviders();
   const stored = deps.readPublicConfig();
 
+  /**
+   * Sổ của `retranslate()`: mỗi mối nối "node này lấy chữ từ hàm kia".
+   *
+   * Một MẢNG những việc phải làm lại, không một lần vẽ lại: xem
+   * `SettingsHandle.retranslate` cho lý do đầy đủ. Mọi chữ trên màn hình này
+   * phải đi qua `bind` hoặc `dynamic` — một `node.textContent = t(...)` viết
+   * thẳng sẽ đứng yên ở tiếng cũ sau khi người dùng đổi ngôn ngữ, và không
+   * triệu chứng nào khác.
+   */
+  const retranslators: Array<() => void> = [];
+
+  /** Chữ TĨNH: một khoá, một node, dịch lại là gọi lại đúng hàm ấy. */
+  const bind: Bind = (node, text) => {
+    const apply = (): void => {
+      node.textContent = text();
+    };
+    retranslators.push(apply);
+    apply();
+  };
+
+  /** Chữ ĐỘNG: phụ thuộc trạng thái hiện tại (đã cắm key chưa, đang chọn nhà
+   *  cung cấp nào, nút xoá đã lên nòng chưa). Chỉ ghi việc vào sổ; chỗ gọi tự
+   *  quyết khi nào chạy lần đầu. */
+  const dynamic = (apply: () => void): void => {
+    retranslators.push(apply);
+  };
+
   // ── phần giải thích ──────────────────────────────────────────────────────
-  root.appendChild(el('h2', t('vault.settings.title')));
-  const why = el('p', t('vault.settings.why'));
+  const title = el('h2');
+  bind(title, () => t('vault.settings.title'));
+  root.appendChild(title);
+  const why = el('p');
   why.className = 'vault-note';
+  bind(why, () => t('vault.settings.why'));
   root.appendChild(why);
 
   const current = el('p');
@@ -176,7 +238,7 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
   if (stored && providers.some((p) => p.id === stored.providerId)) {
     providerSel.value = stored.providerId;
   }
-  root.appendChild(field(t('vault.settings.providerLabel'), providerSel));
+  root.appendChild(field(() => t('vault.settings.providerLabel'), providerSel, undefined, bind));
 
   const warning = el('p');
   warning.dataset.role = 'provider-warning';
@@ -189,7 +251,9 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
   modelInput.dataset.role = 'model';
   modelInput.autocomplete = 'off';
   modelInput.spellcheck = false;
-  root.appendChild(field(t('vault.settings.modelLabel'), modelInput, t('vault.settings.modelHint')));
+  root.appendChild(
+    field(() => t('vault.settings.modelLabel'), modelInput, () => t('vault.settings.modelHint'), bind),
+  );
 
   // ── key ──────────────────────────────────────────────────────────────────
   const secretInput = document.createElement('input');
@@ -200,15 +264,29 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
   secretInput.dataset.role = 'secret';
   secretInput.autocomplete = 'off';
   secretInput.spellcheck = false;
-  secretInput.placeholder = t('vault.settings.keyPlaceholder');
-  root.appendChild(field(t('vault.settings.keyLabel'), secretInput, t('vault.settings.keyHint')));
+  // Chỗ giữ chỗ là một THUỘC TÍNH, không phải `textContent`, nên nó không đi
+  // qua `bind` được — nhưng nó vẫn là chữ, nên nó vẫn phải vào sổ. Một mối nối,
+  // gọi ngay một lần và ghi vào sổ một lần: hai dòng `t()` rời nhau ở đây là
+  // đúng cách để một trong hai trôi mất.
+  const applyPlaceholder = (): void => {
+    secretInput.placeholder = t('vault.settings.keyPlaceholder');
+  };
+  dynamic(applyPlaceholder);
+  applyPlaceholder();
+  root.appendChild(
+    field(() => t('vault.settings.keyLabel'), secretInput, () => t('vault.settings.keyHint'), bind),
+  );
 
   // ── nút ──────────────────────────────────────────────────────────────────
   const actions = el('div');
   actions.className = 'vault-actions';
-  const saveBtn = button('save', t('vault.settings.save'));
-  const testBtn = button('test', t('vault.settings.test'));
-  const clearBtn = button('clear', t('vault.settings.clear'));
+  const saveBtn = button('save', () => t('vault.settings.save'), bind);
+  const testBtn = button('test', () => t('vault.settings.test'), bind);
+  // Nút xoá KHÔNG dùng `bind`: chữ của nó phụ thuộc `clearArmed`, và một `bind`
+  // sẽ lặng lẽ hạ nòng nó khi người dùng đổi ngôn ngữ giữa hai cú bấm.
+  const clearBtn = button('clear', () => t('vault.settings.clear'), (node, text) => {
+    node.textContent = text();
+  });
   clearBtn.className = 'vault-danger';
   actions.appendChild(saveBtn);
   actions.appendChild(testBtn);
@@ -244,8 +322,20 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
   let clearArmed = false;
   let inflight: Promise<void> = Promise.resolve();
 
-  function say(text: string): void {
-    status.textContent = text;
+  /**
+   * Câu đang hiện ở dòng trạng thái, giữ dưới dạng **cách dựng nó**.
+   *
+   * `null` là "chưa nói gì", khác với "một câu rỗng": dịch lại một dòng chưa có
+   * gì phải để nó chưa có gì.
+   *
+   * Một câu kẹt lại ở tiếng cũ sau khi đổi ngôn ngữ là thứ không cổng nào hỏi
+   * và ai cũng thấy — dòng này nằm ngay dưới ba cái nút.
+   */
+  let lastSaid: Text | null = null;
+
+  function say(text: Text): void {
+    lastSaid = text;
+    status.textContent = text();
   }
 
   function repaintPanel(): void {
@@ -273,6 +363,26 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
     clearBtn.textContent = t('vault.settings.clear');
   }
 
+  // ── sổ dịch lại: những mẩu chữ ĐỘNG ──────────────────────────────────────
+  //
+  // Năm mẩu, và cả năm đều đọc TRẠNG THÁI HIỆN TẠI thay vì đọc một chuỗi đã
+  // dựng sẵn. Không mẩu nào trong số này chạm tới `secretInput.value`.
+  dynamic(refreshCurrent);
+  dynamic(() => {
+    warning.textContent = warningFor(providerSel.value);
+  });
+  dynamic(() => {
+    clearBtn.textContent = t(clearArmed ? 'vault.settings.clearArmed' : 'vault.settings.clear');
+  });
+  dynamic(() => {
+    if (lastSaid !== null) status.textContent = lastSaid();
+  });
+  // Khung xác nhận + nhật ký tự dựng lại toàn bộ mỗi lần vẽ, và nó KHÔNG chứa ô
+  // nhập nào — nên với nó, vẽ lại chính là dịch lại.
+  dynamic(() => {
+    repaintPanel();
+  });
+
   // ── hành vi ──────────────────────────────────────────────────────────────
 
   providerSel.addEventListener('change', () => {
@@ -291,12 +401,12 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
     disarmClear();
     const secret = secretInput.value.trim();
     if (secret === '') {
-      say(t('vault.settings.noKeyTyped'));
+      say(() => t('vault.settings.noKeyTyped'));
       return;
     }
     const model = modelInput.value.trim();
     if (model === '') {
-      say(t('vault.settings.noModel'));
+      say(() => t('vault.settings.noModel'));
       return;
     }
     deps.writeConfig({ providerId: providerSel.value, model, apiKey: secret });
@@ -304,21 +414,21 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
     // thứ hai không ai cần, và nó sống tới khi khung bị đóng.
     secretInput.value = '';
     refreshCurrent();
-    say(t('vault.settings.saved'));
+    say(() => t('vault.settings.saved'));
   });
 
   clearBtn.addEventListener('click', () => {
     if (!clearArmed) {
       clearArmed = true;
       clearBtn.textContent = t('vault.settings.clearArmed');
-      say(t('vault.settings.clearWarning'));
+      say(() => t('vault.settings.clearWarning'));
       return;
     }
     disarmClear();
     deps.clearConfig();
     secretInput.value = '';
     refreshCurrent();
-    say(t('vault.settings.cleared'));
+    say(() => t('vault.settings.cleared'));
   });
 
   testBtn.addEventListener('click', () => {
@@ -345,7 +455,7 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
     const providerId = providerSel.value;
     const model = modelInput.value.trim();
     if (model === '') {
-      say(t('vault.settings.noModel'));
+      say(() => t('vault.settings.noModel'));
       return;
     }
 
@@ -359,7 +469,7 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
       if (cfg && cfg.providerId === providerId) key = cfg.apiKey;
     }
     if (key === '') {
-      say(t('vault.settings.noKeyAnywhere'));
+      say(() => t('vault.settings.noKeyAnywhere'));
       return;
     }
 
@@ -367,22 +477,36 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
     const decision = deps.checkAndConsume({ chars: prompt.length, providerId });
     repaintPanel();
     if (!decision.allow) {
+      /*
+       * MỘT GIỚI HẠN CÓ THẬT CỦA `retranslate()`, và nó nằm ở đây chứ không ở
+       * chỗ khác: `decision.message` là chữ mà NGƯỜI GÁC đã dựng xong, ở ngôn
+       * ngữ lúc nó quyết định. Không có khoá nào để dựng lại, nên nếu người
+       * dùng đổi ngôn ngữ sau đó, đúng câu này ở lại tiếng cũ.
+       *
+       * Chấp nhận thay vì đuổi theo: sửa cho đủ là bắt `GuardDecision` chở
+       * khoá + đối số thay vì chở chữ, và đó là một thay đổi của `guard.ts` —
+       * tệp có bẫy trung tâm của HC-3, và không liên quan gì tới lỗi đang sửa.
+       * Hai câu còn lại ở nhánh này thì dựng lại được, và chúng dựng lại.
+       */
+      const denied = decision.message;
       say(
         decision.code === 'needs_consent'
-          ? t('vault.settings.needsConsent')
-          : (decision.message ?? t('vault.settings.denied')),
+          ? () => t('vault.settings.needsConsent')
+          : denied === null
+            ? () => t('vault.settings.denied')
+            : () => denied,
       );
       return;
     }
 
     const provider = deps.getProvider(providerId);
     if (!provider) {
-      say(t('vault.provider.unknown'));
+      say(() => t('vault.provider.unknown'));
       return;
     }
 
     testBtn.disabled = true;
-    say(t('vault.settings.calling'));
+    say(() => t('vault.settings.calling'));
     try {
       let reply = '';
       for await (const chunk of provider.chat(
@@ -394,7 +518,9 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
         // chỉ ngừng đọc và bỏ lại một kết nối treo.
         if (reply.length >= TEST_REPLY_CHARS) break;
       }
-      say(reply === '' ? t('vault.settings.emptyReply') : t('vault.settings.reply', reply.trim()));
+      // Chữ của nhà cung cấp không dịch được, nhưng CÁI VỎ quanh nó thì có.
+      const trimmed = reply.trim();
+      say(reply === '' ? () => t('vault.settings.emptyReply') : () => t('vault.settings.reply', trimmed));
     } catch (e) {
       // `ProviderError` đã được Task 3 chứng minh là dựng HOÀN TOÀN từ hằng số
       // — thân hồi đáp 401 của nhà cung cấp có nguyên văn key trong đó, nên nó
@@ -402,9 +528,12 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
       // câu hằng: `String(err)` là đường ngắn nhất để một `TypeError` mang URL,
       // `cause`, hay cả đối tượng yêu cầu đi thẳng lên màn hình.
       if (e instanceof ProviderError) {
-        say(providerId === 'openai' ? t('vault.settings.openaiHint', e.message) : e.message);
+        // Cùng giới hạn với `decision.message` ngay trên: `e.message` đã là chữ
+        // dựng xong ở ngôn ngữ lúc ném.
+        const failed = e.message;
+        say(providerId === 'openai' ? () => t('vault.settings.openaiHint', failed) : () => failed);
       } else {
-        say(t('vault.provider.callFailed'));
+        say(() => t('vault.provider.callFailed'));
       }
     } finally {
       testBtn.disabled = false;
@@ -422,5 +551,17 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
   refreshCurrent();
   repaintPanel();
 
-  return { repaintPanel, whenIdle: () => inflight };
+  /**
+   * Chạy lại CẢ SỔ, không một mục nào bị bỏ.
+   *
+   * Không lọc, không "chỉ dịch phần tĩnh": một mục bị bỏ quên là một mẩu chữ
+   * kẹt lại ở tiếng cũ, và triệu chứng của nó chỉ là *một dòng trông lạ* —
+   * đúng hạng lỗi mà không ai báo và không cổng nào hỏi. `settings.test.ts`
+   * đếm sổ này so với số mẩu chữ có thật trên màn hình.
+   */
+  function retranslate(): void {
+    for (const apply of retranslators) apply();
+  }
+
+  return { repaintPanel, retranslate, whenIdle: () => inflight };
 }

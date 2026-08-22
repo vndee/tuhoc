@@ -253,6 +253,49 @@ hộ câu ấy, và người cài đặt Task 4 lẫn điều phối viên đề
 TypeScript (`apps/proxy/`, một Worker) **thoát cả hai nửa** — nửa Go phủ toàn repo, nửa web không có
 neo tương đương.
 
+**Lần đọc bằng mắt đã diễn ra: `kind: 'setLang'` (2026-08-23).** Thành viên đầu tiên được thêm vào
+`VaultRequest` kể từ khi mục này được viết. Câu trả lời cho câu hỏi bắt buộc — ***không*** — được
+viết **tại chỗ khai báo** trong `protocol.ts`, kèm ba lý do kiểm được bằng mắt ngay trong tệp ấy:
+thông điệp **một chiều đi vào** (không có thành viên tương ứng trong `VaultResponse`, và nhánh xử lý
+nó không gọi `send` lấy một lần), nó **mang đúng một mã ngôn ngữ** đã lọc qua `normalizeLang`, và
+nhánh ấy **không đọc keystore**. Hai phép đo canh chuyện đó thay vì để nó là lời hứa:
+`apps/vault/src/lang.test.ts` — *"`setLang` đi VÀO được, và KHÔNG một byte nào đi ra"* (bẫy
+`postMessage`) và *"`setLang` KHÔNG đọc ô nhớ chứa key"* (bẫy `Storage.prototype.getItem`). Cái mua
+được: `?lang=` rời khỏi `src` của `<iframe>` kho khoá, nên khung **không còn remount**, nên đổi ngôn
+ngữ không còn xoá key người dùng đang gõ dở (Task 7 §4 đo lỗi ấy; `s3.spec.ts` kịch bản 5b canh).
+
+## `registryId` KHÔNG BAO GIỜ ĐƯỢC ĐẶT — nhãn nguồn `registry` của thư viện là mã không tới được
+
+**Đo ngày 2026-08-23, cả hai chiều.** Không một đường nào trong repo đặt `manifest.registryId`:
+`tools/registry` zip byte lấy thẳng từ đĩa và **không viết lại `manifest.json` bao giờ**;
+`apps/web/src/registry/pull.ts` không ghi Dexie (nó uỷ cho `import.ts`); cả ba chỗ ghi
+`db.packages` chép manifest nguyên vẹn. Trường ấy chỉ tồn tại như một ô kiểu tuỳ chọn và trong
+fixture viết tay của test.
+
+**Hệ quả người dùng thấy:** `pages/Library.tsx` chọn nhãn nguồn theo `held?.registryId`, nên một
+course **kéo về từ registry hiện nhãn `tự nhập`**. Nhánh `registry` của trang ấy hôm nay không đường
+nào tới được, và `Library.test.tsx:207` xanh vì nó **tự dựng** một manifest đã có trường ấy.
+
+**Phán quyết: đây là một bước chưa cài ở PHÍA REGISTRY, không phải lỗi của đường kéo về.**
+`docs/course-format.md:94` và `:314` nói registry gán trường này sau khi PR được merge —
+**"Đừng tự điền."** Đóng dấu ở `pull.ts` là đúng thứ câu ấy cấm (chỉ đổi người tự điền) và còn làm
+`row.manifest` lệch khỏi `row.files['manifest.json']` trong cùng một hàng Dexie; đóng dấu ở
+`pack-site.ts` thì phải **bịa ra một ngữ nghĩa** — `Library.test.tsx` dùng `'vndee/khoa'`, hình dạng
+`<chủ>/<repo>`, mà tệp ấy không có đối số nào chở danh tính registry vào.
+
+**Không quyết định an ninh nào dựa vào trường này** — điều này đã được kiểm riêng vì nó là mối lo
+được nêu ra: rào riêng tư của hệ thống con 4 là rào **cấu trúc**
+(`apps/web/src/registry/ratingFence.test.tsx` khoá danh sách ba tệp được chạm bề mặt chấm sao và
+buộc `Catalog.tsx` chỉ dựng hàng từ `index.json`), và `<Rating>`/`<Discussion>` nhận
+`registryId={course.id}` — tức `RegistryEntry.id`, **không phải** `manifest.registryId`. Hai chuỗi
+trùng tên, khác nguồn.
+
+⇒ **Có cổng, không phải chỉ có văn xuôi:** `tools/registry/src/pack-site.test.ts` — *"KHÔNG đóng dấu
+`registryId` vào gói xuất bản — quyết định, không phải bỏ sót"*. Đối chứng đã chạy: thêm một dòng
+đóng dấu vào `pack-site.ts` ⇒ **bài ấy đỏ**, khôi phục ⇒ xanh (`shasum` khớp hai chiều). Ngày ai đó
+cài bước gán thật, bài ấy là bài đỏ đầu tiên họ gặp, và nó chỉ cho họ **nửa còn lại phải nối cùng
+lúc**: nhãn `registry` của `pages/Library.tsx`, và mục này.
+
 ## *Confused deputy* của kho khoá — ĐÃ GIẢM THIỂU, CHƯA KHẮC PHỤC (S2-F9 · HC-3)
 
 **Trạng thái: `apps/vault/src/guard.ts` đang chạy. Lỗ vẫn còn. Đừng đọc mã ấy rồi tưởng nó đóng.**

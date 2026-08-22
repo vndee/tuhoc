@@ -171,6 +171,17 @@ const EN = {
   tierInteractive: 'interactive — runs JavaScript',
   /** Nhãn của CHÍNH bộ chọn ngôn ngữ cũng được dịch — xem kịch bản 3. */
   langSwitcher: 'Interface language',
+  /**
+   * Tiêu đề màn cấu hình **BÊN TRONG khung kho khoá**, bản tiếng Anh.
+   *
+   * Nó là chốt duy nhất chứng minh ngôn ngữ ĐI QUA được ranh giới origin sau
+   * khi `?lang=` bị bỏ: `DEFAULT_LANG` là `'vi'`, nên bản tiếng Việt của câu
+   * này cũng hiện ra ở một khung KHÔNG NHẬN được gì cả.
+   */
+  vaultHeading: 'An AI assistant running on your own key',
+  /** Nút của lớp phủ, do TRANG CHÍNH vẽ (không phải khung) — nên nó theo ngôn
+   *  ngữ của trang chính. */
+  vaultClose: 'Close',
 } as const;
 
 /** Key gõ DỞ của kịch bản 5. Không bao giờ được lưu — nó chỉ nằm trong ô nhập. */
@@ -965,10 +976,12 @@ test('index.json trả HTML: catalog nói câu CỦA NÓ, không trắng trang, 
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// KỊCH BẢN 5 — MÓN NỢ CỦA TASK 5 §9.1: `?lang=` LÀM KHUNG KHO KHOÁ NẠP LẠI
+// KỊCH BẢN 5 — ĐỔI NGÔN NGỮ TRONG LÚC ĐANG GÕ KEY
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
+ * ── LỊCH SỬ, VÌ HAI BÀI DƯỚI ĐÂY KHÔNG ĐỌC ĐƯỢC NẾU THIẾU NÓ ───────────────
+ *
  * Task 5 chấp nhận rằng đổi ngôn ngữ làm `<iframe>` kho khoá nạp lại — tức xoá
  * ô nhập key đang gõ dở — dựa trên một lập luận về BỐ CỤC:
  *
@@ -976,17 +989,29 @@ test('index.json trả HTML: catalog nói câu CỦA NÓ, không trắng trang, 
  *   > một lớp phủ che kín trang bên dưới, nên người dùng không với tới bộ chọn
  *   > trong lúc đang gõ key.
  *
- * Và báo cáo ấy nói thẳng: ***"lập luận ấy đúng bằng đúng cái CSS đang đúng"***,
- * và **không cổng nào của họ hỏi được câu ấy** — `VaultFrame.test.tsx` khẳng
- * định `?lang=` đi theo lựa chọn, nhưng nó không biết gì về việc bộ chọn có bấm
- * tới được hay không. Họ ghi nó là món nợ của Task 7. Đây là chỗ trả.
+ * Chính báo cáo ấy nói thẳng rằng lập luận này ***"đúng bằng đúng cái CSS đang
+ * đúng"***, và ghi nó là món nợ của Task 7. Task 7 trả nợ bằng hai phép đo:
+ * đường CON TRỎ (5a) **an toàn**, đường BÀN PHÍM (5b) **hỏng** — 16 lần Tab từ
+ * ô key là tới `#lang-select`, và đổi ngôn ngữ ở đó xoá sạch ô ấy.
  *
- * Hai bài, vì có HAI đường tới một `<select>` và lập luận trên chỉ nói về một:
+ * ── CÁCH SỬA, VÀ VÌ SAO NÓ ĐỔI NGHĨA CỦA CẢ HAI BÀI ───────────────────────
  *
- *   5a — CON TRỎ. Đo bằng `elementFromPoint` tại tâm bộ chọn, hai chiều: lớp
- *        phủ phải chặn khi khung mở, và KHÔNG chặn khi khung đóng. Không có
- *        chiều thứ hai, một trang hỏng tới mức không vẽ bộ chọn cũng "đạt".
- *   5b — BÀN PHÍM. Một `<select>` bị lớp phủ che vẫn nằm trong thứ tự Tab.
+ * `?lang=` **đã bị bỏ hẳn** khỏi `src` của khung; ngôn ngữ đi vào bằng một
+ * thông điệp `kind: 'setLang'` (`apps/vault/src/protocol.ts`). Khung không còn
+ * lý do nào để nạp lại, nên **cả lớp lỗi biến mất**, không riêng đường bàn
+ * phím. Đó là lý do bản sửa không phải một focus trap: một focus trap chỉ đóng
+ * đường Tab, và bài 5b dưới đây đo thêm một đường thứ ba mà nó bỏ ngỏ — bấm
+ * "Đóng" rồi đổi ngôn ngữ bằng CHUỘT, với ô key vẫn còn nguyên chữ trong một
+ * khung đang ẩn.
+ *
+ * Nên hai bài này giờ đo hai thứ KHÁC NHAU, và cả hai đều đáng giữ:
+ *
+ *   5a — CON TRỎ. Nó KHÔNG còn là hàng rào giữ key nữa (thông điệp đã lo việc
+ *        ấy). Nó canh một tính chất khác, vẫn thật: **một lớp phủ toàn màn
+ *        hình phải thật sự che kín trang bên dưới**, nếu không thì nút "Đóng"
+ *        của nó và các nút bên dưới nó tranh nhau cùng một cú bấm. Đọc lại chú
+ *        thích trong chính bài ấy — nó tự nói ra "xanh vì điều gì" sau khi sửa.
+ *   5b — KEY GÕ DỞ SỐNG SÓT, qua CẢ HAI đường tới bộ chọn ngôn ngữ.
  */
 
 async function openVaultOverlay(page: Page) {
@@ -1019,6 +1044,25 @@ async function whatIsOnTopOfLangSelect(page: Page): Promise<{
   });
 }
 
+/**
+ * BÀI NÀY XANH VÌ ĐIỀU GÌ — hỏi lại sau khi mã dưới nó đã đổi.
+ *
+ * TRƯỚC bản sửa: nó là nửa "an toàn" của món nợ Task 5. Lập luận *"không ai
+ * với tới bộ chọn"* là thứ giữ cho key gõ dở không bị xoá, và bài này canh
+ * đúng lập luận ấy.
+ *
+ * SAU bản sửa: **không còn gì để xoá.** `?lang=` đã rời `src`, nên dù người
+ * dùng có bấm được vào bộ chọn hay không thì khung cũng không nạp lại. Bài này
+ * KHÔNG còn canh lời hứa về key — bài 5b canh, và nó canh trực tiếp.
+ *
+ * Vậy nó còn canh gì? **Một lớp phủ toàn màn hình phải che kín trang bên
+ * dưới.** Đó không phải một tính chất thẩm mỹ: `VaultFrame.tsx` đặt nút "Đóng"
+ * lên chính lớp phủ với lý do *"một nút Đóng nằm dưới lớp phủ là một nút không
+ * ai bấm được"*, và nếu lớp phủ hở thì mọi thứ bên dưới — thanh điều hướng, bộ
+ * chọn ngôn ngữ, các nút của trang — lại nhận được cú bấm trong lúc một hộp
+ * thoại đang mở. Mutant `inset: 0` → `inset: 120px 0 0 0` vẫn giết bài này,
+ * và từ nay đó là thứ duy nhất nó hứa.
+ */
 test('kho khoá đang mở: lớp phủ CHẶN con trỏ tới bộ chọn ngôn ngữ — và không chặn khi đã đóng', async ({
   browser,
 }) => {
@@ -1043,10 +1087,12 @@ test('kho khoá đang mở: lớp phủ CHẶN con trỏ tới bộ chọn ngôn
     expect(covered.found).toBe(true);
     expect(
       covered.isTheSelect,
-      'lớp phủ kho khoá KHÔNG còn che bộ chọn ngôn ngữ. Lập luận mà Task 5 §9.1 ' +
-        'dùng để chấp nhận việc `?lang=` nạp lại khung ("người dùng không với tới ' +
-        'bộ chọn trong lúc đang gõ key") vừa hết đúng — xem bài 5b ngay dưới để ' +
-        'biết cái giá.',
+      `lớp phủ kho khoá KHÔNG còn che kín trang: tâm bộ chọn ngôn ngữ nhận được ` +
+        `${covered.topDescription}. Một lớp phủ hở nghĩa là mọi thứ bên dưới nó — ` +
+        'thanh điều hướng, bộ chọn ngôn ngữ, các nút của trang — lại bấm được ' +
+        'trong lúc một hộp thoại đang mở, và nút "Đóng" của chính lớp phủ phải ' +
+        'tranh cú bấm với chúng. ĐÂY KHÔNG CÒN LÀ HÀNG RÀO GIỮ KEY: key gõ dở nay ' +
+        'được bài 5b canh trực tiếp, vì `?lang=` đã rời khỏi `src` của khung.',
     ).toBe(false);
   } finally {
     await s.context.close();
@@ -1054,17 +1100,27 @@ test('kho khoá đang mở: lớp phủ CHẶN con trỏ tới bộ chọn ngôn
 });
 
 /**
- * Đường BÀN PHÍM, và cái giá của nó.
+ * KEY GÕ DỞ PHẢI SỐNG SÓT QUA MỘT LẦN ĐỔI NGÔN NGỮ — cả hai đường.
  *
- * Một `<select>` bị lớp phủ che vẫn ở trong thứ tự Tab: `z-index` quyết định
- * chuyện vẽ và chuyện bấm, không quyết định chuyện tiêu điểm. Bài này đi đúng
- * đường một người dùng bàn phím đi — Tab ra khỏi ô key — rồi hỏi câu mà Task 5
- * để ngỏ: **key đang gõ dở có còn không.**
+ * **Đường 1, BÀN PHÍM.** Một `<select>` bị lớp phủ che vẫn ở trong thứ tự Tab:
+ * `z-index` quyết định chuyện vẽ và chuyện bấm, không quyết định chuyện tiêu
+ * điểm. Đây là đường Task 7 đo được và là đường làm cổng này ĐỎ.
  *
- * Không `test.fail()`, không `test.skip()`: nếu ô key bị xoá thì cổng này ĐỎ,
- * và đỏ là thứ người ta đọc.
+ * **Đường 2, CHUỘT — và nó là lý do bản sửa không phải một focus trap.** Lớp
+ * phủ có nút "Đóng" của chính nó, và đóng lớp phủ **không tháo khung**: chỉ
+ * `className` đổi (`VaultFrame.tsx` giữ bọc cố định có chủ ý), nên ô key vẫn
+ * giữ nguyên chữ đang gõ trong một khung đang ẩn. Từ đó bộ chọn ngôn ngữ bấm
+ * được bằng chuột như mọi khi. Một focus trap đóng đường 1 và **để nguyên
+ * đường 2**; bỏ `?lang=` khỏi `src` đóng cả hai, vì nó bỏ đi cái remount chứ
+ * không bỏ đi cách với tới bộ chọn.
+ *
+ * Và một chốt thứ ba, không kém quan trọng: **ngôn ngữ phải thật sự tới được
+ * kho khoá.** Bỏ `?lang=` mà quên nhắn `setLang` sẽ làm hai chốt trên xanh
+ * trọn vẹn — ô key còn nguyên vì chẳng có gì xảy ra cả — trong khi kho khoá
+ * nói tiếng Việt vĩnh viễn cho một người đã chọn tiếng Anh. `DEFAULT_LANG` là
+ * `'vi'`, nên chốt ấy phải hỏi ở chiều `en`.
  */
-test('gõ dở một key rồi đổi ngôn ngữ bằng bàn phím: key đang gõ dở phải còn', async ({
+test('gõ dở một key rồi đổi ngôn ngữ — bằng BÀN PHÍM rồi bằng CHUỘT: key đang gõ dở phải còn', async ({
   browser,
 }) => {
   const s = await signedIn(browser);
@@ -1114,12 +1170,59 @@ test('gõ dở một key rồi đổi ngôn ngữ bằng bàn phím: key đang g
     // …và ô key đang gõ dở phải còn nguyên.
     await expect(
       ui.locator('[data-role="secret"]'),
-      'Đổi ngôn ngữ trong lúc đang gõ key XOÁ SẠCH ô nhập: `?lang=` đổi `src` của ' +
-        '<iframe>, trình duyệt nạp lại tài liệu ở origin kho khoá, và người dùng mất ' +
-        'thứ họ đang gõ. Đây đúng là cái giá mà Task 5 §9.1 chấp nhận dựa trên lập luận ' +
-        '"không ai với tới được bộ chọn" — lập luận ấy nói về CON TRỎ (bài 5a xác nhận ' +
-        'nó đúng) và không nói gì về BÀN PHÍM.',
+      'Đổi ngôn ngữ trong lúc đang gõ key XOÁ SẠCH ô nhập. Triệu chứng này có đúng ' +
+        'một nguyên nhân đã biết: một mảnh đổi-theo-trạng-thái quay lại `src` của ' +
+        '<iframe> (trước đây là `?lang=`), nên trình duyệt nạp lại tài liệu ở origin ' +
+        'kho khoá và người dùng mất thứ họ đang gõ. Ngôn ngữ phải đi bằng thông điệp ' +
+        '`kind: setLang`, không bằng URL — xem `apps/vault/src/protocol.ts`.',
     ).toHaveValue(HALF_TYPED_KEY);
+
+    // ── và ngôn ngữ THẬT SỰ tới được kho khoá ─────────────────────────────
+    //
+    // Không có chốt này, một bản dựng bỏ `?lang=` mà quên nhắn `setLang` sẽ
+    // xanh trọn vẹn ở mọi chốt trên — ô key còn nguyên vì chẳng có gì xảy ra —
+    // trong khi khung nói tiếng Việt vĩnh viễn cho người đã chọn tiếng Anh.
+    // Hỏi ở chiều `en` vì `DEFAULT_LANG` là `vi`: một khung KHÔNG NHẬN được gì
+    // cũng hiện tiếng Việt.
+    await expect(
+      ui.locator('h2'),
+      'kho khoá không đổi sang tiếng Anh: `?lang=` đã bỏ, nên nếu thông điệp ' +
+        '`setLang` không tới nơi (hoặc tới mà màn hình không dịch lại) thì khung ' +
+        'kẹt ở DEFAULT_LANG và không có triệu chứng nào khác.',
+    ).toHaveText(EN.vaultHeading);
+
+    // ══ ĐƯỜNG THỨ HAI: CHUỘT, sau khi đã đóng lớp phủ ══════════════════════
+    //
+    // Đây là đường mà một focus trap KHÔNG đóng, và nó rẻ hơn đường bàn phím
+    // rất nhiều: một cú bấm "Đóng", rồi bộ chọn ngôn ngữ nằm ngay đó.
+    await s.page.getByRole('button', { name: EN.vaultClose }).click();
+    await expect(s.page.locator('.vault-overlay')).toHaveCount(0);
+
+    // ĐỐI CHỨNG: đóng lớp phủ KHÔNG tháo khung và KHÔNG xoá ô key. Nếu chốt này
+    // đỏ thì đường thứ hai không tồn tại và chốt dưới nó rỗng.
+    await expect(
+      ui.locator('[data-role="secret"]'),
+      'đóng lớp phủ đã xoá ô key — vậy thì khung đang bị tháo/gắn lại, và đó là ' +
+        'một lỗi khác cùng họ với lỗi mà bài này canh',
+    ).toHaveValue(HALF_TYPED_KEY);
+
+    // Bộ chọn giờ bấm tới được bằng chuột — đúng như bài 5a đo ở trạng thái
+    // "không có lớp phủ".
+    const uncovered = await whatIsOnTopOfLangSelect(s.page);
+    expect(uncovered.isTheSelect, `tâm bộ chọn lại là ${uncovered.topDescription}`).toBe(true);
+
+    await s.page.getByLabel(EN.langSwitcher).selectOption('vi');
+    expect(await s.page.evaluate(() => document.documentElement.lang)).toBe('vi');
+
+    await expect(
+      ui.locator('[data-role="secret"]'),
+      'đổi ngôn ngữ bằng CHUỘT sau khi đóng lớp phủ vẫn xoá ô key. Một focus trap ' +
+        'quanh lớp phủ sẽ KHÔNG bắt được đường này — đó là lý do cách sửa phải bỏ ' +
+        'hẳn `?lang=` khỏi `src` chứ không chặn đường tới bộ chọn.',
+    ).toHaveValue(HALF_TYPED_KEY);
+
+    // Và dịch ngược lại cũng tới nơi.
+    await expect(ui.locator('h2')).toHaveText(VI.vaultHeading);
   } finally {
     await s.context.close();
   }

@@ -114,6 +114,80 @@ describe('packSite trên hai gói mẫu THẬT trong fixtures/courses', () => {
   });
 
   /**
+   * ═══════════════════════════════════════════════════════════════════════
+   * `registryId` — REGISTRY KHÔNG GÁN NÓ, VÀ ĐÓ LÀ MỘT QUYẾT ĐỊNH ĐƯỢC GHI
+   * ═══════════════════════════════════════════════════════════════════════
+   *
+   * **Phép đo, ngày 2026-08-23.** Không một đường nào trong repo này từng đặt
+   * `manifest.registryId`. Không `tools/registry` (tệp này zip byte lấy thẳng
+   * từ đĩa, không viết lại `manifest.json` bao giờ), không
+   * `apps/web/src/registry/pull.ts`, không `apps/web/src/course/import.ts`.
+   * Trường ấy chỉ tồn tại như một ô kiểu tuỳ chọn
+   * (`packages/course-format/src/types.ts`) và trong fixture viết tay của test.
+   *
+   * **Hệ quả người dùng thấy được:** `apps/web/src/pages/Library.tsx` chọn
+   * nhãn nguồn theo `held?.registryId`, nên một course KÉO VỀ TỪ REGISTRY hiện
+   * nhãn `tự nhập`. Nhánh `registry` của trang ấy hôm nay **không đường nào
+   * tới được**.
+   *
+   * **Vì sao KHÔNG sửa bằng cách gán nó ở đây, và cũng không ở `pull.ts`:**
+   *
+   *   1. `docs/course-format.md:94` và `:314` nói registry gán trường này *sau
+   *      khi PR được merge* — **"Đừng tự điền."** Một `pull.ts` tự đóng dấu là
+   *      đúng thứ câu ấy cấm, chỉ đổi người tự điền.
+   *   2. **Gán ở `pull.ts` còn làm lệch hai bản của cùng một manifest.**
+   *      `import.ts` ghi `row.manifest` (đã parse) VÀ `row.files['manifest.json']`
+   *      (byte gốc) trong cùng một hàng Dexie. Đóng dấu vào bản đã parse làm
+   *      hai bản bất đồng, và không cổng nào hôm nay canh chuyện đó.
+   *   3. **Gán ở ĐÂY thì phải bịa ra một giá trị.** `Library.test.tsx:212`
+   *      dùng `'vndee/khoa'` — hình dạng `<chủ>/<repo>`, tức là *danh tính của
+   *      registry*, không phải id course. Tệp này không biết registry của nó
+   *      tên gì (không đối số nào chở vào), và `RegistryEntry.id` thì đã bằng
+   *      `manifest.id` rồi nên đóng dấu bằng nó là thêm một bản sao thừa. Bịa
+   *      một ngữ nghĩa để làm một nhãn hết sai là đổi sai chiều.
+   *   4. **Không quyết định an ninh nào dựa vào trường này.** Đo được: rào
+   *      riêng tư của hệ thống con 4 là rào CẤU TRÚC —
+   *      `apps/web/src/registry/ratingFence.test.tsx` khoá danh sách ba tệp
+   *      được chạm tới bề mặt chấm sao và buộc `Catalog.tsx` chỉ dựng hàng từ
+   *      `index.json`. `<Rating>`/`<Discussion>` nhận `registryId={course.id}`
+   *      — tức `RegistryEntry.id`, **không phải** `manifest.registryId`. Nhãn
+   *      nguồn của thư viện không gác gì cả.
+   *
+   * ⇒ Đây là **một bước chưa cài ở phía registry**, không phải một lỗi của
+   * đường kéo về. Bài kiểm này là chỗ quyết định ấy được canh thay vì được
+   * nhớ: nó ĐỎ ngay khi ai đó bắt đầu đóng dấu — và người ấy phải quay lại
+   * đọc bốn điểm trên, xoá bài này, rồi đi nối nốt nửa còn lại (nhãn `registry`
+   * của thư viện, và `docs/carried-forward.md`).
+   */
+  it('KHÔNG đóng dấu `registryId` vào gói xuất bản — quyết định, không phải bỏ sót', async () => {
+    const out = tmproot('tuhoc-site-regid-');
+    const packed = await packSite(FIXTURE_COURSES, out);
+
+    // ĐỐI CHỨNG: có gói thật để đọc. Không có dòng này, một `packSite` sinh 0
+    // gói cũng "không đóng dấu gì".
+    expect(packed.length).toBeGreaterThan(0);
+
+    for (const p of packed) {
+      const files = unpackZip(new Uint8Array(readFileSync(join(out, p.path))));
+      const raw = files.get('manifest.json');
+      expect(raw, `${p.path} không có manifest.json`).toBeDefined();
+      const manifest = JSON.parse(new TextDecoder().decode(raw)) as Record<string, unknown>;
+
+      // Đối chứng cho chính phép đọc: nếu `JSON.parse` cho ra một object rỗng
+      // thì chốt dưới đây xanh mà chẳng đo gì.
+      expect(manifest.id, `${p.path}: manifest đọc ra không có id`).toBe(p.id);
+
+      expect(
+        'registryId' in manifest,
+        `${p.path} mang \`registryId\`. Nếu đây là CHỦ Ý thì đọc khối chú thích ` +
+          'ngay trên bài này: nó liệt kê bốn lý do đã cân, và nói rõ nửa còn lại ' +
+          'phải nối cùng lúc (nhãn `registry` của `pages/Library.tsx`, và mục ' +
+          'tương ứng trong `docs/carried-forward.md`).',
+      ).toBe(false);
+    }
+  });
+
+  /**
    * `packZip` ghim một mtime DOS cố định, và `zip.test.ts` giữ điều đó dưới
    * nhan đề *"đầu ra phải TÁI LẬP ĐƯỢC, vì sổ đăng ký sẽ băm nó"*. Đây là chỗ
    * lời hứa ấy được tiêu dùng: một bản dựng lại của cùng một commit không
