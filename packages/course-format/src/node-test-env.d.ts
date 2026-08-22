@@ -1,5 +1,5 @@
 /**
- * The two `node:fs` functions the **tests** use, declared by hand.
+ * The three `node:fs` functions the **tests** use, declared by hand.
  *
  * `src/env.d.ts` explains why this package refuses `"types": ["node"]`: the
  * shipped modules must compile for the browser too, so a Node global would be a
@@ -21,4 +21,10 @@
 declare module 'node:fs' {
   export function readFileSync(path: string): Uint8Array;
   export function readdirSync(path: string): string[];
+  /**
+   * Added at task 11. The course left the repo that day, so "the package is
+   * not on disk" went from impossible to ordinary, and the difference between
+   * a raw `ENOENT` and a sentence naming `make courses` is the whole value.
+   */
+  export function existsSync(path: string): boolean;
 }

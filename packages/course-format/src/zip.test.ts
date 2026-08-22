@@ -1,5 +1,5 @@
 import { Zip, ZipDeflate, ZipPassThrough } from 'fflate';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { MAX_UNCOMPRESSED_BYTES } from './validate';
 import { UnsafeArchiveError, packZip, unpackZip } from './zip';
@@ -814,6 +814,18 @@ describe('gói thật: courses/***REMOVED***', () => {
   const ROOT = '../../courses/***REMOVED***';
 
   const readReal = (): Map<string, Uint8Array> => {
+    // Từ task 11, course KHÔNG nằm trong repo nữa — `courses/` là thư mục làm
+    // việc, nội dung tới từ một .zip trong kho ngoài cây git (spec §2B.1).
+    // Vắng gói thì khối này ĐỎ, không skip và không đổi sang dữ liệu bịa: cái
+    // đang đo ở đây là 46 tệp thật đi qua pack/unpack không sai một byte, và
+    // một bản dựng tay thì đo lại chính bản dựng tay. Chỉ có câu chữ là thêm —
+    // `ENOENT` cũng đỏ, nhưng nó không nói phải gõ gì.
+    if (!existsSync(ROOT)) {
+      throw new Error(
+        `Chưa có nội dung course thật ở ${ROOT} (cwd: packages/course-format).\n` +
+          'Nạp về bằng `make courses` từ gốc repo — xem docs/publishing.md §1.',
+      );
+    }
     const files = new Map<string, Uint8Array>();
     for (const name of readdirSync(ROOT).sort()) {
       if (name === 'chapters') continue;
@@ -825,18 +837,23 @@ describe('gói thật: courses/***REMOVED***', () => {
     return files;
   };
 
-  it('46 tệp, 1.263.009 byte — con số, để một gói đọc hụt không lặng lẽ qua', () => {
+  // 1.263.009 lúc viết; +164 byte ở task 11 khi manifest lên v2 (`tier`,
+  // `license`, `authors`, `generatedBy`). Con số này ĐÃ làm đúng việc của nó
+  // một lần: nó là thứ duy nhất trong repo bắt được rằng manifest vừa đổi.
+  const REAL_BYTES = 1_263_173;
+
+  it(`46 tệp, ${REAL_BYTES.toLocaleString('vi-VN')} byte — con số, để một gói đọc hụt không lặng lẽ qua`, () => {
     const files = readReal();
     expect(files.size).toBe(46);
     let total = 0;
     for (const b of files.values()) total += b.byteLength;
-    expect(total).toBe(1_263_009);
+    expect(total).toBe(REAL_BYTES);
   });
 
   it('pack → unpack khớp TỪNG BYTE cho cả 46 tệp', () => {
     const files = readReal();
     const zip = packZip(files);
-    expect(zip.byteLength).toBeLessThan(files.size === 0 ? 1 : 1_263_009); // thật sự có nén
+    expect(zip.byteLength).toBeLessThan(files.size === 0 ? 1 : REAL_BYTES); // thật sự có nén
     const back = unpackZip(zip);
     expect([...back.keys()]).toEqual([...files.keys()].sort());
     for (const [name, bytes] of files) {

@@ -10,6 +10,7 @@ import {
   ManifestParseError,
   PackageAssetError,
   resolveVizScriptUrl,
+  revokeVizScriptUrls,
   RuntimeMismatchError,
 } from './loader';
 import type { Manifest } from './types';
@@ -392,11 +393,14 @@ describe('filling the cache from the server', () => {
  * answer is "there are none."
  */
 describe('resolveVizScriptUrl', () => {
+  beforeEach(() => revokeVizScriptUrls());
+  afterEach(() => revokeVizScriptUrls());
+
   it('points at the static course directory when the course is not a cached package', async () => {
     await expect(resolveVizScriptUrl(COURSE_ID)).resolves.toBe('/courses/demo/viz.js');
   });
 
-  it('answers null for a cached package — a content package ships no viz.js, and the static path is a different course', async () => {
+  it('answers null for a cached package with no viz.js — a content package ships none, and the static path is a different course', async () => {
     await db.packages.put(cachedPackage());
 
     await expect(resolveVizScriptUrl(COURSE_ID)).resolves.toBeNull();
@@ -404,5 +408,95 @@ describe('resolveVizScriptUrl', () => {
 
   it('percent-encodes the course id it puts in the static URL', async () => {
     await expect(resolveVizScriptUrl('a b/c')).resolves.toBe('/courses/a%20b%2Fc/viz.js');
+  });
+
+  /* ------------------------------------------------------------------ *
+   * Ruling S1-F14 narrowed: the question is "has viz.js", not "is local"
+   * ------------------------------------------------------------------ */
+
+  /**
+   * The first version of this function answered `null` for EVERY cached
+   * package. That closed S1-F14's hang and opened a hole the same size:
+   * measured against the real 46-file textbook once task 11 made it an
+   * imported package, an `interactive` course rendered its prose and ran
+   * zero of its 59 simulations, with `viz.js` never requested — the exact
+   * path this subsystem exists to serve.
+   */
+  it('serves a cached package OWN viz.js from the package, as a blob URL', async () => {
+    await db.packages.put(
+      cachedPackage({
+        files: {
+          'manifest.json': encode(JSON.stringify(validManifest)),
+          'viz.js': encode('window.__vizRan = true;'),
+        },
+      }),
+    );
+
+    const url = await resolveVizScriptUrl(COURSE_ID);
+
+    expect(url).toMatch(/^blob:/);
+    // Not the static path: for an imported course that path is a 404, or
+    // another course's script.
+    expect(url).not.toBe('/courses/demo/viz.js');
+  });
+
+  /**
+   * `useCourseKit` dedupes script injection BY URL. A fresh
+   * `URL.createObjectURL` per call would inject the same viz.js once per
+   * mount — `defineViz` re-run for every chapter visit. Stability is the
+   * contract, not an optimization.
+   */
+  it('returns the SAME url across calls for one package version', async () => {
+    await db.packages.put(
+      cachedPackage({ files: { 'manifest.json': encode('{}'), 'viz.js': encode('/* v1 */') } }),
+    );
+
+    const first = await resolveVizScriptUrl(COURSE_ID);
+    const second = await resolveVizScriptUrl(COURSE_ID);
+
+    expect(first).toBe(second);
+  });
+
+  it('mints a new url — and revokes the old one — when the pinned version changes', async () => {
+    const revoke = vi.spyOn(URL, 'revokeObjectURL');
+    await db.packages.put(
+      cachedPackage({ files: { 'manifest.json': encode('{}'), 'viz.js': encode('/* v1 */') } }),
+    );
+    const first = await resolveVizScriptUrl(COURSE_ID);
+
+    await db.packages.clear();
+    await db.packages.put(
+      cachedPackage({
+        key: `${COURSE_ID}@2.0.0`,
+        version: '2.0.0',
+        files: { 'manifest.json': encode('{}'), 'viz.js': encode('/* v2 */') },
+      }),
+    );
+    const second = await resolveVizScriptUrl(COURSE_ID);
+
+    expect(second).not.toBe(first);
+    expect(revoke).toHaveBeenCalledWith(first);
+    revoke.mockRestore();
+  });
+
+  /**
+   * The half of ruling S1-F14 that must NOT come back. `useCourseKit` reports
+   * `ready: true` off `null`; anything else and a content package parks on
+   * "Đang tải chương…" forever waiting for a file that does not exist at that
+   * tier by definition (`validate.ts` rejects `.js` under `tier: 'content'`).
+   */
+  it('still answers null for a cached package whose files contain no viz.js at all — S1-F14 stays closed', async () => {
+    await db.packages.put(
+      cachedPackage({
+        files: {
+          'manifest.json': encode('{}'),
+          'chapters/c1.html': encode('<p>chỉ có văn xuôi</p>'),
+          // A file whose name merely ENDS in the right letters is not it.
+          'assets/notviz.js.txt': encode('nope'),
+        },
+      }),
+    );
+
+    await expect(resolveVizScriptUrl(COURSE_ID)).resolves.toBeNull();
   });
 });

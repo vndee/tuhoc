@@ -34,6 +34,7 @@ import { fileURLToPath } from 'node:url';
 import { useEffect, useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearLocalData, db } from '../db/local';
+import { readRealCourseFile } from '../test/realCourse';
 import { type Anchor, type AnchorColor, selectionToAnchor } from './anchor';
 import { flatToDom, normalizeContainer } from './normalize';
 import { highlightElements } from './painter';
@@ -881,7 +882,15 @@ describe('toolbarSpot — hộp THẬT phải nằm trong màn hình', () => {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '../../../..');
-const CHAPTER_FILE = resolve(REPO, 'courses/***REMOVED***/chapters/p1-5.html');
+// Chương THẬT, không phải fixture — và từ task 11 nó không nằm trong repo nữa.
+// `readRealCourseFile` đọc trong thư mục làm việc `courses/`, và ném ra câu chỉ
+// đúng lệnh phải chạy khi gói chưa được nạp về. Xem apps/web/src/test/realCourse.ts.
+//
+// Gọi TRONG test, không phải ở cấp module: khác với painter/anchor/version —
+// nơi phép đọc vốn đã ở cấp module nên cả tệp trượt cùng nhau — tệp này còn 30
+// test khác không liên quan tới chương thật. Đọc ở cấp module sẽ kéo tất cả
+// chúng đỏ theo, tức mất độ phân giải chẩn đoán mà không được gì.
+const CHAPTER_FILE = 'chapters/p1-5.html';
 
 let katexLoaded = false;
 function loadKatex(): void {
@@ -926,7 +935,7 @@ function RealChapterHarness({ html }: { html: string }) {
 describe('chương thật p1-5.html với KaTeX thật', () => {
   it('bôi chọn đoạn có CÔNG THỨC rồi bôi chọn tiếp: cả hai ghi chú đúng chữ, đúng một lớp', async () => {
     loadKatex();
-    render(<RealChapterHarness html={readFileSync(CHAPTER_FILE, 'utf8')} />);
+    render(<RealChapterHarness html={readRealCourseFile(CHAPTER_FILE)} />);
     await waitFor(() => expect(chapterRoot().querySelectorAll('.katex').length).toBeGreaterThan(100));
 
     const root = chapterRoot();

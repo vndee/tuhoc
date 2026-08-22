@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { type Anchor, anchorToRange, selectionToAnchor } from './anchor';
 import { flatToDom, isMapStale, type NormMap, normalizeContainer } from './normalize';
+import { realCourseFile } from '../test/realCourse';
 import { highlightElements, highlightRects, paint, paintAll, unpaint } from './painter';
 
 /**
@@ -1091,7 +1092,11 @@ describe('highlightRects — highlight không hiển thị được', () => {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '../../../..');
-const CHAPTER = resolve(REPO, 'courses/***REMOVED***/chapters/p1-5.html');
+// Chương THẬT, không phải fixture — và từ task 11 nó không nằm trong repo nữa.
+// `realCourseFile` giải đường dẫn trong thư mục làm việc `courses/`, và ném ra
+// câu chỉ đúng lệnh phải chạy khi gói chưa được nạp về. Xem
+// apps/web/src/test/realCourse.ts.
+const CHAPTER = realCourseFile('chapters/p1-5.html');
 
 let katexLoaded = false;
 function loadKatex(): void {

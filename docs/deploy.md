@@ -8,6 +8,16 @@ A from-scratch runbook for the three pieces of this platform:
 | `apps/api` | Go binary, `scratch`-based container | One container on Render (recommended) or Fly.io |
 | Schema + user data | Postgres | Neon (free tier) |
 
+**`courses/*` is normally EMPTY, and a deploy is expected to ship it empty.**
+Since task 11 no course lives in this repo: a course is a package a reader
+imports from a `.zip` on `/import`, stored in their browser, not a directory the
+build copies. `courseAssets.ts` still copies `courses/` into `dist/` when
+something is there — that path exists so `make test-e2e` can serve the real
+course over HTTP — but on a build machine that has not run `make courses` (which
+is every CI runner and every fresh clone), `dist/courses/` comes out empty and
+that is correct, not a missing step. Deploying content this way would publish it;
+if what you are about to deploy is private, read `docs/publishing.md` first.
+
 Config files this doc walks through:
 
 - `apps/api/fly.toml` — Fly.io app config
@@ -195,6 +205,11 @@ dist/assets/index-*.css         387.84 kB
 dist/assets/index-*.js          337.38 kB
 ```
 `dist/` contains `_redirects`, `courses/`, `course-kit/`, `index.html`, `favicon.svg`, `assets/` — confirmed with `ls dist` and `cat dist/_redirects` (see §7 for why the redirects rule's exact contents matter).
+
+`dist/courses/` is **empty** unless someone ran `make courses` first; see the
+note under the table at the top of this file. Re-verified at task 11 with the
+source directory both present and entirely absent: `bun run build` exits 0 in
+both cases, and produces an empty `dist/courses/` in the second.
 
 ### 5a. Git integration (recommended for ongoing deploys)
 
