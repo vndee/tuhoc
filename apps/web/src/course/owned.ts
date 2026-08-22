@@ -235,7 +235,13 @@ export function useOwnedCourses(): OwnedCourses {
     catalogQuery.data ?? [],
     held ?? [],
     progressCourseIds ?? [],
-    statsQuery.data?.courses.map((c) => c.courseId) ?? [],
+    // `?.` guards `data` being nullish, NOT `data.courses`. The type says
+    // `courses` is required, so nothing here fails to compile — but a body
+    // that arrives without it (see `NotJsonError` in api/client.ts) used to
+    // throw during render and blank the page. `client.ts` now rejects that
+    // body upstream; this stays as the second lock, because the type promise
+    // and the wire are two different things.
+    statsQuery.data?.courses?.map((c) => c.courseId) ?? [],
   );
 
   return {

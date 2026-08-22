@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { useMe } from './api/useMe';
 import { AppRoutes } from './routes';
+import { ErrorBoundary } from './shell/ErrorBoundary';
 import { Rail } from './shell/Rail';
 import { Shell } from './shell/Shell';
 import { Sidebar } from './shell/Sidebar';
@@ -46,7 +47,12 @@ function AppShell() {
       topbar={<Topbar theme={theme} onToggleTheme={toggleTheme} onMenuClick={toggleMobileNav} />}
       rail={<Rail />}
     >
-      <AppRoutes />
+      {/* Inside <Shell>, not outside: a render error in one page should leave
+          the sidebar, topbar and rail standing so the reader can navigate away.
+          A boundary above <Shell> would take the whole chrome down with it. */}
+      <ErrorBoundary>
+        <AppRoutes />
+      </ErrorBoundary>
     </Shell>
   );
 }

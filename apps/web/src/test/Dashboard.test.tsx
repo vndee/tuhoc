@@ -354,3 +354,39 @@ describe('Dashboard', () => {
     vi.restoreAllMocks();
   }, OVERSUBSCRIBED_MS);
 });
+
+describe('Dashboard khi /stats trả thứ không phải JSON (hồi quy trang trắng)', () => {
+  // Đo 2026-08-22 trên bản dựng production, API không chạy: máy chủ SPA trả
+  // `200 text/html` cho `/stats`. `parseBody` lùi về trả VĂN BẢN, `request<Stats>`
+  // trao chuỗi ấy dưới danh nghĩa `Stats`, `data?.courses` KHÔNG ngắn mạch vì
+  // chuỗi khác rỗng là truthy, `.courses` là undefined, `.map` ném khi render,
+  // và không có error boundary nên cả cây unmount:
+  //     document.body.innerHTML === '<div id="root"></div>'
+  // Trang trắng, không một chữ. Mọi cổng đơn vị vẫn xanh suốt thời gian đó.
+  const SPA_HTML = '<!doctype html>\n<html lang="vi"><body></body></html>';
+
+  it('vẫn vẽ ra chữ đọc được, không trắng trang', async () => {
+    server.use(http.get('/stats', () => HttpResponse.html(SPA_HTML)));
+    renderDashboard();
+    // Khẳng định thứ người dùng thật sự thấy. Trang trắng đo được là chuỗi rỗng.
+    await waitFor(() => {
+      expect(document.body.textContent?.trim()).not.toBe('');
+    });
+    expect(await screen.findByText(/bảng điều khiển/i)).toBeInTheDocument();
+  });
+
+  it('/courses cũng trả HTML thì vẫn không sập — hai nguồn cùng hỏng là ca thật khi API chết', async () => {
+    server.use(http.get('/stats', () => HttpResponse.html(SPA_HTML)));
+    server.use(http.get('/courses', () => HttpResponse.html(SPA_HTML)));
+    renderDashboard();
+    expect(await screen.findByText(/bảng điều khiển/i)).toBeInTheDocument();
+  });
+
+  it('ĐỐI CHỨNG: /stats trả JSON thiếu hẳn trường courses', async () => {
+    // Không phải giả định — đây là hình dạng mà kiểu `Stats` hứa là không thể
+    // (`courses: CourseStat[]` bắt buộc) nhưng dây mạng vẫn giao được.
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0 })));
+    renderDashboard();
+    expect(await screen.findByText(/bảng điều khiển/i)).toBeInTheDocument();
+  });
+});

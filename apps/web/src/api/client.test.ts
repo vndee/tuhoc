@@ -13,7 +13,7 @@ vi.mock('./navigation', () => ({
   redirectToLogin: vi.fn(),
 }));
 
-import { api, ApiError, describeAuthError, serverAnswered } from './client';
+import { api, ApiError, describeAuthError, NotJsonError, serverAnswered } from './client';
 import { redirectToLogin } from './navigation';
 
 const server = setupServer();
@@ -24,6 +24,42 @@ afterEach(() => {
   vi.mocked(redirectToLogin).mockClear();
 });
 afterAll(() => server.close());
+
+describe('thân phản hồi 2xx không phải JSON', () => {
+  // Hồi quy, đo 2026-08-22 trên bản dựng production: một máy chủ SPA trả
+  // `200 text/html` (index.html) cho `/stats`. `parseBody` lùi về trả VĂN BẢN,
+  // và `request<Stats>` trao lại chuỗi ấy DƯỚI DANH NGHĨA `Stats`. Ở tầng trên,
+  // `data?.courses` không ngắn mạch (chuỗi khác rỗng là truthy), `.courses` là
+  // undefined, `.map` ném khi render, và cả cây React unmount thành `#root`
+  // rỗng — trang trắng, không một chữ nào.
+  const SPA_HTML = '<!doctype html>\n<html lang="vi"><head><title>Tự học</title></head><body></body></html>';
+
+  it('ném NotJsonError thay vì trao chuỗi HTML dưới danh nghĩa T', async () => {
+    server.use(http.get('/stats', () => HttpResponse.html(SPA_HTML)));
+    await expect(api.get<{ courses: unknown[] }>('/stats')).rejects.toBeInstanceOf(NotJsonError);
+  });
+
+  it('lỗi nêu status, content-type và đầu thân phản hồi — đủ để chẩn đoán mà không cần mở DevTools', async () => {
+    server.use(http.get('/stats', () => HttpResponse.html(SPA_HTML)));
+    const err = await api.get('/stats').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NotJsonError);
+    const e = err as NotJsonError;
+    expect(e.status).toBe(200);
+    expect(e.contentType).toContain('text/html');
+    expect(e.bodyStart).toContain('<!doctype html>');
+    expect(e.message).toContain('SPA');
+  });
+
+  it('thân RỖNG vẫn hợp lệ — undefined không phải chuỗi, đừng bắt nhầm nó', async () => {
+    server.use(http.get('/nothing', () => new HttpResponse(null, { status: 204 })));
+    await expect(api.get('/nothing')).resolves.toBeUndefined();
+  });
+
+  it('JSON hợp lệ vẫn đi qua — đối chứng, để bài trên không xanh vì mọi thứ đều ném', async () => {
+    server.use(http.get('/ok', () => HttpResponse.json({ courses: [] })));
+    await expect(api.get<{ courses: unknown[] }>('/ok')).resolves.toEqual({ courses: [] });
+  });
+});
 
 describe('api.get/api.post', () => {
   it('GET sends credentials:"include" and resolves with the parsed JSON body', async () => {

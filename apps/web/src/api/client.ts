@@ -99,13 +99,60 @@ async function send(
   return res;
 }
 
+/**
+ * A 2xx response whose body is not JSON.
+ *
+ * Named, not generic, because the shape that produces it is specific and
+ * recurring: an SPA host answers an unknown path with `200 text/html`
+ * (index.html) instead of a 404, so a request for `/stats` succeeds and
+ * carries a page. `parseBody` falls back to returning that text, and before
+ * this check `request<Stats>` handed it back **typed as `Stats`** — a string
+ * that every caller then treats as an object.
+ *
+ * Measured 2026-08-22: that exact chain white-screened the whole app.
+ * `statsQuery.data` was the HTML string, so `data?.courses` did NOT
+ * short-circuit (a non-empty string is truthy), `.courses` was `undefined`,
+ * and `.map` threw during render. With no error boundary the tree unmounted
+ * to an empty `#root`. Three layers, and this is the deepest one.
+ */
+export class NotJsonError extends Error {
+  // Khai tường minh, không dùng tham số-thuộc tính: `erasableSyntaxOnly` của
+  // repo này cấm chúng (TS1294). `make test-web` vẫn xanh với lỗi ấy vì vitest
+  // không kiểm kiểu — chỉ `tsc -b` bắt được.
+  readonly status: number;
+  readonly contentType: string | null;
+  readonly bodyStart: string;
+
+  constructor(status: number, contentType: string | null, bodyStart: string) {
+    super(
+      `Máy chủ trả ${status} nhưng thân phản hồi không phải JSON` +
+        (contentType === null ? '' : ` (content-type: ${contentType})`) +
+        '. Thường là do một máy chủ SPA trả index.html cho đường dẫn API.',
+    );
+    this.name = 'NotJsonError';
+    this.status = status;
+    this.contentType = contentType;
+    this.bodyStart = bodyStart;
+  }
+}
+
 async function request<T>(
   method: 'GET' | 'POST',
   path: string,
   body: unknown,
   options: RequestOptions,
 ): Promise<T> {
-  return (await parseBody(await send(method, path, body, options))) as T;
+  const res = await send(method, path, body, options);
+  const parsed = await parseBody(res);
+  // `undefined` is a legitimate empty body (204, or a 200 with no content).
+  // A *string* is not: every caller of `api.get<T>`/`api.post<T>` names an
+  // object or array as `T`, and handing back text under that name is how a
+  // transport problem became a render crash. Fail here, where the caller's
+  // error path already exists, instead of three layers up where it doesn't.
+  if (typeof parsed === 'string') {
+    throw new NotJsonError(res.status, res.headers.get('content-type'), parsed.slice(0, 120));
+  }
+  return parsed as T;
 }
 
 /**
