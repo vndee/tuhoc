@@ -547,6 +547,43 @@ export const en: Messages = {
   'catalog.pull.interactiveWarning':
     'This package is allowed to run JavaScript in your browser when you open it.',
 
+  /* ── hệ thống con 4: chấm sao ──────────────────────────────────────────── */
+
+  'rating.yourVote': 'Your rating',
+  // English pluralises; Vietnamese does not. That rule belongs in the
+  // TRANSLATION, which is the whole reason a parameterised key is a function
+  // here and not a string with a hole in it.
+  'rating.star': (stars: number) => (stars === 1 ? '1 star' : `${stars} stars`),
+  // The decimal separator is a translation decision: `4.5` here, `4,5` in
+  // Vietnamese. A `toFixed(1)` at the call site would pin the dot for both.
+  'rating.summary': (average: number, count: number) =>
+    `${average.toFixed(1)}/5 · ${count === 1 ? '1 vote' : `${count} votes`}`,
+  'rating.none': 'No votes yet',
+  'rating.saving': 'Saving your rating…',
+  'rating.saved': 'Your rating was saved.',
+  'rating.error.rejected': 'The server refused this rating. A rating must be a whole number of stars from 1 to 5.',
+  'rating.error.tooMany':
+    'You have rated too many courses to add another. You can still change a rating you already gave.',
+  'rating.error.serverDown': 'The server is having trouble, so your rating was not saved. Try again in a few minutes.',
+  'rating.error.unknown': 'Your rating was not saved.',
+  'rating.error.unreachable':
+    'Your rating could not be sent. You may be offline, or this build of tuhoc runs without a server.',
+
+  /* ── hệ thống con 4: thảo luận ─────────────────────────────────────────── */
+
+  'discuss.toggle': 'Discussion',
+  'discuss.loading': 'Loading the discussion…',
+  'discuss.empty': 'No comments on this course yet.',
+  'discuss.postOnGitHub': 'Post a comment on GitHub',
+  'discuss.deletedAuthor': 'Deleted account',
+  'discuss.reason.disabled':
+    'This platform is not connected to a discussion repository yet, so there is nothing to read here. That is the normal state of this build, not a fault.',
+  'discuss.reason.unavailable': 'The discussion could not be loaded from GitHub. The rest of this page works normally.',
+  'discuss.reason.rateLimited':
+    'The discussion could not be loaded: the platform has used up its GitHub requests for the last few minutes. Try opening it again shortly.',
+  'discuss.reason.unknown': 'The discussion could not be loaded. The server gave a reason this build does not know.',
+  'discuss.error': 'The discussion could not be loaded. The server’s answer could not be read.',
+
   /* ── runtime của trang đọc ─────────────────────────────────────────────── */
 
   'courseKit.vizMissing': (name: string) => `[simulation "${name}" is not ready]`,

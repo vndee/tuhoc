@@ -645,6 +645,76 @@ export const vi = {
   'catalog.pull.interactiveWarning':
     'Gói này được phép chạy JavaScript trong trình duyệt của bạn khi bạn mở nó.',
 
+  /* ── hệ thống con 4: CHẤM SAO (`registry/Rating.tsx`) ──────────────────
+   *
+   * Ô chấm sao CHỈ xuất hiện cho course trên registry. Đó là một hàng rào
+   * riêng tư, có cổng ở `registry/ratingFence.test.tsx`, không phải một quy
+   * ước đặt chỗ — nên không khoá nào ở đây được dùng lại cho thư viện riêng.
+   */
+
+  'rating.yourVote': 'Đánh giá của bạn',
+  'rating.star': (stars: number) => `${stars} sao`,
+  /**
+   * TRUNG BÌNH ĐI KÈM SỐ PHIẾU, luôn luôn. 5,0 từ một phiếu và 5,0 từ hai
+   * trăm phiếu là cùng một con số và KHÔNG cùng một thông tin —
+   * `ratingResponse` phía Go viết đúng câu ấy ở chỗ khai báo của nó.
+   *
+   * Dấu thập phân nằm TRONG BẢN DỊCH chứ không ở chỗ gọi: tiếng Việt viết
+   * `4,5`, tiếng Anh viết `4.5`. Một `toFixed(1)` ở `Rating.tsx` sẽ ghim dấu
+   * chấm cho cả hai ngôn ngữ, và không cổng nào trong repo bắt được điều đó.
+   */
+  'rating.summary': (average: number, count: number) =>
+    `${average.toFixed(1).replace('.', ',')}/5 · ${count} phiếu`,
+  'rating.none': 'Chưa có phiếu nào',
+  'rating.saving': 'Đang lưu điểm…',
+  'rating.saved': 'Đã lưu điểm của bạn.',
+  'rating.error.rejected': 'Máy chủ không nhận điểm này. Điểm phải là một số sao từ 1 đến 5.',
+  /**
+   * 507 có CÂU RIÊNG vì nó là lỗi duy nhất người đọc tự xử lý được: tài
+   * khoản đã chấm quá nhiều khóa học (trần của tầng Go, tồn tại vì
+   * `registry_id` không có khoá ngoại và không thể có). Một câu chung sẽ đẩy
+   * họ đi báo một lỗi không phải lỗi.
+   */
+  'rating.error.tooMany':
+    'Bạn đã chấm quá nhiều khóa học nên không thêm được nữa. Sửa điểm của một khóa đã chấm thì vẫn được.',
+  'rating.error.serverDown': 'Máy chủ đang gặp sự cố nên chưa lưu được điểm. Thử lại sau ít phút.',
+  'rating.error.unknown': 'Chưa lưu được điểm của bạn.',
+  'rating.error.unreachable':
+    'Không gửi được điểm đi. Có thể bạn đang ngoại tuyến, hoặc bản tuhoc này chạy không kèm máy chủ.',
+
+  /* ── hệ thống con 4: THẢO LUẬN (`registry/Discussion.tsx`) ──────────────
+   *
+   * `reason` trên dây là một TỪ VỰNG ĐÓNG (`""`/`disabled`/`unavailable`/
+   * `rate_limited`) chứ không phải câu chữ — máy chủ cố ý không nói tiếng
+   * Việt, để câu người đọc thấy nằm ở đây và dịch được. Bốn mã, bốn câu
+   * KHÁC NHAU: gộp chúng lại là nói với người đọc rằng ba nguyên nhân khác
+   * hẳn nhau đều là "lỗi".
+   */
+
+  'discuss.toggle': 'Thảo luận',
+  'discuss.loading': 'Đang tải thảo luận…',
+  'discuss.empty': 'Chưa có bình luận nào cho khóa học này.',
+  'discuss.postOnGitHub': 'Đăng bình luận trên GitHub',
+  /**
+   * Chỗ giữ chỗ cho `author` RỖNG — một SENTINEL nghĩa là tài khoản người
+   * bình luận đã bị xoá, không phải dữ liệu thiếu. Bình luận vẫn là bình
+   * luận thật của một người, nên nó vẫn được hiện ra.
+   */
+  'discuss.deletedAuthor': 'Tài khoản đã bị xoá',
+  'discuss.reason.disabled':
+    'Nền tảng chưa được nối với repo thảo luận, nên chưa có gì để đọc ở đây. Đây là trạng thái bình thường của bản dựng hiện tại, không phải một lỗi.',
+  'discuss.reason.unavailable':
+    'Chưa tải được thảo luận từ GitHub. Phần còn lại của trang vẫn dùng được bình thường.',
+  'discuss.reason.rateLimited':
+    'Chưa tải được thảo luận: nền tảng đã dùng hết lượt hỏi GitHub cho ít phút vừa rồi. Thử mở lại sau.',
+  /**
+   * Mã lý do LẠ (máy chủ mới hơn ta). Không bao giờ vẽ nguyên văn cái mã ấy
+   * lên màn hình: nó không dịch được, và chữ do máy chủ viết đi thẳng vào
+   * giao diện là đúng thói quen mà cổng i18n tồn tại để chặn.
+   */
+  'discuss.reason.unknown': 'Chưa tải được thảo luận. Máy chủ trả về một lý do bản tuhoc này chưa biết.',
+  'discuss.error': 'Chưa tải được thảo luận. Không đọc được câu trả lời của máy chủ.',
+
   /* ── runtime của trang đọc (`packages/course-kit/runtime.js`) ──────────── */
 
   /**
