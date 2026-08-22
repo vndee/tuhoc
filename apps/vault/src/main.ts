@@ -7,8 +7,8 @@ import {
 import { readConfig, readPublicConfig } from './keystore';
 import { getProvider, listProviders } from './providers';
 import { ProviderError, type ChatMessage, type Provider } from './providers/types';
-import { checkAndConsume, clearActivity, grantConsent, hasConsent, readActivity } from './guard';
-import { renderVaultPanel } from './ui/Consent';
+import { checkAndConsume } from './guard';
+import { defaultSettingsDeps, renderSettings } from './ui/Settings';
 
 export interface HandlerDeps {
   allowedOrigin: string;
@@ -267,21 +267,28 @@ export function resolveAllowedOrigin(env: { VITE_APP_ORIGIN?: string }): string 
 if (typeof window !== 'undefined' && !import.meta.env.VITEST) {
   const allowedOrigin = resolveAllowedOrigin(import.meta.env);
 
-  // Khung xác nhận + nhật ký được vẽ ngay lúc nạp, chứ không đợi lời gọi đầu
-  // tiên: `needs_consent` chỉ hữu ích nếu người dùng có chỗ để bấm khi trang
-  // chính mở rộng khung ra.
+  // Màn cấu hình (form nhập key) + khung xác nhận + nhật ký được vẽ ngay lúc
+  // nạp, chứ không đợi lời gọi đầu tiên: `needs_consent` chỉ hữu ích nếu người
+  // dùng có chỗ để bấm khi trang chính mở rộng khung ra.
   //
-  // ⚠️ ĐIỂM NỐI CHƯA KHÉP KÍN, nói thẳng ra để không ai tưởng nó xong: khung
-  // này chỉ NHÌN THẤY được khi trang chính mở rộng iframe của kho khoá — và
-  // phần đó thuộc Task 5/6, chưa tồn tại. Chừng nào chưa có, một `needs_consent`
-  // là ngõ cụt: người dùng không có nút nào để bấm. Đây đúng hình dạng "cổng mù
-  // #4" (S1-F29) đã ghi trong `docs/carried-forward.md`, và chỉ cổng e2e của
-  // Task 10 hỏi được câu "người dùng có bấm tới được không".
+  // ĐIỂM NỐI ĐÃ KHÉP (Task 6). Task 9 để lại cảnh báo ở đúng chỗ này: khung chỉ
+  // NHÌN THẤY được khi trang chính mở rộng iframe, và phần đó chưa tồn tại, nên
+  // `needs_consent` là ngõ cụt — đúng hình dạng "cổng mù #4" (S1-F29). Hai nửa
+  // giờ đã nối: `apps/web/src/pages/Settings.tsx` là một route thật, có liên
+  // kết trong thanh điều hướng, và nó mở rộng khung ra. Câu "người dùng có bấm
+  // tới được không" vẫn thuộc cổng e2e của Task 10; điều task này làm là biến
+  // câu ấy từ "không" thành một câu đáng hỏi.
+  //
+  // `repaintPanel`, KHÔNG vẽ lại cả màn: `onActivity` chạy sau mọi quyết định
+  // của người gác, tức là mỗi lần trang chính nhắn `chat` vào — vẽ lại cả màn
+  // ở đó sẽ xoá sạch key người dùng đang gõ dở mỗi lần một course gọi hộ.
   const root = document.getElementById('vault-ui');
-  const repaint = root
-    ? () => renderVaultPanel(root, { hasConsent, grantConsent, readActivity, clearActivity })
+  const ui = root ? renderSettings(root, defaultSettingsDeps()) : null;
+  const repaint = ui
+    ? () => {
+        ui.repaintPanel();
+      }
     : undefined;
-  repaint?.();
 
   window.addEventListener('message', (e) => handleMessage(e, { allowedOrigin, onActivity: repaint }));
 }

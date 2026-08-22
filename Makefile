@@ -18,9 +18,20 @@ test-api: ; cd apps/api && go test ./...
 # lives in this repo at `fixtures/courses/` but is read from the `courses/`
 # working directory. See the `courses` target below.
 test-web: courses ; cd apps/web && bun run test
-# apps/vault — kho khoá ở origin riêng. Hai cổng như test-format/test-cli:
-# `tsc -b` cho kiểu, vitest cho hành vi. KHÔNG phụ thuộc `courses`: kho khoá
-# không bao giờ chạm tới nội dung course — nó chỉ giữ key và gọi nhà cung cấp.
+# apps/vault — kho khoá ở origin riêng. BA cổng: `tsc -b` cho kiểu, `oxlint`
+# cho mã, vitest cho hành vi. KHÔNG phụ thuộc `courses`: kho khoá không bao giờ
+# chạm tới nội dung course — nó chỉ giữ key và gọi nhà cung cấp.
+#
+# `oxlint` được thêm ở Task 6 của hệ thống con 2, và lý do nằm trong một câu mà
+# ba báo cáo liên tiếp đều ghi lại: **thư mục chạm tới key là thư mục có ít cổng
+# nhất repo** — `apps/web` chạy lint, `apps/vault` thì không. Cấu hình ở
+# `apps/vault/.oxlintrc.json` hẹp có chủ ý; luật đáng kể nhất là `no-console`
+# bật mức ERROR cho mã sản phẩm, vì "key không bao giờ vào log" là một ràng buộc
+# CÓ TÊN của hệ thống con này mà cho tới nay chỉ có bẫy trong test canh. Một
+# `console.warn` để gỡ lỗi là đủ để rò key ra DevTools của bất kỳ ai mở khung
+# kho khoá, và nó là kiểu dòng mã được thêm vào lúc 2 giờ sáng rồi ở lại.
+# Tệp test và `scripts/` được miễn: `providers.test.ts` CỐ Ý gọi `console.warn`
+# với một key giả để chứng minh bẫy console của chính nó còn sống.
 #
 # `tsc -b`, KHÔNG phải `tsc --noEmit`, vì lý do đã ghi ở test-format và trong
 # docs/carried-forward.md §2. Đã kiểm là ĐỎ được chứ không giả định: chèn
@@ -45,7 +56,7 @@ test-web: courses ; cd apps/web && bun run test
 #
 # Thư mục này có node_modules riêng; repo không có npm workspaces và không có
 # package.json ở gốc. Chạy `cd apps/vault && bun install` một lần.
-test-vault: ; cd apps/vault && rm -f node_modules/.tmp/vitest-summary.json && bun run typecheck && bunx vitest run --reporter=default --reporter=json --outputFile.json=node_modules/.tmp/vitest-summary.json && node scripts/assert-tests-ran.mjs node_modules/.tmp/vitest-summary.json
+test-vault: ; cd apps/vault && rm -f node_modules/.tmp/vitest-summary.json && bun run typecheck && bun run lint && bunx vitest run --reporter=default --reporter=json --outputFile.json=node_modules/.tmp/vitest-summary.json && node scripts/assert-tests-ran.mjs node_modules/.tmp/vitest-summary.json
 # packages/course-format — the course package rule set shared by the packaging
 # CLI, registry CI and the browser importer. Two gates, both required: vitest
 # for behaviour, and `tsc -b` for types.
