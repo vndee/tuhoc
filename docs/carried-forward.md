@@ -390,3 +390,46 @@ chuẩn, một `BroadcastChannel` **không nhận thông điệp của chính n�
 **Còn hở, không đóng được từ phía client:** khoảng giữa *"cookie đã thành của B"* và *"tín hiệu được
 phát"*. Cookie đổi ngay khi `POST /auth/login` trả về; tín hiệu sớm nhất là vài câu lệnh sau đó. Đóng
 đúng cách cần phía server — ví dụ một định danh phiên trên mọi phản hồi để client đối chiếu.
+
+---
+
+# Trạng thái khi bốn hệ thống con hoàn thành — 2026-08-23
+
+| cổng | kết quả |
+|---|---|
+| `test-format` | 164 · RAW_EXIT=0 |
+| `test-cli` | 43 · RAW_EXIT=0 |
+| `test-registry` | 40 · RAW_EXIT=0 |
+| `test-vault` | 181 · RAW_EXIT=0 |
+| `test-web` | **1098** · RAW_EXIT=0 (gồm cả `tsc -b`) |
+| `test-api` | 9 gói · RAW_EXIT=0 |
+| `test-e2e` | **29** · RAW_EXIT=0 |
+| `check-publish` | **ĐỎ — 3 phát hiện**, xem dưới |
+
+## Việc duy nhất còn chặn publish
+
+`make check-publish` phép 2 (**lịch sử git**): **61 object** dưới `courses/` và **44 commit** chạm tên
+giáo trình **ngoài** `courses/`. Bốn phép còn lại đều xanh.
+
+Cần `git-filter-repo` (chưa cài trên máy). Công thức ở `docs/publishing.md` §2, đã vá ba cái bẫy.
+**Lệnh phải dùng CẢ `--replace-text`, không chỉ `--path`** — nếu không, 44 commit kia vẫn mang tên.
+
+## Những gì CHƯA TỪNG chạy trên hạ tầng thật — ghi để không ai tưởng đã kiểm
+
+- `apps/vault/_headers` **chưa từng được một Cloudflare Pages thật phục vụ**; `apps/vault` chưa có
+  Pages project nào. Phép đo hai chiều của `frame-ancestors` chạy **trên máy**.
+- Truy vấn GraphQL của Discussions **chưa từng gọi GitHub thật một lần nào**. Máy chủ giả trả về đúng
+  thứ bộ giải mã mong đợi — một vòng khép kín. **Ba cổng độc lập đã cùng nêu điều này** (S4 Task 5-Go
+  §8, Task 4+5-web §7b, Task 6 §8): nó cần **một lần chạy thật với một token thật**.
+- `pack-site.ts` **chưa từng chạy trên GitHub Actions**; toàn bộ job `publish` (Pages) chưa chạy.
+- **Chưa ai gọi một nhà cung cấp AI thật.** OpenAI đã đo được là **bị CORS chặn ở đường lỗi**; đường
+  200 chưa đo. Chủ dự án chọn **giữ kèm cảnh báo**.
+- Quy ước *"tiêu đề Discussion = id course"* **không tồn tại ở đâu** trong `tools/registry` hay tài liệu.
+
+## Lời hứa còn hở, đã đo, không giấu
+
+**Ngân sách ký tự định giá việc tuồn ghi chú bằng số cú bấm của con người — nó không chặn.** Đo được:
+nếu người dùng bấm "cho phép" mọi lần thì **toàn bộ 40 lời nhắc vẫn đi, đủ 773.720 ký tự**, chỉ tốn
+7 cú bấm thay vì 1. Cải thiện thật trước một course độc **âm thầm**; **không cải thiện gì** trước một
+course đủ kiên nhẫn chờ người dùng bấm. Đường ra thật (course chạy trong iframe sandbox riêng origin)
+đã bị spec §1.2 **bác bỏ có ý thức** vì nó phá P2.
