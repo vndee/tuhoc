@@ -46,6 +46,27 @@ export const vi = {
    * dạng phải được chốt từ Task 4, lúc còn rẻ để đổi.
    */
   'library.courseCount': (count: number) => `${count} khóa học`,
+
+  /* ── trang cấu hình TRỢ LÝ AI (`pages/Settings.tsx`) ───────────────────── */
+
+  'settings.ai.title': 'Trợ lý AI',
+  /**
+   * KHOÁ CÓ CHỖ TRỐNG ĐẦU TIÊN, và là ca đã chốt QĐ-2: `<strong>kho khoá</strong>`
+   * nằm GIỮA câu, không bọc cả câu. Tham số là `string` chứ không phải
+   * `ReactNode` — catalog không được biết React tồn tại (xem `../index.ts`);
+   * `tNode()` ở `apps/web/src/i18n/tNode.tsx` mới là bên chèn phần tử vào.
+   *
+   * Câu giữ nguyên vẹn trong catalog thay vì bị cắt làm ba khoá, nên trật tự từ
+   * của bản tiếng Anh khác được mà chỗ vẽ không phải biết.
+   */
+  'settings.ai.blurb': (vault: string) =>
+    `Bạn dùng key của chính mình, và key ấy được cất trong ${vault} — một trang riêng chạy ở một địa chỉ riêng, mở ra đè lên trang này khi bạn vào đây. Trình duyệt cấm mã của trang bài học đọc bất cứ thứ gì bên trong kho khoá, nên một khóa học tương tác bị duyệt sót vẫn không lấy được key của bạn. Vì thế ô dán key nằm trong kho khoá, không nằm trên trang này.`,
+  'settings.ai.blurbVault': 'kho khoá',
+  'settings.ai.keyStays':
+    'Key không rời khỏi trình duyệt này: nó không được đồng bộ giữa các thiết bị và không đi qua máy chủ của chúng tôi. Đổi máy thì cắm lại; xoá thì không lấy lại được.',
+  'settings.ai.unavailable':
+    'Bản dựng này không có kho khoá, nên chưa dùng được trợ lý AI. Đây là một thiếu sót của cấu hình khi triển khai, không phải của tài khoản bạn — phần đọc giáo trình vẫn chạy bình thường.',
+  'settings.ai.open': 'Mở kho khoá',
 };
 
 /** Hình dạng mà MỌI ngôn ngữ phải phủ đúng. Xem chú thích trên `vi`. */

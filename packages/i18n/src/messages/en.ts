@@ -45,4 +45,20 @@ export const en: Messages = {
    * `'{count} courses'` sẽ cho ra "1 courses".
    */
   'library.courseCount': (count: number) => (count === 1 ? '1 course' : `${count} courses`),
+
+  /* ── trang cấu hình TRỢ LÝ AI (`pages/Settings.tsx`) ───────────────────── */
+
+  'settings.ai.title': 'AI assistant',
+  /**
+   * Chỗ trống nằm ở VỊ TRÍ KHÁC so với bản tiếng Việt, và đó chính là lý do câu
+   * này là một khoá chứ không phải ba mảnh ghép trong JSX.
+   */
+  'settings.ai.blurb': (vault: string) =>
+    `You use your own key, and that key is kept in the ${vault} — a separate page served from a separate address, which opens over this one when you come here. The browser forbids code on the lesson page from reading anything inside the key vault, so an interactive course that slipped through review still cannot take your key. That is why the key field lives in the vault and not on this page.`,
+  'settings.ai.blurbVault': 'key vault',
+  'settings.ai.keyStays':
+    'Your key never leaves this browser: it is not synced between devices and never passes through our servers. On a new machine you enter it again; if you delete it, it cannot be recovered.',
+  'settings.ai.unavailable':
+    'This build has no key vault, so the AI assistant is unavailable. That is a deployment configuration gap, not a problem with your account — reading the course still works normally.',
+  'settings.ai.open': 'Open the key vault',
 };

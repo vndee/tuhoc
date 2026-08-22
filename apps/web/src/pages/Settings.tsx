@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useLanguage } from '../i18n/LanguageProvider';
 import { useVaultFrame } from '../shell/VaultFrame';
 
 /**
@@ -23,6 +24,7 @@ import { useVaultFrame } from '../shell/VaultFrame';
  */
 export function Settings() {
   const { origin, expanded, setExpanded } = useVaultFrame();
+  const { t, tNode } = useLanguage();
 
   /**
    * Mở khung khi vào trang, đóng khi rời. Đóng lại là phần bắt buộc: khung mở
@@ -38,32 +40,26 @@ export function Settings() {
 
   return (
     <section className="page-settings">
-      <h1>Trợ lý AI</h1>
+      <h1>{t('settings.ai.title')}</h1>
 
+      {/*
+        `tNode`, không `t`: `<strong>kho khoá</strong>` nằm GIỮA câu. Đây là ca
+        đã chốt QĐ-2 — nếu `t()` trả `ReactNode` thì mọi `aria-label`/`title`/
+        `throw` trong 37 tệp còn lại phải thu hẹp kiểu bằng tay.
+      */}
       <p data-testid="vault-explainer">
-        Bạn dùng key của chính mình, và key ấy được cất trong <strong>kho khoá</strong> — một
-        trang riêng chạy ở một địa chỉ riêng, mở ra đè lên trang này khi bạn vào đây. Trình
-        duyệt cấm mã của trang bài học đọc bất cứ thứ gì bên trong kho khoá, nên một khóa học
-        tương tác bị duyệt sót vẫn không lấy được key của bạn. Vì thế ô dán key nằm trong kho
-        khoá, không nằm trên trang này.
+        {tNode('settings.ai.blurb', <strong>{t('settings.ai.blurbVault')}</strong>)}
       </p>
 
-      <p>
-        Key không rời khỏi trình duyệt này: nó không được đồng bộ giữa các thiết bị và không đi
-        qua máy chủ của chúng tôi. Đổi máy thì cắm lại; xoá thì không lấy lại được.
-      </p>
+      <p>{t('settings.ai.keyStays')}</p>
 
       {origin === null ? (
-        <p data-testid="vault-unavailable">
-          Bản dựng này không có kho khoá, nên chưa dùng được trợ lý AI. Đây là một thiếu sót của
-          cấu hình khi triển khai, không phải của tài khoản bạn — phần đọc giáo trình vẫn chạy
-          bình thường.
-        </p>
+        <p data-testid="vault-unavailable">{t('settings.ai.unavailable')}</p>
       ) : (
         !expanded && (
           <p>
             <button type="button" className="btn primary" onClick={() => { setExpanded(true); }}>
-              Mở kho khoá
+              {t('settings.ai.open')}
             </button>
           </p>
         )

@@ -2,17 +2,27 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
+import { t } from '../i18n';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 import { VaultFrameProvider } from '../shell/VaultFrame';
 import { Settings } from './Settings';
 
 const VAULT = 'http://localhost:5174';
 
+/**
+ * `<LanguageProvider>` là BẮT BUỘC từ khi trang này đọc catalog, và nó không
+ * phải một chi tiết của harness: `useLanguage()` NÉM ngoài provider, có chủ ý
+ * (xem `i18n/LanguageProvider.tsx`). Một mặc định lặng lẽ ở đó sẽ cho ra một
+ * trang hai thứ tiếng mà không bài kiểm nào đỏ.
+ */
 function renderSettings(origin: string | null = VAULT) {
   return render(
     <MemoryRouter>
-      <VaultFrameProvider origin={origin}>
-        <Settings />
-      </VaultFrameProvider>
+      <LanguageProvider>
+        <VaultFrameProvider origin={origin}>
+          <Settings />
+        </VaultFrameProvider>
+      </LanguageProvider>
     </MemoryRouter>,
   );
 }
@@ -49,8 +59,28 @@ describe('Trang cấu hình AI của TRANG CHÍNH', () => {
    */
   it('có render thật — tiêu đề và phần giải thích đều có mặt', () => {
     renderSettings();
-    expect(screen.getByRole('heading', { name: /trợ lý ai/i })).toBeInTheDocument();
-    expect(screen.getByTestId('vault-explainer')).toHaveTextContent(/kho khoá/i);
+    expect(screen.getByRole('heading', { name: t('vi', 'settings.ai.title') })).toBeInTheDocument();
+    expect(screen.getByTestId('vault-explainer')).toHaveTextContent(t('vi', 'settings.ai.blurbVault'));
+  });
+
+  /**
+   * `<strong>kho khoá</strong>` nằm GIỮA câu — ca đã chốt QĐ-2. Bài này khẳng
+   * định hai chuyện mà một `toHaveTextContent` đơn thuần không nói:
+   *
+   *   1. phần tử được chèn ĐÚNG CHỖ, không bị đẩy ra đầu hay cuối câu;
+   *   2. câu vẫn là MỘT câu liền — `textContent` khớp nguyên văn bản dịch, nên
+   *      một `tNode` nuốt mất mảnh chữ hay bỏ sót chỗ trống đều đỏ.
+   */
+  it('phần giải thích có <strong> nằm GIỮA câu, và câu không bị cắt rời', () => {
+    renderSettings();
+    const p = screen.getByTestId('vault-explainer');
+    const strong = p.querySelector('strong');
+    expect(strong).not.toBeNull();
+    expect(strong?.textContent).toBe(t('vi', 'settings.ai.blurbVault'));
+    expect(p.textContent).toBe(t('vi', 'settings.ai.blurb', t('vi', 'settings.ai.blurbVault')));
+    // Không ở đầu, không ở cuối: có chữ ở cả hai phía của phần tử.
+    expect(p.textContent?.indexOf(t('vi', 'settings.ai.blurbVault'))).toBeGreaterThan(0);
+    expect(p.textContent?.endsWith(t('vi', 'settings.ai.blurbVault'))).toBe(false);
   });
 
   /**
@@ -87,7 +117,7 @@ describe('Trang cấu hình AI của TRANG CHÍNH', () => {
     await user.click(screen.getByRole('button', { name: /đóng/i }));
     expect(frames()[0]).not.toBeVisible();
 
-    await user.click(screen.getByRole('button', { name: /mở kho khoá/i }));
+    await user.click(screen.getByRole('button', { name: t('vi', 'settings.ai.open') }));
     expect(frames()[0]).toBeVisible();
   });
 
@@ -100,6 +130,6 @@ describe('Trang cấu hình AI của TRANG CHÍNH', () => {
     renderSettings(null);
     expect(frames()).toHaveLength(0);
     expect(screen.getByTestId('vault-unavailable')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /mở kho khoá/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: t('vi', 'settings.ai.open') })).toBeNull();
   });
 });

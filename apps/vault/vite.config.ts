@@ -47,6 +47,15 @@ export default defineConfig(({ mode }) => ({
   // thấy. Hai nguồn khác nhau ở đây nghĩa là CSP và mã có thể nói hai origin
   // khác nhau, và không cổng nào hỏi được.
   plugins: [pagesHeaders(loadEnv(mode, HERE, 'VITE_').VITE_APP_ORIGIN ?? '')],
+  resolve: {
+    alias: {
+      // Xem chú thích dài ở `tsconfig.json` → `paths`. Alias tới TỆP, không tới
+      // thư mục: alias của Vite là phép viết lại đường dẫn thuần tuý và không
+      // đọc `package.json`, nên một alias thư mục sẽ giải ra `.../i18n/index.ts`
+      // — tệp không tồn tại.
+      '@tuhoc/i18n': resolve(HERE, '../../packages/i18n/src/index.ts'),
+    },
+  },
   server: {
     // 5174, trong khi `apps/web` chạy ở 5173. Origin bao gồm cả cổng, nên hai
     // cổng khác nhau trên localhost là hai origin khác nhau — đủ để trình duyệt

@@ -32,7 +32,28 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /*
+     * `@tuhoc/i18n` — CATALOG DỊCH, và là thứ DUY NHẤT ngoài mã của chính kho
+     * khoá được phép vào origin này (QĐ-1).
+     *
+     * Tệp `index.html` bên cạnh viết ra luật: *"danh sách phụ thuộc ở đây là bề
+     * mặt tấn công chứ không phải tiện nghi."* Gói ấy tuân theo bằng cách không
+     * có phụ thuộc nào cả — `dependencies` rỗng, không `node_modules`, không
+     * React, không DOM, chỉ hằng chuỗi và một hàm tra cứu thuần — và điều đó có
+     * CỔNG (`apps/web/src/i18n/i18n.test.ts`), không phải chỉ có chú thích này.
+     *
+     * Nửa Vite của alias nằm ở `vite.config.ts`. Cả hai nửa đều bắt buộc, và
+     * không nửa nào ngụ ý nửa kia — thiếu mục này thì `tsc -b` đỏ, thiếu mục kia
+     * thì bundle hỏng.
+     *
+     * Không `baseUrl`: TS6 báo TS5101 (LỖI, không phải cảnh báo) cho nó, và từ
+     * 5.4 một `paths` tương đối được giải theo thư mục chứa chính tệp này.
+     */
+    "paths": {
+      "@tuhoc/i18n": ["../../packages/i18n/src/index.ts"]
+    }
   },
   "include": ["src"]
 }

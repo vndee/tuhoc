@@ -77,6 +77,14 @@ export default defineConfig({
       // chính là tự tay bốc key về đúng cái origin mà kiến trúc này dựng lên để
       // giữ nó ra ngoài.
       '@vault-protocol': path.resolve(HERE, '../vault/src/protocol.ts'),
+      // CATALOG DỊCH dùng chung với kho khoá (QĐ-1). Cùng khuôn alias-tới-TỆP
+      // như hai mục trên, cùng lý do.
+      //
+      // Gói này KHÔNG có phụ thuộc nào — `dependencies` rỗng, không
+      // `node_modules`, không React, không DOM — nên nó là thứ DUY NHẤT ngoài
+      // `protocol.ts` được phép đi vào cả hai origin. Ràng buộc ấy có cổng ở
+      // `src/i18n/i18n.test.ts`; nó không phải một quy ước.
+      '@tuhoc/i18n': path.resolve(HERE, '../../packages/i18n/src/index.ts'),
     },
   },
   test: {

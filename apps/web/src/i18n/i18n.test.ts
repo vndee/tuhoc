@@ -3,10 +3,10 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { en } from '../../../../packages/i18n/src/messages/en';
+import { vi } from '../../../../packages/i18n/src/messages/vi';
 import { DEVICE_PREFERENCE_KEYS, USER_CONTENT_KEYS } from '../db/local';
 import { DEFAULT_LANG, LANGS, LANG_STORAGE_KEY, MESSAGES, normalizeLang, t } from './index';
-import { en } from './messages/en';
-import { vi } from './messages/vi';
 
 /* ====================================================================== *
  * 1. HAI BẢN DỊCH PHẢI KHỚP — và cổng thật là `tsc -b`, không phải tệp này
@@ -27,6 +27,17 @@ import { vi } from './messages/vi';
  * và vì chúng nói được điều `tsc` không nói: bản dịch nào còn nguyên văn tiếng
  * Việt.
  */
+/**
+ * Một giá trị catalog → chuỗi để soi. Khoá có tham số là HÀM, và các hàm ấy
+ * không cùng chữ ký (`(count: number)`, `(vault: string)`, …), nên không có
+ * một đối số nào hợp kiểu với tất cả. Ở đây cần đúng *chữ mà bản dịch tạo ra*,
+ * không cần kiểu — nên ép một lần, tại một chỗ, kèm lý do, thay vì rắc `as never`
+ * vào từng chỗ gọi.
+ */
+function sample(value: unknown): string {
+  return typeof value === 'function' ? (value as (...args: readonly unknown[]) => string)(1) : String(value);
+}
+
 describe('hai catalog', () => {
   it('en phủ ĐÚNG tập khoá của vi — không thiếu, không thừa', () => {
     expect(Object.keys(en).sort()).toEqual(Object.keys(vi).sort());
@@ -50,7 +61,7 @@ describe('hai catalog', () => {
    */
   it('không khoá nào của en còn là tiếng Việt, trừ tên ngôn ngữ', () => {
     const stillVietnamese = Object.entries(en)
-      .filter(([, value]) => VIETNAMESE.test(typeof value === 'function' ? value(1) : value))
+      .filter(([, value]) => VIETNAMESE.test(sample(value)))
       .map(([key]) => key)
       .sort();
     expect(stillVietnamese).toEqual(['lang.name.vi']);
@@ -135,9 +146,8 @@ describe('ngôn ngữ được ghi nhớ THEO THIẾT BỊ', () => {
       '../db/local',
       './LanguageProvider',
       './index',
-      './messages/en',
-      './messages/vi',
-      './vi',
+      './tNode',
+      '@tuhoc/i18n',
       'react',
     ]);
   });
@@ -234,6 +244,15 @@ const SCAN_ROOTS: readonly { readonly name: string; readonly files: () => string
     files: () => filesUnder(join(REPO_ROOT, 'packages', 'course-kit'), ['.js']),
     why: 'runtime của trang đọc, nạp bằng <script src> — cùng trang, cùng origin, và có chữ hiện ra cho người học',
   },
+  {
+    // Cây thứ TƯ, thêm ở Task 5 cùng lúc với `packages/i18n` (QĐ-1). Không quét
+    // nó thì việc dời hai catalog ra khỏi `apps/web/src` sẽ mở một chỗ trú:
+    // `packages/i18n/src/index.ts` có thể nhận chuỗi cứng mà cổng im lặng, và
+    // đó đúng là hình dạng "cổng đo đúng thứ nó với tới được".
+    name: 'packages/i18n/src',
+    files: () => filesUnder(join(REPO_ROOT, 'packages', 'i18n', 'src'), ['.ts']),
+    why: 'catalog dùng chung của hai origin — hai tệp `messages/` được miễn, phần còn lại thì không',
+  },
 ];
 
 function scannedFiles(): string[] {
@@ -290,7 +309,7 @@ function filesWithVietnameseLiterals(): string[] {
 }
 
 /** Nơi chữ tiếng Việt ĐƯỢC PHÉP sống mãi mãi: chính hai quyển từ điển. */
-const MESSAGE_HOMES: readonly string[] = ['apps/web/src/i18n/messages/en.ts', 'apps/web/src/i18n/messages/vi.ts'];
+const MESSAGE_HOMES: readonly string[] = ['packages/i18n/src/messages/en.ts', 'packages/i18n/src/messages/vi.ts'];
 
 /**
  * Chữ tiếng Việt KHÔNG BAO GIỜ tới mắt người học — nó nói với lập trình viên
@@ -354,7 +373,6 @@ const NOT_YET_EXTRACTED: readonly string[] = [
   'apps/web/src/pages/Library.tsx',
   'apps/web/src/pages/Login.tsx',
   'apps/web/src/pages/Reader.tsx',
-  'apps/web/src/pages/Settings.tsx',
   'apps/web/src/reader/ChapterView.tsx',
   'apps/web/src/reader/injectExerciseCheckboxes.ts',
   'apps/web/src/registry/Catalog.tsx',
@@ -409,13 +427,13 @@ describe('cổng chặn chuỗi cứng', () => {
    * `apps/vault/src/ui/Settings.ts` là màn hình nhập key, đúng tệp mà một cổng
    * chỉ quét `apps/web/src` sẽ im lặng về.
    */
-  it('quét CẢ BA cây, và ĐỎ nếu cây nào quét ra 0 tệp', () => {
+  it('quét CẢ BỐN cây, và ĐỎ nếu cây nào quét ra 0 tệp', () => {
     const empty = SCAN_ROOTS.filter((root) => root.files().length === 0).map((root) => root.name);
     expect(empty).toEqual([]);
 
     const seen = scannedFiles().map(repoRelative);
     expect(seen.length).toBeGreaterThan(60);
-    expect(seen).toContain('apps/web/src/i18n/messages/vi.ts');
+    expect(seen).toContain('packages/i18n/src/messages/vi.ts');
     expect(seen).toContain('apps/vault/src/ui/Settings.ts');
     expect(seen).toContain('packages/course-kit/runtime.js');
     expect(seen).not.toContain('apps/web/src/db/local.test.ts');
@@ -452,7 +470,7 @@ describe('cổng chặn chuỗi cứng', () => {
    * dựng đã có một ngoại lệ ngay ở tệp đầu tiên.
    */
   it('mã hạ tầng i18n không có một chuỗi cứng nào ngoài hai catalog', () => {
-    const offenders = i18nSourceFiles()
+    const offenders = [...i18nSourceFiles(), ...filesUnder(join(REPO_ROOT, 'packages', 'i18n', 'src'), ['.ts'])]
       .map(repoRelative)
       .filter((file) => !MESSAGE_HOMES.includes(file))
       .filter((file) => vietnameseLiterals(file, readFileSync(join(REPO_ROOT, file), 'utf-8')).length > 0);
@@ -475,5 +493,97 @@ describe('cổng chặn chuỗi cứng', () => {
       { file: 'apps/web/index.html', title: 'Tự học' },
       { file: 'apps/vault/index.html', title: 'Kho khoá tuhoc' },
     ]);
+  });
+});
+
+/* ====================================================================== *
+ * 4. `packages/i18n` — GÓI KHÔNG PHỤ THUỘC GÌ (QĐ-1)
+ * ====================================================================== */
+
+/**
+ * VÌ SAO CỔNG NÀY TỒN TẠI, và vì sao nó nằm ở đây chứ không ở gói kia.
+ *
+ * Catalog dịch được dùng bởi HAI origin: trang bài học, và **kho khoá** — nơi
+ * người học dán key. `apps/vault/index.html` viết ra luật của chính nó:
+ *
+ *   *"Nó cố ý trống rỗng: không router, không CSS framework, không React. Mọi
+ *   thứ nạp vào origin này đều là mã có quyền đọc key, nên danh sách phụ thuộc
+ *   ở đây là bề mặt tấn công chứ không phải tiện nghi."*
+ *
+ * QĐ-1 chọn một gói dùng chung thay vì hai catalog trôi dạt, và ràng buộc làm
+ * cho lựa chọn ấy an toàn là *"chỉ hằng chuỗi và một hàm tra cứu thuần"*. **Một
+ * ràng buộc không có cổng là một câu văn** — đây là cổng.
+ *
+ * Cổng sống ở `apps/web` chứ không ở `packages/i18n` vì một lý do trực tiếp:
+ * một bộ test trong gói ấy cần `vitest` trong `devDependencies`, tức là gói
+ * "không phụ thuộc gì" sẽ có một `node_modules` và một danh sách phụ thuộc để
+ * canh. Đặt cổng ở đây giữ được thư mục kia RỖNG THẬT, và nó vẫn có người
+ * chạy: `make test-web`.
+ */
+describe('packages/i18n — gói KHÔNG phụ thuộc gì', () => {
+  const PACKAGE_DIR = join(REPO_ROOT, 'packages', 'i18n');
+
+  /**
+   * Ba trường, không một. Chỉ khẳng định `dependencies` rỗng thì một
+   * `devDependencies: { react: '*' }` vẫn kéo được `node_modules` vào thư mục
+   * này, và `peerDependencies` là đường thứ ba cho đúng việc ấy.
+   *
+   * `toHaveProperty` đi kèm có chủ ý: một `dependencies` BỊ XOÁ khiến
+   * `pkg.dependencies ?? {}` rỗng và bài kiểm xanh — đó đúng là hình dạng cổng
+   * mù mà cả task này tồn tại để không dựng thêm.
+   */
+  it('package.json khai BA danh sách phụ thuộc và cả ba đều RỖNG', () => {
+    const pkg = JSON.parse(readFileSync(join(PACKAGE_DIR, 'package.json'), 'utf-8')) as Record<string, unknown>;
+    expect(pkg).toHaveProperty('dependencies');
+    expect(pkg.dependencies).toEqual({});
+    expect(pkg.devDependencies ?? {}).toEqual({});
+    expect(pkg.peerDependencies ?? {}).toEqual({});
+  });
+
+  /**
+   * Danh sách ĐÓNG, đọc từ cây cú pháp — cùng cơ chế và cùng lý do như danh
+   * sách của `apps/web/src/i18n` bên trên. Một `import 'react'`, `import
+   * 'node:fs'`, hay `import '../../apps/web/src/db/local'` đều làm bài này đỏ;
+   * một chú thích nhắc tới React thì không.
+   *
+   * Ba mục là toàn bộ: `index.ts` nhập hai catalog, và `en.ts` nhập KIỂU của
+   * chính nó từ `vi.ts`. Không có mục thứ tư nào là đúng nghĩa của "không phụ
+   * thuộc runtime nào".
+   */
+  it('không tệp nguồn nào nhập thứ gì ngoài kiểu của chính gói', () => {
+    const specifiers = new Set<string>();
+    for (const file of filesUnder(join(PACKAGE_DIR, 'src'), ['.ts', '.tsx'])) {
+      for (const spec of importSpecifiers(file, readFileSync(file, 'utf-8'))) specifiers.add(spec);
+    }
+    expect([...specifiers].sort()).toEqual(['./messages/en', './messages/vi', './vi']);
+  });
+
+  /**
+   * Hệ quả VẬT LÝ của hai bài trên, và nó bắt được thứ chúng không bắt: một
+   * `bun add` chạy trong thư mục này để lại `node_modules` NGAY CẢ KHI ai đó
+   * hoàn tác `package.json` sau đó. Ở một origin giữ key, "có mã lạ nằm trên
+   * đĩa cạnh mã thật" là câu đáng hỏi riêng.
+   */
+  it('thư mục gói KHÔNG có node_modules', () => {
+    expect(existsSync(join(PACKAGE_DIR, 'node_modules'))).toBe(false);
+  });
+
+  /**
+   * Gói này được HAI ứng dụng alias tới, và mỗi alias có hai nửa (Vite +
+   * TypeScript) mà không nửa nào ngụ ý nửa kia — đúng lằn ranh mà
+   * `tsconfig.app.json` đã ghi cho `@tuhoc/course-format`. Thiếu nửa `paths`
+   * của kho khoá thì `tsc -b` của nó đỏ; thiếu nửa `alias` thì bundle hỏng lúc
+   * dựng. Cả bốn được ghim ở đây để không nửa nào biến mất trong im lặng khi ai
+   * đó dọn cấu hình.
+   */
+  it('cả hai ứng dụng khai đủ HAI nửa của alias @tuhoc/i18n', () => {
+    const halves = [
+      'apps/web/vite.config.ts',
+      'apps/web/tsconfig.app.json',
+      'apps/vault/vite.config.ts',
+      'apps/vault/tsconfig.json',
+    ];
+    const missing = halves.filter((file) => !readFileSync(join(REPO_ROOT, file), 'utf-8').includes('@tuhoc/i18n'));
+    expect(missing).toEqual([]);
   });
 });
