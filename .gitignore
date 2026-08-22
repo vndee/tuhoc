@@ -31,3 +31,11 @@ apps/api/bin/
 # xoá ở commit sau không cứu được.
 /courses/*
 !/courses/.gitkeep
+
+# Báo cáo/sổ làm việc của điều phối viên. Quy tắc đặt Ở ĐÂY chứ không ở
+# .superpowers/sdd/.gitignore: tệp ignore lồng bên trong TỰ NÓ không được theo
+# dõi, nên nó KHÔNG tồn tại trong worktree mới — và ở đó `git add -A` quét báo
+# cáo vào commit. Đã xảy ra hai lần (task-4, task-6 của hệ 2), cả hai lần phải
+# gỡ theo dõi bằng tay. .gitignore gốc thì được theo dõi, nên nó đi theo mọi
+# worktree.
+.superpowers/
