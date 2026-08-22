@@ -674,31 +674,44 @@ test('chưa cắm key: panel hỏi–đáp mời đi cấu hình, không phải 
  * ⇒ Lỗi nằm ở đường THÁO của trình đọc chương, có sẵn từ trước, không phải thứ
  *   hệ thống con này dựng lên.
  *
- * ── Vì sao là `test.fail()` chứ không phải một chốt đỏ ────────────────────
- * Kế hoạch giao cho kịch bản 1 đúng một câu: *"thấy lời mời cấu hình, không
- * thấy lỗi cụt"* — câu ấy XANH. Sửa lỗi `removeChild` là việc của trình đọc,
- * ngoài phạm vi task này. Nhưng để nó không có tên thì nó biến mất: `test.fail`
- * là dây bẫy HAI CHIỀU — hôm nay nó xanh vì bên trong đỏ, và **ngày ai đó sửa
- * xong nó sẽ ĐỎ** ("expected to fail but passed"), buộc người sửa quay lại xoá
- * dòng này. Một lỗi đã biết mà không ai gỡ được dấu là một lỗi sẽ ở lại mãi.
+ * ── ĐÃ SỬA, 2026-08-22 — `test.fail()` ĐÃ ĐƯỢC GỠ ────────────────────────
+ * Dây bẫy hai chiều đã làm đúng việc của nó: nó ĐỎ ("expected to fail but
+ * passed") ngay khi trình đọc được sửa, và dòng `test.fail(...)` được gỡ ở
+ * cùng lần sửa ấy. Từ đây chốt này là một chốt ĐỎ bình thường.
+ *
+ * Nguyên nhân, định vị bằng một phép đo ba nhánh (xem
+ * `.superpowers/sdd/2026-08-22-fixes/nav-from-chapter-report.md`): `<Topbar>`
+ * dựng `<div id="crumb">{!isChapterRoute && 'Tuhoc'}</div>`, còn
+ * `<ChapterView>` portal breadcrumb của chương vào **đúng nút DOM ấy**. Rời
+ * chương ⇒ `children` của `#crumb` đổi từ `false` sang một CHUỖI, và react-dom
+ * commit `children` kiểu chuỗi bằng `setTextContent(node, …)` — tức
+ * `node.textContent = …` — thứ xoá sạch mọi con, kể cả con của portal. Commit
+ * kế tiếp React tháo portal, gọi `removeChild` trên một nút đã không còn là
+ * con, và ném GIỮA giai đoạn commit ⇒ lần chuyển route bị bỏ dở.
+ *
+ * Điều đó khớp từng chi tiết với ba phép đo ở trên: `/library` cũng hỏng (mọi
+ * route KHÔNG-chương đều bật chuỗi ấy lên), bản dựng không có kho khoá cũng
+ * hỏng (`#crumb` không dính gì tới AI), và đi từ bảng điều khiển thì chạy đúng
+ * (`#crumb` đã là `'Tuhoc'` sẵn, không có portal nào để xoá).
+ *
+ * Bản sửa nằm ở `apps/web/src/reader/ChapterView.tsx`: portal vào một
+ * `<span data-chapter-crumb>` do chính `ChapterView` tạo và treo dưới
+ * `#crumb`, nên nút bị `textContent` tách ra NGUYÊN VẸN và `removeChild` của
+ * React vẫn tìm thấy đúng cha. Chốt đơn vị đi kèm — đo đúng câu "bấm liên kết
+ * từ trong chương thì nội dung route ĐỔI", và khẳng định thêm rằng
+ * `<ErrorBoundary>` KHÔNG bị chạm tới — ở
+ * `apps/web/src/reader/leaveChapter.test.tsx`.
  *
  * **Hệ quả người dùng, nói thẳng:** panel AI **chỉ tồn tại trong chương**, nên
  * đây đúng là chỗ lời mời được bấm. Người học chưa cắm key bấm "Mở trang cấu
- * hình" sẽ thấy thanh địa chỉ đổi và **không có gì khác xảy ra**. Ngõ cụt mà
- * Task 6 nghĩ đã khép lại thì vẫn còn — chỉ là lý do nằm ở nơi khác.
+ * hình" nay tới được trang cấu hình thật.
  */
-test('DÂY BẪY: bấm lời mời phải mở được trang cấu hình (đỏ vì lỗi removeChild có sẵn)', async ({
-  page,
-  context,
-}) => {
-  test.fail(
-    true,
-    'lỗi removeChild có sẵn của trình đọc: rời chương bằng điều hướng SPA không đổi được nội dung route',
-  );
-  // Mọi bước có hạn NGẮN và TƯỜNG MINH. `test.fail` chỉ đổi một thất bại thành
-  // "đỏ như dự kiến" khi đó là một CHỐT đỏ — một lần HẾT GIỜ vẫn là thất bại
-  // cứng. Đo được: dưới mutant M1 chốt này hết 90 s rồi tính là hỏng thật, làm
-  // bẩn kết quả của một mutant nó không liên quan gì.
+test('bấm lời mời phải mở được trang cấu hình', async ({ page, context }) => {
+  // Mọi bước giữ hạn NGẮN và TƯỜNG MINH, và giữ nguyên sau khi `test.fail` đã
+  // được gỡ. Lý do cũ vẫn còn giá trị dưới dạng khác: hạn ngắn làm hỏng-thật
+  // hiện ra ở ĐÚNG bước hỏng thay vì ở một lần hết giờ 90 s không nói gì. Đo
+  // được hồi còn ghim: dưới mutant M1 chốt này hết 90 s rồi tính là hỏng thật,
+  // làm bẩn kết quả của một mutant nó không liên quan gì.
   test.setTimeout(45_000);
   await instrument(context);
   await signIn(page);

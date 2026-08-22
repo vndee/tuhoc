@@ -206,9 +206,61 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
   // mount), the state it sets isn't read by anything the effect itself
   // depends on, so there's no render loop, just the one extra render a
   // portal target discovery always needs.
+  //
+  // ── `#crumb` KHÔNG được portal vào thẳng — S2 Task 10, đo được ─────────
+  // `#rail` là `<aside id="rail">{rail}</aside>`: con của nó luôn là một
+  // PHẦN TỬ React (`<Rail/>`), nên react-dom không bao giờ commit nó bằng
+  // đường tắt văn bản. `#crumb` thì khác — `<Topbar>` dựng nó là
+  // `<div id="crumb">{!isChapterRoute && 'Tuhoc'}</div>`, và khi rời chương
+  // `children` của nó đổi từ `false` sang một CHUỖI. react-dom coi
+  // `children` kiểu chuỗi là trường hợp riêng và commit nó bằng
+  // `setTextContent(node, …)` — tức `node.textContent = …` — thứ **xoá sạch
+  // mọi con**, kể cả những nút portal mà React vẫn tin là mình đang giữ.
+  // Commit ngay sau đó React tháo portal và gọi
+  // `crumb.removeChild(<span class="crumb-part">)` trên một nút đã không còn
+  // là con:
+  //
+  //     NotFoundError: Failed to execute 'removeChild' on 'Node'
+  //
+  // ném GIỮA giai đoạn commit, nên cả lần chuyển route bị bỏ dở: URL đã đổi
+  // (history đổi trước), nội dung thì không. Đó là toàn bộ lỗi "bấm liên kết
+  // trong chương thì không đi đâu cả".
+  //
+  // Bản sửa: portal vào một nút **của chính component này**, treo dưới
+  // `#crumb`. Khi `#crumb` bị dọn bằng `textContent`, nút ấy bị tách ra
+  // NGUYÊN VẸN cùng con của nó, nên `removeChild` của React vẫn tìm thấy
+  // đúng cha nó cần và không có gì ném; `host.remove()` ở cleanup là no-op
+  // khi nút đã bị tách.
+  //
+  // Sửa ở ĐÂY chứ không ở `<Topbar>` là có chủ ý. Đo được bằng ba nhánh đối
+  // chứng (xem báo cáo): đổi `'Tuhoc'` thành `<>Tuhoc</>` cũng hết ném — DOM
+  // ra y hệt, chỉ khác đường commit — nhưng đó là sửa MỘT trường hợp. Bên đi
+  // mượn nút DOM của người khác là component này, nên bất biến "portal của
+  // chương phải sống sót được việc chủ nút viết lại nội dung nút" thuộc về
+  // nó, và bản sửa này đúng với MỌI cách viết (`children` chuỗi,
+  // `dangerouslySetInnerHTML`, một `innerHTML` mệnh lệnh nào đó về sau).
+  //
+  // Một `<span>` trần: `reader.css` chỉ có `#crumb b` và `#crumb .crumb-part`
+  // — đều là bộ chọn hậu duệ — nên một lớp bọc inline không đổi gì về trình
+  // bày, và `#crumb`'s `text-overflow:ellipsis` vẫn đo trên chính `#crumb`.
   useEffect(() => {
     setRailEl(document.getElementById('rail'));
-    setCrumbEl(document.getElementById('crumb'));
+
+    const crumb = document.getElementById('crumb');
+    if (!crumb) return;
+    const host = document.createElement('span');
+    // Không phải trang trí: đây là dấu cho người đọc DOM biết nút này có chủ,
+    // và là thứ `leaveChapter.test.tsx` chỉ vào khi giải thích vì sao nó tồn tại.
+    host.dataset.chapterCrumb = '';
+    crumb.appendChild(host);
+    setCrumbEl(host);
+
+    return () => {
+      // `ChildNode.remove()`, không phải `crumb.removeChild(host)`: nếu
+      // `#crumb` đã bị chủ của nó dọn sạch thì `host` không còn cha, và
+      // `removeChild` sẽ ném đúng cái lỗi mà cả khối này tồn tại để tránh.
+      host.remove();
+    };
   }, []);
 
   // The rail is a STICKY, self-scrolling box (`reader.css`: `position:sticky`,
