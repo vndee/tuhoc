@@ -362,7 +362,7 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
     const doc = root.ownerDocument ?? document;
     doc.addEventListener('selectionchange', onSelectionChange);
     return () => doc.removeEventListener('selectionchange', onSelectionChange);
-  }, [root, reattaching, mapFor]);
+  }, [root, reattaching, mapFor, t]);
 
   // Escape leaves the mode. Nothing else is looked at and nothing is
   // prevented, so Ctrl/Cmd+C on the quote the reader just copied, and the
@@ -423,7 +423,7 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
       console.error('OrphanPanel: could not reattach the note', error);
       setFailure(t(REATTACH_FAILED));
     }
-  }, [root, target, mapFor, reattach, onReattachingChange]);
+  }, [root, target, mapFor, reattach, onReattachingChange, t]);
 
   const setExactRef = useCallback((id: string, el: HTMLTextAreaElement | null): void => {
     if (el) exactRefs.current.set(id, el);

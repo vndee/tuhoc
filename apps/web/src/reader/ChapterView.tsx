@@ -412,7 +412,7 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
     // this effect (tearing down and re-attaching the click listener) on
     // every exercise checkbox click in this chapter, not just on an actual
     // change to whether THIS chapter is marked read.
-  }, [chapter.id, isChapterRead, progress.toggleRead]);
+  }, [chapter.id, isChapterRead, progress.toggleRead, t]);
 
   // The main render pipeline: set the fragment's HTML, then
   // renderKatex -> initViz IN THAT ORDER (KaTeX must lay out its DOM
@@ -495,7 +495,7 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
       observer?.disconnect();
       setChapterContextSource(null);
     };
-  }, [courseKit.ready, chapterQuery.data, courseId, chapter.id, chapter.num, chapter.title, courseTitle]);
+  }, [courseKit.ready, chapterQuery.data, courseId, chapter.id, chapter.num, chapter.title, courseTitle, t]);
 
   // Exercise checkboxes (this task's own deliverable): inject into every
   // `.box.ex .box-h` and keep their `checked` state in sync with progress
