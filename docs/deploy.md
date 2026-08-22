@@ -244,6 +244,58 @@ No `wrangler pages project validate` or equivalent config-lint command exists in
 
 ---
 
+## 5b. Deploy the key vault (`apps/vault`) — without this, AI does not exist
+
+**Đo 2026-08-22 (S2 Task 10):** bản dựng production **không có kho khoá**. `vite build` không đọc
+`.env.development`, và nếu `VITE_VAULT_ORIGIN` không được đặt thì `aiReady === false` và **nút AI
+không được vẽ ra**. Không có lỗi nào, không có cảnh báo nào — tính năng chỉ đơn giản không tồn tại.
+Tài liệu này trước đó **không nhắc `VITE_VAULT_ORIGIN` hay `apps/vault` một lần nào**, nên cả hệ
+thống con 2 không có đường ship.
+
+### Vì sao phải là một origin RIÊNG, không phải một đường dẫn
+
+Course hạng `interactive` **được phép chạy JS** (spec §1.2), và JS đó chạy **cùng trang** với ứng
+dụng. Trình duyệt cấm JS của origin này đọc `localStorage` của origin khác — đó là hàng rào thật,
+không phụ thuộc việc duyệt course có sót hay không. Một đường dẫn `/vault/` trên **cùng** cổng là
+**cùng origin** và **phá huỷ toàn bộ mục đích**.
+
+Điều này đã được chứng minh cần thiết chứ không phải lý thuyết: S1-F43 là một lỗ Critical trong đó
+gói hạng `content` — hạng *được cho là an toàn* — chạy được mã tuỳ ý qua bốn cổng. Nếu key nằm cùng
+origin, lỗ đó đã là lỗ mất key.
+
+### Các bước
+
+1. **Một Pages project thứ hai** cho `apps/vault`, tên miền `vault.<domain>`:
+   ```
+   Build command:     bun install && bun run build
+   Build output:      dist
+   Root directory:    apps/vault
+   ```
+2. **Biến môi trường của project kho khoá:**
+   ```
+   VITE_APP_ORIGIN = https://tuhoc.<domain>
+   ```
+   **Thiếu nó thì build HỎNG** (exit 1) chứ không ship một CSP sai — cố ý, xem `apps/vault/vite.config.ts`.
+   Giá trị này vào thẳng `frame-ancestors` trong `apps/vault/_headers`.
+3. **Biến môi trường của project web:**
+   ```
+   VITE_VAULT_ORIGIN = https://vault.<domain>
+   ```
+   Không có dấu `/` ở cuối, không phải `*` — cả hai đều bị `resolveVaultOrigin` từ chối, vì
+   `event.origin` **không bao giờ** có dấu `/` cuối và một origin sai làm mọi `postMessage` bị bỏ
+   trong im lặng.
+4. **Kiểm sau khi deploy** — ba việc, làm theo thứ tự:
+   - mở `https://tuhoc.<domain>`, vào trang cấu hình AI → **phải thấy khung kho khoá**;
+   - mở DevTools → Console, chạy `localStorage.length` **trên origin trang chính** sau khi đã cắm
+     key → key **không được** ở đó;
+   - thử nhúng `https://vault.<domain>` từ một origin khác → phải bị `frame-ancestors` chặn.
+
+### Chưa từng chạy trên hạ tầng thật
+
+`apps/vault/_headers` **chưa bao giờ được một Cloudflare Pages thật phục vụ**, và `apps/vault` **chưa
+có Pages project nào**. Phép đo hai chiều của `frame-ancestors` (origin được phép nhúng được; origin
+khác rơi vào `chrome-error://`) chạy **trên máy**, không chạy trên hạ tầng thật.
+
 ## 6. Free-tier realities: cold starts, stacked
 
 Both free-tier pieces here sleep independently:
