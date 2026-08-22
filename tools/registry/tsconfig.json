@@ -1,0 +1,41 @@
+{
+  // Copied from `tools/tuhoc-cli/tsconfig.json`, which copied it from
+  // `packages/course-format/tsconfig.json`. The two things that matter and are
+  // NOT stylistic:
+  //
+  //   1. `include` names real sources, so `tsc -b` actually looks at them.
+  //      `tsc --noEmit` is deliberately not the gate: it does not descend into
+  //      project references and has already produced one empty, always-green
+  //      gate in this repo (docs/carried-forward.md §2).
+  //   2. `types: ["node"]` — this code only ever runs in CI and on a
+  //      contributor's shell, never in a browser. It also hands the imported
+  //      `course-format` sources the `TextDecoder`/`TextEncoder` globals that
+  //      package declares by hand for its browser build.
+  //
+  // `erasableSyntaxOnly` is on, which means NO parameter properties
+  // (`constructor(private readonly x: T)` → TS1294). That has bitten this repo
+  // three times; write the field and the assignment out.
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "module": "esnext",
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
+}
