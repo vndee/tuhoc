@@ -200,3 +200,21 @@ Gỡ hẳn phép kiểm xác nhận ⇒ bẫy Task 3 **vẫn xanh**; phải gỡ
 mới đỏ. Bẫy thật của người gác là `guard.test.ts > BẪY TRUNG TÂM`, nơi key **đã** được cắm.
 ⇒ Bài học chung: **một dây bẫy còn xanh không có nghĩa nó còn đo thứ nó từng đo.** Khi mã dưới nó
 đổi, phải đo lại bằng đột biến, không suy luận.
+
+## Form nhập key sống trong iframe: chặn được NHÚNG, không chặn được SAO CHÉP (S2 Task 6)
+
+`apps/vault/_headers` đặt `frame-ancestors`, và nó **đo được hai chiều trên bản dựng thật**: origin
+được phép thì nhúng và thấy ô nhập; origin khác thì rơi vào `chrome-error://chromewebdata/`.
+
+**Nhưng nó chỉ chặn kẻ tấn công NHÚNG kho khoá. Nó không chặn kẻ SAO CHÉP nó.** Form thật nằm trong
+một iframe **không có thanh địa chỉ**, nên bằng chứng duy nhất người dùng có về "cái ô này thuộc
+origin nào" là **trang bên ngoài**. Tức là giao diện này đang **dạy người dùng thói quen dán key vào
+một cái ô mà họ không có cách nào kiểm chứng nó chạy ở đâu** — và một trang giả chỉ cần trông giống.
+
+Đây là **cố hữu với mọi thiết kế cất-bí-mật-trong-iframe**, không phải lỗi cài đặt. Nhưng Task 6 là
+lần đầu nó trở thành thật, vì trước đó chưa có ô nhập key nào. Ba hướng giảm thiểu đã được cân nhắc
+và **bác bỏ có lý do** — ghi ở `.superpowers/sdd/2026-08-22-s2-ai-byok/task-6-report.md` §9.
+
+**Hai điều chưa kiểm được, ghi để không ai tưởng đã kiểm:** `_headers` **chưa từng được một Cloudflare
+Pages thật phục vụ**, và `apps/vault` **chưa có project Pages nào**. Phép đo hai chiều ở trên chạy
+trên máy, không chạy trên hạ tầng thật.
