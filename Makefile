@@ -175,4 +175,21 @@ test-extract: ; cd tools && python3 -m pytest test_extract.py -v
 # are decisions about publishing (which tier of trust, whose name, what
 # licence, who wrote the prose) that a text-extraction script has no business
 # guessing. Add them, then pack. Full walkthrough: docs/publishing.md §1.
-extract:  ; python3 tools/extract.py --source ~/Documents/claude/Research/***REMOVED***.html --out .
+# ⚠️ CẢNH BÁO ĐÃ ĐO (2026-08-22): target này sinh lại `packages/course-kit/runtime.js`
+# từ bản v1 một-tệp, và bản v1 mang mã TRƯỚC khi vá lỗ Critical S1-F43 — nên chạy
+# `make extract` sẽ HOÀN NGUYÊN phép vá ấy, im lặng. Đã xảy ra thật một lần.
+# Hàng rào ở `apps/web/src/db/local.test.ts` bắt được (2 test đỏ) CHỈ VÌ thẩm quyền
+# của nó đã được mở từ "một thư mục" thành "mọi tệp ta ship tới trình duyệt" khi vá
+# C1. Bản hàng rào cũ không quét `packages/` và sẽ cho lỗ hổng quay lại không tiếng động.
+# ⇒ Sau khi chạy target này, LUÔN chạy `make test-web` trước khi commit.
+#
+# Không viết cứng course nào ở đây: một hằng số trỏ vào giáo trình riêng thì đi
+# cùng Makefile ra công khai (phép 4 của `make check-publish` bắt đúng dòng này).
+# Bốn giá trị đến từ môi trường; thiếu cái nào thì dừng và nói thiếu cái nào,
+# thay vì chạy nửa vời. Hướng dẫn đầy đủ: docs/publishing.md §1.4.
+extract:
+	@test -n "$$TUHOC_V1_SOURCE"  || { echo "extract: thiếu TUHOC_V1_SOURCE (đường dẫn tệp v1 một-tệp) — xem docs/publishing.md §1.4"; exit 1; }
+	@test -n "$$COURSE_ID"        || { echo "extract: thiếu COURSE_ID — xem docs/publishing.md §1.4"; exit 1; }
+	@test -n "$$COURSE_TITLE"     || { echo "extract: thiếu COURSE_TITLE — xem docs/publishing.md §1.4"; exit 1; }
+	@test -n "$$COURSE_DESC"      || { echo "extract: thiếu COURSE_DESC — xem docs/publishing.md §1.4"; exit 1; }
+	python3 tools/extract.py --out . --id "$$COURSE_ID" --title "$$COURSE_TITLE" --description "$$COURSE_DESC"
