@@ -1,4 +1,6 @@
 import { hashKey, useQuery, type QueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { announceSessionUser } from '../auth/sessionIdentity';
 import { api, ApiError } from './client';
 
 /** Shape returned by GET /me — see apps/api/internal/auth/handler.go's meResponse (id/email/name only, never a password hash). */
@@ -78,10 +80,47 @@ async function fetchMe(): Promise<Me | null> {
  * src/auth/RequireAuth.tsx).
  */
 export function useMe() {
-  return useQuery({
+  const query = useQuery({
     queryKey: meQueryKey,
     queryFn: fetchMe,
     retry: false,
     staleTime: 60_000,
   });
+
+  // Debt C-1: this query's answer, told to every other tab of this origin —
+  // see `src/auth/sessionIdentity.ts` for the leak it closes.
+  //
+  // **This is the ONE place identity is announced from, and it is here rather
+  // than inside `fetchMe` for a measured reason.** Announcing from the query
+  // function as well was tried and is the better-looking option — a promise
+  // resolving is ordered by data flow rather than by React's commit order.
+  // But it covers a strict subset of what this covers, and having both made
+  // each one individually unkillable: mutants deleting either announcement
+  // alone left `sync/crossTabSession.test.tsx` fully green, because the other
+  // was still establishing the same fact. Two writers of one truth, neither
+  // of which any test can hold responsible, is the shape this codebase has
+  // already been bitten by (`icTZOffset`, `clearLocalData`'s eight copies).
+  //
+  // What the query function could not have covered on its own: both auth
+  // transitions SEED this cache rather than refetch it — `src/pages/Login.tsx`
+  // with the user `POST /auth/login` just returned, `src/auth/useLogout.ts`
+  // with `null` — so on the one tab that performs a transition no `GET /me`
+  // runs at all. The ordering the query function would have bought is not
+  // needed either: `App.tsx`'s `useSyncLifecycle` calls `useMe()` and then
+  // declares its own effect, and React runs a component's effects in
+  // declaration order, so this announcement always lands before that
+  // `startSync()`. `crossTabSession.test.tsx`'s positive control drives that
+  // exact path through the real `<App/>`.
+  //
+  // `isSuccess`, not `data != null`: `null` is this query's ordinary answer
+  // for a logged-out visitor and is worth announcing, while `isError` (a
+  // 500, a dead network) means "unknown" — announcing anything there would
+  // be this tab inventing a fact about the browser out of a failure.
+  const settledUser = query.isSuccess ? (query.data?.id ?? null) : undefined;
+  useEffect(() => {
+    if (settledUser === undefined) return;
+    announceSessionUser(settledUser);
+  }, [settledUser]);
+
+  return query;
 }
