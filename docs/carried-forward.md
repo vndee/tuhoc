@@ -130,3 +130,20 @@ task B, việc **nối dây là một hạng mục riêng của vòng hợp nh�
 import không" — vì không cổng tự động nào hỏi hộ. Khe hở này **không phải lỗi người cài đặt**
 (Task 10 đã tự khai đúng nó ở dòng đầu mục "Concerns"); nó sinh ra từ việc chạy song song, nên nó
 thuộc về điều phối viên.
+
+## Giao thức kho khoá: dây bẫy quét CHỮ, không quét luồng dữ liệu (S2-F8)
+
+Hệ thống con 2 có sáu phép quét nguồn cưỡng chế lời hứa *"key không bao giờ đi qua máy chủ"*. Tất cả
+đều quét **chữ**. `const k = resp.value` mang key qua cả sáu mà không viết chữ "key" ở đâu.
+
+Hàng rào thật là **hình dạng giao thức**: hôm nay `apps/vault/src/protocol.ts` sạch — `status` chỉ trả
+`configured: boolean`, không message kind nào đọc key ra. Phép quét web thứ năm khoá điều đó, nhưng nó
+khớp **tên trường**, không khớp **nghĩa**: `{ kind: 'export'; value: string }` sẽ lọt.
+
+⇒ **Mọi thay đổi `apps/vault/src/protocol.ts` phải được đọc bằng mắt người, với đúng một câu hỏi:
+*"thông điệp mới này có mang được key ra khỏi origin kho khoá không?"*** Không cổng tự động nào hỏi
+hộ câu ấy, và người cài đặt Task 4 lẫn điều phối viên đều cho rằng không phép quét chữ nào đóng được.
+
+**Lỗ liên quan, chưa đóng:** nửa web của dây bẫy chỉ phủ `apps/web/src`. Một proxy viết bằng
+TypeScript (`apps/proxy/`, một Worker) **thoát cả hai nửa** — nửa Go phủ toàn repo, nửa web không có
+neo tương đương.
