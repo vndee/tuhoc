@@ -873,17 +873,26 @@ mark.ann {
 }
 
 .ann-tb-swatch:hover,
-.ann-tb-note:hover {
+.ann-tb-note:hover,
+.ann-tb-dive:hover {
   border-color: var(--accent);
 }
 
 .ann-tb-swatch:focus-visible,
-.ann-tb-note:focus-visible {
+.ann-tb-note:focus-visible,
+.ann-tb-dive:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
-.ann-tb-note {
+/* "Đào sâu" (hệ thống con 2, Task 8) dùng CHUNG khai báo với "Ghi chú" thay vì
+   có bộ luật riêng: hai nút đứng cạnh nhau trong cùng một thanh, và hai bộ luật
+   song song là hai thứ trôi dạt được — cùng lập luận `normalize.ts` viết cho
+   `ATOMIC_SELECTOR` ("một định nghĩa, hai người đọc"). Nó KHÔNG mang màu nhấn:
+   nút chính của thanh này vẫn là "Ghi chú", và hai nút cùng nổi bật thì không
+   nút nào nổi bật. */
+.ann-tb-note,
+.ann-tb-dive {
   height: 24px;
   padding: 0 9px;
   margin-left: 2px;
@@ -901,12 +910,14 @@ mark.ann {
    tap target, and this toolbar appears exactly where a finger already is. */
 @media (pointer: coarse) {
   .ann-tb-swatch,
-  .ann-tb-note {
+  .ann-tb-note,
+  .ann-tb-dive {
     width: 32px;
     height: 32px;
   }
 
-  .ann-tb-note {
+  .ann-tb-note,
+  .ann-tb-dive {
     width: auto;
     padding: 0 12px;
   }
@@ -1849,4 +1860,118 @@ mark.ann {
 
 .page-settings p {
   color: var(--ink-2);
+}
+
+/* ── Trợ lý AI trong lúc đọc (hệ thống con 2, Task 7 · 8) ────────────────────
+
+   `.ai-launch` nằm TRONG luồng chương, ngay dưới nội dung, không phải một nút
+   nổi cố định ở góc màn hình. Lý do là chỗ ấy đã chật: thanh chọn văn bản
+   (z-index 50), hộp chú thích (79/80), thanh nav di động (60/70) và lớp phủ kho
+   khoá (90) đều tranh cùng một góc phải-dưới trên màn hẹp. Một nút nổi thứ năm
+   sẽ hoặc che một trong số đó, hoặc bị che — và nút bị che là nút không tồn tại.
+
+   `.ai-panel` thì cố định, vì nó là chỗ người học ĐỌC câu trả lời trong khi vẫn
+   nhìn thấy đoạn văn đang hỏi về. z-index 85: trên chú thích, dưới lớp phủ kho
+   khoá (90) — người dùng đang dán key thì không gì được nằm đè lên. */
+.ai-launch {
+  display: block;
+  margin: 1.5rem 0 0;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--surface-1);
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ai-launch:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.ai-launch:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.ai-panel {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 85;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: min(30rem, calc(100vw - 2rem));
+  max-height: min(32rem, calc(100vh - 2rem));
+  overflow-y: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 12px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  font-family: var(--sans);
+  font-size: 0.88rem;
+}
+
+.ai-panel-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+/* Đoạn người học đã bôi đen, hiện lại nguyên văn. Cắt CHIỀU CAO chứ không cắt
+   chữ: một đoạn bị "…" mất đuôi trông giống hệt một lời nhắc bị cắt bớt, và hai
+   thứ ấy phải phân biệt được. */
+.ai-panel-quote {
+  max-height: 7rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  border-left: 3px solid var(--rule-strong);
+  color: var(--ink-2);
+  font-size: 0.82rem;
+}
+
+.ai-panel-answer {
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+
+.ai-panel-invite p {
+  margin: 0 0 0.5rem;
+  color: var(--ink-2);
+}
+
+.ai-panel-error {
+  margin: 0;
+  /* `--crit` là token "nghiêm trọng" của bảng màu chung
+     (`packages/course-kit/reader.css`), có cả biến thể sáng và tối. Một mã màu
+     viết thẳng ở đây sẽ đúng ở một chế độ và sai ở chế độ kia. */
+  color: var(--crit);
+}
+
+.ai-panel-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ai-panel-label {
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+
+.ai-panel-ask textarea {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  resize: vertical;
 }

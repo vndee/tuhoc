@@ -79,6 +79,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { type SelectionExcerpt, selectionExcerpt } from '../ai/prompts';
 import { type Anchor, type AnchorColor, selectionToAnchor } from './anchor';
 import { isMapStale, type NormMap, normalizeContainer, rangeToFlat } from './normalize';
 import { paint, unpaint } from './painter';
@@ -107,6 +108,22 @@ export interface SelectionToolbarProps {
    * tell me which one" and this callback is where the two tasks meet.
    */
   readonly onRequestNote?: (id: string) => void;
+  /**
+   * Called with the selected passage — PROJECTED, not raw — after the reader
+   * pressed "Đào sâu" (hệ thống con 2, Task 8). Absent ⇒ the button is not
+   * rendered at all, which is what keeps a build without the AI feature from
+   * offering a control that leads nowhere.
+   *
+   * The projection happens HERE, in `deepDiveFrom` below, and not in the AI
+   * panel, for the reason the P2 modules already paid for: this component
+   * holds the chapter's ONE live `NormMap`, and a second map taken later can
+   * already be stale (painting a note splits text nodes — ruling P2-F8). It
+   * also puts the KaTeX knowledge in exactly one place: `ai/prompts.ts`, which
+   * reuses P2's own segmentation and restores each formula's LaTeX source.
+   * Reading `innerText`/`textContent` here instead would put `'￼'` — one
+   * object-replacement character per formula — into the prompt.
+   */
+  readonly onDeepDive?: (excerpt: SelectionExcerpt) => void;
   /**
    * True while somebody ELSE owns what a selection means.
    *
@@ -187,7 +204,21 @@ const EDGE = 8;
  * stays free to be a few px off; it is not free to be off by enough for a
  * reader to see.
  */
-const EST_WIDTH = 232;
+/**
+ * Hệ thống con 2, Task 8 thêm nút "Đào sâu" cạnh "Ghi chú", nên ước lượng bề
+ * rộng phải lớn lên theo. "Đào sâu" dài 7 ký tự so với 7 của "Ghi chú" và mang
+ * đúng cùng bộ luật CSS (`.ann-tb-dive` dùng chung khai báo với `.ann-tb-note`),
+ * cộng `gap: 4px` — nên phần thêm vào là bề rộng của một nút "Ghi chú" nữa,
+ * lấy đúng con số đã đo cho nó ở ca `pointer: coarse` (~78 px) làm phía an
+ * toàn. Sai về phía LỚN là hướng sai vô hại: nó chỉ kẹp sớm vài pixel; sai về
+ * phía nhỏ mới đẩy được thanh công cụ ra ngoài mép cửa sổ.
+ *
+ * Nút chỉ xuất hiện khi có `onDeepDive`, nên bản dựng không có AI phải chịu
+ * một ước lượng rộng hơn thực tế 78 px. Hai hằng số theo hai nhánh sẽ khiến
+ * `toolbarSpot` phải nhận thêm một tham số chỉ để tiết kiệm mấy pixel kẹp —
+ * đắt hơn thứ nó mua.
+ */
+const EST_WIDTH = 310;
 const EST_HEIGHT = 44;
 
 export interface RectLike {
@@ -307,7 +338,13 @@ function rectsOf(range: Range): RectLike[] {
  * happens to have — and would put reader-owned DOM inside the element
  * `./painter` and `./normalize` walk.
  */
-export function SelectionToolbar({ content, store, onRequestNote, suspended = false }: SelectionToolbarProps) {
+export function SelectionToolbar({
+  content,
+  store,
+  onRequestNote,
+  onDeepDive,
+  suspended = false,
+}: SelectionToolbarProps) {
   const { create, list, orphans } = store;
   const root = content.root;
   const revision = content.revision;
@@ -464,6 +501,34 @@ export function SelectionToolbar({ content, store, onRequestNote, suspended = fa
     [root, spot, mapFor, create, onRequestNote],
   );
 
+  /**
+   * "Đào sâu": hand the passage up, write nothing.
+   *
+   * Deliberately NOT a variant of `createFrom`. That function's whole shape —
+   * optimistic paint, temp id, handover to the store, failure toast — exists
+   * because it WRITES. This one asks a question about text; there is no
+   * annotation, nothing to roll back, and no reason for a reader's question to
+   * leave a highlight behind on their chapter.
+   *
+   * The selection is left alone for the same reason: `createFrom` clears it
+   * because the paint it just made is the new visual answer, whereas here the
+   * reader's own selection is still the subject of the panel that is opening.
+   */
+  const deepDiveFrom = useCallback((): void => {
+    if (!root || !onDeepDive) return;
+    const range = selectionRange(root) ?? lastRangeRef.current;
+    setSpot(null);
+    if (!range || range.collapsed || !root.contains(range.commonAncestorContainer)) return;
+    const map = mapFor();
+    if (!map) return;
+    // `null` is `selectionExcerpt`'s final word — a selection with no quotable
+    // text in it (a drag that landed entirely inside a visualization, say).
+    // Opening a panel about nothing is worse than not opening one.
+    const excerpt = selectionExcerpt(map, range);
+    if (!excerpt) return;
+    onDeepDive(excerpt);
+  }, [root, mapFor, onDeepDive]);
+
   if (!root) return null;
 
   const doc = root.ownerDocument ?? document;
@@ -504,6 +569,11 @@ export function SelectionToolbar({ content, store, onRequestNote, suspended = fa
           >
             Ghi chú
           </button>
+          {onDeepDive && (
+            <button type="button" className="ann-tb-dive" onClick={deepDiveFrom}>
+              Đào sâu
+            </button>
+          )}
         </div>
       )}
       {failure && (

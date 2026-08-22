@@ -6,10 +6,14 @@ import { type CardFocus, MarginCards } from '../annotations/MarginCards';
 import { OrphanPanel } from '../annotations/OrphanPanel';
 import { SelectionToolbar } from '../annotations/SelectionToolbar';
 import { type ChapterContent, useAnnotations } from '../annotations/useAnnotations';
+import { AskPanel } from '../ai/AskPanel';
+import { DeepDive } from '../ai/DeepDive';
+import { type SelectionExcerpt, chapterSystemPrompt } from '../ai/prompts';
 import { describeCourseError, loadChapter } from '../course/loader';
 import type { Chapter } from '../course/types';
 import { startHeartbeat } from '../progress/heartbeat';
 import { useProgress } from '../progress/useProgress';
+import { useVaultFrame } from '../shell/VaultFrame';
 import { useThemeContext } from '../theme/ThemeContext';
 import { setChapterContextSource } from './getContext';
 import { injectExerciseCheckboxes } from './injectExerciseCheckboxes';
@@ -105,6 +109,49 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
   // were trying to re-anchor. Reattach mode wins — see `OrphanPanel.tsx`'s doc,
   // section 1.
   const [reattaching, setReattaching] = useState<string | null>(null);
+
+  /**
+   * Hệ thống con 2, Task 7 + 8. Trợ lý AI có ĐÚNG HAI lối vào từ chương này —
+   * hỏi về cả chương, và "Đào sâu" một đoạn bôi đen — nên chúng là hai nhánh
+   * của MỘT trạng thái, không phải hai cờ. Hai cờ cho phép cả hai panel mở
+   * cùng lúc, và hai panel cùng gọi kho khoá là hai hoá đơn cho một câu hỏi.
+   *
+   * Lời nhắc được dựng **lúc mở**, không phải mỗi lần render: nó đọc cả cây
+   * chương, và dựng lại nó ở mỗi lần gõ một ký tự vào ô câu hỏi là quét ~20.000
+   * ký tự cho mỗi phím bấm.
+   */
+  const [ai, setAi] = useState<
+    { kind: 'chapter'; system: string } | { kind: 'dive'; excerpt: SelectionExcerpt } | null
+  >(null);
+  /** `null` ⇒ bản dựng này không có kho khoá; khi ấy KHÔNG mời gì cả. Một nút
+   *  dẫn tới một câu "tính năng này không có" tệ hơn là không có nút. */
+  const { origin: vaultOrigin } = useVaultFrame();
+  const aiReady = vaultOrigin !== null;
+
+  const askAboutChapter = useCallback(() => {
+    const root = annotationContent.root;
+    if (!root) return;
+    // Mục người học đang đọc, lấy từ CÙNG tín hiệu rail TOC đang tô sáng —
+    // không phải một phép đo cuộn thứ hai, vốn sẽ trả lời khác nó.
+    const focusEl =
+      Array.from(root.querySelectorAll('h2, h3')).find((h) => h.id === currentHeadingId) ?? null;
+    const built = chapterSystemPrompt(root, {
+      courseTitle,
+      chapterTitle: chapter.title,
+      focusEl,
+    });
+    setAi({ kind: 'chapter', system: built.system });
+  }, [annotationContent.root, currentHeadingId, courseTitle, chapter.title]);
+
+  const closeAi = useCallback(() => {
+    setAi(null);
+  }, []);
+
+  // Đổi chương là đổi chủ đề: một panel còn mở đang mang ngữ cảnh của chương
+  // cũ, và câu trả lời tiếp theo sẽ nói về một chương người học đã rời khỏi.
+  useEffect(() => {
+    setAi(null);
+  }, [chapter.id]);
 
   // A card being opened from the CHAPTER (a click on a highlight) has to
   // bring its tab forward with it, or the reader clicks their own highlight
@@ -500,8 +547,38 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
         content={annotationContent}
         store={annotations}
         onRequestNote={requestNote}
+        onDeepDive={
+          aiReady
+            ? (excerpt) => {
+                setAi({ kind: 'dive', excerpt });
+              }
+            : undefined
+        }
         suspended={reattaching !== null}
       />
+      {aiReady && (
+        <>
+          <button
+            type="button"
+            className="ai-launch"
+            onClick={askAboutChapter}
+            disabled={annotationContent.root === null}
+          >
+            Hỏi AI về chương này
+          </button>
+          {ai?.kind === 'chapter' && (
+            <AskPanel heading="Hỏi về chương" system={ai.system} onClose={closeAi} />
+          )}
+          {ai?.kind === 'dive' && (
+            <DeepDive
+              courseTitle={courseTitle}
+              chapterTitle={chapter.title}
+              excerpt={ai.excerpt}
+              onClose={closeAi}
+            />
+          )}
+        </>
+      )}
       {(prevChapter || nextChapter) && (
         <div className="pager">
           {prevChapter && (
