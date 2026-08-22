@@ -72,19 +72,22 @@ function vizFixture(): string {
   );
 }
 
-// Adapted from the task brief's own fixture (task-1-brief.md Step 1), cut
-// from real prose in courses/***REMOVED***/chapters/p1-5.html
-// ("Xét phân kỳ ... giữa hai phân phối") with two inline formulas and a
-// `.ctrls` block that must be excluded.
-const BRIEF_FIX = `<div id="c"><p>Xét phân kỳ ${katexSpan('D_{\\mathrm{KL}}(p\\Vert q)', 'DKL(p‖q)')} giữa hai phân phối,
-và ${katexSpan('H(p,q)', 'H(p,q)')} là đại lượng trung tâm.</p>
+// Prose from the PUBLIC sample package,
+// fixtures/courses/so-dau-phay-dong/chapters/p1-3.html — two inline formulas
+// with real prose between and around them, plus a `.ctrls` block that must be
+// excluded. (It used to quote the private textbook; that package left the repo
+// in task 11 precisely because the repo is about to be published, and prose
+// copied out of it would have walked straight back in.)
+const BRIEF_FIX = `<div id="c"><p>Ba đòi hỏi — đồng nhất trên ${katexSpan('\\mathbb{F}', '𝔽')}, đơn điệu, gần nhất — xác định
+${katexSpan('\\operatorname{fl}', 'fl')} ở mọi nơi trừ các điểm hoà.</p>
 <div class="ctrls"><label>bỏ qua tôi</label></div></div>`;
 
-/** The sentence finding I1 was measured on, cut from the same p1-5.html:
- * ONE inline formula with real prose on BOTH sides, so a selection can end
- * inside the formula (formula at the TAIL of the selection) or start inside
- * it (formula at the HEAD). */
-const I1_FIX = `<div id="c"><p>Giả sử dữ liệu thực sự theo ${katexSpan('p', 'p')}, nhưng bạn thiết kế bộ mã tối ưu cho phân phối khác.</p></div>`;
+/** The shape finding I1 was measured on, now taken from the same public
+ * chapter (p1-3.html): ONE inline formula with real prose on BOTH sides, so a
+ * selection can end inside the formula (formula at the TAIL of the selection)
+ * or start inside it (formula at the HEAD). The prose after the formula must
+ * stay comfortably longer than the offset 10 the test reaches into. */
+const I1_FIX = `<div id="c"><p>Bộ đồng xử lý x87 giữ mọi giá trị trung gian ở ${katexSpan('80', '80')} bit, bất kể chương trình khai báo kiểu gì.</p></div>`;
 
 /** A chapter container with a rail/TOC as its SIBLING — the shape finding I4
  * is about. `#chapter` is what gets normalized; `#rail` is DOM the reader can
@@ -272,13 +275,13 @@ function domNodeVisits(run: () => void): number {
 describe('normalizeContainer', () => {
   it('katex là 1 token, ctrls bị loại', () => {
     const m = normalizeContainer(el(BRIEF_FIX));
-    expect(m.flat).toContain('Xét phân kỳ ￼ giữa hai phân phối');
+    expect(m.flat).toContain('đồng nhất trên ￼, đơn điệu');
     expect(m.flat).not.toContain('mathml');
     expect(m.flat).not.toContain('bỏ qua tôi');
     // Naive textContent would triple the formula's text (mathml mrow +
     // annotation raw source + html glyphs) — none of that leaks through.
-    expect(m.flat).not.toContain('DKL');
-    expect(m.flat).not.toContain('D_{\\mathrm{KL}}');
+    expect(m.flat).not.toContain('𝔽');
+    expect(m.flat).not.toContain('\\mathbb{F}');
   });
 
   it('mỗi .katex/.katex-display đóng góp đúng 1 ký tự atomic trong segs', () => {
@@ -447,12 +450,12 @@ describe('normalizeContainer', () => {
 describe('flatToDom / domToFlat round-trip', () => {
   it('round-trip flat→dom→flat trên text thường', () => {
     const m = normalizeContainer(el(BRIEF_FIX));
-    const i = m.flat.indexOf('hai phân phối');
-    const r = flatToDom(m, i, i + 13)!;
+    const i = m.flat.indexOf('đơn điệu');
+    const r = flatToDom(m, i, i + 8)!;
     expect(r).not.toBeNull();
-    expect(r.toString()).toBe('hai phân phối');
+    expect(r.toString()).toBe('đơn điệu');
     expect(domToFlat(m, r.startContainer, r.startOffset)).toBe(i);
-    expect(domToFlat(m, r.endContainer, r.endOffset)).toBe(i + 13);
+    expect(domToFlat(m, r.endContainer, r.endOffset)).toBe(i + 8);
   });
 
   it('offset trong katex snap ra mép token', () => {
@@ -492,8 +495,8 @@ describe('flatToDom / domToFlat round-trip', () => {
 
   it('flatToDom cho khoảng vượt qua công thức round-trip đúng qua domToFlat (không qua Range.toString, vốn không đáng tin ở đây)', () => {
     const m = normalizeContainer(el(BRIEF_FIX));
-    const from = m.flat.indexOf('kỳ ') + 'kỳ '.length - 1; // a couple chars before the first formula
-    const to = m.flat.indexOf(' giữa') + 1; // a couple chars after it — spans the formula
+    const from = m.flat.indexOf('trên ') + 'trên '.length - 1; // a couple chars before the first formula
+    const to = m.flat.indexOf(', đơn') + 1; // a couple chars after it — spans the formula
     expect(from).toBeLessThan(to);
 
     const r = flatToDom(m, from, to)!;
@@ -551,7 +554,7 @@ describe('flatToDom / domToFlat round-trip', () => {
 describe('C1 — bôi chọn nằm gọn trong một công thức (review §2)', () => {
   it('flatToDom trả null khi from === to: Range collapsed không bao giờ là "thành công"', () => {
     const m = normalizeContainer(el(BRIEF_FIX));
-    const i = m.flat.indexOf('hai phân phối');
+    const i = m.flat.indexOf('đơn điệu');
     expect(flatToDom(m, i, i)).toBeNull();
     expect(flatToDom(m, 0, 0)).toBeNull();
     expect(flatToDom(m, m.flat.length, m.flat.length)).toBeNull();
@@ -679,9 +682,9 @@ describe('I4 — vị trí ngoài root phải báo được, không giả vờ l
 describe('rangeToFlat — cách dùng ĐÚNG là cách dùng mặc định (review §2, đề xuất (b))', () => {
   it('đoạn chọn văn xuôi bình thường cho đúng [from, to)', () => {
     const m = normalizeContainer(el(BRIEF_FIX));
-    const i = m.flat.indexOf('hai phân phối');
-    const r = flatToDom(m, i, i + 13)!;
-    expect(rangeToFlat(m, r)).toEqual({ from: i, to: i + 13 });
+    const i = m.flat.indexOf('đơn điệu');
+    const r = flatToDom(m, i, i + 8)!;
+    expect(rangeToFlat(m, r)).toEqual({ from: i, to: i + 8 });
   });
 
   it('Range collapsed (nháy chuột, không bôi gì) trả null — kể cả khi nháy vào giữa công thức', () => {
@@ -831,9 +834,9 @@ describe('M-d — nhánh hoán đổi from/to của flatToDom (review §4, mutat
     // "annotation vô hình" mà chốt chặn `from === to` tồn tại để ngăn, chỉ
     // khác là lần này nó lọt qua chốt vì về mặt số học from !== to.
     const m = normalizeContainer(el(BRIEF_FIX));
-    const i = m.flat.indexOf('hai phân phối');
-    const fwd = flatToDom(m, i, i + 13)!;
-    const rev = flatToDom(m, i + 13, i)!;
+    const i = m.flat.indexOf('đơn điệu');
+    const fwd = flatToDom(m, i, i + 8)!;
+    const rev = flatToDom(m, i + 8, i)!;
     expect(rev).not.toBeNull();
     expect(rev.collapsed).toBe(false);
     expect(rev.startContainer).toBe(fwd.startContainer);
