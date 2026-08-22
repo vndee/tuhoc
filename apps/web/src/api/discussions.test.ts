@@ -127,7 +127,20 @@ describe('githubHref — lớp thứ HAI, sau lớp của tầng Go', () => {
     'JavaScript:alert(1)',
     'data:text/html,<script>alert(1)</script>',
     'http://github.com/x/y',
+    // Tiền tố — thứ một phép `startsWith` trên host sẽ nhận.
     'https://github.com.kẻ-xấu.vn/x',
+    // HẬU TỐ — thứ một phép `endsWith` sẽ nhận, và đó là lỗi PHỔ BIẾN hơn.
+    //
+    // Ba dòng này được thêm sau khi một mutant SỐNG SÓT: đổi phép kiểm host
+    // thành `hostname.endsWith('github.com')` mà cả bộ bài vẫn xanh, vì mọi
+    // host độc trong danh sách khi ấy đều kết thúc bằng `.vn`. Nói cách khác
+    // phép kiểm host **chưa từng được đo** — đúng hình dạng mà báo cáo Task
+    // 5-Go ghi lại cho mutant M3 của nó.
+    'https://evilgithub.com/x',
+    'https://not-github.com/x',
+    'https://xgithub.com/vndee/tuhoc-registry/discussions/7',
+    // Userinfo: `github.com` là TÊN NGƯỜI DÙNG ở đây, host là `kẻ-xấu.vn`.
+    'https://github.com@kẻ-xấu.vn/x',
     'https://kẻ-xấu.vn/github.com',
     '//kẻ-xấu.vn/x',
     '/discussions/7',
