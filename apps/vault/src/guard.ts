@@ -1,3 +1,4 @@
+import { t } from './lang';
 import { getProvider } from './providers';
 import type { VaultErrorCode } from './protocol';
 
@@ -432,7 +433,7 @@ export function checkAndConsume(input: { chars: number; providerId: string }): G
   if (consent === null) {
     return deny(
       'needs_consent',
-      'Cần một cú bấm xác nhận trong khung kho khoá trước lời gọi đầu tiên của phiên này.',
+      t('vault.guard.needsConsent'),
       now,
     );
   }
@@ -447,7 +448,7 @@ export function checkAndConsume(input: { chars: number; providerId: string }): G
   if (chars === null) {
     return deny(
       'rate_limited',
-      'Kho khoá không đo được độ dài lời nhắc này nên từ chối gửi nó đi.',
+      t('vault.guard.unmeasurable'),
       now,
     );
   }
@@ -460,7 +461,7 @@ export function checkAndConsume(input: { chars: number; providerId: string }): G
   if (chars > SESSION_CHAR_BUDGET) {
     return deny(
       'rate_limited',
-      'Lời nhắc này dài hơn toàn bộ ngân sách của một phiên nên kho khoá không gửi.',
+      t('vault.guard.promptTooLong'),
       now,
     );
   }
@@ -475,7 +476,7 @@ export function checkAndConsume(input: { chars: number; providerId: string }): G
     revokeConsent();
     return deny(
       'needs_consent',
-      'Phiên này đã gửi đi hết ngân sách ký tự. Hãy xác nhận lại trong khung kho khoá.',
+      t('vault.guard.budgetSpent'),
       now,
     );
   }
@@ -484,7 +485,7 @@ export function checkAndConsume(input: { chars: number; providerId: string }): G
   if (bucket.tokens < 1) {
     return deny(
       'rate_limited',
-      'Kho khoá đang giới hạn tần suất để không ai gọi hộ bằng key của bạn.',
+      t('vault.guard.rateLimited'),
       now,
     );
   }
@@ -492,7 +493,7 @@ export function checkAndConsume(input: { chars: number; providerId: string }): G
   if (!writeJson(localStorage, BUCKET_KEY, { tokens: bucket.tokens - 1, at: now })) {
     return deny(
       'rate_limited',
-      'Kho khoá không ghi được trạng thái hạn mức nên từ chối lời gọi này.',
+      t('vault.guard.bucketWriteFailed'),
       now,
     );
   }
@@ -510,7 +511,7 @@ export function checkAndConsume(input: { chars: number; providerId: string }): G
   } satisfies ConsentState)) {
     return deny(
       'rate_limited',
-      'Kho khoá không ghi được ngân sách ký tự nên từ chối lời gọi này.',
+      t('vault.guard.budgetWriteFailed'),
       now,
     );
   }

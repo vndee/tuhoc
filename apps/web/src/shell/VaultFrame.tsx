@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { VaultClient, resolveVaultOrigin } from '../ai/vaultClient';
+import { useLanguage } from '../i18n/LanguageProvider';
 
 /**
  * KHUNG KHO KHOÁ — một khung ẩn, gắn ĐÚNG MỘT LẦN cho cả ứng dụng.
@@ -85,6 +86,7 @@ function originFromBuildConfig(): string | null {
 
 export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps) {
   const resolved = origin === undefined ? originFromBuildConfig() : origin;
+  const { lang } = useLanguage();
 
   const [frameEl, setFrameEl] = useState<HTMLIFrameElement | null>(null);
   const [client, setClient] = useState<VaultClient | null>(null);
@@ -168,7 +170,24 @@ export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps
             // Origin, không đường dẫn: cổng khác = origin khác = trình duyệt
             // cách ly `localStorage`. Một đường dẫn `/vault/` trên cùng cổng sẽ
             // là CÙNG origin và phá huỷ toàn bộ mục đích của hệ thống con này.
-            src={`${resolved}/`}
+            //
+            // `?lang=` là ĐƯỜNG DUY NHẤT trang chính nói cho kho khoá biết ngôn
+            // ngữ người đọc (Task 5). Lựa chọn ấy nằm trong `localStorage` của
+            // origin NÀY, và trình duyệt cấm mã bên kia đọc nó — đó là cả mục
+            // đích của kiến trúc, nên nó phải được TRUYỀN chứ không được lấy.
+            //
+            // Không đi qua `postMessage`: `VaultRequest` là một union đóng mà cả
+            // hai phía phân nhánh theo, và S2-F8 xếp việc thêm thành viên vào đó
+            // là một thay đổi giao thức phải được người đọc bằng mắt. Ngôn ngữ
+            // hiển thị không đáng giá ấy — sai lệch tệ nhất của nó là chữ sai
+            // tiếng, không phải một quyền bị nới.
+            //
+            // Đổi ngôn ngữ ⇒ `src` đổi ⇒ khung NẠP LẠI, tức là xoá ô nhập key.
+            // Điều đó không với tới được người đang gõ key: bộ chọn ngôn ngữ
+            // nằm trên thanh công cụ, và khung khi mở ra là một lớp phủ che kín
+            // trang bên dưới (xem chú thích nút "Đóng" ngay trên). Người dùng
+            // không bấm được bộ chọn trong lúc khung đang mở.
+            src={`${resolved}/?lang=${lang}`}
             title="Kho khoá"
             // `allow-same-origin` ở đây là same-origin với CHÍNH KHO KHOÁ,
             // không phải với trang chính. Thiếu nó, khung nhận một origin mờ

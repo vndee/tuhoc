@@ -67,6 +67,115 @@ export const vi = {
   'settings.ai.unavailable':
     'Bản dựng này không có kho khoá, nên chưa dùng được trợ lý AI. Đây là một thiếu sót của cấu hình khi triển khai, không phải của tài khoản bạn — phần đọc giáo trình vẫn chạy bình thường.',
   'settings.ai.open': 'Mở kho khoá',
+
+  /* ══════════════════════════════════════════════════════════════════════ *
+   * KHO KHOÁ (`apps/vault`) — origin riêng, và là lý do gói này không phụ
+   * thuộc gì. Mọi khoá dưới đây được đọc bằng `apps/vault/src/lang.ts`.
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  /* ── người gác (`guard.ts`) — câu đi kèm mỗi lần TỪ CHỐI ───────────────── */
+
+  'vault.guard.needsConsent': 'Cần một cú bấm xác nhận trong khung kho khoá trước lời gọi đầu tiên của phiên này.',
+  'vault.guard.unmeasurable': 'Kho khoá không đo được độ dài lời nhắc này nên từ chối gửi nó đi.',
+  'vault.guard.promptTooLong': 'Lời nhắc này dài hơn toàn bộ ngân sách của một phiên nên kho khoá không gửi.',
+  'vault.guard.budgetSpent': 'Phiên này đã gửi đi hết ngân sách ký tự. Hãy xác nhận lại trong khung kho khoá.',
+  'vault.guard.rateLimited': 'Kho khoá đang giới hạn tần suất để không ai gọi hộ bằng key của bạn.',
+  'vault.guard.bucketWriteFailed': 'Kho khoá không ghi được trạng thái hạn mức nên từ chối lời gọi này.',
+  'vault.guard.budgetWriteFailed': 'Kho khoá không ghi được ngân sách ký tự nên từ chối lời gọi này.',
+
+  /* ── ô cất key (`keystore.ts`) ─────────────────────────────────────────── */
+
+  'vault.keystore.missingProviderOrModel': 'writeConfig: thiếu providerId hoặc model.',
+  'vault.keystore.emptyKey': 'writeConfig: key rỗng — kho khoá không lưu cấu hình không dùng được.',
+
+  /* ── giao thức + nhà cung cấp (`main.ts`, `providers/sse.ts`) ──────────── */
+
+  'vault.protocol.version': (version: string) => `Kho khoá dùng giao thức v${version}.`,
+  'vault.protocol.unsupported': 'Chưa hỗ trợ.',
+  'vault.protocol.badChatShape': 'Yêu cầu chat không đúng hình dạng giao thức.',
+  'vault.provider.unknown': 'Kho khoá không biết nhà cung cấp này.',
+  'vault.provider.notConfigured': 'Chưa cắm key trong kho khoá.',
+  'vault.provider.callFailed': 'Kho khoá không hoàn tất được lời gọi tới nhà cung cấp.',
+  'vault.provider.unreachable': 'Không gọi được nhà cung cấp từ trình duyệt (mạng hoặc CORS).',
+  'vault.provider.badKey': 'Key bị từ chối.',
+  'vault.provider.rateLimited': 'Nhà cung cấp giới hạn tần suất.',
+
+  /**
+   * Hai câu này nói với NGƯỜI TRIỂN KHAI, không với người học — kho khoá từ
+   * chối chạy khi không biết tin ai. Chúng vẫn đi qua catalog vì chúng nằm
+   * trong `main.ts`, một tệp có cả chuỗi hướng tới người học; ngôn ngữ áp dụng
+   * là ngôn ngữ đã đọc từ URL, đúng như mọi câu khác.
+   *
+   * `apps/vault/src/headers.ts` thì KHÁC và cố ý không nằm ở đây: nó chỉ được
+   * `vite.config.ts` nhập, chạy ở Node **lúc dựng**, và alias `@tuhoc/i18n`
+   * không áp cho chính tệp cấu hình — dịch nó sẽ làm hỏng bản dựng. Nó được
+   * xếp vào `DEVELOPER_FACING` kèm phép đo.
+   */
+  'vault.boot.originRequired': 'VITE_APP_ORIGIN bắt buộc — kho khoá từ chối chạy khi không biết tin ai.',
+  'vault.boot.originShape': (received: string) =>
+    `VITE_APP_ORIGIN phải là một origin đúng nghĩa (scheme://host[:port]), không dấu "/" cuối, không đường dẫn, không "*" — nhận được ${received}.`,
+
+  /* ── màn cấu hình trong khung (`ui/Settings.ts`) ───────────────────────── */
+
+  /**
+   * Lời nhắc của nút "Kiểm tra kết nối". NGẮN CÓ CHỦ Ý: nút này gọi thật, tức
+   * tiêu tiền thật của người dùng. `settings.test.ts` ghim độ dài lại để nó
+   * không phình ra — và vì độ dài ấy là một khẳng định, bản dịch cũng phải
+   * ngắn.
+   */
+  'vault.settings.testPrompt': 'Trả lời đúng một từ: OK',
+  'vault.settings.openaiWarning':
+    'Cảnh báo đã đo được (2026-08-22): OpenAI chặn đường sinh chữ bằng CORS khi gọi thẳng từ trình duyệt — hồi đáp lỗi của họ không kèm Access-Control-Allow-Origin. Đường thành công chưa đo được, nên OpenAI có thể không dùng được ở đây, và nếu có thì lỗi sai key sẽ hiện ra là "không gọi được nhà cung cấp" chứ không phải "key bị từ chối". Hãy thử "Kiểm tra kết nối" trước khi tin vào nó. DeepSeek, OpenRouter, Groq và Anthropic đều đã đo được là gọi thẳng từ trình duyệt được.',
+  'vault.settings.title': 'Trợ lý AI chạy bằng key của chính bạn',
+  'vault.settings.why':
+    'Ô dán key nằm trong khung này, và khung này là một trang riêng ở một origin riêng. Trình duyệt cấm mã của trang bài học đọc bất cứ thứ gì ở đây — kể cả ô bên dưới, kể cả chỗ cất key. Trang bài học chỉ gửi câu hỏi vào và nhận chữ trả lời ra; nó không bao giờ thấy key. Đó là lý do ô này không nằm ở trang cấu hình bên ngoài.',
+  'vault.settings.providerLabel': 'Nhà cung cấp',
+  'vault.settings.modelLabel': 'Mô hình',
+  'vault.settings.modelHint': 'Để nguyên nếu bạn không có lý do cụ thể để đổi.',
+  'vault.settings.keyPlaceholder': 'Dán key của bạn vào đây',
+  'vault.settings.keyLabel': 'Key của bạn',
+  'vault.settings.keyHint':
+    'Key ở lại đúng trình duyệt này, đúng thiết bị này. Nó không được đồng bộ, không đi qua máy chủ của chúng tôi, và không có cách nào lấy lại nếu bạn xoá — hãy giữ bản gốc ở trang của nhà cung cấp.',
+  'vault.settings.save': 'Lưu key trên máy này',
+  'vault.settings.test': 'Kiểm tra kết nối',
+  'vault.settings.clear': 'Xoá key khỏi máy này',
+  'vault.settings.currentKey': (providerId: string, model: string) => `Máy này đã có key: ${providerId} · ${model}.`,
+  'vault.settings.noKey': 'Máy này chưa có key nào.',
+  'vault.settings.noKeyTyped': 'Chưa dán key nào vào ô bên trên.',
+  'vault.settings.noModel': 'Chưa có tên mô hình.',
+  'vault.settings.saved': 'Đã lưu key vào trình duyệt này. Bấm "Kiểm tra kết nối" để chắc chắn nó dùng được.',
+  'vault.settings.clearArmed': 'Bấm lần nữa để xoá',
+  'vault.settings.clearWarning': 'Bấm lần nữa để xoá hẳn key khỏi trình duyệt này. Không có cách lấy lại.',
+  'vault.settings.cleared': 'Đã xoá key khỏi trình duyệt này.',
+  'vault.settings.noKeyAnywhere': 'Chưa dán key nào, và máy này cũng chưa lưu key cho nhà cung cấp đang chọn.',
+  'vault.settings.needsConsent':
+    'Kho khoá chưa được xác nhận trong phiên này. Bấm nút "Cho phép trong phiên này" ngay bên dưới rồi thử lại.',
+  'vault.settings.denied': 'Kho khoá đang từ chối lời gọi này.',
+  'vault.settings.calling': 'Đang gọi nhà cung cấp…',
+  'vault.settings.emptyReply': 'Gọi được nhà cung cấp, nhưng mô hình không trả về chữ nào. Thử một mô hình khác.',
+  'vault.settings.reply': (reply: string) => `Gọi được nhà cung cấp. Mô hình trả lời: «${reply}»`,
+  'vault.settings.openaiHint': (message: string) =>
+    `${message} (Với OpenAI, xem cảnh báo CORS ở trên — lỗi này có thể không phải do key.)`,
+
+  /* ── xác nhận + nhật ký (`ui/Consent.ts`) ──────────────────────────────── */
+
+  'vault.log.title': 'Trợ lý AI đã gửi đi những gì',
+  'vault.log.blurb':
+    'Nhật ký ghi thời điểm và SỐ KÝ TỰ đã gửi. Nội dung lời nhắc không được ghi lại ở đây — một bản sao thứ hai của ghi chú riêng tư nằm cạnh key là điều kho khoá này từ chối tạo ra.',
+  'vault.log.empty': 'Chưa có lời gọi nào.',
+  'vault.log.total': (chars: string, calls: string) => `Tổng cộng ${chars} ký tự đã rời khỏi máy này, qua ${calls} lời gọi.`,
+  'vault.log.entry': (when: string, chars: string, provider: string) => `${when} · ${chars} ký tự đã gửi · ${provider}`,
+  'vault.log.unknownProvider': 'nhà cung cấp không rõ',
+  'vault.log.denied': (rateLimited: string, needsConsent: string) =>
+    `Kho khoá đã TỪ CHỐI ${rateLimited} lời gọi vì quá tần suất và ${needsConsent} lời gọi vì chưa được xác nhận.`,
+  'vault.log.clear': 'Xoá nhật ký',
+  'vault.consent.askAgainTitle': 'Trợ lý AI xin phép gọi tiếp bằng key của bạn',
+  'vault.consent.askTitle': 'Trợ lý AI muốn gọi ra ngoài bằng key của bạn',
+  'vault.consent.askAgainBody':
+    'Kho khoá đã dừng lại và hỏi lại trước khi gửi thêm. Nhật ký ngay bên dưới cho biết chừng nào chữ đã rời khỏi máy này — hãy nhìn nó trước khi bấm lần này, vì mỗi cú bấm mở đường cho một lượng chữ tương đương nữa. Nếu con số ấy lớn hơn những gì bạn nhớ là mình đã hỏi, thì đừng bấm.',
+  'vault.consent.askBody':
+    'Trang bài học vừa yêu cầu kho khoá gọi nhà cung cấp AI. Kho khoá không cho lời gọi nào đi ra trước khi bạn bấm nút dưới đây, và cú bấm này chỉ có hiệu lực trong phiên hiện tại.',
+  'vault.consent.allow': 'Cho phép trong phiên này',
 };
 
 /** Hình dạng mà MỌI ngôn ngữ phải phủ đúng. Xem chú thích trên `vi`. */

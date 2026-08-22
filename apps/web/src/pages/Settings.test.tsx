@@ -102,9 +102,11 @@ describe('Trang cấu hình AI của TRANG CHÍNH', () => {
     unmount();
     render(
       <MemoryRouter>
-        <VaultFrameProvider origin={VAULT}>
-          <p>route khác</p>
-        </VaultFrameProvider>
+        <LanguageProvider>
+          <VaultFrameProvider origin={VAULT}>
+            <p>route khác</p>
+          </VaultFrameProvider>
+        </LanguageProvider>
       </MemoryRouter>,
     );
     expect(frames()[0]).not.toBeVisible();

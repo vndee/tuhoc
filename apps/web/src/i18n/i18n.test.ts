@@ -8,6 +8,17 @@ import { vi } from '../../../../packages/i18n/src/messages/vi';
 import { DEVICE_PREFERENCE_KEYS, USER_CONTENT_KEYS } from '../db/local';
 import { DEFAULT_LANG, LANGS, LANG_STORAGE_KEY, MESSAGES, normalizeLang, t } from './index';
 
+/**
+ * Một giá trị catalog → chuỗi để soi. Khoá có tham số là HÀM, và các hàm ấy
+ * không cùng chữ ký (`(count: number)`, `(vault: string)`, …), nên không có
+ * một đối số nào hợp kiểu với tất cả. Ở đây cần đúng *chữ mà bản dịch tạo ra*,
+ * không cần kiểu — nên ép một lần, tại một chỗ, kèm lý do, thay vì rắc `as never`
+ * vào từng chỗ gọi.
+ */
+function sample(value: unknown): string {
+  return typeof value === 'function' ? (value as (...args: readonly unknown[]) => string)(1) : String(value);
+}
+
 /* ====================================================================== *
  * 1. HAI BẢN DỊCH PHẢI KHỚP — và cổng thật là `tsc -b`, không phải tệp này
  * ====================================================================== */
@@ -27,17 +38,6 @@ import { DEFAULT_LANG, LANGS, LANG_STORAGE_KEY, MESSAGES, normalizeLang, t } fro
  * và vì chúng nói được điều `tsc` không nói: bản dịch nào còn nguyên văn tiếng
  * Việt.
  */
-/**
- * Một giá trị catalog → chuỗi để soi. Khoá có tham số là HÀM, và các hàm ấy
- * không cùng chữ ký (`(count: number)`, `(vault: string)`, …), nên không có
- * một đối số nào hợp kiểu với tất cả. Ở đây cần đúng *chữ mà bản dịch tạo ra*,
- * không cần kiểu — nên ép một lần, tại một chỗ, kèm lý do, thay vì rắc `as never`
- * vào từng chỗ gọi.
- */
-function sample(value: unknown): string {
-  return typeof value === 'function' ? (value as (...args: readonly unknown[]) => string)(1) : String(value);
-}
-
 describe('hai catalog', () => {
   it('en phủ ĐÚNG tập khoá của vi — không thiếu, không thừa', () => {
     expect(Object.keys(en).sort()).toEqual(Object.keys(vi).sort());
@@ -158,7 +158,7 @@ describe('ngôn ngữ được ghi nhớ THEO THIẾT BỊ', () => {
  * ====================================================================== */
 
 /**
- * VÌ SAO CỔNG NÀY QUÉT BA CÂY CHỨ KHÔNG PHẢI MỘT.
+ * VÌ SAO CỔNG NÀY QUÉT BỐN CÂY CHỨ KHÔNG PHẢI MỘT.
  *
  * Kế hoạch (HC-1) nói thẳng ra hình dạng của lỗi cần tránh: *"một cổng i18n chỉ
  * quét `apps/web/src` sẽ IM LẶNG về 14 tệp trong `apps/vault` — nơi có form
@@ -322,6 +322,28 @@ const DEVELOPER_FACING: readonly { readonly file: string; readonly why: string }
     why: 'thông báo của harness khi jsdom không đưa được Storage thật — chỉ hiện trong output của vitest',
   },
   {
+    /*
+     * XẾP LẠI Ở TASK 5, kèm phép đo chứ không kèm sự tiện lợi.
+     *
+     * `headers.ts` nằm dưới `src/`, nhưng nó KHÔNG BAO GIỜ đi vào bundle của
+     * kho khoá. Người nhập nó, đo bằng cây cú pháp ngày 2026-08-22:
+     *
+     *     apps/vault/vite.config.ts:12   import { applyAppOrigin } from './src/headers.ts';
+     *     apps/vault/src/headers.test.ts:6
+     *
+     * Hai chỗ, và không chỗ nào là mã chạy trong trình duyệt. Cả ba câu ném của
+     * nó nói với NGƯỜI ĐANG CHẠY `vite build`: thiếu `VITE_APP_ORIGIN`,
+     * `_headers` mất `frame-ancestors`, thẻ giữ chỗ bị viết cứng.
+     *
+     * Và việc dịch nó sẽ HỎNG BẢN DỰNG, không chỉ là thừa: alias `@tuhoc/i18n`
+     * do `vite.config.ts` khai, mà chính tệp cấu hình ấy được Node nạp TRƯỚC
+     * khi alias tồn tại — một `import '@tuhoc/i18n'` trong `headers.ts` sẽ
+     * không giải được lúc nạp cấu hình.
+     */
+    file: 'apps/vault/src/headers.ts',
+    why: 'chỉ `vite.config.ts` nhập (đo được: 2 chỗ, cả hai ngoài trình duyệt) — ba câu ném nói với người chạy `vite build`, và alias @tuhoc/i18n không áp cho chính tệp cấu hình',
+  },
+  {
     file: 'apps/web/src/test/sampleCourse.ts',
     why: 'ngữ liệu của một course mẫu + hướng dẫn `make courses` cho người chạy test; nội dung course, không phải giao diện',
   },
@@ -347,13 +369,6 @@ const DEVELOPER_FACING: readonly { readonly file: string; readonly why: string }
  * một dòng trong diff mà người thẩm định nhìn thấy.
  */
 const NOT_YET_EXTRACTED: readonly string[] = [
-  'apps/vault/src/guard.ts',
-  'apps/vault/src/headers.ts',
-  'apps/vault/src/keystore.ts',
-  'apps/vault/src/main.ts',
-  'apps/vault/src/providers/sse.ts',
-  'apps/vault/src/ui/Consent.ts',
-  'apps/vault/src/ui/Settings.ts',
   'apps/web/src/ai/AskPanel.tsx',
   'apps/web/src/ai/DeepDive.tsx',
   'apps/web/src/ai/prompts.ts',

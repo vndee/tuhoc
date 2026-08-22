@@ -1,3 +1,4 @@
+import { t } from '../lang';
 import { ProviderError } from './types';
 
 /**
@@ -117,7 +118,7 @@ export async function fetchStream(
     if (init.signal?.aborted) throw err;
     throw new ProviderError(
       'provider_error',
-      'Không gọi được nhà cung cấp từ trình duyệt (mạng hoặc CORS).',
+      t('vault.provider.unreachable'),
     );
   }
   return bodyOrThrow(res);
@@ -138,10 +139,10 @@ export async function fetchStream(
  */
 function bodyOrThrow(res: Response): ReadableStream<Uint8Array> {
   if (res.status === 401 || res.status === 403) {
-    throw new ProviderError('bad_key', 'Key bị từ chối.');
+    throw new ProviderError('bad_key', t('vault.provider.badKey'));
   }
   if (res.status === 429) {
-    throw new ProviderError('rate_limited', 'Nhà cung cấp giới hạn tần suất.');
+    throw new ProviderError('rate_limited', t('vault.provider.rateLimited'));
   }
   if (!res.ok || !res.body) {
     throw new ProviderError('provider_error', `HTTP ${res.status}`);
