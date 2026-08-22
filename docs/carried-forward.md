@@ -147,3 +147,56 @@ hộ câu ấy, và người cài đặt Task 4 lẫn điều phối viên đề
 **Lỗ liên quan, chưa đóng:** nửa web của dây bẫy chỉ phủ `apps/web/src`. Một proxy viết bằng
 TypeScript (`apps/proxy/`, một Worker) **thoát cả hai nửa** — nửa Go phủ toàn repo, nửa web không có
 neo tương đương.
+
+## *Confused deputy* của kho khoá — ĐÃ GIẢM THIỂU, CHƯA KHẮC PHỤC (S2-F9 · HC-3)
+
+**Trạng thái: `apps/vault/src/guard.ts` đang chạy. Lỗ vẫn còn. Đừng đọc mã ấy rồi tưởng nó đóng.**
+
+Kiến trúc origin riêng chặn được course độc **ĐỌC** key — trình duyệt cấm JS của origin này đọc
+`localStorage` của origin khác. Nó **KHÔNG** chặn được course độc **DÙNG** key: course hạng
+`interactive` chạy **trong trang chính**, trang chính **được phép** `postMessage` cho kho khoá, nên
+course vẫn bảo được kho khoá gọi hộ. Nó không lấy được key, nhưng nó **đốt tiền** và — nghiêm trọng
+hơn — **gửi ghi chú riêng tư của người dùng đi** dưới danh nghĩa lời nhắc.
+
+**Đường ra thật đã bị BÁC BỎ CÓ Ý THỨC, không phải bị bỏ quên:** cho course hạng `interactive` chạy
+trong một `<iframe sandbox>` ở origin riêng sẽ đóng hẳn lỗ này, và **spec §1.2 đã cân nhắc rồi bác
+bỏ** vì nó phá P2 — chú thích cần chạm DOM của chương, mà DOM ấy sẽ nằm trong một origin khác.
+Chừng nào course còn chạy cùng origin với ứng dụng, nó còn là *deputy*.
+
+**Task 9 mua được gì (đã đo, 21/21 mutant chết, đối chứng vô hại sống):**
+token bucket **phía kho khoá** (8 liên tiếp, nạp 1 token/6s), một cú bấm xác nhận **trong khung kho
+khoá** cho lời gọi đầu mỗi phiên, và một nhật ký hoạt động ghi **thời điểm + số ký tự**, không ghi
+nội dung.
+
+**Task 9 KHÔNG mua được — sáu món, xếp theo mức nghiêm trọng:**
+
+1. **Rò ghi chú riêng tư vẫn còn, chỉ chậm lại.** Trong hạn mức, một course độc vẫn gửi đi được
+   ~10 lời nhắc/phút, mỗi lời nhắc dài tuỳ ý. Hạn mức chặn **số lời gọi**, không chặn **số chữ**.
+   Đây là nửa nghiêm trọng của HC-3 và nó **chưa đóng**.
+2. **`model` do trang chính chọn.** Kho khoá nhận `model` từ yêu cầu, nên một course độc chọn model
+   đắt nhất là nhân chi phí mỗi lời gọi lên nhiều lần trong khi số lời gọi vẫn nằm trong hạn mức.
+   Chỗ sửa đúng là **Task 6**: khi giao diện cấu hình nằm trong khung kho khoá, kho khoá ghim model
+   của chính nó và bỏ qua `model` của yêu cầu.
+3. **Xác nhận là một lần cho cả phiên, không phải một lần cho mỗi lời gọi.** Sau cú bấm, mọi lời gọi
+   trong phiên đi qua — kể cả của course độc. Nó làm lời gọi đầu **nhìn thấy được**, không làm từng
+   lời gọi được duyệt.
+4. **Khung xác nhận chỉ NHÌN THẤY được nếu trang chính mở rộng iframe kho khoá.** Phần đó thuộc Task
+   5/6 và **chưa tồn tại**. Chừng nào chưa có, `needs_consent` là ngõ cụt — người dùng không có nút
+   nào để bấm và triệu chứng là "AI không trả lời". Đây đúng hình dạng **cổng mù #4 (S1-F29)**, và
+   chỉ cổng e2e của Task 10 hỏi được câu "người dùng có bấm tới được không".
+5. **Giao thức v1 không có `kind` nào để HUỶ.** Không có `AbortSignal` nào tới được kho khoá, nên
+   `cancel()` của Task 5 không huỷ được lời gọi đang chảy — nó chỉ bỏ qua phần còn lại. Thêm một
+   `kind: 'cancel'` là thay đổi giao thức, và theo S2-F8 nó phải được **đọc bằng mắt người**.
+6. **`unsupported_provider` đang gánh hai nghĩa.** `main.ts` dùng nó cho cả "nhà cung cấp lạ" lẫn
+   "yêu cầu chat méo mó", vì `VaultErrorCode` là union đóng và thêm một thành viên là thay đổi giao
+   thức (S2-F8) trong lúc Task 5 đang được viết dựa trên đúng union hiện tại. Nợ có tên: lần duyệt
+   giao thức tới, thêm `bad_request`.
+
+**Phép đo đáng nhớ nhất của Task 9 — một dây bẫy vẫn xanh nhưng đã YẾU ĐI:** bài kiểm của Task 3
+*"một yêu cầu `chat` KHÔNG gây ra lời gọi mạng nào"* **vẫn xanh** sau khi `chat` được nối, đúng như
+tác giả của nó yêu cầu. Nhưng đo bằng đột biến cho thấy nó xanh vì một lý do **khác** lý do tác giả
+ghi: trong bài kiểm ấy kho khoá **chưa cắm key**, nên nhánh `not_configured` một mình đã đủ chặn.
+Gỡ hẳn phép kiểm xác nhận ⇒ bẫy Task 3 **vẫn xanh**; phải gỡ **cả** phép kiểm "đã cắm key chưa" nó
+mới đỏ. Bẫy thật của người gác là `guard.test.ts > BẪY TRUNG TÂM`, nơi key **đã** được cắm.
+⇒ Bài học chung: **một dây bẫy còn xanh không có nghĩa nó còn đo thứ nó từng đo.** Khi mã dưới nó
+đổi, phải đo lại bằng đột biến, không suy luận.
