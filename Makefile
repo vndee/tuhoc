@@ -1,4 +1,4 @@
-.PHONY: dev-api dev-web dev-vault test-api test-web test-vault test-format test-cli pack courses test-e2e test-viz setup-extract test-extract extract check-publish
+.PHONY: dev-api dev-web dev-vault test-api test-web test-vault test-format test-cli test-registry registry-index pack courses test-e2e test-viz setup-extract test-extract extract check-publish
 dev-api:  ; cd apps/api && go run ./cmd/api
 dev-web:  courses ; cd apps/web && bun run dev
 # apps/vault — KHO KHOÁ, chạy ở CỔNG 5174 trong khi dev-web chạy ở 5173.
@@ -98,6 +98,33 @@ test-format: courses ; cd packages/course-format && bun run typecheck && bun run
 # set's verdict. That was the sixth unit test file depending on course content,
 # and it is the one ruling S1-F5 and its own correction both missed.
 test-cli: courses ; cd tools/tuhoc-cli && bun run typecheck && bun run test
+# tools/registry — cổng CI của registry, và bản chạy CỤC BỘ của nó.
+#
+# Vì sao target này tồn tại: `.github/workflows/registry.yml` không chạy được ở
+# máy ai cả. Nên mọi thứ quyết định được nằm trong `tools/registry/`, còn workflow
+# chỉ gọi. `make test-registry` chạy ĐÚNG những lệnh workflow chạy, nên phần
+# đáng kiểm được kiểm trước khi đẩy lên.
+#
+# Bốn phép, và phép thứ ba là khẳng định chịu lực:
+#   1. `tsc -b` (không phải `tsc --noEmit` — cổng rỗng trong repo này). Đã đo
+#      chứ không đoán: nhét `const x: number = "chuỗi"` vào src/ thì thoát 1.
+#   2. vitest — trong đó có ca "gói hạng content mang <script> BỊ TỪ CHỐI" và ca
+#      ĐỐI CHỨNG "cùng gói ấy khai interactive thì ĐƯỢC". Thiếu ca hai thì một
+#      cài đặt từ chối mọi thứ cũng xanh.
+#   3. chạy bộ luật thật lên `fixtures/courses/` — hai gói mẫu công khai.
+#   4. sinh `index.json` từ chính cây ấy (ghi ra stdout, không chạm cây git).
+#
+# KHÔNG phụ thuộc `courses`, và đó là điều đáng giữ chứ không phải thiếu sót:
+# registry chỉ đọc `fixtures/courses/` (gói mẫu công khai, đã commit). Giáo trình
+# riêng tư nằm ở kho ngoài cây git và KHÔNG BAO GIỜ chạm registry — `make
+# check-publish` vẫn là cổng của chuyện đó và target này không đụng vào nó.
+#
+# Thư mục này có node_modules riêng; repo không có npm workspaces và không có
+# package.json ở gốc. Chạy `cd tools/registry && bun install` một lần.
+test-registry: ; cd tools/registry && bun run typecheck && bun run test && cd ../.. && bun tools/registry/src/validate-pr.ts --root fixtures/courses && bun tools/registry/src/build-index.ts --root fixtures/courses > /dev/null
+# `make registry-index` — in `index.json` của registry ra stdout. Chuyển hướng đi
+# đâu là việc của người gọi; target này không ghi vào cây git.
+registry-index: ; bun tools/registry/src/build-index.ts --root fixtures/courses
 # `make pack DIR=my-course` — check a course directory against
 # packages/course-format and write a zip. Exits 1 and prints every finding when
 # the package is not valid; DIR is relative to the repo root.

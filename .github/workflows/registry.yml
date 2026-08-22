@@ -1,0 +1,206 @@
+# Registry CI — the gate `apps/api` already delegates to in prose.
+#
+# `apps/api/internal/course/usecase.go:26-34` says outright that the server does
+# NOT run the HTML rule set, and that the path it guards is "the registry, where
+# CI runs the TypeScript rules on the submission". Until this file existed,
+# `.github/` did not exist either: nothing anywhere ran those rules over a
+# package a stranger submitted. This closes that, it does not add a nicety.
+#
+# ## Everything decidable lives in TypeScript, on purpose
+#
+# GitHub Actions cannot be run locally, so any logic written in these `run:`
+# blocks is logic nobody can test. The rule is therefore: this file does three
+# things a YAML file can be trusted with — check out, install, and invoke — and
+# every decision is inside `tools/registry/`, where `bun run test` covers it.
+# The only shell logic here is the `git diff` that produces the changed-file
+# list, and the tool goes RED rather than green if that list is empty (see
+# `validate-pr.ts`, anti-blind-gate check #2).
+#
+# ## The blind-gate rule this repo has five recorded violations of
+#
+# *A gate measures what it can reach and goes quiet exactly where it cannot.*
+# Both quiet spots are wired to fail loudly instead:
+#
+#   1. registry root unreadable / holding no course → red on EVERY run,
+#      including PRs that touch no course (`courseDirsUnder` throws);
+#   2. an empty changed-file list → red, because a pull request always changes
+#      at least one file and an empty diff means the plumbing failed.
+#
+# A PR that genuinely touches no course is a SKIP that prints its reason, the
+# root it looked under, and the files it did see. It is not a green "validated".
+#
+# ## Not yet run on real GitHub Actions
+#
+# Written and exercised locally through `make test-registry`; the runner-shaped
+# parts (checkout depth, `oven-sh/setup-bun`, the Pages deploy) have never
+# executed on a hosted runner. Treat the first real run as the test of those.
+
+name: registry
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# The registry root: one directory per course.
+#
+# In this repo that is `fixtures/courses/`, which holds the two committed public
+# sample packages. In the standalone public registry repo it is `courses/`.
+# It is written ONCE, here, so relocating the tree is one edit and not a hunt.
+env:
+  REGISTRY_ROOT: fixtures/courses
+
+# Least privilege by default; the publish job widens it for itself only.
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: bộ luật course-format trên các course PR đổi
+    runs-on: ubuntu-latest
+    steps:
+      # `fetch-depth: 0` is load-bearing twice over: the changed-file diff needs
+      # the merge base, and `build-index --commit-dates` needs real commit dates.
+      # The default depth of 1 makes both silently wrong rather than loud.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # No npm workspaces and no root package.json in this repo (ruling S1-F1),
+      # so every package installs its own. `course-format` is installed because
+      # `tools/registry` imports its sources, which import `parse5` and `fflate`
+      # — Node resolution finds those from the importing file's own directory.
+      - name: cài phụ thuộc
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile --cwd packages/course-format
+          bun install --frozen-lockfile --cwd tools/registry
+
+      # `tsc -b`, never `tsc --noEmit`: `--noEmit` does not descend into project
+      # references and has already produced one empty, always-green gate in this
+      # repo (docs/carried-forward.md §2).
+      - name: typecheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun run --cwd tools/registry typecheck
+
+      # These are the tests that assert the load-bearing claim: a `content`-tier
+      # package carrying `<script>` is REFUSED and the message names the file,
+      # and the same bytes declared `interactive` are ACCEPTED. Without the
+      # second, a validator that refused everything would also be green.
+      - name: test tools/registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun run --cwd tools/registry test
+
+      # The only shell logic in this file. Three-dot diff = what this branch
+      # changed since the merge base, which is what a reviewer is looking at.
+      #
+      # The base branch is fetched EXPLICITLY rather than assuming
+      # `origin/<base>` is a remote-tracking ref the checkout happened to leave
+      # behind: that assumption is exactly the kind that produces an empty diff
+      # and a green tick. It cannot produce one here — an empty list is red in
+      # `validate-pr.ts` — but a red job with a clear cause beats a red job with
+      # a confusing one.
+      - name: liệt kê tệp PR đổi
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "${BASE_REF}"
+          git diff --name-only FETCH_HEAD...HEAD > "${RUNNER_TEMP}/changed.txt"
+          echo "PR đổi $(wc -l < "${RUNNER_TEMP}/changed.txt") tệp"
+
+      # PR: only the courses the PR touched. An empty changed-file list is RED
+      # here, not "nothing to do" — see validate-pr.ts.
+      - name: kiểm course PR đổi
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun tools/registry/src/validate-pr.ts --root "${REGISTRY_ROOT}" --changed-from "${RUNNER_TEMP}/changed.txt"
+
+      # push to main: the whole tree, every time. A course can stop being valid
+      # without anybody touching it — a rule tightens in `packages/course-format`
+      # and the catalog is suddenly serving something the current rules refuse.
+      - name: kiểm TOÀN BỘ registry
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun tools/registry/src/validate-pr.ts --root "${REGISTRY_ROOT}"
+
+  publish:
+    name: sinh index.json và phục vụ qua Pages
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    # One deploy at a time, and never cancel one mid-flight: a half-published
+    # Pages site is an `index.json` naming packages that are not there yet.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: cài phụ thuộc
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile --cwd packages/course-format
+          bun install --frozen-lockfile --cwd tools/registry
+
+      # `--commit-dates` makes the output byte-identical for a given commit, so
+      # the platform's ETag cache is not busted by a rebuild that changed
+      # nothing. It FAILS rather than falling back to file mtimes, which after a
+      # fresh checkout are all "now" — see build-index.ts.
+      #
+      # `build-index` re-runs the SAME rule set before it writes anything, so an
+      # invalid package can never reach the catalog even if it somehow reached
+      # main.
+      - name: sinh index.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          bun tools/registry/src/build-index.ts --root "${REGISTRY_ROOT}" --commit-dates --out _site/index.json
+
+      # The course tree ships next to the index so the platform can fetch a
+      # package's files on demand from the same origin, with no GitHub API call
+      # and no per-IP rate limit.
+      - name: gom cây course vào _site
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _site/courses
+          cp -R "${REGISTRY_ROOT}/." _site/courses/
+          echo "_site: $(find _site -type f | wc -l) tệp"
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
