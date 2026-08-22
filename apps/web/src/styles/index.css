@@ -236,6 +236,452 @@
   fill: var(--ink-2);
 }
 
+/* S1 Task 8 — /import. Same placement and token rules as the .dash-* block
+   above: reader.css stays the ported v1 stylesheet, and anything the app
+   adds on top lives here and borrows v1's tokens.
+
+   Every row is a `flex-wrap: wrap` with a `min-width` on the text input
+   rather than a media query. The narrow case here is not a phone-sized
+   viewport, it is the reader sidebar being open on a laptop — the shell's
+   own breakpoint is 1240px (see the bottom of this file), so the content
+   column gets narrow long before any `max-width: 640px` rule would fire.
+   Wrapping on content width covers both without a second number to keep in
+   step with the shell's. */
+.import-page {
+  max-width: 44rem;
+}
+
+.import-way {
+  margin: 0 0 26px;
+}
+
+.import-way-h {
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin: 0 0 8px;
+}
+
+.import-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.import-label {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  flex: 0 0 auto;
+}
+
+.import-input {
+  font-family: var(--sans);
+  font-size: 13px;
+  padding: 7px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--ink);
+  /* Grow to fill the row, but never force the row wider than its column:
+     without `min-width: 0` a flex item refuses to shrink below its content
+     width and a long pasted URL pushes the button off screen. */
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.import-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.import-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--sans);
+  font-size: 13px;
+}
+
+.import-file input[type='file'] {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  max-width: 100%;
+}
+
+.import-note {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-3);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 10px 0 0;
+}
+
+.import-status:empty {
+  display: none;
+}
+
+.import-busy,
+.import-ok {
+  font-family: var(--sans);
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+.import-busy {
+  color: var(--ink-2);
+}
+
+.import-ok {
+  color: var(--good);
+}
+
+.import-findings {
+  margin: 22px 0 0;
+  border-top: 1px solid var(--rule);
+  padding-top: 18px;
+}
+
+.import-finding-list {
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin: 10px 0 0;
+  padding-left: 20px;
+}
+
+.import-finding-list li {
+  margin: 0 0 8px;
+  /* A finding's detail can carry a path or a URL with no spaces in it;
+     without this it widens the whole page instead of wrapping. */
+  overflow-wrap: anywhere;
+}
+
+/* The app's only global navigation (shell/Sidebar.tsx's `GlobalNav`).
+
+   Sits between .sb-head and .sb-prog, both of which reader.css owns, so this
+   borrows their padding rather than inventing its own rhythm: at 18px it lines
+   up with the title above it and the progress line below. reader.css itself is
+   left alone — it is the byte-for-byte v1 port, and this is not v1. */
+.sb-nav {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 18px;
+  gap: 2px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.sb-nav-link {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  text-decoration: none;
+  padding: 5px 8px;
+  margin: 0 -8px;
+  border-radius: 7px;
+  /* reader.css gives every `a` a 1px accent border-bottom — right inside
+     prose, wrong for a list of nav rows, where it reads as three underlined
+     sentences. Same decision `.lib-item-title` already made, for the same
+     reason, with the affordance moved onto hover/focus. */
+  border-bottom: 1px solid transparent;
+}
+
+.sb-nav-link:hover,
+.sb-nav-link:focus-visible {
+  color: var(--ink);
+  background: var(--panel);
+  border-bottom-color: transparent;
+}
+
+/* `NavLink` sets aria-current="page" on the route you are already on, so the
+   marker is driven by the accessible state rather than by a second class —
+   one source for "where am I", visible and announced alike. */
+.sb-nav-link[aria-current='page'] {
+  color: var(--accent);
+  font-weight: 640;
+  background: var(--accent-soft);
+}
+
+/* S1 Task 9 — /library. Same placement and token rules as the .dash- and
+   .import- blocks above: reader.css stays the ported v1 stylesheet,
+   everything this app adds lives here and borrows v1's tokens.
+
+   No media query in this block, deliberately, and the same reasoning the
+   .import-* block already wrote down applies: the narrow case here is not a
+   phone, it is the shell's own 1240px breakpoint leaving the content column
+   about 620px wide with the sidebar open. Every row that can run out of
+   space wraps on content width instead — .lib-header, .lib-item-head and
+   .lib-meta are all `flex-wrap: wrap`. Driven in a real browser at 390px and
+   at 1440px; at 390px the tier badge drops onto its own line under the
+   title, which is the behaviour this wants: the badge must never be the
+   thing that gets clipped. */
+.lib-page {
+  max-width: 46rem;
+}
+
+.lib-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lib-note {
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--ink-3);
+  margin: 6px 0 18px;
+}
+
+/* The transport notices. Both are `role="status"` paragraphs, both sit
+   directly under the header, and they differ in colour because they differ
+   in meaning — see TransportNotice's doc comment (ruling S1-F25). */
+.lib-notice {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1.55;
+  border-radius: 10px;
+  padding: 11px 14px;
+  margin: 10px 0 20px;
+}
+
+.lib-notice-offline {
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--warn) 12%, var(--surface-1));
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+}
+
+.lib-notice-server {
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--crit) 10%, var(--surface-1));
+  border: 1px solid color-mix(in srgb, var(--crit) 40%, transparent);
+}
+
+.lib-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lib-item {
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--surface-1);
+  padding: 13px 16px;
+}
+
+/* A private course reads as its own thing at a glance, not only in words:
+   spec §2.4's boundary is worth being able to see down a list of twenty. */
+.lib-item-private {
+  border-left: 3px solid var(--s7);
+}
+
+.lib-item-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lib-item-title {
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 660;
+  color: var(--ink);
+  text-decoration: none;
+  letter-spacing: -0.01em;
+  /* reader.css styles every `a` with a 1px accent border-bottom — right for
+     a link inside prose, wrong for a card title in a list, where at 390px it
+     read as a row of underlined sentences (seen in Chromium, not in the
+     jsdom suite, which has no layout at all). `.dash-card-title` already
+     avoids it by being a <span> inside the link; this is the same decision
+     said out loud, with the affordance moved onto hover/focus. */
+  border-bottom: 1px solid transparent;
+}
+
+.lib-item-title:hover,
+.lib-item-title:focus-visible {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.lib-meta {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--ink-3);
+  margin: 5px 0 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.lib-source {
+  font-weight: 620;
+  color: var(--ink-2);
+}
+
+.lib-source-private {
+  color: var(--s7);
+}
+
+.lib-tier {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 2.5px 8px;
+  white-space: nowrap;
+}
+
+.lib-tier-content {
+  color: var(--ink-3);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+}
+
+/* Loud on purpose. This badge is a security statement — the tier decides
+   whether a package may ship JavaScript that runs in the reader's own
+   browser (§1.2) — so it is styled like a warning and not like a genre tag.
+   `white-space: normal` because its text is a sentence fragment, not a
+   word, and clipping it would remove exactly the half that carries the
+   meaning. */
+.lib-tier-code {
+  /* Not a bare `var(--crit)`. Measured in Chromium against this badge's own
+     background: #d03b3b on the 12% tint gives 3.97:1, which is under WCAG
+     AA's 4.5:1 for text this size (11px bold is not "large text"). Darkening
+     to 78% takes it to 5.78:1. An unreadable warning is not a warning, and
+     this is the one label on the page that has to be read. */
+  color: color-mix(in srgb, var(--crit) 78%, #000);
+  background: color-mix(in srgb, var(--crit) 12%, var(--surface-1));
+  border: 1px solid color-mix(in srgb, var(--crit) 45%, transparent);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+  white-space: normal;
+}
+
+/* The same fix in the other direction: `--crit` is not redefined for the dark
+   palette, so on a near-black surface the light-mode darkening would be worse
+   than useless. Lightened instead, and measured the same way. */
+html[data-theme='dark'] .lib-tier-code {
+  color: color-mix(in srgb, var(--crit) 62%, #fff);
+}
+
+/* A course the reader is provably studying, that no source can name (ruling
+   S1-F31: `loader.ts`'s static SOURCE 2 lands here). Marked like the private
+   lane so it does not read as a defect — it is a real course, just one whose
+   provenance nothing on this device recorded. */
+.lib-source-unknown {
+  color: var(--ink-3);
+}
+
+/* Why a row could not be named. One line, quiet: the row above it still
+   links to the course, so this is context rather than an error state. */
+.lib-row-note {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--ink-3);
+  margin: 6px 0 0;
+}
+
+/* The update offer (ruling S1-F29 — the door into UpdateDialog). Sits below
+   the metadata line rather than in the head: it appears on a minority of rows
+   and a head that reflows for it would make the whole list feel unstable. */
+.lib-item-update {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px dashed var(--rule);
+}
+
+.lib-update-note {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 620;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.lib-update-btn {
+  font-size: 12px;
+  padding: 4px 11px;
+}
+
+/* The front door (ruling S1-F17). Sized and spaced like a landing block
+   rather than like an error line, because it is the ordinary state of a new
+   account and not a failure. */
+.lib-empty {
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  background: var(--surface-1);
+  padding: 22px 24px;
+  margin: 8px 0 0;
+}
+
+.lib-empty-h {
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 680;
+  color: var(--ink);
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+}
+
+.lib-empty-lede {
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin: 0 0 16px;
+  max-width: 34rem;
+}
+
+.lib-empty-cta {
+  display: inline-block;
+}
+
+.lib-empty-ways {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  margin: 16px 0 0;
+  padding-left: 20px;
+}
+
+.lib-empty-ways li {
+  margin: 0 0 5px;
+}
+
+.lib-empty-registry {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--ink-3);
+  border-top: 1px solid var(--rule);
+  margin: 16px 0 0;
+  padding-top: 12px;
+}
+
 /* P2 Task 3 — highlight painter (src/annotations/painter.ts).
    The task brief names `src/styles/shell.css`; no such file exists in this
    repo — the app's own stylesheet is THIS one, and it is the file that
@@ -1179,6 +1625,178 @@ mark.ann {
   .ann-reattach,
   .ann-sheet,
   .ann-sheet-scrim {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   The update dialog (S1 Task 10): what taking a new version of a course would
+   cost this reader's notes, shown before anything is committed.
+
+   Centred rather than a bottom sheet like `.ann-sheet`, because the two ask for
+   different things. The sheet is a note the reader is reading alongside the
+   chapter; this is a decision with two answers and nothing behind it worth
+   looking at. z-index 91/90: above everything the reader may already have open
+   (the note sheet is 80/79, the mobile nav 70/60), because it is the only thing
+   on screen that is waiting for them.
+
+   Sized in `min()` against the viewport so a phone gets margins and a desktop
+   does not get a line 1200px wide; `max-height` + `overflow-y` because the
+   orphan list is as long as the damage is. */
+.cu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.cu-dialog {
+  position: fixed;
+  z-index: 91;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(80vh, 640px);
+  overflow-y: auto;
+  padding: 20px 22px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+  font-family: var(--sans);
+  color: var(--ink-2);
+}
+
+/* The dialog takes focus on open so Escape works without a click first
+   (see UpdateDialog.tsx). It is a container, not a control, so the focus ring
+   would be noise — the heading below is what the reader is looking at. */
+.cu-dialog:focus {
+  outline: none;
+}
+
+.cu-title {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.cu-versions {
+  margin: 2px 0 14px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.cu-status {
+  margin: 0 0 14px;
+  font-size: 13.5px;
+  color: var(--ink-3);
+}
+
+/* The one line the whole screen exists for. */
+.cu-summary {
+  margin: 0 0 12px;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.cu-error {
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #e0453c;
+}
+
+.cu-orphans {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  border-left: 2px solid var(--rule-strong);
+}
+
+.cu-orphans li {
+  padding: 4px 0 4px 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.cu-orphan-where {
+  display: block;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+/* One line of the lost quote, so the reader can tell which note this is
+   without the list turning into a second copy of the chapter. */
+.cu-orphan-quote {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+.cu-note {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.cu-note b {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.cu-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.cu-confirm,
+.cu-cancel {
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  padding: 6px 14px;
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cu-confirm {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.cu-confirm:disabled {
+  border-color: var(--rule);
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.cu-cancel:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.cu-confirm:focus-visible,
+.cu-cancel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media print {
+  .cu-dialog,
+  .cu-scrim {
     display: none;
   }
 }

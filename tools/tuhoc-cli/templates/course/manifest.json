@@ -1,0 +1,26 @@
+{
+  "id": "{{id}}",
+  "title": "{{title}}",
+  "description": "Một câu nói rõ course này dạy gì và cho ai.",
+  "lang": "vi",
+  "version": "0.1.0",
+  "runtime": "^1",
+  "tier": "content",
+  "license": "CC-BY-4.0",
+  "authors": [{ "name": "Tên bạn" }],
+  "generatedBy": "human",
+  "parts": [
+    {
+      "title": "Phần 1 · Mở đầu",
+      "chapters": [
+        {
+          "id": "chuong-1",
+          "num": "1.1",
+          "title": "Chương mẫu",
+          "short": "Chương mẫu",
+          "file": "chapters/chuong-1.html"
+        }
+      ]
+    }
+  ]
+}

@@ -83,7 +83,10 @@ hiện* — và lần này nó **hiển thị ra màn hình**.
 - `TestPool` nằm trong `internal/store` (không phải `internal/storetest`), kéo `testing` + ~15 package testcontainers/docker vào đồ thị phụ thuộc của binary production 17MB trên image `FROM scratch`. Không có chi phí runtime (linker loại bỏ) nhưng công cụ quét bảo mật sẽ báo CVE của testcontainers cho service này. Sửa = di chuyển file, nhưng đổi tên interface mà 3 task phụ thuộc.
 - `stats.courses[].chaptersDone` được tính mỗi request nhưng **không ai dùng** (ruling F5 cho vòng tiến độ lấy từ dữ liệu cục bộ). Một truy vấn thừa mỗi lần gọi `/stats`.
 - `Require(pool)` và `RequireWithUsecase(uc)` là hai cửa vào cho cùng một middleware; `server.go` dựng 4 cặp `Repo`/`Usecase` thừa trên cùng một pool.
-- Chưa có: bộ quét phiên hết hạn, index trên `sessions.expires_at`, giới hạn kích thước batch cho `/sync` và `/events/batch`, kiểm tra độ dài mật khẩu phía server, cấu hình CI.
+- Chưa có: bộ quét phiên hết hạn, index trên `sessions.expires_at`, kiểm tra độ dài mật khẩu phía server, cấu hình CI.
+- ~~giới hạn kích thước batch cho `/sync` và `/events/batch`~~ — **ĐÃ LÀM ở hệ thống con 1** (Task 6
+  đặt trần server sau khi đo được khuếch đại bộ nhớ ~20×: thân 21 MiB → ~420 MiB; Task 6b cho client
+  chia lô để trần đó không tạo ra trạng thái kẹt vĩnh viễn).
 - `_redirects` chưa có test tự động (được ghi nhận trung thực trong cả test lẫn `docs/testing.md`).
 - Nửa annotation của phép clamp dấu thời gian tương lai chưa có test (code đã đọc kiểm, đúng).
 - Một trong 11 chỗ trả lỗi 500 (`HeartbeatCourseCounts`) có log nhưng không có test, vì lý do cấu trúc đã ghi trong `observability_test.go`.
@@ -95,3 +98,35 @@ hiện* — và lần này nó **hiển thị ra màn hình**.
 - **Phép đếm điểm ảnh canvas chỉ là kiểm tra "còn sống".** Ngưỡng 0.005 bắt được canvas không vẽ gì (đúng 0), nhưng **không** phân biệt được "chỉ vẽ trục, không vẽ dữ liệu" với một mô phỏng vẽ đúng — vì trục của một số biểu đồ chiếm nhiều điểm ảnh hơn toàn bộ nội dung của mô phỏng khác. Thứ thật sự phát hiện phụ thuộc thiếu là bộ ba: kiểm `data-done`, kiểm hai chuỗi thông báo lỗi của `initViz`, và bộ thu lỗi console/page.
 - **Kiểm tra parity với bản gốc** chỉ so cấu trúc cho 41/44 chương; 3 chương được xem bằng mắt với một mô phỏng mỗi chương.
 - **Cookie chỉ được kiểm trên `localhost`** (cùng site). Không có kiểm thử tự động nào bắt được hồi quy về cấu hình cross-origin — đó là lý do quyết định tên miền ở `docs/deploy.md` §0 phải được đọc trước khi deploy.
+
+## Cổng mù #4 — tính năng không có điểm vào (S1-F29) — ĐÃ ĐÓNG
+
+> **Trạng thái: đã nối dây** (vòng sửa 9+10). `pages/Library.tsx` mở `UpdateDialog` từ hàng của một
+> course mà máy đang giữ bản cũ hơn bản máy chủ ghim; `pages/Library.test.tsx` bấm nút đó bằng
+> `userEvent` và đọc hộp thoại thật, và hộp thoại đã được **nhìn trong Chromium thật** ở cả hai
+> theme, ở 1280px và 390px (mục §3 của `fix-9-10-report.md`). Đối chứng đột biến: vô hiệu hoá cửa
+> vào ⇒ **2 bài đỏ**. Bài học bên dưới **vẫn nguyên giá trị** cho mọi lần chạy song song còn lại.
+
+Sau khi gộp Task 9 + Task 10 của hệ thống con 1, `apps/web/src/course/UpdateDialog.tsx` (297 dòng)
+và `course/version.ts` (478 dòng) **không được tệp sản phẩm nào import** — chỗ nhắc duy nhất là một
+chú thích ở `reader/useCourseKit.ts:47`. Trong khi đó `bun run test` 713 xanh, `tsc -b` 0,
+`bun run build` 0, `bun run lint` 0.
+
+**Cái giá của khe hở này, đo được sau khi nối dây:** ngay khi hộp thoại có người bấm tới, nó lộ ra
+một lỗ hổng **Critical** đã nằm im trong mã suốt cả vòng (S1-F30 — node DOM tách rời không hề trơ,
+`previewUpdate` chạy `on*` của gói ở phiên bản người dùng **chưa chấp nhận**). Một tính năng không ai
+với tới được không phải là một tính năng an toàn; nó là một tính năng **chưa ai kiểm**.
+
+**Không cổng nào của dự án hỏi được câu "người dùng có bấm tới được không."** Chỉ e2e hỏi được, và
+chỉ khi nó đi qua giao diện thật thay vì gọi thẳng hàm.
+
+Đây là cổng mù **thứ tư**, cùng họ với ba cái trước: cổng e2e của P1 mù với thay đổi Go;
+`tsc --noEmit` xanh với lỗi kiểu hiển nhiên vì `"files": []`; `rtk` bọc `make test-e2e` rồi trả mã
+thoát của chính nó. **Đặc điểm chung: cổng đo thứ nó với tới được, và im lặng đúng chỗ nó không với
+tới.**
+
+**Áp cho mọi lần chạy song song còn lại (hệ thống con 2, 3, 4):** khi task A tạo *điểm vào* cho
+task B, việc **nối dây là một hạng mục riêng của vòng hợp nhất**, phải kiểm bằng câu hỏi "có ai
+import không" — vì không cổng tự động nào hỏi hộ. Khe hở này **không phải lỗi người cài đặt**
+(Task 10 đã tự khai đúng nó ở dòng đầu mục "Concerns"); nó sinh ra từ việc chạy song song, nên nó
+thuộc về điều phối viên.

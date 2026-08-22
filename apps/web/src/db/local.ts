@@ -65,11 +65,60 @@ export interface MetaRow {
   value: string;
 }
 
+/**
+ * ONE VERSION of ONE course package, expanded, on this device.
+ *
+ * This is the table that makes a course readable with the network off, and
+ * it is the reason the reader can hold a course at all: a package is not
+ * something the server streams on demand, it is something the reader keeps.
+ * `course/loader.ts` reads it BEFORE it reads anything else — see that
+ * file's two-source comment.
+ *
+ * `files` is the archive already expanded — package-relative path to
+ * contents, exactly the shape `packages/course-format`'s `unpackZip`
+ * returns, which is what Task 8's file import hands straight to this table.
+ * Stored expanded rather than as the `.zip` because every read is a lookup
+ * by name: keeping the archive would mean re-inflating the whole thing to
+ * open one chapter, on a device that already paid for the download.
+ *
+ * `manifest` is `unknown` on purpose — it is carried opaquely, the same way
+ * `AnnotationRow.anchor` is, and for the same reason: this store has no
+ * business understanding its shape. It is the PARSED form of
+ * `files['manifest.json']` and is what `loadManifest` validates and returns;
+ * the bytes stay in `files` because a package's own bytes are what a future
+ * integrity check or re-export has to work from.
+ *
+ * **No hash field, deliberately.** If integrity checking is added, it must
+ * hash the ARCHIVE BYTES, never the manifest: the server stores the manifest
+ * in a `jsonb` column, which does not round-trip bytes — it reorders keys,
+ * drops whitespace, and silently collapses duplicate keys (apps/api's
+ * repo.go documents all three as measured). A manifest hash computed here
+ * and a manifest hash computed there would disagree on packages that are
+ * byte-identical, and agree on packages that are not.
+ *
+ * `key` is `${courseId}@${version}` — a package is identified by both, so
+ * holding 1.0.0 and 1.1.0 of one course at once is an ordinary state rather
+ * than a collision. Task 10's update flow depends on exactly that.
+ *
+ * `pinnedAt` is when this version became the one to open, ISO-8601. It is
+ * how `loadManifest` picks among the versions a reader holds, and it is what
+ * Task 10's `applyUpdate` writes.
+ */
+export interface PackageRow {
+  key: string;
+  courseId: string;
+  version: string;
+  manifest: unknown;
+  files: Record<string, Uint8Array>;
+  pinnedAt: string;
+}
+
 class LocalDB extends Dexie {
   progress!: Table<ProgressRow, [string, string, string]>;
   annotations!: Table<AnnotationRow, string>;
   outbox!: Table<OutboxEntry, number>;
   meta!: Table<MetaRow, string>;
+  packages!: Table<PackageRow, string>;
 
   constructor() {
     super('tuhoc');
@@ -78,6 +127,14 @@ class LocalDB extends Dexie {
       annotations: 'id, updatedAt, deletedAt',
       outbox: '++seq, table',
       meta: 'key',
+    });
+    // Version 2 adds `packages`. The four tables above are not repeated:
+    // Dexie carries forward every store a later version does not mention,
+    // so listing them again would be a second copy of the schema to keep in
+    // step — and a browser that already holds a version-1 database upgrades
+    // by gaining one object store, touching none of the existing rows.
+    this.version(2).stores({
+      packages: 'key, courseId',
     });
   }
 }
@@ -185,6 +242,15 @@ export function writeLocalStorage(key: LocalStorageKey, value: string | null): v
  * call before the database has ever been opened (Dexie opens it lazily on
  * the first operation).
  *
+ * That has now been collected on. Task 7's `packages` table — a reader's
+ * imported courses, which are their content and no less private than their
+ * notes — is emptied here without a line being written for it. What was
+ * still needed was a test SAYING SO (`db/local.test.ts`'s "signing out
+ * deletes cached course packages too"), because "it happens to be true"
+ * and "it is guaranteed" look identical right up until the moment they
+ * differ, and the way P2 learned that was a store of user content that
+ * leaked from one account's session into the next one's.
+ *
  * Call sites — both auth transitions, in both directions:
  *   - `src/auth/useLogout.ts` (sign-out): the departing user's rows must
  *     not outlive their session.
@@ -214,8 +280,97 @@ export function writeLocalStorage(key: LocalStorageKey, value: string | null): v
  * more.
  */
 export async function clearLocalData(): Promise<void> {
+  clearGeneration += 1;
   for (const key of USER_CONTENT_KEYS) writeLocalStorage(key, null);
   await Promise.all(db.tables.map((table) => table.clear()));
+}
+
+/* ------------------------------------------------------------------ *
+ * The offline-read marker
+ * ------------------------------------------------------------------ */
+
+/**
+ * `db.meta` key holding the last instant `GET /me` confirmed a signed-in
+ * user ON THIS DEVICE, ISO-8601.
+ *
+ * It exists for exactly one reader: `<RequireAuth>`, on a COLD page load
+ * with no network. The session cookie is `HttpOnly`, so `GET /me` is the
+ * only way this app can learn whether anybody is signed in — and when that
+ * request never reaches a server, the honest answer is "unknown", not
+ * "logged out". Task 7 made a pinned course readable offline; without
+ * something durable saying "somebody WAS signed in here", the reader could
+ * only ever be opened by a tab that was already open when the network
+ * died, which is half a promise (spec §2.6).
+ *
+ * **It lives in `db.meta` on purpose, and that is the whole safety
+ * argument.** `clearLocalData()` empties `db.tables`, so this row is erased
+ * by both auth transitions with no line written for it and nothing to
+ * remember — the failure P2 fell into was a store of user state that the
+ * clearing function had never heard of. This is deliberately not a new
+ * table and emphatically not a new `localStorage` key.
+ *
+ * **It holds NO identity — an instant, nothing else.** Not a user id, not
+ * an email, not a name. That is what keeps the worst case cheap: even a row
+ * that somehow outlived its session can only say *somebody* was signed in
+ * here at T, so there is nothing in it to render at the next person. What
+ * it unlocks is the rest of THIS browser's database, which the same
+ * `clearLocalData()` empties in the same call — so an offline render can
+ * only ever show the current local session's own data.
+ */
+export const SESSION_VERIFIED_KEY = 'sessionVerifiedAt';
+
+/**
+ * Bumped by every `clearLocalData()`, before it touches anything.
+ *
+ * `rememberSessionVerified` is the only durable write in this app that can
+ * be in flight while a session ends — `GET /me` can settle at any moment,
+ * including the moment after `useLogout` cleared the browser. This is the
+ * same shape of guard `sync/engine.ts` uses for exactly the same reason
+ * (`syncEpoch`: a response that arrives after the clear must discard its
+ * write rather than land it), and the same failure it prevents: a row of
+ * the departing session re-created a tick after the browser was declared
+ * clean.
+ *
+ * Module-level, therefore per-tab. That is a real limit and it is the same
+ * one `docs/carried-forward.md` records as C-1 for the sync engine's own
+ * epoch — a SECOND tab's in-flight write is not covered here either. What
+ * makes it survivable in this particular case is what the row holds: an
+ * instant and no identity, in a database the arriving session clears again
+ * on its own way in.
+ */
+let clearGeneration = 0;
+
+/**
+ * Records that `GET /me` just confirmed a signed-in user here.
+ *
+ * `at` is injectable for tests only; production always means "now".
+ *
+ * The generation check after the write is the point, not bookkeeping: if a
+ * `clearLocalData()` ran at any moment during the `put`, this row is a
+ * leftover of a session that has ended, and it deletes itself. Checking
+ * only BEFORE the write would leave the exact window the check exists to
+ * close.
+ */
+export async function rememberSessionVerified(at: Date = new Date()): Promise<void> {
+  const generation = clearGeneration;
+  await db.meta.put({ key: SESSION_VERIFIED_KEY, value: at.toISOString() });
+  if (clearGeneration !== generation) await db.meta.delete(SESSION_VERIFIED_KEY);
+}
+
+/**
+ * The marker as a parsed instant, or `null` for "this device has no such
+ * marker" — which includes a row whose value does not parse.
+ *
+ * Unparseable reads as absent rather than as `NaN`: every comparison
+ * against `NaN` is `false`, so the caller would still fail closed, but by
+ * accident. `null` makes the safe answer the deliberate one, and it is the
+ * same choice `mergeRow` makes about never comparing these strings raw.
+ */
+export async function readSessionVerifiedAt(): Promise<number | null> {
+  const row = await db.meta.get(SESSION_VERIFIED_KEY);
+  if (row === undefined) return null;
+  const at = Date.parse(row.value);
+  return Number.isNaN(at) ? null : at;
 }
 
 /**

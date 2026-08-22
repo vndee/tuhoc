@@ -1,4 +1,7 @@
 import { expect, type ConsoleMessage, type Locator, type Page } from '@playwright/test';
+import { existsSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Shared fixtures for the two Playwright suites in this directory:
@@ -15,8 +18,52 @@ import { expect, type ConsoleMessage, type Locator, type Page } from '@playwrigh
  */
 
 export const PASSWORD = 'secret123';
-/** courses/***REMOVED***/manifest.json's `title` — also the `<nav aria-label>` CourseHome renders it into (see courseHomeChapterLink below). */
-export const COURSE_TITLE = '***REMOVED***';
+/** fixtures/courses/so-dau-phay-dong/manifest.json's `title` — also the `<nav aria-label>` CourseHome renders it into (see courseHomeChapterLink below). */
+export const COURSE_TITLE = 'Số dấu phẩy động';
+
+/** `manifest.id` của gói mẫu — cũng là tên thư mục `make courses` bung ra. */
+export const REAL_COURSE_ID = 'so-dau-phay-dong';
+
+/** apps/web/e2e/ → gốc repo là ba tầng lên. Xuất ra vì `s1.spec.ts` cũng đọc `fixtures/courses/` từ đĩa, và hai bản sao của phép tính này thì trôi. */
+export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+
+/**
+ * Đường tới tệp `.zip` của gói course dùng làm ngữ liệu cho cả bốn tệp e2e.
+ *
+ * ## Nó ở TRONG repo, và đó là điểm đổi của task 13
+ *
+ * Task 11 đưa giáo trình riêng tư ra một kho ngoài cây git (spec §2B.1 — giáo
+ * trình riêng trong một repo sắp publish, và xoá ở commit sau không cứu được).
+ * Hệ quả là bốn tệp e2e này chỉ chạy được trên máy của tác giả.
+ *
+ * Task 13 thay ngữ liệu bằng `fixtures/courses/so-dau-phay-dong.zip` — một gói
+ * mẫu **công khai**, do repo này soạn, `tuhoc pack` ghi ra, và commit. `p1`,
+ * `p2` và `viz` đọc bản đã bung ở `courses/` (`make courses` bung hộ, và
+ * `make test-e2e` gọi nó trước); `import.spec.ts` cần chính tệp `.zip`, vì thứ
+ * nó kiểm là người dùng chọn tệp ở màn hình Import.
+ *
+ * Ném — không skip — khi tệp không có. Đó vẫn là hành vi đúng, chỉ khác là bây
+ * giờ nó là một trạng thái sửa được trên mọi bản clone. Xem đầu
+ * `import.spec.ts`.
+ */
+export function realCoursePackageZip(): string {
+  const zip = resolve(REPO_ROOT, 'fixtures', 'courses', `${REAL_COURSE_ID}.zip`);
+  if (!existsSync(zip)) {
+    throw new Error(
+      [
+        `Không tìm thấy gói mẫu: ${zip}`,
+        '',
+        'Cổng nghiệm thu này chạy trên GÓI THẬT do `tuhoc pack` ghi ra, không phải một',
+        'zip dựng trong lúc chạy test — xem đầu import.spec.ts.',
+        '',
+        'Tệp này ĐƯỢC COMMIT. Nếu nó biến mất, đóng gói lại từ nguồn cạnh nó:',
+        `    bun tools/tuhoc-cli/src/index.ts pack fixtures/courses/${REAL_COURSE_ID} \\`,
+        `      -o fixtures/courses/${REAL_COURSE_ID}.zip`,
+      ].join('\n'),
+    );
+  }
+  return zip;
+}
 
 /** A unique account per run (down to the millisecond) — this suite runs against a fresh, empty database each time (see compose.e2e.yml's no-volume policy), but uniqueness costs nothing and protects a developer running it twice against a stack they forgot to tear down. */
 export function freshEmail(): string {
@@ -78,10 +125,10 @@ export function courseHomeChapterLink(page: Page, courseTitle: string, chapterId
  * What this asserts instead: that a *meaningful fraction* of the canvas's
  * own pixel buffer is non-transparent. `Plot.resize()` always calls
  * `this.render()` once, on construction, via `requestAnimationFrame`, and
- * `waterfill`'s own `render()` (courses/***REMOVED***/viz.js) always
- * draws axes/gridlines via `Plot.axes()` plus six filled subcarrier bars
- * via `ctx.fillRect` — comfortably covering well over a quarter of the
- * canvas on first paint, with zero user interaction required. So:
+ * `sum-drift`'s own `render()` (courses/so-dau-phay-dong/viz.js) always
+ * draws axes/gridlines via `Plot.axes()` plus a filled area under the
+ * running-error curve via `Plot.area()`, with zero user interaction
+ * required. So:
  *
  *   - if KaTeX/runtime.js/viz.js failed to load, or `initViz` threw
  *     (caught in runtime.js's own try/catch, which replaces the node's
@@ -112,25 +159,30 @@ export function courseHomeChapterLink(page: Page, courseTitle: string, chapterId
  * smaller scale.
  */
 /**
- * The general "this canvas was painted at all" floor, used by the
- * all-59 sweep. Chosen from measurement, not taste: a one-off diagnostic
- * run read `getImageData` for all 70 canvases the course's 58
- * chapter-referenced visualizations create, and the LOWEST real render was
- * `huffman` at 0.0170 (a sparse tree diagram — thin edges and small labels
- * on a 736x300 canvas), with the next lowest `kle` at 0.0329 and the
- * highest `eval-curves` at 0.594.
+ * The general "this canvas was painted at all" floor, used by the sweep over
+ * every registered viz.
  *
- * 0.005 sits ~3.4x below the lowest observed real render and ~1100 px above
- * nothing. It is a floor against the actual failure mode — `clearRect`
- * leaves alpha 0 at EVERY pixel, so a viz whose `render()` never ran scores
- * exactly 0 — not a claim about how much any particular viz ought to draw.
+ * Chosen from measurement, not taste. On the private textbook (task 17) a
+ * one-off diagnostic read `getImageData` for all 70 canvases its 58
+ * chapter-referenced visualizations created: the LOWEST real render was
+ * `huffman` at 0.0170 (a sparse tree diagram — thin edges and small labels on
+ * a 736x300 canvas), the next lowest `kle` at 0.0329, the highest
+ * `eval-curves` at 0.594.
  *
- * Deliberately NOT the 0.02 `p1.spec.ts` uses for `waterfill`: that number
- * is a property of waterfill specifically (six filled bars plus axes, well
- * over a quarter of its canvas), which is why that call site keeps passing
- * it explicitly rather than being relaxed to this floor. Applying one
- * viz's shape as a universal threshold is what made `huffman` — a working
- * visualization — fail the sweep's first run.
+ * Task 13 swapped the ngữ liệu to the public sample package
+ * `so-dau-phay-dong`, whose 8 canvas-drawing viz build 10 canvases. Its own
+ * sweep is recorded in the task-13 report; the floor is kept at the SAME
+ * number rather than re-derived downward, because the number is not a claim
+ * about how much any viz ought to draw — it is a floor against the actual
+ * failure mode. `clearRect` leaves alpha 0 at EVERY pixel, so a viz whose
+ * `render()` never ran scores exactly 0, and 0.005 is ~1100 px above nothing
+ * on a 736x300 canvas.
+ *
+ * Deliberately NOT the stricter number `p1.spec.ts` passes for its own one
+ * viz: that is a property of that viz specifically, which is why the call
+ * site keeps passing it explicitly rather than being relaxed to this floor.
+ * Applying one viz's shape as a universal threshold is what made `huffman` —
+ * a working visualization — fail the sweep's first run.
  */
 export const MIN_PAINTED_RATIO = 0.005;
 
@@ -138,13 +190,14 @@ export async function expectVizCanvasDrawn(page: Page, dataViz: string, minPaint
   const canvases: Locator = page.locator(`[data-viz="${dataViz}"] canvas`);
   await expect(canvases.first()).toBeVisible();
 
-  // EVERY canvas, not the first. 16 of the course's 59 visualizations
-  // build two or three `Plot`s in one host (`entropy-lab` and
-  // `eval-curves` build three) — found by running the sweep in viz.spec.ts
-  // across all of them rather than assumed. Asserting only `.first()`
-  // would leave a second, blank plot invisible to this check; passing the
-  // multi-match locator straight to `toBeVisible` would instead be a
-  // Playwright strict-mode violation, which is how this surfaced.
+  // EVERY canvas, not the first. On the private textbook, 16 of its 59
+  // visualizations built two or three `Plot`s in one host; the sample package
+  // that replaced it keeps that shape deliberately — `bit-lab` and `sum-drift`
+  // each build two — because asserting only `.first()` would leave a second,
+  // blank plot invisible to this check, and a package where no host holds two
+  // plots stops exercising this loop at all. Passing the multi-match locator
+  // straight to `toBeVisible` would instead be a Playwright strict-mode
+  // violation, which is how this surfaced.
   const total = await canvases.count();
   for (let i = 0; i < total; i += 1) {
     const canvas = canvases.nth(i);
@@ -181,7 +234,7 @@ export const VIZ_UNREGISTERED_TEXT = 'chưa sẵn sàng';
 
 /**
  * "This visualization actually ran" — the assertion the spec's §10 exit
- * gate needs, for ALL 59, not just the canvas-drawing ones.
+ * gate needs, for EVERY registered viz, not just the canvas-drawing ones.
  *
  * Three things are checked, and the third has two shapes:
  *
@@ -193,13 +246,16 @@ export const VIZ_UNREGISTERED_TEXT = 'chưa sẵn sàng';
  *     CAUGHT by initViz, and is replaced with a polite Vietnamese message
  *     — no exception escapes, and the page looks fine to a passing glance.
  *  3. It produced real output:
- *       - canvas-based viz (57 of 59) → every canvas painted pixels, via
- *         expectVizCanvasDrawn at the measured MIN_PAINTED_RATIO floor.
- *       - `twenty-q` and `grouping` build no canvas at all: they are DOM
- *         widgets (`distEditor`'s bar divs, sliders, segmented controls).
- *         For those, "it ran" means it built its interactive controls.
- *         This branch is narrower than the canvas one and says so — it is
- *         chosen by what the viz IS, not to make a failing case pass.
+ *       - canvas-based viz (8 of the sample package's 9) → every canvas
+ *         painted pixels, via expectVizCanvasDrawn at the measured
+ *         MIN_PAINTED_RATIO floor.
+ *       - `nextafter-walk` builds no canvas at all: it is a DOM widget
+ *         (a readout plus a segmented control and two buttons). For it,
+ *         "it ran" means it built its interactive controls. This branch is
+ *         narrower than the canvas one and says so — it is chosen by what
+ *         the viz IS, not to make a failing case pass. The private textbook
+ *         had two such viz (`twenty-q`, `grouping`) and the sample package
+ *         keeps one on purpose, so this branch still has something to run.
  */
 export async function expectVizRendered(page: Page, dataViz: string): Promise<void> {
   const node = page.locator(`[data-viz="${dataViz}"]`);
@@ -266,4 +322,142 @@ export function isBenignAuthCheck401(msg: ConsoleMessage): boolean {
   } catch {
     return false;
   }
+}
+
+/* ====================================================================== *
+ * The two gestures that reach the annotation surfaces
+ *
+ * Both lived in `p2.spec.ts` until task 12, which needed the identical
+ * gesture from `s1.spec.ts` (its update scenario writes six notes before it
+ * measures what an update would cost them). They moved here rather than
+ * being copied for the reason at the top of this file: `selectParagraphByDrag`
+ * in particular is a pile of hard-won details about layout and hit testing,
+ * and two hand-maintained copies of that drift — the drift showing up as a
+ * suite that stops failing when it should.
+ * ====================================================================== */
+
+/**
+ * The rail opens on its "Trong chương" tab; the notes live behind the other
+ * one. Idempotent, so a caller does not have to know whether something else
+ * already brought it forward (`ChapterView`'s `focusCard` does, whenever a
+ * card is opened from the chapter).
+ */
+export async function openNotesTab(page: Page): Promise<void> {
+  const tab = page.locator('#rail-tab-notes');
+  await expect(tab, 'the rail has no notes tab — is #rail hidden at this viewport width?').toBeVisible();
+  if ((await tab.getAttribute('aria-selected')) !== 'true') await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+}
+
+/**
+ * Selects the first `chars` characters of the paragraph whose text starts
+ * with `startsWith`, with a REAL mouse drag, and returns what the browser
+ * ended up selecting.
+ *
+ * A drag rather than a programmatic `Selection`, because "select some words
+ * and a toolbar appears" is the gesture the annotation phase is built on, and
+ * it is the layer that a component test with jsdom (no layout engine, no hit
+ * testing) is structurally unable to reach.
+ *
+ * Drags are also the single easiest thing in an e2e suite to get wrong in a
+ * way that still passes or that fails for the wrong reason. Three specific
+ * traps, all of which bit while `p2.spec.ts` was being written, and each of
+ * which is closed here rather than left to luck:
+ *
+ *  1. **Smooth scrolling.** `packages/course-kit/reader.css` sets
+ *     `html{scroll-behavior:smooth}`, so a plain `scrollIntoView()` is still
+ *     ANIMATING when the rect is read and when the mouse moves. The measured
+ *     result was an empty selection. `behavior: 'instant'` is required, not
+ *     stylistic.
+ *  2. **Collapsed `<details>`.** Eleven paragraphs of the chapter p2 drives
+ *     are inside `<details class="deriv">` blocks that are closed by default,
+ *     and one of those still returned a rect — 437px BELOW the viewport, where
+ *     the drag became a click-and-drag off the bottom edge that selected the
+ *     rest of the chapter. Refused up front.
+ *  3. **A rect that is not where the mouse will land.** The sticky topbar,
+ *     an unfinished scroll, a floating toolbar left over from a previous
+ *     selection — any of them puts a different element under the two
+ *     endpoints. `document.elementFromPoint` is asked about both, before the
+ *     mouse moves, and both must land inside the intended paragraph.
+ *
+ * The return value is what `getSelection()` actually holds afterwards, not
+ * what was asked for — callers assert against THAT, so an off-by-one at
+ * either end of the drag can never make an assertion vacuous. `s1.spec.ts`
+ * leans on that property harder than `p2.spec.ts` does: it builds the NEXT
+ * version of the chapter by doing string surgery on exactly the text this
+ * returned, so an edit it intends to land inside a reader's quote cannot miss.
+ */
+export async function selectParagraphByDrag(page: Page, startsWith: string, chars: number): Promise<string> {
+  const prep = await page.evaluate(
+    ({ startsWith: prefix, chars: n }: { startsWith: string; chars: number }) => {
+      const root = document.querySelector('.fade-in') as HTMLElement | null;
+      if (!root) return { ok: false as const, why: 'no chapter container on the page' };
+      const paragraphs = Array.from(root.querySelectorAll('p'));
+      const index = paragraphs.findIndex((p) => (p.textContent ?? '').startsWith(prefix));
+      if (index < 0) return { ok: false as const, why: `no paragraph starts with "${prefix}"` };
+      const target = paragraphs[index];
+      if (target.closest('details:not([open])')) {
+        return { ok: false as const, why: `"${prefix}" is inside a collapsed <details> — its rect is not where it is drawn` };
+      }
+      target.scrollIntoView({ block: 'center', behavior: 'instant' });
+      const node = document.createTreeWalker(target, NodeFilter.SHOW_TEXT).nextNode() as Text | null;
+      if (!node) return { ok: false as const, why: `"${prefix}" has no text node to drag across` };
+      const range = document.createRange();
+      range.setStart(node, 0);
+      range.setEnd(node, Math.min(n, node.data.length));
+      // The FIRST client rect: one per line the range wraps onto, and a drag
+      // has to stay on one line to mean anything.
+      const rect = range.getClientRects()[0];
+      if (!rect) return { ok: false as const, why: `"${prefix}" is not drawn anywhere` };
+      return {
+        ok: true as const,
+        index,
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+        viewportHeight: window.innerHeight,
+      };
+    },
+    { startsWith, chars },
+  );
+  expect(prep.ok, prep.ok ? '' : prep.why).toBe(true);
+  if (!prep.ok) throw new Error(prep.why); // narrowing; `expect` above already failed the test
+
+  const y = prep.y + prep.height / 2;
+  const x1 = prep.x + 1;
+  const x2 = prep.x + prep.width - 1;
+  expect(
+    y > 0 && y < prep.viewportHeight,
+    `the drag line for "${startsWith}" is at y=${y.toFixed(0)} in a ${prep.viewportHeight}px viewport — it never came into view`,
+  ).toBe(true);
+
+  const landed = await page.evaluate(
+    ({ index, points }: { index: number; points: readonly [number, number][] }) => {
+      const root = document.querySelector('.fade-in') as HTMLElement;
+      const target = Array.from(root.querySelectorAll('p'))[index];
+      return points.map(([x, yy]) => {
+        const hit = document.elementFromPoint(x, yy);
+        return hit !== null && (hit === target || target.contains(hit));
+      });
+    },
+    { index: prep.index, points: [[x1, y], [x2, y]] as readonly [number, number][] },
+  );
+  expect(
+    landed,
+    `the drag endpoints for "${startsWith}" do not land on that paragraph (start=${landed[0]}, end=${landed[1]}) — something is covering it`,
+  ).toEqual([true, true]);
+
+  await page.mouse.move(x1, y);
+  await page.mouse.down();
+  await page.mouse.move(x2, y, { steps: 12 });
+  await page.mouse.up();
+
+  const selected = await page.evaluate(() => window.getSelection()?.toString() ?? '');
+  expect(selected.trim().length, `the drag over "${startsWith}" selected nothing`).toBeGreaterThan(10);
+  expect(
+    startsWith.startsWith(selected.trim().slice(0, 20)),
+    `the drag over "${startsWith}" selected something else: "${selected.slice(0, 60)}"`,
+  ).toBe(true);
+  return selected;
 }

@@ -1,0 +1,20 @@
+# Những tệp ĐƯỢC PHÉP nêu tên course riêng — `scripts/check_publishable.py`
+# phép 4 và phép 5 bỏ qua đúng các đường dẫn liệt kê ở đây, không hơn.
+#
+# Danh sách này cố ý NGẮN. Mỗi dòng thêm vào là một chỗ mà cổng thôi nhìn, nên
+# mỗi dòng phải có lý do viết ngay bên cạnh, và lý do "để cổng thôi kêu" không
+# phải là lý do. Nếu một tệp chỉ nhắc tên course trong chú thích lịch sử thì
+# cách đúng là **sửa chú thích**, không phải thêm nó vào đây: chú thích đi cùng
+# repo ra công khai y như mã.
+#
+# Đường dẫn tính từ gốc repo, khớp CHÍNH XÁC cả chuỗi (không phải glob).
+
+# Chính bản runbook viết lại lịch sử. Nó phải gọi tên thứ cần bóc đi, nếu không
+# thì không ai chạy đúng được. Ở bước cuối cùng trước khi push, cân nhắc xoá
+# hẳn §0/§1 của nó — xem đầu scripts/private-markers.txt.
+docs/publishing.md
+
+# Bộ máy của chính cổng này.
+scripts/private-markers.txt
+scripts/publish-allowlist.txt
+scripts/check_publishable.py

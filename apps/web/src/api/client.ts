@@ -61,12 +61,26 @@ async function parseBody(res: Response): Promise<unknown> {
   }
 }
 
-async function request<T>(
+/**
+ * Everything a request to this API has in common — the base URL, the
+ * session cookie, the 401 policy, and turning a non-2xx into an `ApiError`
+ * — up to but NOT including how the successful body is read.
+ *
+ * Split out from `request` so that `api.bytes` can share all of it: a
+ * course package's files are opaque bytes (the server labels every one of
+ * them `application/octet-stream`, deliberately — see apps/api's
+ * course/handler.go), and running them through `parseBody`'s
+ * text-then-JSON path would corrupt anything that is not UTF-8 text. The
+ * alternative — a second `fetch` call site — is a second copy of the
+ * base URL and the 401 rule, which is exactly what this module exists to
+ * prevent.
+ */
+async function send(
   method: 'GET' | 'POST',
   path: string,
   body: unknown,
   options: RequestOptions,
-): Promise<T> {
+): Promise<Response> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
     credentials: 'include',
@@ -82,7 +96,16 @@ async function request<T>(
     throw new ApiError(res.status, await parseBody(res));
   }
 
-  return (await parseBody(res)) as T;
+  return res;
+}
+
+async function request<T>(
+  method: 'GET' | 'POST',
+  path: string,
+  body: unknown,
+  options: RequestOptions,
+): Promise<T> {
+  return (await parseBody(await send(method, path, body, options))) as T;
 }
 
 /**
@@ -96,7 +119,59 @@ export const api = {
   get: <T,>(path: string, options: RequestOptions = {}): Promise<T> => request<T>('GET', path, undefined, options),
   post: <T,>(path: string, body?: unknown, options: RequestOptions = {}): Promise<T> =>
     request<T>('POST', path, body, options),
+  /**
+   * A GET whose response is BYTES. Same transport as `get` — base URL,
+   * cookie, 401 policy, `ApiError` — and no parsing.
+   *
+   * The one caller today is `api/courses.ts`, reading files out of a stored
+   * course package. Those files are chapter HTML, images and (for an
+   * `interactive` package) JavaScript; the server hands every one of them
+   * back as `application/octet-stream` with `nosniff`, and the reader is
+   * what decides what the bytes are. Anything that decoded them here would
+   * be guessing on the reader's behalf.
+   */
+  bytes: async (path: string, options: RequestOptions = {}): Promise<Uint8Array> =>
+    new Uint8Array(await (await send('GET', path, undefined, options)).arrayBuffer()),
 };
+
+/**
+ * Did an HTTP response ever arrive?
+ *
+ * `true` means a server answered — with any status. `false` means the
+ * request never got one: the transport failed and this page knows nothing
+ * about its own session.
+ *
+ * This is the single distinction `<RequireAuth>`'s offline branch rests on,
+ * so it is worth being precise about what falls on each side, measured
+ * rather than assumed (see `client.test.ts`, and task-7b-report.md for the
+ * same four cases driven through a real browser):
+ *
+ *  - **401 → answered.** The server looked at the cookie and said nobody is
+ *    signed in. That is a fact, not a silence, and it outranks anything
+ *    this device believes about itself. (`useMe` turns it into `null` data
+ *    before it ever reaches here.)
+ *  - **500 / 502 / 503 → answered.** Something on the other end is broken,
+ *    but the network reached it. A reachable, broken server is NOT an
+ *    offline device, and the existing behaviour — an inline outage message
+ *    — is kept for it deliberately. Widening the offline branch to cover
+ *    5xx would mean a bad deploy silently flipped every reader into
+ *    local-only mode with no request ever failing to leave the machine.
+ *  - **Offline, DNS failure, connection refused, a blocked or CORS-refused
+ *    request → NOT answered.** All four arrive here as the same bare
+ *    `TypeError` from `fetch`, with no status and no body. The browser
+ *    deliberately refuses to tell a page which one it was — so they cannot
+ *    be told apart, and this function does not pretend to. What makes that
+ *    acceptable is the other side of the door: see
+ *    `offlineSessionIsUsable` in `auth/session.ts` for why "unknown" only
+ *    ever unlocks the device's OWN local data.
+ *  - **Anything else thrown → NOT answered.** A bug in our own code
+ *    reaching this predicate reads as "we do not know", never as "the
+ *    server answered". Failing that way round is what keeps a future
+ *    mistake from being read as authorization.
+ */
+export function serverAnswered(error: unknown): boolean {
+  return error instanceof ApiError;
+}
 
 /**
  * Vietnamese, human-readable summary of an auth failure, for surfaces
@@ -127,5 +202,14 @@ export function describeAuthError(error: unknown): string {
           : 'Đã xảy ra lỗi không xác định. Vui lòng thử lại.';
     }
   }
-  return 'Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối mạng.';
+  // No response ever arrived (see `serverAnswered`). The old wording here was
+  // "Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối mạng." — one
+  // cause, stated as fact, and it was the WRONG one often enough to matter:
+  // ruling S1-F25 records that a CORS refusal in production is byte-for-byte
+  // this same bare `TypeError`, so a misconfigured deploy told every visitor
+  // their wifi was bad and nobody — reader or operator — ever saw the real
+  // fault. Naming both possibilities costs one clause and is the only honest
+  // thing this function can say, because the browser genuinely does not tell
+  // the page which one it was.
+  return 'Không thể kết nối tới máy chủ. Có thể bạn đang ngoại tuyến, hoặc máy chủ đang bị cấu hình sai (CORS/DNS).';
 }

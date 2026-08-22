@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { resolveVizScriptUrl } from '../course/loader';
 
 /**
  * The three course-kit runtime scripts every course shares, in the order
@@ -15,10 +16,6 @@ const RUNTIME_SCRIPT_URLS = [
   '/course-kit/vendor/auto-render.js',
   '/course-kit/runtime.js',
 ] as const;
-
-function vizScriptUrl(courseId: string): string {
-  return `/courses/${encodeURIComponent(courseId)}/viz.js`;
-}
 
 function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -43,7 +40,23 @@ function loadScript(src: string): Promise<void> {
 // injection.
 let runtimeTrioPromise: Promise<void> | null = null;
 
-function injectRuntimeTrio(): Promise<void> {
+/**
+ * The shared trio, loaded at most once per app lifetime, as a plain promise.
+ *
+ * Exported (Task 10) because `useCourseKit` is not the only thing that needs
+ * `window.CourseKit`, and the second caller is not a component. `course/version.ts`
+ * resolves a reader's anchors against a chapter of a version they have not taken
+ * yet, and an anchor's stored quote describes the chapter AFTER
+ * `CourseKit.renderKatex` has run — one `'￼'` per formula rather than the
+ * literal `$…$` source. Measured on the real p1-5 with 30 notes: previewing
+ * without the trio reported 26 orphans where 4 was the truth, and 17 of those
+ * were paragraphs the update did not touch at all.
+ *
+ * A second injector living in that file would be a second copy of the
+ * "these globals must be attached exactly once, in this order" rule — the
+ * rule the module-level singleton below exists to enforce.
+ */
+export function ensureCourseKitRuntime(): Promise<void> {
   if (runtimeTrioPromise) return runtimeTrioPromise;
 
   runtimeTrioPromise = (async () => {
@@ -70,44 +83,73 @@ function injectRuntimeTrio(): Promise<void> {
 // requesting that course's own viz.js — silently wiring up the WRONG
 // visualizations (or none) with no error surfaced. The platform is
 // designed to host many courses (spec §1), so this isn't hypothetical.
-// Keyed by courseId instead: each course's viz.js loads exactly once,
-// and loading is chained after the shared trio (not raced against it) so
-// viz.js — which references `Plot`/`defineViz`/etc. as globals at its own
-// top level — never starts executing before runtime.js has defined them,
-// even when two different courses' viz.js are first requested concurrently.
-const vizPromisesByCourseId = new Map<string, Promise<void>>();
+// Keyed by the script's own URL instead: each course's viz.js loads
+// exactly once, and loading is chained after the shared trio (not raced
+// against it) so viz.js — which references `Plot`/`defineViz`/etc. as
+// globals at its own top level — never starts executing before runtime.js
+// has defined them, even when two different courses' viz.js are first
+// requested concurrently.
+//
+// Keyed by URL rather than by courseId because the URL is now what varies:
+// `course/loader.ts` decides where (or whether) a given course's viz.js
+// lives, and two courses can no longer collide on one key without also
+// being one script.
+const vizPromisesBySrc = new Map<string, Promise<void>>();
 
-function injectCourseViz(courseId: string): Promise<void> {
-  const cached = vizPromisesByCourseId.get(courseId);
+/**
+ * The trio, plus `vizSrc` if there is one.
+ *
+ * `vizSrc === null` means this course HAS no viz.js — a `content`-tier
+ * package, which is most of them — and the trio alone is then the whole
+ * runtime. Not an error case and not a degraded one: KaTeX and the
+ * chapter renderer are what a prose course needs.
+ */
+function injectCourseKit(vizSrc: string | null): Promise<void> {
+  if (vizSrc === null) return ensureCourseKitRuntime();
+
+  const cached = vizPromisesBySrc.get(vizSrc);
   if (cached) return cached;
 
-  // injectRuntimeTrio() must be called synchronously here (not inside the
-  // .then below) so a second synchronous call for the same courseId — the
+  // ensureCourseKitRuntime() must be called synchronously here (not inside the
+  // .then below) so a second synchronous call for the same script — the
   // StrictMode double-invoke case — sees this Map entry already set
   // before either promise has had a chance to settle.
-  const promise = injectRuntimeTrio().then(() => loadScript(vizScriptUrl(courseId)));
+  const promise = ensureCourseKitRuntime().then(() => loadScript(vizSrc));
 
   promise.catch(() => {
-    vizPromisesByCourseId.delete(courseId);
+    vizPromisesBySrc.delete(vizSrc);
   });
 
-  vizPromisesByCourseId.set(courseId, promise);
+  vizPromisesBySrc.set(vizSrc, promise);
   return promise;
 }
 
 export interface UseCourseKitResult {
-  /** True once katex.js, auto-render.js, runtime.js and this course's viz.js have all loaded and attached their globals. */
+  /** True once katex.js, auto-render.js, runtime.js and — if this course has one — its viz.js have all loaded and attached their globals. */
   ready: boolean;
-  /** Set if any of the four failed to load. `ready` stays false forever in that case — surface this rather than hanging silently. */
+  /** Set if any of them failed to load. `ready` stays false in that case — surface this rather than hanging silently. */
   error: Error | null;
 }
 
 /**
  * Loads the course-kit runtime for `courseId`: the shared katex/auto-
- * render/runtime trio once per app lifetime, plus `courseId`'s own viz.js
- * once per distinct courseId (see `injectCourseViz` above), and reports
- * readiness. `ChapterView` must not touch `window.CourseKit` until `ready`
- * is true.
+ * render/runtime trio once per app lifetime, plus this course's own viz.js
+ * — IF it has one — once per distinct script, and reports readiness.
+ * `ChapterView` must not touch `window.CourseKit` until `ready` is true.
+ *
+ * "If it has one" is the whole of ruling S1-F14. This hook used to request
+ * `/courses/<id>/viz.js` unconditionally, which is correct for the courses
+ * this repo ships and wrong for every `content`-tier package — the tier
+ * that has no JavaScript by definition, and the one the registry
+ * recommends. `resolveVizScriptUrl` answers the question properly, using
+ * the same two-source rule the manifest and the chapters go through; see
+ * `course/loader.ts`.
+ *
+ * That answer is asynchronous (it reads `db.packages`), so a mount now
+ * begins with a local lookup rather than with a `<script>` tag. Nothing
+ * downstream changes: the trio singleton and the per-script map are both
+ * populated synchronously inside `injectCourseKit`, so concurrent mounts
+ * still share one injection each.
  */
 export function useCourseKit(courseId: string): UseCourseKitResult {
   const [result, setResult] = useState<UseCourseKitResult>({ ready: false, error: null });
@@ -115,14 +157,16 @@ export function useCourseKit(courseId: string): UseCourseKitResult {
   useEffect(() => {
     let cancelled = false;
 
-    injectCourseViz(courseId).then(
-      () => {
-        if (!cancelled) setResult({ ready: true, error: null });
-      },
-      (err: unknown) => {
-        if (!cancelled) setResult({ ready: false, error: err instanceof Error ? err : new Error(String(err)) });
-      },
-    );
+    resolveVizScriptUrl(courseId)
+      .then((vizSrc) => injectCourseKit(vizSrc))
+      .then(
+        () => {
+          if (!cancelled) setResult({ ready: true, error: null });
+        },
+        (err: unknown) => {
+          if (!cancelled) setResult({ ready: false, error: err instanceof Error ? err : new Error(String(err)) });
+        },
+      );
 
     return () => {
       cancelled = true;
@@ -135,5 +179,5 @@ export function useCourseKit(courseId: string): UseCourseKitResult {
 /** Test-only: reset the module-level singleton/map between test files/cases. Not exported for app code. */
 export function __resetCourseKitForTests(): void {
   runtimeTrioPromise = null;
-  vizPromisesByCourseId.clear();
+  vizPromisesBySrc.clear();
 }

@@ -1,102 +1,28 @@
 import { useQuery } from '@tanstack/react-query';
-import { liveQuery } from 'dexie';
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLogout } from '../auth/useLogout';
-import { api } from '../api/client';
+import { type CourseStat, type DayStat, fetchStats, statsQueryKey } from '../api/stats';
 import { useMe } from '../api/useMe';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
+import { useOwnedCourses } from '../course/owned';
 import type { Manifest } from '../course/types';
-import { db } from '../db/local';
 import { useProgress } from '../progress/useProgress';
+import { EmptyLibrary } from './Library';
 
 /**
- * Every course this app ships in `courses/` today. The full platform spec
- * (docs/superpowers/specs/2026-08-19-tuhoc-platform-design.md §4) lists a
- * `GET /courses` registry endpoint ("registry + trạng thái enroll"), but
- * no task through this one has built it (see `.superpowers/sdd/
- * 2026-08-19-p1-platform-core/progress.md`'s own ledger, which names it
- * as P4 territory). Until a real catalog exists, this is the Dashboard's
- * fallback answer to "which courses might this learner care about" —
- * unioned with whatever `GET /stats` and local progress ALREADY know
- * about (see `useDashboardCourseIds` below), so a brand-new, offline,
- * never-touched-anything learner still has an entry point into the one
- * course this platform actually has, and a real catalog slotting in
- * later only needs this constant deleted, not a redesign.
+ * `GET /stats`, for the study-time panel.
+ *
+ * The shape, the key and the call now live in `api/stats.ts`: `course/owned.ts`
+ * reads `stats.courses` to answer which courses this reader has, and one
+ * endpoint declared in two files is where the drift lives. Both callers use the
+ * same query key, so this is one request, not two.
  */
-const KNOWN_COURSE_IDS = ['***REMOVED***'];
-
-interface DayStat {
-  date: string;
-  minutes: number;
-}
-
-interface CourseStat {
-  courseId: string;
-  minutes: number;
-  chaptersDone: number;
-}
-
-/** `GET /stats`'s response shape — apps/api/internal/stats/handler.go's `statsResponse`. */
-interface Stats {
-  totalMinutes: number;
-  streakDays: number;
-  days: DayStat[];
-  courses: CourseStat[];
-}
-
-function statsQueryKey() {
-  return ['stats'] as const;
-}
-
 function useStats() {
   return useQuery({
     queryKey: statsQueryKey(),
-    queryFn: () => api.get<Stats>('/stats'),
+    queryFn: () => fetchStats(),
     retry: false,
   });
-}
-
-/**
- * Distinct `courseId`s this browser's LOCAL progress table has ever
- * written a row for — live-subscribed the same way `useProgress` is (see
- * that hook's own doc comment on why a plain `toArray()` + JS filter is
- * the right call here rather than a dedicated Dexie index), so this list
- * updates the moment a chapter is marked read in a course that wasn't
- * previously known, without a page reload.
- */
-function useLocalCourseIds(): string[] {
-  const [ids, setIds] = useState<string[]>([]);
-
-  useEffect(() => {
-    const subscription = liveQuery(() =>
-      db.progress.toArray().then((rows) => Array.from(new Set(rows.map((r) => r.courseId)))),
-    ).subscribe({
-      next: setIds,
-      error: (err) => console.error('Dashboard: local course id query failed', err),
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  return ids;
-}
-
-/**
- * The set of courses the Dashboard renders a card for: the known-course
- * fallback above, UNION every `courseId` `GET /stats` mentions, UNION
- * every `courseId` local progress has a row for. Deliberately a union of
- * three sources, not just `/stats` alone — Ruling F5 requires the
- * completion ring to stay correct offline, and a Dashboard that only
- * learns which courses exist from a network call would show NO cards at
- * all while offline for a learner whose local progress already proves
- * they have a course open. `useMemo` is skipped here on purpose: these
- * are tiny arrays (this platform ships one course today) and rebuilding
- * the de-duplicated union on every render is not worth the extra hook.
- */
-function useDashboardCourseIds(statsCourses: CourseStat[] | undefined): string[] {
-  const localCourseIds = useLocalCourseIds();
-  const statsCourseIds = statsCourses?.map((c) => c.courseId) ?? [];
-  return Array.from(new Set([...KNOWN_COURSE_IDS, ...statsCourseIds, ...localCourseIds])).sort();
 }
 
 /**
@@ -117,7 +43,11 @@ export function Dashboard() {
   const meQuery = useMe();
   const logout = useLogout();
   const statsQuery = useStats();
-  const courseIds = useDashboardCourseIds(statsQuery.data?.courses);
+  // The one answer to "which courses does this reader have" — ruling S1-F31.
+  // `/library` asks the same function the same question; before this they used
+  // two different formulas and disagreed on screen, seconds apart.
+  const owned = useOwnedCourses();
+  const courseIds = owned.courses.map((course) => course.courseId);
 
   return (
     <div className="dashboard">
@@ -128,6 +58,21 @@ export function Dashboard() {
         </div>
         <div className="dash-user">
           {meQuery.data && <span className="dash-user-name">{meQuery.data.name}</span>}
+          {/*
+            The only way in to `/library` (Task 9), for the same reason the
+            `/import` link below it exists at all.
+          */}
+          <Link to="/library" className="btn">
+            Thư viện
+          </Link>
+          {/*
+            The only way in to `/import` (Task 8). A route with no link is a
+            route nobody uses: this page's own empty state has told readers
+            to "nhập một gói course" since Task 7 without ever saying where.
+          */}
+          <Link to="/import" className="btn">
+            Nhập khóa học
+          </Link>
           <button type="button" className="btn" onClick={() => void logout()}>
             Đăng xuất
           </button>
@@ -141,6 +86,34 @@ export function Dashboard() {
           <CourseCard key={courseId} courseId={courseId} statsCourses={statsQuery.data?.courses} />
         ))}
       </div>
+
+      {/*
+        An empty catalog is now a state this page can genuinely be in — a
+        new account holds no packages until it imports one — where before
+        the hardcoded course id made it unreachable. Saying so beats
+        rendering an empty strip that reads as a broken page.
+
+        Gated on every SOURCE having settled, not merely on the list being
+        empty: while any of the four is still in flight the answer is "we do
+        not know yet", and flashing "you have no courses" at a learner who
+        has several is worse than showing nothing for a moment. `settled`
+        comes from `useOwnedCourses` rather than from one query here, which
+        is the same widening as the union itself — this used to watch only
+        `GET /courses`.
+
+        The state itself is `<EmptyLibrary>` (pages/Library.tsx) rather than
+        a line of prose local to this file, and that is ruling S1-F17 being
+        applied where it actually lands: `/` is what a brand-new account
+        opens, so this IS the front door, and Task 6's deletion of
+        `KNOWN_COURSE_IDS` means every new reader stands here with nothing.
+        One sentence pointing at /import was the old answer; the shared
+        component names why the library is empty (a deliberate choice —
+        §9.5), hands over the action, and lists the three ways in. Sharing
+        it with `/library` is the point: two copies of a front door drift,
+        and the copy that drifts is the one nobody who already has courses
+        ever sees.
+      */}
+      {courseIds.length === 0 && owned.settled && <EmptyLibrary />}
     </div>
   );
 }

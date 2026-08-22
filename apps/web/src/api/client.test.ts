@@ -13,7 +13,7 @@ vi.mock('./navigation', () => ({
   redirectToLogin: vi.fn(),
 }));
 
-import { api, ApiError, describeAuthError } from './client';
+import { api, ApiError, describeAuthError, serverAnswered } from './client';
 import { redirectToLogin } from './navigation';
 
 const server = setupServer();
@@ -134,6 +134,51 @@ describe('api.get/api.post', () => {
   });
 });
 
+/**
+ * The classifier `<RequireAuth>` leans on to tell "the server said no" from
+ * "no server said anything" (Task 7b). Every case here is a REAL failure
+ * driven through the real `api.get`, not a hand-built error object: the
+ * distinction is only worth anything if it survives the actual shapes fetch
+ * produces.
+ */
+describe('serverAnswered — did an HTTP response ever arrive?', () => {
+  it('true for every HTTP status, including the ones that are not 401', async () => {
+    for (const status of [400, 401, 403, 404, 409, 429, 500, 502, 503]) {
+      server.use(http.get('/probe', () => HttpResponse.json({ error: 'x' }, { status })));
+      const error = await api.get('/probe', { redirectOn401: false }).catch((e: unknown) => e);
+      expect(serverAnswered(error), `status ${status}`).toBe(true);
+    }
+  });
+
+  it('false when the transport fails — this is what offline, DNS failure and a blocked request all collapse to', async () => {
+    // `HttpResponse.error()` is msw's network-level failure: `fetch` rejects
+    // with a bare `TypeError`, carrying no status and no body. That is
+    // exactly what a browser hands back for a dead network, an unresolvable
+    // host, a refused connection, and a request a CORS preflight or an
+    // extension blocked — the browser deliberately does not tell a page
+    // which, so this one branch is all four.
+    server.use(http.get('/gone', () => HttpResponse.error()));
+
+    const error = await api.get('/gone').catch((e: unknown) => e);
+    expect(error).not.toBeInstanceOf(ApiError);
+    expect(serverAnswered(error)).toBe(false);
+  });
+
+  it('false for anything that is not an ApiError at all, so an unexpected throw is never read as an answer', () => {
+    expect(serverAnswered(new TypeError('Failed to fetch'))).toBe(false);
+    expect(serverAnswered(new Error('boom'))).toBe(false);
+    expect(serverAnswered(undefined)).toBe(false);
+    expect(serverAnswered({ status: 401 })).toBe(false);
+  });
+
+  it('a transport failure does NOT trigger redirectToLogin — nothing said the session is dead', async () => {
+    server.use(http.get('/gone-2', () => HttpResponse.error()));
+
+    await expect(api.get('/gone-2')).rejects.toThrow();
+    expect(redirectToLogin).not.toHaveBeenCalled();
+  });
+});
+
 describe('describeAuthError', () => {
   it('maps 401 to a Vietnamese message that does not reveal whether the email exists', () => {
     const msg = describeAuthError(new ApiError(401, { error: 'invalid email or password' }));
@@ -163,5 +208,20 @@ describe('describeAuthError', () => {
   it('falls back to a generic Vietnamese message for a non-ApiError (e.g. network failure)', () => {
     expect(describeAuthError(new TypeError('Failed to fetch'))).toMatch(/kết nối|lỗi/i);
     expect(describeAuthError('boom')).toMatch(/kết nối|lỗi/i);
+  });
+
+  it('the transport-failure message names BOTH causes — not just "check your network" (ruling S1-F25)', () => {
+    // `serverAnswered` documents that offline, DNS failure, a refused
+    // connection and a CORS refusal all arrive as the same bare `TypeError`,
+    // with the browser deliberately refusing to say which. This string is
+    // what a visitor sees when that happens on a COLD load, before anything
+    // else on the page exists — so if it names only the network, a
+    // misconfigured deploy tells every visitor their wifi is bad and neither
+    // they nor the operator ever learns otherwise. That is the invisible
+    // failure S1-F25 is about; the fix is one clause, and this is what keeps
+    // it from being tidied away.
+    const msg = describeAuthError(new TypeError('Failed to fetch'));
+    expect(msg).toMatch(/ngoại tuyến|mạng/i);
+    expect(msg).toMatch(/cấu hình|CORS/i);
   });
 });

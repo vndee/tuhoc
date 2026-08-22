@@ -2,6 +2,8 @@ import { Route, Routes } from 'react-router-dom';
 import { RequireAuth } from './auth/RequireAuth';
 import { CourseHome } from './pages/CourseHome';
 import { Dashboard } from './pages/Dashboard';
+import { ImportCourse } from './pages/ImportCourse';
+import { Library } from './pages/Library';
 import { Login } from './pages/Login';
 import { Reader } from './pages/Reader';
 
@@ -33,6 +35,39 @@ export function AppRoutes() {
         }
       />
       <Route path="/login" element={<Login />} />
+      {/*
+        `/import` sits behind RequireAuth like everything else, and for the
+        same reason the others do rather than out of habit: an import writes
+        into `db.packages`, which `clearLocalData()` empties on every auth
+        transition (see db/local.ts). A package imported while logged out
+        would be deleted by the next sign-in, which is a worse experience
+        than being asked to sign in first.
+      */}
+      <Route
+        path="/import"
+        element={
+          <RequireAuth>
+            <ImportCourse />
+          </RequireAuth>
+        }
+      />
+      {/*
+        `/library` (Task 9) is behind RequireAuth for the plainest of the
+        reasons on this page: it LISTS a reader's own courses, including
+        the private ones (spec §2.4 — private means no other user sees it),
+        and `GET /courses` is scoped to the session cookie on the server
+        side. A library screen that rendered for a logged-out visitor would
+        either show nothing or show whatever the last session left in the
+        query cache; the first is a broken page and the second is the leak.
+      */}
+      <Route
+        path="/library"
+        element={
+          <RequireAuth>
+            <Library />
+          </RequireAuth>
+        }
+      />
       <Route
         path="/c/:courseId"
         element={

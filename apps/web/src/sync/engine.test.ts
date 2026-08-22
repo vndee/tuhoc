@@ -10,9 +10,9 @@ vi.mock('../api/navigation', () => ({
   redirectToLogin: vi.fn(),
 }));
 
-import { clearLocalData, db, type AnnotationRow, type ProgressRow } from '../db/local';
+import { clearLocalData, db, type AnnotationRow, type OutboxEntry, type ProgressRow } from '../db/local';
 import { redirectToLogin } from '../api/navigation';
-import { startSync, stopSync, syncOnce, waitForInFlight } from './engine';
+import { OUTBOX_BATCH_SIZE, startSync, stopSync, syncOnce, waitForInFlight } from './engine';
 
 const server = setupServer();
 
@@ -127,6 +127,357 @@ describe('syncOnce — flushing the outbox', () => {
 
     expect(syncPosted).toBe(false);
     expect(eventsPosted).toBe(false);
+  });
+});
+
+/**
+ * The server's own per-request item ceilings, mirrored here as a TEST
+ * FIXTURE — deliberately NOT as production configuration.
+ *
+ * `POST /sync` refuses a body carrying more than 10 000 progress +
+ * annotation items counted TOGETHER (apps/api/internal/sync/handler.go's
+ * `MaxItemsPerPush`), and `POST /events/batch` refuses more than 10 000
+ * events (apps/api/internal/stats/handler.go's `MaxEventsPerBatch`) —
+ * both with 413. The handlers in this block enforce that rule for real,
+ * so a client that sends its whole outbox in one request fails here the
+ * same way it fails against the deployed server, instead of quietly
+ * passing because msw will accept any body at all.
+ *
+ * This number exists in the test and NOWHERE in `src/`. The engine never
+ * learns it: it sends batches of a size it chose for its own reasons and
+ * treats a 413 as the server's authoritative answer — see
+ * `OUTBOX_BATCH_SIZE`'s doc comment in engine.ts. A second hand-copied
+ * "10000" under `src/` is exactly the two-points-of-truth drift this task
+ * exists to avoid, which is why the second test below runs the very same
+ * engine against a ceiling of 300 and still expects a full drain.
+ */
+const SERVER_ITEM_CEILING = 10_000;
+
+const FIXTURE_EPOCH_MS = Date.UTC(2026, 7, 20, 10, 0, 0);
+
+/** `count` queued progress mutations, each with its own chapter id and its own strictly-increasing `updatedAt` — so a test can tell from the wire exactly which entries arrived, and in what order. */
+function progressEntries(count: number): OutboxEntry[] {
+  return Array.from({ length: count }, (_, i) => ({
+    table: 'progress' as const,
+    row: {
+      courseId: 'c1',
+      chapterId: `ch${i}`,
+      status: 'read',
+      done: true,
+      updatedAt: new Date(FIXTURE_EPOCH_MS + i).toISOString(),
+    } satisfies ProgressRow,
+  }));
+}
+
+/** `count` queued heartbeat events — the other write endpoint, which has its own separate ceiling and must be batched on its own terms. */
+function eventEntries(count: number): OutboxEntry[] {
+  return Array.from({ length: count }, (_, i) => ({
+    table: 'events' as const,
+    row: { courseId: 'c1', chapterId: 'ch1', kind: 'heartbeat', meta: {}, at: new Date(FIXTURE_EPOCH_MS + i).toISOString() },
+  }));
+}
+
+/** The two arrays `POST /sync` carries, as the handlers below read them off the wire. */
+interface PushBody {
+  progress: ProgressRow[];
+  annotations: AnnotationRow[];
+}
+
+describe('flushing an outbox bigger than one request may carry', () => {
+  // This whole block is the reason Task 6b exists. The server-side cap
+  // added in Task 6's fix round is correct and stays; what it exposed is
+  // that a client which posts its ENTIRE outbox in one request can cross
+  // that cap and then never uncross it — every cycle sends the same
+  // over-cap body, every cycle gets the same 413, the outbox never
+  // shrinks, and the user is never told. At one heartbeat per 30s plus
+  // ordinary progress writes, that is a device offline long enough to
+  // queue 10 000 entries losing every note it queued, silently.
+
+  it('an outbox of 25 000 entries drains COMPLETELY, in batches the server accepts, and in a bounded number of requests', async () => {
+    const TOTAL = 25_000;
+    await db.outbox.bulkAdd(progressEntries(TOTAL));
+
+    let requests = 0;
+    let largestBatch = 0;
+    let overCeiling = 0;
+    const seen: string[] = [];
+    server.use(
+      http.post('/sync', async ({ request }) => {
+        requests += 1;
+        const body = (await request.json()) as PushBody;
+        const items = body.progress.length + body.annotations.length;
+        largestBatch = Math.max(largestBatch, items);
+        if (items > SERVER_ITEM_CEILING) {
+          overCeiling += 1;
+          return HttpResponse.json({ error: `a push carries at most ${SERVER_ITEM_CEILING} items; this one has ${items}` }, { status: 413 });
+        }
+        for (const p of body.progress) seen.push(p.chapterId);
+        return HttpResponse.json({ applied: items });
+      }),
+      emptySyncPull(),
+    );
+
+    await syncOnce();
+
+    // The whole point: ONE cycle empties it. Not "eventually", not "after
+    // the user reinstalls" — the outbox is at zero when the cycle returns.
+    expect(await db.outbox.count()).toBe(0);
+    // Nothing was ever offered to the server above its cap, so nothing was
+    // rejected: the batching is deliberate, not 413-driven damage control.
+    expect(overCeiling).toBe(0);
+    expect(largestBatch).toBeLessThanOrEqual(SERVER_ITEM_CEILING);
+
+    // The request COUNT is measured, not just the end state. An
+    // implementation that posted one entry per request would also drain
+    // this outbox — in 25 000 requests, which is its own kind of broken.
+    expect(requests).toBe(Math.ceil(TOTAL / OUTBOX_BATCH_SIZE));
+    expect(requests).toBeLessThanOrEqual(50);
+
+    // Every entry arrived, exactly once, in outbox order — batching moved
+    // where the request boundaries fall, nothing else. (Order does not
+    // change the server's final state, which is per-row last-write-wins on
+    // `updatedAt`, but a batching bug that dropped or duplicated a slice
+    // would show up here and nowhere else.)
+    expect(seen).toHaveLength(TOTAL);
+    expect(seen[0]).toBe('ch0');
+    expect(seen[OUTBOX_BATCH_SIZE]).toBe(`ch${OUTBOX_BATCH_SIZE}`);
+    expect(seen[TOTAL - 1]).toBe(`ch${TOTAL - 1}`);
+    // ---------------------------------------------------------------
+    // Why this test gets a budget of its own, and why it is nonetheless
+    // fast — measured, not guessed.
+    //
+    // Nothing here waits on a timer. The one thing that can make a 25 000
+    // entry drain expensive is `fake-indexeddb`'s per-key `delete`, which
+    // is O(rows in the store) and therefore O(n²) to empty a store — in
+    // this harness, and only in this harness. Measured on an idle machine,
+    // `bulkDelete` of every row:
+    //
+    //     n =    500 →      87 ms
+    //     n =  1 000 →     235 ms
+    //     n =  2 000 →     875 ms
+    //     n =  4 000 →   3 514 ms      (4× per doubling — quadratic)
+    //     n = 25 000 → ~157 000 ms     (this test, before the change below)
+    //
+    // Nothing the ENGINE does is what costs that: `bulkAdd` of 25 000 =
+    // 912 ms, `toArray` = 62 ms, and all 25 msw round trips together =
+    // 52 ms. Splitting the deletes across 25 batches is not what costs it
+    // either — the same 25 000 keys cost the same deleted in one call
+    // (measured both ways). It is the test double, and a real browser's
+    // B-tree IndexedDB shows nothing like it.
+    //
+    // `deleteSentEntries` (engine.ts) closes the gap where it is provably
+    // safe to, sweeping a bounded primary-key range with one cursor
+    // instead of naming a thousand keys: the same 25 000 rows then cost
+    // ~240 ms. The budget below stays anyway, because it is a HARNESS
+    // BUDGET in exactly the sense `vite.config.ts` and `src/test/setup.ts`
+    // already argue at length — it cannot mask a hang (every wait in this
+    // test is an `await` on work that must complete or an assertion that
+    // must hold), it can only stop the runner from killing a test doing
+    // real, slow work on a loaded machine. It is scoped to this one test
+    // rather than raised globally.
+  }, 120_000);
+
+  it("a server ceiling BELOW the client's own batch size still drains — the limit is learned from the 413, never hard-coded", async () => {
+    // The engine holds no copy of the server's number, so this is not a
+    // hypothetical: lowering the cap server-side (or one oversized note
+    // tripping the byte limit instead of the item limit) must not strand
+    // the device. The client finds the boundary and keeps going.
+    const TOTAL = 2_000;
+    const LOW_CEILING = 300;
+    await db.outbox.bulkAdd(progressEntries(TOTAL));
+
+    let requests = 0;
+    let rejections = 0;
+    let accepted = 0;
+    server.use(
+      http.post('/sync', async ({ request }) => {
+        requests += 1;
+        const body = (await request.json()) as PushBody;
+        const items = body.progress.length + body.annotations.length;
+        if (items > LOW_CEILING) {
+          rejections += 1;
+          return HttpResponse.json({ error: 'too many items' }, { status: 413 });
+        }
+        accepted += items;
+        return HttpResponse.json({ applied: items });
+      }),
+      emptySyncPull(),
+    );
+
+    await syncOnce();
+
+    expect(rejections).toBeGreaterThan(0); // the ceiling really was hit — this is not a vacuous pass
+    expect(accepted).toBe(TOTAL);
+    expect(await db.outbox.count()).toBe(0);
+    // Exactly, and measured: 1 000 → 413, 500 → 413, then eight accepted
+    // batches of 250. Two requests of discovery and eight of work — the
+    // discovery is bounded by halving, not paid per entry.
+    expect(rejections).toBe(2);
+    expect(requests).toBe(10);
+  });
+
+  it('the events outbox is batched the same way, against its own endpoint and its own ceiling', async () => {
+    // Deliberately far smaller than the 25 000 above: what this test adds
+    // is that the SECOND endpoint is batched at all (it is a separate code
+    // path with its own body shape and its own server-side cap), and three
+    // batches prove that as completely as twenty-five would. The expensive
+    // over-the-real-ceiling proof is paid once, in the test above — see its
+    // own note on why draining costs what it costs in this harness.
+    const TOTAL = 3_000;
+    await db.outbox.bulkAdd(eventEntries(TOTAL));
+
+    let requests = 0;
+    let largestBatch = 0;
+    let accepted = 0;
+    server.use(
+      http.post('/events/batch', async ({ request }) => {
+        requests += 1;
+        const body = (await request.json()) as { events: unknown[] };
+        largestBatch = Math.max(largestBatch, body.events.length);
+        if (body.events.length > SERVER_ITEM_CEILING) {
+          return HttpResponse.json({ error: 'too many events' }, { status: 413 });
+        }
+        accepted += body.events.length;
+        return HttpResponse.json({ accepted: body.events.length });
+      }),
+      emptySyncPull(),
+    );
+
+    await syncOnce();
+
+    expect(await db.outbox.count()).toBe(0);
+    expect(accepted).toBe(TOTAL);
+    expect(largestBatch).toBeLessThanOrEqual(SERVER_ITEM_CEILING);
+    expect(requests).toBe(Math.ceil(TOTAL / OUTBOX_BATCH_SIZE));
+  });
+
+  it('an outbox whose two endpoints INTERLEAVE drains both, and each batch deletes only its own entries', async () => {
+    // The realistic shape once heartbeats are queuing alongside progress:
+    // the outbox alternates tables, so a `/sync` batch's `seq`s are not a
+    // contiguous run and the entries sitting between them belong to
+    // `/events/batch`. A batch that deleted "everything between my first
+    // and last entry" would silently eat every heartbeat it stepped over —
+    // which is why `deleteSentEntries` only takes that shortcut when the
+    // span it covers provably contains nothing else.
+    const EACH = 1_500; // more than one batch of each, so the interleaving spans batch boundaries too
+    const queuedProgress = progressEntries(EACH);
+    const queuedEvents = eventEntries(EACH);
+    const interleaved: OutboxEntry[] = [];
+    for (let i = 0; i < EACH; i += 1) {
+      interleaved.push(queuedProgress[i], queuedEvents[i]);
+    }
+    await db.outbox.bulkAdd(interleaved);
+
+    const pushedChapters: string[] = [];
+    let pushedEvents = 0;
+    server.use(
+      http.post('/sync', async ({ request }) => {
+        const body = (await request.json()) as PushBody;
+        for (const p of body.progress) pushedChapters.push(p.chapterId);
+        return HttpResponse.json({ applied: body.progress.length });
+      }),
+      http.post('/events/batch', async ({ request }) => {
+        const body = (await request.json()) as { events: unknown[] };
+        pushedEvents += body.events.length;
+        return HttpResponse.json({ accepted: body.events.length });
+      }),
+      emptySyncPull(),
+    );
+
+    await syncOnce();
+
+    expect(pushedChapters).toHaveLength(EACH);
+    expect(pushedChapters[0]).toBe('ch0');
+    expect(pushedChapters[EACH - 1]).toBe(`ch${EACH - 1}`);
+    expect(pushedEvents).toBe(EACH);
+    expect(await db.outbox.count()).toBe(0);
+  });
+
+  it('a batch that fails does not block the batches behind it — the rest drain, and only the failed batch stays queued', async () => {
+    // Once the outbox is split, a failure has to be contained to its own
+    // batch. If a failed batch aborted the flush, a single permanently
+    // poisonous entry near the front would strand everything behind it —
+    // the same "never drains" shape as the 413 loop, moved one level down.
+    const TOTAL = OUTBOX_BATCH_SIZE * 3;
+    await db.outbox.bulkAdd(progressEntries(TOTAL));
+
+    let requests = 0;
+    server.use(
+      http.post('/sync', async ({ request }) => {
+        requests += 1;
+        const body = (await request.json()) as PushBody;
+        if (requests === 2) return HttpResponse.json({ error: 'boom' }, { status: 500 });
+        return HttpResponse.json({ applied: body.progress.length });
+      }),
+      emptySyncPull(),
+    );
+
+    await syncOnce();
+
+    expect(requests).toBe(3); // the third batch was still attempted after the second failed
+    const left = await db.outbox.toArray();
+    expect(left).toHaveLength(OUTBOX_BATCH_SIZE);
+    // Exactly the failed batch's own entries, still queued for the next
+    // cycle — neither the batch before it nor the batch after it.
+    expect((left[0].row as ProgressRow).chapterId).toBe(`ch${OUTBOX_BATCH_SIZE}`);
+    expect((left[left.length - 1].row as ProgressRow).chapterId).toBe(`ch${OUTBOX_BATCH_SIZE * 2 - 1}`);
+  });
+
+  it('a batch the server rejects PERMANENTLY (400) is left queued and REPORTED — never silently skipped', async () => {
+    await db.outbox.bulkAdd(progressEntries(5));
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    server.use(http.post('/sync', () => HttpResponse.json({ error: 'invalid batch item' }, { status: 400 })), emptySyncPull());
+
+    await syncOnce();
+
+    // Not dropped: these are the user's own writes, and a 400 from this
+    // endpoint means the CLIENT built something the server cannot parse.
+    expect(await db.outbox.count()).toBe(5);
+    // And not silent: "the outbox stopped draining" must be visible
+    // somewhere, which is the only reason this endpoint's 413 loop went
+    // unnoticed long enough to become this task.
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('an ORDINARY retriable failure (500) stays quiet — an offline device must not fill the console every 15 seconds', async () => {
+    await db.outbox.bulkAdd(progressEntries(5));
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    server.use(http.post('/sync', () => HttpResponse.json({ error: 'boom' }, { status: 500 })), emptySyncPull());
+
+    await syncOnce();
+
+    expect(await db.outbox.count()).toBe(5);
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('stopSync() landing mid-flush stops the REMAINING batches instead of firing them at a session that just ended', async () => {
+    // `useLogout` calls stopSync() and then clears the local database. A
+    // 25-batch flush that kept going would spend 24 more requests on a
+    // session that is being torn down, and (without the epoch check the
+    // single-request version already had, now applied per batch) delete
+    // entries out from under it.
+    const TOTAL = OUTBOX_BATCH_SIZE * 3;
+    await db.outbox.bulkAdd(progressEntries(TOTAL));
+
+    let requests = 0;
+    server.use(
+      http.post('/sync', async ({ request }) => {
+        requests += 1;
+        const body = (await request.json()) as PushBody;
+        if (requests === 1) stopSync(); // logout lands while batch 1 is on the wire
+        return HttpResponse.json({ applied: body.progress.length });
+      }),
+      emptySyncPull(),
+    );
+
+    await syncOnce();
+
+    expect(requests).toBe(1);
+    expect(await db.outbox.count()).toBe(TOTAL); // stale epoch: nothing deleted, nothing lost
   });
 });
 

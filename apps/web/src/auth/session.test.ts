@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 import * as ts from 'typescript';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { meQueryKey } from '../api/useMe';
-import { clearLocalData, db, setProgress, USER_CONTENT_KEYS } from '../db/local';
-import { clearSession } from './session';
+import { clearLocalData, db, rememberSessionVerified, setProgress, USER_CONTENT_KEYS } from '../db/local';
+import { clearSession, OFFLINE_READ_MAX_AGE_MS, offlineSessionIsUsable } from './session';
 
 beforeEach(clearLocalData);
 afterEach(clearLocalData);
@@ -81,6 +81,59 @@ describe('clearSession — the one door out of a session', () => {
     expect(order).toEqual(['cache-still-warm', 'resolved']);
     expect(await db.progress.count()).toBe(0);
     expect(queryClient.getQueryData(['stats'])).toBeUndefined();
+  });
+});
+
+/* ====================================================================== *
+ * offlineSessionIsUsable — how long a device may stand in for the server
+ * ====================================================================== */
+
+describe('offlineSessionIsUsable — the offline reading window', () => {
+  const T = Date.parse('2026-08-21T10:00:00.000Z');
+
+  it('is false on a device nobody has ever signed in on', async () => {
+    expect(await offlineSessionIsUsable(T)).toBe(false);
+  });
+
+  it('is true immediately after GET /me confirmed a user here', async () => {
+    await rememberSessionVerified(new Date(T));
+
+    expect(await offlineSessionIsUsable(T)).toBe(true);
+  });
+
+  it('is still true one millisecond before the window closes, and false one millisecond after', async () => {
+    await rememberSessionVerified(new Date(T));
+
+    expect(await offlineSessionIsUsable(T + OFFLINE_READ_MAX_AGE_MS - 1)).toBe(true);
+    expect(await offlineSessionIsUsable(T + OFFLINE_READ_MAX_AGE_MS)).toBe(false);
+    expect(await offlineSessionIsUsable(T + OFFLINE_READ_MAX_AGE_MS + 1)).toBe(false);
+  });
+
+  it('stays well inside the server session it stands in for', () => {
+    // apps/api/internal/auth/usecase.go's `SessionTTL = 30 * 24 * time.Hour`,
+    // and it is NOT sliding — `FindValidSession` never moves `expires_at`.
+    // So the longest a server session can live is 30 days from the login
+    // that created it. This window has to be a fraction of that, or a
+    // device could keep reading long after the cookie it is standing in
+    // for became worthless.
+    const SERVER_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+    expect(OFFLINE_READ_MAX_AGE_MS).toBeLessThan(SERVER_SESSION_TTL_MS / 4);
+    expect(OFFLINE_READ_MAX_AGE_MS).toBeGreaterThan(24 * 60 * 60 * 1000);
+  });
+
+  it('refuses a marker stamped in the future — a clock that moved fails closed', async () => {
+    await rememberSessionVerified(new Date(T + 60_000));
+
+    expect(await offlineSessionIsUsable(T)).toBe(false);
+  });
+
+  it('is false again the moment the session ends, because clearLocalData() took the marker with it', async () => {
+    await rememberSessionVerified(new Date(T));
+    expect(await offlineSessionIsUsable(T)).toBe(true);
+
+    await clearSession(new QueryClient());
+
+    expect(await offlineSessionIsUsable(T)).toBe(false);
   });
 });
 
@@ -173,8 +226,11 @@ function productionSourceFiles(): string[] {
  * that trade runs the wrong way. Each scan therefore proves its own
  * instrument works, immediately below.
  */
-function clearersNamedIn(fileName: string, source: string): Set<string> {
-  const watched = new Set(SESSION_CLEARERS.map((c) => c.name));
+function clearersNamedIn(
+  fileName: string,
+  source: string,
+  watched: ReadonlySet<string> = new Set(SESSION_CLEARERS.map((c) => c.name)),
+): Set<string> {
   const found = new Set<string>();
   const parsed = ts.createSourceFile(
     fileName,
@@ -234,6 +290,36 @@ describe('no third way to end a session', () => {
     // that is a decision to make out loud, here, by adding the file to
     // `allowedIn` above with a reason.
     expect(violations).toEqual([]);
+  });
+
+  /**
+   * The marker `offlineSessionIsUsable` reads is the ONE durable thing this
+   * phase added that says "somebody was signed in on this device". It is a
+   * `db.meta` row, so `clearLocalData()` empties it with nothing written for
+   * it — but that only stays true while the set of places that WRITE it
+   * stays small enough to reason about.
+   *
+   * Two files may name it: `db/local.ts` defines it, and
+   * `auth/RequireAuth.tsx` is the one surface that both writes and reads it
+   * — it writes exactly when `GET /me` has confirmed a user, which is the
+   * only fact the marker is allowed to record. A third writer is how this
+   * would go wrong: a call from somewhere that has NOT confirmed a user
+   * would make the marker mean something weaker than it says, and every
+   * offline render downstream would inherit that.
+   */
+  const MARKER_WRITER = 'rememberSessionVerified';
+  const MARKER_WRITER_ALLOWED_IN = [
+    join('apps', 'web', 'src', 'db', 'local.ts'),
+    join('apps', 'web', 'src', 'auth', 'RequireAuth.tsx'),
+  ];
+
+  it('only RequireAuth writes the offline-read marker, and it is the same file that reads it', () => {
+    const watched = new Set([MARKER_WRITER]);
+    const writers = productionSourceFiles()
+      .filter((file) => clearersNamedIn(file, readFileSync(file, 'utf-8'), watched).has(MARKER_WRITER))
+      .map(label);
+
+    expect(writers.sort()).toEqual([...MARKER_WRITER_ALLOWED_IN].sort());
   });
 
   it('the door is actually used: both auth transitions go through it', () => {

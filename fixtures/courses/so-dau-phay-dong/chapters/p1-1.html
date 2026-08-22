@@ -1,0 +1,138 @@
+<div class="ch-eyebrow">Phần I · IEEE 754 — Chương 1.1</div>
+<h1 class="ch-title">Ba trường: dấu, số mũ, phần định trị</h1>
+<p class="ch-lede">Chương 0.2 nói bạn phải chia $w$ bit cho hai trường. Chương này hỏi câu tiếp theo, và nó là câu mà một bản chuẩn phải trả lời còn một bài giảng thì hay bỏ qua: <b>xếp</b> chúng theo thứ tự nào, và <b>mã hoá</b> số mũ ra sao. Hoá ra hai quyết định tưởng như tuỳ tiện ấy lại mua về một tính chất mà không ai đòi hỏi nhưng ai cũng dùng.</p>
+
+<h2 id="cau-hoi">Câu hỏi</h2>
+
+<p>Bạn có $64$ bit, cần cất dấu, số mũ $e$ và phần định trị $f$. Số cách xếp là rất nhiều: dấu ở đầu hay ở cuối, số mũ mã hoá bù hai hay bù một hay lệch, các trường liền nhau hay xen kẽ. Mọi cách đều "chạy được" theo nghĩa giải mã lại đúng số cũ. Vậy cách nào tốt hơn, và tốt hơn theo tiêu chí gì?</p>
+
+<p>Tiêu chí mà IEEE 754 chọn không phải tiết kiệm mạch giải mã. Nó là một tiêu chí bất ngờ hơn nhiều, và ta sẽ đi tới bằng cách nêu đòi hỏi trước rồi xem cách nào thoả.</p>
+
+<h2 id="doi-hoi">Ba đòi hỏi về cách xếp bit</h2>
+
+<ol>
+<li><b>So sánh phải rẻ.</b> Phép <code>a &lt; b</code> trên số thực là một trong những phép hay chạy nhất trong mọi chương trình. Nếu nó có thể là một phép so sánh số nguyên thì ta được không, còn nếu phải giải mã ba trường rồi so từng cái thì ta trả giá ở mọi vòng lặp sắp xếp.</li>
+<li><b>Số $0$ phải là toàn bit $0$.</b> Vùng nhớ mới cấp phát thường được xoá về $0$; nếu chuỗi bit toàn $0$ giải mã ra một số kỳ quặc thì mọi mảng khởi tạo mặc định đều sai.</li>
+<li><b>Phải còn chỗ cho vô cực và cho "không phải số".</b> Phép chia cho $0$ và phép căn của số âm cần trả về cái gì đó thay vì làm sập chương trình.</li>
+</ol>
+
+<p>Đòi hỏi 1 gần như quyết định tất cả. Muốn so sánh hai số thực dương bằng cách so sánh chuỗi bit của chúng như số nguyên không dấu, ta cần: bit dấu ở <b>vị trí cao nhất</b> (để mọi số dương đứng trước mọi số âm khi đọc như số nguyên có dấu), số mũ ở <b>ngay sau đó</b> (vì số mũ lớn hơn thì số lớn hơn, bất kể định trị), và phần định trị ở <b>cuối cùng</b> (nó chỉ phân định trong cùng một binade).</p>
+
+<p>Còn cách mã hoá số mũ thì phải làm sao cho "số mũ lớn hơn" tương ứng với "chuỗi bit lớn hơn" khi đọc <b>không dấu</b>. Bù hai không thoả: số mũ $-1$ mã hoá thành $\texttt{11111111111}$, lớn hơn mọi số mũ dương. Cách thoả là <b>lệch</b> — cộng một hằng số vào số mũ thật để mọi giá trị đều không âm.</p>
+
+<div class="box def"><div class="box-h">Định nghĩa 1.1 — mã hoá binary64</div>
+<p>Một chuỗi $64$ bit được đọc là ba trường: một bit dấu $s$, mười một bit số mũ $E \in [0, 2047]$, và năm mươi hai bit định trị $M \in [0, 2^{52})$. Giá trị là
+$$x \;=\;
+\begin{cases}
+(-1)^{s}\,\left(1 + \dfrac{M}{2^{52}}\right) 2^{\,E - 1023}, & 1 \le E \le 2046 \quad \text{(số chuẩn)},\\[8pt]
+(-1)^{s}\,\dfrac{M}{2^{52}} \cdot 2^{-1022}, & E = 0 \quad \text{(số } 0 \text{ và dưới chuẩn)},\\[8pt]
+\pm\infty \text{ nếu } M = 0, \;\; \mathrm{NaN} \text{ nếu } M \ne 0, & E = 2047.
+\end{cases}$$
+Hằng số $1023$ là <b>độ lệch</b>; số mũ thật $e = E - 1023$ chạy từ $-1022$ tới $+1023$.</p></div>
+
+<div class="box intu"><div class="box-h">Đọc định nghĩa này thế nào</div>
+<p>Ba dòng, ba chế độ, và cái phân biệt chúng là trường $E$ chứ không phải $M$. Dòng giữa là chỗ bit ẩn bị <b>tắt</b>: số $1$ ở đầu định trị biến mất và số mũ bị ghim ở $-1022$ thay vì $-1023$. Sự ghim đó không phải một chi tiết vụn — nó chính là cái làm cho lưới không đổi bước khi đi từ số chuẩn nhỏ nhất xuống vùng dưới chuẩn, đúng như Mệnh đề 0.5 ở Chương 0.2 cần.</p>
+<p>Dòng cuối là chỗ đòi hỏi 3 được trả. Toàn bộ $E = 2047$ bị lấy ra khỏi dải số thường để dành cho $\pm\infty$ và $\mathrm{NaN}$ — một cái giá thật: bạn mất một binade ở đầu trên. Đổi lại, $\mathrm{NaN}$ có tận $2^{52} - 1$ chuỗi bit khác nhau, và phần cứng dùng chỗ dư ấy để mang theo thông tin chẩn đoán.</p></div>
+
+<div class="fig">
+  <div class="fig-head">
+    <div class="fig-num">Hình 1.1 · Tương tác</div>
+    <div class="fig-title">Ba trường, và giá trị chúng tạo ra</div>
+    <p class="fig-desc">Dải bit ở trên hiển thị đúng bố cục của Định nghĩa 1.1 (rút gọn về $32$ bit cho vừa mắt). Kéo số mũ và nhìn <em>trục dưới</em> — nó là thang log2, nên "dời một bậc trên trục" chính là "cộng một vào $E$".</p>
+  </div>
+  <div class="fig-body"><div data-viz="bit-lab"></div></div>
+  <div class="fig-foot">Hai điều đáng rút ra. Thứ nhất, kéo $E$ đi một nấc làm giá trị <b>nhân đôi</b>, trong khi kéo $M$ đi một nấc chỉ dịch một chút — đó là hai loại bit của Chương 0.2 nhìn từ phía giao diện. Thứ hai, dòng "ULP tại đây" đổi khi và chỉ khi $E$ đổi, chứ không đổi khi $M$ đổi: ULP là hằng số trên toàn binade, và Chương 1.2 dành trọn cho hệ quả của câu đó.</div>
+</div>
+
+<h2 id="so-sanh-nguyen">Món quà: so sánh số thực bằng phép so sánh số nguyên</h2>
+
+<p>Bây giờ tới phần trả công cho ba đòi hỏi ở trên. Với cách xếp đã chọn, ta được một tính chất mạnh hơn đòi hỏi 1 rất nhiều.</p>
+
+<div class="box thm"><div class="box-h">Định lý 1.2 — đơn điệu theo chuỗi bit</div>
+<p>Với hai số binary64 <b>không âm và không phải NaN</b> $a$, $b$, gọi $I(a)$, $I(b)$ là chuỗi bit của chúng đọc như số nguyên không dấu $64$ bit. Khi đó
+$$a \le b \iff I(a) \le I(b).$$
+Nói cách khác, sắp xếp mảng số thực dương bằng cách sắp xếp chuỗi bit của chúng như số nguyên cho kết quả <b>y hệt</b>.</p></div>
+
+<details class="deriv"><summary>Chứng minh</summary><div class="deriv-body">
+<p>Viết $I(a) = E_a \cdot 2^{52} + M_a$ với $E_a \in [0, 2047]$, $M_a \in [0, 2^{52})$; đây chỉ là cách đọc lại phép nối ba trường, vì bit dấu bằng $0$ theo giả thiết. So sánh $I(a) \le I(b)$ vì thế là so sánh từ điển cặp $(E_a, M_a)$ với $(E_b, M_b)$.</p>
+<p><i>Trường hợp $E_a = E_b$.</i> Nếu $E_a \ge 1$ thì $a = (1 + M_a 2^{-52}) 2^{E_a - 1023}$ và $b$ cùng dạng với cùng thừa số $2^{E_a-1023} > 0$, nên $a \le b \iff M_a \le M_b$. Nếu $E_a = 0$ thì $a = M_a 2^{-52} \cdot 2^{-1022}$, cũng đơn điệu theo $M_a$. Cả hai nhánh đều cho điều phải chứng minh.</p>
+<p><i>Trường hợp $E_a &lt; E_b$.</i> Ta cần $a &lt; b$. Cận trên của $a$: với $E_a \ge 1$ thì $a &lt; 2 \cdot 2^{E_a - 1023} = 2^{E_a - 1022}$; với $E_a = 0$ thì $a &lt; 2^{-1022}$, cũng bằng $2^{E_a-1022}$. Cận dưới của $b$: với $E_b \ge 1$ thì $b \ge 2^{E_b - 1023} \ge 2^{E_a - 1022}$ vì $E_b \ge E_a + 1$. Nối hai cận: $a &lt; 2^{E_a-1022} \le b$. $\square$</p>
+<p>Chỗ then chốt của chứng minh là <b>cận trên của một binade bằng đúng cận dưới của binade kế tiếp</b> — điều chỉ đúng vì bit ẩn cho định trị dải $[1, 2)$ chứ không phải $[0,1)$ hay $(0, \infty)$. Đổi quy ước bit ẩn là mất định lý này, và mất nó là mất luôn mọi thủ thuật ở mục tiếp theo.</p>
+</div></details>
+
+<p>Định lý 1.2 không phải một điều lạ để trưng bày. Nó là nền của ít nhất ba việc bạn có thể đã dùng mà không biết.</p>
+
+<p><b>Việc thứ nhất — sắp xếp theo cơ số.</b> Thuật toán sắp xếp cơ số làm việc trên số nguyên. Nhờ Định lý 1.2, một mảng số thực dương có thể sắp xếp cơ số trực tiếp trên chuỗi bit, không cần đổi kiểu. Với số âm thì phải lật thêm một bước, và bài tập cuối chương yêu cầu bạn tìm ra bước ấy.</p>
+
+<p><b>Việc thứ hai — đo khoảng cách bằng số số máy.</b> Hiệu $I(b) - I(a)$ đếm chính xác có bao nhiêu số biểu diễn được nằm giữa $a$ và $b$. Đây là thước đo "gần nhau" đúng đắn duy nhất trong nhiều bối cảnh, và Phụ lục xây bảng quyết định của nó trên đúng đại lượng này.</p>
+
+<p><b>Việc thứ ba — bước qua từng số một.</b> Cộng $1$ vào $I(a)$ cho số biểu diễn được kề sau $a$, không cần biết $a$ đang ở binade nào. Đó là toàn bộ cách cài đặt hàm <code>nextafter</code> của thư viện chuẩn, và Chương 1.2 dùng nó làm định nghĩa thao tác của ULP.</p>
+
+<div class="box warn"><div class="box-h">Chỗ hay sai — định lý này nói về số KHÔNG ÂM</div>
+<p>Với số âm, thứ tự bị <b>đảo</b>: $-1$ có chuỗi bit lớn hơn $-2$ khi đọc không dấu, nhưng $-1 > -2$. Và với hai số trái dấu thì $-0$ có chuỗi bit $\texttt{1000}\ldots\texttt{0}$, lớn hơn mọi số dương, dù $-0 = +0$ theo phép so sánh số thực.</p>
+<p>Nên đoạn mã "so sánh float bằng cách ép kiểu sang int" chỉ đúng trên dữ liệu không âm, và nó hỏng <b>âm thầm</b> trên dữ liệu có số âm: mảng vẫn được sắp xếp, chỉ là sai thứ tự ở nửa âm. Không có ngoại lệ nào được ném, không có kết quả nào là $\mathrm{NaN}$ — chỉ là một mảng trông có vẻ đã sắp xếp. Đây là kiểu lỗi lọt qua mọi bài kiểm thử viết bằng dữ liệu dương.</p></div>
+
+<h2 id="gia-tri-dac-biet">Ba giá trị đặc biệt và một giá trị gây tranh cãi</h2>
+
+<p>Dòng cuối của Định nghĩa 1.1 mở ra ba thứ không phải số thực. Mỗi thứ tồn tại vì một lý do cụ thể, và biết lý do thì dùng đúng.</p>
+
+<p><b>$\pm\infty$</b> ra đời để $1/0$ có câu trả lời thay vì làm sập chương trình. Nó tuân theo số học mở rộng quen thuộc: $\infty + 1 = \infty$, $1/\infty = 0$, $\infty - \infty = \mathrm{NaN}$. Điều quan trọng về mặt kỹ thuật là nó <b>giữ được thông tin về dấu</b>, nên $1/0^{+} = +\infty$ còn $1/0^{-} = -\infty$.</p>
+
+<p><b>$\mathrm{NaN}$</b> ra đời cho những phép mà ngay cả $\infty$ cũng không trả lời được: $0/0$, $\infty - \infty$, $\sqrt{-1}$. Tính chất định nghĩa của nó là $\mathrm{NaN} \ne \mathrm{NaN}$ — nó là giá trị duy nhất trong toàn bộ hệ không bằng chính mình. Điều đó nghe như một trò đùa nhưng lại là một quyết định thiết kế có chủ ý: nó biến <code>x != x</code> thành phép thử $\mathrm{NaN}$ không cần thư viện, và nó bảo đảm mọi phép so sánh có $\mathrm{NaN}$ đều trả về "sai", nên một giá trị hỏng không lặng lẽ lọt qua một điều kiện lọc.</p>
+
+<p><b>$-0$</b> là giá trị gây tranh cãi. Nó thoả $-0 = +0$ theo phép <code>==</code>, nhưng có chuỗi bit khác, và $1/(-0) = -\infty \ne +\infty = 1/(+0)$. Lý do nó tồn tại là để giữ dấu qua vùng tràn xuống: nếu một dãy số âm nhỏ dần bị làm tròn về $0$, ta vẫn biết nó đến từ phía âm, và hàm nghịch đảo hay hàm arg của số phức vẫn cho nhánh đúng.</p>
+
+<div class="box pitfall"><div class="box-h">Cạm bẫy — $\mathrm{NaN}$ trong cấu trúc dữ liệu có sắp xếp</div>
+<p>Vì mọi phép so sánh với $\mathrm{NaN}$ đều trả về "sai", một $\mathrm{NaN}$ lọt vào khoá của cây tìm kiếm hay vào mảng đang sắp xếp sẽ phá vỡ giả thiết "quan hệ thứ tự toàn phần" mà thuật toán dựa vào. Hậu quả không phải một kết quả sai — mà là <b>hành vi không xác định</b>: một số cài đặt <code>sort</code> đọc ra ngoài mảng và sập, và nó chỉ sập với đúng dữ liệu đó.</p>
+<p>Quy tắc thực dụng: chặn $\mathrm{NaN}$ ở <b>biên nhập liệu</b>, không phải ở chỗ sắp xếp. Một hàm sắp xếp lọc $\mathrm{NaN}$ là một hàm sắp xếp giấu lỗi; điều bạn cần biết là $\mathrm{NaN}$ ấy sinh ra ở đâu, và Chương 2.1 chỉ ra thủ phạm thường gặp nhất là một phép trừ triệt tiêu rồi chia.</p></div>
+
+<div class="keyfacts"><div class="box-h">Chốt chương</div>
+<ul>
+<li>Thứ tự trường (dấu, mũ, định trị) và cách mã hoá số mũ <b>lệch</b> được chọn để phép so sánh số thực trở thành phép so sánh số nguyên — Định lý 1.2.</li>
+<li>Định lý 1.2 chỉ đúng cho số không âm; với số âm thứ tự bị đảo, và đó là lỗi mọi bài kiểm thử chỉ dùng dữ liệu dương đều bỏ sót.</li>
+<li>$E = 0$ tắt bit ẩn và ghim số mũ ở $-1022$ — chính là cơ chế giữ cho lưới không đổi bước khi xuống vùng dưới chuẩn.</li>
+<li>$E = 2047$ bị lấy trọn cho $\pm\infty$ và $\mathrm{NaN}$; cái giá là mất một binade ở đầu trên, cái được là mọi phép hỏng đều có giá trị trả về.</li>
+<li>$\mathrm{NaN} \ne \mathrm{NaN}$ là tính chất định nghĩa, không phải trò đùa: nó cho phép thử $\mathrm{NaN}$ không cần thư viện và ngăn giá trị hỏng lọt qua bộ lọc.</li>
+</ul></div>
+
+<h2 id="bai-tap">Bài tập</h2>
+
+<div class="box ex"><div class="box-h">Bài 1 · Giải mã bằng tay · ★</div>
+<p>(a) Chuỗi bit binary64 có $s = 0$, $E = 1023$, $M = 0$ ứng với số nào?</p>
+<p>(b) Còn $s = 0$, $E = 1024$, $M = 2^{51}$?</p>
+<p>(c) Chuỗi $64$ bit toàn $0$ ứng với số nào? Chuỗi toàn $1$?</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> $e = 1023 - 1023 = 0$ và định trị bằng $1 + 0 = 1$, nên $x = 1 \cdot 2^{0} = 1$. Đây là chuỗi bit đáng nhớ: $1$ có $E$ bằng đúng độ lệch.</p>
+<p><b>(b)</b> $e = 1$, định trị $= 1 + 2^{51}/2^{52} = 1{,}5$, nên $x = 1{,}5 \cdot 2 = 3$.</p>
+<p><b>(c)</b> Toàn $0$ cho $s = 0$, $E = 0$, $M = 0$, tức $x = +0$ — đúng đòi hỏi 2 ở đầu chương. Toàn $1$ cho $s = 1$, $E = 2047$, $M = 2^{52} - 1 \ne 0$, tức một $\mathrm{NaN}$. Cả hai đầu của dải chuỗi bit đều được dùng có chủ ý.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 2 · Vá Định lý 1.2 cho số âm · ★★</div>
+<p>Ta muốn một hàm $\Phi$ biến chuỗi bit binary64 thành số nguyên $64$ bit có dấu sao cho $a \le b \iff \Phi(a) \le \Phi(b)$ với <b>mọi</b> $a$, $b$ không phải NaN.</p>
+<p>(a) Vì sao phép ép kiểu thô không thoả? Nêu một cặp phản ví dụ cụ thể.</p>
+<p>(b) Tìm $\Phi$. Gợi ý: xét riêng bit dấu, và nhớ rằng cần đảo thứ tự nửa âm.</p>
+<p>(c) Kiểm $\Phi$ trên ba cặp: $(1, 2)$, $(-2, -1)$, $(-1, 1)$.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Lấy $a = -2$, $b = -1$. Ta có $a &lt; b$. Nhưng chuỗi bit của $-2$ là $s=1, E=1024, M=0$ còn của $-1$ là $s=1, E=1023, M=0$, nên đọc như số nguyên có dấu thì $I(a) &lt; I(b)$ theo trị tuyệt đối nhưng cả hai đều âm, và thứ tự bị đảo. Chi tiết hơn: trong nửa âm, chuỗi bit lớn hơn ứng với số thực <b>nhỏ hơn</b>.</p>
+<p><b>(b)</b> Gọi $u$ là chuỗi bit đọc như số nguyên không dấu. Đặt
+$$\Phi \;=\; \begin{cases} u \;\oplus\; \texttt{0x8000000000000000}, & \text{bit dấu} = 0,\\ \sim u, & \text{bit dấu} = 1,\end{cases}$$
+rồi đọc kết quả như số nguyên không dấu. Nhánh trên bật bit cao để mọi số không âm nằm ở nửa trên; nhánh dưới lấy phần bù bit, vừa đưa số âm xuống nửa dưới vừa <b>đảo</b> thứ tự trong nội bộ nửa đó.</p>
+<p>Cách viết gọn tương đương, hay gặp trong mã thật: <code>u ^ (((int64)u &gt;&gt; 63) | 0x8000000000000000)</code>. Nó là đúng hai nhánh trên, gộp bằng một phép dịch số học để lấy mặt nạ dấu.</p>
+<p><b>(c)</b> $\Phi(1)$ và $\Phi(2)$ giữ nguyên thứ tự vì cả hai đi nhánh trên, chỉ được cộng thêm cùng một hằng số. $\Phi(-2)$ và $\Phi(-1)$ đi nhánh dưới, và vì $I(-2) > I(-1)$ khi đọc không dấu, phép bù bit cho $\Phi(-2) &lt; \Phi(-1)$ — đúng thứ tự cần. Còn $\Phi(-1)$ nằm ở nửa dưới và $\Phi(1)$ ở nửa trên, nên $\Phi(-1) &lt; \Phi(1)$. ✓</p>
+<p>Một hệ quả đáng chú ý mà Phụ lục sẽ dùng: sau phép biến đổi này, $|\Phi(a) - \Phi(b)|$ đếm đúng số số máy nằm giữa $a$ và $b$ <b>kể cả khi chúng trái dấu</b>. Đó là điều Định lý 1.2 một mình không cho.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 3 · Vì sao độ lệch là 1023 chứ không phải 1024 · ★★★</div>
+<p>Với $11$ bit số mũ, $E$ chạy trong $[0, 2047]$. Sau khi trừ hai giá trị dành riêng ($E = 0$ và $E = 2047$), còn $[1, 2046]$, tức $2046$ giá trị. Chuẩn chọn độ lệch $1023$, cho $e \in [-1022, +1023]$.</p>
+<p>(a) Dải ấy <b>không đối xứng</b>: một binade ở phía dương nhiều hơn phía âm. Hãy chỉ ra điều đó bằng số.</p>
+<p>(b) Nếu chọn độ lệch $1024$ thì dải là $e \in [-1023, +1022]$. Nêu một tính chất bị mất khi chọn như vậy.</p>
+<p>(c) Với độ lệch $1023$ như chuẩn, số $1/x$ có luôn biểu diễn được khi $x$ biểu diễn được và $x$ là luỹ thừa của $2$ không? Kiểm ở cả hai đầu dải.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Số mũ âm chạy từ $-1022$ tới $-1$: $1022$ giá trị. Số mũ không âm chạy từ $0$ tới $1023$: $1024$ giá trị. Lệch hai. Nói theo độ lớn: số dương chuẩn lớn nhất cỡ $2^{1024} \approx 1{,}8 \times 10^{308}$, còn số dương chuẩn nhỏ nhất là $2^{-1022} \approx 2{,}2 \times 10^{-308}$ — nghịch đảo của cái lớn nhất <b>nhỏ hơn</b> cái nhỏ nhất.</p>
+<p><b>(b)</b> Với độ lệch $1024$, số mũ lớn nhất là $1022$, nên số lớn nhất cỡ $2^{1023}$. Nghịch đảo của số dương nhỏ nhất, $2^{1023}$, vẫn biểu diễn được — nghe có vẻ tốt hơn. Nhưng bạn mất một binade ở đầu trên, và mọi bài toán tích luỹ tổng bình phương (chuẩn Euclid, phương sai, tích vô hướng) tràn sớm hơn một binade. Sự đánh đổi là thật và chuẩn chọn phía dải, vì tràn lên là lỗi ồn ào còn tràn xuống thì từ từ nhờ số dưới chuẩn.</p>
+<p><b>(c)</b> Không, và đó chính là hệ quả của (a). Lấy $x = 2^{-1022}$, số chuẩn nhỏ nhất. Khi đó $1/x = 2^{1022}$, biểu diễn được. Nhưng lấy $x$ là số dưới chuẩn nhỏ nhất, $2^{-1074}$; khi đó $1/x = 2^{1074}$, <b>tràn lên $+\infty$</b>. Ngay cả trong dải chuẩn: $x = 2^{1023}$ cho $1/x = 2^{-1023}$, là số dưới chuẩn — vẫn biểu diễn được, nhưng đã mất bit chính xác.</p>
+<p>Bài học mang đi: <code>1/(1/x) == x</code> không phải một hằng đẳng thức trên số dấu phẩy động, và nó hỏng ở cả hai đầu dải vì hai lý do khác nhau. Ai viết mã chuẩn hoá vectơ bằng cách nhân với nghịch đảo của chuẩn — một tối ưu rất phổ biến vì phép nhân rẻ hơn phép chia — đang dựa vào đúng hằng đẳng thức không tồn tại này.</p>
+</div></details>
+</div>

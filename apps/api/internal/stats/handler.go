@@ -2,6 +2,7 @@ package stats
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
 	"time"
 
@@ -67,6 +68,31 @@ const statsWindowDays = 30
 // the only place that conversion happens.
 const minutesPerHeartbeat = 0.5
 
+// MaxBatchBytes is the ceiling on POST /events/batch's request body,
+// applied as a route-scoped middleware in internal/server rather than as
+// fiber's app-wide BodyLimit — see internal/sync's MaxPushBytes, which is
+// the same number for the same reason: 4 MiB is what this endpoint had
+// under fiber's default, until POST /courses raised the APP-wide limit to
+// 21 MiB for course packages and took every other route with it.
+const MaxBatchBytes int64 = 4 << 20
+
+// MaxEventsPerBatch is the ceiling on events in ONE request.
+//
+// This handler's doc comment used to say outright that no cap was placed
+// here and defer the question to a later hardening task. A review closed
+// the question with measurements instead: one 4 MiB body was confirmed
+// writing 37 216 real rows, each one a tx.Exec inside a single
+// transaction holding one of the pool's 4–8 connections. A byte limit
+// does not bound the count — an event item can be shrunk far below its
+// realistic size — so this is its own number.
+//
+// It is set against the client rather than against an attacker, exactly
+// as internal/sync's MaxItemsPerPush is: the web client posts its whole
+// outbox in one unchunked request, so a cap it can exceed strands a
+// long-offline device permanently. 10 000 heartbeats is over 80 hours of
+// continuous active reading.
+const MaxEventsPerBatch = 10000
+
 // Handler holds the HTTP-layer concerns for stats: parsing/validating
 // POST /events/batch, and shaping GET /stats's response — including the
 // streak and 30-day-window computation. Per this task's file layout
@@ -120,16 +146,24 @@ type eventsBatchResponse struct {
 // HeartbeatCourseCounts, both filtered to kind='heartbeat'), so a future
 // event kind can be added without an API change here.
 //
-// No cap is placed on the number of events per batch. A client could in
-// principle post an enormous batch in one request; this is a deliberate,
-// documented deferral (matching this project's established pattern of
-// deferring abuse/resilience hardening to the later P4 hardening task —
-// see e.g. store.TestPool's own rulings on fail-fast vs. resilience), not
-// an oversight.
+// The batch is capped at MaxEventsPerBatch items (and, at the transport,
+// at MaxBatchBytes). That cap used to be absent — this comment said so
+// and deferred it to a later hardening task — until a review measured
+// what the absence bought: 37 216 rows written from a single 4 MiB
+// request, one tx.Exec at a time inside one transaction holding one of
+// the pool's four to eight connections. See MaxEventsPerBatch.
 func (h *Handler) EventsBatch(c *fiber.Ctx) error {
 	var req eventsBatchRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	// Before the per-item loop, so an over-cap batch is never turned into
+	// rows, and before InsertEvents, so it never opens a transaction.
+	if len(req.Events) > MaxEventsPerBatch {
+		return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{
+			"error": fmt.Sprintf("a batch carries at most %d events; this one has %d — send it in smaller batches", MaxEventsPerBatch, len(req.Events)),
+		})
 	}
 
 	rows := make([]EventRow, len(req.Events))

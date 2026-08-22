@@ -19,6 +19,23 @@ export default defineConfig({
       // attach globals and would break if run through Vite's module
       // pipeline.
       '@course-kit': path.resolve(HERE, '../../packages/course-kit'),
+      // The course-package RULE SET, shared with the packaging CLI and
+      // registry CI — see packages/course-format/src/index.ts's own header,
+      // which names this alias as the way a consumer reaches it (the repo
+      // has no npm workspaces and no root package.json, so there is nothing
+      // for `bun install` to link).
+      //
+      // Aliased to `src/index.ts` and not to the directory: the package's
+      // `main` field points there, but Vite's alias is a plain path rewrite
+      // and does not read package.json, so a directory alias would resolve
+      // to `.../course-format/index.ts`, which does not exist.
+      //
+      // Its own two dependencies (`parse5`, `fflate`) resolve out of
+      // `packages/course-format/node_modules`, because Node/Vite resolution
+      // walks up from the IMPORTING file, not from this app. That directory
+      // has to exist — `cd packages/course-format && bun install` — which is
+      // what the Makefile's test-format target already says.
+      '@tuhoc/course-format': path.resolve(HERE, '../../packages/course-format/src/index.ts'),
     },
   },
   test: {

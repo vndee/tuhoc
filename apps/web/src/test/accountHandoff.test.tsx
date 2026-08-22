@@ -42,6 +42,7 @@ import { type Anchor, type AnchorColor, selectionToAnchor } from '../annotations
 import { type CardFocus, DRAFT_KEY, MarginCards } from '../annotations/MarginCards';
 import { normalizeContainer } from '../annotations/normalize';
 import { type ChapterContent, useAnnotations } from '../annotations/useAnnotations';
+import { RequireAuth } from '../auth/RequireAuth';
 import { useLogout } from '../auth/useLogout';
 import { type AnnotationRow, clearLocalData, db } from '../db/local';
 import { Login } from '../pages/Login';
@@ -189,6 +190,40 @@ function Browser({ at = '/', onArriveAtLogin = () => {} }: { at?: string; onArri
             }
           />
           <Route path="/login" element={<LoginRoute onArrive={onArriveAtLogin} />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
+
+/**
+ * The same browser, but with the real route guard in front of the reader —
+ * which is what a COLD page load actually goes through, and what Task 7b
+ * changed. `<Browser>` above mounts `<Reader/>` directly because its
+ * subject is the note draft; this one's subject is the guard's new
+ * offline branch, so the guard has to be in the tree.
+ *
+ * A fresh `QueryClient` per render is the point, not a detail: it is what
+ * makes a second `render(...)` a COLD LOAD rather than a re-render. Nothing
+ * of the previous session's in-memory cache survives it, so everything the
+ * guard decides has to come from the durable stores — exactly as after F5.
+ */
+function GuardedBrowser({ at = '/' }: { at?: string }) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return (
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[at]}>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <RequireAuth>
+                <Reader />
+                <LogoutButton />
+              </RequireAuth>
+            }
+          />
+          <Route path="/login" element={<Login />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -382,5 +417,122 @@ describe('one browser, two accounts — the note draft is the departing user’s
     // an outbox row — A's words would be POSTed into B's server account
     // under B's cookie on the next cycle.
     expect(await db.outbox.count()).toBe(0);
+  }, 20_000);
+});
+
+/* ====================================================================== *
+ * Task 7b — the same handover, with the network down on the far side
+ * ====================================================================== */
+
+const A = { id: 'u-a', email: 'a@example.com', name: 'A' };
+const B = { id: 'u-b', email: 'b@example.com', name: 'B' };
+
+/** `GET /me` never reaches a server: `fetch` rejects with a bare TypeError, no status, no body. */
+const NETWORK_IS_DOWN = http.get('/me', () => HttpResponse.error());
+
+/** A cold load: nothing of the previous tree, nothing of its query cache. */
+function coldLoad(at = '/'): void {
+  cleanup();
+  render(<GuardedBrowser at={at} />);
+}
+
+/**
+ * Task 7b lets `<RequireAuth>` render a protected page when `GET /me` never
+ * reached a server. That is a decision about AUTHENTICATION, and this is
+ * where it has to be paid for: the one thing it may never do is put A's
+ * words in front of B.
+ *
+ * The property being tested is not "the guard is strict" — a guard that
+ * refused everything would pass a negative test and break the feature. It
+ * is that the offline render is driven by THIS BROWSER'S CURRENT local
+ * session: whatever `clearLocalData()` last left behind, and nothing older.
+ * So both directions are here, and the positive one runs first, because a
+ * negative result means nothing until the setup is known to work.
+ */
+describe('one browser, two accounts — reading offline must never open the previous account’s reader', () => {
+  it('positive control: A’s own device, A’s own session, network dead — A reads their own note', async () => {
+    server.use(http.get('/me', () => HttpResponse.json(A)));
+    const row = await seedNote('44444444-4444-4444-8444-444444444444', A_PRIVATE);
+
+    render(<GuardedBrowser />);
+    await waitForCards(1);
+    expect(within(cardFor(row.id)).getByText(A_PRIVATE)).toBeInTheDocument();
+
+    // The plane takes off.
+    server.use(NETWORK_IS_DOWN);
+    coldLoad();
+
+    // Before Task 7b this was the sign-in screen — the bug this whole task
+    // exists for, measured in a real browser in task-7-report.md §5.5.
+    await waitForCards(1);
+    expect(within(cardFor(row.id)).getByText(A_PRIVATE)).toBeInTheDocument();
+  }, 20_000);
+
+  it('A signs out, then the network dies: a cold load shows the outage, not A’s reader', async () => {
+    server.use(http.get('/me', () => HttpResponse.json(A)));
+    await seedNote('55555555-5555-4555-8555-555555555555', A_PRIVATE);
+
+    render(<GuardedBrowser />);
+    await waitForCards(1);
+
+    // The real hook — and the real `clearLocalData()` inside it, which takes
+    // the offline marker with it because the marker is a `db.meta` row and
+    // that function empties `db.tables`. Nothing was written for it.
+    fireEvent.click(screen.getByRole('button', { name: 'Đăng xuất' }));
+    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument(), { timeout: 10_000 });
+
+    server.use(NETWORK_IS_DOWN);
+    coldLoad();
+
+    expect(await screen.findByText(/kết nối/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('chapter')).not.toBeInTheDocument();
+    expect(document.body.textContent ?? '').not.toContain(A_PRIVATE);
+  }, 20_000);
+
+  it('B signs in on A’s browser, then the network dies: B reads B’s empty library, never A’s note', async () => {
+    // The full handover, and the one that matters: the offline door is OPEN
+    // for B (B has a live local session, so the feature works for them) and
+    // what is behind it is B's own empty local database.
+    server.use(http.get('/me', () => HttpResponse.json(A)));
+    await seedNote('66666666-6666-4666-8666-666666666666', A_PRIVATE);
+
+    render(<GuardedBrowser />);
+    await waitForCards(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Đăng xuất' }));
+    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument(), { timeout: 10_000 });
+
+    server.use(http.get('/me', () => HttpResponse.json(B)));
+    await bSignsIn();
+    await waitFor(() => expect(screen.getByTestId('chapter')).toBeInTheDocument());
+
+    server.use(NETWORK_IS_DOWN);
+    coldLoad();
+
+    // The guard opened — B is not punished for A having been here.
+    await waitFor(() => expect(screen.getByTestId('chapter')).toBeInTheDocument());
+    expect(screen.queryByText(/kết nối/i)).not.toBeInTheDocument();
+    // And it opened onto B's own browser state, which holds nothing of A's.
+    await waitForCards(0);
+    expect(document.body.textContent ?? '').not.toContain(A_PRIVATE);
+    expect(await db.annotations.count()).toBe(0);
+  }, 20_000);
+
+  it('A never logged out, but the server says 401: the answer wins over the marker, offline branch or not', async () => {
+    // The bound on how long a device may stand in for the server: not a
+    // timer, the first HTTP response that arrives. A dead cookie plus a
+    // live network is a closed door on the very next load.
+    server.use(http.get('/me', () => HttpResponse.json(A)));
+    await seedNote('77777777-7777-4777-8777-777777777777', A_PRIVATE);
+
+    render(<GuardedBrowser />);
+    await waitForCards(1);
+
+    server.use(http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
+    coldLoad();
+
+    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument());
+    expect(screen.queryByTestId('chapter')).not.toBeInTheDocument();
+    expect(document.body.textContent ?? '').not.toContain(A_PRIVATE);
   }, 20_000);
 });

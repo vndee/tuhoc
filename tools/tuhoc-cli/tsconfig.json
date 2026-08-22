@@ -1,0 +1,45 @@
+{
+  // Shaped after `packages/course-format/tsconfig.json`, for the same reason
+  // that file gives: `include` names real sources, so `tsc -b` actually looks
+  // at them. `tsc --noEmit` is deliberately NOT the gate here — it does not
+  // descend into project references and has already produced one empty,
+  // always-green gate in this repo (docs/carried-forward.md §2). One type-gate
+  // shape across the repo, and it is the shape proven to go red.
+  //
+  // This is the FIRST Bun/TypeScript project under `tools/` (ruling S1-F3);
+  // everything else there is Python. It has its own `node_modules` because the
+  // repo has no npm workspaces and no root `package.json` (ruling S1-F1), so
+  // `packages/course-format` is reached by RELATIVE PATH — see
+  // `src/course-format.ts`, the single place that path is written.
+  //
+  // `"types": ["node"]` is right here and would be wrong in
+  // `packages/course-format` (see that package's `src/env.d.ts`): this code is
+  // a command-line tool, it never runs in a browser, and it genuinely has
+  // `process`, `node:fs` and `node:path`. Pulling in `@types/node` also hands
+  // the imported `course-format` sources their `TextDecoder`/`TextEncoder`
+  // globals, which `src/env.d.ts` declares by hand for the browser build and
+  // which is not visible from this project's `include`.
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "module": "esnext",
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
+}

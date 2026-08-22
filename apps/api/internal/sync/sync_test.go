@@ -923,6 +923,84 @@ func TestSyncFlows(t *testing.T) {
 		}
 	})
 
+	// A review measured what "no cap on the number of items" costs: the
+	// body is swallowed whole into RAM at roughly 20× its size on the
+	// wire, every item becomes one tx.Exec inside a SINGLE transaction
+	// holding one of the pool's 4–8 connections, and one 4 MiB body was
+	// confirmed writing 37 216 real rows. The route's byte limit bounds
+	// the RAM; only an item cap bounds the transaction, because an item
+	// can be made arbitrarily small ({"updatedAt":"..."} is under 40
+	// bytes) and the count is therefore not a function of the byte limit
+	// at all.
+	//
+	// The boundary is pinned WITHOUT writing MaxItemsPerPush rows: the cap
+	// is checked before the per-item parse loop, so a batch of exactly
+	// MaxItemsPerPush whose last item is malformed comes back 400 (the
+	// cap let it through, the parser caught it) while MaxItemsPerPush+1
+	// comes back 413 (the cap caught it first). Two requests, no clock,
+	// and both leave the database untouched.
+	t.Run("a batch over the item cap is refused before any of it is parsed", func(t *testing.T) {
+		app := newTestApp(pool)
+		cookie, _ := registerUser(t, app, "itemcap")
+
+		now := nowUTC()
+		// The marker is what makes "zero side effects" checkable: if any
+		// prefix of an over-cap batch were applied, this row would be it.
+		batch := func(n int) []map[string]any {
+			items := make([]map[string]any, 0, n)
+			items = append(items, progressPushItem("c1", "itemcap-marker", "read", true, now))
+			for len(items) < n-1 {
+				items = append(items, progressPushItem("c1",
+					fmt.Sprintf("itemcap-%d", len(items)), "read", true, now))
+			}
+			// Last item malformed, so a batch that gets PAST the cap
+			// fails in the parse loop with a different status.
+			items = append(items, map[string]any{
+				"courseId": "c1", "chapterId": "itemcap-last", "status": "read", "done": true,
+				"updatedAt": "not-a-timestamp",
+			})
+			return items
+		}
+
+		over := batch(appsync.MaxItemsPerPush + 1)
+		resp, raw := doRequest(t, app, http.MethodPost, "/sync", pushBody(over, nil), cookie)
+		if resp.StatusCode != http.StatusRequestEntityTooLarge {
+			t.Fatalf("%d items (cap is %d): want 413 got %d body=%s",
+				len(over), appsync.MaxItemsPerPush, resp.StatusCode, raw)
+		}
+
+		atCap := batch(appsync.MaxItemsPerPush)
+		atResp, atRaw := doRequest(t, app, http.MethodPost, "/sync", pushBody(atCap, nil), cookie)
+		if atResp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("exactly %d items (cap is %d): want 400 from the parse loop, got %d body=%s",
+				len(atCap), appsync.MaxItemsPerPush, atResp.StatusCode, atRaw)
+		}
+
+		// Neither request wrote anything.
+		getResp, getRaw := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
+		if getResp.StatusCode != http.StatusOK {
+			t.Fatalf("get: want 200 got %d body=%s", getResp.StatusCode, getRaw)
+		}
+		var pull pullOut
+		mustUnmarshal(t, getRaw, &pull)
+		if n := len(pull.Progress); n != 0 {
+			t.Errorf("a refused batch left %d progress row(s) behind: %+v", n, pull.Progress)
+		}
+
+		// Anti-vacuity: an ordinary batch from the same session still
+		// applies. Without it, "reject every push" would pass the above.
+		okResp, okRaw := doRequest(t, app, http.MethodPost, "/sync",
+			pushBody([]map[string]any{progressPushItem("c1", "itemcap-ok", "read", true, now)}, nil), cookie)
+		if okResp.StatusCode != http.StatusOK {
+			t.Fatalf("an ordinary batch: want 200 got %d body=%s", okResp.StatusCode, okRaw)
+		}
+		var push pushOut
+		mustUnmarshal(t, okRaw, &push)
+		if push.Applied != 1 {
+			t.Errorf("an ordinary batch: want applied=1 got %d", push.Applied)
+		}
+	})
+
 	// Ruling F3: both routes must reject an unauthenticated request with
 	// 401 — the same case auth_test.go pins for /me, exercised here for
 	// sync's own two routes.

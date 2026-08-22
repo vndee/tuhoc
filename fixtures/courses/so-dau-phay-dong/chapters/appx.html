@@ -1,0 +1,105 @@
+<div class="ch-eyebrow">Phụ lục</div>
+<h1 class="ch-title">So sánh hai số thực: bảng quyết định</h1>
+<p class="ch-lede">Chương 0.1 đặt câu hỏi này ở dòng thứ ba và cố ý không trả lời, vì trả lời tử tế cần ULP (Chương 1.2), cần mô hình sai số (Chương 1.3) và cần biết sai số dồn tới đâu (Chương 2.2). Bây giờ đủ rồi. Phụ lục này không dạy khái niệm mới; nó là thứ bạn mở ra lúc đang viết mã và cần quyết trong hai phút.</p>
+
+<h2 id="khong-co-cau-tra-loi">Không có một câu trả lời</h2>
+
+<p>Câu hỏi "làm sao so sánh hai số thực" không có lời giải phổ quát, và điều đầu tiên phải chấp nhận là chính điều đó. Thư viện nào hứa một hàm <code>almost_equal(a, b)</code> đúng cho mọi trường hợp thì hoặc đang giấu một tham số, hoặc đang sai trong một góc nào đó mà bạn chưa chạm tới.</p>
+
+<p>Lý do nằm ở chính Chương 0.2: lưới số biểu diễn được không đều, nên "gần nhau" ở gần $0$ và "gần nhau" ở gần $10^{300}$ là hai đại lượng khác nhau hàng trăm bậc. Bất kỳ ngưỡng cố định nào cũng vừa quá lỏng ở một đầu vừa quá chặt ở đầu kia — đúng lập luận đã dùng cho sai số ở Chương 1.2, chỉ đổi bối cảnh.</p>
+
+<p>Nên việc phải làm không phải chọn một hàm, mà là trả lời một câu hỏi về <b>bài toán của bạn</b>: hai số này đến từ đâu, và "bằng nhau" ở đây nghĩa là gì?</p>
+
+<h2 id="bon-cach">Bốn cách, và điều kiện dùng của từng cách</h2>
+
+<h3>1. So sánh chính xác</h3>
+
+<p>Dùng <code>a == b</code>. Nghe như lời khuyên tồi cho tới khi bạn nhận ra nó <b>đúng</b> trong ba tình huống rất thường gặp: khi cả hai số là số nguyên nhỏ hơn $2^{53}$ (Chương 1.2 chỉ ra mọi số nguyên tới đó biểu diễn được chính xác); khi bạn đang kiểm tra một giá trị canh gác, chẳng hạn <code>if (x == 0.0)</code>; và khi bạn kiểm tra tính luỹ đẳng của chính phép gán.</p>
+
+<p>Quy tắc: nếu cả hai vế đến từ những phép tính <b>chính xác</b>, so sánh chính xác là đúng và mọi ngưỡng chỉ làm yếu phép kiểm.</p>
+
+<h3>2. Ngưỡng tuyệt đối</h3>
+
+$$|a - b| \;\le\; \tau_{\text{abs}} .$$
+
+<p>Đúng khi hai số nằm trong một dải độ lớn <b>đã biết trước</b> và có một đơn vị tự nhiên. Ví dụ: toạ độ pixel trên màn hình, nơi $\tau_{\text{abs}} = 0{,}5$ có nghĩa là "cùng một điểm ảnh"; hay số tiền tính bằng đồng, nơi $\tau_{\text{abs}} = 0{,}005$ có nghĩa là "cùng một xu".</p>
+
+<p>Sai lầm điển hình là dùng nó cho đại lượng có dải rộng. Với $\tau_{\text{abs}} = 10^{-9}$, hai số cỡ $10^{-12}$ luôn "bằng nhau" dù chúng khác nhau ba bậc, còn hai số cỡ $10^{12}$ thì không bao giờ bằng nhau vì $10^{-9}$ nhỏ hơn cả ULP của chúng.</p>
+
+<h3>3. Ngưỡng tương đối</h3>
+
+$$|a - b| \;\le\; \tau_{\text{rel}} \cdot \max(|a|, |b|) .$$
+
+<p>Đây là lựa chọn mặc định hợp lý cho kết quả tính toán, vì nó khớp với thứ mà Định lý 1.7 ở Chương 1.3 chặn. Cách chọn $\tau_{\text{rel}}$ cũng có căn cứ chứ không phải bốc: nếu bạn biết kết quả đi qua khoảng $k$ phép tính thì $\tau_{\text{rel}} \approx k u$ là một khởi điểm có lý, và Chương 2.2 cho $k$ theo thuật toán bạn dùng.</p>
+
+<p>Nhược điểm duy nhất, nhưng nghiêm trọng: nó <b>hỏng ở gần $0$</b>. Với $a = 0$ và $b = 10^{-300}$, vế phải bằng $10^{-300}\tau_{\text{rel}}$, nhỏ hơn $|a-b|$, nên hai số bị coi là khác nhau — dù theo mọi nghĩa thực dụng thì cả hai đều là $0$.</p>
+
+<h3>4. Khoảng cách tính bằng ULP</h3>
+
+<p>Đếm có bao nhiêu số máy nằm giữa $a$ và $b$. Nhờ Định lý 1.2 ở Chương 1.1 và phép biến đổi ở bài tập 2 của chương ấy, đây là một phép trừ số nguyên:</p>
+
+<pre><code>int64_t ordinal(double x) {          // đơn điệu trên MỌI double không phải NaN
+    uint64_t u; memcpy(&amp;u, &amp;x, 8);
+    return (u &amp; 0x8000000000000000ull) ? (int64_t)(~u) : (int64_t)(u ^ 0x8000000000000000ull);
+}
+
+bool within_ulps(double a, double b, int64_t n) {
+    if (isnan(a) || isnan(b)) return false;
+    int64_t d = ordinal(a) - ordinal(b);
+    return (d &lt; 0 ? -d : d) &lt;= n;
+}</code></pre>
+
+<p>Đây là cách <b>đúng nhất về mặt khái niệm</b>: nó đo bằng đơn vị của chính cái lưới, nên nó tự động chặt ở gần $0$ và lỏng ở xa. Nó cũng là cách duy nhất trong bốn cách trả lời được câu "hàm này có làm tròn đúng không", vì đó là một câu hỏi phát biểu bằng ULP.</p>
+
+<p>Nó cũng thừa hưởng đúng nhược điểm của ULP ở gần $0$, nhưng theo chiều ngược lại: quanh $0$ lưới dày đặc số dưới chuẩn, nên $10^{-320}$ và $10^{-322}$ cách nhau rất nhiều ULP dù cả hai đều là "không đáng kể". Và nó không dùng được khi hai số trái dấu vắt qua $0$, trừ khi bạn chấp nhận đếm cả các số dưới chuẩn ở giữa.</p>
+
+<h2 id="bang">Bảng quyết định</h2>
+
+<div class="tbl-wrap"><table class="tbl">
+<thead><tr><th>Hai số đến từ đâu</th><th>Cách dùng</th><th>Tham số chọn thế nào</th></tr></thead>
+<tbody>
+<tr><td>số nguyên dưới $2^{53}$, hằng số cất được chính xác</td><td>chính xác</td><td>—</td></tr>
+<tr><td>giá trị canh gác ($0$, $\pm\infty$, cờ)</td><td>chính xác</td><td>—</td></tr>
+<tr><td>đại lượng có đơn vị tự nhiên, dải hẹp</td><td>tuyệt đối</td><td>nửa đơn vị nhỏ nhất có nghĩa</td></tr>
+<tr><td>kết quả của một chuỗi $k$ phép tính</td><td>tương đối</td><td>$\tau_{\text{rel}} \approx k u$, với $k$ từ Chương 2.2</td></tr>
+<tr><td>kết quả có thể đi qua $0$</td><td><b>lai</b>: tuyệt đối HOẶC tương đối</td><td>hai tham số, chọn riêng</td></tr>
+<tr><td>kiểm chất lượng một hàm thư viện</td><td>ULP</td><td>$\le 1$ nếu đòi làm tròn đúng, $\le 4$ cho hàm siêu việt</td></tr>
+<tr><td>vị từ hình học (dấu của định thức)</td><td><b>không cái nào</b></td><td>số học chính xác hoặc bộ lọc có cận đã chứng minh</td></tr>
+</tbody></table></div>
+
+<p>Dòng "lai" là dòng dùng nhiều nhất trong mã thật, và nó chính là cách <code>math.isclose</code> của Python cùng <code>numpy.allclose</code> hoạt động:</p>
+
+$$|a-b| \;\le\; \max\big(\tau_{\text{rel}} \cdot \max(|a|,|b|),\; \tau_{\text{abs}}\big).$$
+
+<p>Ngưỡng tuyệt đối ở đây <b>không phải</b> một tham số phụ để cho đẹp — nó là thứ duy nhất giữ cho phép so sánh có nghĩa quanh $0$, và bỏ trống nó là lỗi thường gặp nhất khi dùng hai hàm trên. Chú ý mặc định của hai thư viện khác nhau: <code>math.isclose</code> lấy $\tau_{\text{abs}} = 0$, còn <code>numpy.allclose</code> lấy $10^{-8}$ — cùng một công thức, hai hành vi khác hẳn ở gần $0$.</p>
+
+<div class="box pitfall"><div class="box-h">Cạm bẫy — dòng cuối bảng không phải lời khuyên thận trọng</div>
+<p>Vị từ hình học là các phép hỏi "điểm này nằm phía nào của đường thẳng kia", "bốn điểm này có đồng viên không" — và câu trả lời phải là một trong ba giá trị rời rạc, chứ không phải một số thực có sai số.</p>
+<p>Dùng ngưỡng cho chúng không làm chúng an toàn hơn; nó chỉ đổi một câu trả lời sai lấy một câu trả lời <b>không nhất quán</b>. Một thuật toán bao lồi có thể kết luận điểm $P$ nằm bên trái đoạn $AB$ và cũng nằm bên trái đoạn $BA$, dựng ra một cấu trúc không tồn tại về mặt tổ hợp, rồi sập ở một hàm cách đó rất xa với một thông báo lỗi vô nghĩa.</p>
+<p>Lời giải đúng là bộ lọc dấu phẩy động có cận sai số đã chứng minh: tính bằng double, so kết quả với một cận tính được, và <b>chỉ khi</b> nó nằm trong vùng bất định mới rơi xuống số học chính xác. Đây là cách các thư viện hình học tính toán nghiêm túc làm, và nó nhanh vì vùng bất định hiếm khi bị chạm tới. Hộp cạm bẫy về FMA ở Chương 1.3 là một lý do nữa để không tự viết lấy phần này.</p></div>
+
+<div class="box warn"><div class="box-h">Chỗ hay sai — so sánh trong bài kiểm thử không giống so sánh trong mã sản xuất</div>
+<p>Trong bài kiểm thử, bạn thường biết giá trị đúng và muốn hỏi "cài đặt của tôi có tốt như tôi tuyên bố không". Câu hỏi đó phát biểu bằng ULP, và ngưỡng phải là một <b>khẳng định về chất lượng</b> — nếu bạn nới nó lên mỗi lần bài kiểm thử đỏ, bạn đã biến nó thành một hàm luôn xanh.</p>
+<p>Trong mã sản xuất, bạn không biết giá trị đúng và câu hỏi thường là "hai đại lượng này có đủ gần để coi như một không, xét theo bài toán". Đó là một quyết định <b>miền nghiệp vụ</b>, và ngưỡng phải đến từ miền ấy chứ không từ $u$.</p>
+<p>Trộn hai câu hỏi là cách một hằng số $10^{-6}$ chép từ bài kiểm thử lọt vào mã thật rồi ở lại đó vĩnh viễn, không ai nhớ nó nghĩa là gì.</p></div>
+
+<h2 id="danh-sach">Danh sách tự kiểm trước khi viết một phép so sánh</h2>
+
+<ul>
+<li>Hai vế có thể là $\mathrm{NaN}$ không? Nếu có, quyết định trước xem <code>NaN</code> so với <code>NaN</code> nên trả về gì — và nhớ rằng mọi toán tử tích hợp trả về "sai".</li>
+<li>Hai vế có thể đi qua $0$ không? Nếu có, ngưỡng tương đối đơn thuần là sai; phải dùng dạng lai.</li>
+<li>Hai vế có thể trái dấu không? Nếu có, khoảng cách ULP cần cân nhắc thêm.</li>
+<li>Ngưỡng bạn đang viết đến từ đâu — từ $u$ và số phép tính, hay từ miền nghiệp vụ? Ghi câu trả lời vào chú thích ngay tại chỗ.</li>
+<li>Có phải bạn đang so sánh để quyết định một câu hỏi <b>rời rạc</b> (bên trái hay bên phải, có cắt nhau hay không)? Nếu có, xem lại dòng cuối bảng.</li>
+<li>Nếu đây là bài kiểm thử: ngưỡng có bao giờ được nới ra sau một lần đỏ chưa? Nếu có, nó không còn kiểm gì nữa.</li>
+</ul>
+
+<div class="keyfacts"><div class="box-h">Chốt phụ lục</div>
+<ul>
+<li>Không có một hàm so sánh đúng cho mọi trường hợp; có <b>bốn</b> cách và một bảng quyết định.</li>
+<li>So sánh chính xác là đúng khi cả hai vế đến từ phép tính chính xác — số nguyên dưới $2^{53}$, giá trị canh gác.</li>
+<li>Ngưỡng tương đối là mặc định hợp lý cho kết quả tính toán, và nó hỏng ở gần $0$; dạng lai vá đúng chỗ đó.</li>
+<li>Khoảng cách ULP là cách đúng nhất về khái niệm và là cách duy nhất phát biểu được "làm tròn đúng"; nó là một phép trừ số nguyên nhờ Định lý 1.2.</li>
+<li>Vị từ hình học không được quyết bằng ngưỡng nào cả — ngưỡng đổi "sai" lấy "không nhất quán", và không nhất quán thì gây sập ở nơi khác.</li>
+<li>Ngưỡng trong bài kiểm thử là một khẳng định về chất lượng; ngưỡng trong mã sản xuất là một quyết định nghiệp vụ. Hai thứ khác nhau, đừng chép qua lại.</li>
+</ul></div>

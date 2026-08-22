@@ -1,0 +1,147 @@
+<div class="ch-eyebrow">Phần 0 · Bài toán — Chương 0.2</div>
+<h1 class="ch-title">Hữu hạn bit, vô hạn số</h1>
+<p class="ch-lede">Chương 0.1 chỉ ra rằng $0{,}1$ không nằm trên lưới. Câu hỏi tự nhiên tiếp theo là "vậy lưới ấy bỏ sót nhiều đến mức nào" — và câu trả lời thô thiển thì ai cũng đoán được: bỏ sót gần như tất cả. Điều đáng học không phải con số đó, mà là <b>cách</b> $2^{64}$ chỗ trống ít ỏi được phân bổ dọc trục số, vì mọi tính chất khó chịu của số dấu phẩy động đều là hệ quả của cách phân bổ ấy.</p>
+
+<h2 id="phep-dem">Phép đếm nói gì</h2>
+
+<p>Trước hết là một lập luận không cần biết gì về IEEE 754. Một kiểu dữ liệu $64$ bit có đúng $2^{64}$ trạng thái, tức khoảng $1{,}8 \times 10^{19}$. Tập số thực trong đoạn $[1, 2]$ thì không đếm được. Nên bất kỳ cách biểu diễn nào cũng bỏ sót "hầu hết" số thực, theo mọi nghĩa của từ đó mà bạn muốn dùng.</p>
+
+<p>Lập luận ấy đúng nhưng vô dụng, vì nó cũng đúng với mọi cách biểu diễn hữu hạn và do đó không phân biệt được cách tốt với cách tồi. Câu hỏi có ích hơn nhiều là câu hỏi <b>định lượng</b>: cho trước một số thực $x$ trong dải làm việc, số máy gần nó nhất cách nó bao xa?</p>
+
+<p>Và đây mới là chỗ hai thiết kế khác hẳn nhau. Với biểu diễn cố định dấu phẩy, khoảng cách ấy là một hằng số trên toàn dải. Với dấu phẩy động, nó tỉ lệ với $|x|$. Cùng $64$ bit, hai câu trả lời khác nhau hoàn toàn về mặt sử dụng được hay không.</p>
+
+<div class="box def"><div class="box-h">Định nghĩa 0.3 — binade</div>
+<p>Với $e$ nguyên, <b>binade</b> thứ $e$ là nửa khoảng $[2^{e},\, 2^{e+1})$. Mỗi số thực dương thuộc đúng một binade, và $e = \lfloor \log_2 x \rfloor$.</p></div>
+
+<p>Trong một hệ có $p$ bit định trị (kể cả bit ẩn), mỗi binade chứa đúng $2^{p-1}$ số biểu diễn được, cách đều nhau. Đó là toàn bộ nội dung của Định nghĩa 0.3 khi kết hợp với Định nghĩa 0.1, và nó có một hệ quả trực tiếp mà ta sẽ dùng đi dùng lại:</p>
+
+$$\text{khoảng cách trong binade } e \;=\; \frac{2^{e+1} - 2^{e}}{2^{\,p-1}} \;=\; 2^{\,e - p + 1}.$$
+
+<p>Nói bằng lời: lưới thưa gấp đôi mỗi khi bạn đi lên một binade. Với binary64 thì $p = 53$, nên khoảng cách trong binade chứa $1$ là $2^{-52} \approx 2{,}22 \times 10^{-16}$, còn trong binade chứa một tỉ thì là $2^{-22} \approx 2{,}4 \times 10^{-7}$ — thưa hơn ba mươi lần gấp đôi, tức hơn một tỉ lần.</p>
+
+<div class="fig">
+  <div class="fig-head">
+    <div class="fig-num">Hình 0.2 · Tương tác</div>
+    <div class="fig-title">Toàn bộ tập số của một định dạng đồ chơi</div>
+    <p class="fig-desc">Binary64 có hơn $2^{63}$ giá trị nên không vẽ được cái nào ra giấy. Ở đây là một định dạng $3$ bit mũ, $p$ bit định trị — đủ nhỏ để thấy <em>từng</em> giá trị. Kéo thanh trượt và nhìn hai thứ: số vạch trong mỗi dải màu, và khoảng cách giữa chúng.</p>
+  </div>
+  <div class="fig-body"><div data-viz="spacing-ruler"></div></div>
+  <div class="fig-foot">Mỗi dải màu là một binade và luôn chứa <b>đúng cùng một số vạch</b>, dù dải sau dài gấp đôi dải trước. Đó là câu quan trọng nhất của chương này: thêm một bit định trị làm dày lưới lên gấp đôi ở <em>mọi</em> binade cùng lúc, chứ không kéo dài dải làm việc; muốn dải dài hơn thì phải thêm bit vào <em>số mũ</em>, và hai loại bit ấy không thay thế nhau được. Chú ý thêm cụm vạch sát gốc toạ độ: đó là các số dưới chuẩn, và mục dưới nói vì sao chúng không tuân theo quy luật "cùng số vạch mỗi binade".</div>
+</div>
+
+<h2 id="hai-loai-bit">Hai loại bit, hai thứ khác nhau</h2>
+
+<p>Bạn có $w$ bit và phải chia cho hai trường: $q$ bit cho số mũ, $p - 1$ bit cho phần định trị (bit ẩn không tốn chỗ), cộng một bit dấu. Ràng buộc là $1 + q + (p-1) = w$. Hai trường mua hai thứ khác nhau, và đây là chỗ nhiều người lần đầu bị nhầm.</p>
+
+<p>Bit số mũ mua <b>dải</b>. Với $q$ bit, số mũ chạy trong khoảng rộng cỡ $2^{q}$ giá trị, nên tỉ số giữa số lớn nhất và số nhỏ nhất biểu diễn được cỡ $2^{2^{q}}$ — tăng theo hàm mũ chồng mũ. Đây là lý do chỉ $8$ bit số mũ đã cho float32 dải từ $10^{-38}$ tới $10^{38}$.</p>
+
+<p>Bit định trị mua <b>độ mịn</b>. Thêm một bit định trị chia đôi khoảng cách trong mọi binade, tức giảm một nửa sai số tương đối tối đa — nhưng không mở rộng dải một chút nào.</p>
+
+<div class="tbl-wrap"><table class="tbl">
+<thead><tr><th>Định dạng</th><th>$w$</th><th>$q$ (mũ)</th><th>$p$ (định trị)</th><th>Sai số tương đối tối đa</th><th>Số lớn nhất</th></tr></thead>
+<tbody>
+<tr><td>binary16 (half)</td><td>16</td><td>5</td><td>11</td><td>$2^{-11} \approx 4{,}9 \times 10^{-4}$</td><td>$6{,}55 \times 10^{4}$</td></tr>
+<tr><td>bfloat16</td><td>16</td><td>8</td><td>8</td><td>$2^{-8} \approx 3{,}9 \times 10^{-3}$</td><td>$3{,}39 \times 10^{38}$</td></tr>
+<tr><td>binary32 (float)</td><td>32</td><td>8</td><td>24</td><td>$2^{-24} \approx 6{,}0 \times 10^{-8}$</td><td>$3{,}40 \times 10^{38}$</td></tr>
+<tr><td>binary64 (double)</td><td>64</td><td>11</td><td>53</td><td>$2^{-53} \approx 1{,}1 \times 10^{-16}$</td><td>$1{,}80 \times 10^{308}$</td></tr>
+</tbody></table></div>
+
+<p>Hai dòng đầu đáng dừng lại. binary16 và bfloat16 dùng <b>cùng một số bit</b> nhưng chia hoàn toàn khác nhau, và cả hai đều đang được dùng thật trong huấn luyện mạng nơ-ron. bfloat16 hi sinh gần hết độ mịn để giữ nguyên dải của float32 — một đổi chác nghe điên rồ cho tới khi bạn biết rằng thứ giết chết một lượt huấn luyện thường là gradient tràn xuống $0$, chứ không phải gradient thiếu vài chữ số.</p>
+
+<div class="box res"><div class="box-h">Neo về thực tế — vì sao bfloat16 thắng half trong học sâu</div>
+<p>Chuyển một mô hình từ float32 sang binary16 đòi hỏi "co giãn tổn thất": nhân hàm mất mát với một hằng số lớn trước khi lan truyền ngược, rồi chia lại, chỉ để kéo các gradient bé xíu ra khỏi vùng dưới chuẩn của binary16. Đó là một lớp phức tạp thật, có thể hỏng thật, và phải chỉnh theo từng mô hình.</p>
+<p>bfloat16 có đúng dải số mũ của float32 nên không cần co giãn gì cả: cùng số mũ, cùng ngưỡng tràn, chỉ ít bit định trị hơn. Mà ít bit định trị lại không sao, vì bản thân gradient ngẫu nhiên đã ồn hơn thế nhiều lần. Đây là một ví dụ sạch sẽ cho một nguyên tắc rộng hơn: <b>chọn định dạng theo chỗ dữ liệu của bạn dễ chết, không theo số chữ số nghe cho oai</b>.</p></div>
+
+<h2 id="epsilon">Epsilon máy — con số duy nhất bạn phải nhớ</h2>
+
+<p>Toàn bộ mục trước quy về một đại lượng, và nó là hằng số quan trọng nhất của cả course.</p>
+
+<div class="box def"><div class="box-h">Định nghĩa 0.4 — epsilon máy</div>
+<p><b>Epsilon máy</b> $\varepsilon$ của một hệ có $p$ bit định trị là khoảng cách từ $1$ tới số biểu diễn được kế tiếp:
+$$\varepsilon \;=\; 2^{\,1-p}.$$
+Với binary64, $\varepsilon = 2^{-52} \approx 2{,}22 \times 10^{-16}$.</p></div>
+
+<div class="box warn"><div class="box-h">Chỗ hay sai — hai định nghĩa của epsilon, lệch nhau đúng hai lần</div>
+<p>Có <b>hai</b> đại lượng cùng được gọi là "epsilon máy" trong tài liệu, và chúng khác nhau một hệ số $2$:</p>
+<ul>
+<li><b>Khoảng cách tới số kế tiếp sau 1</b>, tức $2^{1-p} = 2^{-52}$. Đây là <code>DBL_EPSILON</code> trong C, <code>sys.float_info.epsilon</code> trong Python, <code>Number.EPSILON</code> trong JavaScript.</li>
+<li><b>Cận trên của sai số tương đối khi làm tròn</b>, tức $2^{-p} = 2^{-53}$. Đây là đại lượng xuất hiện trong mọi định lý phân tích sai số, và Chương 1.3 sẽ gọi nó là $u$ để khỏi lẫn.</li>
+</ul>
+<p>Hai lần không phải sai số làm tròn, nó là một hệ số thật. Một cận sai số bạn chép từ sách rồi cài bằng hằng số của thư viện chuẩn sẽ lỏng hoặc chặt gấp đôi so với ý định — và "chặt gấp đôi" là hướng nguy hiểm, vì nó cho bạn một cận <em>không đúng</em>. Khi đọc một công thức có $\varepsilon$, việc đầu tiên phải làm là xác định tác giả đang dùng cái nào.</p></div>
+
+<p>Ý nghĩa của $\varepsilon$ nằm ở một câu duy nhất: <b>mọi</b> số thực trong dải chuẩn đều được biểu diễn với sai số tương đối không quá $\varepsilon/2$. Không phải "thường thường", không phải "trung bình" — mà là mọi số, tệ nhất. Chương 1.3 sẽ chứng minh điều này thành Định lý 1.5 và mở rộng nó thành mô hình sai số dùng cho toàn bộ Phần II.</p>
+
+<p>Một cách nhớ khác, hữu ích khi bạn ước lượng nhanh: $2^{-52} \approx 10^{-15{,}65}$, nên binary64 cho bạn <b>khoảng mười sáu chữ số thập phân</b> có nghĩa. Con số $16$ đó là lý do vì sao in một double với mười bảy chữ số luôn đủ để đọc ngược lại đúng giá trị cũ, còn mười lăm chữ số thì không phải lúc nào cũng đủ.</p>
+
+<h2 id="duoi-chuan">Vùng dưới chuẩn: chỗ quy luật gãy</h2>
+
+<p>Có một chỗ trên trục số mà mọi thứ vừa nói đều sai, và nó nằm ở đúng nơi bạn ít đề phòng nhất — sát gốc toạ độ.</p>
+
+<p>Số mũ có một giá trị nhỏ nhất $e_{\min}$. Nếu ta chỉ có các số dạng $\pm(1 + f) \cdot 2^{e}$ với $e \ge e_{\min}$ thì số dương nhỏ nhất là $2^{e_{\min}}$, và giữa nó với $0$ là một khoảng trống rộng bằng $2^{e_{\min}}$ — trong khi khoảng cách giữa hai số kề nhau ngay trên đó chỉ là $2^{e_{\min} - p + 1}$, tức nhỏ hơn hàng ngàn tỉ lần. Một cái hố.</p>
+
+<p>Cái hố đó không phải chuyện thẩm mỹ. Nó phá vỡ một tính chất mà mọi lập trình viên đều ngầm dựa vào:</p>
+
+$$a - b = 0 \iff a = b.$$
+
+<p>Với hai số $a \ne b$ cách nhau ít hơn $2^{e_{\min}}$, hiệu của chúng khác $0$ nhưng không biểu diễn được, nên phải làm tròn về $0$ — và câu lệnh <code>if (a != b) return 1/(a-b);</code> chia cho $0$. IEEE 754 vá cái hố bằng <b>số dưới chuẩn</b>: ở số mũ nhỏ nhất, bỏ bit ẩn đi và cho phép định trị bắt đầu bằng $0$, tức các số dạng $f \cdot 2^{e_{\min}}$ với $0 < f < 1$.</p>
+
+<div class="box thm"><div class="box-h">Mệnh đề 0.5 — trừ chính xác trong vùng dưới chuẩn</div>
+<p>Nếu hệ có số dưới chuẩn thì với mọi $a, b$ biểu diễn được, hiệu $a - b$ khi $|a - b| < 2^{e_{\min}}$ được tính <b>chính xác</b>, không sai một bit. Hệ quả: $a - b = 0$ khi và chỉ khi $a = b$.</p></div>
+
+<details class="deriv"><summary>Chứng minh</summary><div class="deriv-body">
+<p>Cả $a$ và $b$ đều là bội nguyên của $2^{e_{\min} - p + 1}$ — với số chuẩn thì vì định trị có $p$ bit và số mũ ít nhất bằng $e_{\min}$, với số dưới chuẩn thì theo đúng định nghĩa. Tập các bội nguyên của một số thì đóng với phép trừ, nên $a - b$ cũng là bội nguyên của $2^{e_{\min} - p + 1}$.</p>
+<p>Giả thiết $|a - b| < 2^{e_{\min}}$ nói rằng bội ấy có hệ số nguyên nhỏ hơn $2^{p-1}$ về trị tuyệt đối, tức vừa đúng trong $p - 1$ bit — mà mọi bội nguyên của $2^{e_{\min}-p+1}$ nhỏ hơn $2^{e_{\min}}$ đều là một số dưới chuẩn hợp lệ. Vậy $a - b$ nằm sẵn trong tập biểu diễn được và phép làm tròn không phải làm gì. $\square$</p>
+<p>Tính chất này có tên riêng trong tài liệu — <b>gradual underflow</b>, tràn xuống từ từ — và nó là một trong những tranh cãi gay gắt nhất khi IEEE 754 được soạn năm 1985, vì nó tốn thêm mạch. Phe ủng hộ thắng, và lập luận thắng cuộc chính là mệnh đề này: không có nó, <code>a != b</code> không còn bảo đảm <code>a - b != 0</code>, và mọi thuật toán lặp kiểm tra hội tụ bằng hiệu đều mất nền.</p>
+</div></details>
+
+<div class="box pitfall"><div class="box-h">Cạm bẫy — vùng dưới chuẩn có thể chậm hơn một trăm lần</div>
+<p>Số dưới chuẩn thường không có đường đi nhanh trong đơn vị dấu phẩy động; nhiều CPU đẩy chúng sang vi mã. Một vòng lặp vô tình rơi vào vùng dưới chuẩn — hay gặp trong bộ lọc số có đuôi tắt dần về $0$ — có thể chậm đi hàng trăm lần mà không có một dòng cảnh báo nào.</p>
+<p>Vì thế nhiều thư viện âm thanh và trò chơi bật cờ "flush-to-zero", tức tắt hẳn số dưới chuẩn. Đó là một đổi chác có thật và <b>phải khai ra</b>: bật nó lên là bạn vứt bỏ Mệnh đề 0.5, và đoạn mã dựa vào "$a \ne b$ thì $a - b \ne 0$" ở chỗ khác trong cùng tiến trình sẽ hỏng theo cách rất khó tìm, vì cờ này thường là trạng thái toàn cục của luồng chứ không phải của hàm.</p></div>
+
+<div class="keyfacts"><div class="box-h">Chốt chương</div>
+<ul>
+<li>Mỗi binade $[2^{e}, 2^{e+1})$ chứa đúng $2^{p-1}$ số biểu diễn được; khoảng cách trong binade đó là $2^{e-p+1}$, tức <b>gấp đôi mỗi lần lên một binade</b>.</li>
+<li>Bit số mũ mua dải, bit định trị mua độ mịn. Chúng không thay thế nhau, và bfloat16 với binary16 là hai lời giải khác nhau cho cùng $16$ bit.</li>
+<li>Epsilon máy $\varepsilon = 2^{1-p}$ là khoảng cách từ $1$ tới số kế tiếp. Cận sai số làm tròn là $u = \varepsilon/2 = 2^{-p}$ — <b>hai đại lượng khác nhau, cùng một cái tên</b>.</li>
+<li>Số dưới chuẩn tồn tại để giữ cho $a - b = 0 \iff a = b$. Tắt chúng bằng flush-to-zero là vứt bỏ đúng bảo đảm đó.</li>
+<li>binary64 cho khoảng mười sáu chữ số thập phân có nghĩa — con số đáng nhớ khi ước lượng nhanh xem một kết quả có đáng tin tới chữ số thứ mấy.</li>
+</ul></div>
+
+<h2 id="bai-tap">Bài tập</h2>
+
+<div class="box ex"><div class="box-h">Bài 1 · Đếm và ước lượng · ★</div>
+<p>(a) binary64 có bao nhiêu giá trị hữu hạn khác nhau trong đoạn $[1, 2]$? Trong đoạn $[1024, 2048]$?</p>
+<p>(b) Có bao nhiêu giá trị binary64 nằm trong $[1, 2]$ so với trong $[2, 4]$? Trả lời không cần tính.</p>
+<p>(c) Một nửa số giá trị dương của binary64 nằm trong đoạn nào? Câu trả lời sẽ làm bạn ngạc nhiên; hãy nói vì sao nó lại là như vậy.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Đoạn $[1,2]$ là binade $e = 0$ cộng thêm điểm mút $2$, nên có $2^{52} + 1$ giá trị. Đoạn $[1024, 2048] = [2^{10}, 2^{11}]$ cũng vậy: $2^{52} + 1$. Độ dài khoảng gấp $1024$ lần nhưng số điểm y hệt.</p>
+<p><b>(b)</b> Bằng nhau. Đó là định nghĩa của binade, và nó là câu trả lời cho "vì sao sai số tương đối đều còn sai số tuyệt đối thì không".</p>
+<p><b>(c)</b> Trong $[0, 1)$ — nói chính xác hơn, các số dương nhỏ hơn $1$ chiếm hơn một nửa số giá trị dương. Lý do: số mũ của binary64 chạy từ $-1022$ tới $+1023$, nên có $1022$ binade dưới $1$ và $1023$ binade từ $1$ trở lên, mỗi binade cùng số điểm — gần như chia đôi. Nhưng mọi binade dưới $1$ nhồi vào một đoạn dài đúng $1$ đơn vị, còn các binade trên $1$ trải ra tới $10^{308}$.</p>
+<p>Đây là cách nhìn đáng giữ lại: dấu phẩy động dồn gần hết "độ phân giải" của nó vào lân cận số $0$. Nó là món quà cho bài toán nào làm việc với đại lượng bé và là cái bẫy cho bài toán nào cộng số bé vào số lớn — đúng cái bẫy Chương 2.2 tháo gỡ.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 2 · Chọn định dạng · ★★</div>
+<p>Với mỗi tình huống, chọn giữa binary32 và binary64, và nói rõ đại lượng nào trong bảng ở trên là căn cứ.</p>
+<p>(a) Toạ độ GPS của mọi điểm trên Trái Đất, cần chính xác tới một mét.</p>
+<p>(b) Thời gian tính bằng giây kể từ năm 1970, cần chính xác tới một mili-giây.</p>
+<p>(c) Trọng số của một mạng nơ-ron trong lúc suy luận.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Chu vi Trái Đất khoảng $4 \times 10^{7}$ m, nên một mét là sai số tương đối $2{,}5 \times 10^{-8}$. Sai số tương đối tối đa của binary32 là $6{,}0 \times 10^{-8}$ — <b>lớn hơn</b> ngưỡng cần. binary32 không đủ, dù chỉ thiếu hơn hai lần. Đây là lý do rất thật khiến mã bản đồ dùng double cho vĩ độ và kinh độ.</p>
+<p><b>(b)</b> Năm $2026$ ứng với khoảng $1{,}8 \times 10^{9}$ giây. Cần phân giải $10^{-3}$ giây, tức sai số tương đối $5{,}6 \times 10^{-13}$. binary32 lệch xa hàng bốn bậc; binary64 với $1{,}1 \times 10^{-16}$ thì thừa sức. Đáng nói thêm: chọn mốc thời gian khác — chẳng hạn đếm từ đầu ngày hôm nay — sẽ kéo con số về cỡ $10^{5}$ và lúc đó binary32 vừa đủ. <b>Mốc quy chiếu là một biến thiết kế</b>, không phải hằng số của vũ trụ.</p>
+<p><b>(c)</b> binary32 là thừa, và trong thực tế người ta còn dùng ít hơn nữa: binary16, bfloat16, thậm chí số nguyên $8$ bit. Căn cứ ở đây không nằm trong bảng mà nằm ở bản chất bài toán — trọng số đã học ra từ dữ liệu ồn, nên vài chữ số cuối không mang thông tin. Đây là ngoại lệ của quy tắc thông thường "cứ dùng double cho lành", và nó đáng nhớ vì suy luận mô hình là bài toán tính toán phổ biến nhất hiện nay.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 3 · Vùng dưới chuẩn, tự tay dựng lại · ★★★</div>
+<p>Xét hệ đồ chơi: $\beta = 2$, $p = 3$, $e_{\min} = -1$, $e_{\max} = 1$.</p>
+<p>(a) Nếu <em>không</em> có số dưới chuẩn, số dương nhỏ nhất là bao nhiêu, và khoảng trống giữa nó với $0$ rộng gấp mấy lần khoảng cách giữa hai số kề nhau ngay phía trên?</p>
+<p>(b) Thêm số dưới chuẩn vào. Liệt kê chúng, và nói rõ chúng cách đều nhau bao nhiêu.</p>
+<p>(c) Trong hệ <em>không</em> có số dưới chuẩn, tìm hai số $a \ne b$ biểu diễn được mà phép trừ trả về $0$. Rồi kiểm rằng cùng cặp ấy trong hệ <em>có</em> số dưới chuẩn cho kết quả khác $0$.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Số dương nhỏ nhất là $1{,}00_2 \cdot 2^{-1} = 0{,}5$. Khoảng cách giữa hai số kề nhau trong binade $e = -1$ là $2^{-1-3+1} = 2^{-3} = 0{,}125$. Khoảng trống từ $0$ tới $0{,}5$ vì thế rộng gấp <b>bốn lần</b> — và với binary64 thật thì tỉ số ấy là $2^{52}$, tức hơn bốn ngàn tỉ lần. Cái hố không hề khiêm tốn.</p>
+<p><b>(b)</b> Số dưới chuẩn có dạng $f \cdot 2^{-1}$ với $f \in \{0{,}01_2,\, 0{,}10_2,\, 0{,}11_2\}$, tức $\{0{,}125;\ 0{,}25;\ 0{,}375\}$. Chúng cách đều nhau $0{,}125$ — <b>đúng bằng</b> khoảng cách trong binade thấp nhất. Đó chính là điều làm cho phép trừ ở câu (c) trở nên chính xác: lưới không đổi bước khi đi qua $0{,}5$ xuống dưới, nó chỉ dừng lại ở $0$.</p>
+<p><b>(c)</b> Lấy $a = 0{,}625 = 1{,}01_2 \cdot 2^{-1}$ và $b = 0{,}5$. Hiệu toán học là $0{,}125$. Trong hệ không có số dưới chuẩn, $0{,}125$ nhỏ hơn số dương nhỏ nhất $0{,}5$, nên phải làm tròn về $0$: ta có $a \ne b$ nhưng $a - b = 0$.</p>
+<p>Trong hệ có số dưới chuẩn, $0{,}125$ nằm sẵn trong danh sách ở câu (b), nên hiệu được giữ nguyên, chính xác tới bit cuối. Đây đúng là Mệnh đề 0.5 trên một ví dụ đủ nhỏ để kiểm bằng tay — và nó cũng cho thấy vì sao <code>flush-to-zero</code> ở hộp cạm bẫy không phải một tối ưu vô hại: nó đưa hệ thống trở về đúng hành vi của câu (c) vế đầu.</p>
+</div></details>
+</div>

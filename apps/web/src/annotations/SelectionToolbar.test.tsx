@@ -34,6 +34,7 @@ import { fileURLToPath } from 'node:url';
 import { useEffect, useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearLocalData, db } from '../db/local';
+import { readSampleCourseFile, SAMPLE_CHAPTER } from '../test/sampleCourse';
 import { type Anchor, type AnchorColor, selectionToAnchor } from './anchor';
 import { flatToDom, normalizeContainer } from './normalize';
 import { highlightElements } from './painter';
@@ -881,7 +882,16 @@ describe('toolbarSpot — hộp THẬT phải nằm trong màn hình', () => {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '../../../..');
-const CHAPTER_FILE = resolve(REPO, 'courses/***REMOVED***/chapters/p1-5.html');
+// Chương của một GÓI THẬT, không phải HTML viết trong tệp này.
+// `readSampleCourseFile` đọc trong thư mục làm việc `courses/`, và ném ra câu
+// chỉ đúng lệnh phải chạy khi gói chưa được bung. Xem
+// apps/web/src/test/sampleCourse.ts — kể cả vì sao course đổi ở task 13.
+//
+// Gọi TRONG test, không phải ở cấp module: khác với painter/anchor/version —
+// nơi phép đọc vốn đã ở cấp module nên cả tệp trượt cùng nhau — tệp này còn 30
+// test khác không liên quan tới chương thật. Đọc ở cấp module sẽ kéo tất cả
+// chúng đỏ theo, tức mất độ phân giải chẩn đoán mà không được gì.
+const CHAPTER_FILE = SAMPLE_CHAPTER;
 
 let katexLoaded = false;
 function loadKatex(): void {
@@ -913,7 +923,7 @@ function RealChapterHarness({ html }: { html: string }) {
     });
     setContent((prev) => ({ root: el, revision: prev.revision + 1 }));
   }, [html]);
-  const live = useAnnotations('ltt', 'p1-5', content);
+  const live = useAnnotations('sdpd', 'p1-3', content);
   hook.api = live;
   return (
     <>
@@ -923,10 +933,10 @@ function RealChapterHarness({ html }: { html: string }) {
   );
 }
 
-describe('chương thật p1-5.html với KaTeX thật', () => {
+describe('chương thật p1-3.html của gói mẫu, với KaTeX thật', () => {
   it('bôi chọn đoạn có CÔNG THỨC rồi bôi chọn tiếp: cả hai ghi chú đúng chữ, đúng một lớp', async () => {
     loadKatex();
-    render(<RealChapterHarness html={readFileSync(CHAPTER_FILE, 'utf8')} />);
+    render(<RealChapterHarness html={readSampleCourseFile(CHAPTER_FILE)} />);
     await waitFor(() => expect(chapterRoot().querySelectorAll('.katex').length).toBeGreaterThan(100));
 
     const root = chapterRoot();

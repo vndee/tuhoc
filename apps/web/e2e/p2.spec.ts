@@ -1,5 +1,13 @@
 import { expect, test, type BrowserContext, type ConsoleMessage, type Page } from '@playwright/test';
-import { PASSWORD, freshEmail, isBenignAuthCheck401, loginExistingUser, registerNewUser } from './helpers';
+import {
+  PASSWORD,
+  freshEmail,
+  isBenignAuthCheck401,
+  loginExistingUser,
+  openNotesTab,
+  registerNewUser,
+  selectParagraphByDrag,
+} from './helpers';
 
 /**
  * P2 Task 8 — the annotation phase's end-to-end gate.
@@ -50,8 +58,8 @@ import { PASSWORD, freshEmail, isBenignAuthCheck401, loginExistingUser, register
  * they need.
  */
 
-const COURSE_ID = '***REMOVED***';
-const CHAPTER_ID = 'p2-10';
+const COURSE_ID = 'so-dau-phay-dong';
+const CHAPTER_ID = 'p2-2';
 const CHAPTER_PATH = `/c/${COURSE_ID}/${CHAPTER_ID}`;
 
 /**
@@ -64,19 +72,32 @@ const CHAPTER_ASSET = `**/courses/${COURSE_ID}/chapters/${CHAPTER_ID}.html`;
 /**
  * The three paragraphs this suite drags across, by their opening words.
  *
- * All three are top-level `<p>` elements of `courses/***REMOVED***/
- * chapters/p2-10.html` — checked against the file, not assumed. "Top-level"
- * is load-bearing: that chapter has eleven `<details class="deriv">` blocks
- * whose paragraphs are collapsed by default, and a collapsed `<details>`
- * still hands `Range.getClientRects()` a plausible-looking rect at a
- * scroll offset the element is not actually at. A drag aimed at one of those
- * silently selects a completely different (and enormous) span of the
- * chapter. `selectParagraphByDrag` refuses one on purpose; these three are
- * chosen so it never has to.
+ * All three are top-level `<p>` elements of `courses/so-dau-phay-dong/
+ * chapters/p2-2.html` — checked against the file, not assumed. Two properties
+ * are load-bearing and both were measured before these three were picked.
+ *
+ * **Top-level.** That chapter has five `<details class="deriv">` blocks whose
+ * paragraphs are collapsed by default, and a collapsed `<details>` still hands
+ * `Range.getClientRects()` a plausible-looking rect at a scroll offset the
+ * element is not actually at. A drag aimed at one of those silently selects a
+ * completely different (and enormous) span of the chapter.
+ * `selectParagraphByDrag` refuses one on purpose; these three are chosen so it
+ * never has to.
+ *
+ * **Free of `$…$`.** The projection an anchor lives in collapses each KaTeX
+ * formula to a single `'￼'`, so a quote made of formula would fail
+ * `hasFindableText` and §4's rescue would be refused for the wrong reason.
+ * These three are plain prose end to end — which is a real constraint in a
+ * package averaging 182 inline formulas per chapter, and the reason p2-2 was
+ * chosen over the denser chapters.
+ *
+ * §3 also does string surgery on the raw HTML looking for `<p>` immediately
+ * followed by these openings, so they must be the literal first characters
+ * inside an attribute-less `<p>` tag.
  */
-const PARA_YELLOW = 'Ràng buộc công suất không phải chi tiết kỹ thuật';
-const PARA_GREEN = 'Công thức dung lượng có một cách đọc thuần túy hình học';
-const PARA_RESCUE = 'Muốn giải mã không lỗi, các quả cầu nhiễu phải rời nhau';
+const PARA_YELLOW = 'Thứ tự cộng không phải chi tiết cài đặt';
+const PARA_GREEN = 'Cận tuyến tính có một cách đọc rất thô nhưng đúng';
+const PARA_RESCUE = 'Muốn tổng đúng tới bit cuối, phải giữ lại phần bị mất';
 
 /** What §3's rebuilt chapter puts where the two annotated paragraphs were. */
 const REBUILT_MARKER = 'Đoạn này đã được viết lại trong bản chương mới.';
@@ -326,7 +347,7 @@ test.describe.serial('P2 definition-of-done gate — annotations', () => {
      *
      * The brief's sketch is "`page.evaluate` away the paragraph, then
      * reload". The reload is the part that makes that impossible: a reload
-     * re-fetches `/courses/.../p2-10.html` from the server and re-runs
+     * re-fetches `/courses/.../p2-2.html` from the server and re-runs
      * `innerHTML =`, so a DOM edit made beforehand is gone before any anchor
      * is resolved against it — the test would pass or fail for reasons that
      * have nothing to do with anchoring. Without the reload there is no fresh
@@ -510,130 +531,3 @@ test.describe.serial('P2 definition-of-done gate — annotations', () => {
     expectQuiet();
   });
 });
-
-/* ====================================================================== *
- * Helpers — local to this suite on purpose
- * ====================================================================== */
-
-/**
- * The rail opens on its "Trong chương" tab; the notes live behind the other
- * one. Idempotent, so a caller does not have to know whether something else
- * already brought it forward (`ChapterView`'s `focusCard` does, whenever a
- * card is opened from the chapter).
- */
-async function openNotesTab(page: Page): Promise<void> {
-  const tab = page.locator('#rail-tab-notes');
-  await expect(tab, 'the rail has no notes tab — is #rail hidden at this viewport width?').toBeVisible();
-  if ((await tab.getAttribute('aria-selected')) !== 'true') await tab.click();
-  await expect(tab).toHaveAttribute('aria-selected', 'true');
-}
-
-/**
- * Selects the first `chars` characters of the paragraph whose text starts
- * with `startsWith`, with a REAL mouse drag, and returns what the browser
- * ended up selecting.
- *
- * A drag rather than a programmatic `Selection`, because "select some words
- * and a toolbar appears" is the gesture this whole phase is built on, and it
- * is the layer that a component test with jsdom (no layout engine, no hit
- * testing) is structurally unable to reach.
- *
- * Drags are also the single easiest thing in an e2e suite to get wrong in a
- * way that still passes or that fails for the wrong reason. Three specific
- * traps, all of which bit while this file was being written, and each of
- * which is closed here rather than left to luck:
- *
- *  1. **Smooth scrolling.** `packages/course-kit/reader.css` sets
- *     `html{scroll-behavior:smooth}`, so a plain `scrollIntoView()` is still
- *     ANIMATING when the rect is read and when the mouse moves. The measured
- *     result was an empty selection. `behavior: 'instant'` is required, not
- *     stylistic.
- *  2. **Collapsed `<details>`.** Eleven of this chapter's paragraphs are
- *     inside `<details class="deriv">` blocks that are closed by default, and
- *     one of those still returned a rect — 437px BELOW the viewport, where
- *     the drag became a click-and-drag off the bottom edge that selected the
- *     rest of the chapter. Refused up front.
- *  3. **A rect that is not where the mouse will land.** The sticky topbar,
- *     an unfinished scroll, a floating toolbar left over from a previous
- *     selection — any of them puts a different element under the two
- *     endpoints. `document.elementFromPoint` is asked about both, before the
- *     mouse moves, and both must land inside the intended paragraph.
- *
- * The return value is what `getSelection()` actually holds afterwards, not
- * what was asked for — callers assert against THAT, so an off-by-one at
- * either end of the drag can never make an assertion vacuous.
- */
-async function selectParagraphByDrag(page: Page, startsWith: string, chars: number): Promise<string> {
-  const prep = await page.evaluate(
-    ({ startsWith: prefix, chars: n }: { startsWith: string; chars: number }) => {
-      const root = document.querySelector('.fade-in') as HTMLElement | null;
-      if (!root) return { ok: false as const, why: 'no chapter container on the page' };
-      const paragraphs = Array.from(root.querySelectorAll('p'));
-      const index = paragraphs.findIndex((p) => (p.textContent ?? '').startsWith(prefix));
-      if (index < 0) return { ok: false as const, why: `no paragraph starts with "${prefix}"` };
-      const target = paragraphs[index];
-      if (target.closest('details:not([open])')) {
-        return { ok: false as const, why: `"${prefix}" is inside a collapsed <details> — its rect is not where it is drawn` };
-      }
-      target.scrollIntoView({ block: 'center', behavior: 'instant' });
-      const node = document.createTreeWalker(target, NodeFilter.SHOW_TEXT).nextNode() as Text | null;
-      if (!node) return { ok: false as const, why: `"${prefix}" has no text node to drag across` };
-      const range = document.createRange();
-      range.setStart(node, 0);
-      range.setEnd(node, Math.min(n, node.data.length));
-      // The FIRST client rect: one per line the range wraps onto, and a drag
-      // has to stay on one line to mean anything.
-      const rect = range.getClientRects()[0];
-      if (!rect) return { ok: false as const, why: `"${prefix}" is not drawn anywhere` };
-      return {
-        ok: true as const,
-        index,
-        x: rect.x,
-        y: rect.y,
-        width: rect.width,
-        height: rect.height,
-        viewportHeight: window.innerHeight,
-      };
-    },
-    { startsWith, chars },
-  );
-  expect(prep.ok, prep.ok ? '' : prep.why).toBe(true);
-  if (!prep.ok) throw new Error(prep.why); // narrowing; `expect` above already failed the test
-
-  const y = prep.y + prep.height / 2;
-  const x1 = prep.x + 1;
-  const x2 = prep.x + prep.width - 1;
-  expect(
-    y > 0 && y < prep.viewportHeight,
-    `the drag line for "${startsWith}" is at y=${y.toFixed(0)} in a ${prep.viewportHeight}px viewport — it never came into view`,
-  ).toBe(true);
-
-  const landed = await page.evaluate(
-    ({ index, points }: { index: number; points: readonly [number, number][] }) => {
-      const root = document.querySelector('.fade-in') as HTMLElement;
-      const target = Array.from(root.querySelectorAll('p'))[index];
-      return points.map(([x, yy]) => {
-        const hit = document.elementFromPoint(x, yy);
-        return hit !== null && (hit === target || target.contains(hit));
-      });
-    },
-    { index: prep.index, points: [[x1, y], [x2, y]] as readonly [number, number][] },
-  );
-  expect(
-    landed,
-    `the drag endpoints for "${startsWith}" do not land on that paragraph (start=${landed[0]}, end=${landed[1]}) — something is covering it`,
-  ).toEqual([true, true]);
-
-  await page.mouse.move(x1, y);
-  await page.mouse.down();
-  await page.mouse.move(x2, y, { steps: 12 });
-  await page.mouse.up();
-
-  const selected = await page.evaluate(() => window.getSelection()?.toString() ?? '');
-  expect(selected.trim().length, `the drag over "${startsWith}" selected nothing`).toBeGreaterThan(10);
-  expect(
-    startsWith.startsWith(selected.trim().slice(0, 20)),
-    `the drag over "${startsWith}" selected something else: "${selected.slice(0, 60)}"`,
-  ).toBe(true);
-  return selected;
-}

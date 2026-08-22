@@ -30,6 +30,7 @@ import (
 
 	"github.com/vndee/tuhoc-api/internal/config"
 	"github.com/vndee/tuhoc-api/internal/server"
+	"github.com/vndee/tuhoc-api/internal/stats"
 	"github.com/vndee/tuhoc-api/internal/store"
 )
 
@@ -304,6 +305,63 @@ func TestStatsFlows(t *testing.T) {
 		got := getStats(t, app, cookie)
 		if got.TotalMinutes != 0 {
 			t.Fatalf("rejected batch must have zero side effects, got totalMinutes=%v", got.TotalMinutes)
+		}
+	})
+
+	// The counterpart of internal/sync's own item-cap case, and for the
+	// same measured reason: this handler had no cap at all (its own doc
+	// comment said so and deferred it), every event becomes one row in a
+	// single transaction, and a review confirmed thousands of real rows
+	// landing from one request. The route's byte limit cannot stand in for
+	// this — an event item can be shrunk far below its realistic size, so
+	// the item count is not a function of the body size.
+	//
+	// The boundary is pinned without ever writing MaxEventsPerBatch rows:
+	// the cap is checked before the per-item loop, so exactly the cap with
+	// a malformed last item is a 400 (the cap passed it, the parser caught
+	// it) and one more is a 413.
+	t.Run("a batch over the item cap is refused before any of it is parsed", func(t *testing.T) {
+		app := newTestApp(pool)
+		cookie, _ := registerUser(t, app, "itemcap")
+
+		at := todayICT().Add(9 * time.Hour)
+		batch := func(n int) []map[string]any {
+			items := make([]map[string]any, 0, n)
+			for len(items) < n-1 {
+				items = append(items, heartbeatItem("c1", fmt.Sprintf("ch-%d", len(items)), at))
+			}
+			items = append(items, map[string]any{
+				"courseId": "", "chapterId": "ch-last", "kind": "heartbeat",
+				"meta": map[string]any{}, "at": at.Format(time.RFC3339Nano),
+			})
+			return items
+		}
+
+		over := batch(stats.MaxEventsPerBatch + 1)
+		resp, raw := doRequest(t, app, http.MethodPost, "/events/batch", eventsBatchBody(over), cookie)
+		if resp.StatusCode != http.StatusRequestEntityTooLarge {
+			t.Fatalf("%d events (cap is %d): want 413 got %d body=%s",
+				len(over), stats.MaxEventsPerBatch, resp.StatusCode, raw)
+		}
+
+		atCap := batch(stats.MaxEventsPerBatch)
+		atResp, atRaw := doRequest(t, app, http.MethodPost, "/events/batch", eventsBatchBody(atCap), cookie)
+		if atResp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("exactly %d events (cap is %d): want 400 from the parse loop, got %d body=%s",
+				len(atCap), stats.MaxEventsPerBatch, atResp.StatusCode, atRaw)
+		}
+
+		if got := getStats(t, app, cookie); got.TotalMinutes != 0 {
+			t.Errorf("a refused batch had side effects: totalMinutes=%v", got.TotalMinutes)
+		}
+
+		// Anti-vacuity: an ordinary batch from the same session applies.
+		okResp, okOut := postEvents(t, app, cookie, []map[string]any{heartbeatItem("c1", "ch-ok", at)})
+		if okResp.StatusCode != http.StatusOK {
+			t.Fatalf("an ordinary batch: want 200 got %d", okResp.StatusCode)
+		}
+		if okOut.Accepted != 1 {
+			t.Errorf("an ordinary batch: want accepted=1 got %d", okOut.Accepted)
 		}
 	})
 

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { configure, getConfig, render, screen, waitFor } from '@testing-library/react';
+import { configure, getConfig, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
@@ -11,10 +11,17 @@ import * as engine from '../sync/engine';
 import { Dashboard } from '../pages/Dashboard';
 import type { Manifest } from '../course/types';
 
-function fallbackManifest(): Manifest {
-  // The app's own known-course fallback (Dashboard.tsx's KNOWN_COURSE_IDS)
-  // — every test stubs its manifest endpoint so a stray real network call
-  // never happens even for tests that don't care about this course.
+function catalogManifest(): Manifest {
+  // The manifest of the course the default `GET /courses` stub below puts
+  // in the learner's catalog — every test stubs its manifest endpoint so a
+  // stray real network call never happens even for tests that don't care
+  // about this course.
+  //
+  // This used to be the app's own hardcoded known-course fallback
+  // (`Dashboard.tsx`'s `KNOWN_COURSE_IDS`), which existed only because
+  // `GET /courses` had not been built. It has been; the constant is gone,
+  // and the course reaches the Dashboard the same way every other course
+  // does now — because the catalog endpoint named it.
   return {
     id: '***REMOVED***',
     title: '***REMOVED***',
@@ -121,8 +128,24 @@ async function clearAll() {
   await clearLocalData();
 }
 
+/**
+ * One entry of `GET /courses`'s response — apps/api/internal/course/
+ * handler.go's `courseSummary`. Written out here rather than imported so
+ * the wire contract has to be restated on this side: a change to the
+ * backend's JSON shape should break a test, not silently produce a
+ * Dashboard with no cards.
+ */
+function catalogEntry(id: string, title: string) {
+  return { id, title, lang: 'vi', tier: 'content', versions: ['1.0.0'], pinned: '1.0.0' };
+}
+
 beforeEach(() => {
-  server.use(http.get('/courses/***REMOVED***/manifest.json', () => HttpResponse.json(fallbackManifest())));
+  server.use(http.get('/courses/***REMOVED***/manifest.json', () => HttpResponse.json(catalogManifest())));
+  // The default catalog. Tests that care about the catalog itself
+  // override this; the rest get a learner who holds one course, which is
+  // the same starting state every test in this file had back when the
+  // Dashboard hardcoded that id.
+  server.use(http.get('/courses', () => HttpResponse.json([catalogEntry('***REMOVED***', '***REMOVED***')])));
 });
 beforeEach(clearAll);
 afterEach(clearAll);
@@ -152,9 +175,14 @@ function renderDashboard() {
 }
 
 describe('Dashboard', () => {
-  it('renders a card for a course known ONLY from local progress (Ruling F5 — offline-first, even when /stats never resolves)', async () => {
+  it('renders a card for a course known ONLY from local progress (Ruling F5 — offline-first, even when /stats and /courses never resolve)', async () => {
     server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(4))));
     server.use(http.get('/stats', () => new Promise(() => {}))); // never resolves — simulate offline
+    // The catalog is a network call too, so "offline" has to mean it is
+    // unreachable as well. A Dashboard that learned which courses exist
+    // ONLY from the server would show nothing here — Ruling F5 is exactly
+    // about that not happening.
+    server.use(http.get('/courses', () => new Promise(() => {})));
     await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: new Date().toISOString() });
     await db.progress.put({ courseId: 'demo', chapterId: 'ch-2', status: 'read', done: true, updatedAt: new Date().toISOString() });
 
@@ -166,9 +194,10 @@ describe('Dashboard', () => {
     await waitFor(() => expect(screen.getByText(/2\s*\/\s*4/)).toBeInTheDocument());
   }, OVERSUBSCRIBED_MS);
 
-  it('shows the ring/course card correctly even when GET /stats 500s — must not blank the whole panel', async () => {
+  it('shows the ring/course card correctly even when GET /stats and GET /courses 500 — must not blank the whole panel', async () => {
     server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(2))));
     server.use(http.get('/stats', () => new HttpResponse(null, { status: 500 })));
+    server.use(http.get('/courses', () => new HttpResponse(null, { status: 500 })));
     await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: new Date().toISOString() });
 
     renderDashboard();
@@ -218,13 +247,89 @@ describe('Dashboard', () => {
     expect(await screen.findByText('Khóa học demo')).toBeInTheDocument();
   }, OVERSUBSCRIBED_MS);
 
-  it('always includes the app\'s known-course fallback even with no local progress and no matching stats.courses entry', async () => {
+  it('renders a card for every course GET /courses lists, with no local progress and no matching stats.courses entry', async () => {
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
 
     renderDashboard();
 
     expect(await screen.findByText('***REMOVED***')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/0\s*\/\s*1/)).toBeInTheDocument());
+  }, OVERSUBSCRIBED_MS);
+
+  it('says the library is empty rather than rendering a blank card area when GET /courses returns nothing', async () => {
+    server.use(http.get('/courses', () => HttpResponse.json([])));
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+
+    renderDashboard();
+
+    expect(await screen.findByText(/chưa có khóa học nào/i)).toBeInTheDocument();
+    expect(document.querySelectorAll('.dash-card')).toHaveLength(0);
+  }, OVERSUBSCRIBED_MS);
+
+  it('có lối vào /import — cả nút ở đầu trang lẫn liên kết trong lời nhắn thư viện rỗng', async () => {
+    // `/import` (Task 8) has exactly one door in the whole app and it is
+    // here. Independent mutation testing removed BOTH of these links and all
+    // 632 tests stayed green: a route nobody can reach is a feature nobody
+    // has, and this page's own empty state has told readers to "nhập một gói
+    // course" since Task 7 without ever saying where.
+    server.use(http.get('/courses', () => HttpResponse.json([])));
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+
+    renderDashboard();
+
+    await screen.findByText(/chưa có khóa học nào/i);
+    const links = screen.getAllByRole('link').filter((a) => a.getAttribute('href') === '/import');
+    expect(links.length, 'không còn lối vào /import nào trên Bảng điều khiển').toBeGreaterThanOrEqual(2);
+    expect(links.map((a) => a.textContent).join(' ')).toMatch(/nhập/i);
+  }, OVERSUBSCRIBED_MS);
+
+  it('có lối vào /library — Task 9 thêm một route, và một route không ai bấm tới được là một tính năng không tồn tại', async () => {
+    // Same argument as the /import test directly above, which was written
+    // after mutation testing deleted both of THOSE links with the whole
+    // suite staying green. `/library` arrives with the identical exposure:
+    // one door, on this page.
+    server.use(http.get('/courses', () => HttpResponse.json([])));
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+
+    renderDashboard();
+
+    await screen.findByText(/chưa có khóa học nào/i);
+    const links = screen.getAllByRole('link').filter((a) => a.getAttribute('href') === '/library');
+    expect(links.length, 'không còn lối vào /library nào trên Bảng điều khiển').toBeGreaterThanOrEqual(1);
+    expect(links.map((a) => a.textContent).join(' ')).toMatch(/thư viện/i);
+  }, OVERSUBSCRIBED_MS);
+
+  it('trạng thái rỗng của Bảng điều khiển là MÀN HÌNH ĐẦU TIÊN của người dùng mới — phải nói ba cách nhập, không chỉ một dòng chữ (ruling S1-F17)', async () => {
+    // Task 6 deleted `KNOWN_COURSE_IDS`, so this is literally what a brand
+    // new account opens onto. Before Task 9 it was one sentence with a link;
+    // the sentence stays (the assertion above still passes) but the state now
+    // also says WHY the library is empty — §9.5 chose to ship no course,
+    // because a seeded one would hide a broken import path — and names the
+    // three ways in, including the one that works with no network at all.
+    server.use(http.get('/courses', () => HttpResponse.json([])));
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+
+    renderDashboard();
+
+    await screen.findByText(/chưa có khóa học nào/i);
+    expect(screen.getAllByText(/\.zip/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/github/i)).toBeInTheDocument();
+    // The registry's place is held by words, not by a link that goes
+    // nowhere: subsystem 3 has not built it.
+    const registryNote = screen.getByText(/registry|kho khóa học cộng đồng/i);
+    expect(within(registryNote).queryByRole('link')).not.toBeInTheDocument();
+  }, OVERSUBSCRIBED_MS);
+
+  it('does not flash the empty-library note while GET /courses is still in flight', async () => {
+    server.use(http.get('/courses', () => new Promise(() => {}))); // never resolves
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+
+    renderDashboard();
+
+    // The streak panel proves the page has rendered; the note must not be
+    // there yet, because "no courses came back" is not yet true.
+    expect(await screen.findByText('ngày liên tục')).toBeInTheDocument();
+    expect(screen.queryByText(/chưa có khóa học nào/i)).not.toBeInTheDocument();
   }, OVERSUBSCRIBED_MS);
 
   it('shows the signed-in user\'s name and a working logout control that stops sync, clears local data, and returns to /login', async () => {
