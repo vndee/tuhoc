@@ -405,20 +405,27 @@ function label(file: string): string {
  *
  * `vendor/` is excluded: KaTeX, third-party, not ours to police.
  */
-function classicScripts(): string[] {
-  const roots = [resolve(SRC_DIR, '../../../packages/course-kit'), resolve(SRC_DIR, '../../../courses')];
+const COURSE_KIT_DIR = resolve(REPO_ROOT, 'packages', 'course-kit');
+const COURSES_DIR = resolve(REPO_ROOT, 'courses');
+
+/** Every `.js` under `dir`, skipping `vendor/` (KaTeX, third-party) and `node_modules/`. */
+function jsFilesUnder(dir: string): string[] {
   const out: string[] = [];
-  const walk = (dir: string): void => {
-    if (!existsSync(dir)) return;
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  const walk = (at: string): void => {
+    if (!existsSync(at)) return;
+    for (const entry of readdirSync(at, { withFileTypes: true })) {
       if (entry.name === 'vendor' || entry.name === 'node_modules') continue;
-      const full = join(dir, entry.name);
+      const full = join(at, entry.name);
       if (entry.isDirectory()) walk(full);
       else if (entry.name.endsWith('.js')) out.push(full);
     }
   };
-  roots.forEach(walk);
-  return out;
+  walk(dir);
+  return out.sort();
+}
+
+function classicScripts(): string[] {
+  return [...jsFilesUnder(COURSE_KIT_DIR), ...jsFilesUnder(COURSES_DIR)];
 }
 
 /**
@@ -438,18 +445,12 @@ function isProductionSource(relativePath: string): boolean {
 }
 
 /**
- * Every non-test `.ts`/`.tsx` file under `apps/web/src` — this application's
- * own code, and nothing else's.
+ * Every non-test `.ts`/`.tsx` file under `apps/web/src` — the React half of
+ * this application, and nothing else's code.
  *
- * Split out from `productionSourceFiles` because the two scans in this file
- * have different jurisdictions. The persistence scan has to include the
- * classic scripts (a store opened in `runtime.js` outlives a session exactly
- * as hard as one opened here). The HTML-sink scan at the bottom must NOT:
- * `runtime.js` builds tooltips and control panels out of HTML strings by
- * design, that is what a rendering runtime does, and it never sees a
- * manifest field. Pointing a rule at code it was not written about produces
- * violations with no correct resolution — the same category error ruling
- * S1-F8 refused when it kept the markup rules off `manifest.json`.
+ * This is ONE root of the HTML-sink scan's jurisdiction, not the whole of it;
+ * see `BROWSER_CODE_ROOTS`. It used to be the whole of it, and that is the
+ * bug this comment exists to keep from coming back.
  */
 function appSourceFiles(): string[] {
   const out: string[] = [];
@@ -648,8 +649,96 @@ describe('the localStorage key registry', () => {
 });
 
 /* ====================================================================== *
- * The other tripwire: a manifest field must never become markup
+ * The other tripwire: no data a COURSE PACKAGE controls may become markup
+ * in code we ship to the reader's browser
  * ====================================================================== */
+
+/**
+ * WHAT THIS SCAN IS ABOUT, AND WHY THE HEADING ABOVE CHANGED.
+ *
+ * It used to say "a manifest field must never become markup", and its
+ * jurisdiction was `appSourceFiles()` — ONE DIRECTORY (`apps/web/src`) and
+ * TWO EXTENSIONS (`.ts`, `.tsx`) — while the test that asserted the
+ * jurisdiction called itself "is looking at the whole app". It was not. The
+ * gap was written down in prose, and the prose was TRUE BUT IRRELEVANT:
+ * `packages/course-kit/runtime.js` was exempted because "it never sees a
+ * manifest field". That is correct. It is also beside the point, because
+ * `runtime.js:340` concatenated a CHAPTER field — `data-viz`, typed by the
+ * course author — straight into `innerHTML` on the LIVE document.
+ *
+ * Measured, in real Chromium, on a package that `tuhoc pack` exits 0 on and
+ * `validatePackage` returns `ok: true, findings: []` for, declaring the tier
+ * that promises readers "không có JavaScript":
+ *
+ *     img after container.innerHTML = chapter : 0
+ *     img after CourseKit.initViz(container)  : 1
+ *     typeof img.onerror                      : function
+ *     handler ACTUALLY RAN (count)            : 1
+ *     request that left the browser           : 1
+ *
+ * So the rule is restated one level up, where it was always supposed to be:
+ *
+ *     NO DATA A COURSE PACKAGE CONTROLS MAY BECOME MARKUP IN CODE WE SHIP.
+ *
+ * A manifest field is one KIND of package-controlled data. A chapter's
+ * attribute values are another. Framing the rule around the kind instead of
+ * the class is what let this through fourteen tasks and five gates.
+ *
+ * And the jurisdiction is restated as a LAYER rather than as a path shape:
+ * every FIRST-PARTY file that runs inside the reader's page, whatever
+ * directory it lives in and whatever extension it carries. `.tsx` modules,
+ * a classic `<script src>`, an inline `<script>` in the shell — same page,
+ * same origin, same access, therefore same rule.
+ *
+ * WHAT IS DELIBERATELY OUT OF JURISDICTION, and this one IS a real
+ * distinction rather than a path accident: `courses/<id>/viz.js`. That file
+ * is not code we ship — it is the PAYLOAD, and `tier: "interactive"` exists
+ * precisely to let a package execute code (spec §1.2). Reporting its
+ * `innerHTML` calls would produce violations with no correct resolution,
+ * which is the category error ruling S1-F8 refused. What governs a payload
+ * is the tier gate and the rule set, not this scan. What governs OUR code is
+ * this scan.
+ */
+const BROWSER_CODE_ROOTS: readonly {
+  /** How a person would name this root. */
+  readonly name: string;
+  /** The files it contributes, already absolute. */
+  readonly files: () => string[];
+  /** Why code here runs in the reader's page. */
+  readonly why: string;
+}[] = [
+  {
+    name: 'apps/web/src/**/*.ts(x)',
+    files: appSourceFiles,
+    why: 'the React application itself',
+  },
+  {
+    name: 'packages/course-kit/**/*.js (minus vendor/)',
+    files: () => jsFilesUnder(COURSE_KIT_DIR),
+    why: 'the reader runtime, loaded as a classic <script src> on every reader route (reader/useCourseKit.ts) — same origin, same document, and the file C1 was hiding in',
+  },
+];
+
+/** Every first-party file that runs in the reader's browser. */
+function browserCodeFiles(): string[] {
+  return BROWSER_CODE_ROOTS.flatMap((root) => root.files()).sort();
+}
+
+/**
+ * The bodies of the inline `<script>` blocks in the app shell, as source
+ * text the same AST scanner can read.
+ *
+ * `apps/web/index.html` carries the synchronous theme bootstrap. It is
+ * first-party code, it runs in the reader's page before anything else does,
+ * and it lives in a file with neither of the two extensions the old
+ * jurisdiction accepted — which is exactly the kind of thing a
+ * directory-and-extension rule cannot see and a LAYER rule must.
+ */
+function inlineShellScripts(): { readonly label: string; readonly source: string }[] {
+  const html = readFileSync(INDEX_HTML, 'utf-8');
+  const blocks = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)];
+  return blocks.map((m, i) => ({ label: `${relative(REPO_ROOT, INDEX_HTML)} <script> #${i + 1}`, source: m[1] }));
+}
 
 /**
  * Names of the HTML SINKS — the expressions that turn a STRING into
@@ -771,6 +860,42 @@ const HTML_SINKS_ALLOWED: readonly {
     // is the reason not to use it.)
     why: 'the chapter fragment again, parsed into an inert document (no browsing context) to resolve anchors against a version not yet taken',
   },
+  {
+    sink: 'innerHTML',
+    file: join('packages', 'course-kit', 'runtime.js'),
+    times: 2,
+    // Brought INTO jurisdiction by the C1 fix. There were four `innerHTML`
+    // assignments here and the scan could not see any of them. Two are gone
+    // (`initViz`'s two notices now go through `vizNotice` → `textContent`,
+    // which is what closed C1); these two remain, and each is allowed on a
+    // REACHABILITY argument, which is the only kind of argument this file
+    // accepts after ruling S1-F30 — a claim about what code CAN be reached,
+    // not a claim about what a string happens to contain.
+    //
+    //   `el(tag, {html})`      — line ~19
+    //   `Plot#showTip(px,py,html)` — line ~259
+    //
+    // The argument, and it is checkable rather than asserted: the ONLY place
+    // in this file that reads package-authored DATA is `initViz`, and the only
+    // datum it reads is `node.dataset.viz` (measured: `grep -n 'dataset\|
+    // getAttribute' runtime.js` returns lines 337/338/341 and nothing else).
+    // That path now ends in `textContent`. Everything that feeds these two
+    // sinks — `readout`, `button`, tooltip bodies — is called BY a course's
+    // `viz.js`, and `viz.js` is loaded only for `tier: "interactive"`
+    // (`course/loader.ts`'s `resolveVizScriptUrl`). A `tier: "content"`
+    // package cannot reach them, because reaching them requires executing
+    // JavaScript, which is the exact thing that tier does not get. An
+    // `interactive` package can reach them and gains nothing by it: it is
+    // already running its own code in this page, by design (spec §1.2).
+    //
+    // WHAT WOULD MAKE THIS ENTRY WRONG, so the next reader knows where to
+    // look instead of trusting this paragraph: a second reader of
+    // package-authored data appearing in this file (another `dataset.*`,
+    // a `getAttribute`, a `textContent` read off the chapter), or `el` /
+    // `Plot` being called from `initViz`'s own branch. Either one breaks the
+    // reachability claim and this entry has to be re-argued, not renumbered.
+    why: 'two markup affordances for `viz.js` (el({html}), Plot#showTip) — reachable only by executing package code, i.e. only by `tier: "interactive"`, which already runs its own code by design',
+  },
 ];
 
 /**
@@ -807,8 +932,16 @@ const HTML_SINKS_ALLOWED: readonly {
  * REOPENED in the same commit — at that moment the manifest stops being
  * data the reader only ever reads, and the validator's decision not to scan
  * it stops being free.
+ *
+ * AND THE MANIFEST IS ONLY HALF OF IT. C1 was a CHAPTER field — an attribute
+ * value the rule set passes through as data, correctly, because it only reads
+ * start tags — reaching `innerHTML` in `runtime.js`. Everything above about
+ * manifests is still true; it is just not the whole rule. The whole rule is
+ * the class both belong to: NO DATA A COURSE PACKAGE CONTROLS BECOMES MARKUP
+ * IN CODE WE SHIP. See `BROWSER_CODE_ROOTS` for the jurisdiction that follows
+ * from it.
  */
-describe('a manifest field is text, never markup (the floor under ruling S1-F8)', () => {
+describe('no package-controlled data becomes markup in code we ship to the reader', () => {
   it('reads its own instrument correctly: writing markup counts, reading it does not', () => {
     const decoyed = [
       '// el.innerHTML = manifest.title — a mention, not a use',
@@ -842,9 +975,34 @@ describe('a manifest field is text, never markup (the floor under ruling S1-F8)'
     ).toEqual(['dangerouslySetInnerHTML']);
   });
 
-  it('is looking at the whole app, and at the one sink it allows', () => {
-    const seen = appSourceFiles().map(label);
+  /**
+   * THE SELF-CHECK, and it is the point of this test rather than a preamble
+   * to it.
+   *
+   * The shape that has now cost this project five separate blind gates is: a
+   * gate measures what it can reach, and is SILENT where it cannot. A scan
+   * whose roots quietly resolve to nothing reports zero violations and looks
+   * identical to a codebase with zero violations. So every root must be
+   * asserted non-empty INDIVIDUALLY — a total-count floor is not enough,
+   * because `apps/web/src` alone clears any total floor while
+   * `packages/course-kit` silently contributes nothing, which is precisely
+   * the state this suite was in while C1 shipped.
+   */
+  it('scans every root of first-party reader-page code, and goes red if any root scans nothing', () => {
+    for (const root of BROWSER_CODE_ROOTS) {
+      const count = root.files().length;
+      expect(count, `${root.name} scanned 0 files — this scan is now blind there (${root.why})`).toBeGreaterThan(0);
+    }
+    expect(inlineShellScripts().length, 'no inline <script> found in the app shell').toBeGreaterThan(0);
+
+    const seen = browserCodeFiles().map(label);
     expect(seen.length).toBeGreaterThan(20);
+
+    // Named on purpose, not left to a glob: this is the file the previous
+    // jurisdiction missed, and a rename or a move must reopen the argument
+    // rather than silently drop it out of scope.
+    expect(seen).toContain(join('packages', 'course-kit', 'runtime.js'));
+
     for (const allowed of HTML_SINKS_ALLOWED) expect(seen).toContain(allowed.file);
 
     // Not vacuous: the allowlisted sink is genuinely found where it is
@@ -857,17 +1015,21 @@ describe('a manifest field is text, never markup (the floor under ruling S1-F8)'
     }
   });
 
-  it('has no HTML sink anywhere else — no manifest string can become markup', () => {
+  it('has no HTML sink anywhere else — no package-controlled string can become markup', () => {
     const violations: string[] = [];
-    for (const file of appSourceFiles()) {
-      const where = label(file);
-      const sinks = htmlSinksUsedIn(file, readFileSync(file, 'utf-8'));
+    const scanned: { where: string; source: string }[] = [
+      ...browserCodeFiles().map((file) => ({ where: label(file), source: readFileSync(file, 'utf-8') })),
+      ...inlineShellScripts().map((s) => ({ where: s.label, source: s.source })),
+    ];
+
+    for (const { where, source } of scanned) {
+      const sinks = htmlSinksUsedIn(where, source);
       for (const sink of new Set(sinks)) {
         const allowed = HTML_SINKS_ALLOWED.find((a) => a.sink === sink && a.file === where);
         const times = sinks.filter((s) => s === sink).length;
         if (!allowed) {
           violations.push(
-            `${where} turns a string into markup via ${sink} — a manifest arrives inside a stranger's package and is never scanned for markup (ruling S1-F8); render it as text instead`,
+            `${where} turns a string into markup via ${sink} — this code runs in the reader's page, where a stranger's package supplies the manifest AND every chapter attribute, and neither is scanned for markup by the rule set (ruling S1-F8 reads start tags only); build a node and assign textContent instead`,
           );
         } else if (times !== allowed.times) {
           violations.push(`${where} uses ${sink} ${times}× (expected ${allowed.times}: ${allowed.why})`);
