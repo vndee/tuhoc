@@ -13,6 +13,7 @@ import { VaultFrameContext } from '../shell/VaultFrame';
 import { DeepDive } from './DeepDive';
 import type { SelectionExcerpt } from './prompts';
 import { VaultClient } from './vaultClient';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 /**
  * TASK 8, VÀ CÁI BẪY ĐÃ CẮN DỰ ÁN NÀY BA LẦN.
@@ -119,7 +120,9 @@ function Harness({ onDeepDive }: { onDeepDive: (e: SelectionExcerpt) => void }) 
   return (
     <>
       <div ref={ref} data-testid="chapter" />
-      <SelectionToolbar content={content} store={stubStore()} onDeepDive={onDeepDive} />
+      <LanguageProvider>
+        <SelectionToolbar content={content} store={stubStore()} onDeepDive={onDeepDive} />
+      </LanguageProvider>
     </>
   );
 }
@@ -226,6 +229,7 @@ describe('DeepDive — LỜI NHẮC RỜI KHỎI TRANG phải mang LaTeX gốc',
   it('thông điệp `chat` gửi vào kho khoá chứa mã LaTeX, không chứa ký tự rỗng', async () => {
     const post = vi.fn();
     const client = new VaultClient({
+      lang: 'vi',
       vaultOrigin: VAULT,
       target: { postMessage: post } as unknown as Window,
       timeoutMs: 10_000,
@@ -249,7 +253,7 @@ describe('DeepDive — LỜI NHẮC RỜI KHỎI TRANG phải mang LaTeX gốc',
     expect(captured).not.toBeNull();
 
     render(
-      <MemoryRouter>
+      <LanguageProvider><MemoryRouter>
         <VaultFrameContext.Provider
           value={{ client, origin: VAULT, expanded: false, setExpanded: () => {} }}
         >
@@ -260,7 +264,7 @@ describe('DeepDive — LỜI NHẮC RỜI KHỎI TRANG phải mang LaTeX gốc',
             onClose={() => {}}
           />
         </VaultFrameContext.Provider>
-      </MemoryRouter>,
+      </MemoryRouter></LanguageProvider>,
     );
 
     // Panel hỏi trạng thái trước, rồi `autoAsk` gửi lời nhắc.
@@ -318,13 +322,13 @@ describe('DeepDive — LỜI NHẮC RỜI KHỎI TRANG phải mang LaTeX gốc',
       after: '',
     };
     render(
-      <MemoryRouter>
+      <LanguageProvider><MemoryRouter>
         <VaultFrameContext.Provider
           value={{ client: null, origin: null, expanded: false, setExpanded: () => {} }}
         >
           <DeepDive courseTitle="K" chapterTitle="C" excerpt={excerpt} onClose={() => {}} />
         </VaultFrameContext.Provider>
-      </MemoryRouter>,
+      </MemoryRouter></LanguageProvider>,
     );
     expect(screen.getByTestId('ai-quote')).toHaveTextContent(TEX);
   });

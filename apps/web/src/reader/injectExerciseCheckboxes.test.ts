@@ -1,5 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
+import { t as lookup, type Translate } from '../i18n';
 import { injectExerciseCheckboxes } from './injectExerciseCheckboxes';
+
+/**
+ * `t` đã gắn tiếng Việt. Hàm dựng DOM này không phải component, nên ngôn ngữ đi
+ * vào bằng THAM SỐ (xem chú thích của chính nó) — và một bộ test bơm `t` vào là
+ * cách duy nhất chứng minh rằng nó thật sự dùng cái được truyền, chứ không đọc
+ * một biến toàn cục nào đó.
+ */
+const t: Translate = (key, ...args) => lookup('vi', key, ...args);
 
 function twoExerciseBoxesFragment(): HTMLDivElement {
   const container = document.createElement('div');
@@ -14,7 +23,7 @@ function twoExerciseBoxesFragment(): HTMLDivElement {
 describe('injectExerciseCheckboxes', () => {
   it('injects exactly one checkbox into each .box.ex .box-h, in DOM order', () => {
     const container = twoExerciseBoxesFragment();
-    injectExerciseCheckboxes(container, { isDone: () => false, toggle: vi.fn() });
+    injectExerciseCheckboxes(container, { isDone: () => false, toggle: vi.fn() }, t);
 
     const checkboxes = container.querySelectorAll('.box.ex .box-h input[type="checkbox"]');
     expect(checkboxes).toHaveLength(2);
@@ -24,9 +33,9 @@ describe('injectExerciseCheckboxes', () => {
     const container = twoExerciseBoxesFragment();
     const callbacks = { isDone: () => false, toggle: vi.fn() };
 
-    injectExerciseCheckboxes(container, callbacks);
-    injectExerciseCheckboxes(container, callbacks);
-    injectExerciseCheckboxes(container, callbacks);
+    injectExerciseCheckboxes(container, callbacks, t);
+    injectExerciseCheckboxes(container, callbacks, t);
+    injectExerciseCheckboxes(container, callbacks, t);
 
     const checkboxes = container.querySelectorAll('.box.ex .box-h input[type="checkbox"]');
     expect(checkboxes).toHaveLength(2);
@@ -37,7 +46,7 @@ describe('injectExerciseCheckboxes', () => {
     // Only the SECOND box (index 1) is done — proves index is DOM-order based,
     // since the original app has exercise boxes with no numeral at all
     // (e.g. "Danh mục cần thuộc lòng"), so parsing "Bài N" text would be unreliable.
-    injectExerciseCheckboxes(container, { isDone: (n) => n === 1, toggle: vi.fn() });
+    injectExerciseCheckboxes(container, { isDone: (n) => n === 1, toggle: vi.fn() }, t);
 
     const checkboxes = Array.from(container.querySelectorAll<HTMLInputElement>('.box.ex .box-h input[type="checkbox"]'));
     expect(checkboxes[0].checked).toBe(false);
@@ -49,11 +58,11 @@ describe('injectExerciseCheckboxes', () => {
     let doneState = [false, false];
     const callbacks = { isDone: (n: number) => doneState[n], toggle: vi.fn() };
 
-    injectExerciseCheckboxes(container, callbacks);
+    injectExerciseCheckboxes(container, callbacks, t);
     const firstPassInput = container.querySelectorAll<HTMLInputElement>('.box.ex .box-h input[type="checkbox"]')[0];
 
     doneState = [true, false];
-    injectExerciseCheckboxes(container, callbacks);
+    injectExerciseCheckboxes(container, callbacks, t);
     const secondPassInput = container.querySelectorAll<HTMLInputElement>('.box.ex .box-h input[type="checkbox"]')[0];
 
     expect(secondPassInput).toBe(firstPassInput); // same node, not recreated
@@ -63,7 +72,7 @@ describe('injectExerciseCheckboxes', () => {
   it('calls callbacks.toggle(index) with the box\'s DOM-order index when its checkbox is changed', () => {
     const container = twoExerciseBoxesFragment();
     const toggle = vi.fn();
-    injectExerciseCheckboxes(container, { isDone: () => false, toggle });
+    injectExerciseCheckboxes(container, { isDone: () => false, toggle }, t);
 
     const checkboxes = Array.from(container.querySelectorAll<HTMLInputElement>('.box.ex .box-h input[type="checkbox"]'));
     checkboxes[1].checked = true;
@@ -77,7 +86,7 @@ describe('injectExerciseCheckboxes', () => {
     const container = document.createElement('div');
     container.innerHTML = `<div class="box ex"><p>Không có box-h</p></div>`;
 
-    expect(() => injectExerciseCheckboxes(container, { isDone: () => false, toggle: vi.fn() })).not.toThrow();
+    expect(() => injectExerciseCheckboxes(container, { isDone: () => false, toggle: vi.fn() }, t)).not.toThrow();
     expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
   });
 
@@ -85,7 +94,7 @@ describe('injectExerciseCheckboxes', () => {
     const container = document.createElement('div');
     container.innerHTML = `<div class="box def"><div class="box-h">Định nghĩa</div></div>`;
 
-    injectExerciseCheckboxes(container, { isDone: () => false, toggle: vi.fn() });
+    injectExerciseCheckboxes(container, { isDone: () => false, toggle: vi.fn() }, t);
     expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
   });
 });

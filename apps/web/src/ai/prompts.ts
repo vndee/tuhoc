@@ -1,3 +1,4 @@
+import { t, type Lang } from '@tuhoc/i18n';
 import { domToFlat, normalizeContainer, rangeToFlat } from '../annotations/normalize';
 import type { NormMap } from '../annotations/normalize';
 
@@ -259,6 +260,13 @@ export interface BuiltPrompt {
 }
 
 export interface ChapterPromptOptions {
+  /**
+   * Ngôn ngữ của CÂU TRẢ LỜI, không chỉ của giao diện — câu vai bảo mô hình
+   * trả lời bằng tiếng nào. BẮT BUỘC, không mặc định: một mặc định lặng lẽ ở
+   * đây cho ra một người đọc tiếng Anh nhận câu trả lời tiếng Việt, và không
+   * cổng nào hỏi được điều đó. Bắt buộc thì `tsc` bắt mọi chỗ gọi tự nói ra.
+   */
+  readonly lang: Lang;
   readonly courseTitle: string;
   readonly chapterTitle: string;
   /** Tiêu đề mục người học đang đọc (rail TOC đã biết nó). `null`/vắng ⇒ cắt
@@ -267,13 +275,7 @@ export interface ChapterPromptOptions {
   readonly limit?: number;
 }
 
-const CHAPTER_ROLE =
-  'Bạn là trợ giảng của một giáo trình tự học. Chỉ trả lời dựa trên phần chương ' +
-  'được trích dưới đây. Phần trích có thể đã bị cắt bớt (dấu ' +
-  CUT_MARK +
-  '); nếu câu hỏi rơi vào phần không có ở đây, hãy nói thẳng điều đó và chỉ tới mục ' +
-  'tương ứng trong dàn ý thay vì đoán. Trả lời bằng tiếng Việt, ngắn gọn, và viết ' +
-  'công thức bằng LaTeX trong $…$.';
+const chapterRole = (lang: Lang): string => t(lang, 'ai.prompt.chapterRole', CUT_MARK);
 
 function assemble(
   role: string,
@@ -298,11 +300,11 @@ export function chapterSystemPrompt(root: Element, opts: ChapterPromptOptions): 
   const outline = clampHead(outlineAll, Math.floor(limit * 0.25));
 
   const head = (excerpt: string): string =>
-    assemble(CHAPTER_ROLE, [
-      ['KHOÁ HỌC', opts.courseTitle],
-      ['CHƯƠNG', opts.chapterTitle],
-      ['DÀN Ý CÁC MỤC', outline],
-      ['TRÍCH CHƯƠNG', excerpt],
+    assemble(chapterRole(opts.lang), [
+      [t(opts.lang, 'ai.prompt.field.course'), opts.courseTitle],
+      [t(opts.lang, 'ai.prompt.field.chapter'), opts.chapterTitle],
+      [t(opts.lang, 'ai.prompt.field.outline'), outline],
+      [t(opts.lang, 'ai.prompt.field.excerpt'), excerpt],
     ]);
 
   // Chi phí cố định đo bằng cách dựng thật với phần thân rỗng, không bằng một
@@ -365,16 +367,12 @@ export function selectionExcerpt(
   };
 }
 
-const DEEP_DIVE_ROLE =
-  'Bạn là trợ giảng của một giáo trình tự học. Người học vừa bôi đen một đoạn và ' +
-  'muốn hiểu sâu hơn đúng đoạn ấy. Giải thích ý đoạn đó, vì sao nó đúng, và một ' +
-  'ví dụ cụ thể. Trả lời bằng tiếng Việt, ngắn gọn, và viết công thức bằng LaTeX ' +
-  'trong $…$.';
-
 /** Câu hỏi mặc định của "Đào sâu" — người học không phải gõ gì để bắt đầu. */
-export const DEEP_DIVE_QUESTION = 'Giải thích kỹ đoạn này giúp tôi.';
+export const deepDiveQuestion = (lang: Lang): string => t(lang, 'ai.prompt.deepDiveQuestion');
 
 export interface DeepDiveOptions {
+  /** Xem `ChapterPromptOptions.lang` — cùng lý do, cùng mức bắt buộc. */
+  readonly lang: Lang;
   readonly courseTitle: string;
   readonly chapterTitle: string;
   readonly limit?: number;
@@ -395,12 +393,12 @@ export function deepDiveSystemPrompt(
   const limit = opts.limit ?? CHAPTER_CONTEXT_LIMIT;
 
   const head = (before: string, quote: string, after: string): string =>
-    assemble(DEEP_DIVE_ROLE, [
-      ['KHOÁ HỌC', opts.courseTitle],
-      ['CHƯƠNG', opts.chapterTitle],
-      ['VĂN CẢNH TRƯỚC', before],
-      ['ĐOẠN ĐƯỢC CHỌN', quote],
-      ['VĂN CẢNH SAU', after],
+    assemble(t(opts.lang, 'ai.prompt.deepDiveRole'), [
+      [t(opts.lang, 'ai.prompt.field.course'), opts.courseTitle],
+      [t(opts.lang, 'ai.prompt.field.chapter'), opts.chapterTitle],
+      [t(opts.lang, 'ai.prompt.field.before'), before],
+      [t(opts.lang, 'ai.prompt.field.selection'), quote],
+      [t(opts.lang, 'ai.prompt.field.after'), after],
     ]);
 
   const before = clampTail(excerpt.before, SELECTION_CONTEXT_CHARS);

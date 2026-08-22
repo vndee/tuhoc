@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
+import { useLanguage } from '../i18n/LanguageProvider';
 import { useVaultFrame } from '../shell/VaultFrame';
 import { useAI } from './useAI';
 
@@ -57,6 +58,7 @@ export function AskPanel({
   autoAsk = false,
   onClose,
 }: AskPanelProps) {
+  const { t } = useLanguage();
   const { client, origin } = useVaultFrame();
   const { ask, text, state, error, cancel } = useAI();
   const [question, setQuestion] = useState(initialQuestion);
@@ -130,7 +132,7 @@ export function AskPanel({
     <aside className="ai-panel" role="dialog" aria-label={heading}>
       <header className="ai-panel-bar">
         <b>{heading}</b>
-        <button type="button" className="btn" aria-label="Đóng trợ lý" onClick={onClose}>
+        <button type="button" className="btn" aria-label={t('ai.panel.close')} onClick={onClose}>
           ×
         </button>
       </header>
@@ -143,14 +145,10 @@ export function AskPanel({
 
       {needsSetup && (
         <div className="ai-panel-invite" data-testid="ai-needs-setup">
-          <p>
-            Trợ lý AI chạy bằng key của chính bạn, và máy này chưa có key nào. Key được cất
-            trong kho khoá — một trang riêng ở một địa chỉ riêng, nên khoá học không đọc được
-            nó.
-          </p>
+          <p>{t('ai.panel.needsSetup')}</p>
           <p>
             <Link className="btn primary" to="/settings">
-              Mở trang cấu hình
+              {t('ai.panel.openSettings')}
             </Link>
           </p>
         </div>
@@ -158,15 +156,13 @@ export function AskPanel({
 
       {unavailable && (
         <p className="ai-panel-invite" data-testid="ai-unavailable">
-          Bản dựng này không có kho khoá, nên chưa dùng được trợ lý AI. Đây là thiếu sót của
-          cấu hình khi triển khai, không phải của tài khoản bạn — phần đọc giáo trình vẫn chạy
-          bình thường.
+          {t('ai.panel.unavailable')}
         </p>
       )}
 
       {probe === 'probe_failed' && !error && (
         <p className="ai-panel-invite" data-testid="ai-probe-failed">
-          Chưa hỏi được kho khoá xem đã cắm key chưa. Bạn vẫn có thể thử hỏi.
+          {t('ai.panel.probeFailed')}
         </p>
       )}
 
@@ -191,24 +187,24 @@ export function AskPanel({
           }}
         >
           <label className="ai-panel-label" htmlFor="ai-question">
-            Câu hỏi của bạn
+            {t('ai.panel.questionLabel')}
           </label>
           <textarea
             id="ai-question"
             rows={2}
             value={question}
-            placeholder="Hỏi về chương đang đọc…"
+            placeholder={t('ai.panel.questionPlaceholder')}
             onChange={(e) => {
               setQuestion(e.target.value);
             }}
           />
           {streaming ? (
             <button type="button" className="btn" onClick={cancel}>
-              Dừng
+              {t('ai.panel.stop')}
             </button>
           ) : (
             <button type="submit" className="btn primary" disabled={probe === 'checking'}>
-              Hỏi
+              {t('ai.panel.ask')}
             </button>
           )}
         </form>

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { AskPanel } from './AskPanel';
-import { DEEP_DIVE_QUESTION, deepDiveSystemPrompt } from './prompts';
+import { useLanguage } from '../i18n/LanguageProvider';
+import { deepDiveQuestion, deepDiveSystemPrompt } from './prompts';
 import type { SelectionExcerpt } from './prompts';
 
 /**
@@ -26,21 +27,22 @@ export interface DeepDiveProps {
 }
 
 export function DeepDive({ courseTitle, chapterTitle, excerpt, onClose }: DeepDiveProps) {
+  const { lang, t } = useLanguage();
   const built = useMemo(
-    () => deepDiveSystemPrompt(excerpt, { courseTitle, chapterTitle }),
-    [excerpt, courseTitle, chapterTitle],
+    () => deepDiveSystemPrompt(excerpt, { lang, courseTitle, chapterTitle }),
+    [lang, excerpt, courseTitle, chapterTitle],
   );
 
   return (
     <AskPanel
-      heading="Đào sâu"
+      heading={t('ai.deepDive.heading')}
       system={built.system}
       // `built.excerpt`, không phải `excerpt.quote`: nếu người học bôi đen quá
       // dài và lời nhắc phải cắt bớt, thứ hiện lên phải là thứ ĐÃ GỬI ĐI. Hiện
       // bản đầy đủ trong khi gửi bản cắt là nói với người dùng một điều không
       // đúng về việc mô hình đã đọc gì.
       quote={built.excerpt}
-      initialQuestion={DEEP_DIVE_QUESTION}
+      initialQuestion={deepDiveQuestion(lang)}
       autoAsk
       onClose={onClose}
     />

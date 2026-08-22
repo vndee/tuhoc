@@ -282,4 +282,124 @@ export const en: Messages = {
   'import.stage.unpacking': 'Unpacking…',
   'import.stage.checking': 'Checking the package contents…',
   'import.stage.saving': 'Saving to your device…',
+
+  /* ══════════════════════════════════════════════════════════════════════ *
+   * TRANG ĐỌC + GHI CHÚ + TRỢ LÝ AI
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  'reader.markUnread': 'Mark as unread',
+  'reader.read': 'Read',
+  'reader.kitFailed': 'Could not load the reading tools (KaTeX/simulations). Try reloading the page.',
+  'reader.chapterLoading': 'Loading the chapter…',
+  'reader.askAi': 'Ask the AI about this chapter',
+  'reader.askHeading': 'Ask about this chapter',
+  'reader.prev': '← Previous chapter',
+  'reader.next': 'Next chapter →',
+  'reader.railAria': 'Right rail contents',
+  'reader.notesTab': (count: string) => `Notes (${count})`,
+  'reader.exerciseCheckbox': (index: string) => `Mark exercise ${index} as done`,
+  'reader.exerciseDone': 'Done',
+
+  'ann.color.yellow': 'Highlight in yellow',
+  'ann.color.green': 'Highlight in green',
+  'ann.color.blue': 'Highlight in blue',
+  'ann.color.purple': 'Highlight in purple',
+  'ann.saveFailed': 'Could not save the note. Try highlighting again.',
+  'ann.toolbarAria': 'Annotate the selected passage',
+  'ann.note': 'Note',
+  'ann.deepDive': 'Go deeper',
+  'ann.dismissAlert': 'Dismiss',
+
+  'ann.card.collapsed': '▸ Inside a collapsed block',
+  'ann.card.offPage': '▸ Not shown on the page',
+  'ann.card.emptyNote': '(no text yet)',
+  'ann.card.editorAria': 'Note text',
+  'ann.card.delete': 'Delete the note',
+  'ann.card.done': 'Done',
+  'ann.card.none': 'No notes in this chapter yet.',
+  'ann.card.sheetAria': 'Note',
+  'ann.card.sheetClose': 'Close the note',
+
+  'ann.orphan.reattachFailed': 'Could not reattach. Select the passage again and retry.',
+  'ann.orphan.mathOnly':
+    'The passage you selected is only a formula. Include some surrounding text so the note can find this place again.',
+  'ann.orphan.awayAria': 'Notes that could not be reattached',
+  'ann.orphan.awayBody': (count: string) =>
+    `${count} notes could not be reattached. Open this chapter on a wider screen to reconnect them.`,
+  'ann.orphan.awayHide': 'Hide',
+  'ann.orphan.heading': (count: string) => `Orphaned (${count})`,
+  'ann.orphan.lede':
+    'The current version of the chapter no longer contains the passage these notes were anchored to. Their text is kept exactly as it was — press “Reattach”, then select the matching passage to reconnect it.',
+  'ann.orphan.waiting': 'Select the matching passage in the chapter, then press “Attach here”.',
+  'ann.orphan.reattach': 'Reattach',
+  'ann.orphan.showExact': 'Show the original text',
+  'ann.orphan.exactAria': 'The note’s original passage',
+  'ann.orphan.copy': 'Copy',
+  'ann.orphan.barAria': 'Reattach a note',
+  'ann.orphan.barWhat': (quote: string) => `Reattaching: ${quote}`,
+  'ann.orphan.barHint': 'Select the new passage in the chapter.',
+  'ann.orphan.barConfirm': 'Attach here',
+  'ann.orphan.barCancel': 'Cancel',
+
+  'ai.panel.close': 'Close the assistant',
+  'ai.panel.needsSetup':
+    'The AI assistant runs on your own key, and this device has none yet. The key is kept in the key vault — a separate page at a separate address, so a course cannot read it.',
+  'ai.panel.openSettings': 'Open the settings page',
+  'ai.panel.unavailable':
+    'This build has no key vault, so the AI assistant is unavailable. That is a deployment configuration gap, not a problem with your account — reading the course still works normally.',
+  'ai.panel.probeFailed': 'Could not ask the key vault whether a key is plugged in. You can still try asking.',
+  'ai.panel.questionLabel': 'Your question',
+  'ai.panel.questionPlaceholder': 'Ask about the chapter you are reading…',
+  'ai.panel.stop': 'Stop',
+  'ai.panel.ask': 'Ask',
+  'ai.deepDive.heading': 'Go deeper',
+  'ai.error.unavailable': 'This build has no key vault, so AI is unavailable.',
+  'ai.error.notConfigured': 'No key is plugged into the key vault on this device.',
+
+  'ai.vault.originShape': (received: string) =>
+    `VITE_VAULT_ORIGIN must be a proper origin (scheme://host[:port]) — no trailing "/", no path, no "*". Received ${received}.`,
+  'ai.vault.frameDetached': 'The key vault frame was detached while a call was in flight.',
+  'ai.vault.abortedBeforeSend': 'Cancelled before anything was sent.',
+  'ai.vault.abortedByUser': 'Cancelled by the reader.',
+  'ai.vault.timeout': (ms: string) =>
+    `The key vault did not answer within ${ms} ms. Did the frame load, and is the origin right?`,
+
+  /**
+   * Câu vai BẢO MÔ HÌNH TRẢ LỜI BẰNG NGÔN NGỮ NÀO — nên bản này không phải một
+   * bản dịch trang trí: nó là thứ làm cho một người đọc tiếng Anh nhận được
+   * câu trả lời tiếng Anh.
+   */
+  'ai.prompt.chapterRole': (cutMark: string) =>
+    `You are a teaching assistant for a self-study textbook. Answer only from the chapter excerpt below. The excerpt may have been trimmed (marked ${cutMark}); if the question falls in a part that is not here, say so plainly and point at the matching section in the outline rather than guessing. Answer in English, concisely, and write formulas as LaTeX inside $…$.`,
+  'ai.prompt.deepDiveRole':
+    'You are a teaching assistant for a self-study textbook. The reader has just highlighted a passage and wants to understand exactly that passage more deeply. Explain what it says, why it holds, and give one concrete example. Answer in English, concisely, and write formulas as LaTeX inside $…$.',
+  'ai.prompt.field.course': 'COURSE',
+  'ai.prompt.field.chapter': 'CHAPTER',
+  'ai.prompt.field.outline': 'SECTION OUTLINE',
+  'ai.prompt.field.excerpt': 'CHAPTER EXCERPT',
+  'ai.prompt.field.before': 'CONTEXT BEFORE',
+  'ai.prompt.field.selection': 'SELECTED PASSAGE',
+  'ai.prompt.field.after': 'CONTEXT AFTER',
+  'ai.prompt.deepDiveQuestion': 'Please explain this passage in detail.',
+
+  'update.error.courseKit':
+    'Could not preview: the chapter renderer (maths) failed to load. Check your connection and try again.',
+  'update.error.unsafe': (version: string, findings: string) =>
+    `Cannot update: version ${version} declares itself “content” tier (text only) but contains executable code. ${findings}`,
+  'update.error.versionUnavailable': (version: string) =>
+    `Could not preview: version ${version} of this course could not be fetched.`,
+  'update.summary.exact': (exact: string, total: string) => `${exact}/${total} notes stay exactly in place`,
+  'update.summary.fuzzy': (count: string) => `${count} shifted slightly`,
+  'update.summary.orphaned': (count: string) => `${count} lost their anchor`,
+  'update.title': (courseTitle: string) => `Update “${courseTitle}”`,
+  'update.previewing': 'Trying to reanchor your notes on the new version…',
+  'update.noNotes': 'You have no notes in this course, so the update changes nothing for you.',
+  'update.alreadyLost': (count: string, fromVersion: string) =>
+    `Of those, ${count} notes had already lost their anchor before this — staying on v${fromVersion} would not save them either.`,
+  'update.orphansKept': (notDeleted: string) =>
+    `Notes that lose their anchor are ${notDeleted}. They move into the chapter’s “could not be reattached” list, word for word, so you can reconnect them by hand.`,
+  'update.orphansKept.notDeleted': 'not deleted',
+  'update.applying': 'Updating…',
+  'update.confirm': 'Update',
+  'update.stay': (fromVersion: string) => `Stay on v${fromVersion}`,
 };

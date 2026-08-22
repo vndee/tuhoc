@@ -10,6 +10,7 @@ import { AskPanel } from '../ai/AskPanel';
 import { DeepDive } from '../ai/DeepDive';
 import { type SelectionExcerpt, chapterSystemPrompt } from '../ai/prompts';
 import { describeCourseError, loadChapter } from '../course/loader';
+import { useLanguage } from '../i18n/LanguageProvider';
 import type { Chapter } from '../course/types';
 import { startHeartbeat } from '../progress/heartbeat';
 import { useProgress } from '../progress/useProgress';
@@ -54,6 +55,7 @@ interface HeadingEntry {
  * executing; a plain ref'd node sidesteps both).
  */
 export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevChapter, nextChapter }: ChapterViewProps) {
+  const { lang, t } = useLanguage();
   const containerRef = useRef<HTMLDivElement>(null);
   const [railEl, setRailEl] = useState<HTMLElement | null>(null);
   const [crumbEl, setCrumbEl] = useState<HTMLElement | null>(null);
@@ -136,12 +138,13 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
     const focusEl =
       Array.from(root.querySelectorAll('h2, h3')).find((h) => h.id === currentHeadingId) ?? null;
     const built = chapterSystemPrompt(root, {
+      lang,
       courseTitle,
       chapterTitle: chapter.title,
       focusEl,
     });
     setAi({ kind: 'chapter', system: built.system });
-  }, [annotationContent.root, currentHeadingId, courseTitle, chapter.title]);
+  }, [annotationContent.root, currentHeadingId, courseTitle, chapter.title, lang]);
 
   const closeAi = useCallback(() => {
     setAi(null);
@@ -365,7 +368,7 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
     if (!markBtn) return;
 
     markBtn.classList.toggle('on', isChapterRead);
-    markBtn.title = isChapterRead ? 'Bỏ đánh dấu đã học' : 'Đánh dấu đã học';
+    markBtn.title = t(isChapterRead ? 'reader.markUnread' : 'topbar.markRead');
     // `<Topbar>` sets a static `aria-label` on this button, which — per
     // the accessible-name computation rules — takes precedence over its
     // visible text content. Updating only `.mk-lbl`'s text below without
@@ -373,11 +376,11 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
     // announcing "Đánh dấu đã học" (mark as read) forever, even once the
     // chapter IS marked read and the button's real action has flipped to
     // unmark it — so this mirrors `title`'s update exactly.
-    markBtn.setAttribute('aria-label', isChapterRead ? 'Bỏ đánh dấu đã học' : 'Đánh dấu đã học');
+    markBtn.setAttribute('aria-label', t(isChapterRead ? 'reader.markUnread' : 'topbar.markRead'));
     const icon = markBtn.querySelector('.mk-ico');
     if (icon) icon.textContent = isChapterRead ? '✓' : '○';
     const label = markBtn.querySelector('.mk-lbl');
-    if (label) label.textContent = isChapterRead ? 'Đã học' : 'Đánh dấu đã học';
+    if (label) label.textContent = t(isChapterRead ? 'reader.read' : 'topbar.markRead');
 
     const handleClick = () => progress.toggleRead(chapter.id);
     markBtn.addEventListener('click', handleClick);
@@ -394,12 +397,12 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
       // from indefinitely showing a stale "✓ Đã học" from whatever
       // chapter was last open.
       markBtn.classList.remove('on');
-      markBtn.title = 'Đánh dấu đã học';
-      markBtn.setAttribute('aria-label', 'Đánh dấu đã học');
+      markBtn.title = t('topbar.markRead');
+      markBtn.setAttribute('aria-label', t('topbar.markRead'));
       const iconEl = markBtn.querySelector('.mk-ico');
       if (iconEl) iconEl.textContent = '○';
       const labelEl = markBtn.querySelector('.mk-lbl');
-      if (labelEl) labelEl.textContent = 'Đánh dấu đã học';
+      if (labelEl) labelEl.textContent = t('topbar.markRead');
     };
     // Deliberately depends on `isChapterRead` (the specific boolean this
     // effect cares about) and `progress.toggleRead` (stable — see
@@ -538,10 +541,14 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    injectExerciseCheckboxes(container, {
-      isDone: (n) => progress.exDone(chapter.id, n),
-      toggle: (n) => progress.toggleEx(chapter.id, n),
-    });
+    injectExerciseCheckboxes(
+      container,
+      {
+        isDone: (n) => progress.exDone(chapter.id, n),
+        toggle: (n) => progress.toggleEx(chapter.id, n),
+      },
+      t,
+    );
     // `progress.exDone`/`progress.toggleEx` (stable — see useProgress.ts)
     // plus `progress.partStats` (the change SIGNAL — see the paragraph
     // above) rather than the whole `progress` object: `progress` also
@@ -549,7 +556,7 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
     // whole would re-run this effect (and re-walk every `.box.ex` in the
     // chapter) on every chapter-level `isRead` change too, not just an
     // exercise change.
-  }, [chapter.id, courseKit.ready, progress.partStats, progress.exDone, progress.toggleEx, chapterQuery.data]);
+  }, [chapter.id, courseKit.ready, progress.partStats, progress.exDone, progress.toggleEx, chapterQuery.data, t]);
 
   // Error checks come before the pending check: `!courseKit.ready` is true
   // for the whole time scripts are loading, so if it were checked first, a
@@ -558,13 +565,13 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
   // to settle too — silently hiding a genuine failure behind a loading spinner.
   if (courseKit.error) {
     console.error('useCourseKit failed to load the course runtime', courseKit.error);
-    return <p className="ch-lede">Không tải được công cụ đọc (KaTeX/mô phỏng). Hãy thử tải lại trang.</p>;
+    return <p className="ch-lede">{t('reader.kitFailed')}</p>;
   }
   if (chapterQuery.isError) {
     return <p className="ch-lede">{describeCourseError(chapterQuery.error)}</p>;
   }
   if (!courseKit.ready || chapterQuery.isPending) {
-    return <p className="ch-lede">Đang tải chương…</p>;
+    return <p className="ch-lede">{t('reader.chapterLoading')}</p>;
   }
 
   return (
@@ -616,10 +623,10 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
             onClick={askAboutChapter}
             disabled={annotationContent.root === null}
           >
-            Hỏi AI về chương này
+            {t('reader.askAi')}
           </button>
           {ai?.kind === 'chapter' && (
-            <AskPanel heading="Hỏi về chương" system={ai.system} onClose={closeAi} />
+            <AskPanel heading={t('reader.askHeading')} system={ai.system} onClose={closeAi} />
           )}
           {ai?.kind === 'dive' && (
             <DeepDive
@@ -635,7 +642,7 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
         <div className="pager">
           {prevChapter && (
             <Link className="prev" to={`/c/${courseId}/${prevChapter.id}`}>
-              <div className="dir">← Chương trước</div>
+              <div className="dir">{t('reader.prev')}</div>
               <div className="nm">
                 {prevChapter.num ? `${prevChapter.num} · ` : ''}
                 {prevChapter.short}
@@ -644,7 +651,7 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
           )}
           {nextChapter && (
             <Link className="next" to={`/c/${courseId}/${nextChapter.id}`}>
-              <div className="dir">Chương sau →</div>
+              <div className="dir">{t('reader.next')}</div>
               <div className="nm">
                 {nextChapter.num ? `${nextChapter.num} · ` : ''}
                 {nextChapter.short}
@@ -659,7 +666,7 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
             {/* The rail's own heading used to be a `<p class="rail-h">Trong
                 chương này</p>`; the "Trong chương" tab now IS that heading,
                 and two of them one above the other is one too many. */}
-            <div className="rail-tabs" role="tablist" aria-label="Nội dung rãnh phải">
+            <div className="rail-tabs" role="tablist" aria-label={t('reader.railAria')}>
               <button
                 type="button"
                 role="tab"
@@ -668,7 +675,7 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
                 aria-selected={railTab === 'toc'}
                 onClick={() => setRailTab('toc')}
               >
-                Trong chương
+                {t('rail.inChapter')}
               </button>
               <button
                 type="button"
@@ -702,7 +709,7 @@ export function ChapterView({ courseId, courseTitle, partTitle, chapter, prevCha
                     behaviour (see `useAnnotations`, section 2): reporting a
                     note before it has been looked for is what the store goes
                     out of its way not to do. */}
-                {`Ghi chú (${annotations.list.length + annotations.orphans.length})`}
+                {t('reader.notesTab', String(annotations.list.length + annotations.orphans.length))}
               </button>
             </div>
             {railTab === 'toc' && (

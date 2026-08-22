@@ -46,6 +46,7 @@ import {
   toolbarSpot,
 } from './SelectionToolbar';
 import { type Ann, type ChapterContent, type UseAnnotationsResult, useAnnotations } from './useAnnotations';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 const CHAPTER = [
   '<h2>Entropy</h2>',
@@ -123,7 +124,9 @@ function Harness({
     <>
       <div ref={ref} data-testid="chapter" />
       <p data-testid="outside">Ngoài chương: chân trang</p>
-      <SelectionToolbar content={content} store={store ?? live} onRequestNote={onRequestNote} />
+      <LanguageProvider>
+        <SelectionToolbar content={content} store={store ?? live} onRequestNote={onRequestNote} />
+      </LanguageProvider>
     </>
   );
 }
@@ -928,7 +931,9 @@ function RealChapterHarness({ html }: { html: string }) {
   return (
     <>
       <div ref={ref} data-testid="chapter" />
-      <SelectionToolbar content={content} store={live} />
+      <LanguageProvider>
+        <SelectionToolbar content={content} store={live} />
+      </LanguageProvider>
     </>
   );
 }

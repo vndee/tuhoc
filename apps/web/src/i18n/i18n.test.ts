@@ -216,8 +216,25 @@ describe('ngôn ngữ được ghi nhớ THEO THIẾT BỊ', () => {
  */
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 
-/** Ký tự chỉ xuất hiện trong chữ Việt (và các ngôn ngữ Latin có dấu khác) — không bao giờ trong mã định danh của repo này. */
-const VIETNAMESE = /[À-ɏḀ-ỿ]/;
+/**
+ * Ký tự chỉ xuất hiện trong CHỮ Việt (và các ngôn ngữ Latin có dấu khác) —
+ * không bao giờ trong mã định danh của repo này.
+ *
+ * HAI KHOẢNG TRỐNG TRONG DÃY, và chúng là phép SỬA ĐỒNG HỒ chứ không phải phép
+ * nới lỏng. Latin-1 Supplement xếp hai ký tự TOÁN HỌC vào giữa các chữ cái:
+ * `×` (U+00D7) và `÷` (U+00F7). Bộ dò cũ (`[À-ɏ…]`) gộp cả hai, nên nó báo
+ * `<button>×</button>` — nút đóng của ba panel — là "chuỗi tiếng Việt".
+ *
+ * `×` không phải chữ, không thuộc ngôn ngữ nào, và không có bản dịch: nó là
+ * cùng hạng với `←`, `→`, `☰`, `✓`, `○` mà bộ dò này chưa bao giờ gắn cờ (chúng
+ * nằm ngoài dãy). Đưa nó vào catalog sẽ tạo một khoá `'×'` giống hệt ở hai bản
+ * dịch — tức là thêm một ngoại lệ vào bài "en không còn tiếng Việt" cho một ký
+ * tự không phải chữ.
+ *
+ * Bài "đọc đúng đồng hồ của chính nó" bên dưới ghim cả hai chiều của phép sửa
+ * này, nên nó không thể lặng lẽ rộng thêm.
+ */
+const VIETNAMESE = /[À-ÖØ-öø-ɏḀ-ỿ]/;
 
 function repoRelative(file: string): string {
   return relative(REPO_ROOT, file).split(sep).join('/');
@@ -380,21 +397,11 @@ const DEVELOPER_FACING: readonly { readonly file: string; readonly why: string }
  * một dòng trong diff mà người thẩm định nhìn thấy.
  */
 const NOT_YET_EXTRACTED: readonly string[] = [
-  'apps/web/src/ai/AskPanel.tsx',
-  'apps/web/src/ai/DeepDive.tsx',
-  'apps/web/src/ai/prompts.ts',
-  'apps/web/src/ai/useAI.ts',
-  'apps/web/src/ai/vaultClient.ts',
-  'apps/web/src/annotations/MarginCards.tsx',
-  'apps/web/src/annotations/OrphanPanel.tsx',
-  'apps/web/src/annotations/SelectionToolbar.tsx',
   'apps/web/src/api/client.ts',
   'apps/web/src/api/stats.ts',
   'apps/web/src/course/UpdateDialog.tsx',
   'apps/web/src/course/import.ts',
   'apps/web/src/course/loader.ts',
-  'apps/web/src/reader/ChapterView.tsx',
-  'apps/web/src/reader/injectExerciseCheckboxes.ts',
   'apps/web/src/registry/Catalog.tsx',
   'apps/web/src/registry/index.ts',
   // Nạp bằng `<script src>`, không phải `import` — nên nó KHÔNG import được
@@ -417,8 +424,20 @@ describe('cổng chặn chuỗi cứng', () => {
       '/** Đoạn văn xuôi tiếng Việt trong JSDoc, cũng không tính. */',
       'export const soDoHinh = 1;',
       "export const ascii = 'Danh muc';",
+      // KÝ HIỆU TOÁN HỌC, không phải chữ. `×` (U+00D7) và `÷` (U+00F7) nằm
+      // GIỮA các chữ cái Latin-1 có dấu, nên một dãy `[À-ɏ]` viết ngây thơ gộp
+      // cả hai — và bộ dò khi ấy báo nút đóng `<button>×</button>` của ba panel
+      // là "chuỗi tiếng Việt". Chúng cùng hạng với `←`, `☰`, `✓`, `○` (vốn nằm
+      // ngoài dãy và chưa bao giờ bị gắn cờ): không thuộc ngôn ngữ nào, không
+      // có bản dịch.
+      "export const glyphs = '×÷←→☰✓○';",
     ].join('\n');
     expect(vietnameseLiterals('decoy.ts', decoy)).toEqual([]);
+
+    // ĐỐI CHỨNG cho khoảng trống vừa mở: hai chữ cái ĐỨNG SÁT `×` và `÷` trong
+    // bảng mã vẫn phải bị bắt. Không có nó, một dãy quá rộng ở đúng chỗ ấy sẽ
+    // im lặng bỏ lọt `Ö`, `Ø`, `ö`, `ø`.
+    expect(vietnameseLiterals('edge.ts', "export const e = 'Ö Ø ö ø';")).toEqual(['Ö Ø ö ø']);
 
     const real = [
       "export const a = 'Thư viện';",

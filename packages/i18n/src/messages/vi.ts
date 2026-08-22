@@ -330,6 +330,147 @@ export const vi = {
   'import.stage.unpacking': 'Đang giải nén…',
   'import.stage.checking': 'Đang kiểm tra nội dung gói…',
   'import.stage.saving': 'Đang lưu vào máy bạn…',
+
+  /* ══════════════════════════════════════════════════════════════════════ *
+   * TRANG ĐỌC (`reader/`) + GHI CHÚ (`annotations/`) + TRỢ LÝ AI (`ai/`)
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  /* ── chương đang đọc (`reader/ChapterView.tsx`) ────────────────────────── */
+
+  'reader.markUnread': 'Bỏ đánh dấu đã học',
+  'reader.read': 'Đã học',
+  'reader.kitFailed': 'Không tải được công cụ đọc (KaTeX/mô phỏng). Hãy thử tải lại trang.',
+  'reader.chapterLoading': 'Đang tải chương…',
+  'reader.askAi': 'Hỏi AI về chương này',
+  'reader.askHeading': 'Hỏi về chương',
+  'reader.prev': '← Chương trước',
+  'reader.next': 'Chương sau →',
+  'reader.railAria': 'Nội dung rãnh phải',
+  'reader.notesTab': (count: string) => `Ghi chú (${count})`,
+  'reader.exerciseCheckbox': (index: string) => `Đánh dấu đã làm bài tập ${index}`,
+  'reader.exerciseDone': 'Đã làm',
+
+  /* ── thanh công cụ bôi chọn (`annotations/SelectionToolbar.tsx`) ───────── */
+
+  'ann.color.yellow': 'Tô màu vàng',
+  'ann.color.green': 'Tô màu xanh lá',
+  'ann.color.blue': 'Tô màu xanh dương',
+  'ann.color.purple': 'Tô màu tím',
+  'ann.saveFailed': 'Không lưu được ghi chú. Hãy thử tô lại.',
+  'ann.toolbarAria': 'Ghi chú đoạn đã chọn',
+  'ann.note': 'Ghi chú',
+  'ann.deepDive': 'Đào sâu',
+  'ann.dismissAlert': 'Đóng thông báo',
+
+  /* ── thẻ ghi chú bên lề (`annotations/MarginCards.tsx`) ────────────────── */
+
+  'ann.card.collapsed': '▸ Đang thu gọn',
+  'ann.card.offPage': '▸ Không hiện trên trang',
+  'ann.card.emptyNote': '(chưa có nội dung)',
+  'ann.card.editorAria': 'Nội dung ghi chú',
+  'ann.card.delete': 'Xóa ghi chú',
+  'ann.card.done': 'Xong',
+  'ann.card.none': 'Chưa có ghi chú nào trong chương này.',
+  'ann.card.sheetAria': 'Ghi chú',
+  'ann.card.sheetClose': 'Đóng ghi chú',
+
+  /* ── ghi chú mất neo (`annotations/OrphanPanel.tsx`) ───────────────────── */
+
+  'ann.orphan.reattachFailed': 'Không gắn lại được. Hãy bôi chọn lại rồi thử lần nữa.',
+  'ann.orphan.mathOnly':
+    'Đoạn bạn chọn chỉ gồm công thức. Hãy chọn thêm chữ xung quanh để ghi chú tìm lại được chỗ này.',
+  'ann.orphan.awayAria': 'Ghi chú chưa gắn lại được',
+  'ann.orphan.awayBody': (count: string) =>
+    `${count} ghi chú chưa gắn lại được. Mở chương này trên màn hình rộng hơn để nối lại.`,
+  'ann.orphan.awayHide': 'Ẩn',
+  'ann.orphan.heading': (count: string) => `Mồ côi (${count})`,
+  'ann.orphan.lede':
+    'Bản chương hiện tại không còn đoạn văn mà những ghi chú này neo vào. Nội dung ghi chú vẫn được giữ nguyên — bấm “Gắn lại” rồi bôi chọn đoạn tương ứng để nối lại.',
+  'ann.orphan.waiting': 'Bôi chọn đoạn văn tương ứng trong chương, rồi bấm “Gắn vào đây”.',
+  'ann.orphan.reattach': 'Gắn lại',
+  'ann.orphan.showExact': 'Xem exact gốc',
+  'ann.orphan.exactAria': 'Đoạn văn gốc của ghi chú',
+  'ann.orphan.copy': 'Sao chép',
+  'ann.orphan.barAria': 'Gắn lại ghi chú',
+  'ann.orphan.barWhat': (quote: string) => `Gắn lại: ${quote}`,
+  'ann.orphan.barHint': 'Bôi chọn đoạn văn mới trong chương.',
+  'ann.orphan.barConfirm': 'Gắn vào đây',
+  'ann.orphan.barCancel': 'Hủy',
+
+  /* ── bảng hỏi AI (`ai/AskPanel.tsx`, `ai/DeepDive.tsx`, `ai/useAI.ts`) ─── */
+
+  'ai.panel.close': 'Đóng trợ lý',
+  'ai.panel.needsSetup':
+    'Trợ lý AI chạy bằng key của chính bạn, và máy này chưa có key nào. Key được cất trong kho khoá — một trang riêng ở một địa chỉ riêng, nên khoá học không đọc được nó.',
+  'ai.panel.openSettings': 'Mở trang cấu hình',
+  'ai.panel.unavailable':
+    'Bản dựng này không có kho khoá, nên chưa dùng được trợ lý AI. Đây là thiếu sót của cấu hình khi triển khai, không phải của tài khoản bạn — phần đọc giáo trình vẫn chạy bình thường.',
+  'ai.panel.probeFailed': 'Chưa hỏi được kho khoá xem đã cắm key chưa. Bạn vẫn có thể thử hỏi.',
+  'ai.panel.questionLabel': 'Câu hỏi của bạn',
+  'ai.panel.questionPlaceholder': 'Hỏi về chương đang đọc…',
+  'ai.panel.stop': 'Dừng',
+  'ai.panel.ask': 'Hỏi',
+  'ai.deepDive.heading': 'Đào sâu',
+  'ai.error.unavailable': 'Bản dựng này không có kho khoá, nên chưa dùng được AI.',
+  'ai.error.notConfigured': 'Chưa cắm key vào kho khoá trên máy này.',
+
+  /* ── phía trang chính của giao thức kho khoá (`ai/vaultClient.ts`) ─────── */
+
+  'ai.vault.originShape': (received: string) =>
+    `VITE_VAULT_ORIGIN phải là một origin đúng nghĩa (scheme://host[:port]), không dấu "/" cuối, không đường dẫn, không "*" — nhận được ${received}.`,
+  'ai.vault.frameDetached': 'Khung kho khoá đã bị tháo trong lúc đang chờ.',
+  'ai.vault.abortedBeforeSend': 'Đã huỷ trước khi gửi.',
+  'ai.vault.abortedByUser': 'Người dùng đã huỷ.',
+  'ai.vault.timeout': (ms: string) =>
+    `Kho khoá không trả lời sau ${ms} ms. Khung có nạp được không, và origin có đúng không?`,
+
+  /* ── LỜI NHẮC gửi cho mô hình (`ai/prompts.ts`) ────────────────────────── */
+
+  /**
+   * ĐÂY LÀ CHỖ SONG NGỮ CÓ HỆ QUẢ THẬT, không chỉ là chữ trên nút: câu vai
+   * dưới đây bảo mô hình *trả lời bằng ngôn ngữ nào*. Một người đọc đã chọn
+   * tiếng Anh mà vẫn nhận câu trả lời tiếng Việt thì bộ chọn ngôn ngữ chỉ đổi
+   * được phần vỏ.
+   *
+   * `chapterSystemPrompt`/`deepDiveSystemPrompt` vì thế nhận `lang` như một
+   * trường BẮT BUỘC — không có mặc định lặng lẽ, nên `tsc` bắt mọi chỗ gọi tự
+   * nói ra nó đang hỏi hộ ai.
+   */
+  'ai.prompt.chapterRole': (cutMark: string) =>
+    `Bạn là trợ giảng của một giáo trình tự học. Chỉ trả lời dựa trên phần chương được trích dưới đây. Phần trích có thể đã bị cắt bớt (dấu ${cutMark}); nếu câu hỏi rơi vào phần không có ở đây, hãy nói thẳng điều đó và chỉ tới mục tương ứng trong dàn ý thay vì đoán. Trả lời bằng tiếng Việt, ngắn gọn, và viết công thức bằng LaTeX trong $…$.`,
+  'ai.prompt.deepDiveRole':
+    'Bạn là trợ giảng của một giáo trình tự học. Người học vừa bôi đen một đoạn và muốn hiểu sâu hơn đúng đoạn ấy. Giải thích ý đoạn đó, vì sao nó đúng, và một ví dụ cụ thể. Trả lời bằng tiếng Việt, ngắn gọn, và viết công thức bằng LaTeX trong $…$.',
+  'ai.prompt.field.course': 'KHOÁ HỌC',
+  'ai.prompt.field.chapter': 'CHƯƠNG',
+  'ai.prompt.field.outline': 'DÀN Ý CÁC MỤC',
+  'ai.prompt.field.excerpt': 'TRÍCH CHƯƠNG',
+  'ai.prompt.field.before': 'VĂN CẢNH TRƯỚC',
+  'ai.prompt.field.selection': 'ĐOẠN ĐƯỢC CHỌN',
+  'ai.prompt.field.after': 'VĂN CẢNH SAU',
+  'ai.prompt.deepDiveQuestion': 'Giải thích kỹ đoạn này giúp tôi.',
+
+  /* ── hộp thoại cập nhật gói (`course/UpdateDialog.tsx`) ────────────────── */
+
+  'update.error.courseKit':
+    'Chưa xem trước được: không tải được bộ dựng chương (công thức toán). Hãy kiểm tra kết nối rồi thử lại.',
+  'update.error.unsafe': (version: string, findings: string) =>
+    `Không thể cập nhật: bản ${version} tự khai là hạng “content” (chỉ có chữ) nhưng lại chứa mã chạy được. ${findings}`,
+  'update.error.versionUnavailable': (version: string) =>
+    `Chưa xem trước được: không lấy được bản ${version} của khoá học này.`,
+  'update.summary.exact': (exact: string, total: string) => `${exact}/${total} ghi chú giữ đúng chỗ`,
+  'update.summary.fuzzy': (count: string) => `${count} dịch nhẹ`,
+  'update.summary.orphaned': (count: string) => `${count} mất neo`,
+  'update.title': (courseTitle: string) => `Cập nhật “${courseTitle}”`,
+  'update.previewing': 'Đang thử neo lại ghi chú của bạn trên bản mới…',
+  'update.noNotes': 'Bạn chưa có ghi chú nào trong khoá học này, nên cập nhật không ảnh hưởng gì.',
+  'update.alreadyLost': (count: string, fromVersion: string) =>
+    `Trong đó ${count} ghi chú vốn đã mất neo từ trước — ở lại v${fromVersion} cũng không cứu được.`,
+  'update.orphansKept': (notDeleted: string) =>
+    `Ghi chú mất neo ${notDeleted}. Chúng vào mục “chưa gắn lại được” trong chương, còn nguyên từng chữ, để bạn nối lại bằng tay.`,
+  'update.orphansKept.notDeleted': 'không bị xoá',
+  'update.applying': 'Đang cập nhật…',
+  'update.confirm': 'Cập nhật',
+  'update.stay': (fromVersion: string) => `Ở lại v${fromVersion}`,
 };
 
 /** Hình dạng mà MỌI ngôn ngữ phải phủ đúng. Xem chú thích trên `vi`. */

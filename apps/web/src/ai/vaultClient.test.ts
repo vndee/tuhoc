@@ -39,6 +39,7 @@ const live: VaultClient[] = [];
 function harness(opts: { timeoutMs?: number } = {}): Harness {
   const post = vi.fn();
   const client = new VaultClient({
+    lang: 'vi',
     vaultOrigin: VAULT,
     target: { postMessage: post } as unknown as Window,
     timeoutMs: opts.timeoutMs ?? 10_000,
@@ -372,29 +373,29 @@ describe('resolveVaultOrigin — cấu hình sai phải hỏng ỒN ÀO', () => 
    * được `"true"`), nên một khối bảo vệ dựa vào cờ đó sẽ im lặng không chạy.
    */
   it('trả về origin khi cấu hình hợp lệ', () => {
-    expect(resolveVaultOrigin({ VITE_VAULT_ORIGIN: VAULT })).toBe(VAULT);
+    expect(resolveVaultOrigin({ VITE_VAULT_ORIGIN: VAULT }, 'vi')).toBe(VAULT);
   });
 
   it('trả về null khi KHÔNG cấu hình — tính năng AI vắng mặt, ứng dụng vẫn chạy', () => {
-    expect(resolveVaultOrigin({})).toBeNull();
-    expect(resolveVaultOrigin({ VITE_VAULT_ORIGIN: '   ' })).toBeNull();
+    expect(resolveVaultOrigin({}, 'vi')).toBeNull();
+    expect(resolveVaultOrigin({ VITE_VAULT_ORIGIN: '   ' }, 'vi')).toBeNull();
   });
 
   it('NÉM với "*" — giá trị này vừa là bộ lọc nhận vừa là targetOrigin khi gửi', () => {
-    expect(() => resolveVaultOrigin({ VITE_VAULT_ORIGIN: '*' })).toThrow(/VITE_VAULT_ORIGIN/);
+    expect(() => resolveVaultOrigin({ VITE_VAULT_ORIGIN: '*' }, 'vi')).toThrow(/VITE_VAULT_ORIGIN/);
   });
 
   it('NÉM với dấu "/" cuối — event.origin không bao giờ có nó, nên sẽ không khớp gì hết', () => {
-    expect(() => resolveVaultOrigin({ VITE_VAULT_ORIGIN: 'http://localhost:5174/' })).toThrow(
+    expect(() => resolveVaultOrigin({ VITE_VAULT_ORIGIN: 'http://localhost:5174/' }, 'vi')).toThrow(
       /VITE_VAULT_ORIGIN/,
     );
   });
 
   it('NÉM với đường dẫn, và NÉM khi thiếu scheme', () => {
-    expect(() => resolveVaultOrigin({ VITE_VAULT_ORIGIN: 'https://x.example/app' })).toThrow(
+    expect(() => resolveVaultOrigin({ VITE_VAULT_ORIGIN: 'https://x.example/app' }, 'vi')).toThrow(
       /VITE_VAULT_ORIGIN/,
     );
-    expect(() => resolveVaultOrigin({ VITE_VAULT_ORIGIN: 'vault.example' })).toThrow(
+    expect(() => resolveVaultOrigin({ VITE_VAULT_ORIGIN: 'vault.example' }, 'vi')).toThrow(
       /VITE_VAULT_ORIGIN/,
     );
   });

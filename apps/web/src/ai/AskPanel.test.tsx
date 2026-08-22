@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { VaultFrameContext } from '../shell/VaultFrame';
 import { AskPanel } from './AskPanel';
 import { VaultClient } from './vaultClient';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 const VAULT = 'http://localhost:5174';
 
@@ -33,6 +34,7 @@ const live: VaultClient[] = [];
 function harness(): Harness {
   const post = vi.fn();
   const client = new VaultClient({
+    lang: 'vi',
     vaultOrigin: VAULT,
     target: { postMessage: post } as unknown as Window,
     timeoutMs: 10_000,
@@ -42,13 +44,13 @@ function harness(): Harness {
     post,
     client,
     wrap: (node) => (
-      <MemoryRouter>
+      <LanguageProvider><MemoryRouter>
         <VaultFrameContext.Provider
           value={{ client, origin: VAULT, expanded: false, setExpanded: () => {} }}
         >
           {node}
         </VaultFrameContext.Provider>
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     ),
     sent: (n) => post.mock.calls[n]?.[0],
     reply: (data, origin = VAULT) => {
@@ -103,13 +105,13 @@ describe('AskPanel — chưa cắm key thì MỜI đi cấu hình', () => {
 
   it('bản dựng KHÔNG có kho khoá ⇒ câu khác, và KHÔNG mời đi một trang vô ích', async () => {
     const wrap = (node: ReactNode) => (
-      <MemoryRouter>
+      <LanguageProvider><MemoryRouter>
         <VaultFrameContext.Provider
           value={{ client: null, origin: null, expanded: false, setExpanded: () => {} }}
         >
           {node}
         </VaultFrameContext.Provider>
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     );
     await act(async () => {
       render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
@@ -126,13 +128,13 @@ describe('AskPanel — chưa cắm key thì MỜI đi cấu hình', () => {
     // lần mở, rồi tự sửa — kiểu hỏng khó thấy nhất trong một bài kiểm chỉ nhìn
     // trạng thái cuối.
     const wrap = (node: ReactNode) => (
-      <MemoryRouter>
+      <LanguageProvider><MemoryRouter>
         <VaultFrameContext.Provider
           value={{ client: null, origin: VAULT, expanded: false, setExpanded: () => {} }}
         >
           {node}
         </VaultFrameContext.Provider>
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     );
     await act(async () => {
       render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));

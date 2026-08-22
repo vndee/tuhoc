@@ -37,6 +37,7 @@ import { type CardFocus, DRAFT_KEY, MarginCards } from './MarginCards';
 import { normalizeContainer } from './normalize';
 import { PENDING_ID_PREFIX } from './SelectionToolbar';
 import { type ChapterContent, useAnnotations } from './useAnnotations';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 /** Wide enough for the rail to exist at all — `reader.css` hides `#rail`
  * under `@media (max-width:1240px)`, and jsdom's own default is 1024, i.e.
@@ -164,7 +165,9 @@ function Harness({ html, visible = true, onWrite }: { html: string; visible?: bo
           witness that is produced by the STATE. */}
       <output data-testid="published">{store.list.length}</output>
       <aside data-testid="rail">
-        <MarginCards content={content} store={recorded} visible={visible} focus={focus} onFocusChange={setFocus} />
+        <LanguageProvider>
+          <MarginCards content={content} store={recorded} visible={visible} focus={focus} onFocusChange={setFocus} />
+        </LanguageProvider>
       </aside>
     </>
   );

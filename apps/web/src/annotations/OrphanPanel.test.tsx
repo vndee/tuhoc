@@ -35,6 +35,7 @@ import { type Anchor, type AnchorColor, selectionToAnchor } from './anchor';
 import { normalizeContainer } from './normalize';
 import { ORPHAN_QUOTE_MAX, OrphanPanel } from './OrphanPanel';
 import { type ChapterContent, useAnnotations } from './useAnnotations';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 const PROSE = [
   '<h2>Chương thử nghiệm</h2>',
@@ -193,12 +194,14 @@ function Harness({ html }: { html: string }) {
       <output data-testid="orphan-count">{store.orphans.length}</output>
       <output data-testid="list-count">{store.list.length}</output>
       <aside data-testid="rail">
-        <OrphanPanel
-          content={content}
-          store={store}
-          reattaching={reattaching}
-          onReattachingChange={setReattaching}
-        />
+        <LanguageProvider>
+          <OrphanPanel
+            content={content}
+            store={store}
+            reattaching={reattaching}
+            onReattachingChange={setReattaching}
+          />
+        </LanguageProvider>
       </aside>
     </>
   );

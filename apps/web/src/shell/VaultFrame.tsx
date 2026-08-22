@@ -77,13 +77,13 @@ export interface VaultFrameProviderProps {
  * một vòng tròn mãi mãi.
  */
 function originFromBuildConfig(): string | null {
+  // Ngôn ngữ đọc thẳng từ thiết bị: hàm này là hàm tự do, chạy trước mọi hook
+  // của component gọi nó, nên `useLanguage()` không dùng được ở đây.
+  const lang = readStoredLang() ?? DEFAULT_LANG;
   try {
-    return resolveVaultOrigin(import.meta.env);
+    return resolveVaultOrigin(import.meta.env, lang);
   } catch (e) {
-    // `readStoredLang()` chứ không `useLanguage()`: hàm này chạy NGOÀI cây
-    // React (nó được gọi trong thân component nhưng trước bất kỳ hook nào
-    // của nó, và nó là một hàm tự do mà một hook không gọi được).
-    console.error(t(readStoredLang() ?? DEFAULT_LANG, 'vault.frame.configError'), e);
+    console.error(t(lang, 'vault.frame.configError'), e);
     return null;
   }
 }
@@ -122,7 +122,7 @@ export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps
       setClient(null);
       return;
     }
-    const c = new VaultClient({ vaultOrigin: resolved, target });
+    const c = new VaultClient({ vaultOrigin: resolved, target, lang });
     setClient(c);
     return () => {
       // Bắt buộc: mỗi `VaultClient` gắn một listener trên `window`, và một
@@ -130,7 +130,10 @@ export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps
       c.dispose();
       setClient(null);
     };
-  }, [resolved, frameEl]);
+    // `lang` nằm trong danh sách: các câu lỗi mà `VaultClient` tự dựng
+    // (`timeout`, `aborted`) được gắn ngôn ngữ lúc dựng client, nên đổi ngôn
+    // ngữ mà không dựng lại client sẽ để lại những câu ấy ở tiếng cũ.
+  }, [resolved, frameEl, lang]);
 
   const value = useMemo<VaultFrameHandle>(
     () => ({ client, origin: resolved, expanded, setExpanded }),

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PROTOCOL_VERSION } from '@vault-protocol';
 import { VaultClient } from './vaultClient';
 import { VaultFrameContext } from '../shell/VaultFrame';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 import { useAI } from './useAI';
 
 const VAULT = 'http://localhost:5174';
@@ -38,6 +39,7 @@ const live: VaultClient[] = [];
 function harness(): Harness {
   const post = vi.fn();
   const client = new VaultClient({
+    lang: 'vi',
     vaultOrigin: VAULT,
     target: { postMessage: post } as unknown as Window,
     timeoutMs: 10_000,
@@ -47,11 +49,11 @@ function harness(): Harness {
     post,
     client,
     wrapper: ({ children }) => (
-      <VaultFrameContext.Provider
+      <LanguageProvider><VaultFrameContext.Provider
         value={{ client, origin: VAULT, expanded: false, setExpanded: () => {} }}
       >
         {children}
-      </VaultFrameContext.Provider>
+      </VaultFrameContext.Provider></LanguageProvider>
     ),
     sent: (n) => post.mock.calls[n]?.[0],
     reply: (data, origin = VAULT) => {
@@ -189,11 +191,11 @@ describe('useAI — lỗi có mã, không phải một câu cụt', () => {
 
   it('bản dựng KHÔNG có kho khoá ⇒ mã "unavailable", KHÁC với "chưa cắm key"', async () => {
     const wrapper = ({ children }: { children: ReactNode }) => (
-      <VaultFrameContext.Provider
+      <LanguageProvider><VaultFrameContext.Provider
         value={{ client: null, origin: null, expanded: false, setExpanded: () => {} }}
       >
         {children}
-      </VaultFrameContext.Provider>
+      </VaultFrameContext.Provider></LanguageProvider>
     );
     const { result } = renderHook(() => useAI(), { wrapper });
     await act(async () => {

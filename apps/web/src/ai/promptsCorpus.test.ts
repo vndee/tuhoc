@@ -132,7 +132,7 @@ describe('gói mẫu thật + KaTeX thật', () => {
     let withFormula = 0;
     for (const { course, file, html } of chapters) {
       const root = renderChapter(html);
-      const built = chapterSystemPrompt(root, { courseTitle: course, chapterTitle: file });
+      const built = chapterSystemPrompt(root, { lang: 'vi', courseTitle: course, chapterTitle: file });
 
       expect(built.system).not.toContain(ATOMIC);
       expect(built.contextChars).toBeLessThanOrEqual(CHAPTER_CONTEXT_LIMIT);
@@ -191,6 +191,7 @@ describe('gói mẫu thật + KaTeX thật', () => {
     const rows = chapterFiles().map(({ course, file, html }) => {
       const root = renderChapter(html);
       const built = chapterSystemPrompt(root, {
+        lang: 'vi',
         courseTitle: 'Số dấu phẩy động',
         chapterTitle: 'Ba trường: dấu, số mũ, phần định trị',
       });

@@ -79,6 +79,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type LocalStorageKey, readLocalStorage, writeLocalStorage } from '../db/local';
+import { useLanguage } from '../i18n/LanguageProvider';
 import { type CardMeasure, DEFAULT_GAP, layoutCards } from './layout';
 import { highlightElements, highlightRects } from './painter';
 import { PENDING_ID_PREFIX } from './SelectionToolbar';
@@ -345,6 +346,7 @@ export function useWideRail(): boolean {
 }
 
 export function MarginCards({ content, store, visible, focus, onFocusChange }: MarginCardsProps) {
+  const { t } = useLanguage();
   const { list, orphans, updateNote, remove } = store;
   const root = content.root;
   const revision = content.revision;
@@ -820,12 +822,12 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
             // card that looks misplaced and one that explains itself; the
             // click that opens the card opens the block too.
             <span className="ann-card-badge">
-              {kind === 'details' ? '▸ Đang thu gọn' : '▸ Không hiện trên trang'}
+              {t(kind === 'details' ? 'ann.card.collapsed' : 'ann.card.offPage')}
             </span>
           )}
           {!open && (
             <span className={note ? 'ann-card-note' : 'ann-card-note ann-card-note-empty'}>
-              {note || '(chưa có nội dung)'}
+              {note || t('ann.card.emptyNote')}
             </span>
           )}
         </button>
@@ -836,7 +838,7 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
               // the sheet renders it — never both — so one ref is enough.
               ref={editorRef}
               className="ann-card-input"
-              aria-label="Nội dung ghi chú"
+              aria-label={t('ann.card.editorAria')}
               rows={3}
               value={draft?.id === row.id ? draft.text : row.note}
               onChange={(event) => onDraftChange(row.id, event.target.value)}
@@ -844,10 +846,10 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
             />
             <div className="ann-card-actions">
               <button type="button" className="ann-card-del" onClick={() => onDelete(row.id)}>
-                Xóa ghi chú
+                {t('ann.card.delete')}
               </button>
               <button type="button" className="ann-card-done" onClick={() => onFocusChange(null)}>
-                Xong
+                {t('ann.card.done')}
               </button>
             </div>
           </>
@@ -866,7 +868,7 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
       {visible && wide && (
         <div className="ann-cards" ref={hostRef}>
           {list.length === 0 && orphans.length === 0 && (
-            <p className="ann-cards-empty muted">Chưa có ghi chú nào trong chương này.</p>
+            <p className="ann-cards-empty muted">{t('ann.card.none')}</p>
           )}
           {list.map((row) => (
             <Fragment key={row.id}>
@@ -907,13 +909,13 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
               className={`ann-sheet ann-card-${colorOf(sheetRow.anchor)}`}
               role="dialog"
               aria-modal="true"
-              aria-label="Ghi chú"
+              aria-label={t('ann.card.sheetAria')}
               data-ann-card={sheetRow.id}
               onKeyDown={(event) => {
                 if (event.key === 'Escape') onFocusChange(null);
               }}
             >
-              <button type="button" className="ann-sheet-close" aria-label="Đóng ghi chú" onClick={() => onFocusChange(null)}>
+              <button type="button" className="ann-sheet-close" aria-label={t('ann.card.sheetClose')} onClick={() => onFocusChange(null)}>
                 ×
               </button>
               {body(sheetRow)}
