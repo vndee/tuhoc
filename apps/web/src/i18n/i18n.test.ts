@@ -55,16 +55,27 @@ describe('hai catalog', () => {
 
   /**
    * Bài này bắt thứ `tsc` KHÔNG bắt được: một `en.ts` chép nguyên xi từ `vi.ts`
-   * biên dịch hoàn hảo. Danh sách miễn trừ được viết ra từng khoá một, vì đúng
-   * một hạng khoá được phép giống nhau ở hai bên — tên của chính ngôn ngữ, thứ
-   * mọi bộ chọn ngôn ngữ đều viết bằng ngôn ngữ ấy.
+   * biên dịch hoàn hảo. Danh sách miễn trừ được viết ra TỪNG KHOÁ MỘT, không
+   * theo tiền tố, vì mỗi mục là một quyết định phải đọc được:
+   *
+   *   `lang.name.vi` — tên của một ngôn ngữ, viết bằng chính ngôn ngữ ấy. Mọi
+   *     bộ chọn ngôn ngữ làm vậy, nếu không thì nó chỉ dùng được bởi người
+   *     không cần tới nó.
+   *   `app.name`     — TÊN RIÊNG của nền tảng ("Tự học"), thêm ở Task 5 cùng
+   *     lúc với `shell/Sidebar.tsx`. Tên riêng không dịch: một bản tiếng Anh
+   *     gọi sản phẩm là "Self-study" đặt tên cho một thứ không tồn tại, và
+   *     `<title>` của `index.html` — được ghim nguyên văn ở bài cuối tệp này —
+   *     vẫn là "Tự học" ở mọi ngôn ngữ.
+   *
+   * Danh sách này chỉ được dài ra kèm một lý do viết ra ở đây. Nó là chỗ duy
+   * nhất trong repo phát hiện được một bản dịch chưa dịch.
    */
-  it('không khoá nào của en còn là tiếng Việt, trừ tên ngôn ngữ', () => {
+  it('không khoá nào của en còn là tiếng Việt, trừ tên ngôn ngữ và tên riêng', () => {
     const stillVietnamese = Object.entries(en)
       .filter(([, value]) => VIETNAMESE.test(sample(value)))
       .map(([key]) => key)
       .sort();
-    expect(stillVietnamese).toEqual(['lang.name.vi']);
+    expect(stillVietnamese).toEqual(['app.name', 'lang.name.vi']);
   });
 
   it('LANGS và MESSAGES nói cùng một danh sách ngôn ngữ', () => {
@@ -382,21 +393,10 @@ const NOT_YET_EXTRACTED: readonly string[] = [
   'apps/web/src/course/UpdateDialog.tsx',
   'apps/web/src/course/import.ts',
   'apps/web/src/course/loader.ts',
-  'apps/web/src/pages/CourseHome.tsx',
-  'apps/web/src/pages/Dashboard.tsx',
-  'apps/web/src/pages/ImportCourse.tsx',
-  'apps/web/src/pages/Library.tsx',
-  'apps/web/src/pages/Login.tsx',
-  'apps/web/src/pages/Reader.tsx',
   'apps/web/src/reader/ChapterView.tsx',
   'apps/web/src/reader/injectExerciseCheckboxes.ts',
   'apps/web/src/registry/Catalog.tsx',
   'apps/web/src/registry/index.ts',
-  'apps/web/src/shell/ErrorBoundary.tsx',
-  'apps/web/src/shell/Rail.tsx',
-  'apps/web/src/shell/Sidebar.tsx',
-  'apps/web/src/shell/Topbar.tsx',
-  'apps/web/src/shell/VaultFrame.tsx',
   // Nạp bằng `<script src>`, không phải `import` — nên nó KHÔNG import được
   // catalog. Bóc nó cần một cơ chế khác (ví dụ trang chính đặt sẵn một object
   // lên `window` trước khi nạp runtime). Ghi ra ở đây để Task 5 gặp nó như một

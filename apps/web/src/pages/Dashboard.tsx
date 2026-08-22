@@ -6,6 +6,7 @@ import { useMe } from '../api/useMe';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
 import { useOwnedCourses } from '../course/owned';
 import type { Manifest } from '../course/types';
+import { useLanguage } from '../i18n/LanguageProvider';
 import { useProgress } from '../progress/useProgress';
 import { EmptyLibrary } from './Library';
 
@@ -40,6 +41,7 @@ function useStats() {
  * else, per the same ruling.
  */
 export function Dashboard() {
+  const { t } = useLanguage();
   const meQuery = useMe();
   const logout = useLogout();
   const statsQuery = useStats();
@@ -53,8 +55,8 @@ export function Dashboard() {
     <div className="dashboard">
       <div className="dash-header">
         <div>
-          <h1 className="ch-title">Bảng điều khiển</h1>
-          <p className="ch-lede">Tiến độ học tập và thời gian học của bạn.</p>
+          <h1 className="ch-title">{t('nav.dashboard')}</h1>
+          <p className="ch-lede">{t('dashboard.lede')}</p>
         </div>
         <div className="dash-user">
           {meQuery.data && <span className="dash-user-name">{meQuery.data.name}</span>}
@@ -63,7 +65,7 @@ export function Dashboard() {
             `/import` link below it exists at all.
           */}
           <Link to="/library" className="btn">
-            Thư viện
+            {t('nav.library')}
           </Link>
           {/*
             The only way in to `/import` (Task 8). A route with no link is a
@@ -71,10 +73,10 @@ export function Dashboard() {
             to "nhập một gói course" since Task 7 without ever saying where.
           */}
           <Link to="/import" className="btn">
-            Nhập khóa học
+            {t('nav.import')}
           </Link>
           <button type="button" className="btn" onClick={() => void logout()}>
-            Đăng xuất
+            {t('dashboard.logout')}
           </button>
         </div>
       </div>
@@ -136,17 +138,14 @@ interface StatsSummaryProps {
  * local, not sourced from this query at all).
  */
 function StatsSummary({ statsQuery }: StatsSummaryProps) {
+  const { t } = useLanguage();
+
   if (statsQuery.isPending) {
-    return <p className="dash-stats-note">Đang tải số liệu học tập…</p>;
+    return <p className="dash-stats-note">{t('dashboard.stats.loading')}</p>;
   }
 
   if (statsQuery.isError) {
-    return (
-      <p className="dash-stats-note">
-        Không tải được số liệu học tập (có thể bạn đang ngoại tuyến). Phần trăm hoàn thành mỗi khóa học ở dưới vẫn
-        chính xác — dữ liệu đó được lưu ngay trên máy bạn.
-      </p>
-    );
+    return <p className="dash-stats-note">{t('dashboard.stats.error')}</p>;
   }
 
   const stats = statsQuery.data;
@@ -155,11 +154,11 @@ function StatsSummary({ statsQuery }: StatsSummaryProps) {
       <div className="dash-summary">
         <div className="dash-stat">
           <span className="dash-stat-v">{stats.streakDays}</span>
-          <span className="dash-stat-k">ngày liên tục</span>
+          <span className="dash-stat-k">{t('dashboard.stats.streakDays')}</span>
         </div>
         <div className="dash-stat">
           <span className="dash-stat-v">{Math.round(stats.totalMinutes)}</span>
-          <span className="dash-stat-k">phút đã học</span>
+          <span className="dash-stat-k">{t('dashboard.stats.totalMinutes')}</span>
         </div>
       </div>
       <DayChart days={stats.days} />
@@ -168,13 +167,14 @@ function StatsSummary({ statsQuery }: StatsSummaryProps) {
 }
 
 function DayChart({ days }: { days: DayStat[] }) {
+  const { t } = useLanguage();
   const maxMinutes = Math.max(1, ...days.map((d) => d.minutes));
   return (
-    <div className="dash-chart" aria-label="Số phút học trong 30 ngày gần nhất">
+    <div className="dash-chart" aria-label={t('dashboard.chart.aria')}>
       {days.map((d) => {
         const heightPct = d.minutes > 0 ? Math.max(4, (d.minutes / maxMinutes) * 100) : 0;
         return (
-          <div key={d.date} className="dash-bar" title={`${d.date}: ${Math.round(d.minutes)} phút`}>
+          <div key={d.date} className="dash-bar" title={t('dashboard.chart.barTitle', d.date, String(Math.round(d.minutes)))}>
             <div className="dash-bar-fill" style={{ height: `${heightPct}%` }} />
           </div>
         );
@@ -198,6 +198,7 @@ interface CourseCardProps {
  * `stats.courses[].minutes` for this courseId.
  */
 function CourseCard({ courseId, statsCourses }: CourseCardProps) {
+  const { t } = useLanguage();
   const manifestQuery = useQuery({
     queryKey: manifestQueryKey(courseId),
     queryFn: () => loadManifest(courseId),
@@ -205,7 +206,7 @@ function CourseCard({ courseId, statsCourses }: CourseCardProps) {
   const { partStats } = useProgress(courseId);
 
   if (manifestQuery.isPending) {
-    return <div className="dash-card dash-card-pending">Đang tải…</div>;
+    return <div className="dash-card dash-card-pending">{t('dashboard.card.loading')}</div>;
   }
   if (manifestQuery.isError) {
     return <div className="dash-card dash-card-error">{describeCourseError(manifestQuery.error)}</div>;
@@ -222,8 +223,8 @@ function CourseCard({ courseId, statsCourses }: CourseCardProps) {
       <div className="dash-card-body">
         <h3 className="dash-card-title">{manifest.title}</h3>
         <p className="dash-card-progress">
-          {partStats.chaptersRead}/{totalChapters} chương đã học
-          {courseMinutes != null ? ` · ${Math.round(courseMinutes)} phút` : ''}
+          {t('dashboard.card.chaptersRead', String(partStats.chaptersRead), String(totalChapters))}
+          {courseMinutes != null ? t('dashboard.card.minutes', String(Math.round(courseMinutes))) : ''}
         </p>
       </div>
     </Link>
@@ -234,11 +235,12 @@ const RING_RADIUS = 22;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 function CompletionRing({ percent }: { percent: number }) {
+  const { t } = useLanguage();
   const clamped = Math.max(0, Math.min(100, percent));
   const dashoffset = RING_CIRCUMFERENCE * (1 - clamped / 100);
 
   return (
-    <svg className="dash-ring" viewBox="0 0 52 52" width="52" height="52" role="img" aria-label={`${clamped}% hoàn thành`}>
+    <svg className="dash-ring" viewBox="0 0 52 52" width="52" height="52" role="img" aria-label={t('dashboard.ring.aria', String(clamped))}>
       <circle className="dash-ring-track" cx="26" cy="26" r={RING_RADIUS} />
       <circle
         className="dash-ring-fill"

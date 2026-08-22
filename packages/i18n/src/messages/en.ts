@@ -145,4 +145,141 @@ export const en: Messages = {
   'vault.consent.askBody':
     'The lesson page has asked the key vault to call an AI provider. The key vault lets no call out until you press the button below, and that press only holds for the current session.',
   'vault.consent.allow': 'Allow for this session',
+
+  /* ══════════════════════════════════════════════════════════════════════ *
+   * VỎ ỨNG DỤNG (`shell/`)
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  /** Tên riêng của nền tảng — giữ nguyên ở cả hai bản, như mọi tên riêng. */
+  'app.name': 'Tự học',
+
+  'nav.aria.main': 'Main navigation',
+  'nav.dashboard': 'Dashboard',
+  'nav.library': 'Library',
+  'nav.import': 'Import a course',
+  'nav.catalog': 'Registry catalog',
+
+  'sidebar.searchPlaceholder': 'Find a chapter…',
+  'sidebar.progressPlaceholder': 'Progress will appear here',
+  'sidebar.noCourseLoaded': 'No course is loaded.',
+
+  'topbar.menu': 'Open the menu',
+  'topbar.markRead': 'Mark as read',
+  'topbar.themeToLight': 'Switch to the light theme',
+  'topbar.themeToDark': 'Switch to the dark theme',
+  'topbar.prevChapter': 'Previous chapter',
+  'topbar.nextChapter': 'Next chapter',
+
+  'rail.inChapter': 'In this chapter',
+  'rail.empty': 'Nothing here yet.',
+
+  'error.boundary.log': 'ErrorBoundary caught a render error:',
+  'error.boundary.title': 'This screen hit an error',
+  'error.boundary.body':
+    'The rest of the app is still running. Reloading the page is usually enough; if the error comes back, the details below are what to include in a bug report.',
+  'error.boundary.reload': 'Reload the page',
+
+  'vault.frame.configError': '[key vault] misconfigured, the AI feature is off:',
+  'vault.frame.overlayTitle': 'Key vault — this page runs at a separate address, apart from the lesson page',
+  'vault.frame.close': 'Close',
+  'vault.frame.title': 'Key vault',
+
+  /* ══════════════════════════════════════════════════════════════════════ *
+   * TRANG (`pages/`)
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  'course.loading': 'Loading the course…',
+  'course.notFound': 'Course not found.',
+  'chapter.notFound': 'Chapter not found.',
+  'chapter.notFoundInCourse': 'That chapter is not in this course.',
+
+  'dashboard.lede': 'Your learning progress and study time.',
+  'dashboard.logout': 'Sign out',
+  'dashboard.stats.loading': 'Loading your study figures…',
+  'dashboard.stats.error':
+    'Could not load your study figures (you may be offline). The completion percentages below are still accurate — that data is stored on your own device.',
+  'dashboard.stats.streakDays': 'day streak',
+  'dashboard.stats.totalMinutes': 'minutes studied',
+  'dashboard.chart.aria': 'Minutes studied over the last 30 days',
+  'dashboard.chart.barTitle': (date: string, minutes: string) => `${date}: ${minutes} min`,
+  'dashboard.card.loading': 'Loading…',
+  'dashboard.card.chaptersRead': (read: string, total: string) => `${read}/${total} chapters read`,
+  'dashboard.card.minutes': (minutes: string) => ` · ${minutes} min`,
+  'dashboard.ring.aria': (percent: string) => `${percent}% complete`,
+
+  'login.title': 'Sign in',
+  'login.lede': 'Sign in or create an account to sync your progress across devices.',
+  'login.tablist.aria': 'Sign in or register',
+  'login.tab.login': 'Sign in',
+  'login.tab.register': 'Register',
+  'login.field.email': 'Email',
+  'login.field.password': 'Password',
+  'login.field.name': 'Name',
+  'login.submit.loggingIn': 'Signing in…',
+  'login.submit.login': 'Sign in',
+  'login.submit.registering': 'Registering…',
+  'login.submit.register': 'Register',
+
+  /** Tên riêng của một hiện vật, không phải từ chung — giữ nguyên ở cả hai bản. */
+  'library.source.registry': 'registry',
+  'library.source.private': 'private',
+  'library.source.import': 'imported',
+  'library.source.unknown': 'unknown source',
+
+  'library.title': 'Library',
+  'library.lede': 'Every course you have — on the server and on this device.',
+  'library.loading': 'Loading your library…',
+  'library.empty.headingOffline': 'No courses on this device',
+  'library.empty.heading': 'Your library is empty',
+  'library.list.aria': 'Your courses',
+  'library.notice.server': (status: string) =>
+    `The server answered but reported an error (HTTP ${status}), so the server-side library could not be loaded. Courses already stored on this device still appear below.`,
+  'library.notice.offline':
+    'Showing the copy stored on this device — the server never answered. You may be offline, or the server may be misconfigured (CORS/DNS): the browser returns the same empty error for both, so this page cannot tell them apart. Only courses stored on this device appear below.',
+  'library.meta.version': (version: string) => `version ${version}`,
+  'library.meta.held': 'downloaded',
+  'library.update.available': (version: string) => `New version available: v${version}`,
+  'library.update.view': 'See what changed',
+  'library.tier.contentTitle': 'Content tier: HTML, CSS, images and maths only — no JavaScript.',
+  'library.tier.interactiveTitle':
+    'Interactive tier (§1.2): this course is allowed to contain JavaScript, and that code runs in your browser as you read.',
+  'library.tier.interactiveLabel': 'interactive — runs JavaScript',
+  'library.tier.unknownTitle': 'This package declares no tier, so nothing guarantees it contains no JavaScript.',
+  'library.tier.unknownLabel': 'unknown tier — may run code',
+  'library.emptyState.lede':
+    'You have no courses yet. tuhoc deliberately ships none — you choose what you read, and the only way to begin is to import a package.',
+  'library.emptyState.wayFile': (zip: string) => `a ${zip} file already on your device — this way works offline`,
+  'library.emptyState.wayUrl': (zip: string) => `a link to a ${zip} file`,
+  'library.emptyState.wayRepo': 'a public GitHub repository',
+  'library.emptyState.registry':
+    'The community course registry is being built — once it exists, it will appear right here.',
+
+  'import.lede': (zip: string) =>
+    `A course is a ${zip} package. Once imported, it lives on your device and reads fine offline.`,
+  'import.way.file': 'From a file on this device',
+  'import.way.filePick': 'Choose a .zip package',
+  'import.way.zipUrl': 'From a .zip link',
+  'import.way.zipUrlLabel': 'Link to the .zip file',
+  'import.way.zipUrlSubmit': 'Import from the link',
+  'import.way.repo': 'From a public GitHub repository',
+  'import.way.repoLabel': 'Repository URL',
+  'import.way.repoSubmit': 'Import from the repository',
+  'import.way.repoNote': (publicWord: string, zip: string) =>
+    `Only ${publicWord} repositories can be imported. Private repositories need an access token, and tuhoc deliberately does not hold your tokens. If the course lives in a private repository, download the repository’s ${zip} and use “From a file on this device” above — the result is identical.`,
+  'import.way.repoNotePublic': 'public',
+  'import.progress.files': (done: string, total: string) => ` ${done}/${total} files.`,
+  'import.cancel': 'Cancel',
+  'import.cancelled': 'The import was cancelled. Nothing was saved.',
+  'import.done': (courseId: string, version: string) => `Imported ${courseId} version ${version}. `,
+  'import.done.open': 'Open the course',
+  'import.reroot': (folder: string, dropped: string) =>
+    `The package sat inside the folder ${folder} of the file you chose, so tuhoc treated that folder as the package root${dropped}.`,
+  'import.reroot.dropped': (count: string) => ` and skipped ${count} files outside it`,
+  'import.failed.heading': 'This package could not be imported',
+  'import.failed.one': 'One problem to fix:',
+  'import.failed.many': (count: string) => `${count} problems, all listed here so you can fix them in one pass:`,
+  'import.stage.fetching': 'Downloading the package…',
+  'import.stage.unpacking': 'Unpacking…',
+  'import.stage.checking': 'Checking the package contents…',
+  'import.stage.saving': 'Saving to your device…',
 };

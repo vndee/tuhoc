@@ -176,6 +176,160 @@ export const vi = {
   'vault.consent.askBody':
     'Trang bài học vừa yêu cầu kho khoá gọi nhà cung cấp AI. Kho khoá không cho lời gọi nào đi ra trước khi bạn bấm nút dưới đây, và cú bấm này chỉ có hiệu lực trong phiên hiện tại.',
   'vault.consent.allow': 'Cho phép trong phiên này',
+
+  /* ══════════════════════════════════════════════════════════════════════ *
+   * VỎ ỨNG DỤNG (`shell/`) — thanh bên, thanh trên, rail, lưới lỗi
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  'app.name': 'Tự học',
+
+  'nav.aria.main': 'Điều hướng chính',
+  'nav.dashboard': 'Bảng điều khiển',
+  'nav.library': 'Thư viện',
+  'nav.import': 'Nhập khóa học',
+  'nav.catalog': 'Danh mục registry',
+
+  'sidebar.searchPlaceholder': 'Tìm chương…',
+  'sidebar.progressPlaceholder': 'Tiến độ sẽ hiện ở đây',
+  'sidebar.noCourseLoaded': 'Chưa có khóa học nào được tải.',
+
+  'topbar.menu': 'Mở menu',
+  /** Cùng chữ với nhãn nút `#mark-btn` mà `reader/ChapterView.tsx` ghi đè. */
+  'topbar.markRead': 'Đánh dấu đã học',
+  'topbar.themeToLight': 'Chuyển sang giao diện sáng',
+  'topbar.themeToDark': 'Chuyển sang giao diện tối',
+  'topbar.prevChapter': 'Chương trước',
+  'topbar.nextChapter': 'Chương sau',
+
+  'rail.inChapter': 'Trong chương',
+  'rail.empty': 'Chưa có nội dung.',
+
+  'error.boundary.log': 'ErrorBoundary bắt được lỗi render:',
+  'error.boundary.title': 'Màn hình này gặp lỗi',
+  'error.boundary.body':
+    'Phần còn lại của ứng dụng vẫn chạy. Tải lại trang thường là đủ; nếu lỗi lặp lại, nội dung dưới đây là thứ cần gửi kèm khi báo lỗi.',
+  'error.boundary.reload': 'Tải lại trang',
+
+  'vault.frame.configError': '[kho khoá] cấu hình sai, tính năng AI bị tắt:',
+  'vault.frame.overlayTitle': 'Kho khoá — trang này chạy ở một địa chỉ riêng, tách khỏi trang bài học',
+  'vault.frame.close': 'Đóng',
+  'vault.frame.title': 'Kho khoá',
+
+  /* ══════════════════════════════════════════════════════════════════════ *
+   * TRANG (`pages/`)
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  /* ── chung ─────────────────────────────────────────────────────────────── */
+
+  'course.loading': 'Đang tải khóa học…',
+  'course.notFound': 'Không tìm thấy khóa học.',
+  'chapter.notFound': 'Không tìm thấy chương này.',
+  'chapter.notFoundInCourse': 'Không tìm thấy chương này trong khóa học.',
+
+  /* ── bảng điều khiển (`pages/Dashboard.tsx`) ───────────────────────────── */
+
+  'dashboard.lede': 'Tiến độ học tập và thời gian học của bạn.',
+  'dashboard.logout': 'Đăng xuất',
+  'dashboard.stats.loading': 'Đang tải số liệu học tập…',
+  'dashboard.stats.error':
+    'Không tải được số liệu học tập (có thể bạn đang ngoại tuyến). Phần trăm hoàn thành mỗi khóa học ở dưới vẫn chính xác — dữ liệu đó được lưu ngay trên máy bạn.',
+  'dashboard.stats.streakDays': 'ngày liên tục',
+  'dashboard.stats.totalMinutes': 'phút đã học',
+  'dashboard.chart.aria': 'Số phút học trong 30 ngày gần nhất',
+  'dashboard.chart.barTitle': (date: string, minutes: string) => `${date}: ${minutes} phút`,
+  'dashboard.card.loading': 'Đang tải…',
+  'dashboard.card.chaptersRead': (read: string, total: string) => `${read}/${total} chương đã học`,
+  'dashboard.card.minutes': (minutes: string) => ` · ${minutes} phút`,
+  'dashboard.ring.aria': (percent: string) => `${percent}% hoàn thành`,
+
+  /* ── đăng nhập (`pages/Login.tsx`) ─────────────────────────────────────── */
+
+  'login.title': 'Đăng nhập',
+  'login.lede': 'Đăng nhập hoặc tạo tài khoản để đồng bộ tiến độ học trên nhiều thiết bị.',
+  'login.tablist.aria': 'Đăng nhập hoặc đăng ký',
+  'login.tab.login': 'Đăng nhập',
+  'login.tab.register': 'Đăng ký',
+  'login.field.email': 'Email',
+  'login.field.password': 'Mật khẩu',
+  'login.field.name': 'Tên',
+  'login.submit.loggingIn': 'Đang đăng nhập…',
+  'login.submit.login': 'Đăng nhập',
+  'login.submit.registering': 'Đang đăng ký…',
+  'login.submit.register': 'Đăng ký',
+
+  /* ── thư viện (`pages/Library.tsx`) ────────────────────────────────────── */
+
+  /**
+   * Nhãn NGUỒN. `registry` giữ nguyên ở cả hai ngôn ngữ có chủ ý: đó là tên
+   * riêng của một hiện vật (kho course công khai), không phải một từ chung.
+   */
+  'library.source.registry': 'registry',
+  'library.source.private': 'riêng tư',
+  'library.source.import': 'tự nhập',
+  'library.source.unknown': 'không rõ nguồn',
+
+  'library.title': 'Thư viện',
+  'library.lede': 'Mọi khóa học bạn đang có — trên máy chủ và trên thiết bị này.',
+  'library.loading': 'Đang tải thư viện…',
+  'library.empty.headingOffline': 'Chưa có khóa học nào trên thiết bị này',
+  'library.empty.heading': 'Thư viện của bạn đang trống',
+  'library.list.aria': 'Khóa học của bạn',
+  'library.notice.server': (status: string) =>
+    `Máy chủ có trả lời, nhưng báo lỗi (HTTP ${status}), nên thư viện trên máy chủ chưa tải được. Những khóa học đã lưu trên thiết bị này vẫn hiện ở dưới.`,
+  'library.notice.offline':
+    'Đang đọc bản lưu trên máy — máy chủ không trả lời một lần nào. Có thể bạn đang ngoại tuyến, hoặc máy chủ đang bị cấu hình sai (CORS/DNS): trình duyệt trả về đúng một lỗi trống cho cả hai, nên trang này không phân biệt được. Chỉ những khóa học đã lưu trên thiết bị này mới hiện ở dưới.',
+  'library.meta.version': (version: string) => `phiên bản ${version}`,
+  'library.meta.held': 'đã tải về máy',
+  'library.update.available': (version: string) => `Có bản mới: v${version}`,
+  'library.update.view': 'Xem thay đổi',
+  'library.tier.contentTitle': 'Hạng content: chỉ HTML, CSS, hình ảnh và công thức toán — không có JavaScript.',
+  'library.tier.interactiveTitle':
+    'Hạng interactive (§1.2): khóa học này được phép chứa JavaScript, và mã đó chạy trong trình duyệt của bạn khi bạn đọc.',
+  'library.tier.interactiveLabel': 'interactive — chạy mã JavaScript',
+  'library.tier.unknownTitle': 'Gói này không khai báo hạng, nên không có gì bảo đảm nó không chứa JavaScript.',
+  'library.tier.unknownLabel': 'hạng không rõ — có thể chạy mã',
+  'library.emptyState.lede':
+    'Bạn chưa có khóa học nào. tuhoc cố ý không đóng gói sẵn khóa học nào — bạn tự chọn thứ mình đọc, và cách duy nhất để bắt đầu là nhập một gói.',
+  'library.emptyState.wayFile': (zip: string) => `một tệp ${zip} có sẵn trên máy bạn — cách này chạy được cả khi mất mạng`,
+  'library.emptyState.wayUrl': (zip: string) => `một đường dẫn tới tệp ${zip}`,
+  'library.emptyState.wayRepo': 'một repo GitHub công khai',
+  'library.emptyState.registry': 'Kho khóa học cộng đồng (registry) đang được xây dựng — khi có, nó sẽ hiện ngay ở đây.',
+
+  /* ── nhập khóa học (`pages/ImportCourse.tsx`) ──────────────────────────── */
+
+  'import.lede': (zip: string) =>
+    `Một khóa học là một gói ${zip}. Sau khi nhập, gói nằm trên máy bạn và đọc được cả khi mất mạng.`,
+  'import.way.file': 'Từ tệp trên máy',
+  'import.way.filePick': 'Chọn gói .zip',
+  'import.way.zipUrl': 'Từ một đường dẫn .zip',
+  'import.way.zipUrlLabel': 'Đường dẫn tới tệp .zip',
+  'import.way.zipUrlSubmit': 'Nhập từ đường dẫn',
+  'import.way.repo': 'Từ repo GitHub công khai',
+  'import.way.repoLabel': 'Đường dẫn repo',
+  'import.way.repoSubmit': 'Nhập từ repo',
+  /**
+   * Câu về repo riêng tư có HAI thẻ nội tuyến ở giữa (`<strong>` và `<code>`),
+   * nên nó đi qua `tNode`. Cắt nó thành ba khoá sẽ khoá cứng trật tự từ tiếng
+   * Việt vào JSX.
+   */
+  'import.way.repoNote': (publicWord: string, zip: string) =>
+    `Chỉ nhập được từ repo ${publicWord}. Repo riêng tư cần token truy cập, và tuhoc cố ý không giữ token của bạn. Nếu khóa học nằm trong repo riêng tư, hãy tải ${zip} của repo về máy rồi dùng “Từ tệp trên máy” ở trên — kết quả giống hệt.`,
+  'import.way.repoNotePublic': 'công khai',
+  'import.progress.files': (done: string, total: string) => ` ${done}/${total} tệp.`,
+  'import.cancel': 'Huỷ',
+  'import.cancelled': 'Đã huỷ nhập gói. Không có gì được lưu lại.',
+  'import.done': (courseId: string, version: string) => `Đã nhập ${courseId} phiên bản ${version}. `,
+  'import.done.open': 'Mở khóa học',
+  'import.reroot': (folder: string, dropped: string) =>
+    `Gói nằm trong thư mục ${folder} của tệp bạn chọn, nên tuhoc đã lấy thư mục đó làm gốc gói${dropped}.`,
+  'import.reroot.dropped': (count: string) => ` và bỏ qua ${count} tệp nằm ngoài nó`,
+  'import.failed.heading': 'Không nhập được gói này',
+  'import.failed.one': 'Có một vấn đề cần sửa:',
+  'import.failed.many': (count: string) => `Có ${count} vấn đề, liệt kê hết ở đây để bạn sửa một lượt:`,
+  'import.stage.fetching': 'Đang tải gói…',
+  'import.stage.unpacking': 'Đang giải nén…',
+  'import.stage.checking': 'Đang kiểm tra nội dung gói…',
+  'import.stage.saving': 'Đang lưu vào máy bạn…',
 };
 
 /** Hình dạng mà MỌI ngôn ngữ phải phủ đúng. Xem chú thích trên `vi`. */

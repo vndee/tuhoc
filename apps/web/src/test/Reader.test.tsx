@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Reader } from '../pages/Reader';
 import type { Manifest } from '../course/types';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 // Reader's job is finding the right chapter + its neighbours in the
 // manifest and handing them to ChapterView — not rendering KaTeX/viz
@@ -55,11 +56,11 @@ function renderAt(path: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
+      <LanguageProvider><MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/c/:courseId/:chapterId" element={<Reader />} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
   );
 }

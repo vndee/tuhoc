@@ -10,6 +10,7 @@ import { clearLocalData, db } from '../db/local';
 import * as engine from '../sync/engine';
 import { Dashboard } from '../pages/Dashboard';
 import type { Manifest } from '../course/types';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 function catalogManifest(): Manifest {
   // The manifest of the course the default `GET /courses` stub below puts
@@ -164,12 +165,12 @@ function renderDashboard() {
   queryClient.setQueryData(meQueryKey, { id: 'u1', email: 'hoc@vien.vn', name: 'Người học' });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/']}>
+      <LanguageProvider><MemoryRouter initialEntries={['/']}>
         <Routes>
           <Route path="/" element={<><Dashboard /><LocationProbe /></>} />
           <Route path="/login" element={<LocationProbe />} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
   );
 }

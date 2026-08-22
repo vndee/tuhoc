@@ -10,6 +10,7 @@ import { meQueryKey } from '../api/useMe';
 import { clearLocalData, db } from '../db/local';
 import { AppRoutes } from '../routes';
 import { Library } from './Library';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 /* ====================================================================== *
  * Fixtures
@@ -121,9 +122,9 @@ function renderLibrary() {
   queryClient.setQueryData(meQueryKey, { id: 'u1', email: 'a@vi.vn', name: 'Người học' });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/library']}>
+      <LanguageProvider><MemoryRouter initialEntries={['/library']}>
         <Library />
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
   );
 }
@@ -627,10 +628,10 @@ function renderRouteAt(path: string, pathnames: string[]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
+      <LanguageProvider><MemoryRouter initialEntries={[path]}>
         <Recorder onChange={(p) => pathnames.push(p)} />
         <AppRoutes />
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
   );
 }

@@ -211,15 +211,23 @@ async function bSignsInAnotherTab(): Promise<void> {
   theCookieDies();
   await openTab();
   const { Login } = await import('../pages/Login');
+  // `LanguageProvider` NHẬP ĐỘNG, ở đây, cùng lúc với `<Login>` — không phải ở
+  // đầu tệp. `openTab()` gọi `vi.resetModules()`, nên mỗi "tab" là một ĐỒ THỊ
+  // MODULE RIÊNG: một `LanguageProvider` nhập tĩnh sẽ dựng `LanguageContext`
+  // của đồ thị GỐC, trong khi `<Login>` vừa nhập ở trên đọc context của đồ thị
+  // MỚI — hai object khác nhau, nên provider không với tới được và
+  // `useLanguage()` ném. Đo được: đúng lỗi ấy, ở đúng dòng
+  // `Login.tsx`'s `useLanguage()`.
+  const { LanguageProvider } = await import('../i18n/LanguageProvider');
   const { MemoryRouter, Route, Routes } = await import('react-router-dom');
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <MemoryRouter initialEntries={['/login']}>
+      <LanguageProvider><MemoryRouter initialEntries={['/login']}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<div data-testid="tab1-landed" />} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
   );
   await bSignsInThroughTheRealForm();

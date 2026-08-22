@@ -5,6 +5,8 @@ import { ApiError, serverAnswered } from '../api/client';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
 import { manifestString, type OwnedCourse, useOwnedCourses } from '../course/owned';
 import { UpdateDialog } from '../course/UpdateDialog';
+import type { MessageKey } from '../i18n';
+import { useLanguage } from '../i18n/LanguageProvider';
 
 /* ------------------------------------------------------------------ *
  * What a library row is made of
@@ -38,11 +40,17 @@ import { UpdateDialog } from '../course/UpdateDialog';
  */
 type CourseSource = 'registry' | 'private' | 'import' | 'unknown';
 
-const SOURCE_LABEL: Record<CourseSource, string> = {
-  registry: 'registry',
-  private: 'riêng tư',
-  import: 'tự nhập',
-  unknown: 'không rõ nguồn',
+/**
+ * Nhãn nguồn → KHOÁ, không phải chữ. Bảng này là hằng số ở tầm module, tức
+ * là nó được dựng MỘT LẦN lúc nạp — trước khi có ngôn ngữ nào được chọn —
+ * nên nó không được phép chứa chữ đã dịch. `MessageKey` làm `tsc` kiểm được
+ * rằng cả bốn khoá tồn tại thật.
+ */
+const SOURCE_LABEL_KEY: Record<CourseSource, MessageKey> = {
+  registry: 'library.source.registry',
+  private: 'library.source.private',
+  import: 'library.source.import',
+  unknown: 'library.source.unknown',
 };
 
 interface LibraryRow {
@@ -159,34 +167,38 @@ function toRow(course: OwnedCourse): LibraryRow {
  * they are typically a cache hit rather than a request.
  */
 export function Library() {
+  const { lang, t } = useLanguage();
   const owned = useOwnedCourses();
-  const rows = owned.courses.map(toRow).sort((a, b) => (a.title ?? a.courseId).localeCompare(b.title ?? b.courseId, 'vi'));
+  // Thứ tự chữ cái theo NGÔN NGỮ ĐANG HIỂN THỊ, không cố định 'vi': tiếng
+  // Việt sắp `Đ` sau `D` còn tiếng Anh thì không, nên một danh sách sắp bằng
+  // luật của ngôn ngữ khác đọc như một danh sách không sắp.
+  const rows = owned.courses.map(toRow).sort((a, b) => (a.title ?? a.courseId).localeCompare(b.title ?? b.courseId, lang));
 
   return (
     <div className="lib-page">
       <div className="lib-header">
         <div>
-          <h1 className="ch-title">Thư viện</h1>
-          <p className="ch-lede">Mọi khóa học bạn đang có — trên máy chủ và trên thiết bị này.</p>
+          <h1 className="ch-title">{t('library.title')}</h1>
+          <p className="ch-lede">{t('library.lede')}</p>
         </div>
         <Link to="/import" className="btn">
-          Nhập khóa học
+          {t('nav.import')}
         </Link>
       </div>
 
       <TransportNotice error={owned.catalogError} />
 
       {/* "Do not know yet" — never rendered as "there is nothing". */}
-      {!owned.settled && rows.length === 0 && <p className="lib-note">Đang tải thư viện…</p>}
+      {!owned.settled && rows.length === 0 && <p className="lib-note">{t('library.loading')}</p>}
 
       {owned.settled && rows.length === 0 && (
         <EmptyLibrary
-          heading={owned.catalogError ? 'Chưa có khóa học nào trên thiết bị này' : 'Thư viện của bạn đang trống'}
+          heading={t(owned.catalogError ? 'library.empty.headingOffline' : 'library.empty.heading')}
         />
       )}
 
       {rows.length > 0 && (
-        <ul className="lib-list" aria-label="Khóa học của bạn">
+        <ul className="lib-list" aria-label={t('library.list.aria')}>
           {rows.map((row) => (
             <CourseRow key={row.courseId} row={row} />
           ))}
@@ -226,6 +238,7 @@ export function Library() {
  * element's own text.
  */
 function TransportNotice({ error }: { error: unknown }) {
+  const { t } = useLanguage();
   if (error === null || error === undefined) return null;
 
   if (serverAnswered(error)) {
@@ -236,14 +249,14 @@ function TransportNotice({ error }: { error: unknown }) {
     const status = error instanceof ApiError ? error.status : 0;
     return (
       <p className="lib-notice lib-notice-server" role="status">
-        {`Máy chủ có trả lời, nhưng báo lỗi (HTTP ${status}), nên thư viện trên máy chủ chưa tải được. Những khóa học đã lưu trên thiết bị này vẫn hiện ở dưới.`}
+        {t('library.notice.server', String(status))}
       </p>
     );
   }
 
   return (
     <p className="lib-notice lib-notice-offline" role="status">
-      {'Đang đọc bản lưu trên máy — máy chủ không trả lời một lần nào. Có thể bạn đang ngoại tuyến, hoặc máy chủ đang bị cấu hình sai (CORS/DNS): trình duyệt trả về đúng một lỗi trống cho cả hai, nên trang này không phân biệt được. Chỉ những khóa học đã lưu trên thiết bị này mới hiện ở dưới.'}
+      {t('library.notice.offline')}
     </p>
   );
 }
@@ -270,6 +283,7 @@ function TransportNotice({ error }: { error: unknown }) {
  * rows that need nothing.
  */
 function CourseRow({ row }: { row: LibraryRow }) {
+  const { t } = useLanguage();
   const needsManifest = row.title === undefined;
   const manifestQuery = useQuery({
     queryKey: manifestQueryKey(row.courseId),
@@ -298,17 +312,17 @@ function CourseRow({ row }: { row: LibraryRow }) {
         <span className="lib-meta-sep" aria-hidden="true">
           ·
         </span>
-        <span className="lib-meta-part">phiên bản {version}</span>
+        <span className="lib-meta-part">{t('library.meta.version', version)}</span>
         <span className="lib-meta-sep" aria-hidden="true">
           ·
         </span>
-        <span className={`lib-source lib-source-${row.source}`}>{SOURCE_LABEL[row.source]}</span>
+        <span className={`lib-source lib-source-${row.source}`}>{t(SOURCE_LABEL_KEY[row.source])}</span>
         {row.heldLocally && (
           <>
             <span className="lib-meta-sep" aria-hidden="true">
               ·
             </span>
-            <span className="lib-meta-part">đã tải về máy</span>
+            <span className="lib-meta-part">{t('library.meta.held')}</span>
           </>
         )}
       </p>
@@ -328,9 +342,9 @@ function CourseRow({ row }: { row: LibraryRow }) {
       */}
       {row.updateTo !== undefined && row.version !== undefined && (
         <div className="lib-item-update">
-          <span className="lib-update-note">Có bản mới: v{row.updateTo}</span>
+          <span className="lib-update-note">{t('library.update.available', row.updateTo)}</span>
           <button type="button" className="btn lib-update-btn" onClick={() => setUpdating(true)}>
-            Xem thay đổi
+            {t('library.update.view')}
           </button>
         </div>
       )}
@@ -366,9 +380,11 @@ function CourseRow({ row }: { row: LibraryRow }) {
  * which is the wrong direction to fail on a security label.
  */
 function TierBadge({ tier }: { tier: string | undefined }) {
+  const { t } = useLanguage();
+
   if (tier === 'content') {
     return (
-      <span className="lib-tier lib-tier-content" title="Hạng content: chỉ HTML, CSS, hình ảnh và công thức toán — không có JavaScript.">
+      <span className="lib-tier lib-tier-content" title={t('library.tier.contentTitle')}>
         content
       </span>
     );
@@ -377,18 +393,18 @@ function TierBadge({ tier }: { tier: string | undefined }) {
     return (
       <span
         className="lib-tier lib-tier-code"
-        title="Hạng interactive (§1.2): khóa học này được phép chứa JavaScript, và mã đó chạy trong trình duyệt của bạn khi bạn đọc."
+        title={t('library.tier.interactiveTitle')}
       >
-        interactive — chạy mã JavaScript
+        {t('library.tier.interactiveLabel')}
       </span>
     );
   }
   return (
     <span
       className="lib-tier lib-tier-code"
-      title="Gói này không khai báo hạng, nên không có gì bảo đảm nó không chứa JavaScript."
+      title={t('library.tier.unknownTitle')}
     >
-      hạng không rõ — có thể chạy mã
+      {t('library.tier.unknownLabel')}
     </span>
   );
 }
@@ -415,29 +431,27 @@ function TierBadge({ tier }: { tier: string | undefined }) {
  * identical reason (`courseIds.length === 0`), and the alternative is two
  * copies of the front door drifting apart.
  */
-export function EmptyLibrary({ heading = 'Thư viện của bạn đang trống' }: { heading?: string }) {
+/**
+ * `heading` mặc định là `undefined`, KHÔNG phải một chuỗi mặc định: một giá
+ * trị mặc định viết thẳng vào chữ ký hàm là một chuỗi cứng dựng lúc nạp
+ * module, tức trước khi có ngôn ngữ nào. Chỗ vẽ tự lùi về khoá.
+ */
+export function EmptyLibrary({ heading }: { heading?: string }) {
+  const { t, tNode } = useLanguage();
+
   return (
     <div className="lib-empty">
-      <h2 className="lib-empty-h">{heading}</h2>
-      <p className="lib-empty-lede">
-        Bạn chưa có khóa học nào. tuhoc cố ý không đóng gói sẵn khóa học nào — bạn tự chọn thứ mình đọc, và cách duy
-        nhất để bắt đầu là nhập một gói.
-      </p>
+      <h2 className="lib-empty-h">{heading ?? t('library.empty.heading')}</h2>
+      <p className="lib-empty-lede">{t('library.emptyState.lede')}</p>
       <Link to="/import" className="btn primary lib-empty-cta">
-        Nhập khóa học
+        {t('nav.import')}
       </Link>
       <ul className="lib-empty-ways">
-        <li>
-          một tệp <code>.zip</code> có sẵn trên máy bạn — cách này chạy được cả khi mất mạng
-        </li>
-        <li>
-          một đường dẫn tới tệp <code>.zip</code>
-        </li>
-        <li>một repo GitHub công khai</li>
+        <li>{tNode('library.emptyState.wayFile', <code>.zip</code>)}</li>
+        <li>{tNode('library.emptyState.wayUrl', <code>.zip</code>)}</li>
+        <li>{t('library.emptyState.wayRepo')}</li>
       </ul>
-      <p className="lib-empty-registry">
-        Kho khóa học cộng đồng (registry) đang được xây dựng — khi có, nó sẽ hiện ngay ở đây.
-      </p>
+      <p className="lib-empty-registry">{t('library.emptyState.registry')}</p>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { api, describeAuthError } from '../api/client';
 import { meQueryKey, useMe, type Me } from '../api/useMe';
 import { clearSession } from '../auth/session';
+import { useLanguage } from '../i18n/LanguageProvider';
 import { stopSync } from '../sync/engine';
 
 type Tab = 'login' | 'register';
@@ -118,6 +119,7 @@ function redirectTarget(state: unknown, search: string): string {
  * form at someone who is already signed in.
  */
 export function Login() {
+  const { t } = useLanguage();
   const [tab, setTab] = useState<Tab>('login');
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -184,10 +186,10 @@ export function Login() {
 
   return (
     <div className="auth-page">
-      <h1 className="ch-title">Đăng nhập</h1>
-      <p className="ch-lede">Đăng nhập hoặc tạo tài khoản để đồng bộ tiến độ học trên nhiều thiết bị.</p>
+      <h1 className="ch-title">{t('login.title')}</h1>
+      <p className="ch-lede">{t('login.lede')}</p>
 
-      <div role="tablist" aria-label="Đăng nhập hoặc đăng ký" className="seg auth-tabs">
+      <div role="tablist" aria-label={t('login.tablist.aria')} className="seg auth-tabs">
         <button
           type="button"
           role="tab"
@@ -197,7 +199,7 @@ export function Login() {
           className={tab === 'login' ? 'on' : undefined}
           onClick={() => setTab('login')}
         >
-          Đăng nhập
+          {t('login.tab.login')}
         </button>
         <button
           type="button"
@@ -208,7 +210,7 @@ export function Login() {
           className={tab === 'register' ? 'on' : undefined}
           onClick={() => setTab('register')}
         >
-          Đăng ký
+          {t('login.tab.register')}
         </button>
       </div>
 
@@ -231,6 +233,7 @@ interface AuthFormProps {
 }
 
 function LoginForm({ onSuccess }: AuthFormProps) {
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -260,7 +263,7 @@ function LoginForm({ onSuccess }: AuthFormProps) {
 
   return (
     <form className="auth-form" onSubmit={handleSubmit} noValidate>
-      <label htmlFor={emailId}>Email</label>
+      <label htmlFor={emailId}>{t('login.field.email')}</label>
       <input
         id={emailId}
         type="email"
@@ -270,7 +273,7 @@ function LoginForm({ onSuccess }: AuthFormProps) {
         onChange={(e) => setEmail(e.target.value)}
       />
 
-      <label htmlFor={passwordId}>Mật khẩu</label>
+      <label htmlFor={passwordId}>{t('login.field.password')}</label>
       <input
         id={passwordId}
         type="password"
@@ -287,13 +290,14 @@ function LoginForm({ onSuccess }: AuthFormProps) {
       )}
 
       <button type="submit" className="btn primary" disabled={pending}>
-        {pending ? 'Đang đăng nhập…' : 'Đăng nhập'}
+        {t(pending ? 'login.submit.loggingIn' : 'login.submit.login')}
       </button>
     </form>
   );
 }
 
 function RegisterForm({ onSuccess }: AuthFormProps) {
+  const { t } = useLanguage();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -319,10 +323,10 @@ function RegisterForm({ onSuccess }: AuthFormProps) {
 
   return (
     <form className="auth-form" onSubmit={handleSubmit} noValidate>
-      <label htmlFor={nameId}>Tên</label>
+      <label htmlFor={nameId}>{t('login.field.name')}</label>
       <input id={nameId} type="text" required autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
 
-      <label htmlFor={emailId}>Email</label>
+      <label htmlFor={emailId}>{t('login.field.email')}</label>
       <input
         id={emailId}
         type="email"
@@ -332,7 +336,7 @@ function RegisterForm({ onSuccess }: AuthFormProps) {
         onChange={(e) => setEmail(e.target.value)}
       />
 
-      <label htmlFor={passwordId}>Mật khẩu</label>
+      <label htmlFor={passwordId}>{t('login.field.password')}</label>
       <input
         id={passwordId}
         type="password"
@@ -350,7 +354,7 @@ function RegisterForm({ onSuccess }: AuthFormProps) {
       )}
 
       <button type="submit" className="btn primary" disabled={pending}>
-        {pending ? 'Đang đăng ký…' : 'Đăng ký'}
+        {t(pending ? 'login.submit.registering' : 'login.submit.register')}
       </button>
     </form>
   );

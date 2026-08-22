@@ -8,6 +8,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { db } from '../db/local';
 import { ImportCourse } from './ImportCourse';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 /**
  * An armed switch that makes `importCourse` THROW instead of resolving.
@@ -81,12 +82,12 @@ function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/import']}>
+      <LanguageProvider><MemoryRouter initialEntries={['/import']}>
         <Routes>
           <Route path="/import" element={<ImportCourse />} />
           <Route path="/c/:courseId" element={<p>trang khóa học</p>} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
   );
 }

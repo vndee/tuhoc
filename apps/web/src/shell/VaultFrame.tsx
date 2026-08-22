@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { VaultClient, resolveVaultOrigin } from '../ai/vaultClient';
+import { DEFAULT_LANG, readStoredLang, t } from '../i18n';
 import { useLanguage } from '../i18n/LanguageProvider';
 
 /**
@@ -79,14 +80,17 @@ function originFromBuildConfig(): string | null {
   try {
     return resolveVaultOrigin(import.meta.env);
   } catch (e) {
-    console.error('[kho khoá] cấu hình sai, tính năng AI bị tắt:', e);
+    // `readStoredLang()` chứ không `useLanguage()`: hàm này chạy NGOÀI cây
+    // React (nó được gọi trong thân component nhưng trước bất kỳ hook nào
+    // của nó, và nó là một hàm tự do mà một hook không gọi được).
+    console.error(t(readStoredLang() ?? DEFAULT_LANG, 'vault.frame.configError'), e);
     return null;
   }
 }
 
 export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps) {
   const resolved = origin === undefined ? originFromBuildConfig() : origin;
-  const { lang } = useLanguage();
+  const { lang, t: translate } = useLanguage();
 
   const [frameEl, setFrameEl] = useState<HTMLIFrameElement | null>(null);
   const [client, setClient] = useState<VaultClient | null>(null);
@@ -146,9 +150,7 @@ export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps
         <div className={expanded ? 'vault-overlay' : undefined}>
           {expanded && (
             <div className="vault-overlay-bar">
-              <span className="vault-overlay-title">
-                Kho khoá — trang này chạy ở một địa chỉ riêng, tách khỏi trang bài học
-              </span>
+              <span className="vault-overlay-title">{translate('vault.frame.overlayTitle')}</span>
               {/*
                 Nút đóng nằm ở ĐÂY chứ không ở trang cấu hình: lớp phủ che kín
                 trang bên dưới, nên một nút "Đóng" nằm dưới lớp phủ là một nút
@@ -161,7 +163,7 @@ export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps
                   setExpanded(false);
                 }}
               >
-                Đóng
+                {translate('vault.frame.close')}
               </button>
             </div>
           )}
@@ -188,7 +190,7 @@ export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps
             // trang bên dưới (xem chú thích nút "Đóng" ngay trên). Người dùng
             // không bấm được bộ chọn trong lúc khung đang mở.
             src={`${resolved}/?lang=${lang}`}
-            title="Kho khoá"
+            title={translate('vault.frame.title')}
             // `allow-same-origin` ở đây là same-origin với CHÍNH KHO KHOÁ,
             // không phải với trang chính. Thiếu nó, khung nhận một origin mờ
             // đục và `localStorage` của nó ném — kho khoá không cất được gì. Vì

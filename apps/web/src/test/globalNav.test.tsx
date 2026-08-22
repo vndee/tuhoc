@@ -30,6 +30,7 @@ import App from '../App';
 import { meQueryKey } from '../api/useMe';
 import { clearLocalData } from '../db/local';
 import { Sidebar } from '../shell/Sidebar';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 const server = setupServer(
   http.get('/me', () => HttpResponse.json({ id: 'u1', email: 'a@vi.vn', name: 'Người học' })),
@@ -94,9 +95,9 @@ function renderSidebarAt(path: string, me: unknown) {
   queryClient.setQueryData(meQueryKey, me);
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
+      <LanguageProvider><MemoryRouter initialEntries={[path]}>
         <Sidebar />
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
   );
 }

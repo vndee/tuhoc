@@ -1,4 +1,25 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { DEFAULT_LANG, readStoredLang, t } from '../i18n';
+
+/**
+ * Ngôn ngữ ĐỌC THẲNG TỪ THIẾT BỊ, không qua `useLanguage()`.
+ *
+ * Hai lý do, và cái thứ hai là cái quyết định:
+ *
+ *   1. đây là một class component (React vẫn chưa có `componentDidCatch`
+ *      dạng hook), nên không có hook nào gọi được ở đây;
+ *   2. **lớp này phải chạy được ngay cả khi cây React ở trên nó đã hỏng.**
+ *      Nếu thứ vừa ném là `<LanguageProvider>`, một `useContext` ở đây sẽ
+ *      ném lần thứ hai (`useLanguage()` NÉM ngoài provider, có chủ ý) và
+ *      trang trắng — đúng thứ tệp này tồn tại để không bao giờ xảy ra nữa —
+ *      quay lại.
+ *
+ * `readStoredLang()` chỉ đọc `localStorage` qua `db/local.ts` và trả `null`
+ * cho mọi thứ nó không đọc được, nên nó không có đường nào để ném.
+ */
+function lang() {
+  return readStoredLang() ?? DEFAULT_LANG;
+}
 
 interface Props {
   readonly children: ReactNode;
@@ -36,7 +57,7 @@ export class ErrorBoundary extends Component<Props, State> {
   override componentDidCatch(error: Error, info: ErrorInfo): void {
     // Kept: this is the only surviving trace once the tree is gone, and the
     // component stack is what turns "something threw" into "this screen threw".
-    console.error('ErrorBoundary bắt được lỗi render:', error, info.componentStack);
+    console.error(t(lang(), 'error.boundary.log'), error, info.componentStack);
   }
 
   override render(): ReactNode {
@@ -45,14 +66,11 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return (
       <div className="eb-fallback" role="alert">
-        <h1 className="eb-title">Màn hình này gặp lỗi</h1>
-        <p className="eb-body">
-          Phần còn lại của ứng dụng vẫn chạy. Tải lại trang thường là đủ; nếu lỗi lặp lại,
-          nội dung dưới đây là thứ cần gửi kèm khi báo lỗi.
-        </p>
+        <h1 className="eb-title">{t(lang(), 'error.boundary.title')}</h1>
+        <p className="eb-body">{t(lang(), 'error.boundary.body')}</p>
         <pre className="eb-detail">{error.message}</pre>
         <button className="btn" type="button" onClick={() => window.location.reload()}>
-          Tải lại trang
+          {t(lang(), 'error.boundary.reload')}
         </button>
       </div>
     );
