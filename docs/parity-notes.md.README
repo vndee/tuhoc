@@ -1,0 +1,16 @@
+# Ghi chú parity của course riêng tư — ĐÃ CHUYỂN RA NGOÀI REPO
+
+`docs/parity-notes.md` từng ghi lại phép kiểm parity của Task 17 (P1): so ba
+chương giữa bản gốc một-tệp và thứ nền tảng thật sự phục vụ.
+
+Tài liệu ấy **nói về một course riêng tư** — tiêu đề chương, đường dẫn nguồn,
+và một đoạn văn xuôi trích nguyên văn. Cổng `make check-publish` (phép 5, đối
+chiếu với chính gói riêng) đã bắt được nó. Xoá tên chương đi thì còn lại một
+tài liệu không nói về gì cả, nên nó được **chuyển nguyên vẹn** sang kho gói
+riêng, cạnh chính gói mà nó mô tả:
+
+    $TUHOC_COURSE_STORE/parity-notes-<course-id>.md
+
+Đây là quy ước chung, không phải xử lý một lần: **tài liệu nói về một course
+riêng tư là một hiện vật riêng tư**, và nó sống cùng chỗ với course ấy. Bản
+thân phép kiểm parity không mất đi — nó chỉ không đi kèm repo ra công khai.
