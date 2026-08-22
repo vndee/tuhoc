@@ -838,9 +838,11 @@ describe('gói thật: courses/***REMOVED***', () => {
   };
 
   // 1.263.009 lúc viết; +164 byte ở task 11 khi manifest lên v2 (`tier`,
-  // `license`, `authors`, `generatedBy`). Con số này ĐÃ làm đúng việc của nó
-  // một lần: nó là thứ duy nhất trong repo bắt được rằng manifest vừa đổi.
-  const REAL_BYTES = 1_263_173;
+  // `license`, `authors`, `generatedBy`); −3 byte khi chủ course xác nhận
+  // `generatedBy` là "ai" chứ không phải phỏng đoán "mixed" của agent.
+  // Con số này ĐÃ làm đúng việc của nó một lần: nó là thứ duy nhất trong repo
+  // bắt được rằng manifest vừa đổi.
+  const REAL_BYTES = 1_263_170;
 
   it(`46 tệp, ${REAL_BYTES.toLocaleString('vi-VN')} byte — con số, để một gói đọc hụt không lặng lẽ qua`, () => {
     const files = readReal();

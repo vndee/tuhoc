@@ -76,6 +76,28 @@ def unsafe(name: str) -> str | None:
     return None
 
 
+def read_course_id(zip_path: pathlib.Path) -> str:
+    """Đọc `manifest.id` của một gói, kèm đúng phép kiểm mà `unpack` dùng.
+
+    Tách riêng để hàng rào va chạm ở `main` hỏi được "gói này là course nào" mà
+    KHÔNG phải chép luật sang chỗ thứ hai — hai bản luật rồi sẽ trôi khác nhau.
+    """
+    with zipfile.ZipFile(zip_path) as zf:
+        if MANIFEST not in [n for n in zf.namelist() if not n.endswith("/")]:
+            raise SystemExit(
+                f"course_workspace: {zip_path} không có {MANIFEST} ở gốc kho.\n"
+                f"  Gói do `tuhoc pack` ghi ra luôn có. Nếu đây là kho nén bằng Finder hay\n"
+                f"  công cụ khác (mọi thứ bị lồng dưới một thư mục), hãy pack lại:\n"
+                f"    bun tools/tuhoc-cli/src/index.ts pack <thư-mục> -o {zip_path}\n"
+                f"  Màn hình Import trong app xử lý được gói lồng; script này thì cố ý không."
+            )
+        manifest = json.loads(zf.read(MANIFEST))
+        course_id = manifest.get("id")
+        if not isinstance(course_id, str) or not course_id or unsafe(course_id) or "/" in course_id:
+            raise SystemExit(f'course_workspace: {zip_path} có manifest.id không dùng làm tên thư mục được: {course_id!r}')
+        return course_id
+
+
 def unpack(zip_path: pathlib.Path) -> tuple[str, int]:
     """Bung một gói vào `courses/<id>/`. Trả về (id, số tệp đã ghi)."""
     with zipfile.ZipFile(zip_path) as zf:
@@ -93,10 +115,7 @@ def unpack(zip_path: pathlib.Path) -> tuple[str, int]:
             if reason is not None:
                 raise SystemExit(f"course_workspace: {zip_path} có mục không ghi được — {name}: {reason}")
 
-        manifest = json.loads(zf.read(MANIFEST))
-        course_id = manifest.get("id")
-        if not isinstance(course_id, str) or not course_id or unsafe(course_id) or "/" in course_id:
-            raise SystemExit(f'course_workspace: {zip_path} có manifest.id không dùng làm tên thư mục được: {course_id!r}')
+        course_id = read_course_id(zip_path)
 
         dest = COURSES_DIR / course_id
         # Xoá trước khi ghi: bung đè lên bản cũ sẽ để lại chương của phiên bản
@@ -122,6 +141,28 @@ def main() -> int:
     if not zips:
         print(f"course_workspace: {store} chưa có tệp .zip nào — bỏ qua.")
         return 0
+
+    # Hai gói cùng course_id sẽ bung vào CÙNG một thư mục, và `unpack` xoá trước
+    # khi ghi — nên cái chạy sau thắng, âm thầm, theo thứ tự tên tệp. Kho này lại
+    # được thiết kế để giữ nhiều phiên bản của cùng một course (tính năng ghim
+    # phiên bản), nên va chạm là chuyện thường chứ không phải ngoại lệ. Sắp theo
+    # tên còn dính bẫy semver-từ điển: "1.10.0" đứng TRƯỚC "1.9.0".
+    # ⇒ Từ chối ồn ào thay vì chọn hộ. Thà không chạy còn hơn chạy trên một
+    #   phiên bản mà không ai biết là đã được chọn.
+    seen: dict[str, pathlib.Path] = {}
+    collisions: list[tuple[str, pathlib.Path, pathlib.Path]] = []
+    for zip_path in zips:
+        cid = read_course_id(zip_path)
+        if cid in seen:
+            collisions.append((cid, seen[cid], zip_path))
+        else:
+            seen[cid] = zip_path
+    if collisions:
+        print("course_workspace: kho có nhiều gói cho cùng một course — không đoán hộ.", file=sys.stderr)
+        for cid, first, second in collisions:
+            print(f"  {cid}: {first.name} và {second.name}", file=sys.stderr)
+        print("  Giữ lại đúng một gói cho mỗi course trong kho, rồi chạy lại.", file=sys.stderr)
+        return 1
 
     COURSES_DIR.mkdir(parents=True, exist_ok=True)
     for zip_path in zips:
