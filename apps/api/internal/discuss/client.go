@@ -57,11 +57,25 @@ const MaxResponseBytes int64 = 4 << 20
 // could not be loaded, which is the correct thing to say.
 const RequestTimeout = 8 * time.Second
 
-// deletedAuthor is the login shown for a comment whose author's account is
-// gone. GitHub returns `author: null` for those, and that is a NORMAL
-// answer rather than a malformed one — so it gets a placeholder instead of
-// invalidating the whole thread.
-const deletedAuthor = "(tài khoản đã xoá)"
+// deletedAuthor marks a comment whose author's account is gone. GitHub
+// returns `author: null` for those, and that is a NORMAL answer rather than
+// a malformed one — so it gets a sentinel instead of invalidating the whole
+// thread.
+//
+// An EMPTY STRING, not a sentence. This package already decided that `reason`
+// is a closed vocabulary and that `apps/web` owns the translated sentence;
+// an author placeholder is the same kind of thing, and a Vietnamese sentence
+// here would be the server deciding what language the reader speaks.
+//
+// The gate that caught this — `TestServerSpeaksNoVietnamese`, added by the
+// i18n extraction running in parallel with this package — deliberately does
+// NOT exclude packages by name, because excluding by name is exactly the
+// blind gate `no_key_transit_test.go` rejected. It scanned a directory that
+// did not exist when it was written, and found this on the first run.
+//
+// A login can never legitimately be empty, so the empty string cannot
+// collide with a real author.
+const deletedAuthor = ""
 
 // ErrMalformed is returned when GitHub answered but the answer was not the
 // shape this package requires. It is deliberately its own class, separate

@@ -649,8 +649,18 @@ func TestAWellFormedThreadSurvivesTheBoundary(t *testing.T) {
 	cache2, budget2 := liveCaches(discuss.MaxOutboundPerWindow)
 	if _, body, raw := get(t, wire(t, f2, cache2, budget2), sampleID); !body.Loaded || len(body.Comments) != 1 {
 		t.Errorf("a comment whose author's account is gone must not invalidate the thread: %s", raw)
-	} else if body.Comments[0].Author == "" {
-		t.Errorf("a deleted author must get a placeholder, not an empty string: %+v", body.Comments[0])
+	} else if body.Comments[0].Author != "" {
+		// The sentinel for "this author's account is gone" is the EMPTY STRING,
+		// not a sentence. The server does not decide what language the reader
+		// speaks — the same rule `reason` already follows in this package.
+		// `apps/web` renders the placeholder from its own catalog.
+		//
+		// This assertion is the reverse of what it said before the i18n gate
+		// (`TestServerSpeaksNoVietnamese`) reached this package: it used to
+		// demand a Vietnamese placeholder. Changed to match the contract, not
+		// deleted — the case it guards (a null author must not invalidate the
+		// whole thread) is still measured by the branch above.
+		t.Errorf("a deleted author must be the empty-string sentinel: %+v", body.Comments[0])
 	}
 }
 
