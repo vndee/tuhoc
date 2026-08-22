@@ -267,12 +267,16 @@ describe('Dashboard', () => {
     expect(document.querySelectorAll('.dash-card')).toHaveLength(0);
   }, OVERSUBSCRIBED_MS);
 
-  it('có lối vào /import — cả nút ở đầu trang lẫn liên kết trong lời nhắn thư viện rỗng', async () => {
-    // `/import` (Task 8) has exactly one door in the whole app and it is
-    // here. Independent mutation testing removed BOTH of these links and all
-    // 632 tests stayed green: a route nobody can reach is a feature nobody
-    // has, and this page's own empty state has told readers to "nhập một gói
-    // course" since Task 7 without ever saying where.
+  it('có lối vào /import trong lời nhắn thư viện rỗng — cửa ngữ cảnh, hiện đúng lúc cần', async () => {
+    // Cửa NGỮ CẢNH: liên kết nằm trong chính lời nhắn "thư viện của bạn đang
+    // trống", nên nó xuất hiện đúng lúc người đọc cần. Bài này ra đời sau khi
+    // mutation testing xoá cả hai liên kết `/import` mà 632 test vẫn xanh —
+    // một route không ai bấm tới được là một tính năng không tồn tại.
+    //
+    // Nút ở ĐẦU TRANG đã được gỡ: `GlobalNav` cho `/import` một mục thường
+    // trực trên thanh bên, nên nút kia là cửa thứ hai cho cùng một chỗ, và nó
+    // làm phần đầu trang đọc như một hàng nút rời rạc. Phủ sóng cho cửa TOÀN
+    // CỤC nằm ở `test/globalNav.test.tsx`, có ca chạy trên đúng route "/".
     server.use(http.get('/courses', () => HttpResponse.json([])));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
 
@@ -280,25 +284,26 @@ describe('Dashboard', () => {
 
     await screen.findByText(/chưa có khóa học nào/i);
     const links = screen.getAllByRole('link').filter((a) => a.getAttribute('href') === '/import');
-    expect(links.length, 'không còn lối vào /import nào trên Bảng điều khiển').toBeGreaterThanOrEqual(2);
+    // MỘT, không phải hai: cửa thứ hai (nút ở đầu trang) đã chuyển sang thanh
+    // bên, và `globalNav.test.tsx` canh nó ở đó trên đúng route "/". Con số ở
+    // đây đo cửa NGỮ CẢNH — thứ mà thanh bên không thay thế được, vì nó xuất
+    // hiện bên trong chính lời nhắn giải thích tại sao thư viện trống.
+    expect(links.length, 'lời nhắn thư viện rỗng không còn liên kết tới /import').toBeGreaterThanOrEqual(1);
     expect(links.map((a) => a.textContent).join(' ')).toMatch(/nhập/i);
   }, OVERSUBSCRIBED_MS);
 
-  it('có lối vào /library — Task 9 thêm một route, và một route không ai bấm tới được là một tính năng không tồn tại', async () => {
-    // Same argument as the /import test directly above, which was written
-    // after mutation testing deleted both of THOSE links with the whole
-    // suite staying green. `/library` arrives with the identical exposure:
-    // one door, on this page.
-    server.use(http.get('/courses', () => HttpResponse.json([])));
-    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
-
-    renderDashboard();
-
-    await screen.findByText(/chưa có khóa học nào/i);
-    const links = screen.getAllByRole('link').filter((a) => a.getAttribute('href') === '/library');
-    expect(links.length, 'không còn lối vào /library nào trên Bảng điều khiển').toBeGreaterThanOrEqual(1);
-    expect(links.map((a) => a.textContent).join(' ')).toMatch(/thư viện/i);
-  }, OVERSUBSCRIBED_MS);
+  /* Bài "có lối vào /library" từng ở đây và đã được CHUYỂN, không phải xoá.
+   *
+   * Nó canh đúng một điều: từ màn hình Bảng điều khiển phải có đường tới
+   * `/library`. Lúc viết, cửa duy nhất là một nút ở phần đầu trang này.
+   * `GlobalNav` sau đó cho `/library` một mục thường trực trên thanh bên, nên
+   * nút kia thành cửa thứ hai cho cùng một chỗ và đã được gỡ.
+   *
+   * Phủ sóng KHÔNG mất: `test/globalNav.test.tsx` có một ca chạy trên đúng
+   * route "/" qua `<App/>` THẬT, khẳng định thanh điều hướng chứa `/library`
+   * và `/import`. Bài ấy mạnh hơn bài này — nó render cả ứng dụng thay vì một
+   * `<Dashboard/>` cô lập, và nó còn bấm thử bằng chuột.
+   */
 
   it('trạng thái rỗng của Bảng điều khiển là MÀN HÌNH ĐẦU TIÊN của người dùng mới — phải nói ba cách nhập, không chỉ một dòng chữ (ruling S1-F17)', async () => {
     // Task 6 deleted `KNOWN_COURSE_IDS`, so this is literally what a brand

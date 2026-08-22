@@ -11,22 +11,56 @@
    but reuses that file's own tokens/components (--ink*, --surface-1,
    --rule-strong, --accent, .seg, .btn/.btn.primary) so it reads as the
    same app rather than a bolted-on page. */
+/* Trang đăng nhập là màn hình ĐẦU TIÊN mọi người thấy, và trước đây nó là một
+   form trôi giữa khoảng trắng ở góc trên bên trái: không khung, không tâm điểm,
+   ô nhập bé hơn mọi ô nhập khác trong ứng dụng. Nay nó là một THẺ có tâm — cùng
+   bộ token, chỉ khác ở chỗ nó tự nhận mình là một mặt phẳng riêng. */
 .auth-page {
-  max-width: 380px;
+  max-width: 420px;
+  margin: clamp(16px, 6vh, 64px) auto 48px;
+  padding: 32px 30px 30px;
+  background: var(--surface-1);
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  /* Bóng rất nhẹ: đủ để thẻ tách khỏi nền, không đủ để thành một hộp nổi. */
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%), 0 8px 24px -12px rgb(0 0 0 / 10%);
 }
 
+.auth-page .ch-title {
+  margin: 0 0 6px;
+  font-size: 26px;
+  line-height: 1.25;
+}
+
+.auth-page .ch-lede {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+/* `.seg` gốc là `inline-flex` và co theo nội dung — trên thẻ đăng nhập nó chỉ
+   rộng bằng chữ, và chữ "Đăng nhập" bị **xuống dòng thành hai hàng** trong ô
+   tab. Ở đây nó phải là một dải đầy đủ chia đôi. */
 .auth-tabs.seg {
-  margin: 4px 0 20px;
+  display: flex;
+  width: 100%;
+  margin: 22px 0 4px;
+  border-radius: 8px;
 }
 
 .auth-tabs.seg button {
-  flex: 1;
+  flex: 1 1 0;
+  padding-block: 8px;
+  font-size: 13px;
+  /* Không cho chữ gãy dòng: một nhãn hai hàng làm hai ô tab cao lệch nhau. */
+  white-space: nowrap;
 }
 
 .auth-form {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .auth-form label {
@@ -34,36 +68,67 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--ink-2);
-  margin-top: 10px;
+  margin-top: 16px;
+  letter-spacing: 0.01em;
 }
 
 .auth-form input {
   font-family: var(--sans);
-  font-size: 13px;
-  padding: 7px 10px;
+  font-size: 14px;
+  padding: 10px 12px;
   border: 1px solid var(--rule-strong);
-  border-radius: 6px;
-  background: var(--surface-1);
+  border-radius: 8px;
+  background: var(--panel);
   color: var(--ink);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
 .auth-form input:focus {
   outline: none;
   border-color: var(--accent);
+  /* Vòng sáng thay cho outline mặc định: giữ được dấu hiệu tiêu điểm cho người
+     dùng bàn phím mà không làm layout nhảy. */
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+/* Nút chiếm trọn bề ngang: trên một thẻ hẹp, một nút nhỏ nép trái trông như
+   chưa làm xong, và đây là hành động DUY NHẤT của màn hình này. */
 .auth-form .btn.primary {
-  margin-top: 18px;
-  padding: 8px 14px;
-  font-size: 13px;
-  align-self: flex-start;
+  margin-top: 24px;
+  padding: 10px 14px;
+  font-size: 14px;
+  width: 100%;
+  justify-content: center;
 }
 
 .auth-error {
-  margin: 10px 0 0;
+  margin: 14px 0 0;
   font-family: var(--sans);
   font-size: 12.5px;
-  color: #e0453c;
+  line-height: 1.5;
+  color: #b3261e;
+  background: #fdeceb;
+  border: 1px solid #f5c9c5;
+  border-radius: 8px;
+  padding: 9px 11px;
+}
+
+/* Ba khối, không phải một danh sách selector: `@media` không đặt được trong
+   danh sách selector, và giao diện tối ở đây có ba trạng thái — chọn tường
+   minh (`data-theme`), và mặc định "theo hệ thống" thì chỉ `prefers-color-scheme`
+   phân biệt được. */
+:root[data-theme='dark'] .auth-error {
+  color: #ffb4ab;
+  background: #2b1513;
+  border-color: #5c2b26;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .auth-error {
+    color: #ffb4ab;
+    background: #2b1513;
+    border-color: #5c2b26;
+  }
 }
 
 /* Task 14 — dashboard. Not part of the ported v1 stylesheet (v1 had no
@@ -78,18 +143,50 @@
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--rule);
 }
 
-.dash-user {
+/* Chip tài khoản, thay cho hàng bốn nút cũ.
+
+   Trước đây phần đầu trang có `tên · Thư viện · Nhập khóa học · Đăng xuất` —
+   bốn phần tử ngang hàng, trong đó hai cái giữa **lặp lại thanh bên**, nên nó
+   đọc như một thanh gỡ lỗi chứ không như phần đầu của một trang. Nay chỉ còn
+   danh tính và lối ra, gom thành MỘT khối để mắt đọc nó là một thứ. */
+.dash-account {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
   font-family: var(--sans);
+  padding: 3px 3px 3px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--surface-1);
 }
 
-.dash-user-name {
+.dash-account-name {
   font-size: 13px;
+  font-weight: 600;
   color: var(--ink-2);
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Nút bên trong chip: bỏ khung riêng để không có hai đường viền lồng nhau. */
+.dash-logout.btn {
+  border-color: transparent;
+  background: transparent;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.dash-logout.btn:hover {
+  background: var(--panel);
+  color: var(--ink);
 }
 
 .dash-stats-note {
@@ -104,29 +201,39 @@
   max-width: 38rem;
 }
 
+/* Hai con số từng trôi cạnh nhau trên nền trống, không khung, không nhãn rõ —
+   một người mới nhìn thấy "0   0" và không biết đó là gì. Nay mỗi con số là
+   một thẻ, nên nó tự nói mình là một chỉ số. */
 .dash-summary {
-  display: flex;
-  gap: 28px;
-  margin: 6px 0 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 18px 0;
+  max-width: 38rem;
 }
 
 .dash-stat {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   font-family: var(--sans);
+  padding: 14px 16px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--surface-1);
 }
 
 .dash-stat-v {
-  font-size: 26px;
+  font-size: 30px;
   font-weight: 700;
+  line-height: 1.05;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
 
 .dash-stat-k {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--ink-3);
   letter-spacing: 0.02em;
 }
@@ -135,12 +242,13 @@
   display: flex;
   align-items: flex-end;
   gap: 3px;
-  height: 64px;
-  margin: 0 0 30px;
-  padding: 8px 10px;
+  height: 72px;
+  margin: 0 0 28px;
+  padding: 10px 12px;
   border: 1px solid var(--rule);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--surface-1);
+  max-width: 38rem;
 }
 
 .dash-bar {

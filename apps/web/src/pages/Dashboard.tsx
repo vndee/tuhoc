@@ -58,24 +58,22 @@ export function Dashboard() {
           <h1 className="ch-title">{t('nav.dashboard')}</h1>
           <p className="ch-lede">{t('dashboard.lede')}</p>
         </div>
-        <div className="dash-user">
-          {meQuery.data && <span className="dash-user-name">{meQuery.data.name}</span>}
-          {/*
-            The only way in to `/library` (Task 9), for the same reason the
-            `/import` link below it exists at all.
-          */}
-          <Link to="/library" className="btn">
-            {t('nav.library')}
-          </Link>
-          {/*
-            The only way in to `/import` (Task 8). A route with no link is a
-            route nobody uses: this page's own empty state has told readers
-            to "nhập một gói course" since Task 7 without ever saying where.
-          */}
-          <Link to="/import" className="btn">
-            {t('nav.import')}
-          </Link>
-          <button type="button" className="btn" onClick={() => void logout()}>
+        {/*
+          Chỉ còn danh tính + đăng xuất.
+
+          `/library` và `/import` từng nằm ở đây vì chúng KHÔNG có đường vào
+          nào khác — chú thích cũ nói đúng điều đó ở thời điểm nó được viết.
+          `GlobalNav` (vòng sửa F3) đã cho cả hai một mục thường trực trên
+          thanh bên, nên giữ lại ở đây là **hai đường vào cho cùng một chỗ**,
+          và nó biến phần đầu trang thành một hàng nút rời rạc.
+        */}
+        <div className="dash-account">
+          {meQuery.data && (
+            <span className="dash-account-name" title={meQuery.data.email}>
+              {meQuery.data.name}
+            </span>
+          )}
+          <button type="button" className="btn dash-logout" onClick={() => void logout()}>
             {t('dashboard.logout')}
           </button>
         </div>

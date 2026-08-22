@@ -70,6 +70,27 @@ describe('điều hướng toàn cục (shell)', () => {
     expect(hrefs).toContain('/import');
   });
 
+  it('có mặt trên "/" — chỗ mà hai bài trong Dashboard.test.tsx từng canh', async () => {
+    // Trước GlobalNav, `Dashboard.tsx` tự mang nút tới `/library` và `/import`,
+    // và `Dashboard.test.tsx` canh chúng — đúng ở thời điểm ấy, vì đó là cửa
+    // DUY NHẤT. Nay thanh bên mang cả hai trên mọi màn hình, nên hai nút kia là
+    // **hai cửa cho cùng một chỗ** và đã bị gỡ (phần đầu trang đọc như một hàng
+    // nút rời rạc vì chúng).
+    //
+    // Ca này tồn tại để việc gỡ ấy KHÔNG làm mất phủ sóng: thứ bài cũ chứng
+    // minh — "từ màn hình Bảng điều khiển, có đường tới /library và /import" —
+    // nay được chứng minh ở đây, trên chính route đó, qua `<App/>` thật.
+    goTo('/');
+    render(<App />);
+
+    const nav = await waitFor(() => globalNav());
+    const hrefs = within(nav)
+      .getAllByRole('link')
+      .map((a) => a.getAttribute('href'));
+    expect(hrefs, 'không còn lối vào /library từ Bảng điều khiển').toContain('/library');
+    expect(hrefs, 'không còn lối vào /import từ Bảng điều khiển').toContain('/import');
+  });
+
   it('bấm được: từ /import sang /library, bằng chuột, trong ứng dụng thật', async () => {
     goTo('/import');
     render(<App />);
