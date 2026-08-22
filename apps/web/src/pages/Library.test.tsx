@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -88,7 +89,21 @@ async function holdPackage(over: {
   });
 }
 
-const server = setupServer();
+/**
+ * `GET /stats` with nothing in it.
+ *
+ * A DEFAULT handler (survives `resetHandlers`) rather than a line in every
+ * test: `/library` reads the same four sources the Dashboard does since ruling
+ * S1-F31, and `stats.courses` is one of them — a course studied on another
+ * device is still the reader's course. Empty here so that every test written
+ * before that ruling still describes exactly the situation it meant to;
+ * the tests that care about this source override it.
+ */
+const NO_STATS = http.get('/stats', () =>
+  HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] }),
+);
+
+const server = setupServer(NO_STATS);
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
@@ -172,8 +187,16 @@ describe('Thư viện — liệt kê', () => {
     // it would be a lie that looks like a fact. (Independent mutation testing
     // found this: swapping the local version for the server's survived the
     // whole suite while both fixtures happened to say 3.0.0.)
-    expect(within(both).getByText(/2\.5\.0/)).toBeInTheDocument();
-    expect(within(both).queryByText(/3\.0\.0/)).not.toBeInTheDocument();
+    //
+    // Asserted against the METADATA LINE rather than against the whole row,
+    // which is what it used to be. The server's 3.0.0 now appears elsewhere in
+    // this row on purpose — as the update on offer (ruling S1-F29) — and a
+    // row-wide "3.0.0 must not appear" would forbid the correct sentence along
+    // with the wrong one. The mutation it was written to kill (print
+    // `catalog.pinned` as the version that opens) still fails here.
+    const bothMeta = both.querySelector('.lib-meta');
+    expect(bothMeta?.textContent).toMatch(/phiên bản 2\.5\.0/);
+    expect(bothMeta?.textContent).not.toMatch(/3\.0\.0/);
 
     // And every row opens its course.
     expect(within(server1).getByRole('link')).toHaveAttribute('href', '/c/tren-may-chu');
@@ -192,6 +215,90 @@ describe('Thư viện — liệt kê', () => {
     const row = await rowFor('Khóa lấy từ kho chung');
     expect(within(row).getByText(/registry/i)).toBeInTheDocument();
     expect(within(row).queryByText(/tự nhập/i)).not.toBeInTheDocument();
+  });
+});
+
+/* ====================================================================== *
+ * Ruling S1-F31 — "mọi course bạn có" phải là CÙNG MỘT câu trả lời
+ * ====================================================================== */
+
+describe('Thư viện — bốn nguồn, một câu trả lời (S1-F31)', () => {
+  it('liệt kê course mà người đọc ĐANG HỌC dù catalog rỗng và máy không giữ gói nào', async () => {
+    // The measured bug, restated as a test. A reader partway through a course
+    // that came from `course/loader.ts`'s SOURCE 2 (the static `courses/`
+    // directory) had: `GET /courses` → [], `db.packages` → empty,
+    // `db.progress` → rows. The Dashboard drew them a card reading
+    // "1/44 chương · 42 phút"; `/library`, seconds later, told them their
+    // library was empty and advised them to import the course they were
+    // reading.
+    server.use(
+      http.get('/courses', () => HttpResponse.json([])),
+      http.get('/courses/dang-doc/manifest.json', () =>
+        HttpResponse.json({
+          id: 'dang-doc',
+          title: 'Khóa đang đọc dở',
+          description: '',
+          lang: 'vi',
+          version: '1.4.0',
+          runtime: '^1',
+          parts: [{ title: 'P', chapters: [{ id: 'c1', num: '1', title: 'Một', short: 'Một', file: 'chapters/c1.html' }] }],
+        }),
+      ),
+    );
+    await db.progress.put({
+      courseId: 'dang-doc',
+      chapterId: 'c1',
+      status: 'read',
+      done: true,
+      updatedAt: new Date().toISOString(),
+    });
+
+    renderLibrary();
+
+    const row = await rowFor('Khóa đang đọc dở');
+    expect(within(row).getByRole('link')).toHaveAttribute('href', '/c/dang-doc');
+    // Named from its own manifest rather than printed as a raw id.
+    expect(row.textContent).toMatch(/1\.4\.0/);
+    expect(screen.queryByText(/thư viện của bạn đang trống/i)).not.toBeInTheDocument();
+  });
+
+  it('liệt kê course mà chỉ GET /stats biết — đã học trên MÁY KHÁC', async () => {
+    server.use(
+      http.get('/courses', () => HttpResponse.json([])),
+      http.get('/stats', () =>
+        HttpResponse.json({
+          totalMinutes: 42,
+          streakDays: 1,
+          days: [],
+          courses: [{ courseId: 'may-khac', minutes: 42, chaptersDone: 1 }],
+        }),
+      ),
+      http.get('/courses/may-khac/manifest.json', () => new HttpResponse(null, { status: 404 })),
+    );
+
+    renderLibrary();
+
+    // No manifest anywhere for it, so the id is all there is to print — and
+    // printing the id beats leaving the reader's own course off the list.
+    const row = await rowFor('may-khac');
+    expect(within(row).getByRole('link')).toHaveAttribute('href', '/c/may-khac');
+    expect(within(row).getByText(/không rõ nguồn/i)).toBeInTheDocument();
+  });
+
+  it('KHÔNG nói "đang trống" khi mới chỉ có /courses trả lời — /stats còn đang bay', async () => {
+    // The empty state is a CLAIM, and it may only be made once every source
+    // has answered. Before S1-F31 this page watched one query; a reader whose
+    // only course lives in `stats.courses` would have been told they had none
+    // for as long as that request took.
+    server.use(
+      http.get('/courses', () => HttpResponse.json([])),
+      http.get('/stats', () => new Promise(() => {})),
+    );
+
+    renderLibrary();
+
+    expect(await screen.findByText(/đang tải thư viện/i)).toBeInTheDocument();
+    expect(screen.queryByText(/thư viện của bạn đang trống/i)).not.toBeInTheDocument();
   });
 });
 
@@ -254,6 +361,131 @@ describe('Thư viện — nhãn hạng interactive (§1.2, quyết định AN NI
 
     const row = await rowFor('Gói không khai hạng');
     expect(within(row).getByText(/chạy mã/i)).toBeInTheDocument();
+  });
+
+  it('gói cục bộ KHÔNG khai hạng thì KHÔNG thừa kế lời khai "content" của máy chủ', async () => {
+    // The fail-open lane review found (F6). Every other field falls back to
+    // the catalog, because a wrong `lang` is cosmetic. A tier is not: the two
+    // claims are about two DIFFERENT artifacts — the server describes the
+    // package IT holds, and the one that opens is the one on this device
+    // (`course/loader.ts` reads the cached package first and never falls back
+    // once it hits). Inheriting `content` here is a silent all-clear issued
+    // about something nobody looked at.
+    server.use(
+      http.get('/courses', () =>
+        HttpResponse.json([catalogEntry({ id: 'cung-id', title: 'Khóa cùng id', tier: 'content' })]),
+      ),
+    );
+    const manifest = packageManifest({ id: 'cung-id', title: 'Khóa cùng id' });
+    delete manifest.tier;
+    await db.packages.put({
+      key: 'cung-id@2.0.0',
+      courseId: 'cung-id',
+      version: '2.0.0',
+      manifest,
+      files: { 'manifest.json': new TextEncoder().encode(JSON.stringify(manifest)) },
+      pinnedAt: new Date().toISOString(),
+    });
+
+    renderLibrary();
+
+    const row = await rowFor('Khóa cùng id');
+    expect(within(row).getByText(/chạy mã/i)).toBeInTheDocument();
+    expect(within(row).queryByText(/^content$/i)).not.toBeInTheDocument();
+  });
+});
+
+/* ====================================================================== *
+ * Ruling S1-F29 — UpdateDialog phải CÓ NGƯỜI BẤM TỚI ĐƯỢC
+ * ====================================================================== */
+
+describe('Thư viện — cửa vào hộp thoại cập nhật (S1-F29)', () => {
+  /** Held at 1.0.0, catalog pinned at 1.1.0 — the only shape that offers one. */
+  async function heldBehindCatalog() {
+    server.use(
+      http.get('/courses', () =>
+        HttpResponse.json([
+          catalogEntry({ id: 'co-ban-moi', title: 'Khóa có bản mới', versions: ['1.0.0', '1.1.0'], pinned: '1.1.0' }),
+        ]),
+      ),
+    );
+    await holdPackage({ id: 'co-ban-moi', title: 'Khóa có bản mới', version: '1.0.0' });
+  }
+
+  it('mở được hộp thoại cập nhật từ một hàng — 775 dòng của Task 10 trước đây KHÔNG tệp sản phẩm nào import', async () => {
+    // The fourth blind gate (docs/carried-forward.md): `UpdateDialog.tsx` and
+    // `course/version.ts` shipped with 713 tests green, `tsc -b` clean, `build`
+    // clean, `lint` clean — and no product file importing either of them. No
+    // automated gate this project has can ask "can a reader reach this", so the
+    // question is asked here, through the real row, with a real click.
+    await heldBehindCatalog();
+    renderLibrary();
+
+    const row = await rowFor('Khóa có bản mới');
+    expect(within(row).getByText(/có bản mới: v1\.1\.0/i)).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(within(row).getByRole('button', { name: /xem thay đổi/i }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: /cập nhật .*Khóa có bản mới/i })).toBeInTheDocument();
+    // The version pair it is deciding between: held → offered, in that order.
+    expect(dialog.textContent).toMatch(/v1\.0\.0\s*→\s*v1\.1\.0/);
+    // And it really ran the dry run rather than sitting on its opening state.
+    expect(within(dialog).getByRole('button', { name: /^cập nhật$/i })).toBeEnabled();
+  });
+
+  it('đóng lại được, và KHÔNG ghi gì: gói đang ghim vẫn nguyên sau khi xem thử', async () => {
+    // `previewUpdate` writes nothing (`course/version.ts` rule 1) and that is
+    // what lets the button above be offered without an "are you sure". Checked
+    // from the outside, through the UI, because the module's own tests check it
+    // from the inside and neither knows whether the two are connected.
+    await heldBehindCatalog();
+    renderLibrary();
+
+    const row = await rowFor('Khóa có bản mới');
+    const user = userEvent.setup();
+    await user.click(within(row).getByRole('button', { name: /xem thay đổi/i }));
+    await screen.findByRole('dialog');
+
+    await user.click(screen.getByRole('button', { name: /ở lại v1\.0\.0/i }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    expect(await db.packages.count()).toBe(1);
+    expect(await db.packages.get('co-ban-moi@1.0.0')).toBeDefined();
+  });
+
+  it('KHÔNG mời cập nhật khi bản trên máy đã đúng bản máy chủ ghim', async () => {
+    // The complement. An offer that is always on the screen is not an offer.
+    server.use(
+      http.get('/courses', () =>
+        HttpResponse.json([catalogEntry({ id: 'dung-ban', title: 'Khóa đúng bản', pinned: '1.0.0' })]),
+      ),
+    );
+    await holdPackage({ id: 'dung-ban', title: 'Khóa đúng bản', version: '1.0.0' });
+
+    renderLibrary();
+
+    const row = await rowFor('Khóa đúng bản');
+    expect(within(row).queryByRole('button', { name: /xem thay đổi/i })).not.toBeInTheDocument();
+    expect(within(row).queryByText(/có bản mới/i)).not.toBeInTheDocument();
+  });
+
+  it('KHÔNG mời cập nhật cho một course máy chưa giữ gói nào', async () => {
+    // For a course this device does not hold, `catalog.pinned` is not an
+    // update — it is simply the version that will be downloaded on first open.
+    // Offering to "update" to it would be a dialog measuring notes that do not
+    // exist against a version nobody has.
+    server.use(
+      http.get('/courses', () =>
+        HttpResponse.json([catalogEntry({ id: 'chua-tai', title: 'Khóa chưa tải', pinned: '9.9.9' })]),
+      ),
+    );
+
+    renderLibrary();
+
+    const row = await rowFor('Khóa chưa tải');
+    expect(within(row).queryByRole('button', { name: /xem thay đổi/i })).not.toBeInTheDocument();
   });
 });
 

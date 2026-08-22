@@ -1,11 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { liveQuery } from 'dexie';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, serverAnswered } from '../api/client';
-import { coursesQueryKey, type CourseSummary, listCourses } from '../api/courses';
-import { pickPinned } from '../course/loader';
-import { db } from '../db/local';
+import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
+import { manifestString, type OwnedCourse, useOwnedCourses } from '../course/owned';
+import { UpdateDialog } from '../course/UpdateDialog';
 
 /* ------------------------------------------------------------------ *
  * What a library row is made of
@@ -25,113 +24,44 @@ import { db } from '../db/local';
  *    it.
  *  - `import` — held only on this device, brought in through `/import`
  *    (a `.zip`, a link to one, or a public GitHub repo).
+ *  - `unknown` — the reader has study rows for it (locally, or on another
+ *    device via `GET /stats`) and neither the catalog nor this device's
+ *    package table can say where it came from. `course/loader.ts`'s SOURCE 2,
+ *    the static `courses/` directory, lands here. Before ruling S1-F31 this
+ *    case had no row at all: the library said the reader had nothing while
+ *    the Dashboard was showing them a card for it.
  *
- * Two of the three are private in the ordinary sense of the word, and
- * neither of those two has anywhere to be shared TO: nothing outside the
- * registry publishes a course. That is why this page carries no share
- * control of any kind — see `CourseRow`.
+ * Three of the four are private in the ordinary sense of the word, and none
+ * of those three has anywhere to be shared TO: nothing outside the registry
+ * publishes a course. That is why this page carries no share control of any
+ * kind — see `CourseRow`.
  */
-type CourseSource = 'registry' | 'private' | 'import';
+type CourseSource = 'registry' | 'private' | 'import' | 'unknown';
 
 const SOURCE_LABEL: Record<CourseSource, string> = {
   registry: 'registry',
   private: 'riêng tư',
   import: 'tự nhập',
+  unknown: 'không rõ nguồn',
 };
 
 interface LibraryRow {
   courseId: string;
-  title: string;
-  lang: string;
+  /** `undefined` when only a study row named this course — `CourseRow` then asks the loader. */
+  title: string | undefined;
+  lang: string | undefined;
   /** `undefined` when nothing that named this course ever declared a tier — see `TierBadge`. */
   tier: string | undefined;
   /** The version that will actually open, not merely the one the server recommends. */
-  version: string;
+  version: string | undefined;
   source: CourseSource;
   heldLocally: boolean;
-}
-
-/** The fields the library needs out of one row of `db.packages`. */
-interface HeldPackage {
-  courseId: string;
-  version: string;
-  pinnedAt: string;
-  title: string | undefined;
-  lang: string | undefined;
-  tier: string | undefined;
-  registryId: string | undefined;
-}
-
-function manifestString(manifest: unknown, key: string): string | undefined {
-  if (typeof manifest !== 'object' || manifest === null) return undefined;
-  const value = (manifest as Record<string, unknown>)[key];
-  return typeof value === 'string' && value !== '' ? value : undefined;
+  /** The newer version the server offers for a course this device holds, if any. */
+  updateTo: string | undefined;
 }
 
 /**
- * Every package this device holds, reduced to the seven fields above and
- * live-subscribed — the same shape and the same reasoning as the
- * Dashboard's `useLocalCourseIds`: a course imported in another tab, or on
- * this page while it is open, shows up without a reload.
- *
- * `null` means "not answered yet", and it is a distinct state from `[]` on
- * purpose. `[]` is what lets this page say the library is empty, which is
- * a claim; Dexie's first emission is asynchronous, so treating the initial
- * value as `[]` would flash "your library is empty" at every reader who has
- * courses. The Dashboard already learned this about `GET /courses`; the
- * local half has exactly the same failure.
- *
- * **What this read costs.** `toArray()` deserializes whole rows, and a
- * `PackageRow` carries its `files` — every chapter of the course. A reader
- * holding twenty 1.3 MB courses pays ~26 MB of structured-clone on every
- * visit to this page for seven strings per course. That is the honest
- * price of the current schema: `db.packages` indexes only `key` and
- * `courseId`, so there is no way to read a manifest field without reading
- * the package around it. The fix, if this ever bites, is a Dexie version 3
- * that stores `title`/`lang`/`tier`/`registryId` as their own columns — a
- * schema migration, which is a decision for whoever owns that table, not
- * something to smuggle in here. The mapping below is done INSIDE the
- * liveQuery callback so the heavy rows are garbage the moment it returns
- * rather than being parked in React state.
- */
-function useHeldPackages(): HeldPackage[] | null {
-  const [held, setHeld] = useState<HeldPackage[] | null>(null);
-
-  useEffect(() => {
-    const subscription = liveQuery(() =>
-      db.packages.toArray().then((rows) =>
-        rows.map(
-          (row): HeldPackage => ({
-            courseId: row.courseId,
-            version: row.version,
-            pinnedAt: row.pinnedAt,
-            title: manifestString(row.manifest, 'title'),
-            lang: manifestString(row.manifest, 'lang'),
-            tier: manifestString(row.manifest, 'tier'),
-            registryId: manifestString(row.manifest, 'registryId'),
-          }),
-        ),
-      ),
-    ).subscribe({
-      next: setHeld,
-      error: (err) => {
-        console.error('Library: local package query failed', err);
-        // An unreadable local table is not a reason to hang on "Đang tải…"
-        // forever: the server half of this page still has something to
-        // show, and an empty local list is the truthful thing to render
-        // for a database that will not open.
-        setHeld([]);
-      },
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  return held;
-}
-
-/**
- * One row per course the reader has, from BOTH sources, de-duplicated by
- * course id.
+ * One `OwnedCourse` as a row.
  *
  * **The local copy wins every field it can answer, and that is not a
  * preference — it is what `course/loader.ts` does.** That module reads the
@@ -142,48 +72,45 @@ function useHeldPackages(): HeldPackage[] | null {
  * a course whose device copy is a different version would be a lie that
  * looks like a fact.
  *
- * Sorted by title so the list does not reshuffle when the catalog request
- * lands after the local query, or the other way round.
+ * **`tier` does NOT fall back to the server (ruling S1-F30's minor sibling).**
+ * Every other field falls back, because a wrong `lang` is a cosmetic defect.
+ * A tier is a security decision — `interactive` means this course is allowed
+ * to run JavaScript in the reader's browser — and the two claims are about
+ * two DIFFERENT artifacts: the server describes the package IT holds, and the
+ * package that opens is the one on this device. A held package with no tier
+ * inheriting a catalog entry's `content` is a silent all-clear issued about
+ * something nobody examined. Unknown stays unknown, and `TierBadge` warns.
  */
-function buildRows(catalog: readonly CourseSummary[], held: readonly HeldPackage[]): LibraryRow[] {
-  const byId = new Map<string, LibraryRow>();
+function toRow(course: OwnedCourse): LibraryRow {
+  const { held, catalog } = course;
+  const source: CourseSource =
+    held?.registryId !== undefined
+      ? 'registry'
+      : catalog !== undefined
+        ? 'private'
+        : held !== undefined
+          ? 'import'
+          : 'unknown';
 
-  for (const entry of catalog) {
-    byId.set(entry.id, {
-      courseId: entry.id,
-      title: entry.title,
-      lang: entry.lang,
-      tier: entry.tier === '' ? undefined : entry.tier,
-      version: entry.pinned,
-      source: 'private',
-      heldLocally: false,
-    });
-  }
+  const version = held?.version ?? (catalog?.pinned === '' ? undefined : catalog?.pinned);
+  // Only offered for a course this device HOLDS: for one it does not hold,
+  // `catalog.pinned` is not an update, it is simply the version that would be
+  // downloaded on first open.
+  const updateTo =
+    held !== undefined && catalog !== undefined && catalog.pinned !== '' && catalog.pinned !== held.version
+      ? catalog.pinned
+      : undefined;
 
-  const byCourse = new Map<string, HeldPackage[]>();
-  for (const pkg of held) {
-    const list = byCourse.get(pkg.courseId);
-    if (list === undefined) byCourse.set(pkg.courseId, [pkg]);
-    else list.push(pkg);
-  }
-
-  for (const [courseId, versions] of byCourse) {
-    // The same `pickPinned` `loadManifest` uses, so the version printed here
-    // is the version that opens.
-    const pinned = pickPinned(versions);
-    const fromServer = byId.get(courseId);
-    byId.set(courseId, {
-      courseId,
-      title: pinned.title ?? fromServer?.title ?? courseId,
-      lang: pinned.lang ?? fromServer?.lang ?? '—',
-      tier: pinned.tier ?? fromServer?.tier,
-      version: pinned.version,
-      source: pinned.registryId !== undefined ? 'registry' : fromServer !== undefined ? 'private' : 'import',
-      heldLocally: true,
-    });
-  }
-
-  return Array.from(byId.values()).sort((a, b) => a.title.localeCompare(b.title, 'vi'));
+  return {
+    courseId: course.courseId,
+    title: held?.title ?? catalog?.title,
+    lang: held?.lang ?? catalog?.lang,
+    tier: held !== undefined ? held.tier : catalog?.tier === '' ? undefined : catalog?.tier,
+    version,
+    source,
+    heldLocally: held !== undefined,
+    updateTo,
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -191,11 +118,19 @@ function buildRows(catalog: readonly CourseSummary[], held: readonly HeldPackage
  * ------------------------------------------------------------------ */
 
 /**
- * `/library` — every course this reader has, from the server library and
- * from this device, in one list: title, language, tier, source, and the
- * pinned version.
+ * `/library` — every course this reader has, in one list: title, language,
+ * tier, source, and the pinned version.
  *
- * Three things on this screen are load-bearing rather than decorative, and
+ * **"Every course this reader has" is not this file's opinion** (ruling
+ * S1-F31). It is `course/owned.ts`, which the Dashboard asks the same
+ * question. This page used to compute its own answer from two sources while
+ * the Dashboard computed a different one from three, and the two disagreed on
+ * screen, in the same session, seconds apart — a reader partway through a
+ * course was shown a card for it on `/` and told "thư viện của bạn đang trống"
+ * here. This file now decides how a course is DISPLAYED and nothing about
+ * which courses exist.
+ *
+ * Four things on this screen are load-bearing rather than decorative, and
  * each has its own test:
  *
  *  1. **The `interactive` tier label** (§1.2). That tier is a SECURITY
@@ -204,28 +139,28 @@ function buildRows(catalog: readonly CourseSummary[], held: readonly HeldPackage
  *     guarantee for it comes from human review at a registry — which, for a
  *     package that never went near a registry, means from nobody. §1.2's
  *     own table says the label is shown to whoever pulls the course. See
- *     `TierBadge`.
+ *     `TierBadge`, and `toRow` for why this one field never falls back.
  *  2. **The offline indicator** (ruling S1-F25). See `TransportNotice`.
  *  3. **No share control anywhere.** See `CourseSource` and `CourseRow`.
+ *  4. **The door into `UpdateDialog`** (ruling S1-F29). Task 10 shipped 775
+ *     lines of update machinery that no product file imported, past four
+ *     green gates, because no gate this project has can ask whether a reader
+ *     can reach a thing. See `CourseRow`.
  *
- * This page makes exactly ONE network request (`GET /courses`) and reads
- * one local table. It deliberately does not fetch a manifest per course the
- * way the Dashboard's cards do: everything it prints is already in the
- * catalog response or in the stored package, and a library that could not
- * be listed without N round trips would be useless in precisely the
- * situation this page exists to describe.
+ * **What this page costs.** Two network requests (`GET /courses` and
+ * `GET /stats`, both shared by query key with the Dashboard, so arriving from
+ * `/` costs neither again) plus two local tables, and then ONE manifest lookup
+ * for each course that no source could name. That last clause is new with
+ * ruling S1-F31 and it is a deliberate trade: the page used to make exactly one
+ * request and, in exchange, could not list a course the reader was in the
+ * middle of reading. A library that omits your courses to save a round trip has
+ * saved the wrong thing. The lookups are per-course-with-no-metadata only —
+ * usually zero — and share `manifestQueryKey` with the Dashboard's cards, so
+ * they are typically a cache hit rather than a request.
  */
 export function Library() {
-  const coursesQuery = useQuery({
-    queryKey: coursesQueryKey(),
-    queryFn: () => listCourses(),
-    retry: false,
-  });
-  const held = useHeldPackages();
-
-  // "Do not know yet" — never rendered as "there is nothing".
-  const settling = coursesQuery.isPending || held === null;
-  const rows = settling ? [] : buildRows(coursesQuery.data ?? [], held ?? []);
+  const owned = useOwnedCourses();
+  const rows = owned.courses.map(toRow).sort((a, b) => (a.title ?? a.courseId).localeCompare(b.title ?? b.courseId, 'vi'));
 
   return (
     <div className="lib-page">
@@ -239,13 +174,14 @@ export function Library() {
         </Link>
       </div>
 
-      <TransportNotice error={coursesQuery.isError ? coursesQuery.error : null} />
+      <TransportNotice error={owned.catalogError} />
 
-      {settling && <p className="lib-note">Đang tải thư viện…</p>}
+      {/* "Do not know yet" — never rendered as "there is nothing". */}
+      {!owned.settled && rows.length === 0 && <p className="lib-note">Đang tải thư viện…</p>}
 
-      {!settling && rows.length === 0 && (
+      {owned.settled && rows.length === 0 && (
         <EmptyLibrary
-          heading={coursesQuery.isError ? 'Chưa có khóa học nào trên thiết bị này' : 'Thư viện của bạn đang trống'}
+          heading={owned.catalogError ? 'Chưa có khóa học nào trên thiết bị này' : 'Thư viện của bạn đang trống'}
         />
       )}
 
@@ -313,33 +249,56 @@ function TransportNotice({ error }: { error: unknown }) {
 }
 
 /**
- * One course. A title that opens it, a tier badge, and a metadata line —
- * and nothing else.
+ * One course. A title that opens it, a tier badge, a metadata line, and — for
+ * a held course the server has moved past — the door to `UpdateDialog`.
  *
  * **There is no share control here, and its absence is the feature.** Spec
  * §2.4 draws private's boundary as "no other user sees it"; the only thing
  * on this screen that could undo that with one click is a share button, and
- * two of the three sources (`private`, `import`) have nowhere to share TO
- * in the first place. When the registry lands (subsystem 3) and publishing
- * becomes a real operation, it needs its own screen with its own
+ * three of the four sources (`private`, `import`, `unknown`) have nowhere to
+ * share TO in the first place. When the registry lands (subsystem 3) and
+ * publishing becomes a real operation, it needs its own screen with its own
  * confirmation — not a button sitting one mis-click away from a course
  * somebody put here precisely because it was theirs.
+ *
+ * **The manifest lookup, and when it happens.** A row built only from a study
+ * record has no title, no language and no version — nothing named it except
+ * the fact that the reader has been reading it. Rather than print a course id
+ * at somebody, this asks `loadManifest`, which is the same call (and the same
+ * query key) the Dashboard's card for that course already makes, so on the
+ * ordinary path it is a cache read. `enabled` keeps it off entirely for the
+ * rows that need nothing.
  */
 function CourseRow({ row }: { row: LibraryRow }) {
+  const needsManifest = row.title === undefined;
+  const manifestQuery = useQuery({
+    queryKey: manifestQueryKey(row.courseId),
+    queryFn: () => loadManifest(row.courseId),
+    enabled: needsManifest,
+    retry: false,
+  });
+  const [updating, setUpdating] = useState(false);
+
+  const manifest: unknown = manifestQuery.data;
+  const title = row.title ?? manifestString(manifest, 'title') ?? row.courseId;
+  const lang = row.lang ?? manifestString(manifest, 'lang') ?? '—';
+  const version = row.version ?? manifestString(manifest, 'version') ?? '—';
+  const tier = row.tier ?? manifestString(manifest, 'tier');
+
   return (
     <li className={`lib-item lib-item-${row.source}`}>
       <div className="lib-item-head">
         <Link to={`/c/${row.courseId}`} className="lib-item-title">
-          {row.title}
+          {title}
         </Link>
-        <TierBadge tier={row.tier} />
+        <TierBadge tier={tier} />
       </div>
       <p className="lib-meta">
-        <span className="lib-meta-part">{row.lang}</span>
+        <span className="lib-meta-part">{lang}</span>
         <span className="lib-meta-sep" aria-hidden="true">
           ·
         </span>
-        <span className="lib-meta-part">phiên bản {row.version}</span>
+        <span className="lib-meta-part">phiên bản {version}</span>
         <span className="lib-meta-sep" aria-hidden="true">
           ·
         </span>
@@ -353,6 +312,38 @@ function CourseRow({ row }: { row: LibraryRow }) {
           </>
         )}
       </p>
+
+      {needsManifest && manifestQuery.isError && (
+        <p className="lib-row-note">{describeCourseError(manifestQuery.error)}</p>
+      )}
+
+      {/*
+        Ruling S1-F29 closed here. `UpdateDialog` + `course/version.ts` shipped
+        as 775 lines that NO product file imported — four green gates and not
+        one of them can ask "can a reader reach this". This is the door: a
+        course this device holds, where the server's pinned version is not the
+        one held. The dialog is a dry run until its confirm button, so opening
+        it is free (see `course/version.ts`'s rule 1), which is why this is a
+        plain button and not a guarded one.
+      */}
+      {row.updateTo !== undefined && row.version !== undefined && (
+        <div className="lib-item-update">
+          <span className="lib-update-note">Có bản mới: v{row.updateTo}</span>
+          <button type="button" className="btn lib-update-btn" onClick={() => setUpdating(true)}>
+            Xem thay đổi
+          </button>
+        </div>
+      )}
+
+      {updating && row.updateTo !== undefined && row.version !== undefined && (
+        <UpdateDialog
+          courseId={row.courseId}
+          courseTitle={title}
+          fromVersion={row.version}
+          toVersion={row.updateTo}
+          onClose={() => setUpdating(false)}
+        />
+      )}
     </li>
   );
 }
