@@ -1,13 +1,17 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { coursesQueryKey } from '../api/courses';
+import { type RatingSummary, fetchRatings, ratingsQueryKey } from '../api/ratings';
 import { describeFinding, type ImportStage } from '../course/import';
 import { manifestQueryKey } from '../course/loader';
 import { useLanguage } from '../i18n/LanguageProvider';
+import { Discussion } from './Discussion.tsx';
 import { configuredRegistryBase, describeRegistryError } from './index.ts';
+import { orderByRating } from './order.ts';
 import { pullFromRegistry } from './pull.ts';
+import { Rating } from './Rating.tsx';
 import type { RegistryEntry } from './types.ts';
 import { useRegistryIndex } from './useRegistry.ts';
 import type { Finding } from '@tuhoc/course-format';
@@ -77,6 +81,52 @@ import type { MessageKey } from '../i18n';
  */
 const NO_COURSES: readonly RegistryEntry[] = [];
 
+/** Same shared-empty-value reason as {@link NO_COURSES}, for the ratings query. */
+const NO_RATINGS: readonly RatingSummary[] = [];
+
+/** How long a page of ratings is fresh before a background refetch. */
+const RATINGS_STALE_MS = 60_000;
+
+/**
+ * Ratings for exactly the courses this catalog page listed — one request for
+ * the whole page, and the request that carries the privacy barrier.
+ *
+ * ## `ids` comes from `index.json` and from nowhere else
+ *
+ * `GET /ratings` refuses to answer without `?ids=` (400, by design). The Go
+ * side cannot check whether an id is a registry id — it never reads the
+ * registry, and `TestAPIProductCodeMakesNoOutboundCall` is why it never
+ * will — so its barrier is *"no route enumerates"*, and that holds exactly
+ * as long as the ids clients send are ids the public index already
+ * published. This hook is where that becomes true: its only input is
+ * `query.data.courses`.
+ *
+ * ## It never blocks the list
+ *
+ * Spec §1.1 promises a self-hosted build can read the public registry in
+ * read-only mode — a build with no `apps/api` at all, where this request can
+ * only fail. So the rows render from the index alone and ratings decorate
+ * them when they arrive. Making the catalog wait would hand a registry
+ * feature to a server the architecture says is optional.
+ *
+ * `retry: false` for the same reason `useRegistry.ts` refuses blanket
+ * retries: a malformed body is exactly as malformed on the third attempt,
+ * and a rating is a decoration on a screen whose job — listing and pulling
+ * courses — is already done.
+ */
+function useRatings(ids: readonly string[]) {
+  const query = useQuery({
+    queryKey: ratingsQueryKey(ids),
+    queryFn: () => fetchRatings(ids),
+    enabled: ids.length > 0,
+    staleTime: RATINGS_STALE_MS,
+    retry: false,
+  });
+
+  const rows = query.data ?? NO_RATINGS;
+  return useMemo(() => new Map(rows.map((row) => [row.id, row])), [rows]);
+}
+
 /**
  * The registry a ROW must pull from — the same one the index came from.
  *
@@ -124,7 +174,22 @@ export function Catalog({ registryBase }: { registryBase?: string }) {
   // the query settled into an error). Holding a filter nobody can see the
   // control for would show an empty list with no way back.
   const active = langs.includes(lang) ? lang : '';
-  const shown = active === '' ? courses : courses.filter((c) => c.lang === active);
+  // Memoised, not computed inline: `filter` allocates a fresh array on every
+  // render, and `ordered` below is keyed on it. Same lesson `NO_COURSES`
+  // above was written for — a memo whose input changes identity every render
+  // is a memo that measures nothing.
+  const shown = useMemo(
+    () => (active === '' ? courses : courses.filter((c) => c.lang === active)),
+    [courses, active],
+  );
+
+  // Asked about EVERY course the index listed, not just the ones the language
+  // filter is showing: the filter is a view, and refetching a different id set
+  // every time the reader changes it would spend requests to learn nothing new.
+  const ids = useMemo(() => courses.map((c) => c.id), [courses]);
+  const ratings = useRatings(ids);
+
+  const ordered = useMemo(() => orderByRating(shown, ratings), [shown, ratings]);
 
   return (
     <div className="lib-page">
@@ -186,10 +251,10 @@ export function Catalog({ registryBase }: { registryBase?: string }) {
         thing it warns about, side by side. The stalest possible catalog is
         also the one most likely to offer a course that is no longer there.
       */}
-      {!query.isError && base !== null && shown.length > 0 && (
+      {!query.isError && base !== null && ordered.length > 0 && (
         <ul className="lib-list" aria-label={t('catalog.listAria')}>
-          {shown.map((course) => (
-            <CatalogRow key={course.id} course={course} base={base} />
+          {ordered.map((course) => (
+            <CatalogRow key={course.id} course={course} base={base} rating={ratings.get(course.id)} />
           ))}
         </ul>
       )}
@@ -211,7 +276,24 @@ type PullState =
   | { phase: 'done'; version: string }
   | { phase: 'failed'; findings: readonly Finding[] };
 
-function CatalogRow({ course, base }: { course: RegistryEntry; base: string }) {
+function CatalogRow({
+  course,
+  base,
+  rating,
+}: {
+  course: RegistryEntry;
+  base: string;
+  /**
+   * `undefined` means the ratings request has not answered — or could not.
+   *
+   * The row then draws NO star control at all, rather than an empty one.
+   * Five blank stars would say "you have not voted", and the truth is that
+   * this build does not know: a reader who had voted 5 would be shown their
+   * own vote as absent, and a click meant to keep it would be a new write
+   * against a state nobody read.
+   */
+  rating: RatingSummary | undefined;
+}) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [pull, setPull] = useState<PullState>({ phase: 'idle' });
@@ -283,6 +365,15 @@ function CatalogRow({ course, base }: { course: RegistryEntry; base: string }) {
       {course.description !== '' && <p className="lib-row-note">{course.description}</p>}
 
       {/*
+        The star control lives HERE and only here. Every row on this screen
+        came from `index.json`, which is what makes a rating legitimate at
+        all — see `Rating.tsx`'s header and `ratingFence.test.tsx`, which
+        holds the whole app to that and goes red for a `<Rating>` added to
+        any screen that draws private or file-imported courses.
+      */}
+      {rating !== undefined && <Rating registryId={course.id} summary={rating} />}
+
+      {/*
         The security sentence sits HERE — between the labels and the button,
         before the click, in the row it is about. `TierBadge`'s `title` says
         the same thing but only to a reader who hovers, and this is the one
@@ -315,6 +406,14 @@ function CatalogRow({ course, base }: { course: RegistryEntry; base: string }) {
             <Link to={`/c/${course.id}`}>{t('catalog.pull.open')}</Link>
           </span>
         )}
+
+        {/*
+          Read-only, and it fetches NOTHING until the reader opens it. The
+          GitHub token is the platform's, so its quota is everybody's: twenty
+          rows loading eagerly would spend two thirds of the global window on
+          one page view. See `Discussion.tsx`.
+        */}
+        <Discussion registryId={course.id} />
       </div>
 
       {/*
