@@ -159,6 +159,20 @@ pack: ; bun tools/tuhoc-cli/src/index.ts pack $(DIR)
 #
 # No private store, or an empty one, is NOT an error: that is a fresh clone,
 # and it says so and carries on with the sample packages.
+# Cài dependency ở MỌI nơi có package.json riêng. Repo này không dùng workspace,
+# nên mỗi thư mục tự quản `node_modules` — và một worktree mới KHÔNG có cái nào.
+#
+# Đã cắn NĂM lần, mỗi lần trông như một hồi quy khác nhau:
+#   thiếu apps/vault             -> test-vault đỏ vì @types/node
+#   thiếu apps/web               -> test-web không chạy
+#   thiếu packages/course-format -> test-web thoát 2, lỗi resolve `parse5`
+#   thiếu tools/tuhoc-cli        -> test-cli thoát 127, `tsc: command not found`
+#   thiếu tools/registry         -> test-registry thoát 127, cùng lỗi
+# Không cái nào tự nói ra nguyên nhân thật.
+DEP_DIRS = apps/web apps/vault packages/course-format tools/tuhoc-cli tools/registry
+deps:
+	@for d in $(DEP_DIRS); do printf '  %-28s ' "$$d"; (cd $$d && bun install --silent 2>&1 | tail -1) || exit 1; done
+
 courses: ; python3 scripts/course_workspace.py
 # `make check-publish` — cổng TIỀN-PUBLISH. Thoát 1 khi repo còn dấu vết course
 # riêng tư ở BẤT KỲ đâu; thoát 0 khi không còn. Đây là mục kiểm chạy được thay
