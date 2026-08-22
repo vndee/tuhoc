@@ -1,5 +1,18 @@
 # Tuhoc v2 — Nền tảng mở: gói course, registry cộng đồng, AI tự cắm key
 
+> **Biên tập cho bản công khai — 2026-08-22.** Đây là một bản ghi **có ngày
+> tháng**, nên nó không được viết lại. Đúng một thứ bị thay, ở mọi chỗ nó xuất
+> hiện: danh tính giáo trình riêng tư của tác giả — `id`, `title`,
+> `description` — nay lần lượt là `«giáo-trình-riêng»`, `«Giáo trình riêng»`,
+> `«mô tả của giáo trình riêng»`. Mọi số đo, ngày tháng, quyết định, bước làm
+> và kết luận **giữ nguyên**; chỗ nào đọc thấy lạ thì đó là câu chữ gốc, không
+> phải chỗ bị cắt.
+>
+> Vì sao phải thay: repo này sắp công khai, và tài liệu đi cùng nó y như mã
+> (`make check-publish`, phép 4). Vì sao không xoá hẳn tệp: một bản ghi quyết
+> định bị giấu đi thì thôi là bản ghi. Vì sao khai báo thay vì sửa lặng lẽ:
+> sửa lặng lẽ một tài liệu có ngày tháng là làm giả nó.
+
 **Ngày:** 2026-08-20 · **Trạng thái:** đã duyệt hướng, chờ duyệt spec
 **Tiền đề:** `docs/superpowers/specs/2026-08-19-tuhoc-platform-design.md` (spec v1, §1–§7)
 **Ảnh hưởng:** thay thế phần lớn kế hoạch P3/P4 hiện có — xem §8.
@@ -185,7 +198,7 @@ Xem lại nếu có ngày một course vượt ~10 MB.
 
 ### 2B.1 Course riêng tư đang nằm trong git — và xoá sau không cứu được
 
-`courses/***REMOVED***/` hiện là **47 tệp, 1,3 MB đã commit** trong chính repo sẽ được
+`courses/«giáo-trình-riêng»/` hiện là **47 tệp, 1,3 MB đã commit** trong chính repo sẽ được
 publish. Xoá ở một commit sau **không giải quyết gì**: git giữ toàn bộ lịch sử, ai clone cũng khôi
 phục được bằng một lệnh.
 
@@ -383,7 +396,7 @@ tầm với của JS course, kể cả JS độc hại đã lọt qua vòng duy�
 
 ### 9.5 Những gì tôi tự quyết (nói ra để phản đối được)
 
-- **Đặt tên trong registry:** `<tài-khoản-github>/<mã-course>`, ví dụ `vndee/***REMOVED***`.
+- **Đặt tên trong registry:** `<tài-khoản-github>/<mã-course>`, ví dụ `vndee/«giáo-trình-riêng»`.
   Tránh trùng tên vĩnh viễn mà không cần cơ quan cấp phát nào.
 - **Bản dịch là course RIÊNG**, liên kết bằng trường `translationOf` trong manifest. Nhồi nhiều
   ngôn ngữ vào một gói làm hỏng việc ghim phiên bản và neo ghi chú (§2.6).
