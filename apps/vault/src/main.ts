@@ -1,8 +1,24 @@
-import { PROTOCOL_VERSION, type VaultRequest, type VaultResponse } from './protocol';
-import { readPublicConfig } from './keystore';
-import { listProviders } from './providers';
+import {
+  PROTOCOL_VERSION,
+  type VaultErrorCode,
+  type VaultRequest,
+  type VaultResponse,
+} from './protocol';
+import { readConfig, readPublicConfig } from './keystore';
+import { getProvider, listProviders } from './providers';
+import { ProviderError, type ChatMessage, type Provider } from './providers/types';
+import { checkAndConsume, clearActivity, grantConsent, hasConsent, readActivity } from './guard';
+import { renderVaultPanel } from './ui/Consent';
 
-export interface HandlerDeps { allowedOrigin: string }
+export interface HandlerDeps {
+  allowedOrigin: string;
+  /** Gọi sau mỗi quyết định của người gác, để khung vẽ lại nhật ký.
+   *
+   *  Tuỳ chọn vì `handleMessage` phải gọi được từ test mà không cần DOM. Không
+   *  phải tiện nghi: một nhật ký chỉ vẽ lúc nạp trang là một nhật ký đứng yên
+   *  trong đúng lúc đáng nhìn nhất — lúc có thứ gì đó đang gọi liên tục. */
+  onActivity?: () => void;
+}
 
 /** Tách khỏi `addEventListener` để test gọi thẳng được. Trả về void: mọi hồi đáp
  *  đi qua `event.source.postMessage`, vì đó là đường duy nhất tới đúng khung đã hỏi. */
@@ -17,6 +33,8 @@ export function handleMessage(event: MessageEvent, deps: HandlerDeps): void {
   const source = event.source as WindowProxy | null;
   if (!source) return;
 
+  // `targetOrigin` TƯỜNG MINH ở mọi hồi đáp, kể cả từng mảnh của một câu trả
+  // lời đang chảy. `'*'` bị cấm tuyệt đối ở cả hai chiều.
   const send = (res: VaultResponse) => source.postMessage(res, deps.allowedOrigin);
 
   if (req.v !== PROTOCOL_VERSION) {
@@ -47,24 +65,171 @@ export function handleMessage(event: MessageEvent, deps: HandlerDeps): void {
       });
       return;
     }
-    // `chat` rơi vào đây, và đó là CỐ Ý của Task 3.
+    // `chat` được Task 9 nối vào — và nó đi qua NGƯỜI GÁC, không đi thẳng ra
+    // `fetch`. Task 3 cố ý để nhánh này rơi xuống `default` với lý do: nối
+    // `chat` trước khi có người gác của HC-3 là dựng đúng cái lỗ *confused
+    // deputy*, vì course độc chạy ở trang chính và trang chính được phép nhắn
+    // vào đây.
     //
-    // Lớp nhà cung cấp (`providers/`) đã xong và đã được kiểm; thứ còn thiếu
-    // không phải mã gọi mạng mà là NGƯỜI GÁC trước nó. HC-3 nói rõ: kho khoá
-    // chặn TRỘM key chứ không chặn DÙNG key, và một course độc chạy ở trang
-    // chính vẫn `postMessage` được vào đây. Nối `chat` thẳng vào `fetch` lúc
-    // này là dựng đúng cái lỗ *confused deputy* mà Task 9 sinh ra để bịt: gọi
-    // bao nhiêu lần cũng được (đốt tiền người dùng) và gửi đi bất cứ gì (ghi
-    // chú riêng tư dưới danh nghĩa lời nhắc).
-    //
-    // Task 9 nối đường này, và khi nối thì nó đi qua token bucket + xác nhận
-    // phiên. Bài kiểm "một yêu cầu `chat` KHÔNG gây ra lời gọi mạng nào" ở
-    // `providers/providers.test.ts` canh đúng chỗ đó — và nó vẫn phải XANH sau
-    // Task 9, vì lời gọi đầu phiên trả `needs_consent` mà không gọi mạng.
+    // Bài kiểm "một yêu cầu `chat` KHÔNG gây ra lời gọi mạng nào" ở
+    // `providers/providers.test.ts` vẫn XANH sau khi nối, vì lời gọi đầu phiên
+    // dừng ở người gác trước khi chạm `fetch`. **Nhưng nó xanh vì một lý do
+    // YẾU HƠN trước:** trong bài kiểm đó kho khoá chưa cắm key, nên nhánh
+    // `not_configured` cũng đủ chặn. Bẫy thật của người gác nằm ở
+    // `guard.test.ts` ("BẪY TRUNG TÂM"), nơi key ĐÃ được cắm và nhà cung cấp
+    // hợp lệ, nên thứ duy nhất còn chặn lời gọi mạng là xác nhận đầu phiên.
+    case 'chat':
+      handleChat(req, req.id, deps, send);
+      return;
     default:
       send({ v: 1, id: req.id, kind: 'error', code: 'unsupported_provider',
              message: 'Chưa hỗ trợ.' });
   }
+}
+
+// ───────────────────── đường `chat`, qua NGƯỜI GÁC ─────────────────────
+
+function errorResponse(id: string, code: VaultErrorCode, message: string): VaultResponse {
+  return { v: 1, id, kind: 'error', code, message };
+}
+
+interface ChatShape {
+  providerId: string;
+  model: string;
+  messages: ChatMessage[];
+}
+
+/**
+ * Kiểm hình dạng yêu cầu `chat` ở TẦNG CHẠY, không chỉ tầng kiểu.
+ *
+ * `req` tới từ `postMessage`, nên kiểu TypeScript ở đây là một lời hứa của
+ * trang chính chứ không phải một bảo đảm — và HC-3 nói course độc chạy chính ở
+ * đầu bên kia. Không kiểm thì `messages.map(...)` ném ngay trong trình nghe
+ * `message`, tức là một thông điệp méo mó giết được cả kho khoá.
+ *
+ * Dựng LẠI mảng với đúng hai trường, giống `sanitiseMessages` của lớp nhà cung
+ * cấp — hai lớp, có chủ ý: lớp này quyết định có gọi hay không (và đếm ký tự
+ * cho nhật ký), lớp kia quyết định gửi cái gì ra dây.
+ */
+function chatShape(req: unknown): ChatShape | null {
+  if (typeof req !== 'object' || req === null) return null;
+  const r = req as Record<string, unknown>;
+  if (typeof r.providerId !== 'string' || typeof r.model !== 'string') return null;
+  if (!Array.isArray(r.messages)) return null;
+  const messages: ChatMessage[] = [];
+  for (const m of r.messages) {
+    if (typeof m !== 'object' || m === null) return null;
+    const { role, content } = m as { role?: unknown; content?: unknown };
+    if (role !== 'system' && role !== 'user' && role !== 'assistant') return null;
+    if (typeof content !== 'string') return null;
+    messages.push({ role, content });
+  }
+  return { providerId: r.providerId, model: r.model, messages };
+}
+
+/**
+ * Thứ tự các phép kiểm ở đây là phần quan trọng nhất của Task 9.
+ *
+ *   1. **hình dạng** — một thông điệp méo mó không được ném ra ngoài trình nghe;
+ *   2. **nhà cung cấp** — id lạ thì dừng trước khi tiêu token của người dùng;
+ *   3. **đã cắm key chưa** — hỏi bằng `readPublicConfig()`, thứ KHÔNG đọc ô nhớ
+ *      chứa key (Task 2). Trả `not_configured` để trang chính mời đi cấu hình
+ *      thay vì hiện một lỗi cụt;
+ *   4. **người gác** — xác nhận đầu phiên rồi mới tới hạn mức;
+ *   5. **và chỉ khi đó mới `readConfig()`**, tức là chỉ khi đó key mới đi vào bộ
+ *      nhớ. Một course độc spam `chat` không làm key được nạp lấy một lần —
+ *      `guard.test.ts` cắm bẫy `Storage.getItem` cho đúng tính chất này.
+ */
+function handleChat(
+  req: unknown,
+  id: string,
+  deps: HandlerDeps,
+  send: (res: VaultResponse) => void,
+): void {
+  const shape = chatShape(req);
+  if (!shape) {
+    // `unsupported_provider` là mã GẦN NHẤT có sẵn, không phải mã đúng nghĩa.
+    // `VaultErrorCode` là một union ĐÓNG mà trang chính phân nhánh theo, và
+    // thêm một thành viên là một thay đổi giao thức — theo S2-F8 nó phải được
+    // đọc bằng mắt người, và Task 5 đang được viết ngay lúc này dựa trên đúng
+    // union hiện tại. Đã ghi vào `docs/carried-forward.md` như một món nợ có tên.
+    send(errorResponse(id, 'unsupported_provider', 'Yêu cầu chat không đúng hình dạng giao thức.'));
+    return;
+  }
+
+  const provider = getProvider(shape.providerId);
+  if (!provider) {
+    send(errorResponse(id, 'unsupported_provider', 'Kho khoá không biết nhà cung cấp này.'));
+    return;
+  }
+
+  if (readPublicConfig() === null) {
+    send(errorResponse(id, 'not_configured', 'Chưa cắm key trong kho khoá.'));
+    return;
+  }
+
+  const chars = shape.messages.reduce((n, m) => n + m.content.length, 0);
+  const decision = checkAndConsume({ chars, providerId: shape.providerId });
+  deps.onActivity?.();
+  if (!decision.allow) {
+    send(errorResponse(id, decision.code ?? 'rate_limited', decision.message ?? ''));
+    return;
+  }
+
+  const cfg = readConfig();
+  if (!cfg) {
+    // Chỉ tới được đây nếu ô nhớ đổi giữa hai phép đọc. Token đã tiêu — chấp
+    // nhận, vì chiều ngược lại (đọc key trước khi qua người gác) đắt hơn nhiều.
+    send(errorResponse(id, 'not_configured', 'Chưa cắm key trong kho khoá.'));
+    return;
+  }
+
+  startStream(id, provider, cfg.apiKey, shape, send);
+}
+
+/**
+ * Chảy câu trả lời về trang chính, từng mảnh một.
+ *
+ * `send` được gọi nhiều lần với cùng `id`; trang chính tương quan theo `id` và
+ * kết thúc ở `done` hoặc `error`.
+ *
+ * **Thông điệp lỗi KHÔNG BAO GIỜ dựng từ lỗi lạ.** `ProviderError` của Task 3
+ * đã được chứng minh là dựng hoàn toàn từ hằng số (thân hồi đáp 401 của nhà
+ * cung cấp có nguyên văn key trong đó). Mọi lỗi khác được thay bằng một câu
+ * hằng — `String(err)` ở đây là đường ngắn nhất để một `TypeError` mang URL,
+ * `cause`, hay cả đối tượng yêu cầu đi thẳng ra trang chính.
+ *
+ * **Chưa có huỷ.** Giao thức v1 không có `kind` nào để trang chính nói "dừng",
+ * nên không có `AbortSignal` nào để chuyển vào đây. Đó là một khoảng trống của
+ * giao thức, không phải một thiếu sót của tệp này — đã ghi vào
+ * `docs/carried-forward.md`.
+ */
+function startStream(
+  id: string,
+  provider: Provider,
+  apiKey: string,
+  shape: ChatShape,
+  send: (res: VaultResponse) => void,
+): void {
+  void (async () => {
+    try {
+      for await (const text of provider.chat({ model: shape.model, messages: shape.messages }, apiKey)) {
+        send({ v: 1, id, kind: 'chunk', text });
+      }
+      send({ v: 1, id, kind: 'done' });
+    } catch (e) {
+      const code: VaultErrorCode = e instanceof ProviderError ? e.code : 'provider_error';
+      const message = e instanceof ProviderError
+        ? e.message
+        : 'Kho khoá không hoàn tất được lời gọi tới nhà cung cấp.';
+      try {
+        send(errorResponse(id, code, message));
+      } catch {
+        // Khung đã đóng giữa chừng. Không còn ai để báo, và một lỗi ở đây sẽ
+        // thành một promise bị từ chối không ai bắt.
+      }
+    }
+  })();
 }
 
 /** Origin của trình duyệt luôn có đúng hình dạng `scheme://host[:port]` — không
@@ -101,5 +266,22 @@ export function resolveAllowedOrigin(env: { VITE_APP_ORIGIN?: string }): string 
 
 if (typeof window !== 'undefined' && !import.meta.env.VITEST) {
   const allowedOrigin = resolveAllowedOrigin(import.meta.env);
-  window.addEventListener('message', (e) => handleMessage(e, { allowedOrigin }));
+
+  // Khung xác nhận + nhật ký được vẽ ngay lúc nạp, chứ không đợi lời gọi đầu
+  // tiên: `needs_consent` chỉ hữu ích nếu người dùng có chỗ để bấm khi trang
+  // chính mở rộng khung ra.
+  //
+  // ⚠️ ĐIỂM NỐI CHƯA KHÉP KÍN, nói thẳng ra để không ai tưởng nó xong: khung
+  // này chỉ NHÌN THẤY được khi trang chính mở rộng iframe của kho khoá — và
+  // phần đó thuộc Task 5/6, chưa tồn tại. Chừng nào chưa có, một `needs_consent`
+  // là ngõ cụt: người dùng không có nút nào để bấm. Đây đúng hình dạng "cổng mù
+  // #4" (S1-F29) đã ghi trong `docs/carried-forward.md`, và chỉ cổng e2e của
+  // Task 10 hỏi được câu "người dùng có bấm tới được không".
+  const root = document.getElementById('vault-ui');
+  const repaint = root
+    ? () => renderVaultPanel(root, { hasConsent, grantConsent, readActivity, clearActivity })
+    : undefined;
+  repaint?.();
+
+  window.addEventListener('message', (e) => handleMessage(e, { allowedOrigin, onActivity: repaint }));
 }
