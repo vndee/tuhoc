@@ -1,0 +1,38 @@
+{
+  // Một tsconfig duy nhất, `include` trỏ vào nguồn thật — CỐ Ý không dùng hình
+  // dạng `"files": []` + `references` của `apps/web/tsconfig.json`. Chính hình
+  // dạng đó đã tạo ra một cổng kiểu RỖNG trong repo này (`tsc --noEmit` không
+  // đi vào project references, xem docs/carried-forward.md §2). Ở đây cả
+  // `tsc -b` lẫn `tsc --noEmit` đều thực sự nhìn vào tệp; `bun run typecheck`
+  // dùng `tsc -b` vì đó là hình dạng đã được chứng minh là đỏ được.
+  //
+  // `vite.config.ts` KHÔNG nằm trong `include`: nó chạy ở Node, cần
+  // `types: ["node"]`, và tách nó ra thành project thứ hai chỉ để kiểm một tệp
+  // cấu hình là đổi lấy một cổng phức tạp hơn mà không bắt thêm được gì trong
+  // mã chạm tới key.
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    // `vite/client` cho `import.meta.env`; `vitest/globals` KHÔNG được thêm —
+    // các tệp test ở đây nhập `describe`/`it`/`expect` tường minh.
+    "types": ["vite/client"],
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
+}

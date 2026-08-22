@@ -1,12 +1,51 @@
-.PHONY: dev-api dev-web test-api test-web test-format test-cli pack courses test-e2e test-viz setup-extract test-extract extract check-publish
+.PHONY: dev-api dev-web dev-vault test-api test-web test-vault test-format test-cli pack courses test-e2e test-viz setup-extract test-extract extract check-publish
 dev-api:  ; cd apps/api && go run ./cmd/api
 dev-web:  courses ; cd apps/web && bun run dev
+# apps/vault — KHO KHOÁ, chạy ở CỔNG 5174 trong khi dev-web chạy ở 5173.
+#
+# Hai cổng, không phải một đường dẫn `/vault/` trên cùng cổng: origin bao gồm cả
+# cổng, nên `http://localhost:5173` và `http://localhost:5174` là hai origin khác
+# nhau và trình duyệt cách ly `localStorage` giữa chúng. Đó chính là hàng rào mà
+# hệ thống con này dựng lên — một đường dẫn trên cùng cổng sẽ là CÙNG origin và
+# phá huỷ toàn bộ mục đích.
+#
+# Cần cả hai chạy song song khi phát triển tính năng AI: `make dev-web` ở một
+# terminal, `make dev-vault` ở terminal khác.
+dev-vault: ; cd apps/vault && bun run dev
 test-api: ; cd apps/api && go test ./...
 # `courses` first: four unit test files read a chapter of a real, packed course
 # — since task 13 that is the PUBLIC sample package `so-dau-phay-dong`, which
 # lives in this repo at `fixtures/courses/` but is read from the `courses/`
 # working directory. See the `courses` target below.
 test-web: courses ; cd apps/web && bun run test
+# apps/vault — kho khoá ở origin riêng. Hai cổng như test-format/test-cli:
+# `tsc -b` cho kiểu, vitest cho hành vi. KHÔNG phụ thuộc `courses`: kho khoá
+# không bao giờ chạm tới nội dung course — nó chỉ giữ key và gọi nhà cung cấp.
+#
+# `tsc -b`, KHÔNG phải `tsc --noEmit`, vì lý do đã ghi ở test-format và trong
+# docs/carried-forward.md §2. Đã kiểm là ĐỎ được chứ không giả định: chèn
+# `const mutantA: number = "chuoi"` vào src/main.ts → exit 1, và vào
+# src/protocol.test.ts → exit 1 (nên tệp test cũng được kiểm kiểu).
+#
+# NỬA THỨ BA — `assert-tests-ran.mjs` — là thứ khác với hai mục trên, và nó có
+# lý do đo được. Vitest 4.1.11, đo trong chính thư mục này ngày 2026-08-22:
+#
+#   · include không khớp tệp nào  → vitest thoát 1  (cổng tự đỏ, tốt)
+#   · MỌI describe bị `.skip`     → vitest thoát 0  ("Tests 8 skipped (8)")
+#
+# Trường hợp thứ hai là cổng mù thứ SÁU đang chờ xảy ra, cùng hình dạng với năm
+# cái đã ghi trong docs/carried-forward.md. Script đọc `numPassedTests` từ
+# reporter json và đỏ khi con số đó bằng 0 — hoặc khi có bất kỳ test nào bị
+# `.skip`/`.todo`, vì ở kho khoá thì một bài kiểm bị tắt lặng lẽ (ví dụ bài
+# "origin lạ không gây ra bất kỳ ảnh hưởng nào") là thứ không được phép trôi
+# qua. `numTotalTests` KHÔNG dùng được: ở trường hợp skip nó vẫn bằng 8.
+#
+# `rm -f` tệp tóm tắt TRƯỚC khi chạy là có chủ ý: nếu ai đó gỡ cờ
+# `--reporter=json`, cổng đỏ vì thiếu tệp thay vì đọc lại kết quả lần trước.
+#
+# Thư mục này có node_modules riêng; repo không có npm workspaces và không có
+# package.json ở gốc. Chạy `cd apps/vault && bun install` một lần.
+test-vault: ; cd apps/vault && rm -f node_modules/.tmp/vitest-summary.json && bun run typecheck && bunx vitest run --reporter=default --reporter=json --outputFile.json=node_modules/.tmp/vitest-summary.json && node scripts/assert-tests-ran.mjs node_modules/.tmp/vitest-summary.json
 # packages/course-format — the course package rule set shared by the packaging
 # CLI, registry CI and the browser importer. Two gates, both required: vitest
 # for behaviour, and `tsc -b` for types.
