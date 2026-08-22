@@ -6,6 +6,7 @@ import { ImportCourse } from './pages/ImportCourse';
 import { Library } from './pages/Library';
 import { Login } from './pages/Login';
 import { Reader } from './pages/Reader';
+import { Settings } from './pages/Settings';
 
 /**
  * Route skeleton for P1. `/c/:courseId` renders the real course loader +
@@ -65,6 +66,26 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <Library />
+          </RequireAuth>
+        }
+      />
+      {/*
+        `/settings` (hệ thống con 2, Task 6) là ĐIỂM VÀO của kho khoá — chỗ
+        khung được mở rộng ra để người dùng dán key và bấm xác nhận đầu phiên.
+        Trước route này cả hai màn ấy được vẽ nhưng chưa ai nhìn thấy được.
+
+        Sau `RequireAuth` như mọi thứ khác, và vì một lý do cụ thể: trang này
+        mở khung kho khoá và mời người dùng cắm key, còn `clearLocalData()`
+        dọn dữ liệu cục bộ ở mỗi lần đổi phiên. Key thì KHÔNG bị dọn (nó nằm ở
+        origin khác, không nằm trong Dexie), nhưng mời một người chưa đăng nhập
+        đi cấu hình một tính năng chỉ dùng được sau khi đăng nhập là mời họ đi
+        một vòng vô ích.
+      */}
+      <Route
+        path="/settings"
+        element={
+          <RequireAuth>
+            <Settings />
           </RequireAuth>
         }
       />

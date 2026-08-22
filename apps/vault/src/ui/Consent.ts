@@ -68,9 +68,18 @@ function formatWhen(at: number): string {
   }
 }
 
-function renderActivity(root: Element, deps: PanelDeps): void {
-  const activity = deps.readActivity();
+/** Số ký tự, có dấu phân nhóm. `120.000` đọc được trong một cái liếc; `120000`
+ *  thì không — và con số này là thứ người dùng phải cân trong hai giây trước
+ *  khi bấm, không phải thứ họ ngồi đếm chữ số. */
+function formatChars(n: number): string {
+  try {
+    return n.toLocaleString('vi-VN');
+  } catch {
+    return String(n);
+  }
+}
 
+function renderActivity(root: Element, deps: PanelDeps, activity: Activity): void {
   root.appendChild(el('h3', 'Trợ lý AI đã gửi đi những gì'));
   root.appendChild(
     el(
@@ -83,13 +92,27 @@ function renderActivity(root: Element, deps: PanelDeps): void {
   if (activity.calls.length === 0) {
     root.appendChild(el('p', 'Chưa có lời gọi nào.'));
   } else {
+    // TỔNG trước, chi tiết sau. Ba con số rời nhau là ba con số phải cộng
+    // nhẩm; câu hỏi người dùng thật sự đang trả lời — "đã có bao nhiêu chữ của
+    // tôi rời khỏi máy này?" — chỉ có một con số.
+    const total = activity.calls.reduce((n, c) => n + c.chars, 0);
+    const spent = el(
+      'p',
+      `Tổng cộng ${formatChars(total)} ký tự đã rời khỏi máy này, qua `
+        + `${String(activity.calls.length)} lời gọi.`,
+    );
+    spent.dataset.role = 'spent';
+    spent.className = 'vault-spent';
+    root.appendChild(spent);
+
     const list = el('ul');
     // Mới nhất lên đầu: phần đáng nhìn của một nhật ký giám sát là phần vừa xảy ra.
     for (const c of [...activity.calls].reverse()) {
       list.appendChild(
         el(
           'li',
-          `${formatWhen(c.at)} · ${c.chars} ký tự đã gửi · ${c.providerId ?? 'nhà cung cấp không rõ'}`,
+          `${formatWhen(c.at)} · ${formatChars(c.chars)} ký tự đã gửi · `
+            + `${c.providerId ?? 'nhà cung cấp không rõ'}`,
         ),
       );
     }
@@ -118,33 +141,82 @@ function renderActivity(root: Element, deps: PanelDeps): void {
 }
 
 /**
+ * Lời xin xác nhận. Hai cách nói, và sự khác nhau giữa chúng là điểm.
+ *
+ * **Lần đầu** người dùng chưa có gì để cân: chưa có chữ nào rời máy, nên bảng
+ * chỉ nói cơ chế làm gì.
+ *
+ * **Lần sau** thì họ đang bị hỏi lại *vì* đã có nhiều chữ rời máy — Task 9b rút
+ * xác nhận khi phiên tiêu hết ngân sách ký tự. Đó đúng là lúc con số đáng nhìn
+ * nhất, nên đây là chỗ nó phải xuất hiện, không phải chỗ nó bị giấu đi.
+ *
+ * Kho khoá **không tự nhận là biết vì sao** người dùng đang bị hỏi: bản ghi xác
+ * nhận nằm ở `sessionStorage` còn nhật ký nằm ở `localStorage`, nên một nhật ký
+ * không rỗng cũng có thể chỉ là dấu vết của phiên hôm qua. Câu chữ dưới đây nói
+ * đúng thứ đo được ("phiên này đã có chừng này chữ đi ra") và để người dùng tự
+ * kết luận — chứ không khẳng định một nguyên nhân mà nó không đọc được.
+ */
+function renderConsentAsk(root: Element, deps: PanelDeps, activity: Activity): void {
+  const repeat = activity.calls.length > 0;
+
+  root.appendChild(
+    el(
+      'h3',
+      repeat
+        ? 'Trợ lý AI xin phép gọi tiếp bằng key của bạn'
+        : 'Trợ lý AI muốn gọi ra ngoài bằng key của bạn',
+    ),
+  );
+  root.appendChild(
+    el(
+      'p',
+      repeat
+        ? 'Kho khoá đã dừng lại và hỏi lại trước khi gửi thêm. Nhật ký ngay bên dưới cho biết '
+          + 'chừng nào chữ đã rời khỏi máy này — hãy nhìn nó trước khi bấm lần này, vì mỗi cú '
+          + 'bấm mở đường cho một lượng chữ tương đương nữa. Nếu con số ấy lớn hơn những gì bạn '
+          + 'nhớ là mình đã hỏi, thì đừng bấm.'
+        : 'Trang bài học vừa yêu cầu kho khoá gọi nhà cung cấp AI. Kho khoá không cho lời gọi nào '
+          + 'đi ra trước khi bạn bấm nút dưới đây, và cú bấm này chỉ có hiệu lực trong phiên hiện tại.',
+    ),
+  );
+
+  const btn = el('button', 'Cho phép trong phiên này') as HTMLButtonElement;
+  btn.type = 'button';
+  btn.dataset.role = 'consent';
+  btn.addEventListener('click', (ev) => {
+    if (handleConsentClick(ev, deps)) renderVaultPanel(root, deps);
+  });
+  root.appendChild(btn);
+}
+
+/**
  * Vẽ lại toàn bộ khung. Gọi được nhiều lần; mỗi lần dựng lại từ đầu.
  *
  * Vẽ ra **không** cấp quyền — quyền chỉ tới từ `handleConsentClick` với một sự
  * kiện đáng tin. Đó là một bài kiểm riêng, vì "mount rồi tự bật cờ" là kiểu
  * hỏng im lặng đúng bằng việc không có nút.
+ *
+ * **Nút xin phép KHÔNG thay thế nhật ký — nó đứng TRÊN nhật ký.** Bản đầu tiên
+ * của tệp này `return` ngay sau khi vẽ nút, tức là ẩn nhật ký đi đúng lúc người
+ * dùng phải quyết định. Với ngân sách ký tự của Task 9b, lần hỏi thứ hai trở đi
+ * xảy ra **vì** đã có nhiều chữ rời máy, nên đó chính là lúc con số đáng nhìn
+ * nhất — và một cái nút không kèm con số ấy là đúng "con dấu cao su" mà cả cơ
+ * chế này sinh ra để tránh.
+ *
+ * Điều đó không phải chi tiết trang trí. Phép đo của Task 9b nói thẳng: ngân
+ * sách **không chặn** được việc tuồn ghi chú, nó chỉ **định giá bằng số cú bấm
+ * của con người** — bấm đủ 7 lần thì cả 773.720 ký tự vẫn đi. Cơ chế chỉ sống
+ * nếu người dùng dừng lại ở cú bấm thứ hai hoặc thứ ba, và thứ quyết định điều
+ * đó là những gì họ nhìn thấy ngay lúc bấm.
  */
 export function renderVaultPanel(root: Element, deps: PanelDeps): void {
   root.textContent = '';
 
-  if (!deps.hasConsent()) {
-    root.appendChild(el('h3', 'Trợ lý AI muốn gọi ra ngoài bằng key của bạn'));
-    root.appendChild(
-      el(
-        'p',
-        'Trang bài học vừa yêu cầu kho khoá gọi nhà cung cấp AI. Kho khoá không cho lời gọi nào '
-          + 'đi ra trước khi bạn bấm nút dưới đây, và cú bấm này chỉ có hiệu lực trong phiên hiện tại.',
-      ),
-    );
-    const btn = el('button', 'Cho phép trong phiên này') as HTMLButtonElement;
-    btn.type = 'button';
-    btn.dataset.role = 'consent';
-    btn.addEventListener('click', (ev) => {
-      if (handleConsentClick(ev, deps)) renderVaultPanel(root, deps);
-    });
-    root.appendChild(btn);
-    return;
-  }
+  // Đọc MỘT lần, dùng cho cả hai nửa: hai lời gọi `readActivity()` có thể trả
+  // hai giá trị khác nhau, và một bảng nói "3 lời gọi" ở trên rồi liệt kê 4 mục
+  // ở dưới là một bảng không ai tin nữa.
+  const activity = deps.readActivity();
 
-  renderActivity(root, deps);
+  if (!deps.hasConsent()) renderConsentAsk(root, deps, activity);
+  renderActivity(root, deps, activity);
 }

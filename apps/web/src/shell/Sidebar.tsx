@@ -64,6 +64,14 @@ function GlobalNav() {
       <NavLink to="/import" className="sb-nav-link">
         Nhập khóa học
       </NavLink>
+      {/*
+        Không có liên kết này thì `/settings` chỉ tới được bằng cách gõ URL, và
+        một trang cấu hình không ai tới được là đúng hình dạng cổng mù #4
+        (S1-F29) mà cả route ấy sinh ra để vá.
+      */}
+      <NavLink to="/settings" className="sb-nav-link">
+        Trợ lý AI
+      </NavLink>
     </nav>
   );
 }

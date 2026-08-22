@@ -1800,3 +1800,53 @@ mark.ann {
     display: none;
   }
 }
+
+/* ── Kho khoá: lớp phủ khi khung được mở rộng ──────────────────────────────
+   Trang cấu hình AI mở khung kho khoá ra. Khung ấy là một `<iframe>` ở một
+   origin khác, gắn một lần cho cả ứng dụng ở NGOÀI `#app` (xem
+   shell/VaultFrame.tsx) — nên nó không nằm trong luồng bố cục của trang, và
+   một chiều cao thường sẽ đẩy nó xuống dưới đáy `#app` (`min-height:100vh`),
+   tức là ra ngoài màn hình.
+
+   `position: fixed` là cách rẻ nhất để nó ở đúng chỗ mà không phải chép lại
+   các con số bố cục của reader.css — và với một màn hẹp, phủ toàn màn hình
+   chính là hình dạng đúng cho một màn nhập bí mật.
+
+   z-index 90: trên hộp chú thích (80/79) và thanh topbar dính (40). Người dùng
+   đang dán key thì không có gì được nằm đè lên. */
+.vault-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1);
+}
+
+.vault-overlay-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--rule-strong);
+  background: var(--panel);
+}
+
+.vault-overlay-title {
+  font-size: 0.82rem;
+  color: var(--ink-2);
+}
+
+.vault-overlay iframe {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.page-settings {
+  max-width: var(--measure);
+}
+
+.page-settings p {
+  color: var(--ink-2);
+}

@@ -135,25 +135,60 @@ export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps
     <VaultFrameContext.Provider value={value}>
       {children}
       {resolved !== null && (
-        <iframe
-          ref={setFrameEl}
-          // Origin, không đường dẫn: cổng khác = origin khác = trình duyệt cách
-          // ly `localStorage`. Một đường dẫn `/vault/` trên cùng cổng sẽ là
-          // CÙNG origin và phá huỷ toàn bộ mục đích của hệ thống con này.
-          src={`${resolved}/`}
-          title="Kho khoá"
-          // `allow-same-origin` ở đây là same-origin với CHÍNH KHO KHOÁ, không
-          // phải với trang chính. Thiếu nó, khung nhận một origin mờ đục và
-          // `localStorage` của nó ném — kho khoá không cất được gì. Vì khung
-          // khác origin với trang chính, cờ này không trả lại cho nó quyền nào
-          // trên trang chính.
-          sandbox="allow-scripts allow-same-origin"
-          aria-hidden={expanded ? undefined : 'true'}
-          // Khung `display:none` VẪN nạp tài liệu và VẪN chạy script — đó là lý
-          // do dùng nó thay vì không gắn khung khi chưa cần.
-          style={expanded ? { width: '100%', height: '100%', border: 0 } : { display: 'none' }}
-          data-testid="vault-frame"
-        />
+        /*
+         * Bọc CỐ ĐỊNH, không đổi theo `expanded`: React sẽ THÁO VÀ GẮN LẠI một
+         * `<iframe>` bị đổi cha, và gắn lại một khung nghĩa là nạp lại tài liệu
+         * ở origin kia — tức là xoá sạch key mà người dùng đang gõ dở trong đó.
+         * Chỉ `className` đổi, nên phần tử khung giữ nguyên qua mọi lần mở/đóng.
+         */
+        <div className={expanded ? 'vault-overlay' : undefined}>
+          {expanded && (
+            <div className="vault-overlay-bar">
+              <span className="vault-overlay-title">
+                Kho khoá — trang này chạy ở một địa chỉ riêng, tách khỏi trang bài học
+              </span>
+              {/*
+                Nút đóng nằm ở ĐÂY chứ không ở trang cấu hình: lớp phủ che kín
+                trang bên dưới, nên một nút "Đóng" nằm dưới lớp phủ là một nút
+                không ai bấm được.
+              */}
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setExpanded(false);
+                }}
+              >
+                Đóng
+              </button>
+            </div>
+          )}
+          <iframe
+            ref={setFrameEl}
+            // Origin, không đường dẫn: cổng khác = origin khác = trình duyệt
+            // cách ly `localStorage`. Một đường dẫn `/vault/` trên cùng cổng sẽ
+            // là CÙNG origin và phá huỷ toàn bộ mục đích của hệ thống con này.
+            src={`${resolved}/`}
+            title="Kho khoá"
+            // `allow-same-origin` ở đây là same-origin với CHÍNH KHO KHOÁ,
+            // không phải với trang chính. Thiếu nó, khung nhận một origin mờ
+            // đục và `localStorage` của nó ném — kho khoá không cất được gì. Vì
+            // khung khác origin với trang chính, cờ này không trả lại cho nó
+            // quyền nào trên trang chính.
+            //
+            // `allow-forms` KHÔNG có mặt, và điều đó có chủ ý: form cấu hình
+            // của kho khoá dựng DOM bằng tay và không dùng phần tử `<form>`
+            // nào, nên nó không cần cờ này — còn cờ này thì cho phép gửi dữ
+            // liệu đi bằng một `<form action=…>`, tức là đúng một đường mang
+            // key ra ngoài mà không cần `fetch`.
+            sandbox="allow-scripts allow-same-origin"
+            aria-hidden={expanded ? undefined : 'true'}
+            // Khung `display:none` VẪN nạp tài liệu và VẪN chạy script — đó là
+            // lý do dùng nó thay vì không gắn khung khi chưa cần.
+            style={expanded ? { width: '100%', height: '100%', border: 0 } : { display: 'none' }}
+            data-testid="vault-frame"
+          />
+        </div>
       )}
     </VaultFrameContext.Provider>
   );

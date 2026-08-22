@@ -1,0 +1,39 @@
+# Header của KHO KHOÁ (apps/vault) — định dạng `_headers` của Cloudflare Pages.
+#
+# Tệp này là NGUỒN SỰ THẬT DUY NHẤT của các header cho origin giữ key. Nó KHÔNG
+# nằm trong `public/`: `vite.config.ts` đọc nó, điền `VITE_APP_ORIGIN` vào thẻ
+# giữ chỗ bên dưới, rồi ghi kết quả ra `dist/_headers` — nên không có bản thứ
+# hai để trôi dạt, và một bản dựng thiếu `VITE_APP_ORIGIN` HỎNG NGAY thay vì
+# lặng lẽ ship một CSP sai.
+#
+# ─── `frame-ancestors` là dòng quan trọng nhất trong tệp này ──────────────────
+#
+# Không có nó, BẤT KỲ site nào cũng nhúng được kho khoá vào `<iframe>` của họ.
+# Trước Task 6 điều đó vô hại (trang rỗng). Từ Task 6 thì không: origin này vẽ
+# một FORM NHẬP KEY, nên một site thù địch nhúng kho khoá thật vào rồi trình ra
+# một ô nhập trông y hệt — ở đúng origin thật, dưới đúng chứng chỉ thật. Phép
+# kiểm này là thứ duy nhất chạy TRƯỚC khi tài liệu được vẽ, nên nó là thứ duy
+# nhất chặn được.
+#
+# `'self'` một mình KHÔNG đủ: trang chính ở một origin khác (`app.<domain>` so
+# với `vault.<domain>`), nên nó phải được nêu tên. Thẻ giữ chỗ ở cuối dòng
+# `frame-ancestors` được thay lúc dựng bằng đúng biến `VITE_APP_ORIGIN` mà
+# `src/main.ts` đã bắt buộc phải có — nên trong bản đã dựng, chỗ này là một
+# origin thật.
+#
+# ─── `connect-src` ────────────────────────────────────────────────────────────
+#
+# Danh sách này phải phủ MỌI host mà registry nhà cung cấp gọi tới.
+# `src/headers.test.ts` đo danh sách ấy bằng cách chạy thật từng `Provider` với
+# một `fetch` giả, nên thêm nhà cung cấp thứ sáu mà quên sửa dòng này sẽ làm
+# cổng ĐỎ — chứ không phải làm "AI không trả lời" ở production.
+#
+# Nó cũng là hàng rào cuối: nếu có ngày mã lạ chạy được ở origin này, CSP không
+# cho nó gửi key đi bất cứ đâu ngoài đúng năm host dưới đây.
+
+/*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://api.deepseek.com https://api.openai.com https://openrouter.ai https://api.groq.com https://api.anthropic.com; frame-ancestors 'self' __VITE_APP_ORIGIN__; base-uri 'none'; form-action 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Cross-Origin-Opener-Policy: same-origin
+  Permissions-Policy: accelerometer=(), camera=(), geolocation=(), microphone=(), payment=(), usb=()
