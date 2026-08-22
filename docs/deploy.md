@@ -317,8 +317,15 @@ với mất mạng** — đúng lớp lỗi mà ruling S1-F25 đã ghi (lỗi CO
 ngoại tuyến", và một cấu hình deploy sai vì thế trở nên vô hình).
 
 ```
-VITE_REGISTRY_URL = https://<gh-user>.github.io/<registry-repo>/index.json
+VITE_REGISTRY_URL = https://<gh-user>.github.io/<registry-repo>
 ```
+
+**KHÔNG kèm `/index.json`.** `indexUrl()` (`apps/web/src/registry/index.ts:173`) tự nối `/index.json`
+vào, nên một giá trị đã kèm sẵn cho `…/index.json/index.json` — một 404 mà thông báo lỗi của chính
+mã lại nói ngược. Đây là **địa chỉ GỐC**: cùng một biến phục vụ cả việc duyệt danh mục lẫn việc kéo
+gói về (`courses/<id>/<version>.zip` nằm cạnh `index.json`), nên nếu nó trỏ vào một tệp thì nửa kéo
+về cũng hỏng theo. `.env.example` đã ghi đúng điều này; §5c bản đầu thì không, và cổng e2e của hệ
+thống con 3 là thứ bắt được mâu thuẫn ấy.
 
 **Chưa từng được đo qua một trình duyệt thật.** Hai điều đang là **suy luận**, không phải phép đo:
 
