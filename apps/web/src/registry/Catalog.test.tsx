@@ -610,6 +610,53 @@ describe('kéo course về thư viện', () => {
     expect(screen.queryByText(BOUNDARY_FALLBACK)).not.toBeInTheDocument();
   });
 
+  /**
+   * KHÔNG truyền `registryBase` — tức đúng cách `<Catalog>` được dựng trong
+   * bản dựng thật (`route.tsx` không truyền gì; địa chỉ nằm ở
+   * `VITE_REGISTRY_URL`).
+   *
+   * Bài này bắt một lỗi CÓ THẬT mà mọi bài trên bỏ lọt vì chúng đều truyền
+   * prop: hàng vốn đọc `base ?? ''` và dựng ra `/courses/<id>/1.0.0.zip` —
+   * một đường dẫn tương đối tới origin CỦA CHÍNH ỨNG DỤNG, không phải của
+   * registry. Và nó không hỏng theo kiểu đọc ra được: một host SPA trả
+   * `index.html` cho đường dẫn lạ, nên importer sẽ báo `NOT_A_ZIP` về một gói
+   * hoàn toàn lành đang nằm ở chỗ khác. Đúng hình dạng `815a472` — HTML tới
+   * chỗ đang đợi byte — thấp hơn một tầng.
+   */
+  it('KHÔNG có prop base: kéo về vẫn đi tới registry đã cấu hình, không tới origin của app', async () => {
+    const user = userEvent.setup();
+    vi.stubEnv('VITE_REGISTRY_URL', BASE);
+    server.use(
+      http.get(INDEX_URL, () => HttpResponse.json(index({ courses: [entry({ id: SAMPLE_ID, latest: '1.0.0' })] }))),
+      http.get(`${BASE}/courses/${SAMPLE_ID}/1.0.0.zip`, ({ request }) => {
+        pulledUrls.push(request.url);
+        return HttpResponse.arrayBuffer(sampleZip().buffer as ArrayBuffer, {
+          headers: { 'content-type': 'application/zip' },
+        });
+      }),
+    );
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <LanguageProvider><MemoryRouter>
+          <ErrorBoundary>
+            <Catalog />
+          </ErrorBoundary>
+        </MemoryRouter></LanguageProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByText('Số dấu phẩy động');
+
+    await user.click(screen.getByRole('button', { name: /kéo về/i }));
+
+    // So bằng ĐÚNG URL TUYỆT ĐỐI. `toContain('courses/')` cũng đúng với
+    // `http://localhost:3000/courses/...`, tức đúng với chính con bug này.
+    await waitFor(() => expect(pulledUrls).toEqual([`${BASE}/courses/${SAMPLE_ID}/1.0.0.zip`]));
+    expect(screen.queryByText(BOUNDARY_FALLBACK)).not.toBeInTheDocument();
+    vi.unstubAllEnvs();
+  });
+
   it('mạng chết giữa chừng → một câu, không trắng trang', async () => {
     const user = userEvent.setup();
     server.use(

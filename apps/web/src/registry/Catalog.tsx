@@ -6,7 +6,7 @@ import { coursesQueryKey } from '../api/courses';
 import { describeFinding, type ImportStage } from '../course/import';
 import { manifestQueryKey } from '../course/loader';
 import { useLanguage } from '../i18n/LanguageProvider';
-import { describeRegistryError } from './index.ts';
+import { configuredRegistryBase, describeRegistryError } from './index.ts';
 import { pullFromRegistry } from './pull.ts';
 import type { RegistryEntry } from './types.ts';
 import { useRegistryIndex } from './useRegistry.ts';
@@ -77,10 +77,40 @@ import type { MessageKey } from '../i18n';
  */
 const NO_COURSES: readonly RegistryEntry[] = [];
 
+/**
+ * The registry a ROW must pull from — the same one the index came from.
+ *
+ * `useRegistryIndex({ base: undefined })` falls through to
+ * `configuredRegistryBase()` inside `fetchRegistryIndex`, so in a real build
+ * the prop is absent and the base lives only in the env var. A row that read
+ * the prop and defaulted to `''` would build `/courses/<id>/<v>.zip` —
+ * relative to **this app's** origin, not the registry's. That is not a 404
+ * a reader could diagnose: an SPA host answers an unknown path with its own
+ * `index.html`, so the importer would report `NOT_A_ZIP` on a package that is
+ * perfectly fine and sitting somewhere else entirely. Exactly the `815a472`
+ * shape — HTML arriving where bytes were expected — one layer down.
+ *
+ * `null` when nothing is configured, and the `try` is the whole reason this is
+ * a function: `configuredRegistryBase()` THROWS in that case, and throwing
+ * during render is how this screen would hand its job to `<ErrorBoundary>`.
+ * The query has already failed with the same error and the catalog is already
+ * showing the sentence that names `VITE_REGISTRY_URL`, so there is nothing to
+ * say here — and no rows to say it on.
+ */
+function pullBase(prop: string | undefined): string | null {
+  if (prop !== undefined) return prop;
+  try {
+    return configuredRegistryBase();
+  } catch {
+    return null;
+  }
+}
+
 export function Catalog({ registryBase }: { registryBase?: string }) {
   const { t } = useLanguage();
   const query = useRegistryIndex({ base: registryBase });
   const courses = query.data?.courses ?? NO_COURSES;
+  const base = pullBase(registryBase);
 
   /** `''` is "all". Not `null`, so it is the `<select>`'s value directly. */
   const [lang, setLang] = useState('');
@@ -156,10 +186,10 @@ export function Catalog({ registryBase }: { registryBase?: string }) {
         thing it warns about, side by side. The stalest possible catalog is
         also the one most likely to offer a course that is no longer there.
       */}
-      {!query.isError && shown.length > 0 && (
+      {!query.isError && base !== null && shown.length > 0 && (
         <ul className="lib-list" aria-label={t('catalog.listAria')}>
           {shown.map((course) => (
-            <CatalogRow key={course.id} course={course} base={registryBase} />
+            <CatalogRow key={course.id} course={course} base={base} />
           ))}
         </ul>
       )}
@@ -181,7 +211,7 @@ type PullState =
   | { phase: 'done'; version: string }
   | { phase: 'failed'; findings: readonly Finding[] };
 
-function CatalogRow({ course, base }: { course: RegistryEntry; base?: string }) {
+function CatalogRow({ course, base }: { course: RegistryEntry; base: string }) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [pull, setPull] = useState<PullState>({ phase: 'idle' });
@@ -196,11 +226,11 @@ function CatalogRow({ course, base }: { course: RegistryEntry; base?: string }) 
     let result;
     try {
       result = await pullFromRegistry(course, {
-        // `configuredRegistryBase()` is deliberately NOT called here: this row
-        // must pull from the same registry the index it came from was fetched
-        // from. Reading the env var again would let a course listed by one
-        // registry be downloaded from another.
-        base: base ?? '',
+        // Resolved ONCE by the parent, from the same value the index was
+        // fetched with — see `pullBase`. A row must never re-derive it: a
+        // course listed by one registry being downloaded from another is a
+        // supply-chain swap with a plausible-looking URL.
+        base,
         t,
         onStage: (stage) => flushSync(() => setPull({ phase: 'running', stage })),
       });
