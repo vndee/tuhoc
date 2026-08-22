@@ -12,7 +12,50 @@ Ghi lại lúc kết thúc P1 (nhánh `p1-platform-core`, 37 commit, hợp nhấ
 |---|---|---|---|
 | ~~C-1~~ | ~~**Rò rỉ chéo tài khoản qua nhiều tab.**~~ **ĐÃ ĐÓNG** ở hệ thống con 4, Task 1 — xem mục "C-1 — ĐÃ ĐÓNG" bên dưới để biết **cách kiểm lại**. | ~~P4~~ | — |
 | C-2 | **`GET /courses` chưa tồn tại.** Spec §4 có liệt kê nhưng không task nào của P1 được giao xây. Dashboard hiện dùng `KNOWN_COURSE_IDS` hardcode trong `apps/web/src/pages/Dashboard.tsx`. Bảng `courses` đã được seed trong migration 0001 nhưng **không dòng Go nào đọc nó**. | **P4-T3** (plan đã sửa thành "TẠO MỚI") | Ba nguồn danh sách khóa học, không nguồn nào là chuẩn. |
-| C-3 | **Escape hatch `SameSite=None` thiếu yêu cầu CSRF.** `docs/deploy.md` §0 mô tả phương án chạy trên tên miền miễn phí nhưng không nêu rằng nó **bắt buộc** kèm kiểm tra Origin hoặc CSRF token. Chuỗi "CSRF" không xuất hiện ở đâu trong repo ngoài file này. | **P4-T3** nếu chọn hướng đó | Cookie gửi kèm mọi request cross-site là bề mặt tấn công thật. |
+| ~~C-3~~ | ~~**Escape hatch `SameSite=None` thiếu yêu cầu CSRF.**~~ **ĐÃ ĐÓNG** ở hệ thống con 4, Task 2 — xem mục "C-3 — ĐÃ ĐÓNG" bên dưới. | ~~P4~~ | — |
+
+## C-3 — escape hatch `SameSite=None` — ĐÃ ĐÓNG (hệ thống con 4, Task 2)
+
+**Món nợ này đóng bằng một QUYẾT ĐỊNH, không bằng mã.** Cookie phiên vốn đã là `SameSite=Lax`
+(`apps/api/internal/auth/handler.go:164,180`); C-3 chỉ cắn nếu chọn phương án **tên miền miễn phí** ở
+`docs/deploy.md` §0, thứ bắt buộc `None`. Chủ dự án đã có `duy.dev` và chốt `tuhoc.duy.dev` +
+`api.duy.dev` + `vault.duy.dev` — khác **origin** nhưng **cùng site**, nên `Lax` là đủ và **không cần
+đổi một dòng mã nào**.
+
+Cái đã thêm là chỗ **ghi quyết định ấy lại** để nó không bị gỡ trong im lặng:
+`apps/api/internal/auth/csrf_samesite_test.go` — `TestSessionCookieIsNeverSameSiteNone`, hai nửa:
+
+- **nửa cấu trúc** quét mọi tệp `.go` của repo: không chỗ nào được đặt `SameSite=None`, **và** số lời
+  gọi `c.Cookie(&fiber.Cookie{` phải **bằng** số lần đặt `SameSite: fiber.CookieSameSiteLaxMode`.
+  Đếm **cân bằng** chứ không chốt con số cố định: thêm một cookie hợp lệ (cũng `Lax`) vẫn xanh, còn
+  bỏ thuộc tính đi thì đỏ — trình duyệt **không thống nhất** về mặc định khi thiếu `SameSite`, nên
+  "không ghi" khác "ghi Lax";
+- **nửa hành vi** đọc header `Set-Cookie` thật trên **register, login, và logout**, với cả hai giá trị
+  `COOKIE_SECURE`.
+
+**Vì sao cần nửa cấu trúc dù đã có nửa hành vi:** bài kiểm cũ (`auth_test.go:319`) chỉ soi cookie của
+**register**. Đo ngày 2026-08-22: đổi `clearSessionCookie` (dòng 180) sang `None` thì **toàn bộ gói
+`internal/auth` vẫn xanh, exit 0**. Một trong hai chỗ đặt cookie chưa từng có ai canh.
+
+### Cách kiểm lại
+
+```
+cd apps/api && go test ./internal/auth/ -run TestSessionCookieIsNeverSameSiteNone -count=1
+```
+
+Đối chứng hai chiều đã đo (mỗi lần khôi phục trong cùng lệnh shell, `shasum` khớp hai đầu):
+
+| Đột biến | Mã thoát |
+|---|---|
+| nền sạch | 0 |
+| `setSessionCookie` (dòng 164) → `None` | **1** |
+| `clearSessionCookie` (dòng 180) → `None` | **1** |
+| xoá hẳn dòng `SameSite` ở `clearSessionCookie` | **1** |
+| `clearSessionCookie` → `None`, **không có** tệp gate | 0 ← lỗ hổng cũ |
+
+**Nếu một ngày thật sự cần `None`:** thứ tự bắt buộc là (1) dựng phòng thủ thay thế — kiểm Origin
+hoặc double-submit token — trên mọi route đổi trạng thái; (2) **thay** test này bằng test canh phòng
+thủ ấy; (3) mới đổi thuộc tính. Xoá test mà không thay là quay lại đúng trạng thái C-3 mô tả.
 
 ## C-1 — rò rỉ chéo tài khoản qua nhiều tab — ĐÃ ĐÓNG (hệ thống con 4, Task 1)
 

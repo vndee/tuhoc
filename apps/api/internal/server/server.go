@@ -19,6 +19,7 @@ import (
 	"github.com/vndee/tuhoc-api/internal/auth"
 	"github.com/vndee/tuhoc-api/internal/config"
 	"github.com/vndee/tuhoc-api/internal/course"
+	"github.com/vndee/tuhoc-api/internal/rating"
 	"github.com/vndee/tuhoc-api/internal/stats"
 	// appsync is internal/sync under an explicit alias, not its default
 	// package name ("sync"): that name collides with the standard
@@ -261,6 +262,29 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	app.Post("/courses", auth.Require(deps.Pool), uploadLimiter, courseHandler.Post)
 	app.Get("/courses/:id/@:version/manifest.json", auth.Require(deps.Pool), courseHandler.Manifest)
 	app.Get("/courses/:id/@:version/*", auth.Require(deps.Pool), courseHandler.Asset)
+
+	// Rating routes. Behind auth.Require(deps.Pool) like every route
+	// above, and for the same sharp reason as the course routes: the voter
+	// on every write is auth.UID(c), never a body field, query parameter,
+	// or header. rating.Repo.Put takes the user id as an argument so that
+	// decision is made in the open here rather than inside a struct
+	// literal. See internal/rating/handler.go.
+	//
+	// GET /ratings deliberately has no "everything" form: it answers only
+	// about the ids the caller names, which is what keeps a private course
+	// out of every listing. A route added here that enumerates ratings
+	// would undo that in one line — read the handler's List comment before
+	// adding one.
+	//
+	// bodyLimit is not mounted: the body is one small JSON object, and
+	// fiber's app-wide ceiling (raised for POST /courses) is not a
+	// meaningful bound on it. The bound that matters for this endpoint is
+	// rating.MaxRatingsPerUser, which caps rows rather than bytes —
+	// registry_id has no foreign key, so an account could otherwise write
+	// unboundedly many rows by inventing ids.
+	ratingHandler := rating.NewHandler(rating.NewUsecase(rating.NewRepo(deps.Pool)))
+	app.Get("/ratings", auth.Require(deps.Pool), ratingHandler.List)
+	app.Put("/ratings/:registryId", auth.Require(deps.Pool), ratingHandler.Put)
 
 	return app
 }
