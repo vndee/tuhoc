@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { resetSessionScopedQueries } from '../api/useMe';
 import { clearLocalData, readSessionVerifiedAt } from '../db/local';
+import { announceSessionUser } from './sessionIdentity';
 
 /**
  * The ONE operation that ends a session's hold on this browser (ruling
@@ -53,6 +54,35 @@ import { clearLocalData, readSessionVerifiedAt } from '../db/local';
  * `./session.test.ts`, next to this function's own tests.
  */
 export async function clearSession(queryClient: QueryClient): Promise<void> {
+  // Debt C-1 — the OTHER tabs, told first, synchronously, before either
+  // half of the local clearing is attempted.
+  //
+  // This function's own doc comment says what it deliberately does not do,
+  // and this is not an exception to that list: it is not stopping sync and
+  // it is not seeding `me` — both of which are decisions about THIS tab
+  // that the two call sites make differently. It is the one statement that
+  // is identical at both of them and true the moment either runs: *this
+  // browser's session is no longer the one it was*. `POST /auth/login` has
+  // already replaced the cookie by the time `<Login>` gets here, and
+  // `POST /auth/logout` is about to invalidate it in `useLogout`; in both
+  // directions every other tab is, from this instant, holding a React tree
+  // for an account that is not whose cookie its next request will carry.
+  //
+  // Announcing `null` rather than the arriving user is not a shortcut. The
+  // arriving user is not known here (nor should it be — `useLogout` has no
+  // arriving user at all), and it is not needed: what another tab has to
+  // learn is that the session it established is gone, and `null` says
+  // exactly that without this function pretending to know what replaced it.
+  // `api/useMe.ts` announces the concrete identity a moment later, from the
+  // one place that actually learns it.
+  //
+  // Earliest, not merely early: the alternative — announcing after the
+  // clearing resolves — would leave the whole of `clearLocalData()`'s
+  // IndexedDB round trip inside the window in which another tab can still
+  // push under the new cookie. Being synchronous and first makes that
+  // window as narrow as client-side code can make it. It cannot be closed
+  // entirely from here; see the report for what would.
+  announceSessionUser(null);
   await clearLocalData();
   resetSessionScopedQueries(queryClient);
 }

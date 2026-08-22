@@ -10,9 +10,71 @@ Ghi lại lúc kết thúc P1 (nhánh `p1-platform-core`, 37 commit, hợp nhấ
 
 | # | Nội dung | Nơi xử lý | Vì sao |
 |---|---|---|---|
-| C-1 | **Rò rỉ chéo tài khoản qua nhiều tab.** `<Navigate>` guard ở `/login` và state module của sync engine (`syncEpoch`, `timer`, `inFlight`) đều là **per-tab**. Tab 2 mở sẵn phiên của A vẫn tiếp tục sync dưới cookie của B sau khi tab 1 đăng nhập lại. Cần điều phối liên tab (BroadcastChannel hoặc `storage` event). | **P4** (publish làm kịch bản này dễ xảy ra hơn nhiều) | Cùng lớp lỗi với C1 đã sửa; hai đường đã liệt kê thì đã đóng, đường này chưa. |
+| ~~C-1~~ | ~~**Rò rỉ chéo tài khoản qua nhiều tab.**~~ **ĐÃ ĐÓNG** ở hệ thống con 4, Task 1 — xem mục "C-1 — ĐÃ ĐÓNG" bên dưới để biết **cách kiểm lại**. | ~~P4~~ | — |
 | C-2 | **`GET /courses` chưa tồn tại.** Spec §4 có liệt kê nhưng không task nào của P1 được giao xây. Dashboard hiện dùng `KNOWN_COURSE_IDS` hardcode trong `apps/web/src/pages/Dashboard.tsx`. Bảng `courses` đã được seed trong migration 0001 nhưng **không dòng Go nào đọc nó**. | **P4-T3** (plan đã sửa thành "TẠO MỚI") | Ba nguồn danh sách khóa học, không nguồn nào là chuẩn. |
 | C-3 | **Escape hatch `SameSite=None` thiếu yêu cầu CSRF.** `docs/deploy.md` §0 mô tả phương án chạy trên tên miền miễn phí nhưng không nêu rằng nó **bắt buộc** kèm kiểm tra Origin hoặc CSRF token. Chuỗi "CSRF" không xuất hiện ở đâu trong repo ngoài file này. | **P4-T3** nếu chọn hướng đó | Cookie gửi kèm mọi request cross-site là bề mặt tấn công thật. |
+
+## C-1 — rò rỉ chéo tài khoản qua nhiều tab — ĐÃ ĐÓNG (hệ thống con 4, Task 1)
+
+**Lỗi cũ, phát biểu bằng cái hại:** cookie phiên là **một giá trị cho cả origin**, còn mọi tín hiệu
+"ai đang đăng nhập" thì **theo từng tab** — cache `useMe` (`staleTime` 60 s), guard `<Navigate>` ở
+`/login`, và state module của sync engine (`timer`, `inFlight`, `syncEpoch`). Nên tab 2 để mở ở trang
+đọc của A vẫn chạy chu kỳ 15 giây sau khi có người đăng nhập thành B ở tab 1: `POST /sync` đẩy tiến độ
+và ghi chú của A **vào tài khoản B**, còn `GET /sync` kéo bản ghi của B xuống một cơ sở dữ liệu cục bộ
+mà tab 2 vẫn hiển thị như của A. Rò **cả hai chiều**.
+
+**Cách vá:** `apps/web/src/auth/sessionIdentity.ts` — một `BroadcastChannel` (`tuhoc-session-identity`)
+chở danh tính phiên giữa các tab. Ba đầu dây:
+
+- `api/useMe.ts` công bố câu trả lời của `useMe` (nguồn DUY NHẤT công bố danh tính — xem chú thích tại
+  chỗ để biết vì sao công bố thêm ở `fetchMe` đã bị **đo là làm cả hai chỗ không thể bị giết**);
+- `auth/session.ts`'s `clearSession()` công bố `null` **đồng bộ, ở dòng đầu tiên** — tín hiệu sớm nhất
+  có thật, đi trước trọn một vòng IndexedDB của `clearLocalData()`;
+- `sync/engine.ts` **đọc đồng bộ** `sessionWasSuperseded()` ở đầu `runCycle` (nửa chịu lực — không phụ
+  thuộc việc sự kiện có tới nơi hay không) **và** đăng ký nghe bus trong `startSync` (nửa nhanh — tháo
+  timer trong một task thay vì chờ tới 15 giây). `stopSync()` nhả cả ba.
+
+**KHÔNG dùng `localStorage`/`storage` event** dù đó là phương án dự phòng quen thuộc: phép quét
+"no third place for user data to hide" ở `apps/web/src/db/local.test.ts` **cấm** mọi tệp sản phẩm dưới
+`apps/web/src` chạm `localStorage`/`sessionStorage`/`indexedDB`/`caches`/`document.cookie` ngoài
+`db/local.ts`. `BroadcastChannel` không phải nơi cất dữ liệu nên nằm ngoài luật ấy một cách trung thực.
+
+### Cách kiểm lại
+
+```
+cd apps/web && bunx vitest run src/sync/crossTabSession.test.tsx
+```
+
+5 bài, và **hình dạng của chúng mới là thứ đáng giữ**:
+
+1. Hai "tab" là hai **đồ thị module riêng** (`vi.resetModules()` + `import()` động) trên cùng
+   `BroadcastChannel` và cùng IndexedDB — đúng thế chia của hai tab thật. Cho hai tab dùng chung một
+   instance engine thì `stopSync()` của tab 1 sẽ dừng vòng lặp của tab 2 và bài kiểm sẽ **xanh với một
+   ứng dụng không có điều phối liên tab nào cả**.
+2. **Khẳng định ngược là bắt buộc:** mỗi bài chứng minh tab 2 **CÓ** gửi trước tín hiệu, bằng **so bằng
+   đúng** trên tập bản ghi đã tới máy chủ. Thiếu nửa này thì một engine không bao giờ đồng bộ cũng xanh.
+3. Outbox được **nạp lại SAU** cú bàn giao, vì `clearSession()` của tab 1 dọn sạch IndexedDB dùng chung
+   — nếu không, "tab 2 không gửi gì" đúng vì **không còn gì để gửi**.
+4. Khẳng định phủ định **không bao giờ đi qua `waitFor`**: gọi thẳng `syncOnce()` rồi so số đếm.
+
+**Đối chứng đột biến (đã đo 2026-08-22, xem `.superpowers/sdd/2026-08-22-s4-rating/task-1-report.md`):**
+5/5 đột biến thật **chết**, đột biến đối chứng chỉ-sửa-chú-thích **sống**. Sửa mã ở đây thì **đo lại
+bằng đột biến**, đừng suy luận — bản đầu của bài kiểm số 2 dùng `waitFor` và **đã bị đo là vô dụng**:
+đột biến "xoá hẳn phần đăng ký nghe bus" **sống sót, xanh trong 15 091 ms**, vì `asyncUtilTimeout` của
+`src/test/setup.ts` đúng bằng 15 000 ms — bằng đúng chu kỳ timer của engine — nên phép chờ đã sống lâu
+hơn nhịp tick thật, và nhịp ấy tự gọi `runCycle` rồi tự tháo timer. Bài kiểm được thoả mãn bởi **chính
+cơ chế nó phải đo độc lập**. Đây là bài học S2 Task 9 lặp lại nguyên hình.
+
+**Còn hở, ghi để không ai tưởng đã kín:**
+
+- **Cửa sổ giữa "cookie đã đổi" và "tín hiệu được phát" không đóng được từ phía client.** Cookie thành
+  của B ngay khi `POST /auth/login` trả về; tín hiệu sớm nhất là `clearSession()` vài dòng sau. Chỉ
+  server mới đóng hẳn được (ví dụ mỗi phản hồi mang theo id phiên để client đối chiếu).
+- **Tab bị chặn chỉ **dừng đồng bộ**, không bị đẩy sang `/login`.** Nó vẫn hiển thị cây React cũ của A
+  cho tới khi `useMe` của chính nó làm mới (60 s, hoặc khi cửa sổ được focus). Không có dữ liệu mới nào
+  chảy, nhưng màn hình thì vẫn là của A.
+- **Không có `BroadcastChannel` thì phép vá không mua được gì** (hành vi đúng bằng hôm nay). Nền tảng
+  hỗ trợ từ Safari 15.4 (2022), nên đây là đuôi trình duyệt rất cũ, không phải đường sống.
 
 ## 2. Cảnh báo cho người sửa code sau này
 

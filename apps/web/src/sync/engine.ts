@@ -1,4 +1,5 @@
 import { api, ApiError } from '../api/client';
+import { sessionWasSuperseded, subscribeToSessionChanges } from '../auth/sessionIdentity';
 import { db, mergeRow, type AnnotationRow, type OutboxEntry, type ProgressRow } from '../db/local';
 
 /** Task brief's binding interval — see engine's own doc comment on `startSync`. */
@@ -80,6 +81,17 @@ interface PullResponse {
 let timer: ReturnType<typeof setInterval> | undefined;
 let onlineListener: (() => void) | undefined;
 let inFlight = false;
+
+/**
+ * Releases this tab's subscription to the cross-tab session bus, or
+ * `undefined` when nothing is subscribed. Paired with `timer`/
+ * `onlineListener` above: `startSync` registers it, `stopSync` releases it.
+ *
+ * See `runCycle`'s "Whose session is this?" paragraph for what the
+ * subscription is FOR — it is the prompt half of debt C-1's fix, and it is
+ * deliberately not the load-bearing half.
+ */
+let sessionListener: (() => void) | undefined;
 
 /**
  * Bumped by `stopSync()`. A cycle captures the CURRENT value once, at the
@@ -526,6 +538,37 @@ async function pull(epoch: number): Promise<void> {
  * running right now, if any."
  */
 async function runCycle(): Promise<void> {
+  // Whose session is this? — debt C-1 (docs/carried-forward.md §1).
+  //
+  // FIRST, before the `inFlight` and offline guards and before anything is
+  // read out of the local database, because this is the only check here that
+  // is about WHOSE data is about to be sent rather than about whether sending
+  // is convenient.
+  //
+  // The session cookie is one value shared by every tab of this origin; every
+  // signal this engine had for "who is signed in" was per-tab. So a second tab
+  // left open on A's reader went on running this cycle after somebody signed
+  // in as B in another tab, and `POST /sync` carried A's queued progress and
+  // A's notes into B's account under B's cookie — while `GET /sync` pulled B's
+  // rows down into a database this tab renders as A's. `src/auth/
+  // sessionIdentity.ts` is the cross-tab fact that makes that answerable.
+  //
+  // This is a synchronous READ, not a reaction to an event, and that is the
+  // point. `startSync` also subscribes to the bus so the timer is released
+  // promptly, but a guard that only works when its notification is delivered
+  // is a guard whose failure mode is silence. This line holds whether or not
+  // the listener ever ran.
+  //
+  // `stopSync()` rather than a bare `return`: the session is not coming back
+  // in this tab, so the interval and the `online` listener should go too — and
+  // its epoch bump is what makes a cycle that is ALREADY in flight (its
+  // request out, its response not yet back) discard its local write instead of
+  // landing B's rows in A's database. See `syncEpoch`'s own doc comment.
+  if (sessionWasSuperseded()) {
+    stopSync();
+    return;
+  }
+
   if (inFlight) return;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
 
@@ -600,11 +643,20 @@ export function startSync(): void {
     void runCycle();
   };
   window.addEventListener('online', onlineListener);
+  // Debt C-1. The prompt half: another tab signing in (or out) tears this
+  // loop down within a task, instead of at some point in the next 15
+  // seconds. The load-bearing half is `runCycle`'s own synchronous check —
+  // see its "Whose session is this?" paragraph for why both exist.
+  sessionListener = subscribeToSessionChanges(() => {
+    if (sessionWasSuperseded()) stopSync();
+  });
 }
 
 /**
- * Releases everything `startSync` registered: the interval timer and the
- * `online` listener. Not part of the task brief's literal interface list
+ * Releases everything `startSync` registered: the interval timer, the
+ * `online` listener, and the cross-tab session subscription (debt C-1 —
+ * leaving that one attached to a stopped engine would keep a torn-down
+ * loop reachable from a bus that outlives it). Not part of the task brief's literal interface list
  * (which only names `startSync(): void`), but required by the task's own
  * teardown requirement — without a way to release them, every test that
  * calls `startSync` leaks a live timer + listener into every subsequent
@@ -637,5 +689,9 @@ export function stopSync(): void {
   if (onlineListener !== undefined) {
     window.removeEventListener('online', onlineListener);
     onlineListener = undefined;
+  }
+  if (sessionListener !== undefined) {
+    sessionListener();
+    sessionListener = undefined;
   }
 }
