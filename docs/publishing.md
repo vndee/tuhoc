@@ -337,19 +337,99 @@ nằm trong pack.
 - **Cái ngoài git.** `~/Documents/claude/Research/***REMOVED***.html` (bản
   v1 một-tệp) và kho `.zip` ở §1.1 vẫn còn, và phải còn.
 
+### 2.7 `filter-repo --path courses/` KHÔNG đủ — bốn đường rò, ba sống sót
+
+Đây là mục quan trọng nhất của tài liệu này, và nó được viết **sau** khi §2 đã
+soạn xong. Thẩm định tổng của hệ thống con 1 đo lại toàn bộ công thức trên và
+tìm ra bốn đường rò. `git filter-repo --invert-paths --path courses/` chỉ đóng
+**một**. Ba đường còn lại đi qua nó không suy suyển, vì chúng **không nằm dưới
+`courses/`**.
+
+Chạy xong §2, dọn sạch lịch sử, `git push` — và ba thứ dưới đây vẫn đi cùng.
+
+| # | Đường rò | `--path courses/` có bóc? | Đóng bằng |
+|---|---|---|---|
+| 1 | `main` theo dõi 46 tệp giáo trình như **tệp sống** | có (nó nằm dưới `courses/`) | gộp nhánh đã xoá, rồi chạy §2 |
+| 2 | `apps/web/dist/courses/<id>/` — thứ `wrangler pages deploy dist` đẩy lên | **KHÔNG** — `dist/` không được git theo dõi | bộ lọc trong `apps/web/vite-plugins/courseAssets.ts` |
+| 3 | Văn xuôi + số chương chép nguyên văn vào một tệp **ngoài** `courses/` | **KHÔNG** | phép đo xuất xứ, xem dưới |
+| 4 | `INSERT INTO courses …` trong migration đã áp | **KHÔNG** | `0003_drop_seed_course` |
+
+**Đường 2 giờ có chốt máy, không còn là một câu cảnh báo.**
+`closeBundle()` chép `courses/` vào `dist/` **từng gói một**, và chỉ chép gói có
+`id` nằm trong `fixtures/courses/` — tức gói mẫu công khai do chính repo này
+phát hành. Gói riêng bị **loại khỏi bundle** (in ra một dòng nói rõ), chứ không
+làm build đỏ: luồng dev bình thường của tác giả luôn có gói riêng trong
+`courses/`, và một cờ thoát dùng hằng ngày thì luôn bật. Ngay sau đó là một phép
+khẳng định đọc `dist/courses/` thật: có gì lạ ở đó thì nó **xoá đi rồi ném lỗi**
+— xoá trước, vì `wrangler pages deploy dist` không hỏi lần build gần nhất xanh
+hay đỏ, nó chỉ đọc thư mục.
+
+**Đường 3 là đường khó nhất, vì nó không mang tên course.**
+`.claude/skills/course-authoring/SKILL.md` từng chép 714 ký tự văn xuôi kèm số
+chương. Không một phép quét theo tên nào bắt được: đoạn văn ấy không chứa
+`***REMOVED***` cũng không chứa tên course. Phép đo bắt được nó dùng
+**chính gói riêng làm máy đối chiếu**: bung gói ra, băm văn bản chương thành
+chuỗi 12 từ, rồi tìm trong mọi tệp được theo dõi. Nó chỉ chạy được trên máy CÓ
+gói riêng — nghĩa là trên máy tác giả, đúng chỗ và đúng người cần nó chạy.
+(Nó tìm ra thêm hai chỗ nữa mà cả thẩm định lẫn §2 đều không thấy:
+`apps/web/src/annotations/anchor.test.ts` và `docs/parity-notes.md`.)
+
+**Đường 4: sửa `0001` một mình là sai.** `0001_init.up.sql` đã được áp trên các
+database đang tồn tại. Bỏ dòng seed khỏi nó chỉ dọn cho database dựng **mới**;
+hàng đã ghi ở database cũ nằm nguyên đó. Nên làm cả hai: `0001` không seed nữa,
+và `0003_drop_seed_course` xoá cái đã ghi. Sửa một migration đã áp **an toàn**
+với golang-migrate — `schema_migrations` chỉ có `(version, dirty)`, không có cột
+checksum (`database/pgx/v5/pgx.go:465`, v4.19.1) — nhưng chính vì thế nó cũng
+không tự lan tới database cũ, và đó là khoảng trống `0003` lấp.
+
 ---
 
 ## 3. Trước khi publish: soát lần cuối
 
-- [ ] `git rev-list --objects --all -- courses/ | wc -l` → `0`
-- [ ] `git ls-files | grep '^courses/'` → chỉ `courses/.gitkeep`
-- [ ] Bản clone thử ở §2.4 không tìm thấy chương nào
-- [ ] Sáu chỗ trích mã ở §2.2 đã sửa theo `commit-map`
+**Một lệnh, một mã thoát.** Danh sách gạch đầu dòng cũ ở đây có một cổng mù đã
+được đo (`git ls-files | grep '^courses/'` chỉ nhìn nhánh đang checkout — nó
+XANH trên nhánh làm việc trong khi `main` có 46 tệp), và nó không có mục nào cho
+ba đường rò ở §2.7. Nên nó thành một chương trình:
+
+```bash
+make check-publish ; echo "exit=$?"
+```
+
+Phải in `exit=0`. Năm phép đo, mỗi phép trả lời một câu khác nhau:
+
+| Phép | Câu hỏi | Bắt được đường rò |
+|---|---|---|
+| 1 | Ref **nào** còn theo dõi tệp dưới `courses/`? (mọi ref, không chỉ nhánh hiện tại) | 1 |
+| 2 | Lịch sử còn object dưới `courses/` không? | 1 |
+| 3 | `apps/web/dist/` đang mang gì? | 2 |
+| 4 | Tên course riêng còn xuất hiện trong tệp được theo dõi nào? | 4, và một nửa của 3 |
+| 5 | Có đoạn văn nào chép nguyên văn từ gói riêng không? | 3 |
+
+Phép 5 cần gói riêng để đối chiếu, nên `make check-publish` chạy `make courses`
+trước. Không có gói riêng thì nó **nói ra là đã bỏ qua** — nó không im lặng cho
+xanh. Trên máy tác giả, đừng publish khi thấy dòng "[KHÔNG chạy được]" ở phép 5.
+
+Hai tệp cấu hình đi kèm, và cả hai cố ý ngắn:
+
+- `scripts/private-markers.txt` — các chuỗi phép 4 đi tìm. Không có nó thì phép
+  4 thoát 1 kèm "KHÔNG đo được gì": **fail-closed**, để người xoá nó nhìn thấy
+  hậu quả ngay.
+- `scripts/publish-allowlist.txt` — những tệp được phép nêu tên. Bốn dòng: chính
+  tài liệu này và ba tệp bộ máy của cổng. Thêm dòng thì phải kèm lý do; "để cổng
+  thôi kêu" không phải lý do.
+
+Còn lại ba mục **không** máy hoá được, phải tự soát:
+
+- [ ] Sáu chỗ trích mã commit ở §2.2 đã sửa theo `commit-map`
 - [ ] `.env` thật không bị theo dõi (`git ls-files | grep -c '^\.env$'` → `0`;
       `.env.example` thì được)
 - [ ] Bốn cổng test xanh trên một cây làm việc **không có** kho gói riêng
       (`TUHOC_COURSE_STORE` trỏ vào chỗ không tồn tại, `courses/` đã xoá) —
       đó là bản clone mới, và từ task 13 nó phải xanh trọn vẹn
+
+Và một việc cuối, nếu ngay cả **cái tên** cũng không được lộ: xoá §0/§1 của
+chính tài liệu này và `scripts/private-markers.txt` khỏi bản sẽ push. Cổng sẽ
+báo đỏ ở phép 4 khi ấy — đó là đúng, và là lý do nó fail-closed.
 
 ---
 

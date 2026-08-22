@@ -29,4 +29,8 @@ CREATE TABLE events (
   course_id text NOT NULL, chapter_id text NOT NULL,
   kind text NOT NULL, meta jsonb NOT NULL DEFAULT '{}', at timestamptz NOT NULL);
 CREATE INDEX idx_events_user_at ON events (user_id, at);
-INSERT INTO courses (id, title) VALUES ('***REMOVED***', '***REMOVED***');
+-- Không seed course nào. Nền tảng không đi kèm nội dung: một course là gói rời
+-- người đọc tự import (docs/publishing.md §4). Dòng seed cũ ở đây nướng id +
+-- tiêu đề một giáo trình RIÊNG TƯ vào mọi database của mọi người tự chạy bản
+-- riêng — xem 0003_drop_seed_course, migration dọn nó khỏi các database ĐÃ chạy
+-- 0001 trước khi dòng ấy bị bỏ đi.

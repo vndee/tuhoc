@@ -1,0 +1,16 @@
+-- Cố ý KHÔNG làm gì.
+--
+-- Chiều `down` của 0003 lẽ ra phải chèn lại hàng mà `up` vừa xoá. Nó sẽ không:
+-- hàng ấy mang id + tiêu đề một giáo trình riêng tư, và toàn bộ điểm của 0003
+-- là đưa chuỗi ấy ra khỏi mọi database và ra khỏi repo. Một `down` "trung
+-- thành" sẽ viết lại đúng chuỗi đó vào tệp này, tức là hoàn tác chính việc cần
+-- làm — và migrate xuống rồi lên lại sẽ mang nó về.
+--
+-- Không đối xứng ở đây không mất gì: `courses` không có đường ghi nào trong mã
+-- (xem chú thích của 0003 up), nên bảng rỗng là trạng thái đúng ở CẢ HAI phía
+-- của migration này. `migrate down` tới 0002 vẫn chạy sạch; chỉ có điều nó
+-- không dựng lại một hàng mà không gì đọc.
+--
+-- golang-migrate cần tệp `.down.sql` tồn tại cho mỗi version; một tệp toàn chú
+-- thích là câu lệnh hợp lệ và rỗng đối với Postgres.
+SELECT 1;

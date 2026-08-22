@@ -1,4 +1,4 @@
-.PHONY: dev-api dev-web test-api test-web test-format test-cli pack courses test-e2e test-viz setup-extract test-extract extract
+.PHONY: dev-api dev-web test-api test-web test-format test-cli pack courses test-e2e test-viz setup-extract test-extract extract check-publish
 dev-api:  ; cd apps/api && go run ./cmd/api
 dev-web:  courses ; cd apps/web && bun run dev
 test-api: ; cd apps/api && go test ./...
@@ -83,6 +83,20 @@ pack: ; bun tools/tuhoc-cli/src/index.ts pack $(DIR)
 # No private store, or an empty one, is NOT an error: that is a fresh clone,
 # and it says so and carries on with the sample packages.
 courses: ; python3 scripts/course_workspace.py
+# `make check-publish` — cổng TIỀN-PUBLISH. Thoát 1 khi repo còn dấu vết course
+# riêng tư ở BẤT KỲ đâu; thoát 0 khi không còn. Đây là mục kiểm chạy được thay
+# cho danh sách gạch đầu dòng ở `docs/publishing.md` §3.
+#
+# `courses` chạy trước, và đó không phải thói quen sao chép từ các mục trên:
+# phép đo thứ NĂM của script (văn xuôi chép nguyên văn, không kèm tên course)
+# cần chính gói riêng làm máy đối chiếu, và gói ấy chỉ có mặt sau khi
+# `make courses` bung nó ra từ kho ngoài cây git. Không có nó, phép 5 nói thẳng
+# là đã bỏ qua — nó không im lặng cho xanh.
+#
+# `git filter-repo --invert-paths --path courses/` một mình KHÔNG đủ: ba trong
+# bốn đường rò mà thẩm định hệ thống con 1 tìm ra nằm ngoài `courses/` và sống
+# sót trọn vẹn qua nó. Xem docs/publishing.md §2.7.
+check-publish: courses ; python3 scripts/check_publishable.py
 # Task 17: the P1 end-to-end gate. Rebuilds and brings up Postgres + the
 # real API via apps/api/compose.e2e.yml (always `--build`, so the gate can
 # never pass against a stale API binary), applies migrations, builds and

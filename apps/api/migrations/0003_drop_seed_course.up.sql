@@ -1,0 +1,33 @@
+-- Xoá hàng seed mà 0001_init từng ghi vào `courses`.
+--
+-- VÌ SAO LÀ MIGRATION MỚI CHỨ KHÔNG PHẢI SỬA 0001
+-- 0001 đã được áp trên các database đang tồn tại. Sửa nó tại chỗ **một mình**
+-- sẽ chỉ dọn cho database dựng MỚI từ đây trở đi; hàng đã ghi trên database cũ
+-- ở nguyên đó, và không ai đi tìm nó. Nên làm cả hai việc: 0001 không seed nữa
+-- (cây nguồn sạch), và migration này dọn cái đã ghi (database sạch).
+--
+-- Sửa 0001 có an toàn không? Có, và đo được: golang-migrate ghi trạng thái vào
+-- `schema_migrations (version bigint not null primary key, dirty boolean not
+-- null)` — driver pgx/v5, migrate v4.19.1, `database/pgx/v5/pgx.go:465`. Không
+-- có cột checksum, không có băm nội dung tệp. Đổi nội dung một migration đã áp
+-- KHÔNG làm lệch trạng thái và KHÔNG khiến lần chạy sau báo lỗi; nó chỉ đơn
+-- giản là không tác dụng ngược lên database cũ. Đó chính là khoảng trống mà
+-- tệp này lấp.
+--
+-- VÌ SAO `DELETE FROM courses` KHÔNG KÈM ĐIỀU KIỆN
+-- Vì viết điều kiện ra là chép lại đúng cái id riêng tư đang cần bóc đi — vào
+-- một tệp migration, tức một tệp không bao giờ được sửa lại nữa. Xoá không điều
+-- kiện làm được đúng việc ấy mà không phải viết cái tên ra, và nó đúng vì đo
+-- được: bảng `courses` không có một đường ghi nào trong mã.
+--
+--   $ grep -rn "INSERT INTO courses\|UPDATE courses" apps packages
+--   apps/api/migrations/0001_init.up.sql:32   ← chỗ duy nhất, và vừa bị bỏ đi
+--
+-- Mọi route của gói course chạy trên `course_packages` (0002), không phải bảng
+-- này; bảng này không có một câu SELECT nào ngoài bài test của chính store.
+-- Nên trên bất kỳ database nào đã chạy 0001, "mọi hàng đang có" và "hàng seed"
+-- là cùng một tập hợp gồm đúng một phần tử.
+--
+-- Nếu về sau có đường ghi thật vào `courses`, migration này đã chạy xong từ lâu
+-- và không chạy lại; nhưng hãy đọc lại đoạn trên trước khi chép mẫu này.
+DELETE FROM courses;
