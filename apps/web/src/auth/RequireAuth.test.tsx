@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { clearLocalData, readSessionVerifiedAt, rememberSessionVerified } from '../db/local';
 import { Login } from '../pages/Login';
 import { RequireAuth } from './RequireAuth';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 const server = setupServer();
 
@@ -38,7 +39,7 @@ function renderApp(initialPath: string, pathnames: string[]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialPath]}>
+      <LanguageProvider><MemoryRouter initialEntries={[initialPath]}>
         <LocationRecorder onChange={(p) => pathnames.push(p)} />
         <Routes>
           <Route path="/login" element={<Login />} />
@@ -51,7 +52,7 @@ function renderApp(initialPath: string, pathnames: string[]) {
             }
           />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
   );
 }

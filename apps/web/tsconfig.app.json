@@ -39,7 +39,12 @@
       // KIỂU của giao thức postMessage đi qua đây — xem chú thích dài hơn ở
       // chính vite.config.ts về việc vì sao không được alias thêm thứ gì khác
       // của apps/vault vào trang chính.
-      "@vault-protocol": ["../vault/src/protocol.ts"]
+      "@vault-protocol": ["../vault/src/protocol.ts"],
+      // Catalog dịch dùng chung (QĐ-1). Nửa Vite nằm ở `vite.config.ts`.
+      // Nhờ mục này, `tsc -b` của app KÉO `packages/i18n` vào chương trình —
+      // tức là "thiếu một khoá ở `en.ts` không biên dịch được" có người chạy ở
+      // ĐÂY, không cần một target `make` thứ sáu cho một gói không phụ thuộc gì.
+      "@tuhoc/i18n": ["../../packages/i18n/src/index.ts"]
     }
   },
   "include": ["src"]

@@ -29,6 +29,8 @@
  * across the life of one chapter view.
  */
 
+import type { Translate } from '../i18n';
+
 const CHECKBOX_WRAPPER_CLASS = 'ex-check';
 
 export interface ExerciseCheckboxCallbacks {
@@ -38,7 +40,17 @@ export interface ExerciseCheckboxCallbacks {
   toggle: (n: number) => void;
 }
 
-export function injectExerciseCheckboxes(root: ParentNode, callbacks: ExerciseCheckboxCallbacks): void {
+/**
+ * `t` là THAM SỐ, không phải một `t` gắn sẵn ngôn ngữ nhập từ đâu đó: hàm này
+ * dựng DOM ngoài cây React (`ChapterView` sở hữu `root` qua một ref), nên nó
+ * không có context nào để đọc — và một biến toàn cục ở đây là bản sao THỨ HAI
+ * của trạng thái mà `<LanguageProvider>` đã giữ.
+ */
+export function injectExerciseCheckboxes(
+  root: ParentNode,
+  callbacks: ExerciseCheckboxCallbacks,
+  t: Translate,
+): void {
   const boxes = Array.from(root.querySelectorAll<HTMLElement>('.box.ex'));
 
   boxes.forEach((box, index) => {
@@ -52,11 +64,11 @@ export function injectExerciseCheckboxes(root: ParentNode, callbacks: ExerciseCh
 
       input = document.createElement('input');
       input.type = 'checkbox';
-      input.setAttribute('aria-label', `Đánh dấu đã làm bài tập ${index + 1}`);
+      input.setAttribute('aria-label', t('reader.exerciseCheckbox', String(index + 1)));
       input.addEventListener('change', () => callbacks.toggle(index));
 
       const text = document.createElement('span');
-      text.textContent = 'Đã làm';
+      text.textContent = t('reader.exerciseDone');
 
       label.appendChild(input);
       label.appendChild(text);

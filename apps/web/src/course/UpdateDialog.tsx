@@ -34,6 +34,8 @@ import { createPortal } from 'react-dom';
 import { UnsafePackageError } from '../api/courses';
 import { describeFinding } from './import';
 import { describeCourseError, loadManifest } from './loader';
+import type { Translate } from '../i18n';
+import { useLanguage } from '../i18n/LanguageProvider';
 import {
   applyUpdate,
   CourseKitUnavailableError,
@@ -74,10 +76,16 @@ type Stage =
 /** The starting stage, as one shared value so it keeps its identity across renders. */
 const PREVIEWING: Stage = { kind: 'previewing' };
 
-/** Vietnamese for the failures this flow can actually produce. */
-function describeError(error: unknown): string {
+/**
+ * Chữ cho những cách hỏng mà luồng này thật sự sinh ra.
+ *
+ * Nhận `t` làm THAM SỐ chứ không gọi `useLanguage()`: đây là hàm thuần, được
+ * gọi từ trong `.then()` của hai effect, và một hook không gọi được ở đó.
+ * Cùng khuôn `describeFinding` và `describeCourseError` mà nó gọi lại.
+ */
+function describeError(error: unknown, t: Translate): string {
   if (error instanceof CourseKitUnavailableError) {
-    return 'Chưa xem trước được: không tải được bộ dựng chương (công thức toán). Hãy kiểm tra kết nối rồi thử lại.';
+    return t('update.error.courseKit');
   }
   if (error instanceof UnsafePackageError) {
     // A refusal, not a failure — and the reader is told which it is, because
@@ -85,15 +93,19 @@ function describeError(error: unknown): string {
     // advice here: retrying downloads the same bytes and refuses them again.
     // `describeFinding` is `/import`'s wording, reused rather than reworded so
     // one package cannot be described two ways on two screens.
-    return `Không thể cập nhật: bản ${error.version} tự khai là hạng “content” (chỉ có chữ) nhưng lại chứa mã chạy được. ${error.findings
-      .slice(0, 3)
-      .map(describeFinding)
-      .join(' ')}`;
+    return t(
+      'update.error.unsafe',
+      error.version,
+      error.findings
+        .slice(0, 3)
+        .map((f) => describeFinding(f, t))
+        .join(' '),
+    );
   }
   if (error instanceof PackageVersionUnavailableError) {
-    return `Chưa xem trước được: không lấy được bản ${error.version} của khoá học này.`;
+    return t('update.error.versionUnavailable', error.version);
   }
-  return describeCourseError(error);
+  return describeCourseError(error, t);
 }
 
 /**
@@ -121,10 +133,10 @@ async function chapterLabels(courseId: string): Promise<Map<string, string>> {
 }
 
 /** The one-line verdict. Kept as a list of clauses so the separator is written once. */
-function summaryOf(impact: UpdateImpact): string {
-  const clauses = [`${impact.exact}/${impact.total} ghi chú giữ đúng chỗ`];
-  if (impact.fuzzy > 0) clauses.push(`${impact.fuzzy} dịch nhẹ`);
-  if (impact.orphaned.length > 0) clauses.push(`${impact.orphaned.length} mất neo`);
+function summaryOf(impact: UpdateImpact, t: Translate): string {
+  const clauses = [t('update.summary.exact', String(impact.exact), String(impact.total))];
+  if (impact.fuzzy > 0) clauses.push(t('update.summary.fuzzy', String(impact.fuzzy)));
+  if (impact.orphaned.length > 0) clauses.push(t('update.summary.orphaned', String(impact.orphaned.length)));
   return clauses.join(' · ');
 }
 
@@ -136,6 +148,8 @@ export function UpdateDialog({
   onClose,
   onUpdated,
 }: UpdateDialogProps) {
+  const { t, tNode } = useLanguage();
+
   /**
    * The stage, tagged with the question it answers.
    *
@@ -177,7 +191,7 @@ export function UpdateDialog({
       },
       (error: unknown) => {
         console.warn(`course/UpdateDialog: could not preview ${courseId} ${fromVersion} → ${toVersion}`, error);
-        if (!cancelled) setStage({ kind: 'failed', message: describeError(error) });
+        if (!cancelled) setStage({ kind: 'failed', message: describeError(error, t) });
       },
     );
 
@@ -187,7 +201,7 @@ export function UpdateDialog({
     // `setStage` is listed even though it is derived from the other three:
     // it changes exactly when they do, so it adds no re-runs, and leaving it
     // out would be a lint suppression rather than a smaller dependency list.
-  }, [courseId, fromVersion, toVersion, setStage]);
+  }, [courseId, fromVersion, toVersion, setStage, t]);
 
   // Escape has to work without the reader clicking into the dialog first.
   useEffect(() => {
@@ -205,10 +219,10 @@ export function UpdateDialog({
       },
       (error: unknown) => {
         console.warn(`course/UpdateDialog: could not apply ${courseId}@${toVersion}`, error);
-        setStage({ kind: 'apply-failed', impact, message: describeError(error) });
+        setStage({ kind: 'apply-failed', impact, message: describeError(error, t) });
       },
     );
-  }, [courseId, onClose, onUpdated, setStage, stage, toVersion]);
+  }, [courseId, onClose, onUpdated, setStage, stage, toVersion, t]);
 
   const impact = stage.kind === 'ready' || stage.kind === 'applying' || stage.kind === 'apply-failed' ? stage.impact : null;
   const busy = stage.kind === 'applying';
@@ -232,7 +246,7 @@ export function UpdateDialog({
         }}
       >
         <h2 className="cu-title" id="cu-title">
-          Cập nhật “{courseTitle}”
+          {t('update.title', courseTitle)}
         </h2>
         <p className="cu-versions">
           v{fromVersion} → v{toVersion}
@@ -240,7 +254,7 @@ export function UpdateDialog({
 
         {stage.kind === 'previewing' && (
           <p className="cu-status" role="status">
-            Đang thử neo lại ghi chú của bạn trên bản mới…
+            {t('update.previewing')}
           </p>
         )}
 
@@ -251,12 +265,12 @@ export function UpdateDialog({
         )}
 
         {impact && impact.total === 0 && (
-          <p className="cu-summary">Bạn chưa có ghi chú nào trong khoá học này, nên cập nhật không ảnh hưởng gì.</p>
+          <p className="cu-summary">{t('update.noNotes')}</p>
         )}
 
         {impact && impact.total > 0 && (
           <>
-            <p className="cu-summary">{summaryOf(impact)}</p>
+            <p className="cu-summary">{summaryOf(impact, t)}</p>
             {impact.orphaned.length > 0 && (
               <>
                 <ul className="cu-orphans">
@@ -269,13 +283,11 @@ export function UpdateDialog({
                 </ul>
                 {alreadyLost > 0 && (
                   <p className="cu-note">
-                    Trong đó <b>{alreadyLost}</b> ghi chú vốn đã mất neo từ trước — ở lại v{fromVersion} cũng không cứu
-                    được.
+                    {tNode('update.alreadyLost', <b>{alreadyLost}</b>, fromVersion)}
                   </p>
                 )}
                 <p className="cu-note">
-                  Ghi chú mất neo <b>không bị xoá</b>. Chúng vào mục “chưa gắn lại được” trong chương, còn nguyên từng
-                  chữ, để bạn nối lại bằng tay.
+                  {tNode('update.orphansKept', <b>{t('update.orphansKept.notDeleted')}</b>)}
                 </p>
               </>
             )}
@@ -295,10 +307,10 @@ export function UpdateDialog({
             disabled={stage.kind === 'previewing' || stage.kind === 'failed' || busy}
             onClick={confirm}
           >
-            {busy ? 'Đang cập nhật…' : 'Cập nhật'}
+            {t(busy ? 'update.applying' : 'update.confirm')}
           </button>
           <button type="button" className="cu-cancel" disabled={busy} onClick={onClose}>
-            Ở lại v{fromVersion}
+            {t('update.stay', fromVersion)}
           </button>
         </div>
       </div>

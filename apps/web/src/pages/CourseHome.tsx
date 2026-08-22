@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { CourseNav } from '../course/CourseNav';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
+import { useLanguage } from '../i18n/LanguageProvider';
 import { useProgress } from '../progress/useProgress';
 
 /**
@@ -20,6 +21,7 @@ import { useProgress } from '../progress/useProgress';
  */
 export function CourseHome() {
   const { courseId } = useParams<{ courseId: string }>();
+  const { t } = useLanguage();
   const manifestQuery = useQuery({
     queryKey: manifestQueryKey(courseId ?? ''),
     queryFn: () => loadManifest(courseId as string),
@@ -28,15 +30,15 @@ export function CourseHome() {
   const { doneChapterIds } = useProgress(courseId ?? '');
 
   if (courseId == null) {
-    return <p className="ch-lede">Không tìm thấy khóa học.</p>;
+    return <p className="ch-lede">{t('course.notFound')}</p>;
   }
 
   if (manifestQuery.isPending) {
-    return <p className="ch-lede">Đang tải khóa học…</p>;
+    return <p className="ch-lede">{t('course.loading')}</p>;
   }
 
   if (manifestQuery.isError) {
-    return <p className="ch-lede">{describeCourseError(manifestQuery.error)}</p>;
+    return <p className="ch-lede">{describeCourseError(manifestQuery.error, t)}</p>;
   }
 
   const manifest = manifestQuery.data;

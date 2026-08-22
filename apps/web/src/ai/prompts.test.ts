@@ -121,6 +121,7 @@ describe('phép chiếu văn bản — công thức phải là LaTeX, không ph�
 
     // Và lời nhắc thật sự gửi đi cũng vậy — không chỉ cái `quote` trung gian.
     const prompt = deepDiveSystemPrompt(excerpt!, {
+      lang: 'vi',
       courseTitle: 'Số dấu phẩy động',
       chapterTitle: 'Sai số làm tròn',
     });
@@ -213,6 +214,7 @@ describe('lời nhắc về chương đang đọc — cắt bớt phải ĐO, kh
   it('lời nhắc mang tiêu đề khoá học, tiêu đề chương và nội dung đang đọc', () => {
     const el = mount('<h2 id="a">Ba trường</h2><p>Số mũ lệch 127.</p>');
     const built = chapterSystemPrompt(el, {
+      lang: 'vi',
       courseTitle: 'Số dấu phẩy động',
       chapterTitle: 'Ba trường: dấu, số mũ, phần định trị',
     });
@@ -228,10 +230,10 @@ describe('lời nhắc về chương đang đọc — cắt bớt phải ĐO, kh
 
   it('chương NGẮN không bị cắt; chương DÀI CỠ THẬT thì bị, và ngữ cảnh không vượt ngưỡng', () => {
     const short = mount('<h2 id="a">Mục</h2><p>Ngắn thôi.</p>');
-    expect(chapterSystemPrompt(short, { courseTitle: 'K', chapterTitle: 'C' }).truncated).toBe(false);
+    expect(chapterSystemPrompt(short, { lang: 'vi', courseTitle: 'K', chapterTitle: 'C' }).truncated).toBe(false);
 
     const long = mount(longChapter(LONGEST_CHAPTER_TEXT));
-    const built = chapterSystemPrompt(long, { courseTitle: 'K', chapterTitle: 'C' });
+    const built = chapterSystemPrompt(long, { lang: 'vi', courseTitle: 'K', chapterTitle: 'C' });
 
     expect(built.truncated).toBe(true);
     // Trên `excerpt`, KHÔNG trên `system`. Khung lời nhắc giải thích dấu cắt
@@ -247,6 +249,7 @@ describe('lời nhắc về chương đang đọc — cắt bớt phải ĐO, kh
     const heads = Array.from(el.querySelectorAll('h2'));
     const middle = heads[Math.floor(heads.length / 2)];
     const built = chapterSystemPrompt(el, {
+      lang: 'vi',
       courseTitle: 'K',
       chapterTitle: 'C',
       focusEl: middle,
@@ -261,7 +264,7 @@ describe('lời nhắc về chương đang đọc — cắt bớt phải ĐO, kh
     const el = mount(
       `<h2 id="a">Sai số</h2><p>Chặn trên là ${katexSpan('\\tfrac{1}{2}u', '½u')} mỗi phép.</p>`,
     );
-    const built = chapterSystemPrompt(el, { courseTitle: 'K', chapterTitle: 'C' });
+    const built = chapterSystemPrompt(el, { lang: 'vi', courseTitle: 'K', chapterTitle: 'C' });
 
     expect(built.system).toContain('\\tfrac{1}{2}u');
     expect(built.system).not.toContain(ATOMIC);
@@ -274,7 +277,7 @@ describe('lời nhắc về chương đang đọc — cắt bớt phải ĐO, kh
     const dense = mount(
       `<h2 id="a">Dày đặc</h2><p>${katexSpan('\\alpha_{i}+\\beta_{j}\\cdot\\gamma_{k}', 'α+βγ').repeat(600)}</p>`,
     );
-    const built = chapterSystemPrompt(dense, { courseTitle: 'K', chapterTitle: 'C' });
+    const built = chapterSystemPrompt(dense, { lang: 'vi', courseTitle: 'K', chapterTitle: 'C' });
 
     expect(built.truncated).toBe(true);
     expect(built.contextChars).toBeLessThanOrEqual(CHAPTER_CONTEXT_LIMIT);
@@ -286,8 +289,9 @@ describe('lời nhắc về chương đang đọc — cắt bớt phải ĐO, kh
     const heads = Array.from(el.querySelectorAll('h2'));
     const last = heads[heads.length - 1];
 
-    const fromTop = chapterSystemPrompt(el, { courseTitle: 'K', chapterTitle: 'C' });
+    const fromTop = chapterSystemPrompt(el, { lang: 'vi', courseTitle: 'K', chapterTitle: 'C' });
     const atLast = chapterSystemPrompt(el, {
+      lang: 'vi',
       courseTitle: 'K',
       chapterTitle: 'C',
       focusEl: last,
@@ -304,7 +308,7 @@ describe('lời nhắc về chương đang đọc — cắt bớt phải ĐO, kh
   it('DÀN Ý các mục luôn có mặt — mô hình phải biết phần nào nó KHÔNG được xem', () => {
     const el = mount(longChapter(LONGEST_CHAPTER_TEXT));
     const heads = Array.from(el.querySelectorAll('h2')).map((h) => h.textContent!);
-    const built = chapterSystemPrompt(el, { courseTitle: 'K', chapterTitle: 'C' });
+    const built = chapterSystemPrompt(el, { lang: 'vi', courseTitle: 'K', chapterTitle: 'C' });
 
     expect(built.truncated).toBe(true);
     for (const title of heads) expect(built.system).toContain(title);
@@ -312,7 +316,7 @@ describe('lời nhắc về chương đang đọc — cắt bớt phải ĐO, kh
 
   it('`contextChars` là SỐ KÝ TỰ THẬT của phần ngữ cảnh, không phải một ước lượng', () => {
     const el = mount('<h2 id="a">Mục</h2><p>Vừa đủ ngắn.</p>');
-    const built = chapterSystemPrompt(el, { courseTitle: 'K', chapterTitle: 'C' });
+    const built = chapterSystemPrompt(el, { lang: 'vi', courseTitle: 'K', chapterTitle: 'C' });
     expect(built.contextChars).toBe(built.system.length);
   });
 });
@@ -333,7 +337,7 @@ describe('lời nhắc "Đào sâu" — đoạn được chọn kèm văn cảnh
     expect(excerpt?.before).toContain('Phần đầu rất dài.');
     expect(excerpt?.after).toContain('Phần đuôi cũng vậy.');
 
-    const built = deepDiveSystemPrompt(excerpt!, { courseTitle: 'K', chapterTitle: 'C' });
+    const built = deepDiveSystemPrompt(excerpt!, { lang: 'vi', courseTitle: 'K', chapterTitle: 'C' });
     expect(built.system).toContain('ĐOẠN ĐƯỢC CHỌN.');
     expect(built.system).toContain('Phần đầu rất dài.');
     expect(built.contextChars).toBe(built.system.length);
@@ -348,6 +352,7 @@ describe('lời nhắc "Đào sâu" — đoạn được chọn kèm văn cảnh
     range.setEnd(node, 40_004);
 
     const built = deepDiveSystemPrompt(selectionExcerpt(map, range)!, {
+      lang: 'vi',
       courseTitle: 'K',
       chapterTitle: 'C',
     });

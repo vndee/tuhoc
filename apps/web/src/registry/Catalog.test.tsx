@@ -8,6 +8,7 @@ import { ErrorBoundary } from '../shell/ErrorBoundary';
 import { Catalog } from './Catalog.tsx';
 import { SUPPORTED_INDEX_SCHEMA } from './index.ts';
 import type { RegistryEntry, RegistryIndex } from './types.ts';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 /* ------------------------------------------------------------------ *
  * Harness
@@ -73,11 +74,11 @@ function renderCatalog() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <LanguageProvider><MemoryRouter>
         <ErrorBoundary>
           <Catalog registryBase={BASE} />
         </ErrorBoundary>
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
   );
 }
@@ -227,11 +228,11 @@ describe('registry hỏng SAU một lần tải thành công', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
     const ui = (
       <QueryClientProvider client={client}>
-        <MemoryRouter>
+        <LanguageProvider><MemoryRouter>
           <ErrorBoundary>
             <Catalog registryBase={BASE} />
           </ErrorBoundary>
-        </MemoryRouter>
+        </MemoryRouter></LanguageProvider>
       </QueryClientProvider>
     );
 

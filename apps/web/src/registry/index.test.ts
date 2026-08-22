@@ -14,6 +14,18 @@ import {
   UnsupportedRegistrySchemaError,
 } from './index.ts';
 import type { RegistryEntry, RegistryIndex } from './types.ts';
+import { t as lookup, type Translate } from '../i18n';
+
+/**
+ * `t` đã gắn tiếng Việt.
+ *
+ * `describeFinding`, `describeCourseError`, `describeAuthError` và
+ * `importCourse` nhận ngôn ngữ bằng THAM SỐ từ Task 5 — chúng không phải
+ * component và cố ý không có context nào để đọc. Bơm `t` vào từ đây là cách
+ * duy nhất một bài kiểm chứng minh chúng dùng cái được truyền vào.
+ */
+const t: Translate = (key, ...args) => lookup('vi', key, ...args);
+
 
 /* ------------------------------------------------------------------ *
  * Fixtures
@@ -357,17 +369,17 @@ describe('không có cache do JavaScript tự giữ', () => {
 
 describe('describeRegistryError — mỗi cách hỏng một câu KHÁC NHAU', () => {
   it('HTML: nói rõ nhận được trang web chứ không phải danh mục', () => {
-    const msg = describeRegistryError(new RegistryNotJsonError(INDEX_URL, 200, 'text/html', PAGES_404_HTML.slice(0, 60)));
+    const msg = describeRegistryError(new RegistryNotJsonError(INDEX_URL, 200, 'text/html', PAGES_404_HTML.slice(0, 60)), t);
     expect(msg).toMatch(/không phải JSON|không phải danh mục/i);
     expect(msg).toContain('index.json');
   });
 
   it('thiếu trường: nêu đích danh trường thiếu', () => {
-    expect(describeRegistryError(new MalformedRegistryIndexError(['courses']))).toContain('courses');
+    expect(describeRegistryError(new MalformedRegistryIndexError(['courses']), t)).toContain('courses');
   });
 
   it('schema lạ: nói NỀN TẢNG cần cập nhật, và nói rõ đã KHÔNG đọc thử', () => {
-    const msg = describeRegistryError(new UnsupportedRegistrySchemaError(999, SUPPORTED_INDEX_SCHEMA));
+    const msg = describeRegistryError(new UnsupportedRegistrySchemaError(999, SUPPORTED_INDEX_SCHEMA), t);
     expect(msg).toMatch(/cập nhật/i);
     expect(msg).toContain('999');
     // "đã KHÔNG cố đọc" phải nằm trong câu, ở dạng nào cũng được.
@@ -375,24 +387,24 @@ describe('describeRegistryError — mỗi cách hỏng một câu KHÁC NHAU', (
   });
 
   it('chưa cấu hình: nêu tên biến', () => {
-    expect(describeRegistryError(new RegistryNotConfiguredError())).toContain('VITE_REGISTRY_URL');
+    expect(describeRegistryError(new RegistryNotConfiguredError(), t)).toContain('VITE_REGISTRY_URL');
   });
 
   it('không có phản hồi nào: nêu CẢ HAI khả năng, không đổ tại wifi', () => {
     // Ruling S1-F25: một lần từ chối CORS ở production giống hệt một lần mất
     // mạng ở phía trang, và bản cũ nói chắc nịch "kiểm tra kết nối mạng".
-    const msg = describeRegistryError(new TypeError('Failed to fetch'));
+    const msg = describeRegistryError(new TypeError('Failed to fetch'), t);
     expect(msg).toMatch(/ngoại tuyến|mạng/i);
     expect(msg).toMatch(/CORS|cấu hình/i);
   });
 
   it('bốn câu ấy khác nhau từng đôi một', () => {
     const msgs = [
-      describeRegistryError(new RegistryNotJsonError(INDEX_URL, 200, 'text/html', '')),
-      describeRegistryError(new MalformedRegistryIndexError(['courses'])),
-      describeRegistryError(new UnsupportedRegistrySchemaError(999, SUPPORTED_INDEX_SCHEMA)),
-      describeRegistryError(new RegistryNotConfiguredError()),
-      describeRegistryError(new TypeError('Failed to fetch')),
+      describeRegistryError(new RegistryNotJsonError(INDEX_URL, 200, 'text/html', ''), t),
+      describeRegistryError(new MalformedRegistryIndexError(['courses']), t),
+      describeRegistryError(new UnsupportedRegistrySchemaError(999, SUPPORTED_INDEX_SCHEMA), t),
+      describeRegistryError(new RegistryNotConfiguredError(), t),
+      describeRegistryError(new TypeError('Failed to fetch'), t),
     ];
     expect(new Set(msgs).size).toBe(msgs.length);
   });

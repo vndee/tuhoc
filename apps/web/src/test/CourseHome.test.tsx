@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { CourseHome } from '../pages/CourseHome';
 import type { Chapter, Manifest } from '../course/types';
 import { clearLocalData, db } from '../db/local';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 function buildManifest(chapterCount: number): Manifest {
   const chapters: Chapter[] = Array.from({ length: chapterCount }, (_, i) => ({
@@ -44,11 +45,11 @@ function renderCourseHome(initialPath = '/c/demo') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialPath]}>
+      <LanguageProvider><MemoryRouter initialEntries={[initialPath]}>
         <Routes>
           <Route path="/c/:courseId" element={<CourseHome />} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
   );
 }

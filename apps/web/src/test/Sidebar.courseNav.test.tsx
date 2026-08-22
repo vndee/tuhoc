@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { Sidebar } from '../shell/Sidebar';
 import type { Manifest } from '../course/types';
 import { clearLocalData, db } from '../db/local';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 const manifest: Manifest = {
   id: 'demo',
@@ -39,9 +40,9 @@ function renderSidebar(initialPath: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialPath]}>
+      <LanguageProvider><MemoryRouter initialEntries={[initialPath]}>
         <Sidebar />
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
   );
 }

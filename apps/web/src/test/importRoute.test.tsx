@@ -7,6 +7,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { AppRoutes } from '../routes';
 import { clearLocalData } from '../db/local';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 /**
  * `/import` is not reachable while logged out — pinned, not merely written
@@ -46,10 +47,10 @@ function renderAt(path: string, pathnames: string[]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
+      <LanguageProvider><MemoryRouter initialEntries={[path]}>
         <Recorder onChange={(p) => pathnames.push(p)} />
         <AppRoutes />
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
   );
 }

@@ -1,3 +1,5 @@
+import { t } from './lang';
+
 /** Phần cấu hình KHÔNG bí mật. Trang chính được biết những thứ này — nó cần
  *  biết đã có key hay chưa, và hiện tên nhà cung cấp/model trong giao diện. */
 export interface PublicConfig {
@@ -94,10 +96,10 @@ export function writeConfig(c: StoredConfig): void {
   //
   // Thông điệp lỗi nói về TRƯỜNG NÀO thiếu, không bao giờ chèn giá trị vào.
   if (!c.providerId || !c.model) {
-    throw new Error('writeConfig: thiếu providerId hoặc model.');
+    throw new Error(t('vault.keystore.missingProviderOrModel'));
   }
   if (!c.apiKey) {
-    throw new Error('writeConfig: key rỗng — kho khoá không lưu cấu hình không dùng được.');
+    throw new Error(t('vault.keystore.emptyKey'));
   }
   // Key TRƯỚC, phần công khai SAU. Nếu lần ghi thứ hai hỏng (hết hạn ngạch,
   // chế độ riêng tư), thứ còn lại là một key mồ côi mà `readPublicConfig` không

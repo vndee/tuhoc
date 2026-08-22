@@ -8,6 +8,7 @@ import { readConfig, readPublicConfig } from './keystore';
 import { getProvider, listProviders } from './providers';
 import { ProviderError, type ChatMessage, type Provider } from './providers/types';
 import { checkAndConsume } from './guard';
+import { LANG_PARAM, currentLang, setVaultLang, t } from './lang';
 import { defaultSettingsDeps, renderSettings } from './ui/Settings';
 
 export interface HandlerDeps {
@@ -40,7 +41,7 @@ export function handleMessage(event: MessageEvent, deps: HandlerDeps): void {
   if (req.v !== PROTOCOL_VERSION) {
     if (typeof req.id === 'string') {
       send({ v: PROTOCOL_VERSION, id: req.id, kind: 'error', code: 'protocol_version',
-             message: `Kho khoá dùng giao thức v${PROTOCOL_VERSION}.` });
+             message: t('vault.protocol.version', String(PROTOCOL_VERSION)) });
     }
     return;
   }
@@ -83,7 +84,7 @@ export function handleMessage(event: MessageEvent, deps: HandlerDeps): void {
       return;
     default:
       send({ v: 1, id: req.id, kind: 'error', code: 'unsupported_provider',
-             message: 'Chưa hỗ trợ.' });
+             message: t('vault.protocol.unsupported') });
   }
 }
 
@@ -153,18 +154,18 @@ function handleChat(
     // thêm một thành viên là một thay đổi giao thức — theo S2-F8 nó phải được
     // đọc bằng mắt người, và Task 5 đang được viết ngay lúc này dựa trên đúng
     // union hiện tại. Đã ghi vào `docs/carried-forward.md` như một món nợ có tên.
-    send(errorResponse(id, 'unsupported_provider', 'Yêu cầu chat không đúng hình dạng giao thức.'));
+    send(errorResponse(id, 'unsupported_provider', t('vault.protocol.badChatShape')));
     return;
   }
 
   const provider = getProvider(shape.providerId);
   if (!provider) {
-    send(errorResponse(id, 'unsupported_provider', 'Kho khoá không biết nhà cung cấp này.'));
+    send(errorResponse(id, 'unsupported_provider', t('vault.provider.unknown')));
     return;
   }
 
   if (readPublicConfig() === null) {
-    send(errorResponse(id, 'not_configured', 'Chưa cắm key trong kho khoá.'));
+    send(errorResponse(id, 'not_configured', t('vault.provider.notConfigured')));
     return;
   }
 
@@ -180,7 +181,7 @@ function handleChat(
   if (!cfg) {
     // Chỉ tới được đây nếu ô nhớ đổi giữa hai phép đọc. Token đã tiêu — chấp
     // nhận, vì chiều ngược lại (đọc key trước khi qua người gác) đắt hơn nhiều.
-    send(errorResponse(id, 'not_configured', 'Chưa cắm key trong kho khoá.'));
+    send(errorResponse(id, 'not_configured', t('vault.provider.notConfigured')));
     return;
   }
 
@@ -221,7 +222,7 @@ function startStream(
       const code: VaultErrorCode = e instanceof ProviderError ? e.code : 'provider_error';
       const message = e instanceof ProviderError
         ? e.message
-        : 'Kho khoá không hoàn tất được lời gọi tới nhà cung cấp.';
+        : t('vault.provider.callFailed');
       try {
         send(errorResponse(id, code, message));
       } catch {
@@ -249,22 +250,36 @@ const ORIGIN_SHAPE = /^https?:\/\/[^/?#\s]+$/;
 export function resolveAllowedOrigin(env: { VITE_APP_ORIGIN?: string }): string {
   const raw = (env.VITE_APP_ORIGIN ?? '').trim();
   if (!raw) {
-    throw new Error(
-      'VITE_APP_ORIGIN bắt buộc — kho khoá từ chối chạy khi không biết tin ai.',
-    );
+    throw new Error(t('vault.boot.originRequired'));
   }
   if (!ORIGIN_SHAPE.test(raw)) {
     // `'*'` rơi vào đây, và đó là điều quan trọng nhất mà phép kiểm này làm:
     // giá trị này vừa là bộ lọc nhận, vừa là `targetOrigin` khi gửi.
-    throw new Error(
-      `VITE_APP_ORIGIN phải là một origin đúng nghĩa (scheme://host[:port]), ` +
-      `không dấu "/" cuối, không đường dẫn, không "*" — nhận được ${JSON.stringify(raw)}.`,
-    );
+    throw new Error(t('vault.boot.originShape', JSON.stringify(raw)));
   }
   return raw;
 }
 
+/**
+ * Ngôn ngữ hiển thị của kho khoá, đọc từ `?lang=` mà trang chính gắn vào `src`
+ * của khung. Xem `./lang.ts` cho lý do đầy đủ; ba điểm cần nhớ ở đây:
+ *
+ *   - **đọc TRƯỚC `resolveAllowedOrigin`**, vì hàm ấy ném bằng chữ của catalog;
+ *   - **không tin đầu vào**: `setVaultLang` lọc qua `normalizeLang`, và giá trị
+ *     xấu nhất một trang lạ đạt được là hiển thị sai ngôn ngữ;
+ *   - **không đi qua giao thức**: `VaultRequest` là union đóng, và ngôn ngữ
+ *     hiển thị không đáng một thay đổi giao thức (S2-F8).
+ *
+ * Tách khỏi khối khởi động để test gọi được — cùng lý do và cùng khuôn với
+ * `resolveAllowedOrigin`.
+ */
+export function applyLangFromLocation(search: string): void {
+  setVaultLang(new URLSearchParams(search).get(LANG_PARAM));
+  if (typeof document !== 'undefined') document.documentElement.lang = currentLang();
+}
+
 if (typeof window !== 'undefined' && !import.meta.env.VITEST) {
+  applyLangFromLocation(window.location.search);
   const allowedOrigin = resolveAllowedOrigin(import.meta.env);
 
   // Màn cấu hình (form nhập key) + khung xác nhận + nhật ký được vẽ ngay lúc

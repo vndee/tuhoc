@@ -134,6 +134,8 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import type { MessageKey } from '../i18n';
+import { useLanguage } from '../i18n/LanguageProvider';
 import { type Anchor, hasFindableText, selectionToAnchor } from './anchor';
 import { useWideRail } from './MarginCards';
 import { isMapStale, type NormMap, normalizeContainer, rangeToFlat } from './normalize';
@@ -192,7 +194,7 @@ export const ORPHAN_QUOTE_MAX = 80;
  * the page. */
 const PREVIEW_MAX = 60;
 
-const REATTACH_FAILED = 'Không gắn lại được. Hãy bôi chọn lại rồi thử lần nữa.';
+const REATTACH_FAILED: MessageKey = 'ann.orphan.reattachFailed';
 
 /**
  * Said when the reader's new selection is nothing but formulas.
@@ -204,8 +206,7 @@ const REATTACH_FAILED = 'Không gắn lại được. Hãy bôi chọn lại r�
  * character down here, so the quote they are about to store would match every
  * other formula in the chapter equally well. See the file doc, section 5.
  */
-const REATTACH_NO_WORDS =
-  'Đoạn bạn chọn chỉ gồm công thức. Hãy chọn thêm chữ xung quanh để ghi chú tìm lại được chỗ này.';
+const REATTACH_NO_WORDS: MessageKey = 'ann.orphan.mathOnly';
 
 /**
  * What the reattach bar has to say about the current selection.
@@ -240,13 +241,13 @@ function preview(text: string): string {
  * something waiting for you".
  */
 function OrphanAway({ count, onHide }: { count: number; onHide: () => void }) {
+  const { t, tNode } = useLanguage();
+
   return (
-    <div className="ann-orphan-away" role="status" aria-label="Ghi chú chưa gắn lại được">
-      <span>
-        <b>{count}</b> ghi chú chưa gắn lại được. Mở chương này trên màn hình rộng hơn để nối lại.
-      </span>
+    <div className="ann-orphan-away" role="status" aria-label={t('ann.orphan.awayAria')}>
+      <span>{tNode('ann.orphan.awayBody', <b>{count}</b>)}</span>
       <button type="button" className="ann-orphan-away-hide" onClick={onHide}>
-        Ẩn
+        {t('ann.orphan.awayHide')}
       </button>
     </div>
   );
@@ -260,6 +261,7 @@ function OrphanAway({ count, onHide }: { count: number; onHide: () => void }) {
  * chapter, has nothing to say.
  */
 export function OrphanPanel({ content, store, reattaching, onReattachingChange }: OrphanPanelProps) {
+  const { t, tNode } = useLanguage();
   const { orphans, reattach } = store;
   const root = content.root;
   const revision = content.revision;
@@ -351,7 +353,7 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
       // differ only in whitespace, which this question does not turn on.
       if (!hasFindableText(map.flat.slice(span.from, span.to))) {
         rangeRef.current = null;
-        setCandidate({ kind: 'unusable', why: REATTACH_NO_WORDS });
+        setCandidate({ kind: 'unusable', why: t(REATTACH_NO_WORDS) });
         return;
       }
       rangeRef.current = range.cloneRange();
@@ -360,7 +362,7 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
     const doc = root.ownerDocument ?? document;
     doc.addEventListener('selectionchange', onSelectionChange);
     return () => doc.removeEventListener('selectionchange', onSelectionChange);
-  }, [root, reattaching, mapFor]);
+  }, [root, reattaching, mapFor, t]);
 
   // Escape leaves the mode. Nothing else is looked at and nothing is
   // prevented, so Ctrl/Cmd+C on the quote the reader just copied, and the
@@ -379,7 +381,7 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
     if (!root || !target) return;
     const range = selectionRange(root) ?? rangeRef.current;
     if (!range || range.collapsed || !root.contains(range.commonAncestorContainer)) {
-      setFailure(REATTACH_FAILED);
+      setFailure(t(REATTACH_FAILED));
       return;
     }
     const map = mapFor();
@@ -392,7 +394,7 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
       // drag across the gap between two paragraphs). Storing it anyway would
       // move the note from "cannot be found" to "cannot be found, and now
       // points somewhere else too".
-      setFailure(REATTACH_FAILED);
+      setFailure(t(REATTACH_FAILED));
       return;
     }
     // And the same sentence again for the case that DOES parse: a quote made
@@ -404,7 +406,7 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
     // section 5). The reader keeps the mode, the selection, the note and the
     // old quote; nothing is written and nothing reaches the outbox.
     if (!hasFindableText(anchor.exact)) {
-      setFailure(REATTACH_NO_WORDS);
+      setFailure(t(REATTACH_NO_WORDS));
       return;
     }
 
@@ -419,9 +421,9 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
       // failed silently would look exactly like one that worked until the next
       // page load.
       console.error('OrphanPanel: could not reattach the note', error);
-      setFailure(REATTACH_FAILED);
+      setFailure(t(REATTACH_FAILED));
     }
-  }, [root, target, mapFor, reattach, onReattachingChange]);
+  }, [root, target, mapFor, reattach, onReattachingChange, t]);
 
   const setExactRef = useCallback((id: string, el: HTMLTextAreaElement | null): void => {
     if (el) exactRefs.current.set(id, el);
@@ -451,11 +453,10 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
   return (
     <>
       <section className="ann-orphans" aria-labelledby="ann-orphans-h">
-        <h3 className="ann-orphans-h" id="ann-orphans-h">{`Mồ côi (${orphans.length})`}</h3>
-        <p className="ann-orphans-lede">
-          Bản chương hiện tại không còn đoạn văn mà những ghi chú này neo vào. Nội dung ghi chú vẫn được giữ nguyên —
-          bấm “Gắn lại” rồi bôi chọn đoạn tương ứng để nối lại.
-        </p>
+        <h3 className="ann-orphans-h" id="ann-orphans-h">
+          {t('ann.orphan.heading', String(orphans.length))}
+        </h3>
+        <p className="ann-orphans-lede">{t('ann.orphan.lede')}</p>
         <ul className="ann-orphan-list">
           {orphans.map((row) => {
             const open = shown === row.id;
@@ -471,17 +472,17 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
                   {quoteOf(row.anchor, ORPHAN_QUOTE_MAX)}
                 </p>
                 <p className={row.note ? 'ann-orphan-note' : 'ann-orphan-note ann-orphan-note-empty'}>
-                  {row.note || '(chưa có nội dung)'}
+                  {row.note || t('ann.card.emptyNote')}
                 </p>
                 {waiting && (
                   <p className="ann-orphan-wait" role="status">
-                    Bôi chọn đoạn văn tương ứng trong chương, rồi bấm “Gắn vào đây”.
+                    {t('ann.orphan.waiting')}
                   </p>
                 )}
                 <div className="ann-orphan-actions">
                   {!waiting && (
                     <button type="button" className="ann-orphan-act" onClick={() => onReattachingChange(row.id)}>
-                      Gắn lại
+                      {t('ann.orphan.reattach')}
                     </button>
                   )}
                   {/* Stays available DURING a rescue on purpose: copying the
@@ -495,7 +496,7 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
                     aria-controls={`ann-orphan-exact-${row.id}`}
                     onClick={() => setShown(open ? null : row.id)}
                   >
-                    Xem exact gốc
+                    {t('ann.orphan.showExact')}
                   </button>
                 </div>
                 {open && (
@@ -503,14 +504,14 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
                     <textarea
                       id={`ann-orphan-exact-${row.id}`}
                       className="ann-orphan-exact"
-                      aria-label="Đoạn văn gốc của ghi chú"
+                      aria-label={t('ann.orphan.exactAria')}
                       readOnly
                       rows={3}
                       value={exactOf(row.anchor)}
                       ref={(el) => setExactRef(row.id, el)}
                     />
                     <button type="button" className="ann-orphan-act" onClick={() => copyExact(row)}>
-                      Sao chép
+                      {t('ann.orphan.copy')}
                     </button>
                   </div>
                 )}
@@ -528,7 +529,7 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
             // new-note toolbar is on screen". Two things answering to the same
             // role would make that claim untestable.
             role="group"
-            aria-label="Gắn lại ghi chú"
+            aria-label={t('ann.orphan.barAria')}
             // Keeps the reader's selection alive across the click and keeps
             // focus where it was — the browser would otherwise collapse the
             // selection the moment they reach for the button. On the container,
@@ -536,9 +537,9 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
             onMouseDown={(event) => event.preventDefault()}
           >
             <span className="ann-reattach-what">
-              Gắn lại: <b>{quoteOf(target.anchor, PREVIEW_MAX)}</b>
+              {tNode('ann.orphan.barWhat', <b>{quoteOf(target.anchor, PREVIEW_MAX)}</b>)}
             </span>
-            {candidate === null && <span className="ann-reattach-hint">Bôi chọn đoạn văn mới trong chương.</span>}
+            {candidate === null && <span className="ann-reattach-hint">{t('ann.orphan.barHint')}</span>}
             {/* Anchorable, but not worth the quote it would replace. Says so
                 where the button would have been, so the reader can widen the
                 selection instead of being invited to destroy something. */}
@@ -557,7 +558,7 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
                     void confirmReattach();
                   }}
                 >
-                  Gắn vào đây
+                  {t('ann.orphan.barConfirm')}
                 </button>
               </>
             )}
@@ -567,7 +568,7 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
               </span>
             )}
             <button type="button" className="ann-reattach-cancel" onClick={() => onReattachingChange(null)}>
-              Hủy
+              {t('ann.orphan.barCancel')}
             </button>
           </div>,
           doc.body,

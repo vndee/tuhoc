@@ -46,6 +46,7 @@ import { RequireAuth } from '../auth/RequireAuth';
 import { useLogout } from '../auth/useLogout';
 import { type AnnotationRow, clearLocalData, db } from '../db/local';
 import { Login } from '../pages/Login';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 /**
  * The theme key, written out rather than imported from the registry in
@@ -178,7 +179,7 @@ function Browser({ at = '/', onArriveAtLogin = () => {} }: { at?: string; onArri
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[at]}>
+      <LanguageProvider><MemoryRouter initialEntries={[at]}>
         <Routes>
           <Route
             path="/"
@@ -191,7 +192,7 @@ function Browser({ at = '/', onArriveAtLogin = () => {} }: { at?: string; onArri
           />
           <Route path="/login" element={<LoginRoute onArrive={onArriveAtLogin} />} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     </QueryClientProvider>
   );
 }
@@ -212,7 +213,7 @@ function GuardedBrowser({ at = '/' }: { at?: string }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[at]}>
+      <LanguageProvider><MemoryRouter initialEntries={[at]}>
         <Routes>
           <Route
             path="/"
@@ -225,7 +226,7 @@ function GuardedBrowser({ at = '/' }: { at?: string }) {
           />
           <Route path="/login" element={<Login />} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     </QueryClientProvider>
   );
 }

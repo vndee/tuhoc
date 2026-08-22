@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLanguage } from '../i18n/LanguageProvider';
 import { useVaultFrame } from '../shell/VaultFrame';
 import { VaultError } from './vaultClient';
 import type { ChatMessage, VaultClientErrorCode } from './vaultClient';
@@ -29,6 +30,7 @@ export interface UseAIResult {
 }
 
 export function useAI(): UseAIResult {
+  const { t } = useLanguage();
   const { client } = useVaultFrame();
   const [text, setText] = useState('');
   const [state, setState] = useState<AIState>('idle');
@@ -65,7 +67,7 @@ export function useAI(): UseAIResult {
         setState('error');
         setError({
           code: 'unavailable',
-          message: 'Bản dựng này không có kho khoá, nên chưa dùng được AI.',
+          message: t('ai.error.unavailable'),
         });
         return;
       }
@@ -84,7 +86,7 @@ export function useAI(): UseAIResult {
         if (!status.configured || !status.providerId || !status.model) {
           throw new VaultError(
             'not_configured',
-            'Chưa cắm key vào kho khoá trên máy này.',
+            t('ai.error.notConfigured'),
           );
         }
 
@@ -117,7 +119,7 @@ export function useAI(): UseAIResult {
         if (abortRef.current === ac) abortRef.current = null;
       }
     },
-    [client],
+    [client, t],
   );
 
   return { ask, text, state, error, cancel };

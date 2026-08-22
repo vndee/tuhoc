@@ -1,4 +1,5 @@
 import { useLocation } from 'react-router-dom';
+import { useLanguage } from '../i18n/LanguageProvider';
 
 // Matches the `/c/:courseId/:chapterId` route — deliberately not
 // `useParams` (see Sidebar's own `courseIdFromPathname` for the same
@@ -15,12 +16,13 @@ const CHAPTER_ROUTE = /^\/c\/[^/]+\/[^/]+/;
  */
 export function Rail() {
   const location = useLocation();
+  const { t } = useLanguage();
   if (CHAPTER_ROUTE.test(location.pathname)) return null;
 
   return (
     <>
-      <p className="rail-h">Trong chương</p>
-      <p className="muted">Chưa có nội dung.</p>
+      <p className="rail-h">{t('rail.inChapter')}</p>
+      <p className="muted">{t('rail.empty')}</p>
     </>
   );
 }

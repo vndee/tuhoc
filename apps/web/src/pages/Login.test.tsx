@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { meQueryKey, useMe } from '../api/useMe';
 import { clearLocalData, db } from '../db/local';
 import { Login } from './Login';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 /**
  * `GET /me` is answered 401 ("nobody signed in") by DEFAULT for every test
@@ -41,13 +42,13 @@ function renderLogin(initialEntry: InitialEntry = '/login') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialEntry]}>
+      <LanguageProvider><MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<div>Home dashboard</div>} />
           <Route path="/c/:courseId/:chapterId" element={<div>Chapter content</div>} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
   );
   return { queryClient };
@@ -280,12 +281,12 @@ describe('Login — local state does not survive a change of signed-in user (C1)
     render(
       <QueryClientProvider client={queryClient}>
         <SyncLifecycleProbe onSyncCouldStart={onSyncCouldStart} />
-        <MemoryRouter initialEntries={['/login']}>
+        <LanguageProvider><MemoryRouter initialEntries={['/login']}>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/" element={<div>Home dashboard</div>} />
           </Routes>
-        </MemoryRouter>
+        </MemoryRouter></LanguageProvider>
       </QueryClientProvider>,
     );
 

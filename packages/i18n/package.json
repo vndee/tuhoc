@@ -1,0 +1,9 @@
+{
+  "name": "@tuhoc/i18n",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {},
+  "devDependencies": {}
+}

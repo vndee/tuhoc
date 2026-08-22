@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useMe } from '../api/useMe';
 import { CourseNav } from '../course/CourseNav';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
+import { useLanguage } from '../i18n/LanguageProvider';
 import { useProgress } from '../progress/useProgress';
 
 // `/c/:courseId` and `/c/:courseId/:chapterId` both carry a course outline
@@ -51,18 +52,19 @@ function courseIdFromPathname(pathname: string): string | undefined {
  */
 function GlobalNav() {
   const meQuery = useMe();
+  const { t } = useLanguage();
   if (!meQuery.data) return null;
 
   return (
-    <nav className="sb-nav" aria-label="Điều hướng chính">
+    <nav className="sb-nav" aria-label={t('nav.aria.main')}>
       <NavLink to="/" end className="sb-nav-link">
-        Bảng điều khiển
+        {t('nav.dashboard')}
       </NavLink>
       <NavLink to="/library" className="sb-nav-link">
-        Thư viện
+        {t('nav.library')}
       </NavLink>
       <NavLink to="/import" className="sb-nav-link">
-        Nhập khóa học
+        {t('nav.import')}
       </NavLink>
       {/*
         `/catalog` — cùng lý do đã ghi cho `/settings` ngay bên dưới, và cùng
@@ -72,7 +74,7 @@ function GlobalNav() {
         `EmptyLibrary` tới nay mới chỉ hứa bằng một câu văn.
       */}
       <NavLink to="/catalog" className="sb-nav-link">
-        Danh mục registry
+        {t('nav.catalog')}
       </NavLink>
       {/*
         Không có liên kết này thì `/settings` chỉ tới được bằng cách gõ URL, và
@@ -80,7 +82,7 @@ function GlobalNav() {
         (S1-F29) mà cả route ấy sinh ra để vá.
       */}
       <NavLink to="/settings" className="sb-nav-link">
-        Trợ lý AI
+        {t('settings.ai.title')}
       </NavLink>
     </nav>
   );
@@ -88,6 +90,7 @@ function GlobalNav() {
 
 export function Sidebar() {
   const location = useLocation();
+  const { t } = useLanguage();
   const courseId = courseIdFromPathname(location.pathname);
 
   const manifestQuery = useQuery({
@@ -111,7 +114,7 @@ export function Sidebar() {
             <rect width="20" height="20" rx="5" fill="var(--accent)" />
             <path d="M5 10.5L8.5 14L15 6.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          Tự học
+          {t('app.name')}
         </p>
         {/*
           The subtitle names the course that is open, and does not exist when
@@ -135,16 +138,16 @@ export function Sidebar() {
             <circle cx="9" cy="9" r="6.5" stroke="currentColor" strokeWidth="1.6" />
             <path d="M18 18L14 14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
           </svg>
-          <input id="nav-search" type="text" placeholder="Tìm chương…" disabled />
+          <input id="nav-search" type="text" placeholder={t('sidebar.searchPlaceholder')} disabled />
         </div>
       </div>
       <GlobalNav />
-      <div className="sb-prog">Tiến độ sẽ hiện ở đây</div>
+      <div className="sb-prog">{t('sidebar.progressPlaceholder')}</div>
       <nav id="nav">
-        {courseId == null && <p className="nav-empty">Chưa có khóa học nào được tải.</p>}
-        {courseId != null && manifestQuery.isPending && <p className="nav-empty">Đang tải khóa học…</p>}
+        {courseId == null && <p className="nav-empty">{t('sidebar.noCourseLoaded')}</p>}
+        {courseId != null && manifestQuery.isPending && <p className="nav-empty">{t('course.loading')}</p>}
         {courseId != null && manifestQuery.isError && (
-          <p className="nav-empty">{describeCourseError(manifestQuery.error)}</p>
+          <p className="nav-empty">{describeCourseError(manifestQuery.error, t)}</p>
         )}
         {courseId != null && manifestQuery.data && (
           <CourseNav courseId={courseId} parts={manifestQuery.data.parts} doneChapterIds={doneChapterIds} />

@@ -10,6 +10,7 @@ import type { Chapter } from '../course/types';
 import { clearLocalData, db } from '../db/local';
 import { ThemeProvider } from '../theme/ThemeContext';
 import { ChapterView } from './ChapterView';
+import { LanguageProvider } from '../i18n/LanguageProvider';
 
 // ChapterView's own script injection is useCourseKit's job (covered by
 // useCourseKit.test.ts) — here we stub it so these tests can focus on
@@ -93,7 +94,7 @@ function renderChapterView(
   const body = (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <MemoryRouter initialEntries={['/c/demo/c1']}>
+        <LanguageProvider><MemoryRouter initialEntries={['/c/demo/c1']}>
           {withProbe && <LocationProbe />}
           <ChapterView
             courseId="demo"
@@ -104,7 +105,7 @@ function renderChapterView(
             nextChapter={chapter2}
             {...props}
           />
-        </MemoryRouter>
+        </MemoryRouter></LanguageProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );
@@ -389,7 +390,7 @@ describe('ChapterView', () => {
     const { rerender } = render(
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
-          <MemoryRouter initialEntries={['/c/demo/c1']}>
+          <LanguageProvider><MemoryRouter initialEntries={['/c/demo/c1']}>
             <ChapterView
               courseId="demo"
               courseTitle="Khóa học demo"
@@ -398,7 +399,7 @@ describe('ChapterView', () => {
               prevChapter={null}
               nextChapter={chapter2}
             />
-          </MemoryRouter>
+          </MemoryRouter></LanguageProvider>
         </ThemeProvider>
       </QueryClientProvider>,
     );
@@ -411,7 +412,7 @@ describe('ChapterView', () => {
     rerender(
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
-          <MemoryRouter initialEntries={['/c/demo/c1']}>
+          <LanguageProvider><MemoryRouter initialEntries={['/c/demo/c1']}>
             <ChapterView
               courseId="demo"
               courseTitle="Khóa học demo"
@@ -420,7 +421,7 @@ describe('ChapterView', () => {
               prevChapter={chapter1}
               nextChapter={null}
             />
-          </MemoryRouter>
+          </MemoryRouter></LanguageProvider>
         </ThemeProvider>
       </QueryClientProvider>,
     );

@@ -1,4 +1,5 @@
 import { useLocation } from 'react-router-dom';
+import { useLanguage } from '../i18n/LanguageProvider';
 import type { Theme } from '../theme/useTheme';
 
 export interface TopbarProps {
@@ -38,32 +39,33 @@ const CHAPTER_ROUTE = /^\/c\/[^/]+\/[^/]+/;
  */
 export function Topbar({ theme, onToggleTheme, onMenuClick }: TopbarProps) {
   const location = useLocation();
+  const { t } = useLanguage();
   const isChapterRoute = CHAPTER_ROUTE.test(location.pathname);
 
   return (
     <>
-      <button id="menu-btn" type="button" className="tb-btn" aria-label="Mở menu" onClick={onMenuClick}>
+      <button id="menu-btn" type="button" className="tb-btn" aria-label={t('topbar.menu')} onClick={onMenuClick}>
         ☰
       </button>
       <div id="crumb">{!isChapterRoute && 'Tuhoc'}</div>
-      <button id="mark-btn" type="button" className="tb-btn" aria-label="Đánh dấu đã học">
+      <button id="mark-btn" type="button" className="tb-btn" aria-label={t('topbar.markRead')}>
         <span className="mk-ico">○</span>
-        <span className="mk-lbl">Đánh dấu đã học</span>
+        <span className="mk-lbl">{t('topbar.markRead')}</span>
       </button>
       <button
         id="theme-btn"
         type="button"
         className="tb-btn"
-        aria-label={theme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'}
+        aria-label={t(theme === 'dark' ? 'topbar.themeToLight' : 'topbar.themeToDark')}
         aria-pressed={theme === 'dark'}
         onClick={onToggleTheme}
       >
         {theme === 'dark' ? '☀' : '☾'}
       </button>
-      <button id="prev-btn" type="button" className="tb-btn" aria-label="Chương trước">
+      <button id="prev-btn" type="button" className="tb-btn" aria-label={t('topbar.prevChapter')}>
         ←
       </button>
-      <button id="next-btn" type="button" className="tb-btn" aria-label="Chương sau">
+      <button id="next-btn" type="button" className="tb-btn" aria-label={t('topbar.nextChapter')}>
         →
       </button>
     </>

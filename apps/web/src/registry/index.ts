@@ -81,6 +81,7 @@
  * CDN"* — actually refers to.
  */
 
+import type { Translate } from '../i18n';
 import type { RegistryEntry, RegistryIndex } from './types.ts';
 
 /* ------------------------------------------------------------------ *
@@ -133,9 +134,12 @@ export const PUBLIC_REGISTRY_BASE: string | null = null;
 /** Nothing told this build where the registry is. */
 export class RegistryNotConfiguredError extends Error {
   constructor() {
+    // Tiếng Anh KỸ THUẬT — câu cho người đọc là `registry.error.notConfigured`,
+    // do `describeRegistryError` tra ra. Trước Task 5 hàm ấy trả về chính
+    // `.message` này; bây giờ nó không đọc `.message` của lớp nào nữa.
     super(
-      'Chưa có địa chỉ registry. Đặt biến môi trường VITE_REGISTRY_URL (địa chỉ gốc của registry, ' +
-        'ví dụ https://<tổ-chức>.github.io/<repo>) lúc build, hoặc dùng registry công khai khi nó sẵn sàng.',
+      'No registry address configured. Set VITE_REGISTRY_URL (the registry base address, ' +
+        'e.g. https://<org>.github.io/<repo>) at build time.',
     );
     this.name = 'RegistryNotConfiguredError';
   }
@@ -193,7 +197,7 @@ export class RegistryNotJsonError extends Error {
 
   constructor(url: string, status: number, contentType: string | null, bodyStart: string) {
     super(
-      `Địa chỉ ${url} trả ${status} nhưng thân phản hồi không phải JSON` +
+      `${url} answered ${status} but the response body is not JSON` +
         (contentType === null ? '' : ` (content-type: ${contentType})`) +
         '.',
     );
@@ -211,7 +215,7 @@ export class RegistryHttpError extends Error {
   readonly status: number;
 
   constructor(url: string, status: number) {
-    super(`Registry trả mã ${status} cho ${url}.`);
+    super(`Registry answered ${status} for ${url}.`);
     this.name = 'RegistryHttpError';
     this.url = url;
     this.status = status;
@@ -227,7 +231,7 @@ export class MalformedRegistryIndexError extends Error {
   readonly missing: readonly string[];
 
   constructor(missing: readonly string[]) {
-    super(`Danh mục registry thiếu hoặc sai kiểu ở: ${missing.join(', ')}`);
+    super(`Registry index missing or mistyped at: ${missing.join(', ')}`);
     this.name = 'MalformedRegistryIndexError';
     this.missing = missing;
   }
@@ -246,7 +250,7 @@ export class UnsupportedRegistrySchemaError extends Error {
   readonly supported: number;
 
   constructor(found: number, supported: number) {
-    super(`Danh mục registry dùng định dạng phiên bản ${found}; bản tuhoc này chỉ đọc được phiên bản ${supported}.`);
+    super(`Registry index declares format version ${found}; this tuhoc build only reads version ${supported}.`);
     this.name = 'UnsupportedRegistrySchemaError';
     this.found = found;
     this.supported = supported;
@@ -275,41 +279,33 @@ export function isRegistryDataError(error: unknown): boolean {
  * wrong. `Catalog.test.tsx` asserts the boundary's wording is absent in every
  * failure case, and `index.test.ts` asserts these five are pairwise distinct.
  */
-export function describeRegistryError(error: unknown): string {
-  if (error instanceof RegistryNotConfiguredError) return error.message;
+export function describeRegistryError(error: unknown, t: Translate): string {
+  if (error instanceof RegistryNotConfiguredError) return t('registry.error.notConfigured');
 
   if (error instanceof UnsupportedRegistrySchemaError) {
-    return (
-      `Danh mục registry dùng định dạng phiên bản ${error.found}, còn bản tuhoc bạn đang chạy chỉ đọc được ` +
-      `phiên bản ${error.supported}. Nền tảng cần được cập nhật. Danh mục KHÔNG được đọc thử — đọc một định dạng ` +
-      'lạ theo phỏng đoán là cách sai lặng lẽ nhất.'
-    );
+    return t('registry.error.unsupportedSchema', String(error.found), String(error.supported));
   }
 
   if (error instanceof RegistryNotJsonError) {
-    return (
-      'Địa chỉ registry trả về một trang web chứ không phải danh mục: thân phản hồi của index.json không phải JSON' +
-      (error.contentType === null ? '' : ` (content-type: ${error.contentType})`) +
-      '. Thường là do địa chỉ registry sai, hoặc máy chủ trả trang 404 của chính nó thay cho tệp.'
+    return t(
+      'registry.error.notJson',
+      error.contentType === null ? '' : ` (content-type: ${error.contentType})`,
     );
   }
 
   if (error instanceof MalformedRegistryIndexError) {
-    return (
-      `Danh mục registry đọc được nhưng thiếu hoặc sai kiểu ở: ${error.missing.join(', ')}. ` +
-      'Đây là lỗi ở phía registry, không phải ở máy bạn.'
-    );
+    return t('registry.error.malformed', error.missing.join(', '));
   }
 
   if (error instanceof RegistryHttpError) {
-    return `Registry trả mã ${error.status} cho index.json. Địa chỉ registry có thể sai, hoặc registry đang gặp sự cố.`;
+    return t('registry.error.http', String(error.status));
   }
 
   // No response ever arrived. Ruling S1-F25: a CORS refusal in production is
   // byte-for-byte the same bare `TypeError` as being offline, and the browser
   // genuinely does not tell the page which. Naming one cause as fact is how
   // an entire misconfigured deploy told every visitor their wifi was bad.
-  return 'Không tải được danh mục registry. Có thể bạn đang ngoại tuyến, hoặc registry đang bị cấu hình sai (CORS/DNS).';
+  return t('registry.error.unreachable');
 }
 
 /* ------------------------------------------------------------------ *
@@ -319,7 +315,7 @@ export function describeRegistryError(error: unknown): string {
 /** Coarse runtime type of one catalog entry — the fields this app reads. */
 function entryProblems(value: unknown, at: string): string[] {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return [`${at} (không phải object)`];
+    return [`${at} (not an object)`];
   }
   const o = value as Partial<Record<keyof RegistryEntry, unknown>>;
   const bad: string[] = [];

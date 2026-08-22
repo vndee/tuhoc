@@ -24,6 +24,17 @@ let tab1: typeof import('./sessionIdentity');
 let tab2Identity: typeof import('./sessionIdentity');
 let RequireAuth: typeof import('./RequireAuth').RequireAuth;
 let meQueryKey: typeof import('../api/useMe').meQueryKey;
+/**
+ * `LanguageProvider` NHẬP ĐỘNG, trong cùng `vi.resetModules()` với
+ * `RequireAuth` — không phải ở đầu tệp.
+ *
+ * Mỗi "tab" ở đây là một ĐỒ THỊ MODULE riêng (đó là toàn bộ cơ chế của bài
+ * kiểm này). Một `LanguageProvider` nhập tĩnh dựng `LanguageContext` của đồ thị
+ * GỐC, trong khi `<RequireAuth>` vừa nhập đọc context của đồ thị MỚI — hai
+ * object khác nhau, nên provider không với tới được và `useLanguage()` ném.
+ * Cùng cái bẫy, cùng cách sửa như `sync/crossTabSession.test.tsx`.
+ */
+let LanguageProvider: typeof import('../i18n/LanguageProvider').LanguageProvider;
 
 beforeEach(async () => {
   vi.resetModules();
@@ -33,6 +44,7 @@ beforeEach(async () => {
   tab2Identity = await import('./sessionIdentity'); // tab 2 — tab được render
   RequireAuth = (await import('./RequireAuth')).RequireAuth;
   meQueryKey = (await import('../api/useMe')).meQueryKey;
+  LanguageProvider = (await import('../i18n/LanguageProvider')).LanguageProvider;
 });
 
 afterEach(() => {
@@ -45,7 +57,7 @@ function renderTab2() {
   qc.setQueryData(meQueryKey, { id: 'A', email: 'a@x.vn', name: 'Người A' });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/c/demo/p1']}>
+      <LanguageProvider><MemoryRouter initialEntries={['/c/demo/p1']}>
         <Routes>
           <Route
             path="/c/:courseId/:chapterId"
@@ -53,7 +65,7 @@ function renderTab2() {
           />
           <Route path="/login" element={<p>Màn đăng nhập</p>} />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
   );
 }

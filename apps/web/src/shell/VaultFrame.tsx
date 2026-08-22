@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { VaultClient, resolveVaultOrigin } from '../ai/vaultClient';
+import { DEFAULT_LANG, readStoredLang, t } from '../i18n';
+import { useLanguage } from '../i18n/LanguageProvider';
 
 /**
  * KHUNG KHO KHOÁ — một khung ẩn, gắn ĐÚNG MỘT LẦN cho cả ứng dụng.
@@ -75,16 +77,20 @@ export interface VaultFrameProviderProps {
  * một vòng tròn mãi mãi.
  */
 function originFromBuildConfig(): string | null {
+  // Ngôn ngữ đọc thẳng từ thiết bị: hàm này là hàm tự do, chạy trước mọi hook
+  // của component gọi nó, nên `useLanguage()` không dùng được ở đây.
+  const lang = readStoredLang() ?? DEFAULT_LANG;
   try {
-    return resolveVaultOrigin(import.meta.env);
+    return resolveVaultOrigin(import.meta.env, lang);
   } catch (e) {
-    console.error('[kho khoá] cấu hình sai, tính năng AI bị tắt:', e);
+    console.error(t(lang, 'vault.frame.configError'), e);
     return null;
   }
 }
 
 export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps) {
   const resolved = origin === undefined ? originFromBuildConfig() : origin;
+  const { lang, t: translate } = useLanguage();
 
   const [frameEl, setFrameEl] = useState<HTMLIFrameElement | null>(null);
   const [client, setClient] = useState<VaultClient | null>(null);
@@ -116,7 +122,7 @@ export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps
       setClient(null);
       return;
     }
-    const c = new VaultClient({ vaultOrigin: resolved, target });
+    const c = new VaultClient({ vaultOrigin: resolved, target, lang });
     setClient(c);
     return () => {
       // Bắt buộc: mỗi `VaultClient` gắn một listener trên `window`, và một
@@ -124,7 +130,10 @@ export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps
       c.dispose();
       setClient(null);
     };
-  }, [resolved, frameEl]);
+    // `lang` nằm trong danh sách: các câu lỗi mà `VaultClient` tự dựng
+    // (`timeout`, `aborted`) được gắn ngôn ngữ lúc dựng client, nên đổi ngôn
+    // ngữ mà không dựng lại client sẽ để lại những câu ấy ở tiếng cũ.
+  }, [resolved, frameEl, lang]);
 
   const value = useMemo<VaultFrameHandle>(
     () => ({ client, origin: resolved, expanded, setExpanded }),
@@ -144,9 +153,7 @@ export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps
         <div className={expanded ? 'vault-overlay' : undefined}>
           {expanded && (
             <div className="vault-overlay-bar">
-              <span className="vault-overlay-title">
-                Kho khoá — trang này chạy ở một địa chỉ riêng, tách khỏi trang bài học
-              </span>
+              <span className="vault-overlay-title">{translate('vault.frame.overlayTitle')}</span>
               {/*
                 Nút đóng nằm ở ĐÂY chứ không ở trang cấu hình: lớp phủ che kín
                 trang bên dưới, nên một nút "Đóng" nằm dưới lớp phủ là một nút
@@ -159,7 +166,7 @@ export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps
                   setExpanded(false);
                 }}
               >
-                Đóng
+                {translate('vault.frame.close')}
               </button>
             </div>
           )}
@@ -168,8 +175,25 @@ export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps
             // Origin, không đường dẫn: cổng khác = origin khác = trình duyệt
             // cách ly `localStorage`. Một đường dẫn `/vault/` trên cùng cổng sẽ
             // là CÙNG origin và phá huỷ toàn bộ mục đích của hệ thống con này.
-            src={`${resolved}/`}
-            title="Kho khoá"
+            //
+            // `?lang=` là ĐƯỜNG DUY NHẤT trang chính nói cho kho khoá biết ngôn
+            // ngữ người đọc (Task 5). Lựa chọn ấy nằm trong `localStorage` của
+            // origin NÀY, và trình duyệt cấm mã bên kia đọc nó — đó là cả mục
+            // đích của kiến trúc, nên nó phải được TRUYỀN chứ không được lấy.
+            //
+            // Không đi qua `postMessage`: `VaultRequest` là một union đóng mà cả
+            // hai phía phân nhánh theo, và S2-F8 xếp việc thêm thành viên vào đó
+            // là một thay đổi giao thức phải được người đọc bằng mắt. Ngôn ngữ
+            // hiển thị không đáng giá ấy — sai lệch tệ nhất của nó là chữ sai
+            // tiếng, không phải một quyền bị nới.
+            //
+            // Đổi ngôn ngữ ⇒ `src` đổi ⇒ khung NẠP LẠI, tức là xoá ô nhập key.
+            // Điều đó không với tới được người đang gõ key: bộ chọn ngôn ngữ
+            // nằm trên thanh công cụ, và khung khi mở ra là một lớp phủ che kín
+            // trang bên dưới (xem chú thích nút "Đóng" ngay trên). Người dùng
+            // không bấm được bộ chọn trong lúc khung đang mở.
+            src={`${resolved}/?lang=${lang}`}
+            title={translate('vault.frame.title')}
             // `allow-same-origin` ở đây là same-origin với CHÍNH KHO KHOÁ,
             // không phải với trang chính. Thiếu nó, khung nhận một origin mờ
             // đục và `localStorage` của nó ném — kho khoá không cất được gì. Vì

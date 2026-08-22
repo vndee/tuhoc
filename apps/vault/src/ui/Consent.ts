@@ -1,4 +1,5 @@
 import type { Activity } from '../guard';
+import { currentLocale, t } from '../lang';
 
 /**
  * Khung xác nhận + nhật ký của kho khoá.
@@ -62,7 +63,7 @@ function formatWhen(at: number): string {
   // `toLocaleString` có thể ném với một mốc thời gian rác; nhật ký không được
   // làm chết khung chỉ vì một dòng hỏng.
   try {
-    return new Date(at).toLocaleString('vi-VN');
+    return new Date(at).toLocaleString(currentLocale());
   } catch {
     return String(at);
   }
@@ -73,34 +74,24 @@ function formatWhen(at: number): string {
  *  khi bấm, không phải thứ họ ngồi đếm chữ số. */
 function formatChars(n: number): string {
   try {
-    return n.toLocaleString('vi-VN');
+    return n.toLocaleString(currentLocale());
   } catch {
     return String(n);
   }
 }
 
 function renderActivity(root: Element, deps: PanelDeps, activity: Activity): void {
-  root.appendChild(el('h3', 'Trợ lý AI đã gửi đi những gì'));
-  root.appendChild(
-    el(
-      'p',
-      'Nhật ký ghi thời điểm và SỐ KÝ TỰ đã gửi. Nội dung lời nhắc không được ghi lại ở đây — '
-        + 'một bản sao thứ hai của ghi chú riêng tư nằm cạnh key là điều kho khoá này từ chối tạo ra.',
-    ),
-  );
+  root.appendChild(el('h3', t('vault.log.title')));
+  root.appendChild(el('p', t('vault.log.blurb')));
 
   if (activity.calls.length === 0) {
-    root.appendChild(el('p', 'Chưa có lời gọi nào.'));
+    root.appendChild(el('p', t('vault.log.empty')));
   } else {
     // TỔNG trước, chi tiết sau. Ba con số rời nhau là ba con số phải cộng
     // nhẩm; câu hỏi người dùng thật sự đang trả lời — "đã có bao nhiêu chữ của
     // tôi rời khỏi máy này?" — chỉ có một con số.
     const total = activity.calls.reduce((n, c) => n + c.chars, 0);
-    const spent = el(
-      'p',
-      `Tổng cộng ${formatChars(total)} ký tự đã rời khỏi máy này, qua `
-        + `${String(activity.calls.length)} lời gọi.`,
-    );
+    const spent = el('p', t('vault.log.total', formatChars(total), formatChars(activity.calls.length)));
     spent.dataset.role = 'spent';
     spent.className = 'vault-spent';
     root.appendChild(spent);
@@ -111,8 +102,7 @@ function renderActivity(root: Element, deps: PanelDeps, activity: Activity): voi
       list.appendChild(
         el(
           'li',
-          `${formatWhen(c.at)} · ${formatChars(c.chars)} ký tự đã gửi · `
-            + `${c.providerId ?? 'nhà cung cấp không rõ'}`,
+          t('vault.log.entry', formatWhen(c.at), formatChars(c.chars), c.providerId ?? t('vault.log.unknownProvider')),
         ),
       );
     }
@@ -122,15 +112,11 @@ function renderActivity(root: Element, deps: PanelDeps, activity: Activity): voi
   const d = activity.denied;
   if (d.needs_consent > 0 || d.rate_limited > 0) {
     root.appendChild(
-      el(
-        'p',
-        `Kho khoá đã TỪ CHỐI ${d.rate_limited} lời gọi vì quá tần suất và `
-          + `${d.needs_consent} lời gọi vì chưa được xác nhận.`,
-      ),
+      el('p', t('vault.log.denied', formatChars(d.rate_limited), formatChars(d.needs_consent))),
     );
   }
 
-  const clear = el('button', 'Xoá nhật ký') as HTMLButtonElement;
+  const clear = el('button', t('vault.log.clear')) as HTMLButtonElement;
   clear.type = 'button';
   clear.dataset.role = 'clear-log';
   clear.addEventListener('click', () => {
@@ -159,28 +145,10 @@ function renderActivity(root: Element, deps: PanelDeps, activity: Activity): voi
 function renderConsentAsk(root: Element, deps: PanelDeps, activity: Activity): void {
   const repeat = activity.calls.length > 0;
 
-  root.appendChild(
-    el(
-      'h3',
-      repeat
-        ? 'Trợ lý AI xin phép gọi tiếp bằng key của bạn'
-        : 'Trợ lý AI muốn gọi ra ngoài bằng key của bạn',
-    ),
-  );
-  root.appendChild(
-    el(
-      'p',
-      repeat
-        ? 'Kho khoá đã dừng lại và hỏi lại trước khi gửi thêm. Nhật ký ngay bên dưới cho biết '
-          + 'chừng nào chữ đã rời khỏi máy này — hãy nhìn nó trước khi bấm lần này, vì mỗi cú '
-          + 'bấm mở đường cho một lượng chữ tương đương nữa. Nếu con số ấy lớn hơn những gì bạn '
-          + 'nhớ là mình đã hỏi, thì đừng bấm.'
-        : 'Trang bài học vừa yêu cầu kho khoá gọi nhà cung cấp AI. Kho khoá không cho lời gọi nào '
-          + 'đi ra trước khi bạn bấm nút dưới đây, và cú bấm này chỉ có hiệu lực trong phiên hiện tại.',
-    ),
-  );
+  root.appendChild(el('h3', t(repeat ? 'vault.consent.askAgainTitle' : 'vault.consent.askTitle')));
+  root.appendChild(el('p', t(repeat ? 'vault.consent.askAgainBody' : 'vault.consent.askBody')));
 
-  const btn = el('button', 'Cho phép trong phiên này') as HTMLButtonElement;
+  const btn = el('button', t('vault.consent.allow')) as HTMLButtonElement;
   btn.type = 'button';
   btn.dataset.role = 'consent';
   btn.addEventListener('click', (ev) => {

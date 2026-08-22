@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom';
 import { coursesQueryKey } from '../api/courses';
 import { describeFinding, importCourse, type ImportSource, type ImportStage } from '../course/import';
 import { manifestQueryKey } from '../course/loader';
+import type { MessageKey } from '../i18n';
+import { useLanguage } from '../i18n/LanguageProvider';
 import type { Finding } from '@tuhoc/course-format';
 
 /**
@@ -36,6 +38,7 @@ import type { Finding } from '@tuhoc/course-format';
  * worse than none.
  */
 export function ImportCourse() {
+  const { t, tNode } = useLanguage();
   const queryClient = useQueryClient();
   const [stage, setStage] = useState<ImportStage | null>(null);
   const [findings, setFindings] = useState<readonly Finding[] | null>(null);
@@ -78,6 +81,7 @@ export function ImportCourse() {
     abort.current = controller;
     try {
       const result = await importCourse(source, {
+        t,
         onStage: announceStage,
         // No `flushSync` here, and the difference is not an oversight: this
         // fires between network round trips with the main thread idle, so
@@ -130,15 +134,13 @@ export function ImportCourse() {
 
   return (
     <div className="import-page">
-      <h1 className="ch-title">Nhập khóa học</h1>
-      <p className="ch-lede">
-        Một khóa học là một gói <code>.zip</code>. Sau khi nhập, gói nằm trên máy bạn và đọc được cả khi mất mạng.
-      </p>
+      <h1 className="ch-title">{t('nav.import')}</h1>
+      <p className="ch-lede">{tNode('import.lede', <code>.zip</code>)}</p>
 
       <section className="import-way">
-        <h2 className="import-way-h">Từ tệp trên máy</h2>
+        <h2 className="import-way-h">{t('import.way.file')}</h2>
         <label className="import-file">
-          <span className="import-label">Chọn gói .zip</span>
+          <span className="import-label">{t('import.way.filePick')}</span>
           <input
             ref={fileInput}
             type="file"
@@ -153,7 +155,7 @@ export function ImportCourse() {
       </section>
 
       <section className="import-way">
-        <h2 className="import-way-h">Từ một đường dẫn .zip</h2>
+        <h2 className="import-way-h">{t('import.way.zipUrl')}</h2>
         <form
           className="import-row"
           onSubmit={(e) => {
@@ -162,7 +164,7 @@ export function ImportCourse() {
           }}
         >
           <label className="import-label" htmlFor="import-zip-url">
-            Đường dẫn tới tệp .zip
+            {t('import.way.zipUrlLabel')}
           </label>
           <input
             id="import-zip-url"
@@ -174,13 +176,13 @@ export function ImportCourse() {
             onChange={(e) => setZipUrl(e.target.value)}
           />
           <button type="submit" className="btn" disabled={busy || zipUrl.trim() === ''}>
-            Nhập từ đường dẫn
+            {t('import.way.zipUrlSubmit')}
           </button>
         </form>
       </section>
 
       <section className="import-way">
-        <h2 className="import-way-h">Từ repo GitHub công khai</h2>
+        <h2 className="import-way-h">{t('import.way.repo')}</h2>
         <form
           className="import-row"
           onSubmit={(e) => {
@@ -189,7 +191,7 @@ export function ImportCourse() {
           }}
         >
           <label className="import-label" htmlFor="import-git-url">
-            Đường dẫn repo
+            {t('import.way.repoLabel')}
           </label>
           <input
             id="import-git-url"
@@ -201,20 +203,18 @@ export function ImportCourse() {
             onChange={(e) => setGitUrl(e.target.value)}
           />
           <button type="submit" className="btn" disabled={busy || gitUrl.trim() === ''}>
-            Nhập từ repo
+            {t('import.way.repoSubmit')}
           </button>
         </form>
         <p className="import-note">
-          Chỉ nhập được từ repo <strong>công khai</strong>. Repo riêng tư cần token truy cập, và tuhoc cố ý không giữ
-          token của bạn. Nếu khóa học nằm trong repo riêng tư, hãy tải <code>.zip</code> của repo về máy rồi dùng
-          “Từ tệp trên máy” ở trên — kết quả giống hệt.
+          {tNode('import.way.repoNote', <strong>{t('import.way.repoNotePublic')}</strong>, <code>.zip</code>)}
         </p>
       </section>
 
       <div className="import-status" role="status" aria-live="polite">
         {busy && (
           <p className="import-busy">
-            {STAGE_TEXT[stage]}
+            {t(STAGE_KEY[stage])}
             {/*
               The repo route makes one request per file, and that is a wait
               worth counting rather than hiding: 313 files took 20.04 s in
@@ -230,7 +230,9 @@ export function ImportCourse() {
               which reads as if the scan were still downloading with one file
               to go. A count belongs to the phase that produced it.
             */}
-            {stage === 'fetching' && progress && ` ${progress.done}/${progress.total} tệp.`}
+            {stage === 'fetching' &&
+              progress &&
+              t('import.progress.files', String(progress.done), String(progress.total))}
           </p>
         )}
         {/*
@@ -242,14 +244,14 @@ export function ImportCourse() {
         */}
         {stage === 'fetching' && (
           <button type="button" className="btn" onClick={() => abort.current?.abort()}>
-            Huỷ
+            {t('import.cancel')}
           </button>
         )}
-        {cancelled && <p className="import-note">Đã huỷ nhập gói. Không có gì được lưu lại.</p>}
+        {cancelled && <p className="import-note">{t('import.cancelled')}</p>}
         {done && (
           <p className="import-ok">
-            Đã nhập <strong>{done.courseId}</strong> phiên bản {done.version}.{' '}
-            <Link to={`/c/${done.courseId}`}>Mở khóa học</Link>
+            {tNode('import.done', <strong>{done.courseId}</strong>, done.version)}
+            <Link to={`/c/${done.courseId}`}>{t('import.done.open')}</Link>
           </p>
         )}
         {/*
@@ -265,9 +267,11 @@ export function ImportCourse() {
         */}
         {done?.rerootedFrom && (
           <p className="import-note">
-            Gói nằm trong thư mục <code>{done.rerootedFrom}/</code> của tệp bạn chọn, nên tuhoc đã lấy thư mục đó làm
-            gốc gói
-            {done.droppedFiles ? ` và bỏ qua ${done.droppedFiles} tệp nằm ngoài nó` : ''}.
+            {tNode(
+              'import.reroot',
+              <code>{done.rerootedFrom}/</code>,
+              done.droppedFiles ? t('import.reroot.dropped', String(done.droppedFiles)) : '',
+            )}
           </p>
         )}
       </div>
@@ -282,15 +286,15 @@ export function ImportCourse() {
       */}
       {findings && findings.length > 0 && (
         <div className="import-findings" role="alert">
-          <h2 className="import-way-h">Không nhập được gói này</h2>
+          <h2 className="import-way-h">{t('import.failed.heading')}</h2>
           <p className="import-note">
             {findings.length === 1
-              ? 'Có một vấn đề cần sửa:'
-              : `Có ${findings.length} vấn đề, liệt kê hết ở đây để bạn sửa một lượt:`}
+              ? t('import.failed.one')
+              : t('import.failed.many', String(findings.length))}
           </p>
           <ul className="import-finding-list">
             {findings.map((f, i) => (
-              <li key={`${f.code}:${f.path}:${i}`}>{describeFinding(f)}</li>
+              <li key={`${f.code}:${f.path}:${i}`}>{describeFinding(f, t)}</li>
             ))}
           </ul>
         </div>
@@ -306,11 +310,11 @@ export function ImportCourse() {
  * download should be able to tell that from a reader watching a 20 MB
  * package get scanned.
  */
-const STAGE_TEXT: Record<ImportStage, string> = {
-  fetching: 'Đang tải gói…',
-  unpacking: 'Đang giải nén…',
-  checking: 'Đang kiểm tra nội dung gói…',
-  saving: 'Đang lưu vào máy bạn…',
+const STAGE_KEY: Record<ImportStage, MessageKey> = {
+  fetching: 'import.stage.fetching',
+  unpacking: 'import.stage.unpacking',
+  checking: 'import.stage.checking',
+  saving: 'import.stage.saving',
 };
 
 export default ImportCourse;

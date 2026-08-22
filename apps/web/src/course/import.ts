@@ -92,6 +92,7 @@ import {
 } from '@tuhoc/course-format';
 
 import { db, type PackageRow } from '../db/local';
+import type { MessageKey, Translate } from '../i18n';
 
 /* ------------------------------------------------------------------ *
  * The shapes
@@ -180,6 +181,14 @@ export interface ImportOptions {
    * is written to it.
    */
   signal?: AbortSignal;
+  /**
+   * Chữ cho người đọc. BẮT BUỘC, không mặc định.
+   *
+   * Module này không phải component và cố ý không có context nào để đọc —
+   * nó cũng chạy được ngoài React. Ngôn ngữ vì thế đi vào bằng tham số, và
+   * bắt buộc để `tsc` bắt mọi chỗ gọi tự nói ra nó đang nhập hộ ai.
+   */
+  t: Translate;
 }
 
 /**
@@ -245,12 +254,21 @@ function fail(code: string, path: string, detail: string): ImportResult {
  * path, a status, a version string) and dropped where it would only restate
  * the sentence in English.
  */
-export function describeFinding(f: Finding): string {
+export function describeFinding(f: Finding, t: Translate): string {
   const where = f.path && f.path !== PACKAGE_ROOT ? ` (${f.path})` : '';
-  const text = (VIETNAMESE as Readonly<Record<string, string | undefined>>)[f.code];
-  if (text === undefined) {
-    return `Gói có một vấn đề chưa được mô tả${where}: ${f.detail}`;
+  const key = (FINDING_KEY as Readonly<Record<string, MessageKey | undefined>>)[f.code];
+  if (key === undefined) {
+    return t('finding.undescribed', where, f.detail);
   }
+  // Ba khoá mang tham số là HẰNG SỐ của mã (trần MB, tên tệp manifest), nên
+  // chúng được điền ở đây thay vì ở bảng — bảng là hằng ở tầm module và
+  // không được chứa chữ đã dịch.
+  const text =
+    key === 'finding.TOO_LARGE'
+      ? t(key, String(Math.round(MAX_UNCOMPRESSED_BYTES / (1024 * 1024))))
+      : key === 'finding.MANIFEST_MISSING' || key === 'finding.MANIFEST_PARSE' || key === 'finding.MANIFEST_FIELD'
+        ? t(key, MANIFEST_PATH)
+        : t(key as Exclude<typeof key, 'finding.TOO_LARGE' | 'finding.MANIFEST_MISSING' | 'finding.MANIFEST_PARSE' | 'finding.MANIFEST_FIELD' | 'finding.undescribed'>);
   return CARRIES_ITS_OWN_DETAIL.has(f.code) ? `${text}${where} ${f.detail}` : `${text}${where}`;
 }
 
@@ -301,52 +319,53 @@ const CARRIES_ITS_OWN_DETAIL = new Set<string>([
  * string and a package built against a newer rule set can carry a code this
  * build has never heard of.
  */
-const VIETNAMESE: Readonly<Record<ImportFindingCode | FindingCode, string>> = {
-  /* --- packages/course-format, every tier ---------------------------- */
-  EMPTY_PACKAGE: 'Gói này rỗng — không có tệp nào bên trong.',
-  TOO_LARGE: `Gói vượt trần ${Math.round(MAX_UNCOMPRESSED_BYTES / (1024 * 1024))} MB sau khi giải nén.`,
-  PATH_ESCAPE: 'Một tệp trong gói trỏ ra ngoài thư mục gói. Gói này không an toàn để mở.',
-  MANIFEST_MISSING: `Gói thiếu ${MANIFEST_PATH} ở thư mục gốc — đó là tệp mô tả khóa học.`,
-  MANIFEST_PARSE: `${MANIFEST_PATH} không phải JSON hợp lệ.`,
-  MANIFEST_FIELD: `${MANIFEST_PATH} thiếu một trường bắt buộc hoặc trường đó sai kiểu.`,
-  SEMVER: 'Số phiên bản của khóa học không đúng dạng X.Y.Z.',
-  RUNTIME_RANGE: 'Khóa học yêu cầu một phiên bản runtime mà ứng dụng này không hỗ trợ.',
-  DUPLICATE_CHAPTER_ID: 'Hai chương dùng chung một mã id.',
-  CHAPTER_FILE_MISSING: 'Mục lục nhắc tới một tệp chương không có trong gói.',
-
-  /* --- packages/course-format, tier "content" only -------------------- */
-  SCRIPT_TAG: 'Chương này chứa thẻ <script>. Khóa học hạng "content" chỉ được chứa chữ và hình, không chứa mã chạy được.',
-  EVENT_HANDLER_ATTR:
-    'Chương này có thuộc tính bắt sự kiện (onclick, onerror…), tức là mã chạy được. Khóa học hạng "content" không được phép.',
-  JAVASCRIPT_URL: 'Chương này có liên kết javascript:, tức là mã chạy được. Khóa học hạng "content" không được phép.',
-  EMBEDDED_FRAME: 'Chương này nhúng một trang khác (iframe/embed/object). Khóa học hạng "content" không được phép.',
-  FORM_TAG: 'Chương này có biểu mẫu <form>. Khóa học hạng "content" không được phép — biểu mẫu gửi dữ liệu đi nơi khác.',
-  JS_FILE_IN_PACKAGE: 'Gói chứa tệp JavaScript, trong khi khóa học tự khai là hạng "content" (chỉ chữ và hình).',
-  TAG_ATTR_FLOOD: 'Một thẻ HTML trong gói mang quá nhiều thuộc tính để có thể là một tài liệu thật.',
-
-  /* --- this module ---------------------------------------------------- */
-  BAD_URL: 'Đường dẫn này không dùng được.',
-  FETCH_FAILED: 'Không tải được.',
-  FILE_READ_FAILED: 'Không đọc được tệp bạn chọn.',
-  HTTP_ERROR: 'Máy chủ từ chối yêu cầu.',
-  NOT_A_ZIP: 'Tệp này không phải là một tệp .zip đọc được. Hãy chắc rằng bạn chọn đúng gói .zip của khóa học.',
-  ZIP64_UNSUPPORTED: 'Tệp .zip này dùng một phần của định dạng zip64 mà tuhoc chưa đọc được.',
-  ARCHIVE_INDEX_MISMATCH:
-    'Gói này chứa tệp nén lồng nhau (một .zip bên trong — .docx, .xlsx và .pptx đều là .zip), nên mục lục của kho và dòng byte của nó không khớp nhau.',
-  DUPLICATE_ENTRY: 'Trong gói có hai tệp trùng tên nhau, nên không biết tệp nào mới là thật.',
-  PACKAGE_ROOT_AMBIGUOUS: 'Không rõ khóa học nào trong tệp này là khóa học bạn muốn nhập.',
-  UNPACKABLE_ENTRY: 'Repo có mục không đóng gói được.',
-  GIT_HOST_UNSUPPORTED: 'tuhoc chỉ nhập trực tiếp được từ GitHub.',
-  GIT_REPO_UNREACHABLE: 'Không mở được repo này.',
-  GIT_PATH_NOT_FOUND: 'Repo mở được, nhưng không tìm thấy thư mục bạn trỏ tới.',
-  GIT_RATE_LIMITED: 'GitHub đang tạm chặn vì có quá nhiều yêu cầu từ mạng của bạn.',
-  GIT_BAD_RESPONSE: 'Câu trả lời nhận được không phải của GitHub.',
-  GIT_TREE_TRUNCATED:
-    'Repo này quá lớn để đọc hết danh sách tệp trong một lần. Hãy tải .zip của repo về máy rồi nhập từ tệp.',
-  GIT_TOO_MANY_FILES: 'Repo này có quá nhiều tệp để nhập trực tiếp.',
-  WRITE_FAILED: 'Không lưu được gói vào bộ nhớ của trình duyệt.',
-  CANCELLED: 'Đã huỷ nhập gói. Không có gì được lưu lại.',
-  UNEXPECTED: 'Có lỗi ngoài dự kiến khi nhập gói. Hãy thử lại; nếu vẫn vậy, đây là chi tiết kỹ thuật để báo lỗi:',
+/**
+ * Mã phát hiện → KHOÁ trong catalog. Chữ sống ở `packages/i18n`, không ở đây:
+ * bảng này là hằng ở tầm module, dựng MỘT LẦN lúc nạp — trước khi có ngôn ngữ
+ * nào được chọn — nên nó không được phép chứa chữ đã dịch.
+ *
+ * `MessageKey` làm `tsc` kiểm rằng từng khoá tồn tại thật, và `import.test.ts`
+ * đi hết `FINDING_CODES` + {@link IMPORT_FINDING_CODES} rồi đỏ ở bất kỳ mã nào
+ * không có mục — nên một mã mới không lặng lẽ rơi xuống câu "chưa được mô tả".
+ */
+const FINDING_KEY: Readonly<Record<ImportFindingCode | FindingCode, MessageKey>> = {
+  EMPTY_PACKAGE: 'finding.EMPTY_PACKAGE',
+  TOO_LARGE: 'finding.TOO_LARGE',
+  PATH_ESCAPE: 'finding.PATH_ESCAPE',
+  MANIFEST_MISSING: 'finding.MANIFEST_MISSING',
+  MANIFEST_PARSE: 'finding.MANIFEST_PARSE',
+  MANIFEST_FIELD: 'finding.MANIFEST_FIELD',
+  SEMVER: 'finding.SEMVER',
+  RUNTIME_RANGE: 'finding.RUNTIME_RANGE',
+  DUPLICATE_CHAPTER_ID: 'finding.DUPLICATE_CHAPTER_ID',
+  CHAPTER_FILE_MISSING: 'finding.CHAPTER_FILE_MISSING',
+  SCRIPT_TAG: 'finding.SCRIPT_TAG',
+  EVENT_HANDLER_ATTR: 'finding.EVENT_HANDLER_ATTR',
+  JAVASCRIPT_URL: 'finding.JAVASCRIPT_URL',
+  EMBEDDED_FRAME: 'finding.EMBEDDED_FRAME',
+  FORM_TAG: 'finding.FORM_TAG',
+  JS_FILE_IN_PACKAGE: 'finding.JS_FILE_IN_PACKAGE',
+  TAG_ATTR_FLOOD: 'finding.TAG_ATTR_FLOOD',
+  BAD_URL: 'finding.BAD_URL',
+  FETCH_FAILED: 'finding.FETCH_FAILED',
+  FILE_READ_FAILED: 'finding.FILE_READ_FAILED',
+  HTTP_ERROR: 'finding.HTTP_ERROR',
+  NOT_A_ZIP: 'finding.NOT_A_ZIP',
+  ZIP64_UNSUPPORTED: 'finding.ZIP64_UNSUPPORTED',
+  ARCHIVE_INDEX_MISMATCH: 'finding.ARCHIVE_INDEX_MISMATCH',
+  DUPLICATE_ENTRY: 'finding.DUPLICATE_ENTRY',
+  PACKAGE_ROOT_AMBIGUOUS: 'finding.PACKAGE_ROOT_AMBIGUOUS',
+  UNPACKABLE_ENTRY: 'finding.UNPACKABLE_ENTRY',
+  GIT_HOST_UNSUPPORTED: 'finding.GIT_HOST_UNSUPPORTED',
+  GIT_REPO_UNREACHABLE: 'finding.GIT_REPO_UNREACHABLE',
+  GIT_PATH_NOT_FOUND: 'finding.GIT_PATH_NOT_FOUND',
+  GIT_RATE_LIMITED: 'finding.GIT_RATE_LIMITED',
+  GIT_BAD_RESPONSE: 'finding.GIT_BAD_RESPONSE',
+  GIT_TREE_TRUNCATED: 'finding.GIT_TREE_TRUNCATED',
+  GIT_TOO_MANY_FILES: 'finding.GIT_TOO_MANY_FILES',
+  WRITE_FAILED: 'finding.WRITE_FAILED',
+  CANCELLED: 'finding.CANCELLED',
+  UNEXPECTED: 'finding.UNEXPECTED',
 };
 
 /* ------------------------------------------------------------------ *
@@ -420,7 +439,7 @@ interface Rooted {
   droppedFiles?: number;
 }
 
-function rootPackage(files: ReadonlyMap<string, Uint8Array>): Rooted | { error: Finding } {
+function rootPackage(files: ReadonlyMap<string, Uint8Array>, t: Translate): Rooted | { error: Finding } {
   if (files.has(MANIFEST_PATH)) return { files: new Map(files) };
 
   const suffix = `/${MANIFEST_PATH}`;
@@ -447,7 +466,7 @@ function rootPackage(files: ReadonlyMap<string, Uint8Array>): Rooted | { error: 
       error: finding(
         'PACKAGE_ROOT_AMBIGUOUS',
         PACKAGE_ROOT,
-        `tệp này chứa ${roots.length} khóa học (${roots.join(', ')}); hãy nhập từng gói một.`,
+        t('import.detail.manyRoots', String(roots.length), roots.join(', ')),
       ),
     };
   }
@@ -492,22 +511,26 @@ function httpUrl(raw: string): URL | null {
  * reached the page as an `unhandledrejection`, and drew NOTHING. The reader
  * pressed the button and the page went back to how it was.
  */
-async function fetchBytes(url: string, signal?: AbortSignal): Promise<{ bytes: Uint8Array } | { error: Finding }> {
+async function fetchBytes(
+  url: string,
+  t: Translate,
+  signal?: AbortSignal,
+): Promise<{ bytes: Uint8Array } | { error: Finding }> {
   let res: Response;
   try {
     res = await fetch(url, { signal });
   } catch (cause) {
     if (aborted(cause)) return { error: cancelled() };
-    return { error: finding('FETCH_FAILED', url, fetchFailedDetail(cause)) };
+    return { error: finding('FETCH_FAILED', url, fetchFailedDetail(cause, t)) };
   }
   if (!res.ok) {
-    return { error: finding('HTTP_ERROR', url, `Máy chủ trả về HTTP ${res.status}.`) };
+    return { error: finding('HTTP_ERROR', url, t('import.detail.httpStatus', String(res.status))) };
   }
   try {
     return { bytes: new Uint8Array(await res.arrayBuffer()) };
   } catch (cause) {
     if (aborted(cause)) return { error: cancelled() };
-    return { error: finding('FETCH_FAILED', url, bodyCutOffDetail(cause)) };
+    return { error: finding('FETCH_FAILED', url, bodyCutOffDetail(cause, t)) };
   }
 }
 
@@ -537,11 +560,8 @@ function describeThrown(cause: unknown): string {
  * `access-control-allow-origin`, and neither does GitHub's own
  * `codeload.github.com` — see this module's header.
  */
-function fetchFailedDetail(cause: unknown): string {
-  return (
-    'Có thể bạn đang ngoại tuyến, hoặc máy chủ chứa tệp không cho phép trang khác tải trực tiếp (CORS). ' +
-    `Trình duyệt không cho biết là trường hợp nào. (${describeThrown(cause)})`
-  );
+function fetchFailedDetail(cause: unknown, t: Translate): string {
+  return t('import.detail.fetchFailed', describeThrown(cause));
 }
 
 /**
@@ -553,11 +573,8 @@ function fetchFailedDetail(cause: unknown): string {
  * to check two things that are fine. What is left is a connection that broke
  * mid-download, and the useful advice is the one that fits it: try again.
  */
-function bodyCutOffDetail(cause: unknown): string {
-  return (
-    'Máy chủ đã bắt đầu gửi tệp rồi kết nối đứt giữa chừng, nên gói tải về không đầy đủ. ' +
-    `Hãy thử lại — thường lần sau là được. (${describeThrown(cause)})`
-  );
+function bodyCutOffDetail(cause: unknown, t: Translate): string {
+  return t('import.detail.bodyCutOff', describeThrown(cause));
 }
 
 /* ------------------------------------------------------------------ *
@@ -696,11 +713,11 @@ interface TreeEntry {
 async function fetchGitHubRepo(
   repo: GitTarget,
   announce: (stage: ImportStage) => Promise<void>,
-  options: ImportOptions = {},
+  options: ImportOptions,
 ): Promise<{ files: Map<string, Uint8Array>; rerootedFrom?: string } | { error: Finding }> {
   const treeUrl = `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}/git/trees/${encodeURIComponent(repo.ref)}?recursive=1`;
   const at = `${repo.owner}/${repo.repo}`;
-  const { signal } = options;
+  const { signal, t } = options;
 
   await announce('fetching');
 
@@ -709,7 +726,7 @@ async function fetchGitHubRepo(
     res = await fetch(treeUrl, { headers: { Accept: 'application/vnd.github+json' }, signal });
   } catch (cause) {
     if (aborted(cause)) return { error: cancelled() };
-    return { error: finding('FETCH_FAILED', at, fetchFailedDetail(cause)) };
+    return { error: finding('FETCH_FAILED', at, fetchFailedDetail(cause, t)) };
   }
 
   if (res.status === 404) {
@@ -717,19 +734,17 @@ async function fetchGitHubRepo(
       error: finding(
         'GIT_REPO_UNREACHABLE',
         at,
-        'tuhoc chỉ nhập được từ repo Git CÔNG KHAI. Repo riêng tư cần token truy cập, và tuhoc cố ý không giữ token của bạn — ' +
-          'nếu khóa học nằm trong repo riêng tư, hãy tải .zip của repo về máy rồi dùng "Từ tệp trên máy". Kết quả giống hệt. ' +
-          'GitHub trả cùng một câu trả lời cho repo riêng tư và repo không tồn tại, nên cũng hãy kiểm tra lại đường dẫn.',
+        t('import.detail.privateRepo'),
       ),
     };
   }
   if (res.status === 403 || res.status === 429) {
     return {
-      error: finding('GIT_RATE_LIMITED', at, 'Hãy thử lại sau ít phút, hoặc tải .zip của repo về máy rồi nhập từ tệp.'),
+      error: finding('GIT_RATE_LIMITED', at, t('import.detail.rateLimited')),
     };
   }
   if (!res.ok) {
-    return { error: finding('HTTP_ERROR', at, `GitHub trả về HTTP ${res.status}.`) };
+    return { error: finding('HTTP_ERROR', at, t('import.detail.githubStatus', String(res.status))) };
   }
 
   // Inside a `try` for the same reason `arrayBuffer()` is in `fetchBytes`:
@@ -745,9 +760,7 @@ async function fetchGitHubRepo(
       error: finding(
         'GIT_BAD_RESPONSE',
         at,
-        'Máy chủ trả về nội dung không đọc được ở chỗ đáng lẽ là dữ liệu của GitHub. ' +
-          'Nếu bạn đang dùng Wi-Fi công cộng, có thể mạng đó đang chặn bằng một trang đăng nhập — ' +
-          `hãy đăng nhập vào mạng rồi thử lại. (${describeThrown(cause)})`,
+        t('import.detail.captivePortal', describeThrown(cause)),
       ),
     };
   }
@@ -763,7 +776,7 @@ async function fetchGitHubRepo(
       error: finding(
         'GIT_PATH_NOT_FOUND',
         at,
-        `Repo mở được, nhưng trong nhánh "${repo.ref}" không có thư mục "${repo.subdir}". Hãy kiểm tra lại đường dẫn.`,
+        t('import.detail.subdirMissing', repo.ref, repo.subdir),
       ),
     };
   }
@@ -793,12 +806,12 @@ async function fetchGitHubRepo(
       error: finding(
         'UNPACKABLE_ENTRY',
         firstBad.path,
-        `${unpackable.length} mục là symlink hoặc submodule; gói course chỉ chứa tệp thường. ` +
-          // This one fires on somebody ELSE's repo — measured on the real
-          // public `github/gitignore`, which has three symlinks — so the
-          // reader usually cannot fix the cause. Every other repo-route
-          // finding names the way out; this one did not.
-          'Nếu bạn không sửa được repo này, hãy tải .zip của nó về máy rồi dùng "Từ tệp trên máy".',
+        // This one fires on somebody ELSE's repo — measured on the real
+        // public `github/gitignore`, which has three symlinks — so the
+        // reader usually cannot fix the cause. Every other repo-route
+        // finding names the way out; this one did not, and the catalog
+        // entry carries that second sentence.
+        t('import.detail.unpackable', String(unpackable.length)),
       ),
     };
   }
@@ -808,7 +821,7 @@ async function fetchGitHubRepo(
       error: finding(
         'GIT_TOO_MANY_FILES',
         at,
-        `${blobs.length} tệp, trần là ${MAX_GIT_FILES}. Hãy tải .zip của repo về máy rồi nhập từ tệp.`,
+        t('import.detail.tooManyFiles', String(blobs.length), String(MAX_GIT_FILES)),
       ),
     };
   }
@@ -822,7 +835,7 @@ async function fetchGitHubRepo(
       error: finding(
         'TOO_LARGE',
         PACKAGE_ROOT,
-        `Repo khai báo ${declared} byte.`,
+        t('import.detail.repoDeclaredBytes', String(declared)),
       ),
     };
   }
@@ -839,7 +852,7 @@ async function fetchGitHubRepo(
     const batch = blobs.slice(i, i + GIT_FETCH_CONCURRENCY);
     const results = await Promise.all(
       batch.map((entry) =>
-        fetchBlob(`${rawBase}/${entry.path.split('/').map(encodeURIComponent).join('/')}`, signal),
+        fetchBlob(`${rawBase}/${entry.path.split('/').map(encodeURIComponent).join('/')}`, t, signal),
       ),
     );
     for (const [n, result] of results.entries()) {
@@ -853,12 +866,16 @@ async function fetchGitHubRepo(
 }
 
 /** One blob, with {@link GIT_BLOB_RETRIES} more goes if the network drops it. */
-async function fetchBlob(url: string, signal?: AbortSignal): Promise<{ bytes: Uint8Array } | { error: Finding }> {
-  let last = await fetchBytes(url, signal);
+async function fetchBlob(
+  url: string,
+  t: Translate,
+  signal?: AbortSignal,
+): Promise<{ bytes: Uint8Array } | { error: Finding }> {
+  let last = await fetchBytes(url, t, signal);
   for (let attempt = 0; attempt < GIT_BLOB_RETRIES; attempt++) {
     if (!('error' in last) || last.error.code !== 'FETCH_FAILED') return last;
     if (signal?.aborted === true) return { error: cancelled() };
-    last = await fetchBytes(url, signal);
+    last = await fetchBytes(url, t, signal);
   }
   return last;
 }
@@ -915,7 +932,7 @@ function hasZip64Locator(zip: Uint8Array): boolean {
   return false;
 }
 
-function readArchive(zip: Uint8Array): { files: Map<string, Uint8Array> } | { error: Finding } {
+function readArchive(zip: Uint8Array, t: Translate): { files: Map<string, Uint8Array> } | { error: Finding } {
   try {
     return { files: unpackZip(zip) };
   } catch (cause) {
@@ -936,9 +953,7 @@ function readArchive(zip: Uint8Array): { files: Map<string, Uint8Array> } | { er
         error: finding(
           'ARCHIVE_INDEX_MISMATCH',
           PACKAGE_ROOT,
-          'tuhoc đòi mục lục và dòng byte của kho khớp nhau từng tên — đó là hàng rào chặn kho "hai mặt", loại kho mà ' +
-            'trình quét đọc ra một đằng còn trình giải nén đọc ra một nẻo. Hãy bỏ các tệp nén ra khỏi gói (hoặc nén ' +
-            'chúng lại thành thư mục thường), rồi đóng gói bằng `tuhoc pack`.',
+          t('import.detail.nestedArchive'),
         ),
       };
     }
@@ -947,14 +962,13 @@ function readArchive(zip: Uint8Array): { files: Map<string, Uint8Array> } | { er
         error: finding(
           'ZIP64_UNSUPPORTED',
           PACKAGE_ROOT,
-          'Kho zip64 thông thường thì tuhoc đọc được; kho này dùng phần mà tuhoc từ chối đoán — quá 65.535 mục, ' +
-            'mục lục nằm quá mốc 4 GiB, hoặc bản ghi zip64 phiên bản 2. Hãy đóng gói bằng `tuhoc pack`.',
+          t('import.detail.zip64'),
         ),
       };
     }
     if (cause.code === 'MALFORMED') return { error: finding('NOT_A_ZIP', cause.entry, '') };
     if (cause.code === 'TOO_LARGE') {
-      return { error: finding('TOO_LARGE', cause.entry, `Đã đọc ${cause.bytesRead} byte thì dừng.`) };
+      return { error: finding('TOO_LARGE', cause.entry, t('import.detail.bytesRead', String(cause.bytesRead))) };
     }
     // PATH_ESCAPE and DUPLICATE_ENTRY carry the same names `validate.ts` uses.
     return { error: finding(cause.code, cause.entry, '') };
@@ -979,7 +993,7 @@ function readArchive(zip: Uint8Array): { files: Map<string, Uint8Array> } | { er
  * On success the package is in `db.packages` and `course/loader.ts` will
  * answer for it immediately, offline, in the same tick.
  */
-export async function importCourse(src: ImportSource, options: ImportOptions = {}): Promise<ImportResult> {
+export async function importCourse(src: ImportSource, options: ImportOptions): Promise<ImportResult> {
   try {
     return await runImport(src, options);
   } catch (cause) {
@@ -995,7 +1009,7 @@ export async function importCourse(src: ImportSource, options: ImportOptions = {
     // including one nobody predicted, so this returns the thrown message
     // rather than swallowing it: a bug report that quotes a real error is
     // worth more than a page that stayed silent.
-    return fail('UNEXPECTED', PACKAGE_ROOT, `(${describeThrown(cause)})`);
+    return fail('UNEXPECTED', PACKAGE_ROOT, options.t('import.detail.parenthetical', describeThrown(cause)));
   }
 }
 
@@ -1005,7 +1019,7 @@ async function runImport(src: ImportSource, options: ImportOptions): Promise<Imp
   const collected = await collect(src, announce, options);
   if ('error' in collected) return { ok: false, findings: [collected.error] };
 
-  const rooted = rootPackage(collected.files);
+  const rooted = rootPackage(collected.files, options.t);
   if ('error' in rooted) return { ok: false, findings: [rooted.error] };
 
   await announce('checking');
@@ -1039,7 +1053,7 @@ async function runImport(src: ImportSource, options: ImportOptions): Promise<Imp
     // a half-written course is one that opens and then 404s forever.
     await db.packages.put(row);
   } catch (cause) {
-    return fail('WRITE_FAILED', PACKAGE_ROOT, `(${describeThrown(cause)})`);
+    return fail('WRITE_FAILED', PACKAGE_ROOT, options.t('import.detail.parenthetical', describeThrown(cause)));
   }
 
   return {
@@ -1069,7 +1083,7 @@ async function collect(
         error: finding(
           'GIT_HOST_UNSUPPORTED',
           src.url,
-          'Với mọi nơi khác, hãy tải .zip của kho về máy rồi dùng "Từ tệp trên máy" — kết quả giống hệt.',
+          options.t('import.detail.otherHost'),
         ),
       };
     }
@@ -1100,22 +1114,21 @@ async function collect(
         error: finding(
           'FILE_READ_FAILED',
           src.file.name,
-          'Tệp có thể đã bị di chuyển, bị đổi, hoặc ổ đĩa chứa nó đã tháo ra sau khi bạn chọn. ' +
-            `Hãy chọn lại tệp. (${describeThrown(cause)})`,
+          options.t('import.detail.fileGone', describeThrown(cause)),
         ),
       };
     }
   } else {
     if (httpUrl(src.url) === null) {
-      return { error: finding('BAD_URL', src.url, 'Chỉ nhận đường dẫn bắt đầu bằng http:// hoặc https://.') };
+      return { error: finding('BAD_URL', src.url, options.t('import.detail.schemeOnly')) };
     }
-    const fetched = await fetchBytes(src.url, options.signal);
+    const fetched = await fetchBytes(src.url, options.t, options.signal);
     if ('error' in fetched) return { error: fetched.error };
     zip = fetched.bytes;
   }
 
   await announce('unpacking');
-  return readArchive(zip);
+  return readArchive(zip, options.t);
 }
 
 /**

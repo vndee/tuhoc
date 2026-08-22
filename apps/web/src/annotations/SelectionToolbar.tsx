@@ -80,6 +80,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type SelectionExcerpt, selectionExcerpt } from '../ai/prompts';
+import type { MessageKey } from '../i18n';
+import { useLanguage } from '../i18n/LanguageProvider';
 import { type Anchor, type AnchorColor, selectionToAnchor } from './anchor';
 import { isMapStale, type NormMap, normalizeContainer, rangeToFlat } from './normalize';
 import { paint, unpaint } from './painter';
@@ -145,12 +147,16 @@ export interface SelectionToolbarProps {
 }
 
 /** Colours in the order they are offered, matching `AnchorColor`'s own order.
- * The labels are what a screen reader announces — the swatches carry no text. */
-const PALETTE: readonly { readonly color: AnchorColor; readonly label: string }[] = [
-  { color: 'y', label: 'Tô màu vàng' },
-  { color: 'g', label: 'Tô màu xanh lá' },
-  { color: 'b', label: 'Tô màu xanh dương' },
-  { color: 'p', label: 'Tô màu tím' },
+ * The labels are what a screen reader announces — the swatches carry no text.
+ *
+ * KHOÁ, không phải chữ: bảng này là hằng số ở tầm module, dựng MỘT LẦN lúc nạp
+ * — trước khi có ngôn ngữ nào được chọn. `MessageKey` bắt `tsc` kiểm rằng cả
+ * bốn khoá tồn tại thật. */
+const PALETTE: readonly { readonly color: AnchorColor; readonly labelKey: MessageKey }[] = [
+  { color: 'y', labelKey: 'ann.color.yellow' },
+  { color: 'g', labelKey: 'ann.color.green' },
+  { color: 'b', labelKey: 'ann.color.blue' },
+  { color: 'p', labelKey: 'ann.color.purple' },
 ];
 
 /** The colour "Ghi chú" uses. The reader who wants a particular colour picks
@@ -163,7 +169,7 @@ const NOTE_COLOR: AnchorColor = 'y';
  * recognisable in the DOM rather than looking like a real annotation. */
 export const PENDING_ID_PREFIX = 'pending-';
 
-const SAVE_FAILED = 'Không lưu được ghi chú. Hãy thử tô lại.';
+const SAVE_FAILED: MessageKey = 'ann.saveFailed';
 /** How long the failure notice stays before it removes itself. */
 const FAILURE_MS = 8000;
 
@@ -345,6 +351,7 @@ export function SelectionToolbar({
   onDeepDive,
   suspended = false,
 }: SelectionToolbarProps) {
+  const { t } = useLanguage();
   const { create, list, orphans } = store;
   const root = content.root;
   const revision = content.revision;
@@ -540,21 +547,21 @@ export function SelectionToolbar({
           className={`ann-tb${spot.below ? ' ann-tb-below' : ''}`}
           style={{ left: `${spot.left}px`, top: `${spot.top}px` }}
           role="toolbar"
-          aria-label="Ghi chú đoạn đã chọn"
+          aria-label={t('ann.toolbarAria')}
           // Keeps the reader's selection alive across the click and keeps focus
           // where it was — the browser would otherwise collapse the selection
           // and focus the button. Deliberately on the container, so it covers
           // every control at once and cannot be forgotten on a new one.
           onMouseDown={(event) => event.preventDefault()}
         >
-          {PALETTE.map(({ color, label }) => (
+          {PALETTE.map(({ color, labelKey }) => (
             <button
               key={color}
               type="button"
               className={`ann-tb-swatch ann-${color}`}
               data-color={color}
-              aria-label={label}
-              title={label}
+              aria-label={t(labelKey)}
+              title={t(labelKey)}
               onClick={() => {
                 void createFrom(color, false);
               }}
@@ -567,11 +574,11 @@ export function SelectionToolbar({
               void createFrom(NOTE_COLOR, true);
             }}
           >
-            Ghi chú
+            {t('ann.note')}
           </button>
           {onDeepDive && (
             <button type="button" className="ann-tb-dive" onClick={deepDiveFrom}>
-              Đào sâu
+              {t('ann.deepDive')}
             </button>
           )}
         </div>
@@ -582,8 +589,8 @@ export function SelectionToolbar({
           role="alert"
           style={{ left: `${failure.left}px`, top: `${failure.top}px` }}
         >
-          <span>{SAVE_FAILED}</span>
-          <button type="button" aria-label="Đóng thông báo" onClick={() => setFailure(null)}>
+          <span>{t(SAVE_FAILED)}</span>
+          <button type="button" aria-label={t('ann.dismissAlert')} onClick={() => setFailure(null)}>
             ×
           </button>
         </div>

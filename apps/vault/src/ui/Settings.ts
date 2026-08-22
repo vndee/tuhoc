@@ -1,6 +1,7 @@
 import { checkAndConsume, clearActivity, grantConsent, hasConsent, readActivity } from '../guard';
 import type { GuardDecision } from '../guard';
 import { clearConfig, readConfig, readPublicConfig, writeConfig } from '../keystore';
+import { t } from '../lang';
 import type { PublicConfig, StoredConfig } from '../keystore';
 import { getProvider, listProviders } from '../providers';
 import { ProviderError } from '../providers/types';
@@ -84,7 +85,7 @@ export interface SettingsHandle {
  * là tiêu tiền thật của người dùng, và một lời nhắc dài biến một phép thử thành
  * một khoản phí. Bài kiểm ghim độ dài lại để nó không phình ra theo thời gian.
  */
-const TEST_PROMPT = 'Trả lời đúng một từ: OK';
+const testPrompt = (): string => t('vault.settings.testPrompt');
 
 /** Cắt phần trả lời hiện lại. Vòng lặp `break` ở đây cũng **huỷ luồng** (xem
  *  `finally` của `sseDataPayloads`), nên nó thật sự dừng cuộc gọi chứ không chỉ
@@ -104,16 +105,8 @@ const TEST_REPLY_CHARS = 60;
  * có lỗi" mà báo cáo Task 3 đã lo — một key OpenAI hoàn toàn đúng vẫn cho ra
  * "không gọi được nhà cung cấp".
  */
-const OPENAI_WARNING =
-  'Cảnh báo đã đo được (2026-08-22): OpenAI chặn đường sinh chữ bằng CORS khi gọi thẳng từ '
-  + 'trình duyệt — hồi đáp lỗi của họ không kèm Access-Control-Allow-Origin. Đường thành công '
-  + 'chưa đo được, nên OpenAI có thể không dùng được ở đây, và nếu có thì lỗi sai key sẽ hiện '
-  + 'ra là "không gọi được nhà cung cấp" chứ không phải "key bị từ chối". Hãy thử '
-  + '"Kiểm tra kết nối" trước khi tin vào nó. DeepSeek, OpenRouter, Groq và Anthropic đều đã '
-  + 'đo được là gọi thẳng từ trình duyệt được.';
-
 function warningFor(providerId: string): string {
-  return providerId === 'openai' ? OPENAI_WARNING : '';
+  return providerId === 'openai' ? t('vault.settings.openaiWarning') : '';
 }
 
 // ───────────────────────── dựng DOM ─────────────────────────
@@ -159,14 +152,8 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
   const stored = deps.readPublicConfig();
 
   // ── phần giải thích ──────────────────────────────────────────────────────
-  root.appendChild(el('h2', 'Trợ lý AI chạy bằng key của chính bạn'));
-  const why = el(
-    'p',
-    'Ô dán key nằm trong khung này, và khung này là một trang riêng ở một origin riêng. '
-      + 'Trình duyệt cấm mã của trang bài học đọc bất cứ thứ gì ở đây — kể cả ô bên dưới, kể cả '
-      + 'chỗ cất key. Trang bài học chỉ gửi câu hỏi vào và nhận chữ trả lời ra; nó không bao giờ '
-      + 'thấy key. Đó là lý do ô này không nằm ở trang cấu hình bên ngoài.',
-  );
+  root.appendChild(el('h2', t('vault.settings.title')));
+  const why = el('p', t('vault.settings.why'));
   why.className = 'vault-note';
   root.appendChild(why);
 
@@ -189,7 +176,7 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
   if (stored && providers.some((p) => p.id === stored.providerId)) {
     providerSel.value = stored.providerId;
   }
-  root.appendChild(field('Nhà cung cấp', providerSel));
+  root.appendChild(field(t('vault.settings.providerLabel'), providerSel));
 
   const warning = el('p');
   warning.dataset.role = 'provider-warning';
@@ -202,9 +189,7 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
   modelInput.dataset.role = 'model';
   modelInput.autocomplete = 'off';
   modelInput.spellcheck = false;
-  root.appendChild(
-    field('Mô hình', modelInput, 'Để nguyên nếu bạn không có lý do cụ thể để đổi.'),
-  );
+  root.appendChild(field(t('vault.settings.modelLabel'), modelInput, t('vault.settings.modelHint')));
 
   // ── key ──────────────────────────────────────────────────────────────────
   const secretInput = document.createElement('input');
@@ -215,23 +200,15 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
   secretInput.dataset.role = 'secret';
   secretInput.autocomplete = 'off';
   secretInput.spellcheck = false;
-  secretInput.placeholder = 'Dán key của bạn vào đây';
-  root.appendChild(
-    field(
-      'Key của bạn',
-      secretInput,
-      'Key ở lại đúng trình duyệt này, đúng thiết bị này. Nó không được đồng bộ, không đi qua '
-        + 'máy chủ của chúng tôi, và không có cách nào lấy lại nếu bạn xoá — hãy giữ bản gốc ở '
-        + 'trang của nhà cung cấp.',
-    ),
-  );
+  secretInput.placeholder = t('vault.settings.keyPlaceholder');
+  root.appendChild(field(t('vault.settings.keyLabel'), secretInput, t('vault.settings.keyHint')));
 
   // ── nút ──────────────────────────────────────────────────────────────────
   const actions = el('div');
   actions.className = 'vault-actions';
-  const saveBtn = button('save', 'Lưu key trên máy này');
-  const testBtn = button('test', 'Kiểm tra kết nối');
-  const clearBtn = button('clear', 'Xoá key khỏi máy này');
+  const saveBtn = button('save', t('vault.settings.save'));
+  const testBtn = button('test', t('vault.settings.test'));
+  const clearBtn = button('clear', t('vault.settings.clear'));
   clearBtn.className = 'vault-danger';
   actions.appendChild(saveBtn);
   actions.appendChild(testBtn);
@@ -278,8 +255,8 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
   function refreshCurrent(): void {
     const cfg = deps.readPublicConfig();
     current.textContent = cfg
-      ? `Máy này đã có key: ${cfg.providerId} · ${cfg.model}.`
-      : 'Máy này chưa có key nào.';
+      ? t('vault.settings.currentKey', cfg.providerId, cfg.model)
+      : t('vault.settings.noKey');
   }
 
   function applyProvider(): void {
@@ -293,7 +270,7 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
   function disarmClear(): void {
     if (!clearArmed) return;
     clearArmed = false;
-    clearBtn.textContent = 'Xoá key khỏi máy này';
+    clearBtn.textContent = t('vault.settings.clear');
   }
 
   // ── hành vi ──────────────────────────────────────────────────────────────
@@ -314,12 +291,12 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
     disarmClear();
     const secret = secretInput.value.trim();
     if (secret === '') {
-      say('Chưa dán key nào vào ô bên trên.');
+      say(t('vault.settings.noKeyTyped'));
       return;
     }
     const model = modelInput.value.trim();
     if (model === '') {
-      say('Chưa có tên mô hình.');
+      say(t('vault.settings.noModel'));
       return;
     }
     deps.writeConfig({ providerId: providerSel.value, model, apiKey: secret });
@@ -327,21 +304,21 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
     // thứ hai không ai cần, và nó sống tới khi khung bị đóng.
     secretInput.value = '';
     refreshCurrent();
-    say('Đã lưu key vào trình duyệt này. Bấm "Kiểm tra kết nối" để chắc chắn nó dùng được.');
+    say(t('vault.settings.saved'));
   });
 
   clearBtn.addEventListener('click', () => {
     if (!clearArmed) {
       clearArmed = true;
-      clearBtn.textContent = 'Bấm lần nữa để xoá';
-      say('Bấm lần nữa để xoá hẳn key khỏi trình duyệt này. Không có cách lấy lại.');
+      clearBtn.textContent = t('vault.settings.clearArmed');
+      say(t('vault.settings.clearWarning'));
       return;
     }
     disarmClear();
     deps.clearConfig();
     secretInput.value = '';
     refreshCurrent();
-    say('Đã xoá key khỏi trình duyệt này.');
+    say(t('vault.settings.cleared'));
   });
 
   testBtn.addEventListener('click', () => {
@@ -368,7 +345,7 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
     const providerId = providerSel.value;
     const model = modelInput.value.trim();
     if (model === '') {
-      say('Chưa có tên mô hình.');
+      say(t('vault.settings.noModel'));
       return;
     }
 
@@ -382,34 +359,34 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
       if (cfg && cfg.providerId === providerId) key = cfg.apiKey;
     }
     if (key === '') {
-      say('Chưa dán key nào, và máy này cũng chưa lưu key cho nhà cung cấp đang chọn.');
+      say(t('vault.settings.noKeyAnywhere'));
       return;
     }
 
-    const decision = deps.checkAndConsume({ chars: TEST_PROMPT.length, providerId });
+    const prompt = testPrompt();
+    const decision = deps.checkAndConsume({ chars: prompt.length, providerId });
     repaintPanel();
     if (!decision.allow) {
       say(
         decision.code === 'needs_consent'
-          ? 'Kho khoá chưa được xác nhận trong phiên này. Bấm nút "Cho phép trong phiên này" '
-            + 'ngay bên dưới rồi thử lại.'
-          : (decision.message ?? 'Kho khoá đang từ chối lời gọi này.'),
+          ? t('vault.settings.needsConsent')
+          : (decision.message ?? t('vault.settings.denied')),
       );
       return;
     }
 
     const provider = deps.getProvider(providerId);
     if (!provider) {
-      say('Kho khoá không biết nhà cung cấp này.');
+      say(t('vault.provider.unknown'));
       return;
     }
 
     testBtn.disabled = true;
-    say('Đang gọi nhà cung cấp…');
+    say(t('vault.settings.calling'));
     try {
       let reply = '';
       for await (const chunk of provider.chat(
-        { model, messages: [{ role: 'user', content: TEST_PROMPT }] },
+        { model, messages: [{ role: 'user', content: prompt }] },
         key,
       )) {
         reply += chunk;
@@ -417,11 +394,7 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
         // chỉ ngừng đọc và bỏ lại một kết nối treo.
         if (reply.length >= TEST_REPLY_CHARS) break;
       }
-      say(
-        reply === ''
-          ? 'Gọi được nhà cung cấp, nhưng mô hình không trả về chữ nào. Thử một mô hình khác.'
-          : `Gọi được nhà cung cấp. Mô hình trả lời: «${reply.trim()}»`,
-      );
+      say(reply === '' ? t('vault.settings.emptyReply') : t('vault.settings.reply', reply.trim()));
     } catch (e) {
       // `ProviderError` đã được Task 3 chứng minh là dựng HOÀN TOÀN từ hằng số
       // — thân hồi đáp 401 của nhà cung cấp có nguyên văn key trong đó, nên nó
@@ -429,13 +402,9 @@ export function renderSettings(root: Element, deps: SettingsDeps): SettingsHandl
       // câu hằng: `String(err)` là đường ngắn nhất để một `TypeError` mang URL,
       // `cause`, hay cả đối tượng yêu cầu đi thẳng lên màn hình.
       if (e instanceof ProviderError) {
-        say(
-          providerId === 'openai'
-            ? `${e.message} (Với OpenAI, xem cảnh báo CORS ở trên — lỗi này có thể không phải do key.)`
-            : e.message,
-        );
+        say(providerId === 'openai' ? t('vault.settings.openaiHint', e.message) : e.message);
       } else {
-        say('Kho khoá không hoàn tất được lời gọi tới nhà cung cấp.');
+        say(t('vault.provider.callFailed'));
       }
     } finally {
       testBtn.disabled = false;

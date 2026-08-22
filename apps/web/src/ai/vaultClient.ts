@@ -1,3 +1,4 @@
+import { t, type Lang } from '@tuhoc/i18n';
 import { PROTOCOL_VERSION, isVaultResponse } from '@vault-protocol';
 import type { VaultErrorCode, VaultRequest, VaultResponse } from '@vault-protocol';
 
@@ -70,6 +71,10 @@ export type VaultCancelRequest = Envelope & { kind: 'cancel'; cancelId: string }
 type OutboundMessage = VaultRequest | VaultCancelRequest;
 
 export interface VaultClientOptions {
+  /** Ngôn ngữ của các câu lỗi lớp này tự dựng (`timeout`, `aborted`). Bắt
+   *  buộc: một mặc định lặng lẽ ở đây là một câu tiếng Việt hiện ra giữa một
+   *  giao diện tiếng Anh, và không cổng nào hỏi. */
+  lang: Lang;
   /** Origin của khung kho khoá. Vừa là bộ lọc nhận, vừa là `targetOrigin` khi
    *  gửi — nên một giá trị sai một ký tự làm tính năng chết trong im lặng. */
   vaultOrigin: string;
@@ -127,14 +132,11 @@ function newId(): string {
  * còn cấu hình sai là một lỗi mà người deploy phải thấy ngay — mọi giá trị sai
  * hình dạng đều dẫn tới đúng một triệu chứng câm: "AI không trả lời".
  */
-export function resolveVaultOrigin(env: { VITE_VAULT_ORIGIN?: string }): string | null {
+export function resolveVaultOrigin(env: { VITE_VAULT_ORIGIN?: string }, lang: Lang): string | null {
   const raw = (env.VITE_VAULT_ORIGIN ?? '').trim();
   if (!raw) return null;
   if (!ORIGIN_SHAPE.test(raw)) {
-    throw new Error(
-      `VITE_VAULT_ORIGIN phải là một origin đúng nghĩa (scheme://host[:port]), ` +
-        `không dấu "/" cuối, không đường dẫn, không "*" — nhận được ${JSON.stringify(raw)}.`,
-    );
+    throw new Error(t(lang, 'ai.vault.originShape', JSON.stringify(raw)));
   }
   return raw;
 }
@@ -142,6 +144,7 @@ export function resolveVaultOrigin(env: { VITE_VAULT_ORIGIN?: string }): string 
 export class VaultClient {
   readonly vaultOrigin: string;
 
+  readonly #lang: Lang;
   readonly #target: Window;
   readonly #listenTo: Window;
   readonly #timeoutMs: number;
@@ -150,6 +153,7 @@ export class VaultClient {
 
   constructor(options: VaultClientOptions) {
     this.vaultOrigin = options.vaultOrigin;
+    this.#lang = options.lang;
     this.#target = options.target;
     this.#listenTo = options.listenTo ?? window;
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -164,7 +168,7 @@ export class VaultClient {
     this.#listenTo.removeEventListener('message', this.#onMessage);
     for (const [, p] of this.#pending) {
       p.release();
-      p.fail(new VaultError('timeout', 'Khung kho khoá đã bị tháo trong lúc đang chờ.'));
+      p.fail(new VaultError('timeout', t(this.#lang, 'ai.vault.frameDetached')));
     }
     this.#pending.clear();
   }
@@ -194,7 +198,7 @@ export class VaultClient {
         // Chưa gửi gì thì không có gì để huỷ — và quan trọng hơn, không được
         // gửi một lời gọi mà ta biết chắc sẽ huỷ ngay: nó tốn tiền của người
         // dùng ở phía nhà cung cấp.
-        reject(new VaultError('aborted', 'Đã huỷ trước khi gửi.'));
+        reject(new VaultError('aborted', t(this.#lang, 'ai.vault.abortedBeforeSend')));
         return;
       }
 
@@ -208,7 +212,7 @@ export class VaultClient {
           if (!this.#pending.has(id)) return;
           this.#drop(id);
           this.#send({ v: PROTOCOL_VERSION, id: newId(), kind: 'cancel', cancelId: id });
-          reject(new VaultError('aborted', 'Người dùng đã huỷ.'));
+          reject(new VaultError('aborted', t(this.#lang, 'ai.vault.abortedByUser')));
         };
         signal.addEventListener('abort', onAbort, { once: true });
         const releaseTimer = p.release;
@@ -279,13 +283,7 @@ export class VaultClient {
         if (timer !== undefined) clearTimeout(timer);
         timer = setTimeout(() => {
           this.#drop(id);
-          reject(
-            new VaultError(
-              'timeout',
-              `Kho khoá không trả lời sau ${String(this.#timeoutMs)} ms. ` +
-                `Khung có nạp được không, và origin có đúng không?`,
-            ),
-          );
+          reject(new VaultError('timeout', t(this.#lang, 'ai.vault.timeout', String(this.#timeoutMs))));
         }, this.#timeoutMs);
       },
       release: () => {

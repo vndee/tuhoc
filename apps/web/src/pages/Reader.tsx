@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
+import { useLanguage } from '../i18n/LanguageProvider';
 import { ChapterView } from '../reader/ChapterView';
 
 /**
@@ -13,6 +14,7 @@ import { ChapterView } from '../reader/ChapterView';
  */
 export function Reader() {
   const { courseId, chapterId } = useParams<{ courseId: string; chapterId: string }>();
+  const { t } = useLanguage();
 
   const manifestQuery = useQuery({
     queryKey: manifestQueryKey(courseId ?? ''),
@@ -21,13 +23,13 @@ export function Reader() {
   });
 
   if (courseId == null || chapterId == null) {
-    return <p className="ch-lede">Không tìm thấy chương này.</p>;
+    return <p className="ch-lede">{t('chapter.notFound')}</p>;
   }
   if (manifestQuery.isPending) {
-    return <p className="ch-lede">Đang tải khóa học…</p>;
+    return <p className="ch-lede">{t('course.loading')}</p>;
   }
   if (manifestQuery.isError) {
-    return <p className="ch-lede">{describeCourseError(manifestQuery.error)}</p>;
+    return <p className="ch-lede">{describeCourseError(manifestQuery.error, t)}</p>;
   }
 
   // Keep the part title alongside each chapter only long enough to find the
@@ -39,7 +41,7 @@ export function Reader() {
   );
   const index = chaptersWithPart.findIndex((c) => c.chapter.id === chapterId);
   if (index === -1) {
-    return <p className="ch-lede">Không tìm thấy chương này trong khóa học.</p>;
+    return <p className="ch-lede">{t('chapter.notFoundInCourse')}</p>;
   }
 
   return (

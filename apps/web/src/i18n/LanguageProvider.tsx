@@ -11,12 +11,18 @@ import {
   type Messages,
   type Translate,
 } from './index';
+import { tNode, type SlotArgs, type TranslateNode } from './tNode';
 
 export interface LanguageContextValue {
   lang: Lang;
   setLang: (next: Lang) => void;
   /** `t()` đã gắn `lang` — chỗ gọi không phải cầm theo ngôn ngữ hiện tại. */
   t: Translate;
+  /**
+   * `tNode()` đã gắn `lang`. CHỈ cho câu có thẻ nằm giữa chừng; mọi thứ khác
+   * dùng `t`, vốn trả `string` và đi được vào `aria-label`/`title`/`throw`.
+   */
+  tNode: TranslateNode;
 }
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
@@ -64,6 +70,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       lang,
       setLang,
       t: <K extends MessageKey>(key: K, ...args: MessageArgs<Messages[K]>) => t(lang, key, ...args),
+      tNode: <K extends MessageKey>(key: K, ...parts: SlotArgs<MessageArgs<Messages[K]>>) =>
+        tNode(lang, key, ...parts),
     }),
     [lang, setLang],
   );
