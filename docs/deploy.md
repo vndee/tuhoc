@@ -296,6 +296,34 @@ origin, lỗ đó đã là lỗ mất key.
 có Pages project nào**. Phép đo hai chiều của `frame-ancestors` (origin được phép nhúng được; origin
 khác rơi vào `chrome-error://`) chạy **trên máy**, không chạy trên hạ tầng thật.
 
+## 5c. Catalog registry (`VITE_REGISTRY_URL`) — **chưa có giá trị mặc định**
+
+Nền tảng đọc catalog từ **một** tệp `index.json` phục vụ qua GitHub Pages của repo registry.
+
+**Hôm nay chưa có repo registry công khai** (`git remote -v` rỗng), nên `PUBLIC_REGISTRY_BASE` được
+đặt là `null` **có chủ ý**: một URL bịa ra sẽ hỏng bằng một `TypeError` trần, **không phân biệt được
+với mất mạng** — đúng lớp lỗi mà ruling S1-F25 đã ghi (lỗi CORS ở production trông y hệt "người dùng
+ngoại tuyến", và một cấu hình deploy sai vì thế trở nên vô hình).
+
+```
+VITE_REGISTRY_URL = https://<gh-user>.github.io/<registry-repo>/index.json
+```
+
+**Chưa từng được đo qua một trình duyệt thật.** Hai điều đang là **suy luận**, không phải phép đo:
+
+1. **JS không đọc được `ETag` liên origin.** Đã `curl` vào GitHub Pages thật: có `etag`, có
+   `access-control-allow-origin: *`, **không có `Access-Control-Expose-Headers`**. Nhưng `curl`
+   **không cưỡng chế CORS** — trình duyệt mới cưỡng chế. Hệ quả: lớp cache theo ETag mà kế hoạch đề
+   ra **sẽ trơ** trên chính mục tiêu của nó, nên nó đã được **bỏ**; trình duyệt tự làm đúng việc ấy
+   nhờ `cache-control: max-age=600`.
+2. **Một `fetch` không header vẫn là "simple request"** mà Pages phục vụ được. Điều này **nhị phân**:
+   nó quyết định catalog có tải được ở production hay không. Gửi `If-None-Match` thì **không** — nó
+   không nằm trong danh sách an toàn, nên buộc preflight mà Pages không trả lời.
+
+⇒ **Phép kiểm sau khi dựng repo registry:** mở `https://tuhoc.<domain>/catalog` trong trình duyệt
+thật, và trong DevTools → Network khẳng định request `index.json` là **200 và không có preflight
+`OPTIONS`** đứng trước. Nếu có preflight, có ai đó vừa thêm một header.
+
 ## 6. Free-tier realities: cold starts, stacked
 
 Both free-tier pieces here sleep independently:

@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom';
 import { RequireAuth } from './auth/RequireAuth';
+import { Catalog } from './registry/Catalog';
 import { CourseHome } from './pages/CourseHome';
 import { Dashboard } from './pages/Dashboard';
 import { ImportCourse } from './pages/ImportCourse';
@@ -81,6 +82,29 @@ export function AppRoutes() {
         đi cấu hình một tính năng chỉ dùng được sau khi đăng nhập là mời họ đi
         một vòng vô ích.
       */}
+      {/*
+        `/catalog` (hệ thống con 3, Task 3) — duyệt registry course cộng đồng.
+        MỘT tệp được tải cho việc này (`index.json`), không gọi GitHub API.
+
+        Sau `RequireAuth`, cùng lý do `/import` đã ghi ở trên chứ không phải
+        theo thói quen: màn hình này tồn tại để dẫn tới một lần KÉO VỀ, và một
+        gói kéo về lúc chưa đăng nhập sẽ bị `clearLocalData()` xoá ở lần đăng
+        nhập kế tiếp. Mời người ta duyệt rồi lặng lẽ vứt thứ họ chọn thì tệ hơn
+        là hỏi họ đăng nhập trước.
+
+        Điều này KHÔNG mâu thuẫn với "bản tự chạy dùng được registry công khai
+        ở chế độ chỉ-đọc" (spec §1.1): ràng buộc ấy nói về cách nền tảng đọc
+        registry — không khoá, không token, không API — chứ không nói về việc
+        ai được đăng nhập vào bản tự chạy.
+      */}
+      <Route
+        path="/catalog"
+        element={
+          <RequireAuth>
+            <Catalog />
+          </RequireAuth>
+        }
+      />
       <Route
         path="/settings"
         element={

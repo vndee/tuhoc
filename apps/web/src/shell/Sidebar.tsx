@@ -65,6 +65,16 @@ function GlobalNav() {
         Nhập khóa học
       </NavLink>
       {/*
+        `/catalog` — cùng lý do đã ghi cho `/settings` ngay bên dưới, và cùng
+        cái bẫy: một màn hình chỉ tới được bằng cách gõ URL là màn hình không
+        ai tới (S1-F29). Đứng ngay sau "Nhập khóa học" vì hai mục ấy trả lời
+        cùng một câu hỏi — "lấy khóa học ở đâu" — và registry là câu trả lời mà
+        `EmptyLibrary` tới nay mới chỉ hứa bằng một câu văn.
+      */}
+      <NavLink to="/catalog" className="sb-nav-link">
+        Danh mục registry
+      </NavLink>
+      {/*
         Không có liên kết này thì `/settings` chỉ tới được bằng cách gõ URL, và
         một trang cấu hình không ai tới được là đúng hình dạng cổng mù #4
         (S1-F29) mà cả route ấy sinh ra để vá.
