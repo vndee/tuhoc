@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { type Anchor, anchorToRange, selectionToAnchor } from './anchor';
 import { flatToDom, isMapStale, type NormMap, normalizeContainer } from './normalize';
-import { realCourseFile } from '../test/realCourse';
+import { SAMPLE_CHAPTER, sampleCourseFile } from '../test/sampleCourse';
 import { highlightElements, highlightRects, paint, paintAll, unpaint } from './painter';
 
 /**
@@ -1092,11 +1092,11 @@ describe('highlightRects — highlight không hiển thị được', () => {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '../../../..');
-// Chương THẬT, không phải fixture — và từ task 11 nó không nằm trong repo nữa.
-// `realCourseFile` giải đường dẫn trong thư mục làm việc `courses/`, và ném ra
-// câu chỉ đúng lệnh phải chạy khi gói chưa được nạp về. Xem
-// apps/web/src/test/realCourse.ts.
-const CHAPTER = realCourseFile('chapters/p1-5.html');
+// Chương của một GÓI THẬT, không phải HTML viết trong tệp này.
+// `sampleCourseFile` giải đường dẫn trong thư mục làm việc `courses/`, và ném
+// ra câu chỉ đúng lệnh phải chạy khi gói chưa được bung. Xem
+// apps/web/src/test/sampleCourse.ts — kể cả vì sao course đổi ở task 13.
+const CHAPTER = sampleCourseFile(SAMPLE_CHAPTER);
 
 let katexLoaded = false;
 function loadKatex(): void {
@@ -1180,7 +1180,7 @@ function rng(seed: number): () => number {
  */
 const REAL_CHAPTER_MS = 240_000;
 
-describe('chương thật p1-5.html với KaTeX thật', () => {
+describe('chương thật p1-3.html của gói mẫu, với KaTeX thật', () => {
   const SOURCE = readFileSync(CHAPTER, 'utf8');
 
   it('tô 40 ghi chú trong MỘT lượt: chữ không đổi, mọi ghi chú đúng chỗ, gỡ ra khôi phục đúng', () => {

@@ -29,7 +29,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { anchorToRange, selectionToAnchor } from '../annotations/anchor';
 import { normalizeContainer } from '../annotations/normalize';
 import { type AnnotationRow, db, type PackageRow } from '../db/local';
-import { readRealCourseFile, REAL_COURSE_ID } from '../test/realCourse';
+import { readSampleCourseFile, SAMPLE_CHAPTER, SAMPLE_COURSE_ID } from '../test/sampleCourse';
 import { loadManifest } from './loader';
 import { applyUpdate, CourseKitUnavailableError, parseChapterInert, previewUpdate } from './version';
 
@@ -509,27 +509,42 @@ describe('previewUpdate — the chapter renderer', () => {
  * implementation and was the first one written here, projects `$H(X)$` as six
  * literal characters instead. The fixture suite above passes either way.
  *
- * This one does not. Measured on `courses/***REMOVED***/chapters/p1-5.html`
- * with 20 paragraphs left alone, 6 copy-edited and 4 deleted — the second row
- * is this block run with `resolveChapter`'s `renderKatex(root)` call removed:
+ * This one does not. Originally measured on the private textbook's
+ * `chapters/p1-5.html`; re-measured at task 13 on the public sample package's
+ * `chapters/p1-3.html`, with 20 paragraphs left alone, 6 copy-edited and 4
+ * deleted — the second row is this block run with `resolveChapter`'s
+ * `renderKatex(root)` call removed:
  *
- *     with renderKatex     20 exact ·  6 fuzzy ·  4 orphan
- *     without               1 exact ·  3 fuzzy · 26 orphan
+ *                       p1-5 (giáo trình riêng)      p1-3 (gói mẫu, task 13)
+ *     with renderKatex  20 exact ·  6 fuzzy ·  4 orphan   20 exact ·  6 fuzzy ·  4 orphan
+ *     without            1 exact ·  3 fuzzy · 26 orphan    4 exact · 14 fuzzy · 12 orphan
+ *     orphan GIẢ                              17                                 7
  *
- * 17 of those 26 phantom orphans are paragraphs the update does not touch, 5
- * are the copy-edited ones, 4 are the genuinely deleted ones.
+ * Hàng dưới được ĐO LẠI trên gói mẫu chứ không chép sang — thay `renderKatex`
+ * của `window.CourseKit` bằng một hàm rỗng và chạy lại đúng khối này. Nó là
+ * bằng chứng rằng chương mới cũng phân biệt được hai cài đặt: 26/30 anchor ở
+ * đây trích một công thức, và bỏ `renderKatex` đi thì 12 trong 30 ghi chú mất
+ * neo, 7 trong số đó là đoạn văn mà bản cập nhật không hề đụng tới.
+ *
+ * Nói thẳng chỗ yếu đi: 12 orphan giả yếu hơn 26, và 7 orphan GIẢ yếu hơn 17.
+ * Chương mẫu ngắn hơn và ít công thức hơn chương cũ, nên biên phân biệt hẹp
+ * lại — vẫn đủ để một cài đặt bỏ `renderKatex` đi làm bài này đỏ, nhưng đây là
+ * một sự mất mát đo được chứ không phải một sự tương đương.
  */
 
-// Chương THẬT, không phải fixture — và từ task 11 nó không nằm trong repo nữa.
-// `readRealCourseFile` đọc trong thư mục làm việc `courses/`, và ném ra câu chỉ
-// đúng lệnh phải chạy khi gói chưa được nạp về. Xem apps/web/src/test/realCourse.ts.
-const REAL_HTML = readRealCourseFile('chapters/p1-5.html');
-const REAL_COURSE = REAL_COURSE_ID;
+// Chương của một GÓI THẬT, không phải HTML viết trong tệp này.
+// `readSampleCourseFile` đọc trong thư mục làm việc `courses/`, và ném ra câu
+// chỉ đúng lệnh phải chạy khi gói chưa được bung. Xem
+// apps/web/src/test/sampleCourse.ts — kể cả vì sao course đổi ở task 13.
+const REAL_HTML = readSampleCourseFile(SAMPLE_CHAPTER);
+const REAL_COURSE = SAMPLE_COURSE_ID;
+/** `SAMPLE_CHAPTER` là đường dẫn trong gói; đây là `chapters[].id` tương ứng. */
+const REAL_CHAPTER_ID = 'p1-3';
 
 function realManifest(version: string): Record<string, unknown> {
   return {
     id: REAL_COURSE,
-    title: 'Lý thuyết thông tin',
+    title: 'Số dấu phẩy động',
     description: '',
     lang: 'vi',
     version,
@@ -537,7 +552,7 @@ function realManifest(version: string): Record<string, unknown> {
     parts: [
       {
         title: 'Phần I',
-        chapters: [{ id: 'p1-5', num: '1.5', title: 'Chương thật', short: 'Thật', file: 'chapters/p1-5.html' }],
+        chapters: [{ id: REAL_CHAPTER_ID, num: '1.3', title: 'Chương thật', short: 'Thật', file: SAMPLE_CHAPTER }],
       },
     ],
   };
@@ -550,7 +565,7 @@ function realPackage(version: string, html: string, pinnedAt: string): PackageRo
     courseId: REAL_COURSE,
     version,
     manifest,
-    files: { 'manifest.json': encode(JSON.stringify(manifest)), 'chapters/p1-5.html': encode(html) },
+    files: { 'manifest.json': encode(JSON.stringify(manifest)), [SAMPLE_CHAPTER]: encode(html) },
     pinnedAt,
   };
 }
@@ -591,10 +606,13 @@ function mathMask(data: string): boolean[] {
  * source: a run of at least 40 unmasked characters, with a word boundary well
  * inside it.
  *
- * The distinction has to be made per-CHARACTER rather than per-text-node. Only
- * ONE of p1-5's 32 long paragraphs is free of `$` altogether, so "pick a text
- * node with no maths in it" finds four candidates where six are needed; masking
- * finds 31.
+ * The distinction has to be made per-CHARACTER rather than per-text-node. On
+ * the private textbook's p1-5, only ONE of 32 long paragraphs was free of `$`
+ * altogether, so "pick a text node with no maths in it" found four candidates
+ * where six were needed, while masking found 31. Re-measured on the sample
+ * package's p1-3 at task 13: 55 long paragraphs, 12 free of `$`, and masking
+ * finds 48 — the same shape with more headroom, so the six the fixture needs
+ * are still chosen by measurement rather than by luck.
  */
 function proseSpot(p: Element): { node: Text; at: number } | null {
   const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
@@ -652,7 +670,7 @@ function realNote(id: string, anchor: unknown): AnnotationRow {
   return {
     id,
     courseId: REAL_COURSE,
-    chapterId: 'p1-5',
+    chapterId: REAL_CHAPTER_ID,
     anchor,
     note: 'x',
     createdAt: '2026-08-20T09:00:00.000Z',
@@ -679,7 +697,7 @@ function anchorParagraphs(groups: Record<string, readonly number[]>): Annotation
   return rows;
 }
 
-describe('previewUpdate — a real chapter of courses/***REMOVED***', () => {
+describe('previewUpdate — a real chapter of the sample package so-dau-phay-dong', () => {
   it('đếm đúng ba nhóm trên nội dung THẬT, với công thức đã dựng', async () => {
     const { intact, drift, gone } = realTargets();
     const built = buildRealV11(drift, gone);

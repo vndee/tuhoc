@@ -1,0 +1,90 @@
+{
+  "id": "so-dau-phay-dong",
+  "title": "Số dấu phẩy động",
+  "description": "Tám chương về vì sao 0,1 + 0,2 ≠ 0,3 — và cách viết mã số học biết trước sai số của chính nó.",
+  "lang": "vi",
+  "version": "1.0.0",
+  "runtime": "^1",
+  "tier": "interactive",
+  "license": "CC-BY-4.0",
+  "authors": [{ "name": "tuhoc course-authoring skill" }],
+  "generatedBy": "ai",
+  "parts": [
+    {
+      "title": "Phần 0 · Bài toán",
+      "chapters": [
+        {
+          "id": "p0-1",
+          "num": "0.1",
+          "title": "Vì sao 0,1 + 0,2 ≠ 0,3",
+          "short": "0,1 + 0,2 ≠ 0,3",
+          "file": "chapters/p0-1.html"
+        },
+        {
+          "id": "p0-2",
+          "num": "0.2",
+          "title": "Hữu hạn bit, vô hạn số",
+          "short": "Hữu hạn bit",
+          "file": "chapters/p0-2.html"
+        }
+      ]
+    },
+    {
+      "title": "Phần I · IEEE 754",
+      "chapters": [
+        {
+          "id": "p1-1",
+          "num": "1.1",
+          "title": "Ba trường: dấu, số mũ, phần định trị",
+          "short": "Ba trường",
+          "file": "chapters/p1-1.html"
+        },
+        {
+          "id": "p1-2",
+          "num": "1.2",
+          "title": "ULP — khoảng cách giữa hai số kề nhau",
+          "short": "ULP",
+          "file": "chapters/p1-2.html"
+        },
+        {
+          "id": "p1-3",
+          "num": "1.3",
+          "title": "Làm tròn, và định lý nửa ULP",
+          "short": "Làm tròn",
+          "file": "chapters/p1-3.html"
+        }
+      ]
+    },
+    {
+      "title": "Phần II · Sai số dồn",
+      "chapters": [
+        {
+          "id": "p2-1",
+          "num": "2.1",
+          "title": "Triệt tiêu tai họa",
+          "short": "Triệt tiêu tai họa",
+          "file": "chapters/p2-1.html"
+        },
+        {
+          "id": "p2-2",
+          "num": "2.2",
+          "title": "Cộng một triệu số",
+          "short": "Cộng một triệu số",
+          "file": "chapters/p2-2.html"
+        }
+      ]
+    },
+    {
+      "title": "Phụ lục",
+      "chapters": [
+        {
+          "id": "appx",
+          "num": "",
+          "title": "So sánh hai số thực: bảng quyết định",
+          "short": "So sánh số thực",
+          "file": "chapters/appx.html"
+        }
+      ]
+    }
+  ]
+}

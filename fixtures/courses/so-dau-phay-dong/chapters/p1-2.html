@@ -1,0 +1,155 @@
+<div class="ch-eyebrow">Phần I · IEEE 754 — Chương 1.2</div>
+<h1 class="ch-title">ULP — khoảng cách giữa hai số kề nhau</h1>
+<p class="ch-lede">Câu "kết quả này sai khoảng $10^{-9}$" gần như luôn là một câu vô nghĩa, và biết vì sao nó vô nghĩa là bước đầu tiên để nói được điều gì đó đúng. Sai $10^{-9}$ khi đại lượng cỡ $10^{-12}$ là sai hoàn toàn; sai $10^{-9}$ khi đại lượng cỡ $10^{6}$ là chính xác hơn mức phần cứng có thể đạt. Chương này dựng đơn vị đo duy nhất khiến câu ấy có nghĩa.</p>
+
+<h2 id="don-vi-sai">Vấn đề với đơn vị</h2>
+
+<p>Chương 0.2 nói lưới số biểu diễn được thưa dần theo độ lớn. Hệ quả trực tiếp là <b>không có</b> một ngưỡng sai số tuyệt đối nào dùng chung được cho cả trục số: bất kỳ con số cố định nào bạn chọn cũng vừa quá lỏng ở một đầu vừa quá chặt ở đầu kia.</p>
+
+<p>Sai số tương đối khá hơn — nó chính là đại lượng mà thiết kế dấu phẩy động cố giữ đều — nhưng nó cũng gãy ở hai chỗ. Chỗ thứ nhất là quanh $0$: $\left|\hat x - x\right| / |x|$ không định nghĩa được khi $x = 0$, và nổ tung khi $x$ nhỏ. Chỗ thứ hai tinh vi hơn: sai số tương đối không cho biết kết quả cách <b>số máy đúng</b> bao nhiêu bước, mà đó mới là thứ ta cần khi hỏi "hàm căn bậc hai của thư viện này có làm tròn đúng không".</p>
+
+<p>Đơn vị giải quyết cả hai là đơn vị của chính cái lưới.</p>
+
+<h2 id="dinh-nghia">Định nghĩa, và một chỗ hai sách nói khác nhau</h2>
+
+<div class="box def"><div class="box-h">Định nghĩa 1.3 — ULP</div>
+<p>Với $x$ thực khác $0$ trong dải chuẩn, <b>ULP</b> của $x$ (viết tắt của <i>unit in the last place</i>) là khoảng cách giữa hai số biểu diễn được kề nhau trong binade chứa $x$:
+$$\operatorname{ulp}(x) \;=\; 2^{\,\lfloor \log_2 |x| \rfloor \,-\, p \,+\, 1}.$$
+Với binary64, $p = 53$, nên $\operatorname{ulp}(1) = 2^{-52}$ và $\operatorname{ulp}(2^{k}) = 2^{k-52}$.</p></div>
+
+<p>Đây là hàm bậc thang: nó hằng số trên mỗi binade và nhảy gấp đôi tại mỗi luỹ thừa của $2$. Nó cũng chính là "khoảng cách trong binade $e$" mà Chương 0.2 tính được, chỉ khác là bây giờ ta viết nó như một hàm của $x$ thay vì của $e$.</p>
+
+<div class="box warn"><div class="box-h">Chỗ hay sai — ULP tại luỹ thừa của 2 có hai định nghĩa</div>
+<p>Tại $x = 2^{k}$ chẵn chòi, lưới bên trái và lưới bên phải có bước <b>khác nhau</b>: bên trái bước là $2^{k-53}$, bên phải là $2^{k-52}$. Vậy $\operatorname{ulp}(2^{k})$ bằng cái nào?</p>
+<p>Định nghĩa của Goldberg (và của Định nghĩa 1.3 ở trên) chọn bước bên <b>phải</b>. Định nghĩa của Harrison — được Muller và phần lớn tài liệu về hàm làm tròn đúng dùng — chọn khoảng cách giữa hai số máy <b>vây quanh</b> $x$, tức bước bên trái tại chính điểm $2^k$. Hai định nghĩa lệch nhau đúng một hệ số $2$, và <b>chỉ tại các luỹ thừa của 2</b>.</p>
+<p>Không có định nghĩa nào sai; chúng phục vụ hai câu hỏi khác nhau. Nhưng một cận sai số phát biểu bằng "$0{,}5$ ULP" có ý nghĩa khác hẳn tuỳ theo tác giả dùng cái nào, và sự khác biệt rơi đúng vào các điểm mà kiểm thử hay chọn làm ca thử. Khi đọc một bài báo về hàm làm tròn đúng, hãy tìm định nghĩa ULP của nó trước khi tin bất kỳ con số nào.</p></div>
+
+<div class="fig">
+  <div class="fig-head">
+    <div class="fig-num">Hình 1.2 · Tương tác</div>
+    <div class="fig-title">Hàm ULP trên tám binade mỗi phía</div>
+    <p class="fig-desc">Trục hoành là $\log_2 x$, trục tung là $\log_2 \operatorname{ulp}(x)$ — cả hai đều log, nên một hàm mũ trở thành đường thẳng. Nhìn kỹ chỗ bậc thang cắt đường nét đứt.</p>
+  </div>
+  <div class="fig-body"><div data-viz="ulp-curve"></div></div>
+  <div class="fig-foot">Bậc thang luôn nằm <b>ngay dưới hoặc trên</b> đường liên tục $x \cdot 2^{-52}$, không bao giờ xa quá một hệ số $2$. Đó là nội dung định lượng của Mệnh đề 1.4 dưới đây, và là lý do vì sao "ULP" và "sai số tương đối" nói gần như cùng một điều — nhưng chỉ <b>gần như</b>: sai lệch tới hai lần giữa chúng là chỗ mọi cận sai số chặt chẽ phải cẩn thận, và là lý do một cận phát biểu bằng ULP không dịch thẳng sang một cận phát biểu bằng phần trăm.</div>
+</div>
+
+<div class="box thm"><div class="box-h">Mệnh đề 1.4 — ULP kẹp giữa hai bội của độ lớn</div>
+<p>Với mọi $x \ne 0$ trong dải chuẩn của một hệ có $p$ bit định trị,
+$$2^{-p} \,|x| \;<\; \operatorname{ulp}(x) \;\le\; 2^{\,1-p} \,|x|,$$
+tức $\operatorname{ulp}(x)/|x|$ luôn nằm trong nửa khoảng $\left(\,2^{-p},\, 2^{1-p}\,\right]$ — dao động đúng một hệ số $2$ và không hơn.</p></div>
+
+<details class="deriv"><summary>Chứng minh</summary><div class="deriv-body">
+<p>Đặt $e = \lfloor \log_2 |x| \rfloor$, tức $2^{e} \le |x| < 2^{e+1}$. Theo Định nghĩa 1.3, $\operatorname{ulp}(x) = 2^{e-p+1}$.</p>
+<p>Cận trên: từ $2^{e} \le |x|$ suy ra $2^{e-p+1} \le |x| \cdot 2^{1-p}$, tức $\operatorname{ulp}(x) \le 2^{1-p}|x|$, với dấu bằng xảy ra đúng khi $|x| = 2^{e}$.</p>
+<p>Cận dưới: từ $|x| < 2^{e+1}$ suy ra $|x| \cdot 2^{-p} < 2^{e+1-p} = \operatorname{ulp}(x)$, bất đẳng thức ngặt vì bất đẳng thức nguồn ngặt. $\square$</p>
+<p>Hệ quả thực dụng: một sai số $k$ ULP tương ứng với sai số tương đối nằm đâu đó trong $\left[\,k \cdot 2^{-p},\; k \cdot 2^{1-p}\,\right)$ — <b>một khoảng, không phải một số</b>. Đổi qua đổi lại giữa hai đơn vị này mà quên khoảng bất định gấp đôi ấy là cách sinh ra những cận "chặt" mà thực ra sai một nửa. Trường hợp tệ nhất rơi đúng vào $x$ sát ngay dưới một luỹ thừa của $2$, và đó chính là chỗ hộp cảnh báo phía trên nói tới.</p>
+</div></details>
+
+<h2 id="nextafter">Định nghĩa thao tác: bước từng số một</h2>
+
+<p>Định nghĩa 1.3 nói ULP bằng công thức. Có một cách nói khác, không dùng lôgarit, và nó là cách phần cứng lẫn thư viện thực sự dùng: ULP là hiệu giữa $|x|$ và số biểu diễn được kế tiếp theo hướng ra xa $0$.</p>
+
+<p>Nhờ Định lý 1.2 của Chương 1.1, "số kế tiếp" là một phép cộng số nguyên. Toàn bộ hàm <code>nextafter</code> gói gọn trong bốn dòng:</p>
+
+<pre><code>double next_up(double x) {
+    uint64_t u;
+    memcpy(&amp;u, &amp;x, 8);
+    u += (x &gt;= 0) ? 1 : -1;   // chỉ đúng cho x không phải NaN
+    memcpy(&amp;x, &amp;u, 8);
+    return x;
+}</code></pre>
+
+<p>Cái đẹp của định nghĩa thao tác này là nó <b>không cần rẽ nhánh theo binade</b>. Khi $x$ là số lớn nhất của một binade, cộng $1$ vào chuỗi bit làm phần định trị tràn sang trường số mũ — và vì hai trường nằm liền nhau đúng theo thứ tự ấy, phép tràn ấy chính là "lên binade kế tiếp, định trị về $0$". Cấu trúc bit làm hộ việc mà nếu không có nó thì phải viết bằng lệnh rẽ nhánh.</p>
+
+<div class="fig">
+  <div class="fig-head">
+    <div class="fig-num">Hình 1.3 · Tương tác</div>
+    <div class="fig-title">Đi bộ qua từng số biểu diễn được</div>
+    <p class="fig-desc">Bấm nút để cộng hoặc trừ $1$ vào chuỗi bit. Theo dõi cột "ULP tại đây" và bấm cho tới khi nó đổi giá trị — đó là lúc bạn vừa bước qua ranh giới một binade.</p>
+  </div>
+  <div class="fig-body"><div data-viz="nextafter-walk"></div></div>
+  <div class="fig-foot">Xuất phát từ $1$ và bấm "số kề trước" một lần: ULP tụt đi <b>một nửa</b>, vì $1$ là điểm đầu của binade và số ngay trước nó thuộc binade dưới. Bấm "số kề sau" từ $1$ thì ULP không đổi — bất đối xứng ấy là toàn bộ nội dung của hộp cảnh báo về hai định nghĩa ULP, nhìn từ phía thao tác thay vì phía công thức.</div>
+</div>
+
+<h2 id="do-sai-so">Đo sai số bằng ULP, và vì sao nó là chuẩn mực</h2>
+
+<p>Với ULP trong tay, ta có một cách phát biểu chất lượng của một hàm mà không phụ thuộc vào độ lớn của đối số.</p>
+
+<div class="box def"><div class="box-h">Định nghĩa 1.5 — sai số tính bằng ULP</div>
+<p>Cho hàm toán học $f$ và cài đặt $\hat f$ của nó. Sai số của $\hat f$ tại $x$, tính bằng ULP, là
+$$\operatorname{err}(x) \;=\; \frac{\left|\hat f(x) - f(x)\right|}{\operatorname{ulp}\!\left(f(x)\right)} .$$
+Cài đặt được gọi là <b>làm tròn đúng</b> nếu $\hat f(x)$ luôn là số máy gần $f(x)$ nhất, tức $\operatorname{err}(x) \le 0{,}5$ với mọi $x$.</p></div>
+
+<p>Con số $0{,}5$ ULP là tiêu chuẩn vàng, và chuẩn IEEE 754 đòi hỏi nó cho năm phép cơ bản: cộng, trừ, nhân, chia và căn bậc hai. Chương 1.3 sẽ chứng minh vì sao đòi hỏi đó là <b>đạt được</b> chứ không phải một nguyện vọng.</p>
+
+<p>Với các hàm siêu việt — $\sin$, $\exp$, $\log$ — chuẩn chỉ <b>khuyến nghị</b>, và lý do là một trong những bài toán mở đẹp nhất của lĩnh vực này.</p>
+
+<div class="box res"><div class="box-h">Neo về nghiên cứu — bài toán của thợ làm bàn</div>
+<p>Muốn làm tròn đúng $\exp(x)$, bạn phải tính $\exp(x)$ với đủ chữ số để biết nó nằm về phía nào của điểm giữa hai số máy. Bao nhiêu chữ số là đủ? Câu trả lời phụ thuộc vào giá trị $\exp(x)$ tiến sát điểm giữa đến mức nào — và không có lý thuyết nào cho trước một cận. Đây là <b>bài toán của thợ làm bàn</b> (table maker's dilemma), đặt tên theo những người soạn bảng lôgarit thế kỷ 19 gặp đúng khó khăn ấy.</p>
+<p>Với binary64 thì cận đã được tìm ra bằng cách <b>vét cạn</b> cho từng hàm một, mất hàng năm máy tính: người ta biết rằng khoảng $118$ bit là đủ cho $\exp$, chẳng hạn. Nhưng đó là một sự thật thực nghiệm về một định dạng cụ thể, không phải một định lý. Đó là lý do vì sao <code>sin</code> của hai thư viện toán học khác nhau có thể trả về hai kết quả lệch nhau một ULP, và vì sao <b>một chương trình số học đổi thư viện toán có thể đổi kết quả</b> — điều rất đáng biết trước khi bạn dành một tuần tìm "lỗi" trong mã của chính mình.</p></div>
+
+<div class="box pitfall"><div class="box-h">Cạm bẫy — mẫu số là $\operatorname{ulp}(f(x))$, không phải $\operatorname{ulp}(x)$</div>
+<p>Định nghĩa 1.5 chia cho ULP của <b>giá trị đúng ở đầu ra</b>. Chia nhầm cho ULP của đầu vào là một lỗi thường gặp, và nó không phải một lỗi nhỏ: với $f(x) = \exp(x)$ tại $x = 20$, ta có $\operatorname{ulp}(20) \approx 3{,}6 \times 10^{-15}$ còn $\operatorname{ulp}(\exp(20)) \approx 8{,}9 \times 10^{-8}$ — lệch nhau <b>hơn mười tỉ lần</b>.</p>
+<p>Một bộ kiểm thử chia nhầm mẫu số sẽ báo hàm mũ của bạn sai hàng tỉ ULP và bạn sẽ đi tìm lỗi ở chỗ không có lỗi. Chương 2.1 có một chỗ tương tự đáng cảnh giác: ở đó mẫu số phải là giá trị <em>đúng</em> chứ không phải giá trị <em>tính được</em>, và nhầm chỗ ấy làm một phép triệt tiêu tai họa trông như vô hại.</p></div>
+
+<div class="keyfacts"><div class="box-h">Chốt chương</div>
+<ul>
+<li>$\operatorname{ulp}(x) = 2^{\lfloor \log_2|x|\rfloor - p + 1}$ là hàm bậc thang: hằng số trên mỗi binade, gấp đôi tại mỗi luỹ thừa của $2$.</li>
+<li>Tại các luỹ thừa của $2$ có <b>hai</b> định nghĩa ULP dùng song song trong tài liệu, lệch nhau một hệ số $2$. Kiểm định nghĩa trước khi tin một cận.</li>
+<li>Tỉ số $\operatorname{ulp}(x)/|x|$ luôn nằm trong $\left(2^{-p}, 2^{1-p}\right]$ — nên đổi giữa "ULP" và "sai số tương đối" luôn kèm một bất định gấp đôi.</li>
+<li>Nhờ Định lý 1.2, "số biểu diễn được kế tiếp" là phép cộng $1$ vào chuỗi bit — không rẽ nhánh, kể cả khi vượt qua ranh giới binade.</li>
+<li>Năm phép cơ bản được chuẩn bắt buộc làm tròn đúng ($\le 0{,}5$ ULP); các hàm siêu việt thì không, vì bài toán của thợ làm bàn chưa có lời giải lý thuyết.</li>
+</ul></div>
+
+<h2 id="bai-tap">Bài tập</h2>
+
+<div class="box ex"><div class="box-h">Bài 1 · Tính ULP bằng tay · ★</div>
+<p>Với binary64 ($p = 53$), tính $\operatorname{ulp}$ của các số sau theo Định nghĩa 1.3.</p>
+<p>(a) $\operatorname{ulp}(1)$, $\operatorname{ulp}(1{,}5)$, $\operatorname{ulp}(1{,}999)$.</p>
+<p>(b) $\operatorname{ulp}(2)$. So với câu (a) và giải thích chỗ nhảy.</p>
+<p>(c) Số nguyên dương nhỏ nhất mà binary64 <b>không</b> biểu diễn được chính xác là số nào?</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Cả ba đều nằm trong binade $[1, 2)$, nên $\lfloor \log_2 x\rfloor = 0$ và $\operatorname{ulp} = 2^{0-53+1} = 2^{-52} \approx 2{,}22 \times 10^{-16}$ cho cả ba. ULP không đổi trong lòng một binade — đó là điểm của bài này.</p>
+<p><b>(b)</b> $\operatorname{ulp}(2) = 2^{1-52} = 2^{-51}$, gấp đôi. Chỗ nhảy nằm đúng tại $x = 2$ vì đó là điểm đầu của binade kế tiếp.</p>
+<p><b>(c)</b> $2^{53} + 1$. Với $x$ trong binade $[2^{53}, 2^{54})$ ta có $\operatorname{ulp}(x) = 2^{53-52} = 2$, nên chỉ các số chẵn biểu diễn được. Mọi số nguyên tới $2^{53}$ đều biểu diễn được vì ULP ở đó không quá $1$.</p>
+<p>Con số $2^{53} = 9\,007\,199\,254\,740\,992$ đáng nhớ: nó là lý do JavaScript — vốn chỉ có một kiểu số — không thể mang mã định danh $64$ bit mà không mất bit, và là lý do <code>BigInt</code> phải tồn tại. Nó cũng là con số làm cho ví dụ ở Chương 2.2 chạy được: ở ngay trên nó, cộng $1$ vào một số là một phép <b>không làm gì cả</b>.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 2 · Sai số của một hàm thư viện · ★★</div>
+<p>Một thư viện tính $\sqrt{2}$ và trả về $1{,}4142135623730949$. Giá trị đúng tới $20$ chữ số là $1{,}4142135623730950488\ldots$</p>
+<p>(a) Sai số tuyệt đối là bao nhiêu?</p>
+<p>(b) Đổi sang ULP. Cài đặt này có làm tròn đúng không?</p>
+<p>(c) Cùng thư viện tính $\sqrt{2} \times 10^{8}$ và sai lệch $1{,}5 \times 10^{-8}$ so với giá trị đúng. Kết quả này tốt hơn hay tệ hơn câu (b)?</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Khoảng $1{,}5 \times 10^{-16}$.</p>
+<p><b>(b)</b> $\sqrt{2}$ nằm trong binade $[1,2)$ nên $\operatorname{ulp} = 2^{-52} \approx 2{,}22 \times 10^{-16}$. Vậy sai số cỡ $0{,}67$ ULP — <b>lớn hơn</b> $0{,}5$, nên cài đặt này <b>không</b> làm tròn đúng. Nó lệch một số máy so với kết quả tốt nhất có thể.</p>
+<p>Đáng nói: chuẩn IEEE 754 <em>bắt buộc</em> căn bậc hai phải làm tròn đúng, nên nếu con số này đến từ lệnh <code>sqrt</code> của phần cứng thì phần cứng vi phạm chuẩn. Trong thực tế nó thường đến từ một hàm xấp xỉ tự viết, và bài này là cách phát hiện ra điều đó.</p>
+<p><b>(c)</b> Tốt hơn nhiều. Giá trị $\sqrt{2} \times 10^{8} \approx 1{,}414 \times 10^{8}$ nằm trong binade $[2^{27}, 2^{28})$, nên $\operatorname{ulp} = 2^{27-52} = 2^{-25} \approx 2{,}98 \times 10^{-8}$. Sai số $1{,}5 \times 10^{-8}$ là khoảng $0{,}50$ ULP — vừa đúng ngưỡng làm tròn đúng.</p>
+<p>Hai câu này là toàn bộ lý do chương tồn tại: sai số tuyệt đối ở (c) lớn hơn ở (b) tám bậc, mà chất lượng lại tốt hơn. Không có ULP thì hai con số ấy không so sánh được với nhau bằng bất kỳ cách nào.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 3 · Cài đặt nextafter và bẫy của nó · ★★★</div>
+<p>Đoạn mã <code>next_up</code> ở trên có một câu bình luận thú nhận rằng nó chỉ đúng cho $x$ không phải NaN. Hãy tìm hết các trường hợp nó hỏng.</p>
+<p>(a) Chuyện gì xảy ra với $x = +0$? Với $x = -0$?</p>
+<p>(b) Chuyện gì xảy ra với $x$ là số dương lớn nhất? Với $x = +\infty$?</p>
+<p>(c) Vá lại hàm cho đúng với mọi đầu vào hữu hạn, kể cả $\pm 0$. Có thể làm mà không thêm nhánh nào cho $-0$ không?</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Với $x = +0$, chuỗi bit toàn $0$, cộng $1$ cho chuỗi $\texttt{0}\ldots\texttt{01}$, tức số dưới chuẩn dương nhỏ nhất $2^{-1074}$. <b>Đúng.</b></p>
+<p>Với $x = -0$, chuỗi bit là $\texttt{1000}\ldots\texttt{0}$. Điều kiện <code>x &gt;= 0</code> đúng (vì $-0 = 0$ theo phép so sánh!), nên hàm cộng $1$, cho $\texttt{1000}\ldots\texttt{01}$ — tức số dưới chuẩn <b>âm</b> nhỏ nhất, $-2^{-1074}$. Sai hướng. Đây là chỗ $-0$ ở Chương 1.1 quay lại cắn: phép so sánh không phân biệt được hai giá trị mà chuỗi bit thì có.</p>
+<p><b>(b)</b> Với $x$ là số hữu hạn dương lớn nhất, cộng $1$ cho $E = 2047, M = 0$, tức $+\infty$. Đúng theo chuẩn. Với $x = +\infty$, cộng $1$ cho $E = 2047, M = 1$, tức một $\mathrm{NaN}$ — chuẩn nói <code>nextafter</code> tại $+\infty$ phải trả về $+\infty$, nên đây là lỗi.</p>
+<p><b>(c)</b> Được, và cách gọn là xử lý $-0$ <b>trước</b> bằng chính số học dấu phẩy động thay vì bằng nhánh trên chuỗi bit:</p>
+<pre><code>double next_up(double x) {
+    if (isnan(x) || x == INFINITY) return x;
+    if (x == 0.0) return 0x1p-1074;          // bắt cả +0 lẫn −0
+    uint64_t u; memcpy(&amp;u, &amp;x, 8);
+    u += (x &gt; 0) ? 1 : -1;                   // dấu &gt; chứ không phải &gt;=
+    memcpy(&amp;x, &amp;u, 8);
+    return x;
+}</code></pre>
+<p>Nhánh <code>x == 0.0</code> bắt cả hai số không cùng lúc, chính xác vì phép so sánh <em>không</em> phân biệt chúng — cùng một tính chất gây lỗi ở câu (a) lại là thứ làm cho bản vá gọn. Và điều kiện đổi từ <code>&gt;=</code> sang <code>&gt;</code> chỉ để phòng xa, vì trường hợp bằng đã bị nhánh trên bắt mất rồi.</p>
+<p>Chú ý thứ tự: kiểm $\mathrm{NaN}$ phải đứng đầu, vì <code>x == 0.0</code> trả về "sai" cho $\mathrm{NaN}$ nhưng <code>x &gt; 0</code> cũng trả về "sai", nên nếu không chặn sớm thì $\mathrm{NaN}$ sẽ đi vào nhánh trừ và biến thành một $\mathrm{NaN}$ khác. Không sập, không sai rõ ràng — chỉ là một giá trị hỏng khác đi một chút, tức đúng loại lỗi khó lần nhất.</p>
+</div></details>
+</div>

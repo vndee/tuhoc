@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   COURSE_TITLE,
   PASSWORD,
+  REAL_COURSE_ID,
   courseHomeChapterLink,
   expectVizCanvasDrawn,
   freshEmail,
@@ -9,6 +10,11 @@ import {
   loginExistingUser,
   registerNewUser,
 } from './helpers';
+
+/** Chương dùng ở cả bốn tệp e2e: nó có mô phỏng VÀ có đoạn văn xuôi thuần. */
+const CHAPTER_ID = 'p2-2';
+/** Mô phỏng của p2-2. Nó dựng HAI `Plot` trong một host — xem expectVizCanvasDrawn. */
+const CHAPTER_VIZ = 'sum-drift';
 
 /**
  * Task 17 — the P1 end-to-end gate. This is the only test in this repo
@@ -28,15 +34,18 @@ import {
  *   sees that progress on a second device. The reading experience is not
  *   worse than the original single-file textbook.
  *
- * Chapter/selector choice: p2-10 ("Kênh Gaussian và water-filling") and
- * `[data-viz="waterfill"]` are not arbitrary — they are named directly in
- * the task-17 brief as the contractual selectors earlier tasks were told
- * to preserve. Verified against the actual course package before writing
- * this file: `courses/***REMOVED***/chapters/p2-10.html` contains
- * exactly `data-viz="waterfill"` and `data-viz="shannon-limit"`, and
- * `courses/***REMOVED***/manifest.json` lists p2-10 under
- * "Phần II · Kênh có nhiễu" (chapter id `p2-10`) — so this test is
- * exercising a real chapter, not a fixture built to make the test pass.
+ * Chapter/selector choice. Task 17 named p2-10 ("Kênh Gaussian và
+ * water-filling") and `[data-viz="waterfill"]` of the private textbook as the
+ * contractual selectors earlier tasks were told to preserve. Task 13 moved the
+ * ngữ liệu to the public sample package `so-dau-phay-dong`, and picked its
+ * replacement by the same criterion rather than by convenience: p2-2 ("Cộng
+ * một triệu số") is the chapter that has BOTH an interactive simulation and
+ * substantial plain-prose paragraphs, which is what makes one chapter serve
+ * this file, `p2.spec.ts` and `import.spec.ts` at once. Verified against the
+ * packed course before writing this: `chapters/p2-2.html` contains exactly
+ * `data-viz="sum-drift"`, and `manifest.json` lists p2-2 under
+ * "Phần II · Sai số dồn" — so this test is exercising a real chapter of a real
+ * package, not a fixture built to make the test pass.
  */
 
 test.describe('P1 definition-of-done gate', () => {
@@ -70,15 +79,15 @@ test.describe('P1 definition-of-done gate', () => {
     expect(runtime.status(), 'GET /course-kit/runtime.js').toBe(200);
     expect(await runtime.text()).toContain('window.CourseKit');
 
-    const manifest = await request.get('/courses/***REMOVED***/manifest.json');
-    expect(manifest.status(), 'GET /courses/***REMOVED***/manifest.json').toBe(200);
-    expect((await manifest.json()).id).toBe('***REMOVED***');
+    const manifest = await request.get(`/courses/${REAL_COURSE_ID}/manifest.json`);
+    expect(manifest.status(), `GET /courses/${REAL_COURSE_ID}/manifest.json`).toBe(200);
+    expect((await manifest.json()).id).toBe(REAL_COURSE_ID);
 
     // SPA fallback: a deep link must return the app document, not a 404.
     // (`vite preview` does this itself; `public/_redirects` arranges the
     // same on Cloudflare Pages. Same behaviour, different mechanism — this
     // asserts the behaviour, and cannot see a broken `_redirects`.)
-    const deepLink = await page.goto('/c/***REMOVED***/p2-10');
+    const deepLink = await page.goto(`/c/${REAL_COURSE_ID}/${CHAPTER_ID}`);
     expect(deepLink?.status(), 'deep link must be served the SPA document').toBe(200);
   });
 
@@ -118,13 +127,14 @@ test.describe('P1 definition-of-done gate', () => {
     await p1.goto('/login');
     await registerNewUser(p1, email, PASSWORD);
 
-    await p1.goto('/c/***REMOVED***/p2-10');
+    await p1.goto(`/c/${REAL_COURSE_ID}/${CHAPTER_ID}`);
     await expect(p1.locator('.katex').first()).toBeVisible();
     // 0.02 explicitly, not the sweep's general MIN_PAINTED_RATIO floor:
-    // waterfill draws axes plus six filled subcarrier bars and covers well
-    // over a quarter of its canvas on first paint, so this gate can afford
-    // to be far stricter than a threshold that has to hold for all 59.
-    await expectVizCanvasDrawn(p1, 'waterfill', 0.02);
+    // `sum-drift` draws axes plus a filled area under the running-error curve
+    // on BOTH of its plots, so this gate can afford to be far stricter than a
+    // threshold that has to hold for every viz in the package. Measured in the
+    // task-13 sweep before being pinned here — see the report.
+    await expectVizCanvasDrawn(p1, CHAPTER_VIZ, 0.02);
 
     // ---------------------------------------------------------------
     // Judgment 3 — what a "second device" must not share. `browser.
@@ -148,12 +158,12 @@ test.describe('P1 definition-of-done gate', () => {
     const p2 = await deviceB.newPage();
     watch(p2, 'device2');
 
-    await p2.goto('/c/***REMOVED***');
+    await p2.goto(`/c/${REAL_COURSE_ID}`);
     await expect(p2).toHaveURL(/\/login/);
 
     await loginExistingUser(p2, email, PASSWORD);
-    await p2.goto('/c/***REMOVED***');
-    await expect(courseHomeChapterLink(p2, COURSE_TITLE, 'p2-10')).not.toHaveClass(/\bdone\b/);
+    await p2.goto(`/c/${REAL_COURSE_ID}`);
+    await expect(courseHomeChapterLink(p2, COURSE_TITLE, CHAPTER_ID)).not.toHaveClass(/\bdone\b/);
 
     // ---------------------------------------------------------------
     // Back to device 1: mark the chapter read. `useProgress`'s write is
@@ -192,7 +202,7 @@ test.describe('P1 definition-of-done gate', () => {
     // browser deprioritized an inactive tab's timers.
     // ---------------------------------------------------------------
     await p2.bringToFront();
-    await expect(courseHomeChapterLink(p2, COURSE_TITLE, 'p2-10')).toHaveClass(/\bdone\b/, { timeout: 45_000 });
+    await expect(courseHomeChapterLink(p2, COURSE_TITLE, CHAPTER_ID)).toHaveClass(/\bdone\b/, { timeout: 45_000 });
 
     expect(pageErrors, `uncaught page errors:\n${pageErrors.join('\n')}`).toEqual([]);
     expect(consoleErrors, `console.error output:\n${consoleErrors.join('\n')}`).toEqual([]);

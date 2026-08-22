@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bung các gói course từ kho NGOÀI repo vào `courses/` để chạy dev và test.
+"""Bung các gói course vào `courses/` để chạy dev và test.
 
 ## Tại sao có tệp này
 
@@ -9,25 +9,31 @@ dung thật** của một course:
 
   * `vite dev` / `vite build` phục vụ `/courses/...` (apps/web/vite-plugins/
     courseAssets.ts);
-  * bốn tệp test đơn vị đọc `courses/***REMOVED***/chapters/p1-5.html`
-    (painter, anchor, SelectionToolbar, version);
-  * bốn tệp e2e mở đúng course đó qua HTTP.
+  * các tệp test đơn vị đọc một chương thật (painter, anchor, SelectionToolbar,
+    version, cộng `packages/course-format/src/zip.test.ts` và
+    `tools/tuhoc-cli/src/pack.test.ts`);
+  * bốn tệp e2e mở một course thật qua HTTP.
 
-Cách rẻ nhất là đổi chúng sang fixture bịa. Cách đó bị cấm, và có lý do đo được:
-trong hệ thống con này việc chạy trên dữ liệu thật đã **bác bỏ bảy phép đo sai**
-mà fixture thủ công cho xanh hết. Nên dữ liệu vẫn là dữ liệu thật; chỉ có chỗ
-cất là đổi. Script này là bước nạp nó về.
+Cách rẻ nhất là đổi chúng sang fixture bịa **viết tay trong tệp test**. Cách đó
+bị cấm, và có lý do đo được: trong hệ thống con này việc chạy trên gói thật đã
+**bác bỏ bảy phép đo sai** mà fixture thủ công cho xanh hết. Nên dữ liệu vẫn
+phải là một **gói thật do `tuhoc pack` ghi ra**, mang đúng những hình dạng đã
+từng bắt lỗi; chỉ có chỗ cất là đổi.
 
-## Hợp đồng
+## Hai nguồn, và vì sao phải là hai
 
-Kho là một thư mục **ngoài cây git**, mặc định `~/Documents/claude/tuhoc-courses`,
-đổi được bằng biến môi trường `TUHOC_COURSE_STORE`. Trong đó là các tệp `.zip`
-do `tuhoc pack` ghi ra. Mỗi gói được bung vào `courses/<manifest id>/`.
+**Nguồn 1 — `fixtures/courses/*.zip`, nằm TRONG repo.** Đây là các gói mẫu công
+khai, do chính repo này soạn và commit (xem `fixtures/README.md`). Chúng là dữ
+liệu test mặc định: một bản clone mới có chúng, nên `make test-web`,
+`make test-format`, `make test-cli` và `make test-e2e` xanh trọn vẹn ngay lần
+chạy đầu tiên, không cần ai đưa cho thứ gì.
 
-Không có kho thì **không phải lỗi**: người vừa clone repo chưa có gói riêng tư
-của ai cả, và đó là trạng thái đúng. Script nói ra rồi thoát 0. Cái đi đỏ khi
-đó là bốn tệp test kia, kèm câu chỉ đúng lệnh phải chạy — xem
-`apps/web/src/test/realCourse.ts`.
+**Nguồn 2 — kho NGOÀI cây git**, mặc định `~/Documents/claude/tuhoc-courses`,
+đổi được bằng `TUHOC_COURSE_STORE`. Đây là chỗ giáo trình riêng tư sống sau
+task 11. Không có kho thì **không phải lỗi**: người vừa clone repo không có gói
+riêng của ai cả, và đó là trạng thái đúng.
+
+Mỗi gói, dù từ nguồn nào, được bung vào `courses/<manifest id>/`.
 
 ## Cố ý KHÔNG làm
 
@@ -51,6 +57,7 @@ import zipfile
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 COURSES_DIR = REPO_ROOT / "courses"
+FIXTURES_DIR = REPO_ROOT / "fixtures" / "courses"
 DEFAULT_STORE = "~/Documents/claude/tuhoc-courses"
 MANIFEST = "manifest.json"
 
@@ -129,26 +136,48 @@ def unpack(zip_path: pathlib.Path) -> tuple[str, int]:
         return course_id, len(names)
 
 
-def main() -> int:
-    store = store_dir()
-    if not store.is_dir():
-        print(f"course_workspace: chưa có kho gói ở {store} — bỏ qua.")
-        print("  Đây là trạng thái đúng của một bản clone mới: course là gói rời, không nằm trong repo.")
-        print(f"  Có gói rồi thì đặt tệp .zip vào đó (hoặc trỏ TUHOC_COURSE_STORE sang nơi khác) rồi chạy lại.")
-        return 0
+def zips_in(directory: pathlib.Path) -> list[pathlib.Path]:
+    if not directory.is_dir():
+        return []
+    return sorted(p for p in directory.iterdir() if p.suffix.lower() == ".zip")
 
-    zips = sorted(p for p in store.iterdir() if p.suffix.lower() == ".zip")
-    if not zips:
+
+def main() -> int:
+    # Gói mẫu công khai đi TRƯỚC trong danh sách, nhưng thứ tự ở đây không phải
+    # thứ tự ưu tiên — va chạm bị từ chối chứ không được giải quyết ngầm (xem
+    # dưới). Nó chỉ quyết định thứ tự dòng in ra.
+    fixtures = zips_in(FIXTURES_DIR)
+    store = store_dir()
+    private = zips_in(store)
+
+    if not fixtures:
+        # Không phải lỗi cứng, nhưng đáng nói: `fixtures/courses/*.zip` được
+        # commit, nên vắng chúng nghĩa là cây làm việc đang thiếu thứ gì đó.
+        print(f"course_workspace: không thấy gói mẫu nào trong {FIXTURES_DIR.relative_to(REPO_ROOT)}/.")
+        print("  Đóng gói lại bằng lệnh ghi trong fixtures/README.md nếu bạn vừa sửa nguồn.")
+    if not store.is_dir():
+        print(f"course_workspace: chưa có kho gói riêng ở {store} — bỏ qua.")
+        print("  Đây là trạng thái đúng của một bản clone mới: giáo trình riêng là gói rời, không nằm trong repo.")
+        print("  Có gói rồi thì đặt tệp .zip vào đó (hoặc trỏ TUHOC_COURSE_STORE sang nơi khác) rồi chạy lại.")
+    elif not private:
         print(f"course_workspace: {store} chưa có tệp .zip nào — bỏ qua.")
+
+    zips = fixtures + private
+    if not zips:
         return 0
 
     # Hai gói cùng course_id sẽ bung vào CÙNG một thư mục, và `unpack` xoá trước
-    # khi ghi — nên cái chạy sau thắng, âm thầm, theo thứ tự tên tệp. Kho này lại
-    # được thiết kế để giữ nhiều phiên bản của cùng một course (tính năng ghim
-    # phiên bản), nên va chạm là chuyện thường chứ không phải ngoại lệ. Sắp theo
-    # tên còn dính bẫy semver-từ điển: "1.10.0" đứng TRƯỚC "1.9.0".
+    # khi ghi — nên cái chạy sau thắng, âm thầm, theo thứ tự tên tệp. Kho riêng
+    # lại được thiết kế để giữ nhiều phiên bản của cùng một course (tính năng
+    # ghim phiên bản), nên va chạm là chuyện thường chứ không phải ngoại lệ. Sắp
+    # theo tên còn dính bẫy semver-từ điển: "1.10.0" đứng TRƯỚC "1.9.0".
     # ⇒ Từ chối ồn ào thay vì chọn hộ. Thà không chạy còn hơn chạy trên một
     #   phiên bản mà không ai biết là đã được chọn.
+    #
+    # Phép kiểm chạy trên CẢ HAI nguồn gộp lại, không phải riêng từng nguồn: một
+    # gói riêng trùng `id` với gói mẫu sẽ lặng lẽ đè lên dữ liệu test mặc định
+    # và làm cả bộ test đo trên nội dung mà không ai chọn — đúng cái loại sai
+    # lệch mà quy tắc này tồn tại để chặn.
     seen: dict[str, pathlib.Path] = {}
     collisions: list[tuple[str, pathlib.Path, pathlib.Path]] = []
     for zip_path in zips:
@@ -158,16 +187,17 @@ def main() -> int:
         else:
             seen[cid] = zip_path
     if collisions:
-        print("course_workspace: kho có nhiều gói cho cùng một course — không đoán hộ.", file=sys.stderr)
+        print("course_workspace: có nhiều gói cho cùng một course — không đoán hộ.", file=sys.stderr)
         for cid, first, second in collisions:
-            print(f"  {cid}: {first.name} và {second.name}", file=sys.stderr)
-        print("  Giữ lại đúng một gói cho mỗi course trong kho, rồi chạy lại.", file=sys.stderr)
+            print(f"  {cid}: {first} và {second}", file=sys.stderr)
+        print("  Giữ lại đúng một gói cho mỗi course, rồi chạy lại.", file=sys.stderr)
         return 1
 
     COURSES_DIR.mkdir(parents=True, exist_ok=True)
     for zip_path in zips:
         course_id, count = unpack(zip_path)
-        print(f"course_workspace: {zip_path.name} → courses/{course_id}/ ({count} tệp)")
+        where = "mẫu" if zip_path in fixtures else "riêng"
+        print(f"course_workspace: [{where}] {zip_path.name} → courses/{course_id}/ ({count} tệp)")
     return 0
 
 

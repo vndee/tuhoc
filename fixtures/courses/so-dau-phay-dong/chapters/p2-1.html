@@ -1,0 +1,152 @@
+<div class="ch-eyebrow">Phần II · Sai số dồn — Chương 2.1</div>
+<h1 class="ch-title">Triệt tiêu tai họa</h1>
+<p class="ch-lede">Đây là chương chứa nghịch lý trung tâm của cả lĩnh vực: phép tính <b>chính xác tuyệt đối</b> lại là phép tính phá huỷ kết quả của bạn. Ai chưa gỡ được nghịch lý ấy sẽ đi tìm lỗi làm tròn trong đúng chỗ không có lỗi làm tròn nào, và sẽ không bao giờ tìm ra.</p>
+
+<h2 id="hien-tuong">Một phép trừ vô hại</h2>
+
+<p>Xét đoạn mã tính đạo hàm bằng sai phân, thứ hầu như ai cũng viết ít nhất một lần:</p>
+
+<pre><code>double deriv(double (*f)(double), double x, double h) {
+    return (f(x + h) - f(x)) / h;
+}</code></pre>
+
+<p>Lý thuyết nói sai số cắt cụt của công thức này là $O(h)$, nên $h$ càng nhỏ càng tốt. Thực tế nói khác hẳn. Với $f = \exp$ tại $x = 1$, sai số giảm khi $h$ giảm cho tới khoảng $h \approx 10^{-8}$, rồi <b>tăng trở lại</b>, và tới $h \approx 10^{-16}$ thì kết quả sai hoàn toàn — thường bằng đúng $0$.</p>
+
+<p>Câu hỏi: lỗi nằm ở đâu? Ứng viên hiển nhiên là phép chia cho $h$ rất nhỏ. Nhưng phép chia làm tròn đúng, sai số tương đối của nó bị chặn bởi $u$ theo Định lý 1.7 ở Chương 1.3, và $u$ không phụ thuộc $h$. Ứng viên thứ hai là phép trừ. Và phép trừ, khi $h$ nhỏ, hoàn toàn <b>không</b> gây sai số nào cả — đây là chỗ nghịch lý bắt đầu.</p>
+
+<h2 id="sterbenz">Bổ đề Sterbenz: khi phép trừ chính xác tuyệt đối</h2>
+
+<div class="box thm"><div class="box-h">Bổ đề 2.1 (Sterbenz)</div>
+<p>Nếu $a$ và $b$ là hai số máy thoả
+$$\frac{a}{2} \;\le\; b \;\le\; 2a,$$
+thì $a - b$ là một số máy, nên $\operatorname{fl}(a-b) = a-b$ <b>chính xác</b>, không sai một bit.</p></div>
+
+<details class="deriv"><summary>Chứng minh</summary><div class="deriv-body">
+<p>Không mất tổng quát giả sử $a \ge b > 0$ (trường hợp $b > a$ đối xứng, và giả thiết loại trừ dấu trái ngược). Gọi $e$ là số mũ của $a$, tức $a$ là bội nguyên của $2^{e-p+1}$. Từ $b \ge a/2 \ge 2^{e-1}$, số mũ của $b$ ít nhất là $e-1$, nên $b$ là bội nguyên của $2^{e-p}$.</p>
+<p>Thực ra ta cần chặt hơn. Vì $b \le a$ và $a < 2^{e+1}$, số mũ của $b$ nhiều nhất là $e$; vì $b \ge 2^{e-1}$, nó ít nhất là $e-1$. Trong cả hai trường hợp $b$ là bội nguyên của $2^{e-p}$, và $a$ là bội nguyên của $2^{e-p+1}$, do đó cũng của $2^{e-p}$. Vậy hiệu $d = a - b$ là bội nguyên của $2^{e-p}$.</p>
+<p>Còn phải kiểm $d$ vừa trong $p$ bit. Từ $b \ge a/2$ ta có $0 \le d \le a/2 < 2^{e}$. Một bội nguyên không âm của $2^{e-p}$ nhỏ hơn $2^{e}$ có hệ số nguyên nhỏ hơn $2^{p}$, tức vừa đúng $p$ bit. Vậy $d$ biểu diễn được, và phép làm tròn không phải làm gì. $\square$</p>
+<p>Điều kiện $a/2 \le b \le 2a$ nói bằng lời: <b>hai số nằm trong cùng một binade hoặc hai binade kề nhau</b>. Đó là điều kiện rất dễ thoả trong thực tế — và chính vì dễ thoả nên nó là cái bẫy: phép trừ nguy hiểm nhất lại là phép trừ mà bổ đề bảo đảm chính xác nhất.</p>
+</div></details>
+
+<p>Bổ đề Sterbenz nói rằng trong đoạn mã sai phân ở trên, với $h$ nhỏ, phép trừ $f(x+h) - f(x)$ được thực hiện <b>không sai một bit</b>. Nếu phép trừ chính xác và phép chia làm tròn đúng, thì sai số khổng lồ ở kết quả từ đâu ra?</p>
+
+<h2 id="loi-giai">Lời giải: sai số đã có sẵn ở đó</h2>
+
+<p>Câu trả lời là một trong những câu đáng nhớ nhất của toàn bộ course, nên nó được viết ra thành một câu riêng:</p>
+
+<div class="box intu"><div class="box-h">Phép trừ không tạo ra sai số — nó phơi bày sai số</div>
+<p>Giá trị $\hat a = f(x+h)$ mà máy có trong tay không phải $f(x+h)$; nó là $f(x+h)(1+\delta_1)$ với $|\delta_1| \le u$, vì bản thân hàm $f$ đã làm tròn. Tương tự $\hat b = f(x)(1+\delta_2)$.</p>
+<p>Sai số tuyệt đối của $\hat a$ cỡ $u \cdot |f(x+h)|$ — nhỏ so với $f(x+h)$, nhưng nó là một lượng <b>tuyệt đối</b>, và nó không co lại khi $h$ co lại. Trong khi đó hiệu $\hat a - \hat b$ co lại tuyến tính theo $h$. Đến lúc $h$ đủ nhỏ, sai số tuyệt đối vốn có ấy <b>lớn hơn</b> chính cái hiệu, và cái hiệu chỉ còn là nhiễu.</p></div>
+
+<p>Nói bằng số cho cụ thể. Với $f = \exp$, $x = 1$, $h = 10^{-12}$: $f(x) \approx 2{,}718$ và sai số tuyệt đối vốn có cỡ $2{,}718 \times 1{,}1\times10^{-16} \approx 3 \times 10^{-16}$. Hiệu đúng là $f(x+h) - f(x) \approx 2{,}718 \times 10^{-12}$. Tỉ số giữa nhiễu và tín hiệu là $10^{-4}$ — tức bạn mất bốn chữ số. Với $h = 10^{-16}$, hiệu đúng cỡ $2{,}7 \times 10^{-16}$, xấp xỉ đúng bằng nhiễu, và bạn mất tất cả.</p>
+
+<div class="box def"><div class="box-h">Định nghĩa 2.2 — triệt tiêu tai họa</div>
+<p><b>Triệt tiêu tai họa</b> (catastrophic cancellation) là hiện tượng khi hiệu của hai đại lượng gần bằng nhau làm cho sai số <b>tương đối</b> của kết quả lớn hơn sai số tương đối của các toán hạng rất nhiều lần, dù bản thân phép trừ không thêm sai số nào.</p>
+<p>Định lượng: nếu $a$ và $b$ trùng nhau ở $k$ bit đầu thì hiệu $a - b$ mất $k$ bit có nghĩa, tức chỉ còn $p - k$ bit đúng.</p></div>
+
+<div class="fig">
+  <div class="fig-head">
+    <div class="fig-num">Hình 2.1 · Tương tác</div>
+    <div class="fig-title">Bao nhiêu bit đúng còn lại sau một phép trừ</div>
+    <p class="fig-desc">Trục hoành là $\log_2$ của khoảng cách tương đối giữa $a$ và $b$ — đi sang phải nghĩa là hai số xa nhau, đi sang trái nghĩa là chúng gần nhau. Trục tung là số bit có nghĩa còn lại trong hiệu.</p>
+  </div>
+  <div class="fig-body"><div data-viz="cancellation"></div></div>
+  <div class="fig-foot">Quan hệ là <b>tuyến tính</b>, không phải một ngưỡng: mỗi lần khoảng cách tương đối giảm một nửa, bạn mất đúng một bit. Không có "vùng an toàn" rồi đột ngột hỏng — bạn đang rỉ máu suốt, và chỉ nhận ra khi đã cạn. Vùng tô đậm bên trái là chỗ hiệu còn dưới mười bit đúng, tức chưa tới ba chữ số thập phân; nếu bài toán của bạn sống trong vùng ấy thì không có thư viện nào cứu được, phải đổi công thức.</div>
+</div>
+
+<h2 id="doi-cong-thuc">Cách chữa: đổi công thức, không đổi độ chính xác</h2>
+
+<p>Phản xạ đầu tiên khi gặp triệt tiêu là nâng lên độ chính xác cao hơn. Nó có tác dụng, và nó là câu trả lời sai, vì nó chỉ đẩy vấn đề đi vài chục bit và trả một cái giá thường trực. Câu trả lời đúng là <b>viết lại biểu thức sao cho phép trừ nguy hiểm biến mất</b>.</p>
+
+<p>Ví dụ kinh điển là phương trình bậc hai. Công thức quen thuộc</p>
+
+$$x_{1,2} \;=\; \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$$
+
+<p>gặp triệt tiêu ở tử số khi $b^2 \gg 4ac$: lúc ấy $\sqrt{b^2-4ac} \approx |b|$, và một trong hai nghiệm là hiệu của hai số gần bằng nhau. Với $a = 1$, $b = 10^{8}$, $c = 1$, nghiệm nhỏ tính theo công thức trên cho $0$ trong binary64, trong khi giá trị đúng là $-10^{-8}$.</p>
+
+<p>Cách chữa dùng một hằng đẳng thức đại số quen thuộc: nhân liên hợp. Vì $x_1 x_2 = c/a$, ta tính nghiệm <b>an toàn</b> trước rồi suy ra nghiệm kia:</p>
+
+$$q \;=\; -\tfrac{1}{2}\left(b + \operatorname{sign}(b)\sqrt{b^2-4ac}\right), \qquad x_1 = \frac{q}{a}, \qquad x_2 = \frac{c}{q}.$$
+
+<p>Ở đây dấu được chọn sao cho hai số hạng trong ngoặc <b>cùng dấu</b>, nên đó là phép cộng chứ không phải phép trừ, và triệt tiêu không xảy ra. Nghiệm còn lại lấy ra bằng phép chia, cũng an toàn.</p>
+
+<div class="box res"><div class="box-h">Neo về thực tế — phương sai một lượt và vì sao nó vẫn được viết</div>
+<p>Công thức "một lượt" cho phương sai,
+$$\sigma^2 \;=\; \frac{1}{n}\sum_i x_i^2 \;-\; \left(\frac{1}{n}\sum_i x_i\right)^{\!2},$$
+hấp dẫn vì chỉ quét dữ liệu một lần và chỉ giữ hai biến tích luỹ. Nó cũng là một phép trừ hai số gần bằng nhau mỗi khi phương sai nhỏ so với bình phương trung bình — tức mỗi khi dữ liệu tập trung quanh một giá trị lớn.</p>
+<p>Thử với ba số $10^{9}$, $10^{9}+1$, $10^{9}+2$: phương sai đúng là $2/3$. Công thức một lượt trong binary64 trả về $0$, và trong binary32 có thể trả về <b>số âm</b> — rồi hàm gọi nó lấy căn và nhận $\mathrm{NaN}$. Đây là nguồn gốc thường gặp nhất của $\mathrm{NaN}$ trong mã thống kê, và nó khớp với hộp cạm bẫy ở Chương 1.1: $\mathrm{NaN}$ không sinh ra ở chỗ nó xuất hiện.</p>
+<p>Cách chữa là thuật toán Welford, cập nhật trung bình và tổng bình phương độ lệch theo từng phần tử. Nó vẫn một lượt, vẫn $O(1)$ bộ nhớ, và không có phép trừ nguy hiểm nào. Không có lý do kỹ thuật nào để dùng công thức trên nữa; lý do duy nhất nó còn sống là nó ngắn hơn khi viết lên bảng.</p></div>
+
+<div class="box warn"><div class="box-h">Chỗ hay hiểu sai — triệt tiêu "lành" và triệt tiêu "tai họa"</div>
+<p>Không phải phép trừ hai số gần nhau nào cũng tai họa. Phân biệt nằm ở chỗ <b>các toán hạng có sai số hay không</b>.</p>
+<p>Nếu $a$ và $b$ là dữ liệu <em>chính xác</em> — chẳng hạn hai số nguyên nhỏ, hay hai hằng số cất được đúng — thì $a - b$ theo Bổ đề Sterbenz cũng chính xác, và không có gì bị mất. Đây là triệt tiêu <b>lành</b>, và nó xảy ra suốt trong mã bình thường mà không ai phải lo.</p>
+<p>Tai họa chỉ xảy ra khi toán hạng đã mang sai số từ trước — vì chúng là kết quả của phép tính khác, hoặc vì bản thân dữ liệu đo được có sai số. Nói cách khác: <b>hãy hỏi các toán hạng đến từ đâu, đừng hỏi chúng gần nhau đến mức nào</b>. Đây cũng là lý do vì sao Chương 1.3 nhấn mạnh rằng mô hình sai số chuẩn chỉ nói về một phép tính: sai số kế thừa không nằm trong $\delta$ của phép trừ.</p></div>
+
+<h2 id="so-dieu-kien">Đo trước bằng số điều kiện</h2>
+
+<p>Có một cách trả lời câu hỏi "biểu thức này có nguy hiểm không" trước khi chạy nó. Đại lượng cần là <b>số điều kiện</b> của biểu thức: nó nói sai số tương đối ở đầu vào bị khuếch đại lên bao nhiêu lần ở đầu ra.</p>
+
+<p>Với phép trừ $s = a - b$ xem như hàm của $a$ và $b$, số điều kiện là</p>
+
+$$\kappa \;=\; \frac{|a| + |b|}{|a - b|}.$$
+
+<p>Nó bằng $1$ khi hai số cùng dấu và cách xa nhau, và nổ tung khi $a \approx b$. Con số ấy dịch thẳng sang bit: mất $\log_2 \kappa$ bit có nghĩa. Với $a = 1$ và $b = 1 - 10^{-15}$, ta có $\kappa \approx 2 \times 10^{15}$, tức mất chừng $51$ bit — gần như toàn bộ $53$ bit của binary64, đúng như Hình 2.1 dự đoán.</p>
+
+<p>Số điều kiện là công cụ đúng vì nó tách hai câu hỏi mà người mới hay trộn lẫn. Câu thứ nhất: <b>bài toán</b> có nhạy không? Đó là $\kappa$, và nó là tính chất của bài toán, không phải của mã. Câu thứ hai: <b>thuật toán</b> có thêm sai số ngoài mức không tránh được không? Đó là tính ổn định, và Chương 2.2 dành trọn cho nó. Một bài toán $\kappa$ lớn thì không thuật toán nào cứu được; một thuật toán không ổn định thì đổi thuật toán là xong.</p>
+
+<div class="keyfacts"><div class="box-h">Chốt chương</div>
+<ul>
+<li>Bổ đề Sterbenz: nếu $a/2 \le b \le 2a$ thì $a-b$ tính chính xác tuyệt đối. Phép trừ nguy hiểm nhất chính là phép trừ được bảo đảm chính xác nhất.</li>
+<li>Phép trừ <b>không tạo ra</b> sai số — nó làm cho sai số vốn có của toán hạng chiếm tỉ lệ lớn trong một kết quả đã co nhỏ.</li>
+<li>Hai số trùng nhau $k$ bit đầu thì hiệu chỉ còn $p - k$ bit đúng. Quan hệ tuyến tính, không có ngưỡng an toàn.</li>
+<li>Cách chữa là <b>đổi công thức</b> (liên hợp, Welford, chọn dấu để thành phép cộng), không phải nâng độ chính xác.</li>
+<li>Triệt tiêu chỉ tai họa khi toán hạng đã mang sai số. Hỏi "chúng đến từ đâu", đừng hỏi "chúng gần nhau bao nhiêu".</li>
+<li>Số điều kiện $\kappa = (|a|+|b|)/|a-b|$ dự báo số bit sẽ mất, và nó tách "bài toán nhạy" khỏi "thuật toán tồi" — hai chuyện phải chữa bằng hai cách khác nhau.</li>
+</ul></div>
+
+<h2 id="bai-tap">Bài tập</h2>
+
+<div class="box ex"><div class="box-h">Bài 1 · Nhận diện triệt tiêu · ★</div>
+<p>Với mỗi biểu thức, nói nó có triệt tiêu tai họa hay không, và nếu có thì với miền giá trị nào của biến.</p>
+<p>(a) $\sqrt{x+1} - \sqrt{x}$.</p>
+<p>(b) $1 - \cos x$.</p>
+<p>(c) $\ln(1+x)$ tính bằng cách gọi $\ln$ trên kết quả của $1+x$.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Có, khi $x$ lớn: hai căn tiến sát nhau. Chữa bằng liên hợp:
+$$\sqrt{x+1}-\sqrt{x} \;=\; \frac{1}{\sqrt{x+1}+\sqrt{x}},$$
+vế phải chỉ có phép cộng và phép chia, không mất bit nào.</p>
+<p><b>(b)</b> Có, khi $x$ gần $0$: $\cos x \to 1$. Chữa bằng hằng đẳng thức nửa góc, $1 - \cos x = 2\sin^2(x/2)$. Ở đây $\sin(x/2)$ với $x$ nhỏ được tính chính xác vì $\sin t \approx t$ và không có phép trừ nào.</p>
+<p><b>(c)</b> Có, nhưng theo một cơ chế khác và tinh vi hơn. Khi $x$ rất nhỏ, phép cộng $1+x$ làm tròn và <b>mất</b> gần hết bit của $x$ — chẳng hạn $x = 10^{-20}$ cho $1+x = 1$ đúng bằng $1$, rồi $\ln 1 = 0$ trong khi đáp số đúng là $10^{-20}$. Ở đây không có phép trừ nào cả; cái mất bit là phép <em>cộng</em> một số bé vào một số lớn — đúng cơ chế mà Chương 2.2 khai thác.</p>
+<p>Chữa: dùng hàm <code>log1p</code> của thư viện chuẩn, tồn tại chính vì lý do này. Cặp <code>expm1</code>/<code>log1p</code> có mặt trong thư viện toán của mọi ngôn ngữ nghiêm túc, và biết chúng tồn tại là một nửa của việc dùng chúng.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 2 · Chọn $h$ tối ưu cho sai phân · ★★</div>
+<p>Trở lại hàm <code>deriv</code> đầu chương, với $f$ trơn và $|f| \approx |f''| \approx 1$.</p>
+<p>(a) Sai số cắt cụt của công thức sai phân tiến là bao nhiêu theo $h$? (Dùng khai triển Taylor.)</p>
+<p>(b) Sai số làm tròn là bao nhiêu theo $h$ và $u$? (Dùng lập luận "sai số tuyệt đối vốn có, chia cho $h$".)</p>
+<p>(c) Cực tiểu hoá tổng hai sai số theo $h$. Với binary64, $h$ tối ưu và sai số đạt được là bao nhiêu?</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Taylor cho $f(x+h) = f(x) + h f'(x) + \tfrac{h^2}{2} f''(\xi)$, nên
+$$\frac{f(x+h)-f(x)}{h} - f'(x) \;=\; \frac{h}{2} f''(\xi),$$
+tức sai số cắt cụt cỡ $h/2$.</p>
+<p><b>(b)</b> Mỗi lần đánh giá $f$ mang sai số tuyệt đối cỡ $u|f| \approx u$. Hiệu của chúng vì thế mang sai số cỡ $2u$, và phép chia cho $h$ khuếch đại nó lên $2u/h$.</p>
+<p><b>(c)</b> Tổng $E(h) = h/2 + 2u/h$. Lấy đạo hàm và cho bằng $0$: $1/2 - 2u/h^2 = 0$, tức $h^{*} = 2\sqrt{u}$. Sai số tại đó là $E(h^{*}) = 2\sqrt{u}$.</p>
+<p>Với binary64, $u \approx 1{,}11 \times 10^{-16}$, nên $h^{*} \approx 2{,}1 \times 10^{-8}$ và sai số tốt nhất đạt được là $\approx 2{,}1 \times 10^{-8}$. Khớp đúng với chỗ gãy quan sát được ở đầu chương.</p>
+<p>Kết luận đáng mang đi và hơi phũ phàng: sai phân tiến <b>không thể</b> cho hơn tám chữ số đúng, dù bạn chọn $h$ khéo đến đâu. Bạn chỉ có $\sqrt{u}$ chứ không phải $u$ — mất một nửa số bit. Muốn hơn thì phải đổi phương pháp: sai phân trung tâm cho $u^{1/3}$ hơi khá hơn, còn vi phân tự động thì cho trọn $u$ vì nó không có phép trừ nào.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 3 · Bổ đề Sterbenz, cả hai chiều · ★★★</div>
+<p>(a) Điều kiện $a/2 \le b \le 2a$ có <b>cần</b> không, hay chỉ đủ? Tìm một cặp số máy không thoả điều kiện mà hiệu vẫn chính xác, hoặc chứng minh không tồn tại.</p>
+<p>(b) Với $p = 4$ và dải số mũ đủ rộng, tìm cặp $a$, $b$ mà $b < a/2$ và $a-b$ <b>không</b> biểu diễn được.</p>
+<p>(c) Trong đoạn mã sai phân, hãy chỉ rõ vì sao Bổ đề Sterbenz áp dụng được với $h$ nhỏ, và vì sao nó <em>ngừng</em> áp dụng khi $h$ lớn. Điều đó có làm sai số tốt lên hay xấu đi?</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Chỉ đủ, không cần. Phản ví dụ dễ nhất: $a = 1$, $b = 2^{-30}$. Điều kiện không thoả vì $b < a/2$. Nhưng $a - b = 1 - 2^{-30}$ là một số máy binary64 hợp lệ (cần $31$ bit định trị, thừa sức trong $53$), nên hiệu chính xác.</p>
+<p>Nói tổng quát: hiệu chính xác khi và chỉ khi nó vừa trong $p$ bit, và Sterbenz cho một <b>điều kiện đủ dễ kiểm</b> chứ không mô tả trọn tập các cặp an toàn. Giá trị của bổ đề nằm ở chỗ nó kiểm được bằng mắt trong lúc đọc mã.</p>
+<p><b>(b)</b> Với $p = 4$, lấy $a = 1{,}000_2 = 1$ và $b = 2^{-4} = 0{,}0001_2$. Hiệu là $0{,}1111_2 = 1 - 2^{-4}$, cần bốn bit định trị — vẫn vừa. Đẩy xa hơn: $b = 2^{-5}$. Hiệu $1 - 2^{-5} = 0{,}11111_2$, cần <b>năm</b> bit, không vừa. Kết quả phải làm tròn về $0{,}1111_2$ hoặc về $1$, tuỳ luật; với hoà-về-chẵn thì nó không hoà, và cho $0{,}1111_2$.</p>
+<p><b>(c)</b> Với $h$ nhỏ, $f(x+h)$ và $f(x)$ nằm trong cùng binade hoặc binade kề, nên điều kiện Sterbenz thoả và phép trừ chính xác. Với $h$ lớn, hai giá trị có thể xa nhau nhiều binade và điều kiện không còn thoả — lúc ấy phép trừ tự nó thêm sai số cỡ $u$.</p>
+<p>Nhưng sai số tổng lại <b>tốt hơn</b>, và đó là chỗ bài này muốn dẫn tới. Lý do: khi $h$ lớn, hiệu $f(x+h)-f(x)$ cũng lớn, nên sai số tương đối của nó nhỏ; phép chia cho $h$ không khuếch đại gì đáng kể. Nói cách khác, "phép trừ có chính xác không" là câu hỏi <b>sai</b> — câu đúng là "sai số tuyệt đối vốn có chiếm bao nhiêu phần của cái hiệu".</p>
+<p>Đây là toàn bộ nội dung của chương, phát biểu lại từ phía Bổ đề Sterbenz: bổ đề đảm bảo cho bạn đúng thứ bạn không cần, và im lặng về thứ bạn cần. Ai đọc bổ đề như một lời trấn an sẽ dùng nó để bỏ qua đúng chỗ đáng lo nhất.</p>
+</div></details>
+</div>

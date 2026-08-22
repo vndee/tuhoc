@@ -1,0 +1,190 @@
+<div class="ch-eyebrow">Phần I · IEEE 754 — Chương 1.3</div>
+<h1 class="ch-title">Làm tròn, và định lý nửa ULP</h1>
+<p class="ch-lede">Cho tới đây ta mới nói về <b>tập</b> số biểu diễn được. Chương này nói về <b>ánh xạ</b> đưa một số thực bất kỳ vào tập ấy — và về một định lý nhỏ đến mức dễ bị coi là hiển nhiên, nhưng lại là viên gạch duy nhất mà toàn bộ Phần II đứng lên. Nếu bạn chỉ mang được một chương của course này đi, hãy mang chương này.</p>
+
+<h2 id="cau-hoi">Câu hỏi</h2>
+
+<p>Máy vừa tính $\hat a + \hat b$ và kết quả toán học không nằm trên lưới. Phải trả về cái gì? Câu trả lời phải là một hàm — cùng đầu vào, cùng đầu ra, mọi lúc, mọi máy — vì nếu không thì cùng một chương trình chạy hai nơi cho hai kết quả và không ai gỡ lỗi nổi.</p>
+
+<p>Gọi hàm đó là $\operatorname{fl} : \mathbb{R} \to \mathbb{F}$. Ta muốn nó thoả những gì? Ba đòi hỏi, và như ở Chương 0.1, chúng gần như ép ra câu trả lời.</p>
+
+<ol>
+<li><b>Đồng nhất trên $\mathbb{F}$.</b> Nếu $x$ đã biểu diễn được thì $\operatorname{fl}(x) = x$. Một hàm làm tròn làm hỏng số vốn đã đúng thì không dùng được.</li>
+<li><b>Đơn điệu.</b> Nếu $x \le y$ thì $\operatorname{fl}(x) \le \operatorname{fl}(y)$. Thiếu tính chất này, một hàm đang tăng có thể trở nên giảm sau khi làm tròn, và mọi thuật toán tìm nghiệm bằng chia đôi mất nền.</li>
+<li><b>Gần nhất.</b> $\operatorname{fl}(x)$ phải là phần tử của $\mathbb{F}$ gần $x$ nhất, để sai số nhỏ nhất có thể.</li>
+</ol>
+
+<p>Ba đòi hỏi này xác định $\operatorname{fl}$ ở mọi điểm trừ một tập: các điểm nằm <b>chính giữa</b> hai số máy kề nhau, nơi "gần nhất" có hai đáp án. Tập ấy nhỏ nhưng không bỏ qua được, và cách xử lý nó là chỗ IEEE 754 đưa ra quyết định tinh tế nhất của cả chuẩn.</p>
+
+<h2 id="bon-che-do">Bốn chế độ, và một chế độ thắng</h2>
+
+<p>Chuẩn định nghĩa bốn chế độ làm tròn. Ba trong số đó bỏ hẳn đòi hỏi 3 để đổi lấy một tính chất khác.</p>
+
+<div class="tbl-wrap"><table class="tbl">
+<thead><tr><th>Chế độ</th><th>Quy tắc</th><th>Thoả đòi hỏi 3?</th><th>Dùng khi</th></tr></thead>
+<tbody>
+<tr><td><b>gần nhất, hoà → chẵn</b></td><td>lấy số máy gần nhất; hoà thì lấy cái có định trị chẵn</td><td>có</td><td>mặc định, gần như mọi lúc</td></tr>
+<tr><td>hướng $-\infty$</td><td>lấy số máy lớn nhất không vượt quá $x$</td><td>không</td><td>cận dưới trong số học khoảng</td></tr>
+<tr><td>hướng $+\infty$</td><td>lấy số máy nhỏ nhất không nhỏ hơn $x$</td><td>không</td><td>cận trên trong số học khoảng</td></tr>
+<tr><td>hướng $0$</td><td>cắt cụt phần định trị</td><td>không</td><td>ép kiểu về số nguyên</td></tr>
+</tbody></table></div>
+
+<p>Ba chế độ hướng tồn tại vì một lý do rất cụ thể: <b>số học khoảng</b>. Muốn tính một khoảng chắc chắn chứa kết quả đúng, bạn tính cận dưới với chế độ hướng $-\infty$ và cận trên với chế độ hướng $+\infty$; khoảng thu được là một chứng minh, không phải một ước lượng. Không có hai chế độ ấy thì kỹ thuật này không tồn tại.</p>
+
+<p>Nhưng chế độ mặc định là chế độ đầu, và câu hỏi thú vị là vì sao luật phá hoà lại là "chẵn" chứ không phải "lên trên" như ta được dạy ở trường phổ thông.</p>
+
+<div class="fig">
+  <div class="fig-head">
+    <div class="fig-num">Hình 1.4 · Tương tác</div>
+    <div class="fig-title">Bốn chế độ trên một khoảng giữa hai số máy</div>
+    <p class="fig-desc">Hai vạch dọc là hai số máy kề nhau; chấm là $x$. Kéo $x$ và đổi chế độ, rồi chú ý dòng "sai số" ở trên — nó là đại lượng mà mục sau sẽ chặn bằng một định lý.</p>
+  </div>
+  <div class="fig-body"><div data-viz="rounding-modes"></div></div>
+  <div class="fig-foot">Chế độ mặc định giữ sai số $\le 0{,}5$ ULP ở mọi vị trí của $x$; ba chế độ hướng để nó lên tới gần $1$ ULP ở đầu xa. Đó là đúng gấp đôi, và nó là cái giá phải trả cho tính chất mà số học khoảng cần: kết quả không bao giờ nằm sai phía của giá trị đúng. Một cận sai số đúng và lỏng thì dùng được; một cận chặt mà sai phía thì không.</div>
+</div>
+
+<h2 id="hoa-chan">Vì sao hoà thì về chẵn</h2>
+
+<p>Quy tắc phổ thông — hoà thì làm tròn lên — có một khuyết tật thống kê. Trong một dãy dài phép làm tròn, nó đẩy kết quả lệch lên một cách <b>có hệ thống</b>, vì mọi trường hợp hoà đều đi cùng một hướng. Sai lệch ấy không triệt tiêu; nó cộng dồn tuyến tính theo số phép tính.</p>
+
+<p>Luật "hoà thì về chẵn" chia các trường hợp hoà thành hai nửa xấp xỉ bằng nhau — nửa đi lên, nửa đi xuống — nên sai lệch cộng dồn hành xử như một bước ngẫu nhiên chứ không như một trôi dạt. Chương 2.2 sẽ cho thấy sự khác biệt giữa hai hành vi ấy là khác biệt giữa $O(n)$ và $O(\sqrt{n})$, tức là khác biệt giữa "dùng được" và "không".</p>
+
+<p>Nhưng luật này còn có một tính chất thứ hai, ít được nhắc và quan trọng hơn về mặt kỹ thuật.</p>
+
+<div class="box thm"><div class="box-h">Mệnh đề 1.6 — làm tròn hai lần không bằng làm tròn một lần</div>
+<p>Ký hiệu $\operatorname{fl}_p$ là phép làm tròn gần nhất, hoà về chẵn, xuống $p$ bit định trị. Mỗi $\operatorname{fl}_p$ là <b>luỹ đẳng</b>: $\operatorname{fl}_p(\operatorname{fl}_p(x)) = \operatorname{fl}_p(x)$. Nhưng với $p < q$, phép hợp thành thì <b>không</b> bằng phép làm tròn thẳng:
+$$\operatorname{fl}_p \circ \operatorname{fl}_q \;\ne\; \operatorname{fl}_p,$$
+và khi chúng khác nhau thì lệch đúng một ULP của định dạng đích. Luật phá hoà nào cũng không cứu được.</p></div>
+
+<details class="deriv"><summary>Chứng minh, kèm phản ví dụ dựng bằng tay</summary><div class="deriv-body">
+<p>Phần luỹ đẳng hiển nhiên với mọi chế độ: $\operatorname{fl}_p(x)$ đã thuộc tập $p$ bit, và đòi hỏi 1 nói $\operatorname{fl}_p$ đồng nhất trên đó.</p>
+<p>Phần thứ hai cần một phản ví dụ, và ta dựng nó theo một công thức dùng lại được. Lấy $p = 5$ (đích) và $q = 7$ (trung gian). Hai số $5$ bit kề nhau quanh $1$ là $1{,}0000_2 = 1$ và $1{,}0001_2 = 1 + 2^{-4}$; điểm giữa của chúng là $m = 1 + 2^{-5}$. Đặt
+$$x \;=\; m + 2^{-9} \;=\; 1{,}000010001_2 .$$</p>
+<p><i>Đường thẳng.</i> $x > m$, nên $\operatorname{fl}_5(x) = 1{,}0001_2$. Không hoà, không cần luật phá hoà.</p>
+<p><i>Đường qua trung gian.</i> Ở $7$ bit, ULP tại $1$ là $2^{-6}$, và $m = 1 + 2^{-5}$ biểu diễn được vì $2^{-5}$ là bội của $2^{-6}$. Phần dư $2^{-9}$ nhỏ hơn nửa ULP là $2^{-7}$, nên $\operatorname{fl}_7(x) = m$ đúng bằng điểm giữa. Bước hai gặp hoà; định trị của $1$ có bit cuối $0$ nên luật về chẵn cho $\operatorname{fl}_5(m) = 1{,}0000_2$.</p>
+<p>Hai kết quả là $1{,}0001_2$ và $1{,}0000_2$, lệch đúng một ULP của định dạng $5$ bit. $\square$</p>
+<p>Cơ chế đáng nhớ hơn con số: bước làm tròn trung gian đã <b>xoá mất</b> $2^{-9}$, mà đó là bằng chứng duy nhất cho biết $x$ nằm phía nào của điểm giữa. Sau khi bằng chứng biến mất, bước hai chỉ còn nhìn thấy một điểm hoà và buộc phải đoán — và nó đoán ngược. Hiện tượng này có tên: <b>làm tròn kép</b> (double rounding), và mục cuối chương nói nó đã gây ra chuyện gì trong thực tế.</p>
+</div></details>
+
+<h2 id="dinh-ly">Định lý nửa ULP</h2>
+
+<p>Bây giờ là kết quả mà cả chương hướng tới. Nó nhỏ, chứng minh mất ba dòng, và nó là mệnh đề mà mọi cận sai số trong phần còn lại của course đều truy về.</p>
+
+<div class="box thm"><div class="box-h">Định lý 1.7 — cận nửa ULP và mô hình sai số chuẩn</div>
+<p>Với chế độ làm tròn gần nhất và $x$ thực nằm trong dải chuẩn,
+$$\left|\operatorname{fl}(x) - x\right| \;\le\; \tfrac{1}{2}\operatorname{ulp}(x),$$
+và tương đương, tồn tại $\delta$ với
+$$\operatorname{fl}(x) = x\,(1 + \delta), \qquad |\delta| \le u := 2^{-p}.$$
+Đại lượng $u$ được gọi là <b>đơn vị làm tròn</b>; với binary64, $u = 2^{-53} \approx 1{,}11 \times 10^{-16}$.</p></div>
+
+<details class="deriv"><summary>Chứng minh</summary><div class="deriv-body">
+<p><i>Bất đẳng thức thứ nhất.</i> Gọi $a \le x \le b$ là hai số máy kề nhau vây quanh $x$, với $b - a = \operatorname{ulp}(x)$. Phép làm tròn gần nhất chọn $a$ hoặc $b$, cái nào gần hơn, nên khoảng cách tới cái được chọn không vượt quá nửa khoảng cách giữa chúng. Trường hợp hoà cũng thoả vì lúc đó cả hai đều cách đúng nửa. $\square$</p>
+<p><i>Dạng nhân.</i> Nếu $x = 0$ thì $\operatorname{fl}(x) = 0$ và lấy $\delta = 0$. Nếu $x \ne 0$, đặt
+$$\delta \;=\; \frac{\operatorname{fl}(x) - x}{x},$$
+thì hiển nhiên $\operatorname{fl}(x) = x(1+\delta)$. Cần chặn $|\delta|$. Theo phần trên,
+$$|\delta| \;=\; \frac{\left|\operatorname{fl}(x)-x\right|}{|x|} \;\le\; \frac{\operatorname{ulp}(x)}{2|x|},$$
+và Mệnh đề 1.4 ở Chương 1.2 cho $\operatorname{ulp}(x) \le 2^{1-p}|x|$. Thay vào: $|\delta| \le 2^{-p} = u$. $\square$</p>
+<p>Chỗ đáng chú ý là bước cuối dùng <b>cận trên</b> của Mệnh đề 1.4. Cận ấy chặt — dấu bằng xảy ra khi $x$ đúng bằng một luỹ thừa của $2$ — nên $u$ là hằng số tốt nhất có thể trong dạng nhân, không nới được. Ngược lại, với $x$ nằm sát ngay dưới một luỹ thừa của $2$, sai số tương đối thực tế nhỏ hơn $u$ tới gần hai lần; hiện tượng "răng cưa" ấy là lý do các cận sai số phát biểu bằng $u$ thường lỏng chừng một hệ số $2$ trong thực tế.</p>
+</div></details>
+
+<div class="box intu"><div class="box-h">Đọc định lý này thế nào</div>
+<p>Dạng nhân là dạng đáng thuộc, vì nó biến làm tròn từ một phép <em>rời rạc</em> thành một phép <em>nhân với một số gần $1$</em>. Sau khi có nó, mọi phân tích sai số trở thành đại số thông thường: một chuỗi $k$ phép tính cho một tích $\prod (1+\delta_i)$, và bạn chỉ cần biết cách chặn tích ấy.</p>
+<p>Đó cũng là lý do Định lý 1.7 xứng đáng được gọi là viên gạch. Nó không nói gì sâu sắc về bản thân phép làm tròn; nó <b>đổi ngôn ngữ</b>, từ ngôn ngữ của lưới sang ngôn ngữ của đại số — và mọi thứ ở Phần II đều nói bằng ngôn ngữ mới.</p></div>
+
+<h2 id="mo-hinh">Mô hình sai số chuẩn cho bốn phép tính</h2>
+
+<p>Chuẩn IEEE 754 đòi hỏi năm phép cơ bản phải làm tròn đúng: kết quả trả về phải bằng $\operatorname{fl}$ của kết quả toán học chính xác. Nói cách khác, máy hành xử <em>như thể</em> nó tính chính xác rồi mới làm tròn một lần duy nhất — dù trên thực tế nó không bao giờ dựng số chính xác ấy ra.</p>
+
+<p>Gộp đòi hỏi đó với Định lý 1.7 cho một quy tắc dùng được ngay:</p>
+
+$$\operatorname{fl}(a \circ b) \;=\; (a \circ b)(1 + \delta), \qquad |\delta| \le u, \qquad \circ \in \{+, -, \times, \div\}.$$
+
+<p>Đây là <b>mô hình sai số chuẩn</b>, và toàn bộ Phần II là hệ quả của nó. Ba điều cần nhớ về phạm vi áp dụng, vì cả ba đều bị vi phạm trong mã thật.</p>
+
+<p><b>Thứ nhất</b>, $\delta$ khác nhau ở mỗi phép tính. Viết $(1+\delta)^k$ cho $k$ phép tính là sai; phải viết $\prod_{i=1}^{k}(1+\delta_i)$ với $k$ đại lượng độc lập, mỗi cái chỉ biết bị chặn bởi $u$.</p>
+
+<p><b>Thứ hai</b>, mô hình <b>không</b> áp dụng trong vùng dưới chuẩn. Ở đó sai số tương đối không còn bị chặn — Chương 0.2 đã chỉ ra rằng lưới thôi không thưa dần nữa mà giữ nguyên bước, nên một số dưới chuẩn rất nhỏ có thể mất gần hết bit có nghĩa. Dạng đúng trong vùng ấy là dạng cộng: $\operatorname{fl}(x) = x + \eta$ với $|\eta| \le \tfrac{1}{2} 2^{e_{\min}-p+1}$.</p>
+
+<p><b>Thứ ba</b>, mô hình nói về <b>một</b> phép tính. Nó không nói gì về việc một biểu thức được biên dịch thành mấy phép tính, và trình biên dịch có quyền đổi số lượng ấy — mục cuối nói về đúng chuyện đó.</p>
+
+<div class="box warn"><div class="box-h">Chỗ hay hiểu sai — "làm tròn đúng" không có nghĩa là "kết quả đúng"</div>
+<p>Làm tròn đúng là một lời hứa về <b>một</b> phép tính, và nó là lời hứa mạnh nhất có thể cho một phép tính. Nhưng nó không hứa gì về một chuỗi phép tính, vì sai số của bước trước là đầu vào của bước sau, và mô hình trên chỉ chặn sai số <em>mới thêm</em> ở mỗi bước.</p>
+<p>Ví dụ cụ thể ở Chương 2.1: phép trừ $a - b$ khi $a$ và $b$ rất gần nhau được thực hiện <b>hoàn toàn chính xác</b>, không sai một bit — $\delta = 0$ đúng nghĩa — mà kết quả vẫn có thể vô nghĩa. Nghịch lý ấy chỉ là nghịch lý cho tới khi bạn nhớ rằng lời hứa nói về sai số so với $a - b$, còn thứ bạn quan tâm là sai số so với hiệu của hai đại lượng <em>thật</em> mà $a$ và $b$ chỉ là xấp xỉ.</p></div>
+
+<h2 id="lam-tron-kep">Làm tròn kép, và vì sao mã của bạn từng đổi kết quả khi bật tối ưu</h2>
+
+<p>Mệnh đề 1.6 nói làm tròn qua một độ chính xác trung gian có thể lệch một ULP so với làm tròn thẳng. Nghe như một chi tiết lý thuyết. Nó không phải.</p>
+
+<p>Bộ đồng xử lý x87 của kiến trúc x86 giữ mọi giá trị trung gian ở $80$ bit, bất kể chương trình khai báo <code>float</code> hay <code>double</code>. Một biểu thức <code>double</code> vì thế được tính ở $64$ bit định trị rồi mới làm tròn xuống $53$ bit khi ghi vào bộ nhớ — đúng chuỗi hai bước của Mệnh đề 1.6.</p>
+
+<p>Hậu quả trong thực tế: cùng một biểu thức cho hai kết quả khác nhau tuỳ theo trình biên dịch có <b>tràn thanh ghi</b> (spill) giá trị trung gian ra bộ nhớ hay không — và điều đó lại phụ thuộc vào mức tối ưu, vào áp lực thanh ghi, thậm chí vào việc bạn có thêm một biến không liên quan ở gần đó. Một chương trình cho kết quả khác khi bật <code>-O2</code> là chuyện có thật, xảy ra thường xuyên, và gần như luôn bị chẩn đoán nhầm thành "lỗi trình biên dịch".</p>
+
+<p>Kiến trúc x86-64 đưa SSE2 thành mặc định, và SSE2 tính đúng độ chính xác được khai báo, nên vấn đề này gần như biến mất ở mã hiện đại. "Gần như": nó vẫn còn ở mã $32$ bit, ở một số hằng số biên dịch, và trong bất kỳ ngôn ngữ nào cho phép trình biên dịch dùng lệnh nhân-cộng hợp nhất — mục ngay dưới đây.</p>
+
+<div class="box pitfall"><div class="box-h">Cạm bẫy — FMA có thể làm mã của bạn chính xác hơn, và hỏng vì thế</div>
+<p>Lệnh nhân-cộng hợp nhất (FMA) tính $a \times b + c$ với <b>một</b> lần làm tròn thay vì hai. Nó nhanh hơn và chính xác hơn, và trình biên dịch được phép tự thay thế cặp phép nhân-cộng bằng nó.</p>
+<p>"Chính xác hơn" nghe như không thể có hại. Nhưng xét đoạn mã kiểm tra một điểm nằm phía nào của một đường thẳng bằng dấu của $a d - b c$. Với hai phép làm tròn, hai cách viết cùng biểu thức cho cùng kết quả. Với FMA, biểu thức trở thành $\operatorname{fma}(a, d, -bc)$, và <b>dấu</b> của nó có thể khác dấu của phiên bản hai bước khi kết quả gần $0$ — tức đúng lúc câu hỏi hình học trở nên tế nhị.</p>
+<p>Hậu quả điển hình: một thuật toán hình học tính toán khẳng định điểm nằm bên trái ở một chỗ và bên phải ở chỗ khác, dựng ra một đa giác tự cắt, rồi sập ở một hàm cách đó rất xa. Bài học không phải "tắt FMA đi", mà là: <b>một vị từ hình học phải được tính bằng số học chính xác hoặc bằng bộ lọc có cận sai số đã chứng minh</b>, không bao giờ bằng dấu của một biểu thức dấu phẩy động thường.</p></div>
+
+<div class="keyfacts"><div class="box-h">Chốt chương</div>
+<ul>
+<li>Ba đòi hỏi — đồng nhất trên $\mathbb{F}$, đơn điệu, gần nhất — xác định $\operatorname{fl}$ ở mọi nơi trừ các điểm hoà, và luật phá hoà là quyết định còn lại.</li>
+<li>"Hoà về chẵn" đổi trôi dạt tuyến tính thành bước ngẫu nhiên; Chương 2.2 cho thấy đó là khác biệt giữa $O(n)$ và $O(\sqrt{n})$.</li>
+<li>Định lý 1.7: $\left|\operatorname{fl}(x)-x\right| \le \tfrac12 \operatorname{ulp}(x)$, tương đương $\operatorname{fl}(x) = x(1+\delta)$ với $|\delta| \le u = 2^{-p}$.</li>
+<li>Mô hình sai số chuẩn $\operatorname{fl}(a \circ b) = (a\circ b)(1+\delta)$ đúng cho bốn phép cơ bản, <b>không</b> đúng trong vùng dưới chuẩn, và $\delta$ khác nhau ở mỗi phép.</li>
+<li>Làm tròn đúng là lời hứa về một phép tính, không phải về một chuỗi — Chương 2.1 dựng phản ví dụ mà $\delta = 0$ nhưng kết quả vô nghĩa.</li>
+<li>Làm tròn kép (x87) và FMA đều phá vỡ giả thiết "mỗi phép tính làm tròn đúng một lần", và cả hai đều do trình biên dịch quyết định chứ không phải bạn.</li>
+</ul></div>
+
+<h2 id="bai-tap">Bài tập</h2>
+
+<div class="box ex"><div class="box-h">Bài 1 · Làm tròn bằng tay trong hệ đồ chơi · ★</div>
+<p>Hệ $\beta = 2$, $p = 4$, dải số mũ đủ rộng. Các số biểu diễn được trong $[1,2)$ là $1{,}000_2$, $1{,}001_2$, …, $1{,}111_2$.</p>
+<p>(a) Làm tròn $1{,}0100_2$ theo cả bốn chế độ.</p>
+<p>(b) Làm tròn $1{,}01001_2$ theo cả bốn chế độ.</p>
+<p>(c) Với chế độ mặc định, sai số ở (a) và (b) lần lượt là mấy ULP?</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> Số này nằm <b>chính giữa</b> $1{,}010_2$ và $1{,}011_2$ — một trường hợp hoà. Gần nhất hoà về chẵn: $1{,}010_2$, vì bit cuối của nó là $0$. Hướng $-\infty$ và hướng $0$ (số dương nên trùng nhau): $1{,}010_2$. Hướng $+\infty$: $1{,}011_2$.</p>
+<p><b>(b)</b> Đọc cho kỹ: $1{,}01001_2 = 1 + 0{,}25 + 0{,}03125 = 1{,}28125$, trong khi hai số máy vây quanh là $1{,}010_2 = 1{,}25$ và $1{,}011_2 = 1{,}375$, điểm giữa là $1{,}3125$. Số của ta nằm <b>dưới</b> điểm giữa. Gần nhất: $1{,}010_2$. Hướng $-\infty$ và hướng $0$: $1{,}010_2$. Hướng $+\infty$: $1{,}011_2$.</p>
+<p>Đây là chỗ hầu hết người mới trượt, nên nói thẳng ra: bit quyết định là bit <b>ngay sau</b> chỗ cắt, không phải "có tồn tại bit $1$ nào đó phía sau". Ở đây bit ngay sau chỗ cắt bằng $0$, nên dù còn một bit $1$ ở xa hơn, số vẫn nằm dưới điểm giữa.</p>
+<p><b>(c)</b> ULP ở đây là $2^{-3} = 0{,}125$. Ở (a), sai số là $0{,}0625$, tức đúng $0{,}5$ ULP — bằng cận của Định lý 1.7, tức trường hợp tệ nhất và nó đạt được. Ở (b), sai số là $1{,}28125 - 1{,}25 = 0{,}03125$, tức $0{,}25$ ULP.</p>
+<p>So sánh (a) với (b) là điểm của bài. Hai số chỉ khác nhau ở bit thứ sáu — thứ mà định dạng đích hoàn toàn không nhìn thấy — mà một cái rơi vào trường hợp tệ nhất còn cái kia thì không. Đây chính là cơ chế của làm tròn kép ở Mệnh đề 1.6: cắt bit thứ sáu ở một bước trung gian là xoá mất đúng thông tin quyết định.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 2 · Từ định lý tới cận cho một biểu thức · ★★</div>
+<p>Tính $s = a + b + c$ bằng hai phép cộng: $t = \operatorname{fl}(a+b)$ rồi $s = \operatorname{fl}(t+c)$.</p>
+<p>(a) Viết $s$ dưới dạng có $\delta_1, \delta_2$ và khai triển.</p>
+<p>(b) Chứng minh $|s - (a+b+c)| \le 2u\,(|a|+|b|+|c|) + O(u^2)$.</p>
+<p>(c) Nếu đổi thứ tự thành $(a + c) + b$, cận ở (b) có đổi không? Còn sai số <em>thực tế</em> thì sao? Cho một bộ ba số cụ thể để minh hoạ.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> $t = (a+b)(1+\delta_1)$ và $s = (t+c)(1+\delta_2) = \big[(a+b)(1+\delta_1) + c\big](1+\delta_2)$. Khai triển:
+$$s = (a+b)(1+\delta_1)(1+\delta_2) + c(1+\delta_2).$$</p>
+<p><b>(b)</b> Trừ đi $a+b+c$:
+$$s - (a+b+c) = (a+b)\big[(1+\delta_1)(1+\delta_2) - 1\big] + c\,\delta_2 .$$
+Với $|\delta_i| \le u$ ta có $\left|(1+\delta_1)(1+\delta_2)-1\right| \le 2u + u^2$. Vậy
+$$\left|s - (a+b+c)\right| \le (2u+u^2)|a+b| + u|c| \le 2u(|a|+|b|+|c|) + O(u^2),$$
+dùng $|a+b| \le |a|+|b|$ ở bước cuối. $\square$</p>
+<p><b>(c)</b> Cận <b>không đổi</b>, vì nó đối xứng theo $|a|,|b|,|c|$ — cận này không nhìn thấy thứ tự. Sai số thực tế thì đổi hẳn.</p>
+<p>Lấy $a = 1$, $b = 2^{-53}$, $c = -1$ với binary64. Theo thứ tự $(a+b)+c$: $a + b$ hoà đúng giữa $1$ và $1 + 2^{-52}$, làm tròn về chẵn cho $1$; rồi $1 + (-1) = 0$. Kết quả: $0$. Theo thứ tự $(a+c)+b$: $1 + (-1) = 0$ chính xác, rồi $0 + 2^{-53} = 2^{-53}$ chính xác. Kết quả: $2^{-53}$, tức <b>giá trị đúng</b>.</p>
+<p>Một thứ tự cho sai số tương đối bằng $100\%$, thứ tự kia cho $0$. Cận ở (b) đúng cho cả hai — nó chỉ nói $\le 2u \cdot 2$, và cả hai kết quả đều thoả. Bài học: <b>cận trường hợp tệ nhất không phân biệt được thuật toán tốt với thuật toán tồi</b> khi cả hai có cùng số phép tính. Chương 2.2 đối mặt trực diện với chỗ này, và cách thoát ra không phải là siết cận mà là đổi thuật toán.</p>
+</div></details>
+</div>
+
+<div class="box ex"><div class="box-h">Bài 3 · Làm tròn kép, dựng lại bằng số thật · ★★★</div>
+<p>Bài này yêu cầu bạn dựng lại phản ví dụ của Mệnh đề 1.6 trên các định dạng thật, thay vì trên hệ đồ chơi.</p>
+<p>(a) Tìm một số $x$ mà làm tròn từ số thực xuống binary64 rồi xuống binary32 cho kết quả khác với làm tròn thẳng xuống binary32. Gợi ý: đặt $x$ ngay dưới điểm giữa của hai số binary32 kề nhau.</p>
+<p>(b) Với $x$ tìm được, hai kết quả lệch nhau mấy ULP của binary32?</p>
+<p>(c) Hiện tượng này có xảy ra khi làm tròn từ số thực xuống định dạng $80$ bit rồi xuống binary64 không? Nếu có, vì sao mã x86 hiện đại hầu như không còn gặp?</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p><b>(a)</b> binary32 có $24$ bit định trị, nên hai số binary32 kề nhau quanh $1$ là $1$ và $1 + 2^{-23}$, và điểm giữa của chúng là $m = 1 + 2^{-24}$. Đặt
+$$x \;=\; 1 + 2^{-24} + 2^{-60} \;=\; m + 2^{-60}.$$
+<i>Làm tròn thẳng xuống binary32.</i> Ta có $x > m$, nên $x$ gần $1 + 2^{-23}$ hơn và kết quả là $1 + 2^{-23}$. Không có hoà, luật phá hoà không tham gia.</p>
+<p><i>Làm tròn qua binary64 trước.</i> binary64 có $53$ bit và $\operatorname{ulp}(1) = 2^{-52}$. Số $m = 1 + 2^{-24}$ biểu diễn được trong binary64 vì $2^{-24}$ là bội của $2^{-52}$. Phần dư $2^{-60}$ nhỏ hơn nửa ULP ($2^{-53}$) rất nhiều, nên bước một cho $\operatorname{fl}_{53}(x) = m$ chính xác. Bước hai làm tròn $m$ xuống binary32 và gặp <b>hoà</b>; định trị của $1$ có bit cuối bằng $0$ nên luật về chẵn chọn $1$.</p>
+<p>Hai đường cho $1 + 2^{-23}$ và $1$. Chúng khác nhau, và luật hoà-về-chẵn không cứu được: chính bước làm tròn trung gian đã <b>xoá mất</b> $2^{-60}$, tức xoá mất bằng chứng duy nhất nói rằng $x$ nằm phía trên điểm giữa. Sau khi bằng chứng ấy biến mất, bước hai chỉ còn nhìn thấy một điểm hoà và buộc phải đoán.</p>
+<p><b>(b)</b> Đúng <b>một ULP</b> của binary32, tức $2^{-23}$. Không bao giờ hơn: cả hai đường đều trả về một trong hai số máy vây quanh $x$, và khoảng ấy chỉ có hai đầu mút.</p>
+<p>Đáng nói thêm về độ hiếm. Để hiện tượng xảy ra, $x$ phải nằm trong một dải rộng cỡ $2^{-53}$ quanh một điểm giữa của binary32, trong khi khoảng giữa hai số binary32 rộng $2^{-23}$ — tức tỉ lệ cỡ $2^{-30}$, khoảng một phần tỉ. Hiếm đủ để không bao giờ xuất hiện trong kiểm thử ngẫu nhiên, và thường đủ để xuất hiện trong một chương trình chạy hàng tỉ phép tính. Đó là loại lỗi tệ nhất: không tái hiện được, nhưng có thật.</p>
+<p><b>(c)</b> Có, và đó chính là chuỗi $80 \to 64$ bit của x87 mô tả ở phần thân chương. Mã x86-64 hiện đại dùng SSE2, tính trực tiếp ở đúng độ chính xác khai báo, nên không có bước trung gian nào — cơ chế bị loại bỏ chứ không phải bị làm cho hiếm đi.</p>
+<p>Nhưng nó chưa chết hẳn: mã $32$ bit vẫn có thể sinh lệnh x87, và <b>FMA</b> tạo ra một biến thể khác của cùng vấn đề theo chiều ngược lại — ở đó số phép làm tròn giảm từ hai xuống một, và hộp cạm bẫy phía trên cho thấy giảm cũng đủ làm hỏng mã dựa vào dấu của một hiệu.</p>
+</div></details>
+</div>
