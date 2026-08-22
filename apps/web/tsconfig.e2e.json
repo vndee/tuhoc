@@ -1,0 +1,49 @@
+{
+  /*
+   * `e2e/**` ĐƯỢC `tsc` KIỂM — trước tệp này thì không.
+   *
+   * `tsconfig.app.json` chỉ `include: ["src"]` và `tsconfig.node.json` chỉ
+   * `include: ["vite.config.ts", "vite-plugins"]`, nên bảy tệp trong `e2e/`
+   * (hơn 3 000 dòng, gồm cả bốn cổng nghiệm thu đầu-cuối của bốn hệ thống con)
+   * chưa từng đi qua một trình kiểm kiểu nào. Playwright chạy chúng bằng bộ
+   * dịch riêng của nó và **không báo lỗi kiểu**; `vitest` thì loại trừ hẳn
+   * `./e2e/**` (xem `vite.config.ts`). Hệ quả đo được: một lỗi kiểu trong một
+   * bài kiểm e2e KHÔNG CÓ CỔNG NÀO BẮT — nó chỉ lộ ra khi bài ấy chạy sai, và
+   * một bài kiểm chạy sai thường trông y hệt một hồi quy của ứng dụng.
+   *
+   * Đó đúng hình dạng của cả năm cổng mù đã ghi trong `docs/carried-forward.md`:
+   * *cổng đo thứ nó với tới được, và im lặng đúng chỗ nó không với tới*.
+   *
+   * Được tham chiếu từ `tsconfig.json`, nên nó đi cùng `tsc -b` — tức là cùng
+   * `bun run typecheck`, cùng `bun run build`, và cùng `webServer` của
+   * `playwright.config.ts`. Không thêm một target `make` thứ sáu cho một thứ
+   * mà cổng có sẵn với tới được.
+   *
+   * `types: ["node"]` + `lib` có `DOM`: các tệp này chạy trong Node (đọc đĩa,
+   * dựng máy chủ `node:http`) NHƯNG có `page.evaluate(() => …)` với thân chạy
+   * trong trình duyệt, nên chúng cần cả hai. `vite/client` thì KHÔNG — không
+   * tệp e2e nào đọc `import.meta.env`.
+   */
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.e2e.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Bundler mode — cùng bộ với tsconfig.app.json. */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting — cùng bộ với tsconfig.app.json, không nới một mục nào. */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["e2e"]
+}

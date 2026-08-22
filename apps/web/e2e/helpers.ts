@@ -1,4 +1,4 @@
-import { expect, type ConsoleMessage, type Locator, type Page } from '@playwright/test';
+import { expect, test, type ConsoleMessage, type Locator, type Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -71,25 +71,168 @@ export function freshEmail(): string {
 }
 
 /**
+ * VÁCH ĐÁ SỨC CHỨA `/auth/*`, VÀ VÌ SAO NÓ ĐƯỢC XỬ Ở ĐÂY CHỨ KHÔNG Ở TỪNG BÀI.
+ *
+ * API giới hạn `/auth/*` ở **10 lời gọi mỗi phút mỗi IP** (`server.go`:
+ * `authRateLimitMax = 10`, `authRateLimitExpiration = time.Minute`, cửa sổ CỐ
+ * ĐỊNH của `fiber/middleware/limiter`), và **cả bộ e2e đi ra từ ĐÚNG MỘT IP** —
+ * cổng của docker, `192.168.65.1`. Giới hạn ấy là một tính năng an ninh thật
+ * (chống dò mật khẩu và dò tài khoản), không phải một phiền toái để nới.
+ *
+ * `s2.spec.ts` đã ghi lại triệu chứng: ở **17 bài**, `viz.spec.ts` — bài cuối,
+ * chẳng liên quan gì tới đăng nhập — hỏng ở `registerNewUser` với `waitForURL`
+ * hết giờ 15 s, và log API có **đúng một dòng** `429 POST /auth/register`. Bỏ
+ * BẤT KỲ bài nào ra để còn 16 thì cả bộ xanh. Task 7 thêm 7 bài (tổng **24**)
+ * và một lời gọi đăng ký; vách đá đổ đúng chỗ cũ, và lần này nó đổ vì **tổng
+ * sức chứa**, không vì một bài nào sai.
+ *
+ * Ba đường đã cân:
+ *
+ *   a. **Nới giới hạn ở máy chủ cho e2e** — loại. Cổng khi ấy chạy trên một
+ *      cấu hình mà production không có, và `auth_test.go` sẽ đang khoá một số
+ *      mà không ai chạy.
+ *   b. **Đếm và giữ tổng số bài dưới 16** — loại. Đó là một trần đếm được, tức
+ *      là đúng thứ mà kế hoạch này gọi tên là "cổng mù thứ sáu": nó vẫn xanh
+ *      khi ai đó bỏ một bài và thêm một bài, và nó biến "thêm một khẳng định"
+ *      thành một quyết định ngân sách.
+ *   c. **Đồ nghề TÔN TRỌNG bộ giới hạn** ✅ — đọc `Retry-After` mà chính
+ *      `limiter` gửi kèm 429, đợi hết cửa sổ, rồi gửi lại. Không khẳng định nào
+ *      bị nới; một bài chỉ chạy CHẬM hơn ở đúng lần nó chạm trần.
+ *
+ * Vì sao ở helper chứ không ở từng bài: 15 lời gọi `/auth/*` nằm rải trong bảy
+ * tệp spec, và bài BỊ 429 gần như không bao giờ là bài đã tiêu suất cuối cùng.
+ * Một phép sửa ở chỗ gọi chỉ dời vách đá sang bài kế tiếp.
+ */
+const AUTH_RETRY_ATTEMPTS = 3;
+/** Cửa sổ của `limiter` là một phút; cộng biên khi máy chủ không gửi `Retry-After`. */
+const AUTH_WINDOW_FALLBACK_S = 61;
+
+/**
+ * ĐỢI TRƯỚC, KHÔNG PHẢI THỬ LẠI SAU — và vì sao cần CẢ HAI.
+ *
+ * Vòng chạy đầu tiên có phép thử lại (và chỉ có nó) đã sống sót qua 429, nhưng
+ * `viz.spec.ts` vẫn ĐỎ, vì một lý do đáng ghi: bài ấy khoá **console không một
+ * lỗi nào**, và trình duyệt tự ghi `Failed to load resource: … 429` NGAY KHI
+ * phản hồi về — trước khi bất cứ phép thử lại nào kịp thành công. Một 429 đã
+ * được xử lý êm vẫn để lại dấu vết trong console, và bài kia đọc dấu vết ấy.
+ *
+ * Nên phép đếm nằm ở ĐÂY, phía khách: bộ e2e giữ sổ của chính nó trên cùng cái
+ * ngân sách mà máy chủ cưỡng chế (10 lời gọi / 60 s), và **đợi trước khi gửi**
+ * khi sổ đã đầy. Máy chủ khi ấy không bao giờ phải nói 429, nên console sạch.
+ *
+ * Giữ lại một suất (9 chứ không 10): cửa sổ của `fiber/middleware/limiter` là
+ * cửa sổ CỐ ĐỊNH còn sổ này là cửa sổ TRƯỢT, nên hai bên không bao giờ trùng
+ * mốc. Một suất dự phòng là cái đệm cho chỗ lệch ấy — và phép thử lại phía dưới
+ * vẫn ở nguyên làm lưới cuối, vì một sổ phía khách chỉ đếm được **các lời gọi
+ * đi qua tệp này** (`workers: 1` làm nó đầy đủ hôm nay; một ngày nào đó
+ * `playwright.config.ts` tăng `workers` thì mỗi worker có sổ riêng và sổ ấy
+ * thiếu).
+ */
+const AUTH_BUDGET_MAX = 9;
+const AUTH_BUDGET_WINDOW_MS = 60_000;
+/** Mốc thời gian của mọi lời gọi `/auth/*` mà tệp này đã gửi trong worker này. */
+const authCallsAt: number[] = [];
+
+/** Nới hạn giờ của bài đang chạy đúng bằng thời gian sắp đợi. */
+function grantTimeBudget(waitMs: number): void {
+  try {
+    const info = test.info();
+    info.setTimeout(info.timeout + waitMs + 15_000);
+  } catch {
+    // Ngoài ngữ cảnh một bài (ví dụ trong `beforeAll`): hạn giờ do hook tự đặt.
+  }
+}
+
+/** Chờ tới lúc còn suất trong ngân sách `/auth/*`, rồi ghi sổ một suất. */
+async function reserveAuthSlot(page: Page, what: string): Promise<void> {
+  for (;;) {
+    const now = Date.now();
+    while (authCallsAt.length > 0 && now - (authCallsAt[0] as number) >= AUTH_BUDGET_WINDOW_MS) {
+      authCallsAt.shift();
+    }
+    if (authCallsAt.length < AUTH_BUDGET_MAX) {
+      authCallsAt.push(now);
+      return;
+    }
+    const waitMs = AUTH_BUDGET_WINDOW_MS - (now - (authCallsAt[0] as number)) + 500;
+    grantTimeBudget(waitMs);
+    console.log(
+      `[e2e] ${what}: ngân sách /auth/* đã dùng ${String(authCallsAt.length)}/${String(AUTH_BUDGET_MAX)} ` +
+        `trong 60 s. Đợi ${String(Math.round(waitMs / 1000))} s để KHÔNG phải nhận một 429 ` +
+        '(một 429 đã xử lý vẫn để lại dòng lỗi trong console, và viz.spec.ts đọc nó).',
+    );
+    await page.waitForTimeout(waitMs);
+  }
+}
+
+/**
+ * Gửi một form `/auth/*` và, CHỈ KHI máy chủ trả 429, đợi hết cửa sổ rồi gửi
+ * lại. Mọi mã trạng thái khác đi thẳng về cho chỗ gọi — một 409 "email đã tồn
+ * tại" phải hỏng ồn ào như trước, không được biến thành ba lần thử im lặng.
+ */
+async function submitAuthForm(page: Page, what: string, submit: () => Promise<void>): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    await reserveAuthSlot(page, what);
+
+    // Đăng ký NGHE TRƯỚC khi bấm: `fetch` của trang có thể trả lời xong trước
+    // khi `submit()` trả về, và một `waitForResponse` gắn sau cú bấm sẽ bỏ lỡ.
+    const answered = page.waitForResponse(
+      (r) => new URL(r.url()).pathname.startsWith('/auth/') && r.request().method() === 'POST',
+      { timeout: 20_000 },
+    );
+    await submit();
+    const res = await answered;
+    if (res.status() !== 429) return;
+
+    if (attempt >= AUTH_RETRY_ATTEMPTS) {
+      throw new Error(
+        `${what}: máy chủ trả 429 sau ${String(attempt)} lần thử. Bộ e2e đang tiêu ` +
+          'quá 10 lời gọi /auth/* mỗi phút trên MỘT IP. Xem chú thích trên ' +
+          '`submitAuthForm` — nếu bộ test đã lớn tới mức một lần đợi trọn cửa sổ ' +
+          'vẫn không đủ, thì cái phải sửa là số lần ĐĂNG KÝ, không phải số lần thử.',
+      );
+    }
+
+    const header = Number(res.headers()['retry-after']);
+    const waitMs = (Number.isFinite(header) && header > 0 ? header + 1 : AUTH_WINDOW_FALLBACK_S) * 1000;
+
+    // Sổ phía khách vừa nói "còn suất" mà máy chủ nói không — hai cửa sổ lệch
+    // mốc. Vứt sổ đi và đếm lại từ đầu, thay vì tin một sổ vừa sai.
+    authCallsAt.length = 0;
+    grantTimeBudget(waitMs);
+
+    console.log(
+      `[e2e] ${what}: 429 (hạn mức /auth/* 10 lời gọi/phút/IP). ` +
+        `Đợi ${String(Math.round(waitMs / 1000))} s rồi thử lại (lần ${String(attempt + 1)}/${String(AUTH_RETRY_ATTEMPTS)}).`,
+    );
+    await page.waitForTimeout(waitMs);
+  }
+}
+
+/**
  * Fills and submits the register form on `/login`'s "Đăng ký" tab, and
  * waits for the post-register redirect (Login.tsx's `redirectTarget`
  * sends a bare `/login` visit — no `state.from` — to `/`) to actually
  * happen before returning, so callers never race the navigation.
  */
 export async function registerNewUser(page: Page, email: string, password: string): Promise<void> {
-  await page.getByRole('tab', { name: 'Đăng ký' }).click();
-  await page.getByLabel('Tên').fill('E2E Learner');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Mật khẩu').fill(password);
-  await page.getByRole('button', { name: 'Đăng ký', exact: true }).click();
+  await submitAuthForm(page, 'đăng ký', async () => {
+    await page.getByRole('tab', { name: 'Đăng ký' }).click();
+    await page.getByLabel('Tên').fill('E2E Learner');
+    await page.getByLabel('Email').fill(email);
+    await page.getByLabel('Mật khẩu').fill(password);
+    await page.getByRole('button', { name: 'Đăng ký', exact: true }).click();
+  });
   await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 15_000 });
 }
 
 /** Same idea as `registerNewUser`, for the default "Đăng nhập" tab (no tab click needed — it's the initial tab). */
 export async function loginExistingUser(page: Page, email: string, password: string): Promise<void> {
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Mật khẩu').fill(password);
-  await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
+  await submitAuthForm(page, 'đăng nhập', async () => {
+    await page.getByLabel('Email').fill(email);
+    await page.getByLabel('Mật khẩu').fill(password);
+    await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
+  });
   await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 15_000 });
 }
 
