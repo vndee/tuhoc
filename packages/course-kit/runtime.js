@@ -3,6 +3,16 @@
    ===================================================================== */
 const $ = (s,r)=> (r||document).querySelector(s);
 const $$ = (s,r)=> Array.from((r||document).querySelectorAll(s));
+/* `{html}` is an HTML SINK and is allowlisted in `apps/web/src/db/local.test.ts`
+ * — see that file for the reasoning and for what would make it stop being
+ * allowed. Short version, and it is a REACHABILITY claim, not a sanitising
+ * one: nothing on the `data-viz` path reaches this key. `initViz` is the only
+ * code here that reads package-authored DATA, and it goes through
+ * `vizNotice` → `{text}`. Everything that passes `{html}` (`readout`,
+ * `button`) is called by a course's `viz.js`, which only runs for `tier:
+ * "interactive"` — a tier whose whole premise is that the package executes
+ * code, so this key hands it nothing it does not already have. Use `{text}`
+ * unless you can say the same about your caller. */
 function el(tag, attrs, kids){
   const e = document.createElement(tag);
   if(attrs) for(const k in attrs){
@@ -247,6 +257,11 @@ class Plot{
       c.fillStyle=cssv('--surface-1'); c.globalAlpha=.86;
       c.fillRect(px-(o.align==='right'?m.width+3:3), py-8, m.width+6, 16); c.globalAlpha=1; }
     c.fillStyle=color; c.fillText(txt,px,py); c.restore(); }
+  /* HTML SINK, allowlisted in `apps/web/src/db/local.test.ts` on the same
+   * reachability argument as `el`'s `{html}` key above: a tooltip body is
+   * written by a course's `viz.js`, and `viz.js` runs only for `tier:
+   * "interactive"`. No `tier: "content"` package can reach this method,
+   * because reaching it requires executing JavaScript. */
   showTip(px,py,html){ this.tipEl.innerHTML=html; this.tipEl.classList.add('on');
     const w=this.tipEl.offsetWidth, h=this.tipEl.offsetHeight;
     let x=px+12, y=py-h-10; if(x+w>this.W-4) x=px-w-12; if(y<2) y=py+14;
@@ -332,16 +347,39 @@ function renderKatex(root){
   }catch(e){ console.warn('katex', e); }
 }
 
+/* Replace a viz slot's contents with a one-line notice.
+ *
+ * The notice is TEXT, and it is built as a NODE rather than as a string of
+ * markup on purpose — this is the one place in this file where data the
+ * COURSE PACKAGE wrote reaches the DOM. `initViz` reads `data-viz`, which the
+ * chapter author types; the shared rule set (`packages/course-format`) reads
+ * only START TAGS, so a value INSIDE a quoted attribute is data to it and
+ * passes clean, exactly as it should. Concatenating that value back into
+ * `innerHTML` turned it into markup again, on the LIVE document, in a page
+ * that has no CSP — measured in Chromium: `data-viz="&lt;img src=x
+ * onerror=…&gt;"` inside a `tier: "content"` package produced one <img>, a
+ * compiled `onerror`, the handler ACTUALLY RAN, and the request left the
+ * browser. `textContent` is what makes the string stay a string.
+ *
+ * `el(…, {text})` assigns `textContent`; `{html}` on the same helper assigns
+ * `innerHTML`, so the choice of key here is the whole fix. */
+function vizNotice(node, cls, style, message){
+  node.textContent = '';
+  node.appendChild(el('div', {class: cls, style: style, text: message}));
+}
+
 function initViz(root){
   $$('[data-viz]', root).forEach(node=>{
     const name = node.dataset.viz;
     if(node.dataset.done) return;
     const fn = VIZ[name];
-    if(!fn){ node.innerHTML = '<div class="small muted" style="padding:20px;font-family:var(--sans)">[mô phỏng "'+name+'" chưa sẵn sàng]</div>'; return; }
+    if(!fn){ vizNotice(node, 'small muted', 'padding:20px;font-family:var(--sans)',
+      '[mô phỏng "'+name+'" chưa sẵn sàng]'); return; }
     node.dataset.done='1';
     try{ fn(node); }
     catch(e){ console.error('viz '+name, e);
-      node.innerHTML = '<div class="small" style="padding:16px;font-family:var(--sans);color:var(--ink-3)">Không dựng được mô phỏng này trong trình duyệt hiện tại.</div>'; }
+      vizNotice(node, 'small', 'padding:16px;font-family:var(--sans);color:var(--ink-3)',
+        'Không dựng được mô phỏng này trong trình duyệt hiện tại.'); }
   });
 }
 
