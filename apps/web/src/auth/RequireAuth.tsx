@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { describeAuthError, serverAnswered } from '../api/client';
 import { useMe } from '../api/useMe';
 import { rememberSessionVerified } from '../db/local';
 import { offlineSessionIsUsable } from './session';
+import { sessionWasSuperseded, subscribeToSessionChanges } from './sessionIdentity';
 
 export interface RequireAuthProps {
   children: ReactNode;
@@ -110,6 +111,29 @@ export function RequireAuth({ children }: RequireAuthProps) {
   const confirmedUserId = meQuery.data?.id ?? null;
 
   /**
+   * Đã có tab khác đăng nhập bằng tài khoản khác chưa?
+   *
+   * C-1 đóng nửa **dữ liệu**: tab bị thay thế ngừng đồng bộ ngay, nên không
+   * hàng nào của A tới server dưới cookie của B. Nhưng nó để lại nửa **màn
+   * hình**: tab ấy vẫn hiển thị cây đã render của A cho tới khi `useMe` của
+   * chính nó làm mới. Nếu A rời máy và B đăng nhập, B **nhìn thấy ghi chú và
+   * tiến độ của A** — không có dữ liệu chảy đi, nhưng vẫn là phơi lộ chéo
+   * tài khoản, và là thứ người dùng nhìn thấy được.
+   *
+   * `useSyncExternalStore` chứ không phải `useState` + `useEffect`: dự án đã
+   * mất trọn một vòng vì `setState` trong thân effect rơi vào **commit sau**
+   * so với thao tác mệnh lệnh, và React Scheduler chỉ nhường sau **ngân sách
+   * 5 ms**. Đây đúng là bài toán mà primitive này sinh ra để giải — và nó đọc
+   * cùng một sự thật mà `sessionIdentity` công bố cho đường đồng bộ, không
+   * phải một bản sao thứ hai có thể lệch.
+   */
+  const superseded = useSyncExternalStore(
+    subscribeToSessionChanges,
+    sessionWasSuperseded,
+    sessionWasSuperseded,
+  );
+
+  /**
    * The ONE writer of the offline marker (pinned by `session.test.ts`).
    *
    * Keyed on the confirmed user's id, so it writes when a session is first
@@ -139,6 +163,14 @@ export function RequireAuth({ children }: RequireAuthProps) {
     staleTime: 0,
     gcTime: 0,
   });
+
+  // Đứng TRƯỚC mọi nhánh khác, kể cả `isPending` và nhánh ngoại tuyến lạc
+  // quan: khi một tài khoản khác đã chiếm phiên trên máy này, mọi câu trả lời
+  // mà tab này đang cầm đều thuộc về người trước. Không có câu hỏi nào ở dưới
+  // còn nghĩa.
+  if (superseded) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
 
   if (meQuery.isPending) {
     return null;

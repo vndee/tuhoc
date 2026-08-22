@@ -280,3 +280,27 @@ và **bác bỏ có lý do** — ghi ở `.superpowers/sdd/2026-08-22-s2-ai-byok
 **Hai điều chưa kiểm được, ghi để không ai tưởng đã kiểm:** `_headers` **chưa từng được một Cloudflare
 Pages thật phục vụ**, và `apps/vault` **chưa có project Pages nào**. Phép đo hai chiều ở trên chạy
 trên máy, không chạy trên hạ tầng thật.
+
+### C-1 nửa MÀN HÌNH — cũng đã đóng (2026-08-22)
+
+Task 1 của hệ thống con 4 đóng nửa **dữ liệu**: tab bị thay thế ngừng đồng bộ ngay, không hàng nào
+của A tới server dưới cookie của B. Người cài đặt gắn cờ rằng **nửa màn hình vẫn hở** — tab ấy tiếp
+tục hiển thị cây đã render của A cho tới khi `useMe` của chính nó làm mới. A rời máy, B đăng nhập ở
+tab khác ⇒ **B nhìn thấy ghi chú và tiến độ của A**. Không dữ liệu nào chảy đi, nhưng đó là thứ người
+dùng nhìn thấy được.
+
+Nay `RequireAuth` đọc `sessionWasSuperseded()` qua **`useSyncExternalStore`** và đẩy về `/login`.
+Chốt đặt **trước mọi nhánh khác**, kể cả `isPending` và nhánh ngoại tuyến lạc quan: khi một tài khoản
+khác đã chiếm phiên trên máy này, mọi câu trả lời tab này đang cầm đều thuộc về người trước.
+
+**Kiểm lại:** `apps/web/src/auth/supersededScreen.test.tsx` — hai đồ thị module thật
+(`vi.resetModules()`) chia sẻ một `BroadcastChannel` của jsdom. Đối chứng hai chiều: đổi chốt thành
+`if (false)` ⇒ **2 bài đỏ**; mã đúng ⇒ 3 xanh.
+
+**Bẫy đã mắc và ghi lại để khỏi lặp:** bản đầu của bài kiểm gọi `announceSessionUser` trong **cùng
+một** module rồi khẳng định tab tự đẩy mình ra. Nó **không bao giờ đo được điều nó định đo** — theo
+chuẩn, một `BroadcastChannel` **không nhận thông điệp của chính nó**. Phải là hai đồ thị module.
+
+**Còn hở, không đóng được từ phía client:** khoảng giữa *"cookie đã thành của B"* và *"tín hiệu được
+phát"*. Cookie đổi ngay khi `POST /auth/login` trả về; tín hiệu sớm nhất là vài câu lệnh sau đó. Đóng
+đúng cách cần phía server — ví dụ một định danh phiên trên mọi phản hồi để client đối chiếu.
