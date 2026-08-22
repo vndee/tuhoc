@@ -1,121 +1,28 @@
 import { useQuery } from '@tanstack/react-query';
-import { liveQuery } from 'dexie';
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLogout } from '../auth/useLogout';
-import { api } from '../api/client';
-import { coursesQueryKey, type CourseSummary, listCourses } from '../api/courses';
+import { type CourseStat, type DayStat, fetchStats, statsQueryKey } from '../api/stats';
 import { useMe } from '../api/useMe';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
+import { useOwnedCourses } from '../course/owned';
 import type { Manifest } from '../course/types';
-import { db } from '../db/local';
 import { useProgress } from '../progress/useProgress';
 import { EmptyLibrary } from './Library';
 
-interface DayStat {
-  date: string;
-  minutes: number;
-}
-
-interface CourseStat {
-  courseId: string;
-  minutes: number;
-  chaptersDone: number;
-}
-
-/** `GET /stats`'s response shape — apps/api/internal/stats/handler.go's `statsResponse`. */
-interface Stats {
-  totalMinutes: number;
-  streakDays: number;
-  days: DayStat[];
-  courses: CourseStat[];
-}
-
-function statsQueryKey() {
-  return ['stats'] as const;
-}
-
+/**
+ * `GET /stats`, for the study-time panel.
+ *
+ * The shape, the key and the call now live in `api/stats.ts`: `course/owned.ts`
+ * reads `stats.courses` to answer which courses this reader has, and one
+ * endpoint declared in two files is where the drift lives. Both callers use the
+ * same query key, so this is one request, not two.
+ */
 function useStats() {
   return useQuery({
     queryKey: statsQueryKey(),
-    queryFn: () => api.get<Stats>('/stats'),
+    queryFn: () => fetchStats(),
     retry: false,
   });
-}
-
-/**
- * The catalog this page used to have to invent.
- *
- * `GET /courses` is listed in the platform spec
- * (docs/superpowers/specs/2026-08-19-tuhoc-platform-design.md §4), P1 was
- * never assigned it, and so this file carried a hardcoded
- * `KNOWN_COURSE_IDS = ['***REMOVED***']` in its place — debt C-2 in
- * docs/carried-forward.md, whose own note said a real catalog would only
- * need that constant deleted. It has been.
- *
- * The shape and the query key live in `api/courses.ts` alongside the call
- * itself, because this is no longer the only reader of them:
- * `course/loader.ts` consults the same catalog to find a package it should
- * download. Two hand-copied declarations of one endpoint's response is one
- * declaration too many.
- */
-function useCourses() {
-  return useQuery({
-    queryKey: coursesQueryKey(),
-    queryFn: () => listCourses(),
-    retry: false,
-  });
-}
-
-/**
- * Distinct `courseId`s this browser's LOCAL progress table has ever
- * written a row for — live-subscribed the same way `useProgress` is (see
- * that hook's own doc comment on why a plain `toArray()` + JS filter is
- * the right call here rather than a dedicated Dexie index), so this list
- * updates the moment a chapter is marked read in a course that wasn't
- * previously known, without a page reload.
- */
-function useLocalCourseIds(): string[] {
-  const [ids, setIds] = useState<string[]>([]);
-
-  useEffect(() => {
-    const subscription = liveQuery(() =>
-      db.progress.toArray().then((rows) => Array.from(new Set(rows.map((r) => r.courseId)))),
-    ).subscribe({
-      next: setIds,
-      error: (err) => console.error('Dashboard: local course id query failed', err),
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  return ids;
-}
-
-/**
- * The set of courses the Dashboard renders a card for: every course
- * `GET /courses` lists, UNION every `courseId` `GET /stats` mentions,
- * UNION every `courseId` local progress has a row for.
- *
- * Still a union and not just the catalog, even though the catalog is now
- * the authoritative list. Ruling F5 requires the completion ring to stay
- * correct offline, and both `/courses` and `/stats` are network calls: a
- * Dashboard that learned which courses exist ONLY from the server would
- * show no cards at all to an offline learner whose local progress already
- * proves they have a course open. The catalog replaced a hardcoded
- * constant, not the offline-first rule.
- *
- * `useMemo` is skipped here on purpose: these are tiny arrays and
- * rebuilding the de-duplicated union on every render is not worth the
- * extra hook.
- */
-function useDashboardCourseIds(
-  catalog: CourseSummary[] | undefined,
-  statsCourses: CourseStat[] | undefined,
-): string[] {
-  const localCourseIds = useLocalCourseIds();
-  const catalogCourseIds = catalog?.map((c) => c.id) ?? [];
-  const statsCourseIds = statsCourses?.map((c) => c.courseId) ?? [];
-  return Array.from(new Set([...catalogCourseIds, ...statsCourseIds, ...localCourseIds])).sort();
 }
 
 /**
@@ -136,8 +43,11 @@ export function Dashboard() {
   const meQuery = useMe();
   const logout = useLogout();
   const statsQuery = useStats();
-  const coursesQuery = useCourses();
-  const courseIds = useDashboardCourseIds(coursesQuery.data, statsQuery.data?.courses);
+  // The one answer to "which courses does this reader have" — ruling S1-F31.
+  // `/library` asks the same function the same question; before this they used
+  // two different formulas and disagreed on screen, seconds apart.
+  const owned = useOwnedCourses();
+  const courseIds = owned.courses.map((course) => course.courseId);
 
   return (
     <div className="dashboard">
@@ -183,11 +93,13 @@ export function Dashboard() {
         the hardcoded course id made it unreachable. Saying so beats
         rendering an empty strip that reads as a broken page.
 
-        Gated on the catalog query having SETTLED, not merely on the list
-        being empty: while `GET /courses` is still in flight the answer is
-        "we do not know yet", and flashing "you have no courses" at a
-        learner who has several is worse than showing nothing for a
-        moment.
+        Gated on every SOURCE having settled, not merely on the list being
+        empty: while any of the four is still in flight the answer is "we do
+        not know yet", and flashing "you have no courses" at a learner who
+        has several is worse than showing nothing for a moment. `settled`
+        comes from `useOwnedCourses` rather than from one query here, which
+        is the same widening as the union itself — this used to watch only
+        `GET /courses`.
 
         The state itself is `<EmptyLibrary>` (pages/Library.tsx) rather than
         a line of prose local to this file, and that is ruling S1-F17 being
@@ -201,7 +113,7 @@ export function Dashboard() {
         and the copy that drifts is the one nobody who already has courses
         ever sees.
       */}
-      {courseIds.length === 0 && !coursesQuery.isPending && <EmptyLibrary />}
+      {courseIds.length === 0 && owned.settled && <EmptyLibrary />}
     </div>
   );
 }

@@ -367,6 +367,51 @@
   overflow-wrap: anywhere;
 }
 
+/* The app's only global navigation (shell/Sidebar.tsx's `GlobalNav`).
+
+   Sits between .sb-head and .sb-prog, both of which reader.css owns, so this
+   borrows their padding rather than inventing its own rhythm: at 18px it lines
+   up with the title above it and the progress line below. reader.css itself is
+   left alone — it is the byte-for-byte v1 port, and this is not v1. */
+.sb-nav {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 18px;
+  gap: 2px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.sb-nav-link {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  text-decoration: none;
+  padding: 5px 8px;
+  margin: 0 -8px;
+  border-radius: 7px;
+  /* reader.css gives every `a` a 1px accent border-bottom — right inside
+     prose, wrong for a list of nav rows, where it reads as three underlined
+     sentences. Same decision `.lib-item-title` already made, for the same
+     reason, with the affordance moved onto hover/focus. */
+  border-bottom: 1px solid transparent;
+}
+
+.sb-nav-link:hover,
+.sb-nav-link:focus-visible {
+  color: var(--ink);
+  background: var(--panel);
+  border-bottom-color: transparent;
+}
+
+/* `NavLink` sets aria-current="page" on the route you are already on, so the
+   marker is driven by the accessible state rather than by a second class —
+   one source for "where am I", visible and announced alike. */
+.sb-nav-link[aria-current='page'] {
+  color: var(--accent);
+  font-weight: 640;
+  background: var(--accent-soft);
+}
+
 /* S1 Task 9 — /library. Same placement and token rules as the .dash- and
    .import- blocks above: reader.css stays the ported v1 stylesheet,
    everything this app adds lives here and borrows v1's tokens.
@@ -538,6 +583,49 @@
    than useless. Lightened instead, and measured the same way. */
 html[data-theme='dark'] .lib-tier-code {
   color: color-mix(in srgb, var(--crit) 62%, #fff);
+}
+
+/* A course the reader is provably studying, that no source can name (ruling
+   S1-F31: `loader.ts`'s static SOURCE 2 lands here). Marked like the private
+   lane so it does not read as a defect — it is a real course, just one whose
+   provenance nothing on this device recorded. */
+.lib-source-unknown {
+  color: var(--ink-3);
+}
+
+/* Why a row could not be named. One line, quiet: the row above it still
+   links to the course, so this is context rather than an error state. */
+.lib-row-note {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--ink-3);
+  margin: 6px 0 0;
+}
+
+/* The update offer (ruling S1-F29 — the door into UpdateDialog). Sits below
+   the metadata line rather than in the head: it appears on a minority of rows
+   and a head that reflows for it would make the whole list feel unstable. */
+.lib-item-update {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px dashed var(--rule);
+}
+
+.lib-update-note {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 620;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.lib-update-btn {
+  font-size: 12px;
+  padding: 4px 11px;
 }
 
 /* The front door (ruling S1-F17). Sized and spaced like a landing block

