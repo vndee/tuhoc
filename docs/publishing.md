@@ -187,7 +187,8 @@ khi viết lại):
 
 ```bash
 grep -rInE "(commit|HEAD|tag|ancestor of|fixed in|introduced in|as of|at) [\`']?[0-9a-f]{7,12}[\`']?|[\`'][0-9a-f]{7}[\`']" \
-  --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude-dir=courses \
+  --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.claude --exclude-dir=.superpowers \
+  --exclude-dir=dist --exclude-dir=courses \
   --exclude=go.sum --exclude=go.mod --exclude=bun.lock .
 ```
 
@@ -213,6 +214,43 @@ Hai điều về bảng này:
 
 Không có tag nào trong repo này (`git tag -l` rỗng) và chưa có remote nào
 (`git remote -v` rỗng). Nếu đến lúc chạy mà đã có, hai thứ đó phải vào danh sách.
+
+### 2.2b Ba cái bẫy phát hiện khi CHẠY LẠI công thức này (2026-08-22)
+
+Ba mục dưới đây không phải lý thuyết — chúng làm hỏng đúng công thức ở trên khi
+điều phối viên chạy thử lại nó sau bảy commit gộp thêm.
+
+**(a) Mọi con số ở §2.1 và §2.4 là ẢNH CHỤP, không phải hằng số.** Đo lại
+2026-08-22: object dưới `courses/` **59 → 61**, commit chạm `courses/` **3 → 4**
+(cái thứ tư là chính commit xoá của task 11), tổng commit **126 → 141**. Đừng so
+với số in sẵn — **đo trước, ghi lại, rồi so sau**:
+
+```bash
+BEFORE_OBJ=$(git rev-list --objects --all -- courses/ | wc -l)
+BEFORE_LOG=$(git log --all --oneline -- courses/ | wc -l)
+echo "trước: obj=$BEFORE_OBJ log=$BEFORE_LOG"   # cả hai phải > 0, nếu không thì chưa có gì để bóc
+# … chạy filter-repo …
+echo "sau: obj=$(git rev-list --objects --all -- courses/ | wc -l) log=$(git log --all --oneline -- courses/ | wc -l)"
+# cả hai phải là 0
+```
+
+**(b) Số dòng trong bảng §2.2 trôi theo mỗi lần sửa tệp.** `apps/web/e2e/p2.spec.ts:436`
+nay là **dòng 457** (task 12 chuyển hai hàm trợ giúp sang `helpers.ts`). Tin tên tệp
+và mã commit; **đừng tin số dòng** — chạy lại phép quét để lấy vị trí hiện tại.
+
+**(c) WORKTREE, không chỉ clone.** §2.5 bước 3 dặn xoá mọi *bản clone* khác. Chưa
+đủ: repo này lúc viết có **11 worktree phụ** dưới `.claude/worktrees/`, mỗi cái là
+một checkout đầy đủ dùng chung kho object. Chúng gây hai vấn đề:
+
+1. `git-filter-repo` **từ chối chạy** khi có worktree phụ.
+2. Phép quét ở §2.2 quét luôn vào chúng và trả **374 chỗ thay vì 7** — đó là lý do
+   lệnh trên nay loại trừ `.claude`.
+
+```bash
+git worktree list                      # phải chỉ còn MỘT dòng trước khi chạy
+git worktree list | tail -n +2 | awk '{print $1}' | xargs -r -n1 git worktree remove --force
+git worktree prune
+```
 
 ### 2.3 Lệnh
 
@@ -285,7 +323,7 @@ nằm trong pack.
 2. `make test-web && make test-format && make test-cli && make test-api` — bốn
    cổng phải xanh (chúng không đọc lịch sử git, nhưng chạy lại là cách rẻ nhất
    để biết cây làm việc không bị filter-repo động vào ngoài dự kiến).
-3. Mọi bản clone khác của repo này **phải bị xoá và clone lại**. Một bản clone cũ
+3. Mọi bản clone khác **và mọi worktree phụ** của repo này **phải bị xoá** (worktree: xem §2.2b(c); clone: xoá rồi clone lại). Một bản clone cũ
    còn giữ nguyên lịch sử cũ, tức còn nguyên giáo trình; push từ nó lên sẽ mang
    toàn bộ thứ vừa bóc quay lại.
 4. Chỉ sau khi §2.4 câm hết mới `git remote add` và `git push`.
