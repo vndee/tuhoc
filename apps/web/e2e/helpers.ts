@@ -24,8 +24,8 @@ export const COURSE_TITLE = 'Số dấu phẩy động';
 /** `manifest.id` của gói mẫu — cũng là tên thư mục `make courses` bung ra. */
 export const REAL_COURSE_ID = 'so-dau-phay-dong';
 
-/** apps/web/e2e/ → gốc repo là ba tầng lên. */
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+/** apps/web/e2e/ → gốc repo là ba tầng lên. Xuất ra vì `s1.spec.ts` cũng đọc `fixtures/courses/` từ đĩa, và hai bản sao của phép tính này thì trôi. */
+export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
 /**
  * Đường tới tệp `.zip` của gói course dùng làm ngữ liệu cho cả bốn tệp e2e.
@@ -322,4 +322,142 @@ export function isBenignAuthCheck401(msg: ConsoleMessage): boolean {
   } catch {
     return false;
   }
+}
+
+/* ====================================================================== *
+ * The two gestures that reach the annotation surfaces
+ *
+ * Both lived in `p2.spec.ts` until task 12, which needed the identical
+ * gesture from `s1.spec.ts` (its update scenario writes six notes before it
+ * measures what an update would cost them). They moved here rather than
+ * being copied for the reason at the top of this file: `selectParagraphByDrag`
+ * in particular is a pile of hard-won details about layout and hit testing,
+ * and two hand-maintained copies of that drift — the drift showing up as a
+ * suite that stops failing when it should.
+ * ====================================================================== */
+
+/**
+ * The rail opens on its "Trong chương" tab; the notes live behind the other
+ * one. Idempotent, so a caller does not have to know whether something else
+ * already brought it forward (`ChapterView`'s `focusCard` does, whenever a
+ * card is opened from the chapter).
+ */
+export async function openNotesTab(page: Page): Promise<void> {
+  const tab = page.locator('#rail-tab-notes');
+  await expect(tab, 'the rail has no notes tab — is #rail hidden at this viewport width?').toBeVisible();
+  if ((await tab.getAttribute('aria-selected')) !== 'true') await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+}
+
+/**
+ * Selects the first `chars` characters of the paragraph whose text starts
+ * with `startsWith`, with a REAL mouse drag, and returns what the browser
+ * ended up selecting.
+ *
+ * A drag rather than a programmatic `Selection`, because "select some words
+ * and a toolbar appears" is the gesture the annotation phase is built on, and
+ * it is the layer that a component test with jsdom (no layout engine, no hit
+ * testing) is structurally unable to reach.
+ *
+ * Drags are also the single easiest thing in an e2e suite to get wrong in a
+ * way that still passes or that fails for the wrong reason. Three specific
+ * traps, all of which bit while `p2.spec.ts` was being written, and each of
+ * which is closed here rather than left to luck:
+ *
+ *  1. **Smooth scrolling.** `packages/course-kit/reader.css` sets
+ *     `html{scroll-behavior:smooth}`, so a plain `scrollIntoView()` is still
+ *     ANIMATING when the rect is read and when the mouse moves. The measured
+ *     result was an empty selection. `behavior: 'instant'` is required, not
+ *     stylistic.
+ *  2. **Collapsed `<details>`.** Eleven paragraphs of the chapter p2 drives
+ *     are inside `<details class="deriv">` blocks that are closed by default,
+ *     and one of those still returned a rect — 437px BELOW the viewport, where
+ *     the drag became a click-and-drag off the bottom edge that selected the
+ *     rest of the chapter. Refused up front.
+ *  3. **A rect that is not where the mouse will land.** The sticky topbar,
+ *     an unfinished scroll, a floating toolbar left over from a previous
+ *     selection — any of them puts a different element under the two
+ *     endpoints. `document.elementFromPoint` is asked about both, before the
+ *     mouse moves, and both must land inside the intended paragraph.
+ *
+ * The return value is what `getSelection()` actually holds afterwards, not
+ * what was asked for — callers assert against THAT, so an off-by-one at
+ * either end of the drag can never make an assertion vacuous. `s1.spec.ts`
+ * leans on that property harder than `p2.spec.ts` does: it builds the NEXT
+ * version of the chapter by doing string surgery on exactly the text this
+ * returned, so an edit it intends to land inside a reader's quote cannot miss.
+ */
+export async function selectParagraphByDrag(page: Page, startsWith: string, chars: number): Promise<string> {
+  const prep = await page.evaluate(
+    ({ startsWith: prefix, chars: n }: { startsWith: string; chars: number }) => {
+      const root = document.querySelector('.fade-in') as HTMLElement | null;
+      if (!root) return { ok: false as const, why: 'no chapter container on the page' };
+      const paragraphs = Array.from(root.querySelectorAll('p'));
+      const index = paragraphs.findIndex((p) => (p.textContent ?? '').startsWith(prefix));
+      if (index < 0) return { ok: false as const, why: `no paragraph starts with "${prefix}"` };
+      const target = paragraphs[index];
+      if (target.closest('details:not([open])')) {
+        return { ok: false as const, why: `"${prefix}" is inside a collapsed <details> — its rect is not where it is drawn` };
+      }
+      target.scrollIntoView({ block: 'center', behavior: 'instant' });
+      const node = document.createTreeWalker(target, NodeFilter.SHOW_TEXT).nextNode() as Text | null;
+      if (!node) return { ok: false as const, why: `"${prefix}" has no text node to drag across` };
+      const range = document.createRange();
+      range.setStart(node, 0);
+      range.setEnd(node, Math.min(n, node.data.length));
+      // The FIRST client rect: one per line the range wraps onto, and a drag
+      // has to stay on one line to mean anything.
+      const rect = range.getClientRects()[0];
+      if (!rect) return { ok: false as const, why: `"${prefix}" is not drawn anywhere` };
+      return {
+        ok: true as const,
+        index,
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+        viewportHeight: window.innerHeight,
+      };
+    },
+    { startsWith, chars },
+  );
+  expect(prep.ok, prep.ok ? '' : prep.why).toBe(true);
+  if (!prep.ok) throw new Error(prep.why); // narrowing; `expect` above already failed the test
+
+  const y = prep.y + prep.height / 2;
+  const x1 = prep.x + 1;
+  const x2 = prep.x + prep.width - 1;
+  expect(
+    y > 0 && y < prep.viewportHeight,
+    `the drag line for "${startsWith}" is at y=${y.toFixed(0)} in a ${prep.viewportHeight}px viewport — it never came into view`,
+  ).toBe(true);
+
+  const landed = await page.evaluate(
+    ({ index, points }: { index: number; points: readonly [number, number][] }) => {
+      const root = document.querySelector('.fade-in') as HTMLElement;
+      const target = Array.from(root.querySelectorAll('p'))[index];
+      return points.map(([x, yy]) => {
+        const hit = document.elementFromPoint(x, yy);
+        return hit !== null && (hit === target || target.contains(hit));
+      });
+    },
+    { index: prep.index, points: [[x1, y], [x2, y]] as readonly [number, number][] },
+  );
+  expect(
+    landed,
+    `the drag endpoints for "${startsWith}" do not land on that paragraph (start=${landed[0]}, end=${landed[1]}) — something is covering it`,
+  ).toEqual([true, true]);
+
+  await page.mouse.move(x1, y);
+  await page.mouse.down();
+  await page.mouse.move(x2, y, { steps: 12 });
+  await page.mouse.up();
+
+  const selected = await page.evaluate(() => window.getSelection()?.toString() ?? '');
+  expect(selected.trim().length, `the drag over "${startsWith}" selected nothing`).toBeGreaterThan(10);
+  expect(
+    startsWith.startsWith(selected.trim().slice(0, 20)),
+    `the drag over "${startsWith}" selected something else: "${selected.slice(0, 60)}"`,
+  ).toBe(true);
+  return selected;
 }

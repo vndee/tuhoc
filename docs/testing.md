@@ -13,6 +13,17 @@ the whole stack works together — see `apps/web/e2e/p1.spec.ts`,
 `.superpowers/sdd/2026-08-19-p1-platform-core/task-17-report.md` for what
 it actually checks and why.
 
+Five spec files run under it, and they are gates for different phases, not
+one suite that grew: `p1.spec.ts` (the reader), `p2.spec.ts` (annotations),
+`viz.spec.ts` (every registered visualization), and — for subsystem 1's
+course packages — `import.spec.ts` (a real `.zip` through the real Import
+screen) plus `s1.spec.ts` (a bad package refused without dirtying the
+library · one reader's course invisible to another · an update previewed,
+declined, then taken, with the damage report the reader was shown).
+`.superpowers/sdd/2026-08-21-s1-course-packages/task-12-report.md` records
+what the last one is blind to, and the nine product mutants that prove the
+rest of it bites.
+
 Two properties of this gate are deliberate and easy to lose:
 
 - **The API image is rebuilt on every run** (`docker compose up -d
