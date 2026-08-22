@@ -76,8 +76,24 @@ async function parseBody(res: Response): Promise<unknown> {
  * base URL and the 401 rule, which is exactly what this module exists to
  * prevent.
  */
+/**
+ * The HTTP verbs this client speaks.
+ *
+ * `PUT` joined the list for `PUT /ratings/:registryId` (subsystem 4). It is
+ * a genuinely different verb here rather than a stylistic one: a rating is
+ * **one row per person per course, overwritten in place** — the Go side's
+ * primary key is `(user_id, registry_id)` — so the request is idempotent and
+ * the second click on the same star must not be a second vote. `POST` would
+ * have said the opposite about an endpoint whose whole design is that
+ * repeating it changes nothing.
+ *
+ * No `DELETE`: nothing in this app removes a rating, and a verb with no
+ * caller is a door nobody is watching.
+ */
+type Method = 'GET' | 'POST' | 'PUT';
+
 async function send(
-  method: 'GET' | 'POST',
+  method: Method,
   path: string,
   body: unknown,
   options: RequestOptions,
@@ -141,7 +157,7 @@ export class NotJsonError extends Error {
 }
 
 async function request<T>(
-  method: 'GET' | 'POST',
+  method: Method,
   path: string,
   body: unknown,
   options: RequestOptions,
@@ -170,6 +186,20 @@ export const api = {
   get: <T,>(path: string, options: RequestOptions = {}): Promise<T> => request<T>('GET', path, undefined, options),
   post: <T,>(path: string, body?: unknown, options: RequestOptions = {}): Promise<T> =>
     request<T>('POST', path, body, options),
+  /**
+   * An idempotent write. See {@link Method} for why ratings use this verb.
+   *
+   * Typed `Promise<void>` and not `Promise<T>`, because the one endpoint
+   * behind it answers **204 with no body**: `parseBody` turns that into
+   * `undefined`, and a generic `T` here would hand every caller an
+   * `undefined` wearing a type it does not have — the same "a value typed as
+   * something it is not" shape that `NotJsonError` above exists to stop, one
+   * size smaller. A future PUT that does answer with a body should get its
+   * own entry rather than widening this one.
+   */
+  put: async (path: string, body?: unknown, options: RequestOptions = {}): Promise<void> => {
+    await request<unknown>('PUT', path, body, options);
+  },
   /**
    * A GET whose response is BYTES. Same transport as `get` — base URL,
    * cookie, 401 policy, `ApiError` — and no parsing.
