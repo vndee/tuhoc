@@ -96,12 +96,24 @@ function parseRegisteredVizNames(vizSource: string): string[] {
  */
 async function mountThroughRuntime(page: Page, name: string): Promise<void> {
   await page.evaluate((vizName) => {
-    const kit = (window as unknown as { CourseKit?: { initViz: (root: Element) => void } }).CourseKit;
+    type Strings = { vizMissing: (name: string) => string; vizFailed: string };
+    const kit = (window as unknown as { CourseKit?: { initViz: (root: Element, strings: Strings) => void } }).CourseKit;
     if (!kit) throw new Error('window.CourseKit is not loaded on this page');
     const host = document.createElement('div');
     host.setAttribute('data-viz', vizName);
     document.body.appendChild(host);
-    kit.initViz(document.body);
+    // `runtime.js` được nạp bằng `<script src>` nên nó không đọc được catalog,
+    // và nó cố ý KHÔNG giữ một bản lùi viết cứng nào — chữ là tham số, thiếu
+    // nó là một `TypeError` ồn ào (Task 5). Bài này gọi `initViz` trực tiếp
+    // thay vì qua `<ChapterView>`, nên nó phải cấp chữ như trang chủ làm.
+    //
+    // Hai câu này chỉ hiện khi một viz KHÔNG dựng được — tức là đúng thứ bài
+    // kiểm này khẳng định không xảy ra. Chúng được viết ra ở đây bằng chữ dễ
+    // nhận, để một lần hỏng bất ngờ nói ra tên viz thay vì im lặng.
+    kit.initViz(document.body, {
+      vizMissing: (name) => `[viz "${name}" is not registered]`,
+      vizFailed: '[viz failed to build]',
+    });
   }, name);
 }
 
