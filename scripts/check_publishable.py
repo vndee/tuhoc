@@ -184,7 +184,20 @@ def check_refs(repo: pathlib.Path, report: Report) -> None:
 
 
 def check_history(repo: pathlib.Path, report: Report) -> None:
-    """Phép 2 — object dưới courses/ còn lấy lại được từ lịch sử."""
+    """Phép 2 — dấu vết course riêng còn lấy lại được từ lịch sử.
+
+    HAI vế, và vế thứ hai là vế dễ quên:
+
+    (a) object dưới `courses/` — thứ `filter-repo --path courses/` bóc được;
+    (b) commit chạm TÊN course ở **mọi tệp khác** — thứ nó KHÔNG bóc được.
+
+    Vế (b) tồn tại vì một phép đo cụ thể: sau khi dọn xong 79 chỗ nêu tên trong
+    cây làm việc, phép 4 về 0 — nhưng **44 commit** vẫn chứa bản trước-khi-dọn
+    của chính những dòng ấy, và không dòng nào nằm dưới `courses/`. Một cổng chỉ
+    đo vế (a) sẽ báo XANH sau khi viết lại lịch sử, trong khi tên course vẫn lấy
+    ra được bằng `git log -S`. Đóng gói vế (b) vào đây thay vì để trong tài liệu,
+    vì tài liệu không có mã thoát.
+    """
     findings: list[str] = []
     code, out = run(repo, "rev-list", "--objects", "--all", "--", "courses/")
     if code != 0:
@@ -193,11 +206,29 @@ def check_history(repo: pathlib.Path, report: Report) -> None:
         objs = [line for line in out.splitlines() if line.strip()]
         keep = [o for o in objs if not o.endswith("/.gitkeep") and not o.endswith(" courses")]
         if keep:
-            findings.append(f"{len(keep)} object dưới courses/ vẫn lấy lại được bằng một lệnh")
+            findings.append(f"(a) {len(keep)} object dưới courses/ vẫn lấy lại được bằng một lệnh")
+
+    markers = read_list_file(repo / "scripts" / "private-markers.txt")
+    if not markers:
+        findings.append("(b) scripts/private-markers.txt trống — KHÔNG đo được lịch sử ngoài courses/")
+    else:
+        for m in markers:
+            code, out = run(repo, "log", "-S", m, "--oneline", "--all",
+                            "--", ".", ":(exclude)courses/")
+            if code != 0:
+                findings.append(f"(b) git log -S {m!r} thoát {code} — không đo được")
+                continue
+            hits = [ln for ln in out.splitlines() if ln.strip()]
+            if hits:
+                findings.append(
+                    f"(b) {len(hits)} commit chạm {m!r} NGOÀI courses/ — "
+                    f"`filter-repo --path courses/` KHÔNG bóc nhóm này (vd {hits[0].split()[0]})"
+                )
     report.add(
         "2. Lịch sử git",
         findings,
-        "docs/publishing.md §2 — git filter-repo. Đọc §2.2b trước: ba cái bẫy.",
+        "(a) docs/publishing.md §2 — git filter-repo. Đọc §2.2b trước: ba cái bẫy.\n"
+        "(b) docs/publishing.md §2.8 — cần `--replace-text`, không chỉ `--path`.",
     )
 
 
