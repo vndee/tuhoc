@@ -32,9 +32,8 @@
 # ## Not yet run on real GitHub Actions
 #
 # Written and exercised locally through `make test-registry`; the runner-shaped
-# parts (checkout depth, `oven-sh/setup-bun`, the `git fetch`/`git diff` pair)
-# have never executed on a hosted runner. Treat the first real run as the test
-# of those.
+# parts (checkout depth, `oven-sh/setup-bun`, the Pages deploy) have never
+# executed on a hosted runner. Treat the first real run as the test of those.
 
 name: registry
 
@@ -51,6 +50,7 @@ on:
 env:
   REGISTRY_ROOT: fixtures/courses
 
+# Least privilege by default; the publish job widens it for itself only.
 permissions:
   contents: read
 
@@ -59,9 +59,9 @@ jobs:
     name: bộ luật course-format trên các course PR đổi
     runs-on: ubuntu-latest
     steps:
-      # `fetch-depth: 0` is load-bearing: the changed-file diff needs the merge
-      # base, and the default depth of 1 makes it silently wrong rather than
-      # loud.
+      # `fetch-depth: 0` is load-bearing twice over: the changed-file diff needs
+      # the merge base, and `build-index --commit-dates` needs real commit dates.
+      # The default depth of 1 makes both silently wrong rather than loud.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -139,3 +139,68 @@ jobs:
           set -euo pipefail
           bun tools/registry/src/validate-pr.ts --root "${REGISTRY_ROOT}"
 
+  publish:
+    name: sinh index.json và phục vụ qua Pages
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    # One deploy at a time, and never cancel one mid-flight: a half-published
+    # Pages site is an `index.json` naming packages that are not there yet.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: cài phụ thuộc
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile --cwd packages/course-format
+          bun install --frozen-lockfile --cwd tools/registry
+
+      # `--commit-dates` makes the output byte-identical for a given commit, so
+      # the platform's ETag cache is not busted by a rebuild that changed
+      # nothing. It FAILS rather than falling back to file mtimes, which after a
+      # fresh checkout are all "now" — see build-index.ts.
+      #
+      # `build-index` re-runs the SAME rule set before it writes anything, so an
+      # invalid package can never reach the catalog even if it somehow reached
+      # main.
+      - name: sinh index.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          bun tools/registry/src/build-index.ts --root "${REGISTRY_ROOT}" --commit-dates --out _site/index.json
+
+      # The course tree ships next to the index so the platform can fetch a
+      # package's files on demand from the same origin, with no GitHub API call
+      # and no per-IP rate limit.
+      - name: gom cây course vào _site
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _site/courses
+          cp -R "${REGISTRY_ROOT}/." _site/courses/
+          echo "_site: $(find _site -type f | wc -l) tệp"
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
