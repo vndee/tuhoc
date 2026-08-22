@@ -750,16 +750,26 @@ const HTML_SINKS_ALLOWED: readonly {
     // still free.
     //
     // Two further properties of THIS use, neither of which ChapterView's has:
-    // the container is created by `resolveChapter`, never inserted into the
-    // document, and dropped when the function returns — so the parsed markup
-    // is never rendered, never laid out, and no handler on it can ever fire;
-    // and it exists to measure notes against a chapter the reader has not
-    // taken yet, which has to project to the SAME string the reader's page
-    // projected (see `course/version.ts`'s `CourseKitUnavailableError` for the
-    // measurement). Parsing it by some route the scanner above does not
-    // recognise — `DOMParser`, a `<template>` — would satisfy this test while
-    // making the injection invisible to it, which is worse than an entry here.
-    why: 'the chapter fragment again, parsed into a detached container that is never inserted into the document, to resolve anchors against a version not yet taken',
+    // it parses into an INERT document (`document.implementation.
+    // createHTMLDocument`, see `parseChapterInert`), and it exists to measure
+    // notes against a chapter the reader has not taken yet, which has to
+    // project to the SAME string the reader's page projected (see
+    // `course/version.ts`'s `CourseKitUnavailableError` for the measurement).
+    //
+    // RULING S1-F30 — this entry used to say the container was "detached …
+    // so no handler on it can ever fire", and that was measured FALSE in
+    // Chromium: an image/media load is started by the `src` attribute, not by
+    // being in a rendered tree, and the package's own `onerror` runs on it. A
+    // false security claim inside the very test that guards the area is worse
+    // than no claim, because it tells the next reader not to look. What makes
+    // this use safe is the inert DOCUMENT, and nothing else.
+    //
+    // The scanner above still sees this sink, which is the point: the fix
+    // changed WHICH document is written to, not the fact that a string becomes
+    // markup, so `times: 1` still counts it. (The rejected alternative,
+    // `DOMParser`, WOULD hide the sink from this scanner — that, not inertness,
+    // is the reason not to use it.)
+    why: 'the chapter fragment again, parsed into an inert document (no browsing context) to resolve anchors against a version not yet taken',
   },
 ];
 

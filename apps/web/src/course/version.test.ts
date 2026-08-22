@@ -26,11 +26,11 @@ import { fileURLToPath } from 'node:url';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { selectionToAnchor } from '../annotations/anchor';
+import { anchorToRange, selectionToAnchor } from '../annotations/anchor';
 import { normalizeContainer } from '../annotations/normalize';
 import { type AnnotationRow, db, type PackageRow } from '../db/local';
 import { loadManifest } from './loader';
-import { applyUpdate, CourseKitUnavailableError, previewUpdate } from './version';
+import { applyUpdate, CourseKitUnavailableError, parseChapterInert, previewUpdate } from './version';
 
 /**
  * `version.ts` asks `useCourseKit` to inject the runtime trio when
@@ -742,5 +742,95 @@ describe('previewUpdate — a real chapter of courses/***REMOVED***', () => {
       exact: 1,
       fuzzy: 0,
     });
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * 6. Ruling S1-F30 — the container a not-yet-taken version is parsed into
+ * ------------------------------------------------------------------ *
+ *
+ * `previewUpdate` parses markup written by whoever published the version the
+ * reader is only LOOKING at, and `UpdateDialog` starts it on mount — so this
+ * parse happens before any consent, from a package that is allowed to carry
+ * JavaScript if it declares `tier: "interactive"`. The validator cannot save
+ * this case (an interactive package is ENTITLED to its handlers), so the
+ * container is the whole defence.
+ *
+ * **What jsdom can and cannot say here.** jsdom fetches no subresources at all,
+ * so "the `onerror` did not fire" would be green in jsdom no matter how this
+ * file parsed — a vacuous test, and vacuous is exactly how the old, false
+ * "no handler on it can ever fire" comment survived review twice. So this block
+ * asserts the CAUSE instead of the symptom: the document the markup lands in
+ * has no browsing context, checked in both directions so it cannot pass by
+ * accident. The symptom (0 handlers and 0 requests leaving the browser, against
+ * 3 and 7 for the old shape) is measured in real Chromium — see
+ * `.superpowers/sdd/2026-08-21-s1-course-packages/fix-9-10-report.md`.
+ */
+
+describe('parseChapterInert — ruling S1-F30', () => {
+  it('đọc đúng chính nó: container CŨ (div rời) nằm trong tài liệu CÓ browsing context', () => {
+    // The two-way control. Without this row the assertion below is only
+    // "some document somewhere has no window", which would stay green for an
+    // instrument that had quietly stopped looking at anything.
+    const old = document.createElement('div');
+    old.innerHTML = '<p>x</p>';
+    expect(old.ownerDocument).toBe(document);
+    expect(old.ownerDocument.defaultView).not.toBeNull();
+  });
+
+  it('container MỚI nằm trong tài liệu KHÔNG có browsing context — và đó mới là thứ làm nó trơ', () => {
+    const root = parseChapterInert('<p>Định nghĩa</p><img src="https://evil.example/leak" onerror="fetch(1)">');
+
+    expect(root.ownerDocument).not.toBe(document);
+    expect(root.ownerDocument.defaultView).toBeNull();
+
+    // The markup really was parsed — a container that silently parsed nothing
+    // would satisfy the line above while protecting nothing.
+    expect(root.querySelectorAll('img')).toHaveLength(1);
+    expect(root.querySelector('img')?.getAttribute('onerror')).toBe('fetch(1)');
+    expect(root.textContent).toContain('Định nghĩa');
+  });
+
+  it('KHÔNG kéo nội dung trở lại tài liệu của trang — đó chính là cái bẫy của <template>', () => {
+    // `<template>` + `appendChild` reads as the safe idiom and is not one here:
+    // adopting the nodes into this document re-runs the img element's "update
+    // the image data" steps, and the Chromium measurement gives that shape the
+    // same 3 handlers / 7 requests as the old detached div. Anything that moves
+    // these nodes back into the page's document undoes the fix, so the test
+    // names the failure rather than leaving it to a comment.
+    const root = parseChapterInert('<p>x</p><img src="https://evil.example/leak">');
+    const nodes = Array.from(root.querySelectorAll('*'));
+    expect(nodes.length).toBeGreaterThan(1);
+    for (const node of nodes) expect(node.ownerDocument.defaultView).toBeNull();
+  });
+
+  it('phép chiếu KHÔNG đổi khi đi qua ranh giới tài liệu — trên chương THẬT', () => {
+    // The one real cost of an inert document: `normalizeContainer` calls
+    // `document.createTreeWalker` and `flatToDom` calls `document.createRange`,
+    // and both now receive nodes belonging to another document. Both are
+    // defined for that; this pins it as a checked property rather than tacit
+    // knowledge, because the entire value of `previewUpdate` is that it
+    // projects a chapter to the SAME string the reader's page projected.
+    const live = renderChapter(REAL_HTML);
+    const inert = parseChapterInert(REAL_HTML);
+    loadCourseKit();
+    window.CourseKit?.renderKatex(inert);
+
+    const liveMap = normalizeContainer(live);
+    const inertMap = normalizeContainer(inert);
+
+    expect(inertMap.flat).toBe(liveMap.flat);
+    expect(inertMap.segs.length).toBe(liveMap.segs.length);
+    expect(inertMap.flat.length).toBeGreaterThan(1000); // not two empty strings
+
+    // And an anchor made on the reader's own page still resolves inside it.
+    const paragraph = live.querySelectorAll('p')[3];
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    const anchor = selectionToAnchor(liveMap, range, 'y');
+    expect(anchor).not.toBeNull();
+    const hit = anchorToRange(inertMap, anchor as never);
+    expect(hit).not.toBeNull();
+    expect(hit?.range.toString()).toBe(paragraph.textContent);
   });
 });

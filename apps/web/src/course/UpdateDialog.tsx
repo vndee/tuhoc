@@ -31,6 +31,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { UnsafePackageError } from '../api/courses';
+import { describeFinding } from './import';
 import { describeCourseError, loadManifest } from './loader';
 import {
   applyUpdate,
@@ -76,6 +78,17 @@ const PREVIEWING: Stage = { kind: 'previewing' };
 function describeError(error: unknown): string {
   if (error instanceof CourseKitUnavailableError) {
     return 'Chưa xem trước được: không tải được bộ dựng chương (công thức toán). Hãy kiểm tra kết nối rồi thử lại.';
+  }
+  if (error instanceof UnsafePackageError) {
+    // A refusal, not a failure — and the reader is told which it is, because
+    // the two ask for opposite things from them. "Try again" is the wrong
+    // advice here: retrying downloads the same bytes and refuses them again.
+    // `describeFinding` is `/import`'s wording, reused rather than reworded so
+    // one package cannot be described two ways on two screens.
+    return `Không thể cập nhật: bản ${error.version} tự khai là hạng “content” (chỉ có chữ) nhưng lại chứa mã chạy được. ${error.findings
+      .slice(0, 3)
+      .map(describeFinding)
+      .join(' ')}`;
   }
   if (error instanceof PackageVersionUnavailableError) {
     return `Chưa xem trước được: không lấy được bản ${error.version} của khoá học này.`;

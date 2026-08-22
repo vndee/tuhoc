@@ -7,6 +7,7 @@
  * the base URL, the session cookie and the 401 policy stay in one place.
  */
 
+import { type Finding, validatePackage } from '@tuhoc/course-format';
 import { api, type RequestOptions } from './client';
 
 /**
@@ -111,6 +112,98 @@ function chapterFiles(manifestBytes: Uint8Array, courseId: string, version: stri
   return files;
 }
 
+/* ------------------------------------------------------------------ *
+ * The tier rules, applied to bytes that came off the server
+ * ------------------------------------------------------------------ */
+
+/**
+ * Thrown when a downloaded package breaks a rule about what its markup is
+ * allowed to DO in the reader's browser.
+ *
+ * Separate from `ApiError` because the server behaved perfectly: it answered,
+ * with exactly the bytes it was asked for. What is wrong is the package.
+ */
+export class UnsafePackageError extends Error {
+  readonly courseId: string;
+  readonly version: string;
+  readonly findings: readonly Finding[];
+
+  constructor(courseId: string, version: string, findings: readonly Finding[]) {
+    super(
+      `Course package ${courseId}@${version} declares tier "content" but breaks ${findings.length} of the ` +
+        `rules that tier stands for: ${findings.map((f) => `${f.code} (${f.path})`).join(', ')}`,
+    );
+    this.name = 'UnsafePackageError';
+    this.courseId = courseId;
+    this.version = version;
+    this.findings = findings;
+  }
+}
+
+/**
+ * The findings this boundary REFUSES on, as opposed to the ones it only
+ * reports — and the split is not arbitrary.
+ *
+ * These are the rules whose subject is what the markup will do once it is
+ * parsed in the reader's browser: scripts, `on*` handlers, `javascript:` urls,
+ * frames, forms, shipped `.js`, an entry path that climbs out of the package,
+ * and a tag carrying enough attributes to be an attack on the scanner itself.
+ * `apps/api`'s own `usecase.go` says in as many words that it checks structure
+ * and leaves this rule set to `validate.ts` — so before this, NOTHING applied
+ * them to a package that arrived down the server route. `course/import.ts`
+ * applied them to `/import` and only to `/import`.
+ *
+ * Everything else `validatePackage` can say — a missing `license`, no
+ * `authors`, `generatedBy` unset, a non-semver `version` — is deliberately NOT
+ * refused here. Two reasons, and the first is the load-bearing one:
+ *
+ *  1. **The server accepts those packages today.** `usecase.go` validates
+ *     structure and the `tier` column's CHECK, not the registry-facing v2
+ *     fields. Refusing them in the client would make a package the server
+ *     legitimately stored unreadable on the device that stored it — a format
+ *     migration, decided here by accident, in the middle of a security fix.
+ *  2. **A download is not the whole package.** `fetchPackage` collects the
+ *     manifest and the chapter files the manifest NAMES, nothing else, so a
+ *     rule about a file nobody named cannot be evaluated. Which cuts both
+ *     ways and is worth being blunt about: `JS_FILE_IN_PACKAGE` is in the list
+ *     above but a `viz.js` that the manifest never mentions is not downloaded,
+ *     so this boundary would not see it. The refusals below are a floor, not a
+ *     proof of safety — the reason `course/version.ts` parses chapters into an
+ *     inert document (ruling S1-F30) rather than trusting this check.
+ *
+ * And the case this check cannot touch at all, stated so nobody mistakes it
+ * for covered: a package that declares `tier: "interactive"` is ENTITLED to
+ * every one of these, so `validatePackage` reports nothing for it. The tier
+ * rules protect a reader from a package that LIES about its tier. They do not
+ * protect one from a package that is honest about running code.
+ */
+const REFUSED_CODES: ReadonlySet<string> = new Set([
+  'SCRIPT_TAG',
+  'EVENT_HANDLER_ATTR',
+  'JAVASCRIPT_URL',
+  'EMBEDDED_FRAME',
+  'FORM_TAG',
+  'JS_FILE_IN_PACKAGE',
+  'TAG_ATTR_FLOOD',
+  'PATH_ESCAPE',
+]);
+
+function refuseUnsafePackage(courseId: string, version: string, files: Record<string, Uint8Array>): void {
+  const { findings } = validatePackage(new Map(Object.entries(files)));
+  const refused = findings.filter((f) => REFUSED_CODES.has(f.code));
+  if (refused.length > 0) throw new UnsafePackageError(courseId, version, refused);
+
+  if (findings.length > 0) {
+    // Reported rather than refused (see REFUSED_CODES). Logged, not swallowed:
+    // a package that is structurally wrong is still worth finding, and a
+    // console line is where the next person looks.
+    console.warn(
+      `api/courses: package ${courseId}@${version} has ${findings.length} non-blocking validation finding(s)`,
+      findings.map((f) => `${f.code} ${f.path}`),
+    );
+  }
+}
+
 /**
  * Downloads a stored package: its manifest, plus every chapter file the
  * manifest names, keyed by package-relative path — the shape
@@ -135,6 +228,15 @@ function chapterFiles(manifestBytes: Uint8Array, courseId: string, version: stri
  * The chapter files are fetched concurrently: they are independent GETs of
  * a few kilobytes each, and a 40-chapter course fetched in sequence is 40
  * round trips of latency for no reason.
+ *
+ * **Every byte that leaves here has been through the tier rules.** See
+ * {@link REFUSED_CODES} for which ones and why only those — the short version
+ * is that this used to be the one way into the app for a package that had
+ * never met `validatePackage`, and a package that declared `content` could
+ * carry `onerror` down it and be drawn with a reassuring `content` badge.
+ * The scan is synchronous and proportional to the text downloaded (~1 s per
+ * 20 MB, measured in `course/import.ts`); it runs on the manifest + chapters,
+ * which is the small half of a package.
  */
 export async function fetchPackage(
   courseId: string,
@@ -150,5 +252,7 @@ export async function fetchPackage(
   names.forEach((name, i) => {
     files[name] = fetched[i];
   });
+
+  refuseUnsafePackage(courseId, version, files);
   return files;
 }

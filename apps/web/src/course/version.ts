@@ -53,7 +53,7 @@
 import { type Anchor, anchorToRange } from '../annotations/anchor';
 import { isMapStale, type NormMap, normalizeContainer } from '../annotations/normalize';
 import { exactOf } from '../annotations/useAnnotations';
-import { fetchPackage, MANIFEST_FILE } from '../api/courses';
+import { fetchPackage, MANIFEST_FILE, UnsafePackageError } from '../api/courses';
 import { type AnnotationRow, db } from '../db/local';
 import { ensureCourseKitRuntime } from '../reader/useCourseKit';
 import { PackageAssetError } from './loader';
@@ -195,6 +195,12 @@ async function readVersion(courseId: string, version: string): Promise<VersionFi
     try {
       files = await fetchPackage(courseId, version);
     } catch (cause) {
+      // `UnsafePackageError` is re-thrown as itself. It is not "the bytes
+      // could not be got" — they were got, in full, and then refused — and
+      // flattening the two into one message would tell a reader their network
+      // is flaky when what actually happened is that the version on offer
+      // declares `content` and ships event handlers.
+      if (cause instanceof UnsafePackageError) throw cause;
       throw new PackageVersionUnavailableError(courseId, version, cause);
     }
   }
@@ -276,15 +282,70 @@ async function chapterRenderer(): Promise<(root: ParentNode) => void> {
 type Tier = 'exact' | 'fuzzy' | 'orphan';
 
 /**
+ * Parses a chapter fragment from a version the reader has NOT accepted, into a
+ * document that cannot run any of it.
+ *
+ * ## Ruling S1-F30 — what this replaced, and why "detached" was not a defence
+ *
+ * This used to be `document.createElement('div')` + `innerHTML`, and both this
+ * file and the S1-F8 allowlist entry in `db/local.test.ts` stated in words that
+ * a detached container meant "no handler on it can ever fire". **That sentence
+ * was false, and it was measured false in Chromium**: an `<img>`/`<video>`/SVG
+ * `<image>` starts loading because its `src`/`href` attribute was set, not
+ * because it is in a rendered tree, and `error` fires on that load with the
+ * package's own `on*` attribute attached. A hostile chapter got three handlers
+ * run and three requests sent to a host of its choosing — on this app's origin,
+ * from a version the reader was only *looking at the price of*, because
+ * `UpdateDialog` previews on mount.
+ *
+ * ## Why `createHTMLDocument` and not `<template>`
+ *
+ * A `<template>`'s contents genuinely are inert — their owner document has no
+ * browsing context — but only while they STAY there. The drop-in shape,
+ * `holder.innerHTML = html` then `div.appendChild(holder.content)`, moves every
+ * node straight back into this document, and the `img` element's adopting steps
+ * re-run "update the image data" on arrival. Measured, same harness, same
+ * hostile fragment:
+ *
+ *     detached div (the old code)      3 handlers · 7 requests left the browser
+ *     template + appendChild           3 handlers · 7 requests left the browser
+ *     createHTMLDocument (this)        0 handlers · 0 requests
+ *
+ * The middle row is the trap: it reads as the safe idiom and is not one here.
+ * A `<template>` would only work if the nodes were never adopted, and
+ * `normalizeContainer` wants an `Element`, not the `DocumentFragment` that
+ * would leave us holding.
+ *
+ * So the container is an inert document's `body`. `defaultView === null` is the
+ * property that makes it safe, it is a property of the DOCUMENT rather than of
+ * where the node happens to be parked, and it is asserted in `version.test.ts`
+ * rather than left as folklore — which is precisely what the old comment was.
+ *
+ * The cost, stated because it is the one thing this shape asks of its callers:
+ * `root` belongs to a DIFFERENT document, so everything downstream crosses a
+ * document boundary — `document.createTreeWalker` in `normalizeContainer` and
+ * `document.createRange` in `flatToDom`. Both are defined for foreign nodes and
+ * both are measured here (same projection, same counts, on the real chapter),
+ * but a future reader must not "tidy" this back into the current document.
+ */
+export function parseChapterInert(html: string): HTMLElement {
+  const inert = document.implementation.createHTMLDocument('');
+  inert.body.innerHTML = html;
+  return inert.body;
+}
+
+/**
  * Resolves `notes` against ONE chapter of ONE version, and lets the DOM go.
  *
- * **The container is built the way `ChapterView` builds one**: `innerHTML`,
- * then `CourseKit.renderKatex`. That second step is not a nicety — see
- * `CourseKitUnavailableError` for the measurement that made it mandatory.
- * `initViz` is deliberately NOT run: every node it touches carries `data-viz`,
- * which `normalize.ts`'s `EXCLUDED_SELECTOR` skips whole, so it cannot change
- * a single character of the projection, and running a package's simulations to
- * count its notes would execute course-supplied code for no reason at all.
+ * **The container is built the way `ChapterView` builds one**, with one
+ * deliberate difference: `innerHTML` — into an INERT document, see
+ * `parseChapterInert` — then `CourseKit.renderKatex`. That second step is not a
+ * nicety; see `CourseKitUnavailableError` for the measurement that made it
+ * mandatory. `initViz` is deliberately NOT run: every node it touches carries
+ * `data-viz`, which `normalize.ts`'s `EXCLUDED_SELECTOR` skips whole, so it
+ * cannot change a single character of the projection, and running a package's
+ * simulations to count its notes would execute course-supplied code for no
+ * reason at all.
  *
  * This function is also where ruling P2-F8 is enforced structurally. The
  * container and the map are created here, used here, and unreachable
@@ -294,9 +355,11 @@ type Tier = 'exact' | 'fuzzy' | 'orphan';
  * "should never" is exactly the class of assumption that took a page down twice
  * in P2.
  *
- * The container is DETACHED. It is never inserted into the document — nothing
- * downstream needs layout, only the tree — so a preview cannot flash a version
- * of the course the reader has not taken through the page they are looking at.
+ * The container is never inserted into the reader's page either, which is a
+ * second, weaker property worth keeping for its own reason: a preview must not
+ * flash a version of the course the reader has not taken through the page they
+ * are looking at. It is NOT what makes the markup safe — ruling S1-F30 is the
+ * measurement that settled that.
  */
 function resolveChapter(
   html: string,
@@ -304,8 +367,7 @@ function resolveChapter(
   renderKatex: (root: ParentNode) => void,
 ): Map<string, Tier> {
   const out = new Map<string, Tier>();
-  const root = document.createElement('div');
-  root.innerHTML = html;
+  const root = parseChapterInert(html);
   renderKatex(root);
 
   let map: NormMap | null = null;
