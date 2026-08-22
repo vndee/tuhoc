@@ -198,6 +198,32 @@ jobs:
           cp -R "${REGISTRY_ROOT}/." _site/courses/
           echo "_site: $(find _site -type f | wc -l) tệp"
 
+      # And the ARCHIVE the platform actually pulls, one per published version,
+      # at `_site/courses/<id>/<version>.zip`.
+      #
+      # The loose tree above is browsable but it is not importable: `apps/web`
+      # brings a package in through exactly three doors — a `.zip` on disk, a
+      # `.zip` at a URL, and a public GitHub repo — and a directory of loose
+      # files on a static host is none of them. Subsystem 1 measured all three
+      # doors arriving at ONE validating funnel, and that convergence is worth
+      # more than the convenience of a fourth door, so the registry publishes
+      # the artifact the existing door already accepts.
+      #
+      # `pack-site` runs the SAME rule set (`inspectCourse` → `validatePackage`)
+      # and refuses to write an archive for a package with findings, so a
+      # course that could not pass the PR gate cannot acquire a download URL
+      # either. It also fails when it packs NOTHING: a site whose index lists
+      # courses while every "pull" button 404s is a blind gate with a CDN in
+      # front of it.
+      #
+      # Runs AFTER the copy on purpose — `cp -R` would otherwise be able to
+      # overwrite an archive with a same-named file from the source tree.
+      - name: đóng gói từng phiên bản thành .zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun tools/registry/src/pack-site.ts --root "${REGISTRY_ROOT}" --out _site
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
