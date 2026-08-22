@@ -12,7 +12,14 @@ dev-web:  courses ; cd apps/web && bun run dev
 # Cần cả hai chạy song song khi phát triển tính năng AI: `make dev-web` ở một
 # terminal, `make dev-vault` ở terminal khác.
 dev-vault: ; cd apps/vault && bun run dev
-test-api: ; cd apps/api && go test ./...
+# gofmt là một cổng, không phải một thói quen. Hai tệp đã lệch định dạng và
+# không ai biết, vì `make` chưa từng hỏi — một trong hai do chính điều phối viên
+# thêm vào. `gofmt -l` in ra TÊN TỆP lệch và thoát 0 dù có lệch hay không, nên
+# phải tự chuyển thành mã thoát.
+gofmt-check:
+	@cd apps/api && out=$$(gofmt -l .); if [ -n "$$out" ]; then echo "gofmt: các tệp sau lệch định dạng:"; echo "$$out" | sed 's/^/  /'; echo "  chạy: cd apps/api && gofmt -w ."; exit 1; fi
+
+test-api: gofmt-check ; cd apps/api && go test ./...
 # `courses` first: four unit test files read a chapter of a real, packed course
 # — since task 13 that is the PUBLIC sample package `so-dau-phay-dong`, which
 # lives in this repo at `fixtures/courses/` but is read from the `courses/`

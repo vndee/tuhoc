@@ -2192,4 +2192,3 @@ func TestCourseHTTPContracts(t *testing.T) {
 		}
 	})
 }
-

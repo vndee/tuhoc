@@ -19,11 +19,11 @@ import (
 // quả là mối ghép chỉ còn được giữ bằng CHÚ THÍCH, và ba thay đổi sẽ trôi qua
 // trong im lặng:
 //
-//   1. registry siết luật id chặt hơn  → Go vẫn nhận, không ai biết;
-//   2. registry cho phép id lồng thư mục → Go TỪ CHỐI một id hợp lệ, và triệu
-//      chứng người dùng thấy chỉ là "chấm sao không hoạt động";
-//   3. chưa từng có id registry THẬT nào đi qua validator này — repo registry
-//      công khai còn chưa tồn tại (`docs/deploy.md` §5c).
+//  1. registry siết luật id chặt hơn  → Go vẫn nhận, không ai biết;
+//  2. registry cho phép id lồng thư mục → Go TỪ CHỐI một id hợp lệ, và triệu
+//     chứng người dùng thấy chỉ là "chấm sao không hoạt động";
+//  3. chưa từng có id registry THẬT nào đi qua validator này — repo registry
+//     công khai còn chưa tồn tại (`docs/deploy.md` §5c).
 //
 // Bài kiểm này đọc chính những `manifest.json` mà `tools/registry` đọc, nên nó
 // đo id THẬT chứ không đo một bản chép tay. Nó không thay được một cổng chạy
