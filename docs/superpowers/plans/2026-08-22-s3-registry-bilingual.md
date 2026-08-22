@@ -33,6 +33,15 @@ Spec §4.2 viết gọn: *"Giao diện nền tảng: tiếng Việt + tiếng An
 | `apps/api/**/*.go` | **9** |
 | **tổng** | **84** |
 
+**HIỆU CHỈNH 2026-08-22 (Task 4 đo lại):** con số 84 ở trên đếm **chú thích**, không đếm chuỗi giao
+diện — văn xuôi của repo này là tiếng Việt, nên `grep` gắn cờ *mọi* tệp sản phẩm (62/62 web, 14/14
+vault). Đọc ở tầng **AST**, bề mặt cần bóc thật là **37 tệp**. Kết luận của HC-1 **vẫn đúng** (đây là
+di trú xuyên suốt, cần tách hạ tầng khỏi việc bóc, cần cổng theo allowlist); chỉ **con số là sai**.
+Task 5 có quy mô **37**, trong đó riêng `course/import.ts` là **75 chuỗi**.
+
+**Và cần gốc quét THỨ BA:** `packages/course-kit/runtime.js:377,382` gửi hai câu tiếng Việt tới trang
+người đọc qua `<script src>`. Một cổng chỉ quét hai cây sẽ **im lặng về chúng vĩnh viễn**.
+
 Và **không có hạ tầng i18n nào** — không `i18next`, không `react-intl`, không một hàm `t()` nào.
 
 ⇒ Đây là **di trú xuyên suốt**, quy mô ngang cả hệ thống con 1, không phải một mục trong danh sách.
@@ -249,7 +258,44 @@ và **không cổng nào biết**.
 
 ---
 
-## Task 5: Bóc 84 tệp (HC-1 phần 2)
+## Quyết định trước Task 5 (điều phối viên, 2026-08-22)
+
+Task 4 nêu hai câu hỏi và **cố ý không tự trả lời**. Cả hai đã chốt.
+
+### QĐ-1. `apps/vault` dùng chung catalog qua một gói `packages/i18n` **không phụ thuộc gì**
+
+Kho khoá là **origin riêng giữ bí mật**, và `index.html` của nó nói rõ **danh sách phụ thuộc của nó
+là bề mặt tấn công**. Ba đường:
+
+| đường | phán quyết |
+|---|---|
+| vault nhập thẳng từ `apps/web/src/i18n` | ghép kho khoá vào cây nguồn của ứng dụng chính — chính thứ kiến trúc này sinh ra để tách |
+| catalog thứ hai trong vault | **hai bản sẽ trôi khác nhau**. Dự án đã đo *"một bộ luật, ba bản, bất đồng 7/12 hàng"*; đừng thêm |
+| **`packages/i18n` dùng chung** ✅ | một bản duy nhất, và bề mặt tấn công **đo được** |
+
+**Ràng buộc làm cho lựa chọn này an toàn, và nó phải có cổng:** `packages/i18n` chỉ được chứa **hằng
+chuỗi và một hàm tra cứu thuần** — **không React, không DOM, không I/O, không phụ thuộc runtime nào**.
+Viết một test khẳng định điều đó (`dependencies` rỗng, và không tệp nguồn nào `import` thứ gì ngoài
+kiểu của chính nó). Không có cổng ấy thì lựa chọn này chỉ là lời hứa.
+
+**Và sửa thứ tự của Task 5:** kế hoạch bảo làm `apps/vault` **trước** vì "ít tệp nhất". Sai — nó là
+bước **duy nhất có vật cản kiến trúc**. Làm nó **sau** khi `packages/i18n` tồn tại và có cổng.
+
+### QĐ-2. `t()` giữ nguyên trả về `string`; thêm `tNode()` cho câu có thẻ giữa chừng
+
+9 trong 20 tệp `.tsx` trên sổ có thẻ nội tuyến giữa câu (ví dụ `pages/Settings.tsx`:
+`<strong>kho khoá</strong>`). Đổi `t()` sang `ReactNode` **hỏng** mọi ngữ cảnh chỉ-nhận-chuỗi —
+`aria-label`, `title`, `placeholder`, thông báo `throw` — và biến chúng thành chỗ phải thu hẹp kiểu
+bằng tay.
+
+⇒ **Hai hàm, hai hợp đồng rõ ràng**, hơn một hàm trả về union mà mọi người phải narrow:
+- `t(key)` → `string`, dùng được ở mọi chỗ cần chuỗi, **kiểu vẫn chặt**;
+- `tNode(key, parts)` → `ReactNode`, chỉ cho câu có thẻ giữa chừng.
+
+Người cài đặt Task 4 nói đúng rằng việc này **rẻ bây giờ và đắt sau 37 tệp** — đó là lý do chốt ở đây
+chứ không để Task 5 tự xoay.
+
+## Task 5: Bóc 37 tệp (HC-1 phần 2)
 
 **Files:** Modify 44 `.tsx` + 17 `.ts` (`apps/web`), 14 `.ts` (`apps/vault`), 9 `.go` (`apps/api`)
 
