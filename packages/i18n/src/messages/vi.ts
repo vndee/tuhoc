@@ -356,10 +356,28 @@ export const vi = {
   'reader.askHeading': 'Hỏi về chương',
   'reader.prev': '← Chương trước',
   'reader.next': 'Chương sau →',
-  'reader.railAria': 'Nội dung rãnh phải',
+  /* `reader.railAria` đã rời đi cùng bộ tab của rãnh: nó là nhãn của
+     `role="tablist"`, và chế độ đọc không còn tablist nào. Gỡ chứ không để lại
+     — một khoá không ai gọi là một câu người dịch vẫn phải dịch. */
   'reader.notesTab': (count: string) => `Ghi chú (${count})`,
   'reader.exerciseCheckbox': (index: string) => `Đánh dấu đã làm bài tập ${index}`,
   'reader.exerciseDone': 'Đã làm',
+
+  /* ── chế độ đọc: một cột chữ (`reader/TocDrawer.tsx`, hướng A) ──────────── */
+
+  /* Nhãn NGẮN vì nó nằm trên thanh trên cạnh breadcrumb; câu đầy đủ ở `title`
+     và `aria-label` của cùng nút ấy. */
+  'reader.toc': 'Mục lục',
+  'reader.tocOpen': 'Mở mục lục khoá học',
+  'reader.tocClose': 'Đóng mục lục',
+  'reader.tocAria': 'Mục lục khoá học',
+  /* MỘT lối ra, không phải năm. Chữ hiện là "Thoát"; câu đầy đủ nói ra nó dẫn
+     đi đâu, vì một nút tên "Thoát" không nói được điều đó. */
+  'reader.exit': 'Thoát',
+  'reader.exitAria': 'Thoát chế độ đọc — về Học tiếp',
+  'reader.notesToggle': 'Hiện/ẩn ghi chú ở lề',
+  'reader.tocEmpty': 'Khoá học này chưa có chương nào.',
+  'reader.tocHeadingsEmpty': 'Chương này không có mục con.',
 
   /* ── thanh công cụ bôi chọn (`annotations/SelectionToolbar.tsx`) ───────── */
 

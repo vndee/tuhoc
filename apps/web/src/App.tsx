@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, useLocation } from 'react-router-dom';
 import { useMe } from './api/useMe';
 import { LanguageProvider } from './i18n/LanguageProvider';
 import { LanguageSwitcher } from './i18n/LanguageSwitcher';
@@ -44,14 +44,27 @@ export default function App() {
  * reads the current location to close the drawer on navigation — run
  * *inside* `<BrowserRouter>` rather than above it.
  */
+// Matches `/c/:courseId/:chapterId`. A fourth copy of this regex, and
+// deliberately not a shared import: `Topbar`, `Rail` and `Sidebar` each keep
+// their own for the reason `Topbar`'s comment gives — all four are chrome
+// rendered ALONGSIDE `<AppRoutes>` rather than inside a matched `<Route>`, so
+// none of them can ask the router and all of them only ever see a pathname.
+const CHAPTER_ROUTE = /^\/c\/[^/]+\/[^/]+/;
+
 function AppShell() {
   const { theme, toggle: toggleTheme } = useThemeContext();
   const { toggle: toggleMobileNav } = useMobileNav();
+  const location = useLocation();
 
   useSyncLifecycle();
 
   return (
     <Shell
+      // HAI CHẾ ĐỘ, không phải năm mục phẳng — đặc tả
+      // `docs/superpowers/specs/2026-08-23-ia-redesign.md`. Đây là chỗ duy
+      // nhất trong repo biết mình đang ở chế độ nào; mọi khác biệt còn lại là
+      // luật CSS treo dưới `#app.reading`.
+      reading={CHAPTER_ROUTE.test(location.pathname)}
       sidebar={<Sidebar />}
       topbar={
         <>

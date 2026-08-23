@@ -52,6 +52,11 @@ export function Reader() {
       partTitle={chaptersWithPart[index].partTitle}
       prevChapter={chaptersWithPart[index - 1]?.chapter ?? null}
       nextChapter={chaptersWithPart[index + 1]?.chapter ?? null}
+      // Chế độ đọc has no sidebar, so the course outline that used to live
+      // there now lives in the reader's table-of-contents drawer — and the
+      // manifest this component already holds is where it comes from. Passed
+      // rather than re-fetched: see `ChapterViewProps.parts`.
+      parts={manifestQuery.data.parts}
     />
   );
 }

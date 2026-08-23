@@ -16,6 +16,21 @@ export interface ShellProps {
    * `null` là "cố ý không có kho khoá".
    */
   vaultOrigin?: string | null;
+  /**
+   * `true` on `/c/:courseId/:chapterId` — the READING mode of the two this
+   * product has (đặc tả: `docs/superpowers/specs/2026-08-23-ia-redesign.md`).
+   * It puts `.reading` on `#app` and nothing else; every difference between
+   * the two modes is a rule in `styles/reader-layout.css` hanging off that
+   * one class.
+   *
+   * A class rather than a different tree on purpose. The reading view is the
+   * SAME `#app > #sidebar + #main(...)` skeleton — `reader.css` is a
+   * byte-for-byte port of v1 and every id in it is load-bearing, `#rail` is
+   * where the annotation phase's two reading surfaces live, and `#content`
+   * is what three e2e files point at. Rendering a second skeleton for
+   * reading mode would fork all of that in order to hide one column.
+   */
+  reading?: boolean;
 }
 
 /**
@@ -44,10 +59,10 @@ export interface ShellProps {
  * lại từng byte từ bản v1 một-tệp) vẫn áp đúng. `VaultFrame.test.tsx` khoá
  * chính tính chất đó lại.
  */
-export function Shell({ sidebar, topbar, children, rail, vaultOrigin }: ShellProps) {
+export function Shell({ sidebar, topbar, children, rail, vaultOrigin, reading = false }: ShellProps) {
   return (
     <VaultFrameProvider origin={vaultOrigin}>
-      <div id="app">
+      <div id="app" className={reading ? 'reading' : undefined}>
         <aside id="sidebar">{sidebar}</aside>
         <div id="main">
           <div id="topbar">{topbar}</div>

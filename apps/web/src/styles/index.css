@@ -5,6 +5,7 @@
    vite-plugins/courseAssets.ts and the task report for why. */
 @import '@course-kit/vendor/katex.css';
 @import '@course-kit/reader.css';
+@import './reader-layout.css';
 
 /* Task 12 — /login. Not part of the ported v1 stylesheet (v1 had no auth
    UI), so it lives here rather than in packages/course-kit/reader.css,
