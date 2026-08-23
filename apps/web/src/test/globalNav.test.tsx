@@ -66,7 +66,7 @@ describe('điều hướng toàn cục (shell)', () => {
       .getAllByRole('link')
       .map((a) => a.getAttribute('href'));
     expect(hrefs).toContain('/');
-    expect(hrefs).toContain('/library');
+    expect(hrefs).toContain('/courses');
     expect(hrefs).toContain('/import');
   });
 
@@ -87,8 +87,9 @@ describe('điều hướng toàn cục (shell)', () => {
     const hrefs = within(nav)
       .getAllByRole('link')
       .map((a) => a.getAttribute('href'));
-    expect(hrefs, 'không còn lối vào /library từ Bảng điều khiển').toContain('/library');
+    expect(hrefs, 'không còn lối vào danh sách khoá học từ Bảng điều khiển').toContain('/courses');
     expect(hrefs, 'không còn lối vào /import từ Bảng điều khiển').toContain('/import');
+    expect(hrefs, 'không còn lối vào /progress').toContain('/progress');
   });
 
   it('bấm được: từ /import sang /library, bằng chuột, trong ứng dụng thật', async () => {
@@ -97,10 +98,10 @@ describe('điều hướng toàn cục (shell)', () => {
 
     const nav = await waitFor(() => globalNav());
     const user = userEvent.setup();
-    await user.click(within(nav).getByRole('link', { name: /thư viện/i }));
+    await user.click(within(nav).getByRole('link', { name: /khoá học/i }));
 
-    await waitFor(() => expect(window.location.pathname).toBe('/library'));
-    expect(await screen.findByRole('heading', { name: 'Thư viện' })).toBeInTheDocument();
+    await waitFor(() => expect(window.location.pathname).toBe('/courses'));
+    expect(await screen.findByRole('heading', { name: 'Thư viện' })).toBeInTheDocument(); // `/courses` hiện dựng Library
   });
 });
 
@@ -135,9 +136,9 @@ describe('điều hướng toàn cục — khi chưa đăng nhập', () => {
   });
 
   it('đánh dấu trang hiện tại bằng aria-current, không bằng một class thứ hai', () => {
-    renderSidebarAt('/library', { id: 'u1', email: 'a@vi.vn', name: 'Người học' });
+    renderSidebarAt('/courses', { id: 'u1', email: 'a@vi.vn', name: 'Người học' });
     const nav = globalNav();
-    expect(within(nav).getByRole('link', { name: /thư viện/i })).toHaveAttribute('aria-current', 'page');
+    expect(within(nav).getByRole('link', { name: /khoá học/i })).toHaveAttribute('aria-current', 'page');
     expect(within(nav).getByRole('link', { name: /nhập khóa học/i })).not.toHaveAttribute('aria-current');
   });
 });

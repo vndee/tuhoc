@@ -139,7 +139,7 @@ describe('rời chương bằng điều hướng SPA', () => {
 
     const user = userEvent.setup();
     const nav = screen.getByRole('navigation', { name: /điều hướng chính/i });
-    await user.click(within(nav).getByRole('link', { name: /thư viện/i }));
+    await user.click(within(nav).getByRole('link', { name: /khoá học/i }));
 
     // 1. Trang ĐÍCH đã dựng. Đây là khẳng định chính — không phải `location`,
     //    vì chính lỗi này để URL đổi mà nội dung thì không.
@@ -168,7 +168,7 @@ describe('rời chương bằng điều hướng SPA', () => {
 
     const user = userEvent.setup();
     const nav = screen.getByRole('navigation', { name: /điều hướng chính/i });
-    await user.click(within(nav).getByRole('link', { name: /trợ lý ai/i }));
+    await user.click(within(nav).getByRole('link', { name: /cài đặt/i }));
 
     expect(await screen.findByRole('heading', { name: 'Trợ lý AI' })).toBeInTheDocument();
     expect(document.querySelector('.page-settings')).not.toBeNull();
@@ -184,7 +184,7 @@ describe('rời chương bằng điều hướng SPA', () => {
 
     const nav = await waitFor(() => screen.getByRole('navigation', { name: /điều hướng chính/i }));
     const user = userEvent.setup();
-    await user.click(within(nav).getByRole('link', { name: /thư viện/i }));
+    await user.click(within(nav).getByRole('link', { name: /khoá học/i }));
 
     expect(await screen.findByRole('heading', { name: 'Thư viện' })).toBeInTheDocument();
     expect(errorBoundaryFallback()).toBeNull();

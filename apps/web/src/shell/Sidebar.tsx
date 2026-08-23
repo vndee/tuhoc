@@ -57,33 +57,53 @@ function GlobalNav() {
 
   return (
     <nav className="sb-nav" aria-label={t('nav.aria.main')}>
+      {/*
+        BA nơi chốn, và chỉ ba. Đặc tả:
+        `docs/superpowers/specs/2026-08-23-ia-redesign.md`.
+
+        Danh sách cũ có năm mục ngang hàng nhưng ba LOẠI: nơi chốn
+        (`/`, `/library`), hành động (`/import`) và thiết lập (`/settings` dưới
+        tên "Trợ lý AI"). Ngang hàng nhau thì người dùng phải tự phân loại hộ.
+
+        Ba mục rời đi, KHÔNG biến mất — và route cũ của chúng vẫn chuyển hướng
+        (xem `routes.tsx`):
+          `/import`   → nút "Nhập gói" bên trong `/courses`
+          `/catalog`  → tab "Kho cộng đồng" bên trong `/courses`
+          `/settings` → menu tài khoản ở đáy thanh bên, ngay dưới đây
+      */}
       <NavLink to="/" end className="sb-nav-link">
-        {t('nav.dashboard')}
+        {t('nav.continue')}
       </NavLink>
-      <NavLink to="/library" className="sb-nav-link">
-        {t('nav.library')}
+      <NavLink to="/courses" className="sb-nav-link">
+        {t('nav.courses')}
       </NavLink>
+      <NavLink to="/progress" className="sb-nav-link">
+        {t('nav.progress')}
+      </NavLink>
+      {/*
+        Hai mục dưới đây CÒN Ở ĐÂY vì `/courses` chưa hấp thụ chúng. Gỡ khỏi
+        thanh bên trước khi có đích là làm hai màn hình chỉ tới được bằng cách
+        gõ URL — đúng cổng mù #4 (S1-F29). Chúng rời đi trong CÙNG thay đổi
+        dựng tab và nút vào `/courses`.
+      */}
       <NavLink to="/import" className="sb-nav-link">
         {t('nav.import')}
       </NavLink>
-      {/*
-        `/catalog` — cùng lý do đã ghi cho `/settings` ngay bên dưới, và cùng
-        cái bẫy: một màn hình chỉ tới được bằng cách gõ URL là màn hình không
-        ai tới (S1-F29). Đứng ngay sau "Nhập khóa học" vì hai mục ấy trả lời
-        cùng một câu hỏi — "lấy khóa học ở đâu" — và registry là câu trả lời mà
-        `EmptyLibrary` tới nay mới chỉ hứa bằng một câu văn.
-      */}
       <NavLink to="/catalog" className="sb-nav-link">
         {t('nav.catalog')}
       </NavLink>
+
       {/*
-        Không có liên kết này thì `/settings` chỉ tới được bằng cách gõ URL, và
-        một trang cấu hình không ai tới được là đúng hình dạng cổng mù #4
-        (S1-F29) mà cả route ấy sinh ra để vá.
+        Tài khoản ở ĐÁY, tách khỏi ba nơi chốn bằng khoảng trắng chứ không phải
+        bằng một mục thứ tư. `/settings` vẫn phải tới được bằng một cú bấm —
+        một trang cấu hình chỉ tới được bằng cách gõ URL là đúng hình dạng cổng
+        mù #4 (S1-F29) mà chính route ấy sinh ra để vá.
       */}
-      <NavLink to="/settings" className="sb-nav-link">
-        {t('settings.ai.title')}
-      </NavLink>
+      <div className="sb-account">
+        <NavLink to="/settings" className="sb-nav-link sb-account-link">
+          {t('account.settings')}
+        </NavLink>
+      </div>
     </nav>
   );
 }

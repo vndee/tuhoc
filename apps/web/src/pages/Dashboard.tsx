@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useLogout } from '../auth/useLogout';
-import { type CourseStat, type DayStat, fetchStats, statsQueryKey } from '../api/stats';
+import { useStats, type CourseStat, type DayStat } from '../api/stats';
 import { useMe } from '../api/useMe';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
 import { useOwnedCourses } from '../course/owned';
@@ -18,13 +18,7 @@ import { EmptyLibrary } from './Library';
  * endpoint declared in two files is where the drift lives. Both callers use the
  * same query key, so this is one request, not two.
  */
-function useStats() {
-  return useQuery({
-    queryKey: statsQueryKey(),
-    queryFn: () => fetchStats(),
-    retry: false,
-  });
-}
+// `useStats` nay ở `api/stats.ts` — hai màn hình đọc nó, một định nghĩa.
 
 /**
  * `/` — the dashboard: one card per course (title, completion ring,

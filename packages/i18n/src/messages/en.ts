@@ -154,6 +154,17 @@ export const en: Messages = {
   'app.name': 'Tự học',
 
   'nav.aria.main': 'Main navigation',
+  'nav.continue': 'Continue',
+  'nav.courses': 'Courses',
+  'nav.progress': 'Progress',
+  'account.settings': 'Settings',
+  'progress.loading': 'Loading your progress…',
+  'progress.error': 'Could not load progress. These figures live on the server, so this part needs a connection.',
+  'progress.sentence': (minutes: string, streak: string) =>
+    `You have studied ${minutes} minutes, on a ${streak}-day streak.`,
+  'progress.byCourse': 'By course',
+  'progress.noCourses': 'Nothing to measure yet. Import a package under Courses.',
+  'progress.chaptersDone': (n: string) => `${n} chapters read`,
   'nav.dashboard': 'Dashboard',
   'nav.library': 'Library',
   'nav.import': 'Import a course',

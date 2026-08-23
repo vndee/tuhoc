@@ -184,6 +184,17 @@ export const vi = {
   'app.name': 'Tự học',
 
   'nav.aria.main': 'Điều hướng chính',
+  'nav.continue': 'Học tiếp',
+  'nav.courses': 'Khoá học',
+  'nav.progress': 'Tiến độ',
+  'account.settings': 'Cài đặt',
+  'progress.loading': 'Đang tải tiến độ…',
+  'progress.error': 'Chưa lấy được tiến độ. Số liệu nằm trên máy chủ, nên phần này cần mạng.',
+  'progress.sentence': (minutes: string, streak: string) =>
+    `Bạn đã học ${minutes} phút, với chuỗi ${streak} ngày liên tục.`,
+  'progress.byCourse': 'Theo khoá học',
+  'progress.noCourses': 'Chưa có khoá học nào để đo. Nhập một gói ở mục Khoá học.',
+  'progress.chaptersDone': (n: string) => `${n} chương đã đọc`,
   'nav.dashboard': 'Bảng điều khiển',
   'nav.library': 'Thư viện',
   'nav.import': 'Nhập khóa học',

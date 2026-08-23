@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 /**
  * The client half of `GET /stats` — apps/api/internal/stats/handler.go's
  * `statsResponse`, field for field.
@@ -82,4 +83,20 @@ export function assertStats(body: unknown): Stats {
 
 export async function fetchStats(options: RequestOptions = {}): Promise<Stats> {
   return assertStats(await api.get<unknown>('/stats', options));
+}
+
+/**
+ * Truy vấn thống kê học tập, dùng chung cho MỌI màn hình đọc nó.
+ *
+ * Trước đây hàm này là hàm riêng bên trong `pages/Dashboard.tsx`. Khi thiết kế
+ * lại thứ bậc tách `/progress` ra thành một nơi chốn riêng, hai trang cùng cần
+ * nó — và bản chép thứ hai là đúng chỗ trôi dạt mà dự án này đã trả giá nhiều
+ * lần để tránh. Cùng `queryKey`, nên hai trang là MỘT request, không phải hai.
+ */
+export function useStats() {
+  return useQuery({
+    queryKey: statsQueryKey(),
+    queryFn: () => fetchStats(),
+    retry: false,
+  });
 }

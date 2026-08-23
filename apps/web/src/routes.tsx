@@ -2,10 +2,11 @@ import { Route, Routes } from 'react-router-dom';
 import { RequireAuth } from './auth/RequireAuth';
 import { Catalog } from './registry/Catalog';
 import { CourseHome } from './pages/CourseHome';
-import { Dashboard } from './pages/Dashboard';
 import { ImportCourse } from './pages/ImportCourse';
+import { Dashboard } from './pages/Dashboard';
 import { Library } from './pages/Library';
 import { Login } from './pages/Login';
+import { Progress } from './pages/Progress';
 import { Reader } from './pages/Reader';
 import { Settings } from './pages/Settings';
 
@@ -28,6 +29,14 @@ import { Settings } from './pages/Settings';
 export function AppRoutes() {
   return (
     <Routes>
+      {/*
+        BA NƠI CHỐN, và chỉ ba. Đặc tả:
+        `docs/superpowers/specs/2026-08-23-ia-redesign.md`.
+
+        Bảng route cũ có năm mục ngang hàng nhưng chúng là ba LOẠI khác nhau —
+        nơi chốn (`/`, `/library`), hành động (`/import`) và thiết lập
+        (`/settings` dưới tên "Trợ lý AI"). Người dùng phải tự phân loại hộ.
+      */}
       <Route
         path="/"
         element={
@@ -37,74 +46,47 @@ export function AppRoutes() {
         }
       />
       <Route path="/login" element={<Login />} />
+
       {/*
-        `/import` sits behind RequireAuth like everything else, and for the
-        same reason the others do rather than out of habit: an import writes
-        into `db.packages`, which `clearLocalData()` empties on every auth
-        transition (see db/local.ts). A package imported while logged out
-        would be deleted by the next sign-in, which is a worse experience
-        than being asked to sign in first.
+        `/courses` gộp ba màn cũ: thư viện của bạn, kho cộng đồng (một TAB), và
+        nhập gói (một NÚT). Cả ba đều là "khoá học"; tách chúng ra ba mục thanh
+        bên là bắt người dùng biết trước gói mình muốn đến từ đâu.
+
+        Sau `RequireAuth` vì lý do cụ thể chứ không phải thói quen: màn này dẫn
+        tới một lần ghi vào `db.packages`, mà `clearLocalData()` dọn sạch ở mỗi
+        lần đổi phiên (xem db/local.ts). Một gói kéo về lúc chưa đăng nhập sẽ bị
+        xoá ở lần đăng nhập kế — mời người ta chọn rồi lặng lẽ vứt là tệ hơn hỏi
+        họ đăng nhập trước.
       */}
       <Route
-        path="/import"
-        element={
-          <RequireAuth>
-            <ImportCourse />
-          </RequireAuth>
-        }
-      />
-      {/*
-        `/library` (Task 9) is behind RequireAuth for the plainest of the
-        reasons on this page: it LISTS a reader's own courses, including
-        the private ones (spec §2.4 — private means no other user sees it),
-        and `GET /courses` is scoped to the session cookie on the server
-        side. A library screen that rendered for a logged-out visitor would
-        either show nothing or show whatever the last session left in the
-        query cache; the first is a broken page and the second is the leak.
-      */}
-      <Route
-        path="/library"
+        path="/courses"
         element={
           <RequireAuth>
             <Library />
           </RequireAuth>
         }
       />
+
       {/*
-        `/settings` (hệ thống con 2, Task 6) là ĐIỂM VÀO của kho khoá — chỗ
-        khung được mở rộng ra để người dùng dán key và bấm xác nhận đầu phiên.
-        Trước route này cả hai màn ấy được vẽ nhưng chưa ai nhìn thấy được.
-
-        Sau `RequireAuth` như mọi thứ khác, và vì một lý do cụ thể: trang này
-        mở khung kho khoá và mời người dùng cắm key, còn `clearLocalData()`
-        dọn dữ liệu cục bộ ở mỗi lần đổi phiên. Key thì KHÔNG bị dọn (nó nằm ở
-        origin khác, không nằm trong Dexie), nhưng mời một người chưa đăng nhập
-        đi cấu hình một tính năng chỉ dùng được sau khi đăng nhập là mời họ đi
-        một vòng vô ích.
-      */}
-      {/*
-        `/catalog` (hệ thống con 3, Task 3) — duyệt registry course cộng đồng.
-        MỘT tệp được tải cho việc này (`index.json`), không gọi GitHub API.
-
-        Sau `RequireAuth`, cùng lý do `/import` đã ghi ở trên chứ không phải
-        theo thói quen: màn hình này tồn tại để dẫn tới một lần KÉO VỀ, và một
-        gói kéo về lúc chưa đăng nhập sẽ bị `clearLocalData()` xoá ở lần đăng
-        nhập kế tiếp. Mời người ta duyệt rồi lặng lẽ vứt thứ họ chọn thì tệ hơn
-        là hỏi họ đăng nhập trước.
-
-        Điều này KHÔNG mâu thuẫn với "bản tự chạy dùng được registry công khai
-        ở chế độ chỉ-đọc" (spec §1.1): ràng buộc ấy nói về cách nền tảng đọc
-        registry — không khoá, không token, không API — chứ không nói về việc
-        ai được đăng nhập vào bản tự chạy.
+        `/progress` — nơi các con số THUỘC VỀ. Trước đây chúng nằm trên trang
+        chủ, biến màn hình đầu tiên của người dùng mới thành một bảng đếm toàn
+        số 0 thay vì một lời mời bắt đầu.
       */}
       <Route
-        path="/catalog"
+        path="/progress"
         element={
           <RequireAuth>
-            <Catalog />
+            <Progress />
           </RequireAuth>
         }
       />
+
+      {/*
+        `/settings` là ĐIỂM VÀO của kho khoá — chỗ khung được mở rộng để người
+        dùng dán key và bấm xác nhận đầu phiên. Nay vào từ MENU TÀI KHOẢN ở đáy
+        thanh bên, và "Trợ lý AI" là một mục BÊN TRONG nó, không phải một nơi
+        chốn ngang hàng với "Khoá học".
+      */}
       <Route
         path="/settings"
         element={
@@ -113,6 +95,7 @@ export function AppRoutes() {
           </RequireAuth>
         }
       />
+
       <Route
         path="/c/:courseId"
         element={
@@ -126,6 +109,42 @@ export function AppRoutes() {
         element={
           <RequireAuth>
             <Reader />
+          </RequireAuth>
+        }
+      />
+
+      {/*
+        BA ROUTE CŨ — CÒN NGUYÊN, và đó là điều cố ý.
+
+        Đích của chúng chưa tồn tại: `/courses` hiện dựng `Library`, chưa có tab
+        "Kho cộng đồng" lẫn nút "Nhập gói". Chuyển hướng tới một nơi chưa có đích
+        là **mất tính năng**, không phải di trú — người dùng bấm và không tìm
+        thấy thứ vừa còn ở đó.
+
+        Chúng sẽ thành `<Navigate>` trong CÙNG thay đổi dựng hai thứ ấy vào
+        `/courses`, không sớm hơn. Nền này chỉ THÊM, chưa gỡ gì.
+      */}
+      <Route
+        path="/library"
+        element={
+          <RequireAuth>
+            <Library />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/import"
+        element={
+          <RequireAuth>
+            <ImportCourse />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/catalog"
+        element={
+          <RequireAuth>
+            <Catalog />
           </RequireAuth>
         }
       />
