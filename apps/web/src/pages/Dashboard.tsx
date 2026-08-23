@@ -1,65 +1,77 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { colorOf, quoteOf } from '../annotations/useAnnotations';
 import { useLogout } from '../auth/useLogout';
-import { useStats, type CourseStat, type DayStat } from '../api/stats';
 import { useMe } from '../api/useMe';
+import { flatChapters, nextChapter } from '../course/chapters';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
-import { useOwnedCourses } from '../course/owned';
-import type { Manifest } from '../course/types';
+import { type OwnedCourse, useOwnedCourses } from '../course/owned';
 import { useLanguage } from '../i18n/LanguageProvider';
+import { pickFocusCourse, useLastStudiedCourseId, useRecentNotes } from '../progress/recent';
 import { useProgress } from '../progress/useProgress';
 import { EmptyLibrary } from './Library';
 
 /**
- * `GET /stats`, for the study-time panel.
+ * `/` — **Học tiếp**. Một hành động, và những gì người học đã viết.
  *
- * The shape, the key and the call now live in `api/stats.ts`: `course/owned.ts`
- * reads `stats.courses` to answer which courses this reader has, and one
- * endpoint declared in two files is where the drift lives. Both callers use the
- * same query key, so this is one request, not two.
- */
-// `useStats` nay ở `api/stats.ts` — hai màn hình đọc nó, một định nghĩa.
-
-/**
- * `/` — the dashboard: one card per course (title, completion ring,
- * chapters done), plus a study-time summary (streak, total minutes, and a
- * 30-day bar chart) and a logout control (debt #3 — see `useLogout`'s own
- * doc comment for the full reasoning on placement and local-data
- * clearing).
+ * Đặc tả: `docs/superpowers/specs/2026-08-23-ia-redesign.md`, bảng "ba nơi
+ * chốn": *"MỘT hành động: chương đang dở. Kèm ghi chú gần đây. KHÔNG phải bảng
+ * số liệu."*
  *
- * Ruling F5: the per-course completion PERCENTAGE always comes from
- * `useProgress` (local, via `CourseCard` below) — never from
- * `stats.courses[].chaptersDone`, which this component only ever uses as
- * the course card's secondary "phút đã học" figure. Study minutes,
- * streak, and the 30-day chart all come from `GET /stats` and nowhere
- * else, per the same ruling.
+ * ## Thứ đã rời khỏi tệp này, và vì sao
+ *
+ * Trang này từng là một bảng số liệu: `streakDays` và `totalMinutes` in to ở
+ * đầu, một biểu đồ cột 30 ngày, rồi mới tới thẻ khoá học. Với một tài khoản mới
+ * — mà Task 6 đã xoá `KNOWN_COURSE_IDS` nên **mọi** tài khoản mới đúng là như
+ * thế — màn hình đầu tiên của cả sản phẩm là **hai số 0 cỡ lớn**. Các con số ấy
+ * nay ở `/progress`, nơi chúng thuộc về, và không được phép quay lại đây: một
+ * con số muốn người ta ngắm, một hành động muốn người ta bấm, và đặt cả hai
+ * cạnh nhau thì cái to hơn thắng.
+ *
+ * `useStats()` do đó KHÔNG được gọi ở tệp này nữa. `useOwnedCourses()` vẫn đọc
+ * `GET /stats` bên trong (một course học ở máy khác chỉ có nguồn ấy biết), dưới
+ * cùng `statsQueryKey`, nên `/` và `/progress` vẫn là MỘT request chứ không
+ * phải hai.
+ *
+ * ## Ruling F5 còn nguyên
+ *
+ * Số chương đã đọc và chương kế tiếp đều tính từ `useProgress` — dữ liệu CỤC
+ * BỘ — không từ `stats.courses[].chaptersDone`. Trang này phải đúng khi không
+ * có mạng, vì nó là trang mở ra trước cả khi ai kịp biết mình có mạng hay không.
+ *
+ * ## Trạng thái rỗng vẫn phải THÀNH HÀNH ĐỘNG (ràng buộc 5 của đặc tả)
+ *
+ * Không có khoá học nào ⇒ `<EmptyLibrary>`, đúng thành phần mà `/courses` dựng,
+ * vì đây là cùng một cánh cửa và hai bản sao của một cánh cửa thì bản không ai
+ * đi qua sẽ trôi. Nó nói VÌ SAO trống (§9.5 cố ý không đóng gói sẵn course
+ * nào), trao đúng một hành động, và kể ba đường vào — trong đó một đường không
+ * cần mạng.
  */
 export function Dashboard() {
   const { t } = useLanguage();
   const meQuery = useMe();
   const logout = useLogout();
-  const statsQuery = useStats();
-  // The one answer to "which courses does this reader have" — ruling S1-F31.
-  // `/library` asks the same function the same question; before this they used
-  // two different formulas and disagreed on screen, seconds apart.
+  // MỘT câu trả lời cho "người này có những khoá nào" — ruling S1-F31.
   const owned = useOwnedCourses();
-  const courseIds = owned.courses.map((course) => course.courseId);
+  const lastStudied = useLastStudiedCourseId();
+
+  const focusCourseId = pickFocusCourse(owned.courses, lastStudied.courseId);
+  // "Chưa biết" KHÔNG được vẽ thành "không có gì": bốn nguồn của `useOwnedCourses`
+  // và bảng `progress` cục bộ đều phải trả lời xong. Nháy trạng thái rỗng vào mặt
+  // một người đang đọc dở là lỗi mà `Dashboard.test.tsx` đã có bài canh riêng.
+  const settled = owned.settled && lastStudied.settled;
 
   return (
-    <div className="dashboard">
-      <div className="dash-header">
+    <div className="home">
+      <div className="home-head">
         <div>
-          <h1 className="ch-title">{t('nav.dashboard')}</h1>
-          <p className="ch-lede">{t('dashboard.lede')}</p>
+          <h1 className="ch-title">{t('home.title')}</h1>
+          <p className="ch-lede">{t('home.lede')}</p>
         </div>
         {/*
-          Chỉ còn danh tính + đăng xuất.
-
-          `/library` và `/import` từng nằm ở đây vì chúng KHÔNG có đường vào
-          nào khác — chú thích cũ nói đúng điều đó ở thời điểm nó được viết.
-          `GlobalNav` (vòng sửa F3) đã cho cả hai một mục thường trực trên
-          thanh bên, nên giữ lại ở đây là **hai đường vào cho cùng một chỗ**,
-          và nó biến phần đầu trang thành một hàng nút rời rạc.
+          Chỉ còn danh tính + lối ra. Đặc tả đặt tài khoản ở ĐÁY THANH BÊN; cho
+          tới khi menu ấy có thật, gỡ nút này đi là bỏ mất đường đăng xuất duy
+          nhất mà người dùng bấm tới được — đúng hình dạng cổng mù #4 (S1-F29).
         */}
         <div className="dash-account">
           {meQuery.data && (
@@ -68,184 +80,165 @@ export function Dashboard() {
             </span>
           )}
           <button type="button" className="btn dash-logout" onClick={() => void logout()}>
-            {t('dashboard.logout')}
+            {t('home.logout')}
           </button>
         </div>
       </div>
 
-      <StatsSummary statsQuery={statsQuery} />
+      {focusCourseId !== undefined && <ContinueCard courseId={focusCourseId} />}
+      {focusCourseId === undefined && !settled && <p className="home-note">{t('home.loading')}</p>}
+      {focusCourseId === undefined && settled && <EmptyLibrary />}
 
-      <div className="dash-cards">
-        {courseIds.map((courseId) => (
-          <CourseCard key={courseId} courseId={courseId} statsCourses={statsQuery.data?.courses} />
-        ))}
-      </div>
-
-      {/*
-        An empty catalog is now a state this page can genuinely be in — a
-        new account holds no packages until it imports one — where before
-        the hardcoded course id made it unreachable. Saying so beats
-        rendering an empty strip that reads as a broken page.
-
-        Gated on every SOURCE having settled, not merely on the list being
-        empty: while any of the four is still in flight the answer is "we do
-        not know yet", and flashing "you have no courses" at a learner who
-        has several is worse than showing nothing for a moment. `settled`
-        comes from `useOwnedCourses` rather than from one query here, which
-        is the same widening as the union itself — this used to watch only
-        `GET /courses`.
-
-        The state itself is `<EmptyLibrary>` (pages/Library.tsx) rather than
-        a line of prose local to this file, and that is ruling S1-F17 being
-        applied where it actually lands: `/` is what a brand-new account
-        opens, so this IS the front door, and Task 6's deletion of
-        `KNOWN_COURSE_IDS` means every new reader stands here with nothing.
-        One sentence pointing at /import was the old answer; the shared
-        component names why the library is empty (a deliberate choice —
-        §9.5), hands over the action, and lists the three ways in. Sharing
-        it with `/library` is the point: two copies of a front door drift,
-        and the copy that drifts is the one nobody who already has courses
-        ever sees.
-      */}
-      {courseIds.length === 0 && owned.settled && <EmptyLibrary />}
+      <RecentNotes courses={owned.courses} />
     </div>
   );
 }
 
-interface StatsSummaryProps {
-  statsQuery: ReturnType<typeof useStats>;
-}
-
 /**
- * Judgment call: what the study-time panel shows while `GET /stats` is
- * pending, or when it fails (offline, 5xx, ...). Neither state renders a
- * blank panel or a spinner that could hang forever — `useStats` sets
- * `retry: false`, so "pending" here resolves to either success or error
- * after exactly one request, same rationale as `useMe`'s own
- * `retry: false`. On error, this shows a short, honest Vietnamese
- * explanation instead of silently hiding the whole section — a learner
- * who is offline should see "cần kết nối mạng," not wonder whether the
- * feature is broken or just missing. The per-course completion ring
- * elsewhere on this page is unaffected either way (Ruling F5 — it is
- * local, not sourced from this query at all).
+ * MỘT thẻ: khoá đang đọc, chương đang dở, một thanh tiến độ nhỏ, một nút.
+ *
+ * Trạng thái lỗi của thẻ này cũng phải là một hành động. Một gói hỏng, một
+ * manifest 404, một `runtime: "^2"` — tất cả đều kết thúc ở đây, và một câu
+ * giải thích không có lối đi tiếp thì vẫn là ngõ cụt. Nên nó luôn kèm đường
+ * sang `/courses`.
  */
-function StatsSummary({ statsQuery }: StatsSummaryProps) {
-  const { t } = useLanguage();
-
-  if (statsQuery.isPending) {
-    return <p className="dash-stats-note">{t('dashboard.stats.loading')}</p>;
-  }
-
-  if (statsQuery.isError) {
-    return <p className="dash-stats-note">{t('dashboard.stats.error')}</p>;
-  }
-
-  const stats = statsQuery.data;
-  return (
-    <>
-      <div className="dash-summary">
-        <div className="dash-stat">
-          <span className="dash-stat-v">{stats.streakDays}</span>
-          <span className="dash-stat-k">{t('dashboard.stats.streakDays')}</span>
-        </div>
-        <div className="dash-stat">
-          <span className="dash-stat-v">{Math.round(stats.totalMinutes)}</span>
-          <span className="dash-stat-k">{t('dashboard.stats.totalMinutes')}</span>
-        </div>
-      </div>
-      <DayChart days={stats.days} />
-    </>
-  );
-}
-
-function DayChart({ days }: { days: DayStat[] }) {
-  const { t } = useLanguage();
-  const maxMinutes = Math.max(1, ...days.map((d) => d.minutes));
-  return (
-    <div className="dash-chart" aria-label={t('dashboard.chart.aria')}>
-      {days.map((d) => {
-        const heightPct = d.minutes > 0 ? Math.max(4, (d.minutes / maxMinutes) * 100) : 0;
-        return (
-          <div key={d.date} className="dash-bar" title={t('dashboard.chart.barTitle', d.date, String(Math.round(d.minutes)))}>
-            <div className="dash-bar-fill" style={{ height: `${heightPct}%` }} />
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-interface CourseCardProps {
-  courseId: string;
-  statsCourses: CourseStat[] | undefined;
-}
-
-/**
- * One course's card: title + description come from the manifest (already
- * fetched elsewhere in the app under the same `manifestQueryKey`, so this
- * is typically a cache hit, not a second network round trip); the
- * completion ring's percentage comes from `useProgress` — LOCAL data
- * (Ruling F5) — divided by the manifest's own total chapter count; the
- * secondary "phút đã học" figure, when available, comes from
- * `stats.courses[].minutes` for this courseId.
- */
-function CourseCard({ courseId, statsCourses }: CourseCardProps) {
+function ContinueCard({ courseId }: { courseId: string }) {
   const { t } = useLanguage();
   const manifestQuery = useQuery({
     queryKey: manifestQueryKey(courseId),
     queryFn: () => loadManifest(courseId),
+    retry: false,
   });
-  const { partStats } = useProgress(courseId);
+  const { doneChapterIds } = useProgress(courseId);
 
   if (manifestQuery.isPending) {
-    return <div className="dash-card dash-card-pending">{t('dashboard.card.loading')}</div>;
-  }
-  if (manifestQuery.isError) {
-    return <div className="dash-card dash-card-error">{describeCourseError(manifestQuery.error, t)}</div>;
+    return <p className="home-note">{t('course.loading')}</p>;
   }
 
-  const manifest: Manifest = manifestQuery.data;
-  const totalChapters = manifest.parts.reduce((sum, part) => sum + part.chapters.length, 0);
-  const percent = totalChapters > 0 ? Math.round((partStats.chaptersRead / totalChapters) * 100) : 0;
-  const courseMinutes = statsCourses?.find((c) => c.courseId === courseId)?.minutes;
+  if (manifestQuery.isError) {
+    return (
+      <section className="home-card home-card-error">
+        <p className="home-card-note">{describeCourseError(manifestQuery.error, t)}</p>
+        <Link to="/courses" className="btn primary home-cta">
+          {t('nav.courses')}
+        </Link>
+      </section>
+    );
+  }
+
+  const manifest = manifestQuery.data;
+  const chapters = flatChapters(manifest);
+  const total = chapters.length;
+  const read = chapters.filter((chapter) => doneChapterIds.has(chapter.id)).length;
+  const next = nextChapter(chapters, doneChapterIds);
+  const target = next ?? chapters[total - 1];
+  const percent = total > 0 ? Math.round((read / total) * 100) : 0;
+  const ctaKey = read === 0 ? 'home.start' : next !== undefined ? 'home.continue' : 'home.reread';
 
   return (
-    <Link to={`/c/${courseId}`} className="dash-card">
-      <CompletionRing percent={percent} />
-      <div className="dash-card-body">
-        <h3 className="dash-card-title">{manifest.title}</h3>
-        <p className="dash-card-progress">
-          {t('dashboard.card.chaptersRead', String(partStats.chaptersRead), String(totalChapters))}
-          {courseMinutes != null ? t('dashboard.card.minutes', String(Math.round(courseMinutes))) : ''}
+    <section className="home-card">
+      <p className="home-eyebrow">{t('home.eyebrow')}</p>
+      <p className="home-course">
+        <Link to={`/c/${courseId}`} className="home-course-link">
+          {manifest.title}
+        </Link>
+      </p>
+
+      {/* Chương là thứ TO NHẤT trên trang: đây là câu trả lời cho "mở cái gì bây giờ". */}
+      <h2 className="home-chapter">
+        {target !== undefined && target.num !== '' && <span className="home-chapter-num">{target.num}</span>}
+        <span className="home-chapter-title">{target?.title ?? manifest.title}</span>
+      </h2>
+
+      <div className="home-prog">
+        <div
+          className="home-bar"
+          role="img"
+          aria-label={t('home.progressAria', String(percent))}
+          title={t('home.progressAria', String(percent))}
+        >
+          <div className="home-bar-fill" style={{ width: `${percent}%` }} />
+        </div>
+        <p className="home-prog-text">
+          {total > 0 ? t('home.chapters', String(read), String(total)) : t('home.chaptersUnknown', String(read))}
+          {next === undefined && total > 0 && <span className="home-done"> {t('home.finished')}</span>}
         </p>
       </div>
-    </Link>
+
+      <Link
+        to={target === undefined ? `/c/${courseId}` : `/c/${courseId}/${target.id}`}
+        className="btn primary home-cta"
+      >
+        {t(ctaKey)}
+      </Link>
+    </section>
   );
 }
 
-const RING_RADIUS = 22;
-const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+/**
+ * Bao nhiêu ghi chú được kể là "gần đây".
+ *
+ * Năm, không phải "tất cả": phần này ở DƯỚI hành động chính và chỉ được phép
+ * nhắc, không được phép cạnh tranh. Toàn bộ ghi chú của một chương đã có chỗ
+ * của nó — chú lề ngay bên cạnh đoạn văn, trong chế độ đọc.
+ */
+const RECENT_NOTE_LIMIT = 5;
+/** Bề rộng một dòng trích, tính bằng ký tự. Xem `quoteOf`'s doc về vì sao là tham số. */
+const RECENT_QUOTE_CHARS = 110;
 
-function CompletionRing({ percent }: { percent: number }) {
+/**
+ * "Thứ người học thật sự quay lại": những gì chính họ đã viết.
+ *
+ * Đọc thẳng `db.annotations` qua `progress/recent.ts` chứ không qua
+ * `useAnnotations`: hook ấy phân giải neo và TÔ vào DOM của một chương đang
+ * mở, thứ ở đây không tồn tại. Cái được dùng chung là hai hàm đọc phòng thủ —
+ * `quoteOf` và `colorOf` — và dùng chung chúng là bắt buộc chứ không phải tiện:
+ * `anchor` đi từ `json.RawMessage` của máy chủ vào đây dưới dạng `unknown`, và
+ * một bản sao thứ hai của phép đọc phòng thủ ấy là đúng chỗ trôi dạt mà chú
+ * thích của chính `exactOf` đã cảnh báo.
+ */
+function RecentNotes({ courses }: { courses: readonly OwnedCourse[] }) {
   const { t } = useLanguage();
-  const clamped = Math.max(0, Math.min(100, percent));
-  const dashoffset = RING_CIRCUMFERENCE * (1 - clamped / 100);
+  const { notes, settled } = useRecentNotes(RECENT_NOTE_LIMIT);
+
+  const titleOf = (courseId: string): string => {
+    const course = courses.find((entry) => entry.courseId === courseId);
+    return course?.held?.title ?? course?.catalog?.title ?? courseId;
+  };
 
   return (
-    <svg className="dash-ring" viewBox="0 0 52 52" width="52" height="52" role="img" aria-label={t('dashboard.ring.aria', String(clamped))}>
-      <circle className="dash-ring-track" cx="26" cy="26" r={RING_RADIUS} />
-      <circle
-        className="dash-ring-fill"
-        cx="26"
-        cy="26"
-        r={RING_RADIUS}
-        strokeDasharray={RING_CIRCUMFERENCE}
-        strokeDashoffset={dashoffset}
-      />
-      <text className="dash-ring-label" x="26" y="30" textAnchor="middle">
-        {clamped}%
-      </text>
-    </svg>
+    <section className="home-notes">
+      <h2 className="home-h2">{t('home.notes.title')}</h2>
+
+      {!settled && <p className="home-note">{t('home.notes.loading')}</p>}
+      {settled && notes.length === 0 && <p className="home-note">{t('home.notes.empty')}</p>}
+
+      {notes.length > 0 && (
+        <ul className="home-note-list">
+          {notes.map((note) => {
+            const quote = quoteOf(note.anchor, RECENT_QUOTE_CHARS);
+            const course = titleOf(note.courseId);
+            return (
+              <li key={note.id} className={`home-note-row home-note-c-${colorOf(note.anchor)}`}>
+                {quote !== '' && <p className="home-note-quote">{quote}</p>}
+                <p className="home-note-text">{note.note}</p>
+                <Link
+                  to={`/c/${note.courseId}/${note.chapterId}`}
+                  className="home-note-link"
+                  aria-label={t('home.notes.aria', course)}
+                >
+                  {course}
+                  <span className="home-note-sep" aria-hidden="true">
+                    ·
+                  </span>
+                  {t('home.notes.open')}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
 

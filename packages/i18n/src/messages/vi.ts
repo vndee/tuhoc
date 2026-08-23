@@ -188,13 +188,6 @@ export const vi = {
   'nav.courses': 'Khoá học',
   'nav.progress': 'Tiến độ',
   'account.settings': 'Cài đặt',
-  'progress.loading': 'Đang tải tiến độ…',
-  'progress.error': 'Chưa lấy được tiến độ. Số liệu nằm trên máy chủ, nên phần này cần mạng.',
-  'progress.sentence': (minutes: string, streak: string) =>
-    `Bạn đã học ${minutes} phút, với chuỗi ${streak} ngày liên tục.`,
-  'progress.byCourse': 'Theo khoá học',
-  'progress.noCourses': 'Chưa có khoá học nào để đo. Nhập một gói ở mục Khoá học.',
-  'progress.chaptersDone': (n: string) => `${n} chương đã đọc`,
   'nav.dashboard': 'Bảng điều khiển',
   'nav.library': 'Thư viện',
   /**
@@ -242,21 +235,56 @@ export const vi = {
   'chapter.notFound': 'Không tìm thấy chương này.',
   'chapter.notFoundInCourse': 'Không tìm thấy chương này trong khóa học.',
 
-  /* ── bảng điều khiển (`pages/Dashboard.tsx`) ───────────────────────────── */
+  /* ── học tiếp (`pages/Dashboard.tsx`) ──────────────────────────────────────
+   *
+   * Trang chủ KHÔNG còn là bảng số liệu. Mọi khoá `dashboard.stats.*`,
+   * `dashboard.chart.*`, `dashboard.card.*` và `dashboard.ring.*` đã bị XOÁ
+   * cùng lúc với phần giao diện đọc chúng: các con số chuyển sang `/progress`
+   * (khối `progress.*` ngay dưới), và một khoá không ai đọc là thứ sẽ được
+   * chép sang bản dịch thứ hai rồi trôi đi trong im lặng.
+   */
 
-  'dashboard.lede': 'Tiến độ học tập và thời gian học của bạn.',
-  'dashboard.logout': 'Đăng xuất',
-  'dashboard.stats.loading': 'Đang tải số liệu học tập…',
-  'dashboard.stats.error':
-    'Không tải được số liệu học tập (có thể bạn đang ngoại tuyến). Phần trăm hoàn thành mỗi khóa học ở dưới vẫn chính xác — dữ liệu đó được lưu ngay trên máy bạn.',
-  'dashboard.stats.streakDays': 'ngày liên tục',
-  'dashboard.stats.totalMinutes': 'phút đã học',
-  'dashboard.chart.aria': 'Số phút học trong 30 ngày gần nhất',
-  'dashboard.chart.barTitle': (date: string, minutes: string) => `${date}: ${minutes} phút`,
-  'dashboard.card.loading': 'Đang tải…',
-  'dashboard.card.chaptersRead': (read: string, total: string) => `${read}/${total} chương đã học`,
-  'dashboard.card.minutes': (minutes: string) => ` · ${minutes} phút`,
-  'dashboard.ring.aria': (percent: string) => `${percent}% hoàn thành`,
+  'home.title': 'Học tiếp',
+  'home.lede': 'Chỗ bạn đang đọc dở, và những ghi chú gần đây.',
+  'home.logout': 'Đăng xuất',
+  'home.loading': 'Đang tìm chỗ bạn đọc dở…',
+  'home.eyebrow': 'Đang đọc',
+  'home.continue': 'Đọc tiếp',
+  'home.start': 'Bắt đầu đọc',
+  'home.reread': 'Đọc lại',
+  'home.finished': 'Bạn đã đọc hết khoá này.',
+  'home.chapters': (read: string, total: string) => `${read}/${total} chương đã đọc`,
+  'home.chaptersUnknown': (read: string) => `${read} chương đã đọc`,
+  'home.progressAria': (percent: string) => `${percent}% hoàn thành`,
+  'home.notes.title': 'Ghi chú gần đây',
+  'home.notes.loading': 'Đang tải ghi chú…',
+  'home.notes.empty': 'Chưa có ghi chú nào. Bôi đen một đoạn khi đọc để ghi lại.',
+  'home.notes.open': 'Mở chương',
+  'home.notes.aria': (course: string) => `Mở ghi chú này trong ${course}`,
+
+  /* ── tiến độ (`pages/Progress.tsx`) ─────────────────────────────────────── */
+
+  'progress.lede': 'Số liệu học tập của bạn, kể thành câu.',
+  'progress.loading': 'Đang tải tiến độ…',
+  'progress.error': 'Chưa lấy được tiến độ. Số liệu nằm trên máy chủ, nên phần này cần mạng.',
+  'progress.sentence': (minutes: string, streak: string) =>
+    `Bạn đã học ${minutes} phút, với chuỗi ${streak} ngày liên tục.`,
+  'progress.sentenceNoStreak': (minutes: string) =>
+    `Bạn đã học ${minutes} phút. Chưa có chuỗi ngày nào đang chạy — học hôm nay là chuỗi bắt đầu lại.`,
+  'progress.sentenceEmpty':
+    'Chưa có phút học nào được ghi lại. Mở một chương và đọc; số liệu bắt đầu từ đó.',
+  'progress.heat.title': 'Bảy tuần gần nhất',
+  'progress.heat.aria': 'Lịch bảy tuần gần nhất, mỗi ô là một ngày',
+  'progress.heat.day': (date: string, minutes: string) => `${date}: ${minutes} phút`,
+  'progress.heat.noData': (date: string) => `${date}: ngoài phạm vi số liệu máy chủ trả về`,
+  'progress.heat.less': 'ít',
+  'progress.heat.more': 'nhiều',
+  'progress.byCourse': 'Theo khoá học',
+  'progress.noCourses': 'Chưa có khoá học nào để đo. Nhập một gói ở mục Khoá học.',
+  'progress.chaptersDone': (n: string) => `${n} chương đã đọc`,
+  'progress.course.chapters': (read: string, total: string) => `${read}/${total} chương`,
+  'progress.course.aria': (percent: string) => `${percent}% hoàn thành`,
+  'progress.course.minutes': (minutes: string) => `${minutes} phút đã học`,
 
   /* ── đăng nhập (`pages/Login.tsx`) ─────────────────────────────────────── */
 
