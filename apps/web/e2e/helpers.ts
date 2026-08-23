@@ -480,16 +480,41 @@ export function isBenignAuthCheck401(msg: ConsoleMessage): boolean {
  * ====================================================================== */
 
 /**
- * The rail opens on its "Trong chương" tab; the notes live behind the other
- * one. Idempotent, so a caller does not have to know whether something else
- * already brought it forward (`ChapterView`'s `focusCard` does, whenever a
- * card is opened from the chapter).
+ * Makes sure the notes surface is showing, and leaves it showing.
+ *
+ * ── Cùng câu hỏi, hình dạng điều khiển đã đổi (chế độ đọc, hướng A) ────────
+ * The rail used to open on a "Trong chương" tab with the notes behind a
+ * second one, and this helper's job was to click that second tab. Reading
+ * mode takes the tabs apart: the chapter's outline moved into the
+ * table-of-contents drawer, and `#rail` became the notes MARGIN, on by
+ * default. The control is now a toggle in the topbar — same id, same visible
+ * text, `aria-pressed` instead of `aria-selected`.
+ *
+ * The postcondition this helper guarantees is unchanged, which is why every
+ * caller is unchanged: after it returns, the reader's notes and the orphan
+ * panel are on screen. It stays idempotent for the same reason it always was
+ * — a caller does not have to know whether something else already brought
+ * them forward (`ChapterView`'s `focusCard` does, whenever a card is opened
+ * from the chapter), and in the new layout the common case is that nothing
+ * had to be clicked at all.
+ *
+ * The id is deliberately still `#rail-tab-notes`: `p2.spec.ts` (×4) and
+ * `s1.spec.ts` (×2) read it directly, and those are the gates that exist to
+ * notice when something about notes changes. See the comment on the button
+ * itself in `src/reader/ChapterView.tsx`.
  */
 export async function openNotesTab(page: Page): Promise<void> {
-  const tab = page.locator('#rail-tab-notes');
-  await expect(tab, 'the rail has no notes tab — is #rail hidden at this viewport width?').toBeVisible();
-  if ((await tab.getAttribute('aria-selected')) !== 'true') await tab.click();
-  await expect(tab).toHaveAttribute('aria-selected', 'true');
+  const toggle = page.locator('#rail-tab-notes');
+  await expect(toggle, 'the topbar has no notes control — is the reader chrome rendered at all?').toBeVisible();
+  if ((await toggle.getAttribute('aria-pressed')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  // The margin itself, not just the button that governs it: `aria-pressed` is
+  // a claim about state, and this is the thing every caller's next assertion
+  // reads notes out of. Asserted as "mounted and not `hidden`" rather than
+  // with `toBeVisible`, because a margin holding no notes yet is correctly a
+  // zero-height box — which `toBeVisible` calls invisible, and which is the
+  // right state for "chỉ hiện nơi có ghi chú" to be in.
+  await expect(page.locator('#reader-notes-margin:not([hidden])')).toHaveCount(1);
 }
 
 /**

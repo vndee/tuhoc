@@ -1,0 +1,448 @@
+/* ============================================================
+   CHẾ ĐỘ ĐỌC — MỘT CỘT CHỮ, KHÔNG THANH BÊN
+   ============================================================
+
+   Đặc tả: `docs/superpowers/specs/2026-08-23-ia-redesign.md` §"Chế độ đọc".
+   Hình đã duyệt: khung "Chế độ đọc · hướng A" trên canvas.
+
+   Mọi luật ở đây treo dưới `#app.reading`, tức đúng route
+   `/c/:courseId/:chapterId` (xem `App.tsx`). Ngoài route ấy, tệp này không
+   thay đổi bất cứ điều gì — đó là điều kiện để nó tồn tại tách khỏi
+   `packages/course-kit/reader.css`, vốn là bản port từng byte của giáo trình
+   v1 và có cổng riêng canh.
+
+   ── Bài toán, đo được ────────────────────────────────────────────────────
+   Trang chương có BA cột cố định: `#sidebar` 306px + `#content` + `#rail`
+   210px. Ở màn 1280:
+
+       306 (thanh bên) + 60 (padding) + 34 (gap) + 210 (rãnh) = 610px
+
+   còn lại 670px cho cột chữ, trong khi khổ đọc của chính stylesheet ấy
+   (`--measure`) là 43rem = 688px. Cột chữ bị bóp hẹp hơn khổ nó tự đặt ra,
+   trên màn hình phổ biến nhất. Bỏ thanh bên trả lại 976px — đủ 688px khổ đọc
+   và còn 288px cho lề ghi chú.
+
+   ── Bốn thay đổi, và cái mỗi thay đổi bỏ đi ─────────────────────────────
+   1. `#sidebar` biến mất. Cùng với nó là mô hình điều hướng THỨ HAI mà
+      trang chương vẫn mang (năm liên kết phẳng + mục lục khoá học). Thay vào
+      đó: MỘT lối ra ở góc trái trên.
+   2. Mục lục thành NGĂN KÉO (`.rd-drawer`), mở bằng nút ở thanh trên.
+   3. `#rail` thôi làm cột có tab, thành LỀ: chỉ ghi chú, neo đúng đoạn, và
+      không có gì ở nơi không có ghi chú.
+   4. `#progbar` — vốn nằm im ở `width:0` từ P1 — thành một nét mảnh mang vị
+      trí của người đọc trong chương, thứ mục lục rãnh phải từng làm.
+   ============================================================ */
+
+/* Hai khe rỗng `<Topbar>` dựng ở MỌI route. `display:contents` để nút bên
+   trong thành flex-item của chính `#topbar` — nếu không, mỗi nhóm sẽ là một
+   hộp lồng, và `#crumb`'s `flex:1` sẽ đo sai. Rỗng thì `display:contents`
+   không vẽ gì và không chiếm chỗ, nên luật này không cần treo dưới
+   `.reading`. */
+.rd-slot {
+  display: contents;
+}
+
+/* ============================================================
+   1. MỘT CỘT CHỮ
+   ============================================================ */
+
+#app.reading #sidebar {
+  display: none;
+}
+
+/* `#menu-btn` mở `#sidebar` như một ngăn kéo dưới 980px. Trong chế độ đọc
+   không có `#sidebar` để mở, và nút mục lục ngay bên cạnh mới là thứ mở ra
+   một mục lục — hai nút hình chữ ☰ cạnh nhau, một trong hai không làm gì,
+   là cách chắc chắn để người đọc học sai cả hai. */
+#app.reading #menu-btn {
+  display: none !important;
+}
+
+/* Giữ nguyên `justify-content:center` + `gap` của reader.css; chỉ nới khoảng
+   thở hai bên, vì không còn thanh bên làm lề trái nữa. */
+#app.reading #content-wrap {
+  padding: 56px 40px 160px;
+}
+
+/* Cột chữ được đúng khổ nó tự đặt ra, không hơn: `--measure` là 43rem, bằng
+   con số trên khung đã duyệt. */
+#app.reading #content {
+  max-width: var(--measure);
+}
+
+/* ── CỘT CHỮ ĐẶT GIỮA KHUNG NHÌN, KHÔNG PHẢI GIỮA (CHỮ + LỀ) ─────────────
+   `#content-wrap` là `display:flex; justify-content:center`, nên nó căn giữa
+   CẢ CẶP chữ+lề — cột chữ vì thế lệch trái đúng nửa bề rộng lề. Ở 1440 đó là
+   137px, và nó lộ ra đúng lúc nó không nên lộ: lề chỉ hiện nơi có ghi chú,
+   nên phần lớn thời gian bên phải là một khoảng trống rộng gấp đôi bên trái,
+   và cột chữ trông như bị đặt lệch chứ không như được căn.
+
+   Margin âm bằng đúng (bề rộng lề + gap) làm phép căn giữa của flex tính như
+   thể chỉ có cột chữ, còn lề thì tràn sang máng phải. Kết quả: chữ đặt giữa
+   khung nhìn ở mọi bề rộng, lề vẫn cách chữ đúng 34px như cũ.
+
+   KHÔNG chạm gì tới phép toán của thẻ ghi chú, và đó là điều kiện để làm việc
+   này: `MarginCards` đặt thẻ theo toạ độ TÀI LIỆU theo TRỤC Y (`rect.top -
+   originY`), thẻ là `left:0;right:0` bên trong `.ann-cards`, và dây nối
+   (`.ann-tie`) đo `left: -TIE_REACH` so với chính cột thẻ. Khoảng cách
+   chữ↔lề không đổi, nên không một con số nào trong ba thứ ấy đổi.
+
+   Số học của giới hạn, vì nó sát: mép phải của lề =
+   (100vw − 43rem)/2 + 43rem + 34 + 15rem. Ở 1440 → 1338; ở 1280 → 1258; ở
+   1241 → 1238,5. Dưới 1241 `#rail` là `display:none` (reader.css), nên
+   1238,5 < 1241 là trường hợp chật nhất tồn tại, và nó vẫn nằm trong khung
+   nhìn — không có thanh cuộn ngang ở bất kỳ bề rộng nào.
+
+   Bề rộng đặt ở ĐÂY chứ không dưới `.rail-notes`, và đó không phải chỗ tuỳ
+   tiện: `.rail-notes` rời đi khi người đọc tắt lề, và một `#rail` lúc ấy tụt
+   về `--rail-w` (210px) sẽ làm margin âm lệch 30px — tức cột chữ NHẢY NGANG
+   mỗi lần bật/tắt ghi chú. Bề rộng cố định thì phép căn giữa không phụ thuộc
+   vào việc lề đang bật hay tắt. */
+#app.reading #rail {
+  width: 15rem;
+  flex: 0 0 15rem;
+  margin-right: calc(-15rem - 34px);
+}
+
+/* ============================================================
+   2. THANH TRÊN CỦA CHẾ ĐỘ ĐỌC
+   ============================================================ */
+
+/* MỘT lối ra. Không phải nút: nó điều hướng, nên nó là liên kết, và một
+   người đọc bấm giữa chuột vào nó phải mở được tab mới. */
+#app.reading .rd-exit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 0 8px 0 2px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  /* `a{border-bottom:...}` của reader.css áp cho MỌI liên kết trong trang;
+     một gạch chân dưới một nút thanh trên là thứ không ai định vẽ. */
+  border-bottom: none;
+  white-space: nowrap;
+}
+
+#app.reading .rd-exit:hover {
+  color: var(--accent);
+}
+
+#app.reading .rd-toc-btn,
+#app.reading .rd-notes-btn {
+  flex: 0 0 auto;
+}
+
+/* Nút mục lục khi ngăn kéo đang mở: giữ trạng thái ấy nhìn thấy được, để
+   người đọc biết cái ☰ họ vừa bấm là thứ đang che nửa trái màn hình. */
+#app.reading .rd-toc-btn[aria-expanded='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Ghi chú đang tắt: nút phải NÓI RA là đang tắt. Nếu không, một người đọc
+   lỡ tắt lề sẽ thấy "Ghi chú (4)" bên cạnh một trang không có ghi chú nào —
+   hình dạng chính xác của mất dữ liệu, ở một sản phẩm mà cả một hệ thống con
+   tồn tại để hứa điều ngược lại. */
+#app.reading .rd-notes-btn[aria-pressed='false'] {
+  color: var(--ink-3);
+  border-style: dashed;
+}
+
+/* ── THANH TRÊN Ở MÀN HẸP, VÀ VÌ SAO NÓ LÀ MỘT LỖI ĐO ĐƯỢC ────────────────
+   `#topbar` là `display:flex` không xuống dòng. Ba điều khiển mới của chế độ
+   đọc (lối ra ~70px, mục lục ~85px, ghi chú ~85px, cộng khoảng cách) cộng vào
+   một thanh vốn đã kín ở 375px. Đo được trên trình duyệt thật:
+   `scrollWidth 533` trên `innerWidth 375` — tức **158px tràn ngang**, một
+   thanh cuộn ngang trên cả trang, ở đúng khổ máy nhiều người đọc nhất. Không
+   một test đơn vị nào thấy được điều đó: jsdom không tính `@media`, và không
+   có bố cục để tràn.
+
+   Hai luật dưới đây gỡ đúng 158px ấy, và cả hai đều có lý do NGOÀI chuyện chỗ. */
+
+/* Dưới 1241px `#rail` là `display:none` (reader.css), nên LỀ GHI CHÚ KHÔNG
+   TỒN TẠI — thẻ chuyển sang tấm trượt dưới đáy (`MarginCards`' WIDE_MIN_PX).
+   Một công tắc bật/tắt một cái lề không có mặt là một công tắc nói dối, nên
+   nó đi cùng cái lề nó điều khiển. Con số ghi chú không mất theo: nó vẫn nói
+   qua tấm trượt và qua panel mồ côi, những thứ vẫn ở đó. */
+@media (max-width: 1240px) {
+  #app.reading .rd-notes-btn {
+    display: none;
+  }
+}
+
+@media (max-width: 980px) {
+  /* Chữ của hai nút bên trái rụng đi như `.mk-lbl` của `#mark-btn`, để thanh
+     trên ở màn hẹp còn chỗ cho breadcrumb — nhưng bằng cách GIẤU KHỎI MẮT chứ
+     không `display:none`. Khác biệt không phải thẩm mỹ: tên trợ năng của hai
+     điều khiển này ĐƯỢC TÍNH TỪ CHỮ CỦA CHÚNG, nên `display:none` sẽ đổi tên
+     mà trình đọc màn hình đọc lên, ở đúng khổ máy hay dùng trình đọc màn hình
+     nhất. Cách này giữ nguyên tên và chỉ lấy lại chỗ. */
+  #app.reading .rd-lbl {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  #app.reading .rd-exit {
+    padding: 0 2px;
+  }
+}
+
+/* ============================================================
+   3. MỤC LỤC — NGĂN KÉO
+   ============================================================ */
+
+.rd-drawer-root {
+  position: fixed;
+  inset: 0;
+  /* `#topbar` là z-index 40, `.ai-panel` là 85. Ngăn kéo nằm trên thanh trên
+     (nó phủ cả nút vừa mở nó ra thì mới đọc như một ngăn kéo) và DƯỚI panel
+     hỏi–đáp, vốn là một hộp thoại thật sự. */
+  z-index: 60;
+  /* Đóng thì không có gì trên màn, kể cả một lớp trong suốt nuốt mọi cú bấm
+     vào trang. `visibility` ở `.rd-drawer` mới là thứ gỡ nó khỏi thứ tự tab. */
+  pointer-events: none;
+}
+
+.rd-drawer-root[data-open='true'] {
+  pointer-events: auto;
+}
+
+.rd-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 35%);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.rd-drawer-root[data-open='true'] .rd-scrim {
+  opacity: 1;
+}
+
+.rd-drawer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(340px, 86vw);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 12px 40px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--panel);
+  border-right: 1px solid var(--rule);
+  box-shadow: var(--shadow);
+  font-family: var(--sans);
+  font-size: 12px;
+  /* `visibility` chứ không phải `opacity`/`transform` một mình: nó là thứ
+     DUY NHẤT trong ba cái gỡ được cả cây con khỏi thứ tự tab và khỏi cây trợ
+     năng, mà vẫn hoạt hoạ được (`display:none` thì không). Một ngăn kéo đóng
+     còn bốn mươi liên kết chương tab tới được là một cái bẫy bàn phím không
+     nhìn thấy. */
+  visibility: hidden;
+  transform: translateX(-100%);
+  transition:
+    transform 0.2s ease,
+    visibility 0.2s;
+}
+
+.rd-drawer-root[data-open='true'] .rd-drawer {
+  visibility: visible;
+  transform: none;
+}
+
+.rd-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 0 6px 10px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.rd-drawer-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.rd-drawer-close {
+  flex: 0 0 auto;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.rd-drawer-close:hover {
+  color: var(--ink);
+}
+
+/* Cùng nhãn `--ink-3` viết hoa nhỏ mà `#rail .rail-h` dùng — nhưng viết lại
+   ở đây thay vì mượn, vì luật kia là bộ chọn hậu duệ của `#rail` và ngăn kéo
+   không ở trong `#rail`. */
+.rd-h {
+  margin: 16px 6px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.rd-empty {
+  margin: 0 6px;
+  font-size: 12px;
+}
+
+/* Mục lục TRONG chương — cùng hình dạng `#rail a` cũ, để người đọc quen
+   trang này không phải học lại một thứ chỉ vì nó đổi chỗ. */
+.rd-toc a {
+  display: block;
+  padding: 3px 0 3px 10px;
+  margin: 0 6px 1px;
+  color: var(--ink-3);
+  text-decoration: none;
+  border-left: 2px solid var(--grid);
+  border-bottom: none;
+  line-height: 1.35;
+}
+
+.rd-toc a:hover {
+  color: var(--ink);
+}
+
+.rd-toc a.cur {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  font-weight: 600;
+}
+
+.rd-toc a.lvl3 {
+  padding-left: 20px;
+  font-size: 11.2px;
+}
+
+/* `a.nav-item`, `.nav-part` và `.nav-num` đã có sẵn kiểu trong reader.css —
+   chúng là bộ chọn theo LỚP, không phải hậu duệ của `#sidebar`, nên
+   `<CourseNav>` trong ngăn kéo thừa hưởng nguyên vẹn, kể cả `.active` và
+   dấu ✓ của `.done`. Chỉ cần chỗ thở. */
+.rd-nav {
+  padding: 0 4px;
+}
+
+/* ============================================================
+   4. GHI CHÚ — CHÚ LỀ, KHÔNG PHẢI MỘT CỘT
+   ============================================================ */
+
+/* Bề rộng lề (15rem, đúng con số trên khung đã duyệt) đặt ở mục 1 cùng với
+   margin âm căn giữa — hai con số ấy phải khớp nhau nên chúng ở cạnh nhau.
+   Luật này chỉ ghi đè 260px mà `.rail-notes` (index.css) đặt cho cột thẻ cũ:
+   ở đây thẻ không còn là thẻ nên không cần 260. */
+#app.reading #rail.rail-notes {
+  width: 15rem;
+  flex: 0 0 15rem;
+}
+
+/* Thẻ thành chú lề: bỏ hộp, bỏ bóng, bỏ bo góc — còn lại MỘT nét dọc mảnh và
+   chữ. Đây là toàn bộ khác biệt giữa "một cột thẻ luôn hiện" và "chú thích ở
+   lề": một cột thẻ tuyên bố sự tồn tại của mình ngay cả khi rỗng, còn chú lề
+   thì chỉ có ở nơi có người viết gì đó.
+
+   Màu của nét dọc vẫn là màu highlight (`.ann-card-y/g/b/p` trong index.css
+   đặt `border-left-color`), nên mắt vẫn ghép được ghi chú với đoạn nó chú qua
+   khoảng trống — thứ duy nhất còn lại làm việc ấy khi hộp biến mất. */
+#app.reading .ann-card {
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  /* WIDTH và STYLE, cố ý KHÔNG phải `border-left` viết tắt. Viết tắt sẽ đặt
+     cả MÀU, và luật này (2 id + 1 lớp) thắng `.ann-card-y/g/b/p` (1 lớp) —
+     tức nét dọc tụt về xám ở mọi thẻ, và cái nó mang đi là thứ duy nhất còn
+     ghép được ghi chú với đoạn nó chú qua khoảng trống sau khi hộp biến mất.
+     Đo được: bản viết tắt đầu tiên làm đúng thế, và nó chỉ lộ ra khi mở
+     trang thật ra xem. */
+  border-left-width: 2px;
+  border-left-style: solid;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+#app.reading .ann-card[data-open='true'] {
+  /* Thẻ đang mở LÀ một hộp: nó có ô nhập, hai nút, và nó phải tách khỏi chữ
+     của chương ở phía sau. Chỉ lúc ấy. */
+  background: var(--surface-1);
+  border-top: 1px solid var(--accent);
+  border-right: 1px solid var(--accent);
+  border-bottom: 1px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  box-shadow: var(--shadow);
+}
+
+/* "Chưa có ghi chú nào trong chương này." — đúng câu biến lề thành một cột
+   luôn hiện. `<MarginCards>` vẫn dựng nó (và `e2e/p2.spec.ts` §3 vẫn khẳng
+   định nó KHÔNG có mặt khi có ghi chú mồ côi, nên nó phải tiếp tục được dựng
+   theo đúng điều kiện cũ); chế độ đọc chỉ không vẽ nó ra. Một lề trống nói
+   rằng chưa có ghi chú rõ hơn một câu nói thế. */
+#app.reading .ann-cards-empty {
+  display: none;
+}
+
+/* ============================================================
+   5. TIẾN ĐỘ CHƯƠNG — MỘT NÉT MẢNH
+   ============================================================ */
+
+/* 3px xuống 2px, đúng khung đã duyệt, và nét chạy bằng màu chữ chứ không
+   phải màu nhấn: nó không phải một điều khiển, nó là một phép đo. */
+#app.reading #progwrap {
+  height: 2px;
+  background: var(--rule);
+}
+
+#app.reading #progbar {
+  background: var(--ink);
+}
+
+/* ============================================================
+   6. MÀN HẸP
+   ============================================================ */
+
+@media (max-width: 1240px) {
+  /* `#rail` đã là `display:none` ở đây theo reader.css, nên lề ghi chú không
+     tồn tại và `<MarginCards>` chuyển sang tấm trượt dưới đáy (ngưỡng 1241px
+     của chính nó). Cột chữ lấy hết chỗ vừa trống. */
+  #app.reading #content-wrap {
+    padding: 40px 28px 140px;
+  }
+}
+
+@media (max-width: 980px) {
+  #app.reading #content-wrap {
+    padding: 24px 16px 120px;
+  }
+}
+
+/* In ra giấy: mọi thứ ở trên là chrome màn hình. reader.css đã có một
+   stylesheet in riêng; đây chỉ là những thứ tệp này thêm vào. */
+@media print {
+  .rd-drawer-root,
+  .rd-slot {
+    display: none;
+  }
+}

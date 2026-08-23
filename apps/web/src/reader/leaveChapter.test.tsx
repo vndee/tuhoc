@@ -132,20 +132,39 @@ function errorBoundaryFallback(): HTMLElement | null {
   return document.querySelector<HTMLElement>('.eb-fallback');
 }
 
+/**
+ * MỘT lối ra, và đây là nó.
+ *
+ * Hai bài kiểm dưới đây từng bấm vào thanh bên ứng dụng từ bên trong chương.
+ * Chế độ đọc (hướng A) không có thanh bên — `styles/reader-layout.css` đặt
+ * `#app.reading #sidebar{display:none}`, và vitest chạy với `css: true`, nên
+ * ở đây nó cũng thật sự biến mất chứ không chỉ trên trình duyệt. Đó CHÍNH là
+ * thay đổi: năm liên kết phẳng trong chương thành một lối ra ở góc trái trên.
+ *
+ * Chuyển tiếp mà cả tệp này tồn tại để đo — route CHƯƠNG sang route
+ * KHÔNG-chương, thứ bật `#crumb`'s `children` từ `false` sang chuỗi `'Tuhoc'`
+ * — vẫn nguyên vẹn; nó chỉ đi qua nút này thay vì qua thanh bên.
+ */
+async function leaveReadingMode(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByRole('link', { name: /thoát chế độ đọc/i }));
+}
+
 describe('rời chương bằng điều hướng SPA', () => {
-  it('bấm "Thư viện" từ trong chương: nội dung route ĐỔI, chương biến mất, không lỗi', async () => {
+  it('bấm lối ra từ trong chương: nội dung route ĐỔI, chương biến mất, không lỗi — rồi đi tiếp tới Khoá học', async () => {
     render(<App />);
     await readingChapterOne();
 
     const user = userEvent.setup();
-    const nav = screen.getByRole('navigation', { name: /điều hướng chính/i });
-    await user.click(within(nav).getByRole('link', { name: /khoá học/i }));
+    await leaveReadingMode(user);
 
     // 1. Trang ĐÍCH đã dựng. Đây là khẳng định chính — không phải `location`,
-    //    vì chính lỗi này để URL đổi mà nội dung thì không. Nhan đề là "Khoá
-    //    học" từ khi `/courses` gộp thư viện, kho cộng đồng và nút nhập gói
-    //    (đặc tả IA); `level: 1` để nó không khớp nhầm nhan đề của một tab.
-    expect(await screen.findByRole('heading', { name: 'Khoá học', level: 1 })).toBeInTheDocument();
+    //    vì chính lỗi này để URL đổi mà nội dung thì không.
+    //
+    //    Đích là TRANG CHỦ, không phải /courses: đặc tả IA nói lối ra dẫn
+    //    'về CHẾ ĐỘ thư viện', và nhà của chế độ ấy là 'Học tiếp'. Thả người
+    //    đọc xuống danh sách toàn bộ khoá học là trả lời một câu hỏi họ
+    //    không hỏi.
+    expect(await screen.findByRole('heading', { name: /bảng điều khiển|học tiếp/i })).toBeInTheDocument();
 
     // 2. Chương đã đi khỏi màn hình. Không có nửa này thì hai route chồng lên
     //    nhau vẫn tính là xanh.
@@ -159,23 +178,48 @@ describe('rời chương bằng điều hướng SPA', () => {
     //    `toContain`: một `#crumb` còn dính cả breadcrumb cũ lẫn 'Tuhoc'
     //    ("Phần 1 › 1.1 Chương mộtTuhoc") vẫn "chứa" 'Tuhoc'.
     expect(document.getElementById('crumb')?.textContent).toBe('Tuhoc');
+
+    // 5. Và lối ra dẫn tới một nơi CÓ đường đi tiếp: thanh bên đã trở lại ở
+    //    chế độ thư viện, nên đích cũ của bài kiểm này vẫn tới được. Không có
+    //    nửa này, "thoát được" có thể chỉ là "thoát vào ngõ cụt".
+    const nav = screen.getByRole('navigation', { name: /điều hướng chính/i });
+    await user.click(within(nav).getByRole('link', { name: /khoá học/i }));
+    // 'Khoá học', không phải 'Thư viện': `/courses` gộp thư viện, kho cộng đồng
+    // và nút nhập gói (đặc tả IA), nên nhan đề đổi theo. `level: 1` để không
+    // khớp nhầm nhan đề của một tab bên trong.
+    expect(await screen.findByRole('heading', { name: 'Khoá học', level: 1 })).toBeInTheDocument();
+    expect(errorBoundaryFallback()).toBeNull();
   });
 
-  it('bấm "Trợ lý AI" từ trong chương: trang cấu hình thật sự dựng ra', async () => {
+  it('rời chương rồi vào trang cấu hình: trang "Trợ lý AI" thật sự dựng ra', async () => {
     // Đúng lối đi mà `e2e/s2.spec.ts` mô tả từ phía người dùng: người học chưa
-    // cắm key bấm lời mời cấu hình. Ở đây đi bằng điều hướng toàn cục thay vì
-    // qua panel AI — cùng một chuyển tiếp route, không cần kho khoá.
+    // cắm key bấm lời mời cấu hình. Ở đây đi bằng lối ra + điều hướng toàn cục
+    // thay vì qua panel AI — cùng một chuyển tiếp route, không cần kho khoá.
     render(<App />);
     await readingChapterOne();
 
     const user = userEvent.setup();
+    await leaveReadingMode(user);
+    expect(await screen.findByRole('heading', { name: /bảng điều khiển|học tiếp/i })).toBeInTheDocument();
+    expect(screen.queryByText('NỘI-DUNG-CHƯƠNG-MỘT')).toBeNull();
+
     const nav = screen.getByRole('navigation', { name: /điều hướng chính/i });
     await user.click(within(nav).getByRole('link', { name: /cài đặt/i }));
 
     expect(await screen.findByRole('heading', { name: 'Trợ lý AI' })).toBeInTheDocument();
     expect(document.querySelector('.page-settings')).not.toBeNull();
-    expect(screen.queryByText('NỘI-DUNG-CHƯƠNG-MỘT')).toBeNull();
     expect(errorBoundaryFallback()).toBeNull();
+  });
+
+  it('trong chương, thanh bên ứng dụng KHÔNG có mặt — một lối ra, không phải năm', async () => {
+    // Vấn đề đặc tả nêu đích danh: trang chương mang mô hình điều hướng THỨ
+    // HAI (năm liên kết phẳng + mục lục khoá học trong thanh bên) chồng lên
+    // mô hình của chính nó. Chốt này là thứ giữ nó đã đi khỏi.
+    render(<App />);
+    await readingChapterOne();
+
+    expect(screen.queryByRole('navigation', { name: /điều hướng chính/i })).toBeNull();
+    expect(screen.getByRole('link', { name: /thoát chế độ đọc/i })).toBeInTheDocument();
   });
 
   it('đối chứng: đi từ bảng điều khiển sang thư viện vẫn chạy (đường không đi qua chương)', async () => {

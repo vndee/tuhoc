@@ -6,7 +6,7 @@ import { StrictMode, useEffect, useState } from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
-import type { Chapter } from '../course/types';
+import type { Chapter, Part } from '../course/types';
 import { clearLocalData, db } from '../db/local';
 import { ThemeProvider } from '../theme/ThemeContext';
 import { ChapterView } from './ChapterView';
@@ -81,6 +81,19 @@ afterAll(() => server.close());
 const chapter1: Chapter = { id: 'c1', num: '1.1', title: 'Chương một', short: 'Chương 1', file: 'chapters/c1.html' };
 const chapter2: Chapter = { id: 'c2', num: '1.2', title: 'Chương hai', short: 'Chương 2', file: 'chapters/c2.html' };
 
+/**
+ * The course outline the table-of-contents drawer lists — the same shape
+ * `Reader` hands down off the manifest it already holds.
+ *
+ * Two parts rather than one, because the drawer's job is to answer "where is
+ * this chapter in the course" and a single-part course cannot tell a right
+ * answer from a lucky one.
+ */
+const PARTS: Part[] = [
+  { title: 'Phần 1', chapters: [chapter1] },
+  { title: 'Phần 2', chapters: [chapter2] },
+];
+
 function LocationProbe() {
   const location = useLocation();
   return <span data-testid="path">{location.pathname}</span>;
@@ -103,6 +116,7 @@ function renderChapterView(
             chapter={chapter1}
             prevChapter={null}
             nextChapter={chapter2}
+            parts={PARTS}
             {...props}
           />
         </MemoryRouter></LanguageProvider>
@@ -130,8 +144,17 @@ describe('ChapterView', () => {
       window.CourseKit?.REDRAWS.push(() => {});
     });
     window.CourseKit = { renderKatex, initViz, REDRAWS: [], VIZ: {} };
+    // The chrome `<Shell>`/`<Topbar>` render around a chapter, reproduced by
+    // hand because these tests mount `<ChapterView>` on its own. `#reader-nav`,
+    // `#reader-notes` and `#progbar` joined the list with chế độ đọc: the
+    // first two are the topbar slots the reading toolbar portals into (see
+    // Topbar.tsx), and the third is the thin progress line. All three are real
+    // nodes in the app, and leaving them out here would mean the reading
+    // toolbar silently rendered nowhere in every test in this file.
     document.body.innerHTML =
       '<div id="crumb"></div><aside id="rail"></aside>' +
+      '<span id="reader-nav"></span><span id="reader-notes"></span>' +
+      '<div id="progwrap"><div id="progbar"></div></div>' +
       '<button id="prev-btn" type="button"></button><button id="next-btn" type="button"></button>' +
       '<button id="mark-btn" type="button"><span class="mk-ico">○</span><span class="mk-lbl">Đã học</span></button>';
   });
@@ -185,19 +208,31 @@ describe('ChapterView', () => {
   // `settleChapter()` when the render is hand-rolled). It waits for the
   // COMMIT, and the claims a test then makes need no `waitFor` of their own.
 
-  /** The rail entries `FRAGMENT` produces, in document order. */
+  /** The in-chapter TOC entries `FRAGMENT` produces, in document order. */
   const RAIL_ENTRIES = ['Phần A', 'Tiểu mục', 'Phần B'];
+
+  /** The chapter's own h2/h3 outline, wherever it currently lives. */
+  function tocLinks(): HTMLAnchorElement[] {
+    return Array.from(document.querySelectorAll<HTMLAnchorElement>('.rd-toc a'));
+  }
 
   /**
    * Waits until the chapter's own commit has landed.
    *
-   * `#rail` is the witness: `setHeadings` and `setAnnotationContent` are two
-   * adjacent statements of one effect body, so React batches them into ONE
-   * render, and the links appearing in `#rail` is the same commit that gives
-   * `<SelectionToolbar>` a `content.root` to watch. The de-flake round
-   * measured this directly — a DOM snapshot taken at the instant `initViz`
-   * runs holds ZERO rail links, and under StrictMode it is still empty two
-   * macrotasks later.
+   * The chapter's h2/h3 outline is the witness: `setHeadings` and
+   * `setAnnotationContent` are two adjacent statements of one effect body, so
+   * React batches them into ONE render, and those links appearing is the same
+   * commit that gives `<SelectionToolbar>` a `content.root` to watch. The
+   * de-flake round measured this directly — a DOM snapshot taken at the
+   * instant `initViz` runs holds ZERO of them, and under StrictMode it is
+   * still empty two macrotasks later.
+   *
+   * Chế độ đọc moved those links from `#rail` into `<TocDrawer>`, and the
+   * witness moved with them rather than being replaced by something
+   * structural. That is not a formality: the drawer stays MOUNTED while
+   * closed precisely so this measurement keeps working, and `waitFor` on a
+   * structure would never have been enough for an invariant about which
+   * commit a `setState` inside an effect body lands in.
    *
    * The trailing `act` is for what the commit SCHEDULES rather than what it
    * writes: the toolbar's `selectionchange` listener is a passive effect of
@@ -209,8 +244,7 @@ describe('ChapterView', () => {
     rail = RAIL_ENTRIES,
   }: { initVizCalls?: number; rail?: readonly string[] } = {}): Promise<void> {
     await waitFor(() => expect(initViz).toHaveBeenCalledTimes(initVizCalls));
-    const railEl = document.getElementById('rail')!;
-    await waitFor(() => expect(Array.from(railEl.querySelectorAll('a')).map((a) => a.textContent)).toEqual([...rail]));
+    await waitFor(() => expect(tocLinks().map((a) => a.textContent)).toEqual([...rail]));
     await act(async () => {});
   }
 
@@ -298,37 +332,41 @@ describe('ChapterView', () => {
     expect(initViz.mock.calls[0][0]).toBe(renderKatexArg);
   });
 
-  it('is idempotent under React StrictMode double-invoke — still exactly one call each, and one rail entry set', async () => {
+  it('is idempotent under React StrictMode double-invoke — still exactly one call each, and one TOC entry set', async () => {
     await renderChapterAndSettle({}, { strict: true });
 
     expect(initViz).toHaveBeenCalledTimes(1);
     expect(renderKatex).toHaveBeenCalledTimes(1);
 
     // Read synchronously, because `renderChapterAndSettle` has already waited
-    // for the commit that fills `#rail` — the window this assertion used to
-    // lose to (~8% of full-suite runs in P2 Task 1's review, always
+    // for the commit that fills the drawer's TOC — the window this assertion
+    // used to lose to (~8% of full-suite runs in P2 Task 1's review, always
     // `expected 0 to have length 3`) is closed by the wait, not by luck. Still
     // exactly 3, never "at least one".
-    const rail = document.getElementById('rail')!;
-    expect(rail.querySelectorAll('a')).toHaveLength(3);
+    expect(tocLinks()).toHaveLength(3);
     // REDRAWS holds exactly the current (single, live) chapter's entry —
     // not a leftover from the StrictMode-discarded first pass.
     expect(window.CourseKit?.REDRAWS).toHaveLength(1);
   });
 
-  it('builds a rail entry for every h2/h3, portalled into #rail', async () => {
+  it('builds a TOC entry for every h2/h3, in the drawer, exactly once', async () => {
     await renderChapterAndSettle();
 
-    // Synchronous again, for the same reason: the rail is the very thing
+    // Synchronous again, for the same reason: the TOC is the very thing
     // `settleChapter` waits on, so by here the commit has landed. The de-flake
     // round had to wrap this array in `waitFor` because the wait above it was
     // `initViz`; with the right wait the claim goes back to being a plain
     // assertion — same three headings, same order, never "at least one".
-    const rail = document.getElementById('rail')!;
-    const links = Array.from(rail.querySelectorAll('a'));
+    const links = tocLinks();
     expect(links.map((a) => a.textContent)).toEqual(['Phần A', 'Tiểu mục', 'Phần B']);
     expect(links[1].className).toContain('lvl3');
     expect(links[0].className).not.toContain('lvl3');
+
+    // Chế độ đọc: the chapter's outline moved OUT of `#rail`, which is now the
+    // notes margin and nothing else. One copy, in one place — the duplicate
+    // that ruling P2-F1 exists to prevent would show up here as six links.
+    expect(document.querySelectorAll('.rd-toc').length).toBe(1);
+    expect(document.getElementById('rail')!.querySelectorAll('a')).toHaveLength(0);
   });
 
   it('portals the breadcrumb into #crumb as span.crumb-part (the part) + b (num + chapter title)', async () => {
@@ -398,6 +436,7 @@ describe('ChapterView', () => {
               chapter={chapter1}
               prevChapter={null}
               nextChapter={chapter2}
+              parts={PARTS}
             />
           </MemoryRouter></LanguageProvider>
         </ThemeProvider>
@@ -420,6 +459,7 @@ describe('ChapterView', () => {
               chapter={chapter2}
               prevChapter={chapter1}
               nextChapter={null}
+              parts={PARTS}
             />
           </MemoryRouter></LanguageProvider>
         </ThemeProvider>
@@ -427,7 +467,7 @@ describe('ChapterView', () => {
     );
 
     // Chapter 2 has no h2/h3 at all, so its commit is the one that EMPTIES the
-    // rail — which makes `[]` as good a witness for it as three links are for
+    // TOC — which makes `[]` as good a witness for it as three links are for
     // chapter 1, and a strictly better one than `initViz` (whose second call
     // happens before chapter 1's entries have been taken down).
     await settleChapter({ initVizCalls: 2, rail: [] });
@@ -598,16 +638,20 @@ describe('ChapterView', () => {
     });
   });
 
-  // P2 Task 6. `MarginCards` has its own suite
+  // P2 Task 6, as chế độ đọc leaves it. `MarginCards` has its own suite
   // (src/annotations/MarginCards.test.tsx); what is tested HERE is the wiring
-  // this file owns and no test over there can see: that the rail becomes two
-  // tabs INSIDE ChapterView's own portal (ruling P2-F1 — `shell/Rail.tsx`
-  // returns null on a chapter route, and building the tabs there instead
-  // would duplicate the whole rail), that the TOC tab is still the default
-  // and still portals the same links, and that Task 5's "Ghi chú" button —
-  // which until now only painted yellow and called a callback nobody had
-  // wired — opens a real note editor.
-  describe('rail tabs + margin cards (P2 Task 6)', () => {
+  // this file owns and no test over there can see: that `#rail` is now the
+  // notes MARGIN and holds nothing else, inside ChapterView's own portal
+  // (ruling P2-F1 — `shell/Rail.tsx` returns null on a chapter route, and
+  // building this there instead would duplicate the whole rail), that the
+  // notes are on by DEFAULT rather than behind a tab, and that Task 5's "Ghi
+  // chú" button — which until Task 6 only painted yellow and called a
+  // callback nobody had wired — opens a real note editor.
+  //
+  // The block used to be called "rail tabs"; the tabs are gone. What replaced
+  // them is one toggle in the topbar, and every claim below that used to be
+  // about switching tabs is now about that toggle NOT being needed.
+  describe('notes margin (P2 Task 6, chế độ đọc)', () => {
     /** `reader.css` hides `#rail` under `@media (max-width:1240px)`, and
      * jsdom's own default width is 1024 — i.e. the MOBILE branch, where the
      * cards deliberately do not exist. */
@@ -622,33 +666,51 @@ describe('ChapterView', () => {
       return document.getElementById('rail')!;
     }
 
-    it('portals a two-tab rail into #rail, TOC selected by default, with the chapter TOC untouched', async () => {
+    /** The topbar's notes control. Keeps `#rail-tab-notes` — see the comment
+     * on it in ChapterView.tsx, and the six e2e assertions that read it. */
+    function notesBtn(): HTMLElement {
+      return document.getElementById('rail-tab-notes')!;
+    }
+
+    it('the notes margin is ON by default, holds no tabs, and is not the chapter TOC', async () => {
       await renderChapterAndSettle();
 
-      const tabs = within(rail()).getAllByRole('tab');
-      expect(tabs.map((t) => t.textContent)).toEqual(['Trong chương', 'Ghi chú (0)']);
-      expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
-      expect(tabs[1]).toHaveAttribute('aria-selected', 'false');
-      // Still exactly the three headings, still `<a>`s, still in #rail: the
-      // tabs are an addition to the portal, not a replacement of it. A second
-      // copy anywhere (the P1 Task 11 duplicate-rail bug, which ruling P2-F1
-      // exists to prevent) would show up here as six.
-      expect(rail().querySelectorAll('a')).toHaveLength(3);
-      expect(document.querySelectorAll('.rail-tabs')).toHaveLength(1);
+      // No tablist anywhere: the two-tab rail is what chế độ đọc replaced.
+      expect(document.querySelectorAll('[role="tab"]')).toHaveLength(0);
+      expect(document.querySelectorAll('.rail-tabs')).toHaveLength(0);
+
+      // The count control lives in the topbar now, is pressed (notes on), and
+      // still says exactly what six e2e assertions read off it.
+      expect(notesBtn().textContent).toBe('Ghi chú (0)');
+      expect(notesBtn()).toHaveAttribute('aria-pressed', 'true');
+      expect(document.getElementById('reader-notes')!.contains(notesBtn())).toBe(true);
+
+      // `#rail` is the margin: cards and the orphan panel, and nothing else.
+      // Its chapter-outline links moved to the drawer — six links here would
+      // be the P1 Task 11 duplicate-rail bug that ruling P2-F1 prevents.
+      expect(rail().querySelectorAll('a')).toHaveLength(0);
+      expect(rail().querySelector('#reader-notes-margin')).not.toBeNull();
+      expect(rail().querySelector('#reader-notes-margin')).not.toHaveAttribute('hidden');
     });
 
-    it('switching to the "Ghi chú" tab swaps the TOC for the cards panel, and back', async () => {
+    it('the notes toggle hides the margin and brings it back, without unmounting what is in it', async () => {
       await renderChapterAndSettle();
 
-      fireEvent.click(within(rail()).getByRole('tab', { name: /^Ghi chú/ }));
+      fireEvent.click(notesBtn());
+      await waitFor(() => expect(notesBtn()).toHaveAttribute('aria-pressed', 'false'));
+      expect(rail().querySelector('#reader-notes-margin')).toHaveAttribute('hidden');
+      // `.rail-notes` comes off with it: the class is what turns `#rail` from
+      // a sticky self-scrolling box into a document-coordinate column, and a
+      // hidden margin has no column to lay out.
+      expect(rail().classList.contains('rail-notes')).toBe(false);
+      // Still MOUNTED, not unmounted: a click on a highlight (and, below
+      // 1241px, its bottom sheet) has to keep working whatever the margin is
+      // showing — the same reason the two-tab version used `hidden` here.
+      expect(rail().querySelector('#reader-notes-margin')).not.toBeNull();
 
-      await waitFor(() => expect(rail().querySelectorAll('a')).toHaveLength(0));
-      expect(within(rail()).getByRole('tab', { name: /^Ghi chú/ })).toHaveAttribute('aria-selected', 'true');
-      // An empty chapter says so, rather than showing an empty column.
-      expect(within(rail()).getByText(/chưa có ghi chú/i)).toBeInTheDocument();
-
-      fireEvent.click(within(rail()).getByRole('tab', { name: 'Trong chương' }));
-      await waitFor(() => expect(rail().querySelectorAll('a')).toHaveLength(3));
+      fireEvent.click(notesBtn());
+      await waitFor(() => expect(notesBtn()).toHaveAttribute('aria-pressed', 'true'));
+      expect(rail().querySelector('#reader-notes-margin')).not.toHaveAttribute('hidden');
     });
 
     it('the toolbar\'s "Ghi chú" button opens a margin card for the new note, focused, and what is typed there is stored', async () => {
@@ -657,10 +719,10 @@ describe('ChapterView', () => {
       await selectAndOpenToolbar('Nội dung A');
       fireEvent.click(within(screen.getByRole('toolbar')).getByRole('button', { name: 'Ghi chú' }));
 
-      // The rail flips to the notes tab on its own — a note editor the reader
-      // has to go find is not an editor.
+      // The margin is on and the card is in it — a note editor the reader has
+      // to go find is not an editor.
       const box = await screen.findByRole('textbox', { name: /ghi chú/i });
-      expect(within(rail()).getByRole('tab', { name: /^Ghi chú/ })).toHaveAttribute('aria-selected', 'true');
+      expect(notesBtn()).toHaveAttribute('aria-pressed', 'true');
       expect(document.activeElement).toBe(box);
       expect(rail().querySelectorAll('[data-ann-card]')).toHaveLength(1);
 
@@ -674,7 +736,26 @@ describe('ChapterView', () => {
       // One row for the create, one for the note edit — the note reaches the
       // other device the same way the highlight does.
       expect(await db.outbox.count()).toBe(2);
-      expect(within(rail()).getByRole('tab', { name: 'Ghi chú (1)' })).toBeInTheDocument();
+      expect(notesBtn().textContent).toBe('Ghi chú (1)');
+    });
+
+    it('a note opened while the margin is off turns it back on — a card the reader cannot see is a click that did nothing', async () => {
+      await renderChapterAndSettle();
+
+      fireEvent.click(notesBtn());
+      await waitFor(() => expect(notesBtn()).toHaveAttribute('aria-pressed', 'false'));
+
+      await selectAndOpenToolbar('Nội dung A');
+      fireEvent.click(within(screen.getByRole('toolbar')).getByRole('button', { name: 'Ghi chú' }));
+
+      // This is `focusCard`'s `setNotesOn(true)`, and it is the rule the
+      // two-tab version spent `setRailTab('notes')` on. Without it the
+      // toolbar paints a highlight, creates a note and opens an editor that
+      // is `hidden` — the exact bug Task 6 was written to close, back when
+      // nothing listened to `onRequestNote` at all.
+      const box = await screen.findByRole('textbox', { name: /ghi chú/i });
+      expect(notesBtn()).toHaveAttribute('aria-pressed', 'true');
+      expect(document.activeElement).toBe(box);
     });
 
     it('two notes give two cards in document order (a chapter with one note proves nothing — ruling P2-F8)', async () => {
@@ -691,40 +772,32 @@ describe('ChapterView', () => {
       fireEvent.click(within(screen.getByRole('toolbar')).getByRole('button', { name: /xanh lá/i }));
       await waitFor(async () => expect(await db.annotations.count()).toBe(2));
 
-      fireEvent.click(within(rail()).getByRole('tab', { name: /^Ghi chú/ }));
       await waitFor(() => expect(rail().querySelectorAll('[data-ann-card]')).toHaveLength(2));
 
       const container = document.querySelector('.fade-in') as HTMLElement;
       const ids = Array.from(rail().querySelectorAll<HTMLElement>('[data-ann-card]')).map((c) => c.dataset.annCard);
       const painted = Array.from(container.querySelectorAll<HTMLElement>('mark.ann')).map((m) => m.dataset.annId);
       expect(ids).toEqual(painted);
-      expect(within(rail()).getByRole('tab', { name: 'Ghi chú (2)' })).toBeInTheDocument();
+      expect(notesBtn().textContent).toBe('Ghi chú (2)');
     });
 
-    it('.rail-notes được áp khi tab Ghi chú lên, và gỡ khi rời đi', async () => {
+    it('.rail-notes có sẵn từ đầu (lề luôn bật), và gỡ khi rời chương', async () => {
       // Class này là toàn bộ khác biệt giữa "một rãnh TOC ngắn tự cuộn" và "một
       // cột thẻ neo theo toạ độ tài liệu": nó tắt `position:sticky`,
-      // `max-height:calc(100vh - 100px)` và `overflow-y:auto`, rồi nới rãnh từ
-      // 210px lên 260px. Gỡ nó ra trên trang thật thì rãnh tụt về 210px và MỘT
+      // `max-height:calc(100vh - 100px)` và `overflow-y:auto`, rồi nới rãnh ra
+      // cho vừa một thẻ. Gỡ nó ra trên trang thật thì rãnh tụt về 210px và MỘT
       // THẺ BỊ CẮT — mà không một test nào trong 456 nhìn thấy, vì không test
       // nào từng đọc `className` của `#rail`.
-      await renderChapterAndSettle();
-      expect(rail().classList.contains('rail-notes')).toBe(false);
-
-      fireEvent.click(within(rail()).getByRole('tab', { name: /^Ghi chú/ }));
-      await waitFor(() => expect(rail().classList.contains('rail-notes')).toBe(true));
-
-      fireEvent.click(within(rail()).getByRole('tab', { name: 'Trong chương' }));
-      await waitFor(() => expect(rail().classList.contains('rail-notes')).toBe(false));
-    });
-
-    it('rời chương mang .rail-notes đi theo: rãnh trang sau không thừa hưởng bố cục thẻ', async () => {
+      //
+      // Trước hướng A, class chỉ lên khi người đọc bấm tab "Ghi chú"; nay ghi
+      // chú là mặc định, nên class phải có mặt NGAY LÚC MỞ CHƯƠNG — nếu không
+      // thì thẻ đầu tiên bị cắt trước khi ai kịp bấm gì.
       const { unmount } = await renderChapterAndSettle();
-      fireEvent.click(within(rail()).getByRole('tab', { name: /^Ghi chú/ }));
-      await waitFor(() => expect(rail().classList.contains('rail-notes')).toBe(true));
+      expect(rail().classList.contains('rail-notes')).toBe(true);
 
       unmount();
 
+      // Rãnh của trang sau (`/`, `/c/:courseId`) không thừa hưởng bố cục thẻ.
       expect(rail().classList.contains('rail-notes')).toBe(false);
     });
   });
@@ -774,16 +847,17 @@ describe('ChapterView', () => {
       return document.getElementById('rail')!;
     }
 
-    /** The rail's notes tab, with the orphan row on it. Returns once the
-     * store has published the orphan — the row is what the store publishes,
-     * not what the chapter paints, so nothing here may wait on the DOM of the
-     * chapter itself (ruling P2-F15). */
+    /** The orphan row in the notes margin. There is no tab to click any more
+     * — the margin is on by default, which is itself load-bearing (an orphan
+     * has to be on screen the moment a reader opens a chapter whose text
+     * moved under it) — so this only WAITS. It waits on the store having
+     * published the orphan, not on anything the chapter painted, because the
+     * row is a fact about the store and not about the DOM (ruling P2-F15). */
     async function openOrphanList(): Promise<HTMLElement> {
-      fireEvent.click(within(rail()).getByRole('tab', { name: /^Ghi chú/ }));
       return await within(rail()).findByRole('button', { name: 'Gắn lại' });
     }
 
-    it('mồ côi hiện trong tab "Ghi chú" của rãnh — đúng MỘT bản, trong portal của ChapterView (P2-F1)', async () => {
+    it('mồ côi hiện trong lề ghi chú — đúng MỘT bản, trong portal của ChapterView (P2-F1)', async () => {
       await db.annotations.put(LOST);
       await renderChapterAndSettle();
       await openOrphanList();
@@ -811,17 +885,17 @@ describe('ChapterView', () => {
       expect(within(rail()).getByText('ghi chú cần cứu')).toBeInTheDocument();
     });
 
-    it('tab đếm cả ghi chú mồ côi — nếu không, cánh cửa duy nhất dẫn tới chúng lại đề "(0)"', async () => {
+    it('nút đếm cả ghi chú mồ côi — nếu không, con số duy nhất nói về chúng lại đề "(0)"', async () => {
       await db.annotations.put(LOST);
       await renderChapterAndSettle();
 
       // The reader has exactly one note in this chapter. It could not be
       // placed, so nothing is painted and there is no card — but it exists,
-      // it is theirs, and the tab is the only thing that will tell them so.
-      // Counting only `list` here reads "Ghi chú (0)" over a panel holding
+      // it is theirs, and this count is the only thing that will tell them so.
+      // Counting only `list` here reads "Ghi chú (0)" beside a margin holding
       // their note, and makes a content rebuild look like their notes
       // vanished. Found by opening the real page, not by a test.
-      expect(await within(rail()).findByRole('tab', { name: 'Ghi chú (1)' })).toBeInTheDocument();
+      await waitFor(() => expect(document.getElementById('rail-tab-notes')!.textContent).toBe('Ghi chú (1)'));
       expect(document.querySelectorAll('mark.ann')).toHaveLength(0);
     });
 
@@ -867,7 +941,7 @@ describe('ChapterView', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Gắn vào đây' }));
 
       // The witness has to be one that CHANGES on the reattach and comes from
-      // STATE. The tab already read "Ghi chú (1)" while the note was an orphan
+      // STATE. The count already read "Ghi chú (1)" while the note was an orphan
       // (that is the point of the test above), so waiting on it would return
       // before anything happened; a margin card is no good either, because
       // jsdom's 1024px is the narrow branch where the column deliberately does
@@ -875,7 +949,7 @@ describe('ChapterView', () => {
       // publishing an empty `orphans`, and it can only happen after the new
       // anchor resolved and was painted.
       await waitFor(() => expect(document.querySelectorAll('.ann-orphans')).toHaveLength(0));
-      expect(within(rail()).getByRole('tab', { name: 'Ghi chú (1)' })).toBeInTheDocument();
+      expect(document.getElementById('rail-tab-notes')!.textContent).toBe('Ghi chú (1)');
 
       const container = document.querySelector('.fade-in') as HTMLElement;
       const mark = container.querySelector<HTMLElement>('mark.ann[data-ann-id="orphan-1"]')!;

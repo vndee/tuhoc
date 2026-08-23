@@ -36,6 +36,29 @@ const CHAPTER_ROUTE = /^\/c\/[^/]+\/[^/]+/;
  * this DOM node, so rendering the static "Tuhoc" text here too would
  * concatenate both. This component only needs to know *whether* it's a
  * chapter route (via the pathname), not what the breadcrumb actually says.
+ *
+ * ── `#reader-nav` / `#reader-notes` — chế độ đọc, hướng A ─────────────────
+ * Reading mode has no app sidebar (`styles/reader-layout.css`), so its ONE
+ * way out, its table-of-contents button and its notes toggle all live in this
+ * bar. All three are built by `ChapterView` — they need the chapter's
+ * headings, its note count and its course id, none of which this component
+ * can see — and they arrive here through two portals, exactly the way `#rail`
+ * and `#crumb` already work.
+ *
+ * TWO empty hosts rather than one, and rendered UNCONDITIONALLY:
+ *
+ *   - Two, because the reading bar has a left group (leave, contents) and a
+ *     right group (notes), with the breadcrumb stretching between them. One
+ *     host plus CSS `order` would put the notes button in the middle of the
+ *     TAB order while painting it on the right — a keyboard user would meet
+ *     the controls in an order that does not match what they see. Two hosts
+ *     put each group where it actually belongs in the DOM, and the CSS then
+ *     has no reordering to do at all.
+ *   - Unconditionally, because a host that comes and goes with the route is a
+ *     host React can delete out from under a portal that is still pointing at
+ *     it. `#rail` is rendered on every route for the same reason. Off a
+ *     chapter they are two empty `<span>`s with `display:contents`, which
+ *     paint nothing and take no space.
  */
 export function Topbar({ theme, onToggleTheme, onMenuClick }: TopbarProps) {
   const location = useLocation();
@@ -47,11 +70,13 @@ export function Topbar({ theme, onToggleTheme, onMenuClick }: TopbarProps) {
       <button id="menu-btn" type="button" className="tb-btn" aria-label={t('topbar.menu')} onClick={onMenuClick}>
         ☰
       </button>
+      <span id="reader-nav" className="rd-slot" />
       <div id="crumb">{!isChapterRoute && 'Tuhoc'}</div>
       <button id="mark-btn" type="button" className="tb-btn" aria-label={t('topbar.markRead')}>
         <span className="mk-ico">○</span>
         <span className="mk-lbl">{t('topbar.markRead')}</span>
       </button>
+      <span id="reader-notes" className="rd-slot" />
       <button
         id="theme-btn"
         type="button"
