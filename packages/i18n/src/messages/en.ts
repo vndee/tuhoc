@@ -46,7 +46,34 @@ export const en: Messages = {
    */
   'library.courseCount': (count: number) => (count === 1 ? '1 course' : `${count} courses`),
 
-  /* ── trang cấu hình TRỢ LÝ AI (`pages/Settings.tsx`) ───────────────────── */
+  /* ── trang CÀI ĐẶT (`pages/Settings.tsx`) ─────────────────────────────── */
+
+  'settings.nav.aria': 'Settings sections',
+  'settings.section.account': 'Account',
+  'settings.section.appearance': 'Language & appearance',
+  'settings.section.localData': 'Data on this device',
+
+  'settings.account.blurb':
+    'The account does exactly one job: it syncs your progress and notes between your own machines. Course content lives on this device.',
+  'settings.account.loading': 'Asking the server who is signed in…',
+  'settings.account.unknown': 'Could not load your account details. This part needs the network.',
+  'settings.account.signedInAs': (name: string, email: string) => `Signed in as ${name} · ${email}`,
+  'settings.account.signOutWarning':
+    'Signing out erases the study data of this session from this browser: downloaded packages, notes, and the progress queue that has not been sent yet. That is the only way two people sharing one machine never see data belonging to the other.',
+
+  'settings.appearance.blurb':
+    'Both choices below belong to THIS DEVICE, not to your account: signing in as somebody else does not change them, and they are never synced anywhere.',
+  'settings.appearance.language': 'Language',
+  'settings.appearance.theme': 'Appearance',
+  'settings.appearance.themeNowLight': 'Currently using the light theme.',
+  'settings.appearance.themeNowDark': 'Currently using the dark theme.',
+
+  'settings.localData.blurb':
+    'This device holds: the course packages you downloaded, your notes and highlights, the progress queue that has not been sent yet — and, in the key vault at a separate address, your AI key.',
+  'settings.localData.clearedOnSignOut':
+    'The local database is named after the BROWSER, not after a user, so it is wiped every time the signed-in user changes — even when nobody pressed sign out.',
+  'settings.localData.kept':
+    'Language and light/dark do stay: they are device preferences, not study data.',
 
   'settings.ai.title': 'AI assistant',
   /**
@@ -61,6 +88,15 @@ export const en: Messages = {
   'settings.ai.unavailable':
     'This build has no key vault, so the AI assistant is unavailable. That is a deployment configuration gap, not a problem with your account — reading the course still works normally.',
   'settings.ai.open': 'Open the key vault',
+
+  /** Chỗ trống là ORIGIN THẬT — xem lý do đầy đủ ở `vi.ts`. */
+  'settings.ai.frameLabel': (origin: string) =>
+    `The key vault runs at ${origin} — a different address, apart from the lesson page.`,
+  'settings.ai.frameOpen': 'The key vault is open on the layer above. Press "Close" there to come back to this page.',
+
+  'settings.ai.budgetTitle': 'Per-session limit',
+  'settings.ai.budgetBody':
+    'The key vault enforces a character budget for each session. Spend it and the vault asks again, right there in the frame, with the log of what has already left the machine beside the question — that number matters most at exactly the moment you click. The budget cannot stop a patient hostile course; it only makes that course go through your hands.',
 
   /* ══════════════════════════════════════════════════════════════════════ *
    * KHO KHOÁ (`apps/vault`)
@@ -183,7 +219,8 @@ export const en: Messages = {
   'error.boundary.reload': 'Reload the page',
 
   'vault.frame.configError': '[key vault] misconfigured, the AI feature is off:',
-  'vault.frame.overlayTitle': 'Key vault — this page runs at a separate address, apart from the lesson page',
+  'vault.frame.overlayLabel': (origin: string) =>
+    `Key vault — this frame runs at ${origin}, apart from the lesson page`,
   'vault.frame.close': 'Close',
   'vault.frame.title': 'Key vault',
 
@@ -198,7 +235,7 @@ export const en: Messages = {
 
   'home.title': 'Continue learning',
   'home.lede': 'Where you left off, and the notes you have been taking.',
-  'home.logout': 'Sign out',
+  'account.logout': 'Sign out',
   'home.loading': 'Finding where you left off…',
   'home.eyebrow': 'Currently reading',
   'home.continue': 'Continue reading',
@@ -234,6 +271,17 @@ export const en: Messages = {
   'progress.course.chapters': (read: string, total: string) => `${read}/${total} chapters`,
   'progress.course.aria': (percent: string) => `${percent}% complete`,
   'progress.course.minutes': (minutes: string) => `${minutes} minutes studied`,
+
+  'login.pitch.headline': 'A course is a package. You keep it, not us.',
+  'login.pitch.lede':
+    'Download a course, read it with the network off, annotate straight onto the page. Your progress syncs between your own machines.',
+  /* Tên riêng "Tự học" KHÔNG đi vào đây: bài "en còn tiếng Việt" ở
+     `i18n.test.ts` cho phép đúng hai khoá (`app.name`, `lang.name.vi`), và một
+     nhãn trợ năng không đáng làm danh sách ấy dài thêm. */
+  'login.pitch.aria': 'What this platform does',
+  'login.point.offline': 'Read offline — the package sits on your machine',
+  'login.point.ownKey': 'An AI assistant on your own key, and the key never passes through our servers',
+  'login.point.private': 'A private course stays private — nobody else sees it',
 
   'login.title': 'Sign in',
   'login.lede': 'Sign in or create an account to sync your progress across devices.',

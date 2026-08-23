@@ -80,7 +80,7 @@ export function Dashboard() {
             </span>
           )}
           <button type="button" className="btn dash-logout" onClick={() => void logout()}>
-            {t('home.logout')}
+            {t('account.logout')}
           </button>
         </div>
       </div>

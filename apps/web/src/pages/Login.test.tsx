@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { meQueryKey, useMe } from '../api/useMe';
 import { clearLocalData, db } from '../db/local';
 import { Login } from './Login';
+import { t } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 
 /**
@@ -70,6 +71,77 @@ async function renderLoginForm(initialEntry: InitialEntry = '/login') {
   await screen.findByLabelText(/email/i);
   return result;
 }
+
+/**
+ * HAI CỘT — và cột trái là nội dung, không phải trang trí.
+ *
+ * `/login` là màn hình ĐẦU TIÊN của mọi người dùng mới. Trước thay đổi này nó
+ * là một thẻ đơn độc giữa màn hình trống: ai chưa có tài khoản đọc hết trang
+ * vẫn không biết mình sắp đăng ký cái gì. Đặc tả IA
+ * (`docs/superpowers/specs/2026-08-23-ia-redesign.md`) + artboard
+ * "S5-DangNhap" trên canvas đã duyệt: nửa trái sản phẩm tự giới thiệu, nửa
+ * phải là form.
+ *
+ * Ba khẳng định, và mỗi cái chặn một cách hỏng khác nhau:
+ *   1. lời giới thiệu CÓ MẶT — một `.auth-pitch` rỗng vẫn "là hai cột";
+ *   2. cả hai nửa là con của cùng MỘT `.auth-page` — hai khối chồng nhau theo
+ *      chiều dọc cũng qua được bài (1);
+ *   3. cột trái KHÔNG có ô nhập nào — nó là chữ, không phải một form thứ hai;
+ *      và form thật thì nằm trọn trong nửa phải.
+ */
+describe('Login — hai cột: sản phẩm tự giới thiệu bên trái, form bên phải', () => {
+  it('nửa trái nói ra sản phẩm này là gì: tên, một câu lớn, và ba gạch đầu dòng', async () => {
+    await renderLoginForm();
+
+    const pitch = document.querySelector('.auth-pitch');
+    expect(pitch).not.toBeNull();
+    expect(pitch).toHaveTextContent(t('vi', 'app.name'));
+    expect(screen.getByRole('heading', { name: t('vi', 'login.pitch.headline') })).toBeInTheDocument();
+    expect(pitch).toHaveTextContent(t('vi', 'login.pitch.lede'));
+
+    const points = screen.getByRole('list', { name: t('vi', 'login.pitch.aria') });
+    expect(Array.from(points.querySelectorAll('li')).map((li) => li.textContent)).toEqual([
+      t('vi', 'login.point.offline'),
+      t('vi', 'login.point.ownKey'),
+      t('vi', 'login.point.private'),
+    ]);
+  });
+
+  it('hai nửa là hai con của cùng MỘT trang, không phải hai trang xếp chồng', async () => {
+    await renderLoginForm();
+
+    const page = document.querySelector('.auth-page');
+    const pitch = document.querySelector('.auth-pitch');
+    const side = document.querySelector('.auth-side');
+
+    expect(page).not.toBeNull();
+    expect(pitch?.parentElement).toBe(page);
+    expect(side?.parentElement).toBe(page);
+  });
+
+  it('form nằm TRỌN trong nửa phải, và nửa trái không có một ô nhập nào', async () => {
+    await renderLoginForm();
+
+    const pitch = document.querySelector('.auth-pitch');
+    const side = document.querySelector('.auth-side');
+
+    expect(pitch?.querySelectorAll('input')).toHaveLength(0);
+    expect(side).toContainElement(screen.getByLabelText(/email/i));
+    expect(side).toContainElement(screen.getByLabelText(/mật khẩu/i));
+    expect(side).toContainElement(screen.getByRole('button', { name: /đăng nhập/i }));
+  });
+
+  /**
+   * `.auth-page` là lớp mà `test/syncLifecycle.test.tsx` dùng để nhận ra "đã về
+   * tới trang đăng nhập". Bố cục đổi hẳn ở thay đổi này, nên lớp ấy được ghim
+   * lại đây: đổi tên nó sẽ làm một phép đo về vòng đời ĐỒNG BỘ đỏ ở một tệp
+   * khác, vì một lý do THẨM MỸ — và người sửa sẽ không hiểu vì sao.
+   */
+  it('giữ nguyên lớp `.auth-page` mà syncLifecycle.test.tsx bám vào', async () => {
+    await renderLoginForm();
+    expect(document.querySelectorAll('.auth-page')).toHaveLength(1);
+  });
+});
 
 describe('Login page', () => {
   it('shows the sign-in form by default, and switches to the register form on the register tab', async () => {
