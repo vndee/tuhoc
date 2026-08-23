@@ -40,7 +40,18 @@ trái trên: **một** lối.
 
 ## Ba thứ rời khỏi thanh bên
 
-- `/import` → **nút "Nhập gói"** trong `/courses`. Route cũ **chuyển hướng** sang `/courses`.
+- `/import` → **nút "Nhập gói"** trong `/courses`. Route cũ **chuyển hướng** sang
+  `/courses?import=1` — **không** phải `/courses` trần.
+
+  *Chốt 2026-08-23.* Người cài đặt lệch khỏi chữ của đặc tả và nêu ra, đúng cách.
+  Giữ `?import=1` vì: mục đích của chuyển hướng mà chính đặc tả này nêu là **giữ
+  cho liên kết đã lưu còn dùng được**, mà một liên kết đã lưu tới `/import` là
+  liên kết tới *màn hình nhập* — thả người dùng xuống một danh sách trần là đánh
+  mất ý định. Ca anh em `/catalog` cũng đã mang tham số (`?tab=registry`), nên
+  đây là nhất quán chứ không phải ngoại lệ. Phản biện của họ — *"một liên kết đã
+  lưu không nên tự kích hoạt một hành động"* — có lý nhưng nhẹ hơn: mở một hộp
+  thoại là **hiện một giao diện**, không phải một tác dụng phụ; không gói nào
+  được nhập cho tới khi người dùng chọn tệp.
 - `/catalog` → **tab "Kho cộng đồng"** trong `/courses`. Route cũ **chuyển hướng** sang `/courses?tab=registry`.
 - `/settings` → giữ route, nhưng vào từ **menu tài khoản**, và Trợ lý AI là **một mục bên trong** nó.
 - `/library` → **chuyển hướng** sang `/courses`.
