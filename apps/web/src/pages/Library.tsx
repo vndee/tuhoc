@@ -126,8 +126,16 @@ function toRow(course: OwnedCourse): LibraryRow {
  * ------------------------------------------------------------------ */
 
 /**
- * `/library` — every course this reader has, in one list: title, language,
- * tier, source, and the pinned version.
+ * Tab **"Của bạn"** của `/courses` — every course this reader has, in one
+ * list: title, language, tier, source, and the pinned version.
+ *
+ * **Không còn là một route.** `/library` nay chuyển hướng sang `/courses`, và
+ * phần đầu trang (nhan đề, câu dẫn, nút "Nhập gói") thuộc về
+ * `pages/Courses.tsx` — xem chú thích trong `Library()` bên dưới. Tệp này giữ
+ * nguyên tên và vị trí có lý do đo được: sổ của
+ * `registry/ratingFence.test.tsx` gọi đích danh `apps/web/src/pages/Library.tsx`
+ * như một trong những màn hình nó PHẢI canh, nên đổi tên hay dời chỗ là làm
+ * mù một hàng rào an ninh mà không có gì đỏ lên.
  *
  * **"Every course this reader has" is not this file's opinion** (ruling
  * S1-F31). It is `course/owned.ts`, which the Dashboard asks the same
