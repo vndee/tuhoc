@@ -54,10 +54,15 @@ function globalNav(): HTMLElement {
 }
 
 describe('điều hướng toàn cục (shell)', () => {
-  it('có mặt trên MỌI màn hình, không chỉ trên "/" — kể cả /import', async () => {
+  it('có mặt trên MỌI màn hình, không chỉ trên "/" — kể cả sau khi /import chuyển hướng', async () => {
     // The measured gap: `/import` and `/library` were reachable from exactly
     // one place each, both on the Dashboard. A reader standing on `/import`
     // had no way to the library that did not involve the back button.
+    //
+    // `/import` giờ chuyển hướng vào `/courses?import=1` (đặc tả IA), nên ca
+    // này đo thêm một điều nữa mà nó không đo được trước đây: thanh điều hướng
+    // vẫn còn đó SAU một lần chuyển hướng, và hộp thoại nhập gói không nuốt
+    // mất nó. Ba nơi chốn được gọi đích danh — đó là toàn bộ danh sách bây giờ.
     goTo('/import');
     render(<App />);
 
@@ -67,7 +72,13 @@ describe('điều hướng toàn cục (shell)', () => {
       .map((a) => a.getAttribute('href'));
     expect(hrefs).toContain('/');
     expect(hrefs).toContain('/courses');
-    expect(hrefs).toContain('/import');
+    expect(hrefs).toContain('/progress');
+
+    // ĐỐI CHỨNG: hai mục cũ đã RỜI thanh bên. Không có chiều này, một bản gộp
+    // nửa vời (dựng tab và nút, nhưng để nguyên hai mục cũ) vẫn xanh — mà đó
+    // đúng là thứ đặc tả gọi là "năm mục phẳng ngang hàng".
+    expect(hrefs).not.toContain('/import');
+    expect(hrefs).not.toContain('/catalog');
   });
 
   it('có mặt trên "/" — chỗ mà hai bài trong Dashboard.test.tsx từng canh', async () => {
@@ -88,12 +99,18 @@ describe('điều hướng toàn cục (shell)', () => {
       .getAllByRole('link')
       .map((a) => a.getAttribute('href'));
     expect(hrefs, 'không còn lối vào danh sách khoá học từ Bảng điều khiển').toContain('/courses');
-    expect(hrefs, 'không còn lối vào /import từ Bảng điều khiển').toContain('/import');
     expect(hrefs, 'không còn lối vào /progress').toContain('/progress');
+
+    // Lối vào phần NHẬP GÓI từ Bảng điều khiển từng được canh ở đây, bằng một
+    // mục thanh bên. Mục ấy đã đi, nhưng yêu cầu thì không: nó nay là cửa ngữ
+    // cảnh trong chính lời nhắn "thư viện của bạn đang trống"
+    // (`test/Dashboard.test.tsx`) cộng với nút "Nhập gói" ở đầu `/courses`
+    // (`pages/Courses.test.tsx`, bấm thật qua `<App/>` thật). Hai chỗ ấy là nơi
+    // phủ sóng chuyển đến — không phải nơi nó bị xoá.
   });
 
-  it('bấm được: từ /import sang /library, bằng chuột, trong ứng dụng thật', async () => {
-    goTo('/import');
+  it('bấm được: từ Bảng điều khiển sang màn Khoá học, bằng chuột, trong ứng dụng thật', async () => {
+    goTo('/');
     render(<App />);
 
     const nav = await waitFor(() => globalNav());
@@ -101,7 +118,8 @@ describe('điều hướng toàn cục (shell)', () => {
     await user.click(within(nav).getByRole('link', { name: /khoá học/i }));
 
     await waitFor(() => expect(window.location.pathname).toBe('/courses'));
-    expect(await screen.findByRole('heading', { name: 'Thư viện' })).toBeInTheDocument(); // `/courses` hiện dựng Library
+    // Nhan đề của chính màn Khoá học — `h1` của nó, không phải của một tab.
+    expect(await screen.findByRole('heading', { name: 'Khoá học', level: 1 })).toBeInTheDocument();
   });
 });
 
@@ -139,6 +157,10 @@ describe('điều hướng toàn cục — khi chưa đăng nhập', () => {
     renderSidebarAt('/courses', { id: 'u1', email: 'a@vi.vn', name: 'Người học' });
     const nav = globalNav();
     expect(within(nav).getByRole('link', { name: /khoá học/i })).toHaveAttribute('aria-current', 'page');
-    expect(within(nav).getByRole('link', { name: /nhập khóa học/i })).not.toHaveAttribute('aria-current');
+    // ĐỐI CHỨNG: một mục KHÁC trên cùng thanh không được mang dấu ấy. Trước
+    // đây đối chứng là mục "Nhập khóa học", vốn đã rời thanh bên — "Tiến độ"
+    // thế chỗ, và nó chứng minh đúng điều cũ: dấu hiệu này chọn MỘT mục, chứ
+    // không phải dán lên tất cả.
+    expect(within(nav).getByRole('link', { name: /tiến độ/i })).not.toHaveAttribute('aria-current');
   });
 });

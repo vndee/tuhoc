@@ -37,23 +37,38 @@ function goTo(path: string) {
   window.history.pushState({}, '', path);
 }
 
-describe('/catalog trong ứng dụng THẬT', () => {
-  it('route được gắn: mở thẳng /catalog thì màn hình danh mục dựng lên', async () => {
+describe('kho cộng đồng trong ứng dụng THẬT', () => {
+  /**
+   * `/catalog` nay là một CHUYỂN HƯỚNG sang `/courses?tab=registry` — kho cộng
+   * đồng là một tab bên trong màn Khoá học, không còn là một nơi chốn riêng
+   * (`docs/superpowers/specs/2026-08-23-ia-redesign.md`).
+   *
+   * Hai câu hỏi của tệp này không đổi, và đó là lý do nó được sửa chứ không bị
+   * xoá: **màn hình có được gắn vào ứng dụng thật không**, và **có cửa nào bấm
+   * tới được không**. Cái đổi là câu trả lời cho câu thứ hai — cửa nay là một
+   * tab thay vì một mục thanh bên — nên ca thứ hai bấm vào đúng cái tab ấy.
+   */
+  it('đường CŨ còn sống: mở thẳng /catalog thì rơi vào tab kho cộng đồng, không phải vào hư không', async () => {
     goTo('/catalog');
     render(<App />);
 
     expect(await screen.findByRole('heading', { name: /danh mục/i })).toBeInTheDocument();
+    // Chuyển hướng phải mang theo `?tab=registry`. Thiếu nó thì `/catalog` rơi
+    // xuống tab "Của bạn" — vẫn phân giải được, nhưng người bấm dấu trang cũ
+    // không thấy thứ họ lưu lại, và bài trên đã đủ để bỏ lọt ca đó.
+    await waitFor(() => expect(window.location.pathname).toBe('/courses'));
+    expect(window.location.search).toBe('?tab=registry');
   });
 
-  it('có CỬA tới nó: điều hướng toàn cục mang liên kết, và bấm được từ /import', async () => {
-    goTo('/import');
+  it('có CỬA tới nó: từ màn Khoá học, bấm tab "Kho cộng đồng" bằng chuột', async () => {
+    goTo('/courses');
     render(<App />);
 
-    const nav = await waitFor(() => screen.getByRole('navigation', { name: /điều hướng chính/i }));
+    const tabs = await waitFor(() => screen.getByRole('navigation', { name: /hai kho khoá học/i }));
     const user = userEvent.setup();
-    await user.click(within(nav).getByRole('link', { name: /danh mục/i }));
+    await user.click(within(tabs).getByRole('link', { name: /kho cộng đồng/i }));
 
-    await waitFor(() => expect(window.location.pathname).toBe('/catalog'));
+    await waitFor(() => expect(window.location.search).toBe('?tab=registry'));
     expect(await screen.findByRole('heading', { name: /danh mục/i })).toBeInTheDocument();
   });
 

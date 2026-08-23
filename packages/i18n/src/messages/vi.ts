@@ -197,8 +197,13 @@ export const vi = {
   'progress.chaptersDone': (n: string) => `${n} chương đã đọc`,
   'nav.dashboard': 'Bảng điều khiển',
   'nav.library': 'Thư viện',
+  /**
+   * Vẫn là nhan đề của chính màn nhập gói (nay nằm trong hộp thoại của
+   * `/courses`), nên khoá này còn sống. Nhãn của cái NÚT mở hộp thoại là
+   * `courses.import.action` — hai chữ khác nhau cho hai việc khác nhau: một
+   * cái đặt tên cho màn hình, một cái mời người ta bấm.
+   */
   'nav.import': 'Nhập khóa học',
-  'nav.catalog': 'Danh mục registry',
 
   'sidebar.searchPlaceholder': 'Tìm chương…',
   'sidebar.progressPlaceholder': 'Tiến độ sẽ hiện ở đây',
@@ -279,8 +284,21 @@ export const vi = {
   'library.source.import': 'tự nhập',
   'library.source.unknown': 'không rõ nguồn',
 
-  'library.title': 'Thư viện',
-  'library.lede': 'Mọi khóa học bạn đang có — trên máy chủ và trên thiết bị này.',
+  /* ── màn Khoá học (`pages/Courses.tsx`) ────────────────────────────────
+   *
+   * MỘT nơi chốn, hai tab và một nút — thay cho ba mục thanh bên. Đặc tả:
+   * `docs/superpowers/specs/2026-08-23-ia-redesign.md`. `library.title` và
+   * `library.lede` cũ đã bị XOÁ chứ không để lại: phần đầu trang nay thuộc về
+   * `Courses.tsx`, và hai khoá mô tả một cái đầu trang không còn ai vẽ là thứ
+   * lần sau có người dịch lại mà không biết nó chết rồi.
+   */
+  'courses.title': 'Khoá học',
+  'courses.lede': 'Khoá học của bạn và kho cộng đồng — một nơi, hai tab.',
+  'courses.tabs.aria': 'Hai kho khoá học',
+  'courses.tab.yours': 'Của bạn',
+  'courses.tab.registry': 'Kho cộng đồng',
+  'courses.import.action': 'Nhập gói',
+  'courses.import.close': 'Đóng',
   'library.loading': 'Đang tải thư viện…',
   'library.empty.headingOffline': 'Chưa có khóa học nào trên thiết bị này',
   'library.empty.heading': 'Thư viện của bạn đang trống',
@@ -622,7 +640,6 @@ export const vi = {
 
   'catalog.title': 'Danh mục khóa học',
   'catalog.lede': 'Kho khóa học cộng đồng. Mỗi gói ở đây đã đi qua đúng bộ luật kiểm định mà nền tảng dùng.',
-  'catalog.yourLibrary': 'Thư viện của bạn',
   'catalog.loading': 'Đang tải danh mục…',
   'catalog.empty': 'Registry chưa có khóa học nào. Danh mục tải được bình thường — nó rỗng.',
   'catalog.listAria': 'Khóa học trên registry',

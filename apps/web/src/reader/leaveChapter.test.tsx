@@ -142,8 +142,10 @@ describe('rời chương bằng điều hướng SPA', () => {
     await user.click(within(nav).getByRole('link', { name: /khoá học/i }));
 
     // 1. Trang ĐÍCH đã dựng. Đây là khẳng định chính — không phải `location`,
-    //    vì chính lỗi này để URL đổi mà nội dung thì không.
-    expect(await screen.findByRole('heading', { name: 'Thư viện' })).toBeInTheDocument();
+    //    vì chính lỗi này để URL đổi mà nội dung thì không. Nhan đề là "Khoá
+    //    học" từ khi `/courses` gộp thư viện, kho cộng đồng và nút nhập gói
+    //    (đặc tả IA); `level: 1` để nó không khớp nhầm nhan đề của một tab.
+    expect(await screen.findByRole('heading', { name: 'Khoá học', level: 1 })).toBeInTheDocument();
 
     // 2. Chương đã đi khỏi màn hình. Không có nửa này thì hai route chồng lên
     //    nhau vẫn tính là xanh.
@@ -186,7 +188,7 @@ describe('rời chương bằng điều hướng SPA', () => {
     const user = userEvent.setup();
     await user.click(within(nav).getByRole('link', { name: /khoá học/i }));
 
-    expect(await screen.findByRole('heading', { name: 'Thư viện' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Khoá học', level: 1 })).toBeInTheDocument();
     expect(errorBoundaryFallback()).toBeNull();
   });
 });

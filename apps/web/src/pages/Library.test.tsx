@@ -524,7 +524,7 @@ describe('Thư viện — course riêng tư', () => {
  * ====================================================================== */
 
 describe('Thư viện — người dùng mới tinh (thư viện RỖNG)', () => {
-  it('trạng thái rỗng là một hành động: dẫn thẳng tới /import và nói ra ba cách nhập', async () => {
+  it('trạng thái rỗng là một hành động: mở thẳng hộp thoại nhập gói và nói ra ba cách nhập', async () => {
     server.use(http.get('/courses', () => HttpResponse.json([])));
 
     renderLibrary();
@@ -534,8 +534,14 @@ describe('Thư viện — người dùng mới tinh (thư viện RỖNG)', () =>
     // A door, not a sentence. Task 6 deleted the hardcoded course list on
     // purpose (§9.5): a seeded course would hide a broken import path, so
     // this screen is what every new account actually lands on.
-    const toImport = screen.getAllByRole('link').filter((a) => a.getAttribute('href') === '/import');
-    expect(toImport.length, 'trạng thái rỗng không có lối vào /import — nền tảng chết ở bước một').toBeGreaterThanOrEqual(1);
+    //
+    // Đích là `/courses?import=1`, không phải `/import`: màn nhập gói nay là
+    // một hộp thoại của `/courses`, và tham số ấy là thứ mở nó ra. `/import`
+    // vẫn chuyển hướng về đúng đây, nhưng một liên kết TRONG ứng dụng trỏ vào
+    // đường cũ là bắt người đọc đi qua một lần chuyển hướng không cần thiết —
+    // và làm bài này xanh kể cả khi chuyển hướng ấy bị gỡ mất tham số.
+    const toImport = screen.getAllByRole('link').filter((a) => a.getAttribute('href') === '/courses?import=1');
+    expect(toImport.length, 'trạng thái rỗng không có lối vào phần nhập gói — nền tảng chết ở bước một').toBeGreaterThanOrEqual(1);
     expect(toImport.map((a) => a.textContent).join(' ')).toMatch(/nhập/i);
 
     // The three ways in, named where the reader is standing.
@@ -636,7 +642,16 @@ function renderRouteAt(path: string, pathnames: string[]) {
   );
 }
 
-describe('/library', () => {
+/**
+ * `/library` nay là một CHUYỂN HƯỚNG sang `/courses`, nơi thư viện là tab "Của
+ * bạn" (`docs/superpowers/specs/2026-08-23-ia-redesign.md`).
+ *
+ * Cả hai ca dưới đây giữ nguyên câu hỏi của chúng — *đường cũ có còn đưa người
+ * đọc tới thư viện của họ không, và có còn nằm sau `RequireAuth` không* — vì
+ * đó là thứ mọi dấu trang cũ phụ thuộc vào. Cái đổi là NHAN ĐỀ người đọc gặp ở
+ * đầu kia (`Khoá học`, `h1` của màn gộp) và pathname cuối cùng (`/courses`).
+ */
+describe('/library → /courses', () => {
   it('người chưa đăng nhập bị đưa về /login, và KHÔNG thấy thư viện', async () => {
     server.use(http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
     const pathnames: string[] = [];
@@ -655,7 +670,11 @@ describe('/library', () => {
 
     renderRouteAt('/library', pathnames);
 
-    expect(await screen.findByRole('heading', { name: 'Thư viện' })).toBeInTheDocument();
-    expect(pathnames.at(-1)).toBe('/library');
+    // Nhan đề chứng minh màn hình dựng lên; cái TAB đang mở chứng minh nó dựng
+    // lên đúng nửa mà `/library` từng trỏ tới. Chuyển hướng nhầm sang
+    // `?tab=registry` vẫn cho ra `h1` y hệt, nên riêng nhan đề là chưa đủ.
+    expect(await screen.findByRole('heading', { name: 'Khoá học', level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /của bạn/i })).toHaveAttribute('aria-current', 'page');
+    expect(pathnames.at(-1)).toBe('/courses');
   });
 });

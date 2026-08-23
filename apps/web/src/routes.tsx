@@ -1,10 +1,8 @@
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { RequireAuth } from './auth/RequireAuth';
-import { Catalog } from './registry/Catalog';
 import { CourseHome } from './pages/CourseHome';
-import { ImportCourse } from './pages/ImportCourse';
+import { Courses } from './pages/Courses';
 import { Dashboard } from './pages/Dashboard';
-import { Library } from './pages/Library';
 import { Login } from './pages/Login';
 import { Progress } from './pages/Progress';
 import { Reader } from './pages/Reader';
@@ -62,7 +60,7 @@ export function AppRoutes() {
         path="/courses"
         element={
           <RequireAuth>
-            <Library />
+            <Courses />
           </RequireAuth>
         }
       />
@@ -114,40 +112,29 @@ export function AppRoutes() {
       />
 
       {/*
-        BA ROUTE CŨ — CÒN NGUYÊN, và đó là điều cố ý.
+        BA ROUTE CŨ — NAY LÀ CHUYỂN HƯỚNG, vì đích của chúng đã tồn tại thật.
 
-        Đích của chúng chưa tồn tại: `/courses` hiện dựng `Library`, chưa có tab
-        "Kho cộng đồng" lẫn nút "Nhập gói". Chuyển hướng tới một nơi chưa có đích
-        là **mất tính năng**, không phải di trú — người dùng bấm và không tìm
-        thấy thứ vừa còn ở đó.
+        Điều kiện mà chú thích trước đây đặt ra ("chúng sẽ thành `<Navigate>`
+        trong CÙNG thay đổi dựng hai thứ ấy vào `/courses`") đã được thoả: cùng
+        commit này dựng tab "Kho cộng đồng" và nút "Nhập gói" trong
+        `pages/Courses.tsx`, và cùng commit này gỡ hai mục khỏi thanh bên.
 
-        Chúng sẽ thành `<Navigate>` trong CÙNG thay đổi dựng hai thứ ấy vào
-        `/courses`, không sớm hơn. Nền này chỉ THÊM, chưa gỡ gì.
+        **Mỗi đích giữ lại thứ đường cũ LÀM ĐƯỢC, không chỉ giữ chỗ nó trỏ tới.**
+        Đặc tả nói lý do phải có chuyển hướng: *"mọi liên kết đã lưu đều dùng
+        đường cũ; xoá thẳng là làm hỏng thứ đang chạy"*. Một dấu trang tới
+        `/import` mà rơi xuống một danh sách khoá học không có ô nhập nào thì
+        vẫn còn phân giải được, nhưng đã hỏng mất việc nó dùng để làm — nên nó
+        mang theo `?import=1` và hộp thoại mở ra ngay, đúng như `?tab=registry`
+        mà chính đặc tả viết cho `/catalog`.
+
+        KHÔNG bọc `<RequireAuth>`: `/courses` đã ở sau nó rồi, nên người chưa
+        đăng nhập vẫn về `/login` — chỉ là qua đích mới thay vì qua một bản sao
+        thứ hai của cùng cái cổng. `replace` để nút Lùi không rơi trở lại vào
+        đúng cái route vừa chuyển hướng đi.
       */}
-      <Route
-        path="/library"
-        element={
-          <RequireAuth>
-            <Library />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/import"
-        element={
-          <RequireAuth>
-            <ImportCourse />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/catalog"
-        element={
-          <RequireAuth>
-            <Catalog />
-          </RequireAuth>
-        }
-      />
+      <Route path="/library" element={<Navigate to="/courses" replace />} />
+      <Route path="/import" element={<Navigate to="/courses?import=1" replace />} />
+      <Route path="/catalog" element={<Navigate to="/courses?tab=registry" replace />} />
     </Routes>
   );
 }
