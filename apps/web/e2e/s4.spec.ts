@@ -41,9 +41,10 @@ import { PASSWORD, REPO_ROOT, freshEmail, isBenignAuthCheck401, registerNewUser 
  *      chạy trên **mã nguồn và một DOM giả**. Câu chúng không hỏi được là:
  *      *người dùng thật, trình duyệt thật, bản dựng production, CSS thật —
  *      trên màn hình có course riêng tư, có ô chấm nào không?* Kịch bản 2
- *      hỏi đúng câu ấy, trên **ba màn hình** (`/library`, `/c/:id`, `/`),
+ *      hỏi đúng câu ấy, trên **ba màn hình** (tab "Của bạn" của `/courses`,
+ *      `/c/:id`, `/`),
  *      và mở đầu bằng **đối chứng dương**: cùng người đọc, cùng trình duyệt,
- *      trên `/catalog` thì ô chấm **có** — nếu không, "không có ô chấm" là
+ *      trên tab "Kho cộng đồng" thì ô chấm **có** — nếu không, "không có ô chấm" là
  *      một khẳng định đúng cả khi tính năng chấm sao hỏng hoàn toàn.
  *
  *   b. **"Có gì mang danh tính người chấm ra khỏi máy chủ không?"**
@@ -231,7 +232,17 @@ const VI = {
   tabsAria: 'Hai kho khoá học',
   tabYours: 'Của bạn',
   tabRegistry: 'Kho cộng đồng',
-  navDashboard: 'Bảng điều khiển',
+  /**
+   * Mục thanh bên trỏ về `/` tên là **"Học tiếp"**, không phải "Bảng điều
+   * khiển" — `nav.continue`, đổi ở `af3280f` khi `/` thôi làm bảng số liệu và
+   * trở thành MỘT hành động (chương đang dở).
+   *
+   * `nav.dashboard` ('Bảng điều khiển') vẫn còn trong catalog, nhưng nay nó là
+   * `h1` CỦA TRANG chứ không phải nhãn của liên kết — nên tìm liên kết bằng
+   * chữ ấy là treo cho tới hết 180 giây. Đó chính là cách bài này đỏ trước khi
+   * dòng này được sửa.
+   */
+  navContinue: 'Học tiếp',
   catalogTitle: 'Danh mục khóa học',
   catalogListAria: 'Khóa học trên registry',
   libraryListAria: 'Khóa học của bạn',
@@ -1067,7 +1078,7 @@ test('kịch bản 2 — course riêng tư không có ô chấm sao nào, trên 
     // ── (c) bảng điều khiển ───────────────────────────────────────────────
     await s.page
       .getByRole('navigation', { name: VI.navMain })
-      .getByRole('link', { name: VI.navDashboard })
+      .getByRole('link', { name: VI.navContinue })
       .click();
     await s.page.waitForURL((url) => url.pathname === '/');
     await expect(
