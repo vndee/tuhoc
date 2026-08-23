@@ -3,6 +3,7 @@
    different from runtime.js / vendor/*.js / viz.js, which are classic
    scripts that attach globals and must be loaded by URL instead — see
    vite-plugins/courseAssets.ts and the task report for why. */
+@import '@fontsource-variable/ibm-plex-sans/index.css';
 @import '@course-kit/vendor/katex.css';
 @import '@course-kit/reader.css';
 @import './courses.css';

@@ -13,13 +13,14 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^7.18.2",
+    "@fontsource-variable/ibm-plex-sans": "^5.3.0",
     "@tanstack/react-query": "^5.101.4",
     "dexie": "^4.4.5",
     "fflate": "^0.8.2",
-    "parse5": "8.0.1"
+    "parse5": "8.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
@@ -32,6 +33,7 @@
     "@vitejs/plugin-react": "^6.0.4",
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^30.0.1",
+    "katex": "0.16.11",
     "msw": "^2.15.0",
     "oxlint": "^1.75.0",
     "typescript": "~6.0.2",
