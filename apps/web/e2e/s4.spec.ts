@@ -227,8 +227,10 @@ const PRIVATE_FROM = 'bat-bien-vong-lap';
  */
 const VI = {
   navMain: 'Điều hướng chính',
-  navCatalog: 'Danh mục registry',
-  navLibrary: 'Thư viện',
+  navCourses: 'Khoá học',
+  tabsAria: 'Hai kho khoá học',
+  tabYours: 'Của bạn',
+  tabRegistry: 'Kho cộng đồng',
   navDashboard: 'Bảng điều khiển',
   catalogTitle: 'Danh mục khóa học',
   catalogListAria: 'Khóa học trên registry',
@@ -795,15 +797,26 @@ async function expectRightApp(page: Page): Promise<void> {
   await expect(page.getByRole('navigation', { name: VI.navMain })).toBeVisible();
 }
 
-/** Vào `/catalog` BẰNG CÁCH BẤM, không bằng cách gõ URL (ruling S1-F29). */
+/**
+ * Vào kho cộng đồng BẰNG CÁCH BẤM, không bằng cách gõ URL (ruling S1-F29).
+ *
+ * Hai cú bấm chứ không còn một: kho cộng đồng nay là TAB bên trong `/courses`,
+ * không phải một mục thanh bên (đặc tả IA). Đường đi dài thêm một bước nhưng
+ * câu hỏi thì không đổi — người đọc có tới được đây mà không phải gõ URL không.
+ */
 async function openCatalogByClicking(page: Page): Promise<void> {
   await page.goto(`${WEB_ORIGIN}/`);
   await expectRightApp(page);
   await page
     .getByRole('navigation', { name: VI.navMain })
-    .getByRole('link', { name: VI.navCatalog })
+    .getByRole('link', { name: VI.navCourses })
     .click();
-  await page.waitForURL((url) => url.pathname === '/catalog');
+  await page.waitForURL((url) => url.pathname === '/courses');
+  await page
+    .getByRole('navigation', { name: VI.tabsAria })
+    .getByRole('link', { name: VI.tabRegistry })
+    .click();
+  await page.waitForURL((url) => url.pathname === '/courses' && url.searchParams.get('tab') === 'registry');
   await expect(page.getByRole('heading', { name: VI.catalogTitle })).toBeVisible();
 }
 
@@ -989,10 +1002,14 @@ test('kịch bản 1 — chấm sao một course registry, tải lại, phiếu 
  *    hình dạng cổng mù mà dự án đã ghi năm lần.
  *
  * 2. **Nó đi qua BA màn hình mà người đọc thật sự tới**, và tới bằng cách
- *    **bấm**: thanh điều hướng → `/library`, rồi nhan đề của chính course
+ *    **bấm**: tab "Của bạn" của `/courses`, rồi nhan đề của chính course
  *    riêng tư → `/c/:courseId`, rồi thanh điều hướng → `/`. `ratingFence`
  *    dựng ba màn hình ấy trong jsdom; ở đây chúng là bản dựng production,
  *    CSS thật, router thật.
+ *
+ *    Từ khi ba màn cũ gộp vào `/courses` (đặc tả IA), bước đầu tiên đo thêm
+ *    một điều: đối chứng dương ở ngay trên đứng trên TAB BÊN CẠNH, nên "không
+ *    ô chấm nào" ở đây chỉ đúng nếu đổi tab thật sự THÁO `Catalog` khỏi cây.
  *
  * 3. **Nó hỏi ở TẦNG MẠNG, không chỉ ở tầng DOM.** `expectNoStarsAnywhere`
  *    đòi **không một lời gọi `/ratings` nào** rời khỏi những màn hình ấy —
@@ -1011,12 +1028,17 @@ test('kịch bản 2 — course riêng tư không có ô chấm sao nào, trên 
       'catalog KHÔNG có ô chấm sao nào — mọi khẳng định "không có ô chấm" dưới đây sẽ là khẳng định rỗng',
     ).toHaveCount(3);
 
-    // ── (a) /library ──────────────────────────────────────────────────────
+    // ── (a) thư viện của người đọc — tab "Của bạn" của /courses ───────────
+    // Rời tab kho cộng đồng bằng cách bấm chính cái tab bên cạnh: đó là đường
+    // người đọc thật đi, và nó cũng chứng minh `Catalog` THÔI được dựng — nếu
+    // hai tab cùng nằm trên cây thì ba ô chấm sao của đối chứng dương ngay
+    // trên kia vẫn còn đó, và mọi khẳng định "không ô chấm nào" dưới đây thành
+    // ra đo nhầm màn hình.
     await s.page
-      .getByRole('navigation', { name: VI.navMain })
-      .getByRole('link', { name: VI.navLibrary })
+      .getByRole('navigation', { name: VI.tabsAria })
+      .getByRole('link', { name: VI.tabYours })
       .click();
-    await s.page.waitForURL((url) => url.pathname === '/library');
+    await s.page.waitForURL((url) => url.pathname === '/courses' && url.searchParams.get('tab') === null);
 
     const libraryRow = s.page
       .getByRole('list', { name: VI.libraryListAria })
@@ -1028,7 +1050,7 @@ test('kịch bản 2 — course riêng tư không có ô chấm sao nào, trên 
       'hàng này không mang nhãn nguồn "riêng tư" — bài đang đo nhầm loại course',
     ).toHaveText(VI.sourcePrivate);
     const afterLibrary = s.requests.length;
-    await expectNoStarsAnywhere(s.page, s.requests, afterLibrary, '/library');
+    await expectNoStarsAnywhere(s.page, s.requests, afterLibrary, '/courses (tab "Của bạn")');
 
     // ── (b) /c/:courseId của chính course riêng tư ────────────────────────
     await libraryRow.getByRole('link', { name: PRIVATE_TITLE }).click();
