@@ -848,7 +848,7 @@ export function ChapterView({
         createPortal(
           <>
             <Link className="rd-exit" to="/" aria-label={t('reader.exitAria')} title={t('reader.exitAria')}>
-              <span aria-hidden="true">←</span> {t('reader.exit')}
+              <span aria-hidden="true">←</span> <span className="rd-lbl">{t('reader.exit')}</span>
             </Link>
             <button
               type="button"
@@ -862,7 +862,7 @@ export function ChapterView({
               title={tocOpen ? t('reader.tocClose') : t('reader.tocOpen')}
               onClick={() => setTocOpen((open) => !open)}
             >
-              <span aria-hidden="true">☰</span> {t('reader.toc')}
+              <span aria-hidden="true">☰</span> <span className="rd-lbl">{t('reader.toc')}</span>
             </button>
           </>,
           navSlotEl,

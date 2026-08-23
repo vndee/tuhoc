@@ -70,6 +70,40 @@
   max-width: var(--measure);
 }
 
+/* ── CỘT CHỮ ĐẶT GIỮA KHUNG NHÌN, KHÔNG PHẢI GIỮA (CHỮ + LỀ) ─────────────
+   `#content-wrap` là `display:flex; justify-content:center`, nên nó căn giữa
+   CẢ CẶP chữ+lề — cột chữ vì thế lệch trái đúng nửa bề rộng lề. Ở 1440 đó là
+   137px, và nó lộ ra đúng lúc nó không nên lộ: lề chỉ hiện nơi có ghi chú,
+   nên phần lớn thời gian bên phải là một khoảng trống rộng gấp đôi bên trái,
+   và cột chữ trông như bị đặt lệch chứ không như được căn.
+
+   Margin âm bằng đúng (bề rộng lề + gap) làm phép căn giữa của flex tính như
+   thể chỉ có cột chữ, còn lề thì tràn sang máng phải. Kết quả: chữ đặt giữa
+   khung nhìn ở mọi bề rộng, lề vẫn cách chữ đúng 34px như cũ.
+
+   KHÔNG chạm gì tới phép toán của thẻ ghi chú, và đó là điều kiện để làm việc
+   này: `MarginCards` đặt thẻ theo toạ độ TÀI LIỆU theo TRỤC Y (`rect.top -
+   originY`), thẻ là `left:0;right:0` bên trong `.ann-cards`, và dây nối
+   (`.ann-tie`) đo `left: -TIE_REACH` so với chính cột thẻ. Khoảng cách
+   chữ↔lề không đổi, nên không một con số nào trong ba thứ ấy đổi.
+
+   Số học của giới hạn, vì nó sát: mép phải của lề =
+   (100vw − 43rem)/2 + 43rem + 34 + 15rem. Ở 1440 → 1338; ở 1280 → 1258; ở
+   1241 → 1238,5. Dưới 1241 `#rail` là `display:none` (reader.css), nên
+   1238,5 < 1241 là trường hợp chật nhất tồn tại, và nó vẫn nằm trong khung
+   nhìn — không có thanh cuộn ngang ở bất kỳ bề rộng nào.
+
+   Bề rộng đặt ở ĐÂY chứ không dưới `.rail-notes`, và đó không phải chỗ tuỳ
+   tiện: `.rail-notes` rời đi khi người đọc tắt lề, và một `#rail` lúc ấy tụt
+   về `--rail-w` (210px) sẽ làm margin âm lệch 30px — tức cột chữ NHẢY NGANG
+   mỗi lần bật/tắt ghi chú. Bề rộng cố định thì phép căn giữa không phụ thuộc
+   vào việc lề đang bật hay tắt. */
+#app.reading #rail {
+  width: 15rem;
+  flex: 0 0 15rem;
+  margin-right: calc(-15rem - 34px);
+}
+
 /* ============================================================
    2. THANH TRÊN CỦA CHẾ ĐỘ ĐỌC
    ============================================================ */
@@ -116,12 +150,48 @@
   border-style: dashed;
 }
 
+/* ── THANH TRÊN Ở MÀN HẸP, VÀ VÌ SAO NÓ LÀ MỘT LỖI ĐO ĐƯỢC ────────────────
+   `#topbar` là `display:flex` không xuống dòng. Ba điều khiển mới của chế độ
+   đọc (lối ra ~70px, mục lục ~85px, ghi chú ~85px, cộng khoảng cách) cộng vào
+   một thanh vốn đã kín ở 375px. Đo được trên trình duyệt thật:
+   `scrollWidth 533` trên `innerWidth 375` — tức **158px tràn ngang**, một
+   thanh cuộn ngang trên cả trang, ở đúng khổ máy nhiều người đọc nhất. Không
+   một test đơn vị nào thấy được điều đó: jsdom không tính `@media`, và không
+   có bố cục để tràn.
+
+   Hai luật dưới đây gỡ đúng 158px ấy, và cả hai đều có lý do NGOÀI chuyện chỗ. */
+
+/* Dưới 1241px `#rail` là `display:none` (reader.css), nên LỀ GHI CHÚ KHÔNG
+   TỒN TẠI — thẻ chuyển sang tấm trượt dưới đáy (`MarginCards`' WIDE_MIN_PX).
+   Một công tắc bật/tắt một cái lề không có mặt là một công tắc nói dối, nên
+   nó đi cùng cái lề nó điều khiển. Con số ghi chú không mất theo: nó vẫn nói
+   qua tấm trượt và qua panel mồ côi, những thứ vẫn ở đó. */
+@media (max-width: 1240px) {
+  #app.reading .rd-notes-btn {
+    display: none;
+  }
+}
+
 @media (max-width: 980px) {
-  /* Chữ của hai nút này rụng đi như `.mk-lbl` của `#mark-btn`, để thanh trên
-     ở màn hẹp còn chỗ cho breadcrumb. Biểu tượng ☰/số vẫn còn. */
-  #app.reading .rd-exit span:not([aria-hidden]),
+  /* Chữ của hai nút bên trái rụng đi như `.mk-lbl` của `#mark-btn`, để thanh
+     trên ở màn hẹp còn chỗ cho breadcrumb — nhưng bằng cách GIẤU KHỎI MẮT chứ
+     không `display:none`. Khác biệt không phải thẩm mỹ: tên trợ năng của hai
+     điều khiển này ĐƯỢC TÍNH TỪ CHỮ CỦA CHÚNG, nên `display:none` sẽ đổi tên
+     mà trình đọc màn hình đọc lên, ở đúng khổ máy hay dùng trình đọc màn hình
+     nhất. Cách này giữ nguyên tên và chỉ lấy lại chỗ. */
+  #app.reading .rd-lbl {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   #app.reading .rd-exit {
-    font-size: 12px;
+    padding: 0 2px;
   }
 }
 
@@ -280,8 +350,10 @@
    4. GHI CHÚ — CHÚ LỀ, KHÔNG PHẢI MỘT CỘT
    ============================================================ */
 
-/* Lề rộng 15rem, đúng con số trên khung đã duyệt. `.rail-notes` (index.css)
-   đặt 260px cho cột thẻ cũ; ở đây thẻ không còn là thẻ nên không cần 260. */
+/* Bề rộng lề (15rem, đúng con số trên khung đã duyệt) đặt ở mục 1 cùng với
+   margin âm căn giữa — hai con số ấy phải khớp nhau nên chúng ở cạnh nhau.
+   Luật này chỉ ghi đè 260px mà `.rail-notes` (index.css) đặt cho cột thẻ cũ:
+   ở đây thẻ không còn là thẻ nên không cần 260. */
 #app.reading #rail.rail-notes {
   width: 15rem;
   flex: 0 0 15rem;
@@ -296,8 +368,17 @@
    đặt `border-left-color`), nên mắt vẫn ghép được ghi chú với đoạn nó chú qua
    khoảng trống — thứ duy nhất còn lại làm việc ấy khi hộp biến mất. */
 #app.reading .ann-card {
-  border: 0;
-  border-left: 2px solid var(--rule-strong);
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  /* WIDTH và STYLE, cố ý KHÔNG phải `border-left` viết tắt. Viết tắt sẽ đặt
+     cả MÀU, và luật này (2 id + 1 lớp) thắng `.ann-card-y/g/b/p` (1 lớp) —
+     tức nét dọc tụt về xám ở mọi thẻ, và cái nó mang đi là thứ duy nhất còn
+     ghép được ghi chú với đoạn nó chú qua khoảng trống sau khi hộp biến mất.
+     Đo được: bản viết tắt đầu tiên làm đúng thế, và nó chỉ lộ ra khi mở
+     trang thật ra xem. */
+  border-left-width: 2px;
+  border-left-style: solid;
   border-radius: 0;
   background: none;
   box-shadow: none;
