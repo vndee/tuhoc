@@ -6,23 +6,31 @@ import { setupServer } from 'msw/node';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { meQueryKey } from '../api/useMe';
-import { clearLocalData, db } from '../db/local';
+import { type AnnotationRow, clearLocalData, db } from '../db/local';
 import * as engine from '../sync/engine';
 import { Dashboard } from '../pages/Dashboard';
 import type { Manifest } from '../course/types';
 import { LanguageProvider } from '../i18n/LanguageProvider';
+
+/**
+ * `/` — **Học tiếp**, sau khi thiết kế lại thứ bậc.
+ *
+ * Tệp này từng canh một BẢNG SỐ LIỆU: chuỗi ngày, tổng phút, một biểu đồ 30
+ * cột, và một thẻ cho mỗi khoá học. Cả bốn thứ ấy đã rời khỏi trang chủ —
+ * các con số sang `/progress`, danh sách khoá học sang `/courses` — nên những
+ * bài canh chúng ở ĐÂY đã được viết lại chứ không nới ra: mỗi tính chất cũ hoặc
+ * còn nguyên với định danh mới (trạng thái rỗng, đăng xuất, không nháy trạng
+ * thái rỗng, không trắng trang), hoặc được thay bằng tính chất đã thay thế nó.
+ *
+ * Bài `không còn một con số học tập nào ở trang chủ` là bài giữ cho việc dọn
+ * dẹp ấy không lặng lẽ đi ngược: hai số 0 cỡ lớn quay lại trang chủ sẽ đỏ.
+ */
 
 function catalogManifest(): Manifest {
   // The manifest of the course the default `GET /courses` stub below puts
   // in the learner's catalog — every test stubs its manifest endpoint so a
   // stray real network call never happens even for tests that don't care
   // about this course.
-  //
-  // This used to be the app's own hardcoded known-course fallback
-  // (`Dashboard.tsx`'s `KNOWN_COURSE_IDS`), which existed only because
-  // `GET /courses` had not been built. It has been; the constant is gone,
-  // and the course reaches the Dashboard the same way every other course
-  // does now — because the catalog endpoint named it.
   return {
     id: 'so-dau-phay-dong',
     title: 'Số dấu phẩy động',
@@ -86,32 +94,24 @@ function demoManifest(chapterCount: number): Manifest {
  * `findByText` **1 lần trong 16 vượt 1000 ms** (1026,5 ms) — đó chính là
  * lần hỏng, đúng tần suất bậc 3/64 đã ghi. Chuỗi nó chờ là việc thật, không
  * phải một tín hiệu bị lỡ: `liveQuery` của Dexie trên fake-indexeddb phải
- * phát ra danh sách courseId, rồi `CourseCard` mới mount và mới đi hỏi
- * manifest qua msw. Cả hai chặng đó phồng ~32× khi 24 worker giành 8 lõi.
- *
- * Khẳng định nào đỏ, kiểm được TẤT ĐỊNH theo cả hai chiều thay vì ngồi đợi
- * xác suất: đặt hằng số dưới đây bằng `1` thì bài F5 đỏ 100%, nguyên văn
- *     TestingLibraryElementError: Unable to find an element with the text:
- *     Khóa học demo.
- * ở đúng dòng `findByText` — không phải `waitFor` của vòng 2/4, không phải
- * `testTimeout` của vitest. Đặt lại 15_000 thì xanh.
+ * phát ra danh sách courseId, rồi thẻ mới mount và mới đi hỏi manifest qua
+ * msw. Cả hai chặng đó phồng ~32× khi 24 worker giành 8 lõi.
  *
  * Vì sao nới trần này KHÔNG phải làm yếu: `findByText`/`waitFor` là
  * MutationObserver, chúng trả lời ngay khi DOM đổi; con số dưới đây chỉ là
- * lúc chúng bỏ cuộc. Một Dashboard thật sự hỏng — thẻ khoá học không bao
- * giờ render, vòng hoàn thành không bao giờ ra 2/4 — vẫn đỏ với **đúng
- * cùng một thông báo và đúng cùng một khẳng định**, chỉ muộn hơn. Cái duy
- * nhất bị nới là thời gian chờ, và ở đây không có khẳng định nào về thời
- * gian.
+ * lúc chúng bỏ cuộc. Một trang chủ thật sự hỏng — thẻ "Học tiếp" không bao
+ * giờ render, số chương không bao giờ ra 2/4 — vẫn đỏ với **đúng cùng một
+ * thông báo và đúng cùng một khẳng định**, chỉ muộn hơn. Cái duy nhất bị nới
+ * là thời gian chờ, và ở đây không có khẳng định nào về thời gian.
  *
  * 15 s là 14,6× lần chờ tệ nhất từng đo được; 30 s cho mỗi `it` là 16,1×
  * thân test tệ nhất từng đo được, và phải lớn hơn 15 s ở trên nếu không
  * `testTimeout` mặc định (5 s) sẽ cắt ngang trước khi lần chờ kịp bỏ cuộc.
  *
- * Áp cho CẢ SÁU bài chứ không riêng bài F5 — cùng lý do ruling P2-F12 đã
- * chốt: năm bài kia chạy SAU nên cache transform và module graph đã nóng,
- * tức chúng an toàn **do thứ tự**, không phải do bản chất. Ai thêm một bài
- * mới lên đầu file, hoặc đổi thứ tự, là bài đó thành bài trả tiền.
+ * Áp cho MỌI bài chứ không riêng bài F5 — cùng lý do ruling P2-F12 đã chốt:
+ * các bài chạy SAU nên cache transform và module graph đã nóng, tức chúng an
+ * toàn **do thứ tự**, không phải do bản chất. Ai thêm một bài mới lên đầu
+ * file, hoặc đổi thứ tự, là bài đó thành bài trả tiền.
  */
 const OVERSUBSCRIBED_WAIT_MS = 15_000;
 const OVERSUBSCRIBED_MS = 30_000;
@@ -133,19 +133,35 @@ async function clearAll() {
  * One entry of `GET /courses`'s response — apps/api/internal/course/
  * handler.go's `courseSummary`. Written out here rather than imported so
  * the wire contract has to be restated on this side: a change to the
- * backend's JSON shape should break a test, not silently produce a
- * Dashboard with no cards.
+ * backend's JSON shape should break a test, not silently produce a home
+ * screen with nothing to continue.
  */
 function catalogEntry(id: string, title: string) {
   return { id, title, lang: 'vi', tier: 'content', versions: ['1.0.0'], pinned: '1.0.0' };
 }
 
+/** Một hàng progress cục bộ — nguồn DUY NHẤT của "chương nào đã đọc" (ruling F5). */
+async function markRead(courseId: string, chapterId: string, updatedAt = new Date().toISOString()) {
+  await db.progress.put({ courseId, chapterId, status: 'read', done: true, updatedAt });
+}
+
+function note(overrides: Partial<AnnotationRow> & Pick<AnnotationRow, 'id'>): AnnotationRow {
+  return {
+    courseId: 'demo',
+    chapterId: 'ch-1',
+    anchor: { exact: 'một đoạn được bôi đen', color: 'y' },
+    note: 'ghi chú',
+    createdAt: '2026-08-01T00:00:00Z',
+    updatedAt: '2026-08-01T00:00:00Z',
+    deletedAt: null,
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   server.use(http.get('/courses/so-dau-phay-dong/manifest.json', () => HttpResponse.json(catalogManifest())));
   // The default catalog. Tests that care about the catalog itself
-  // override this; the rest get a learner who holds one course, which is
-  // the same starting state every test in this file had back when the
-  // Dashboard hardcoded that id.
+  // override this; the rest get a learner who holds one course.
   server.use(http.get('/courses', () => HttpResponse.json([catalogEntry('so-dau-phay-dong', 'Số dấu phẩy động')])));
 });
 beforeEach(clearAll);
@@ -175,96 +191,191 @@ function renderDashboard() {
   );
 }
 
-describe('Dashboard', () => {
-  it('renders a card for a course known ONLY from local progress (Ruling F5 — offline-first, even when /stats and /courses never resolve)', async () => {
+/** Nút/liên kết hành động chính của thẻ "Học tiếp". */
+function cta(): HTMLElement {
+  return screen.getByRole('link', { name: /đọc tiếp|bắt đầu đọc|đọc lại/i });
+}
+
+describe('Học tiếp — MỘT hành động', () => {
+  it('mở đúng chương đang dở, và biết được điều đó KHÔNG cần mạng (ruling F5)', async () => {
     server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(4))));
-    server.use(http.get('/stats', () => new Promise(() => {}))); // never resolves — simulate offline
-    // The catalog is a network call too, so "offline" has to mean it is
-    // unreachable as well. A Dashboard that learned which courses exist
-    // ONLY from the server would show nothing here — Ruling F5 is exactly
-    // about that not happening.
+    // Ngoại tuyến: cả hai lời gọi mạng đều không bao giờ trả lời. Một trang chủ
+    // học "mình có khoá nào" CHỈ từ máy chủ sẽ không có gì để mời đọc tiếp —
+    // ruling F5 tồn tại đúng để chuyện ấy không xảy ra.
+    server.use(http.get('/stats', () => new Promise(() => {})));
     server.use(http.get('/courses', () => new Promise(() => {})));
-    await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: new Date().toISOString() });
-    await db.progress.put({ courseId: 'demo', chapterId: 'ch-2', status: 'read', done: true, updatedAt: new Date().toISOString() });
+    await markRead('demo', 'ch-1');
+    await markRead('demo', 'ch-2');
 
     renderDashboard();
 
     expect(await screen.findByText('Khóa học demo')).toBeInTheDocument();
-    // 2 of 4 chapters done, computed from LOCAL progress, not the (never
-    // resolving) /stats call — Ruling F5.
+    // Chương 3 — chương ĐẦU TIÊN chưa đọc, không phải chương sau chương vừa đọc.
+    expect(await screen.findByText('Chương 3')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/2\s*\/\s*4/)).toBeInTheDocument());
+    expect(cta()).toHaveAttribute('href', '/c/demo/ch-3');
   }, OVERSUBSCRIBED_MS);
 
-  it('shows the ring/course card correctly even when GET /stats and GET /courses 500 — must not blank the whole panel', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(2))));
-    server.use(http.get('/stats', () => new HttpResponse(null, { status: 500 })));
-    server.use(http.get('/courses', () => new HttpResponse(null, { status: 500 })));
-    await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: new Date().toISOString() });
-
-    renderDashboard();
-
-    expect(await screen.findByText('Khóa học demo')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText(/1\s*\/\s*2/)).toBeInTheDocument());
-    // A visible, non-crashing explanation instead of a blank stats panel.
-    expect(await screen.findByText(/không tải được|ngoại tuyến|offline/i)).toBeInTheDocument();
-  }, OVERSUBSCRIBED_MS);
-
-  it('shows streak, total minutes and a 30-day bar for each day once GET /stats succeeds', async () => {
-    const days = Array.from({ length: 30 }, (_, i) => ({ date: `2026-08-${String(i + 1).padStart(2, '0')}`, minutes: i === 29 ? 45 : 0 }));
+  it('MỘT thẻ, không phải một thẻ cho mỗi khoá — và thẻ ấy là khoá vừa đọc gần nhất', async () => {
+    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(4))));
+    server.use(http.get('/courses/so-dau-phay-dong/manifest.json', () => HttpResponse.json(catalogManifest())));
     server.use(
       http.get('/stats', () =>
         HttpResponse.json({
-          totalMinutes: 372,
-          streakDays: 5,
-          days,
-          courses: [{ courseId: 'demo', minutes: 120, chaptersDone: 3 }],
+          totalMinutes: 90,
+          streakDays: 3,
+          days: [],
+          courses: [{ courseId: 'demo', minutes: 60, chaptersDone: 1 }],
         }),
       ),
     );
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(4))));
-    await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: new Date().toISOString() });
-
-    renderDashboard();
-
-    expect(await screen.findByText('5')).toBeInTheDocument(); // streak
-    expect(await screen.findByText('372')).toBeInTheDocument(); // total minutes
-
-    const chart = document.querySelector('.dash-chart')!;
-    expect(chart.querySelectorAll('.dash-bar')).toHaveLength(30);
-  }, OVERSUBSCRIBED_MS);
-
-  it('derives the course card set from stats.courses[] too, not only local progress or the known-course fallback', async () => {
-    server.use(
-      http.get('/stats', () =>
-        HttpResponse.json({ totalMinutes: 10, streakDays: 1, days: [], courses: [{ courseId: 'demo', minutes: 10, chaptersDone: 0 }] }),
-      ),
-    );
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(3))));
-    // No local progress row for "demo" at all — the card must still appear
-    // because /stats named it.
+    // Hai khoá, hai mốc thời gian. `so-dau-phay-dong` cũ hơn ba ngày.
+    await markRead('so-dau-phay-dong', 'p0-1', '2026-08-17T09:00:00Z');
+    await markRead('demo', 'ch-1', '2026-08-20T09:00:00Z');
 
     renderDashboard();
 
     expect(await screen.findByText('Khóa học demo')).toBeInTheDocument();
+    expect(cta()).toHaveAttribute('href', '/c/demo/ch-2');
+    // Khoá kia KHÔNG có mặt: trang này không còn là danh sách khoá học. Chỗ đó
+    // là `/courses`, và `test/globalNav.test.tsx` canh đường tới nó.
+    expect(screen.queryByText('Số dấu phẩy động')).not.toBeInTheDocument();
   }, OVERSUBSCRIBED_MS);
 
-  it('renders a card for every course GET /courses lists, with no local progress and no matching stats.courses entry', async () => {
+  it('đọc hết khoá là một TRẠNG THÁI, không phải ngõ cụt — nút mở lại chương cuối', async () => {
+    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(2))));
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+    await markRead('demo', 'ch-1');
+    await markRead('demo', 'ch-2');
+
+    renderDashboard();
+
+    expect(await screen.findByText('Khóa học demo')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/2\s*\/\s*2/)).toBeInTheDocument());
+    expect(screen.getByText(/đã đọc hết khoá này/i)).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: /đọc lại/i });
+    expect(link).toHaveAttribute('href', '/c/demo/ch-2');
+  }, OVERSUBSCRIBED_MS);
+
+  it('chưa đọc chương nào thì lời mời là "bắt đầu", và nó trỏ vào chương đầu', async () => {
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
 
     renderDashboard();
 
     expect(await screen.findByText('Số dấu phẩy động')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText(/0\s*\/\s*1/)).toBeInTheDocument());
+    const link = await screen.findByRole('link', { name: /bắt đầu đọc/i });
+    expect(link).toHaveAttribute('href', '/c/so-dau-phay-dong/p0-1');
   }, OVERSUBSCRIBED_MS);
 
-  it('says the library is empty rather than rendering a blank card area when GET /courses returns nothing', async () => {
+  it('một manifest hỏng vẫn cho ra một lối đi, không phải một câu lỗi cụt', async () => {
+    // 404 trên manifest: gói không mở được. Câu giải thích là cần, nhưng một
+    // câu giải thích không kèm lối đi tiếp thì vẫn là ngõ cụt.
+    server.use(http.get('/courses/demo/manifest.json', () => new HttpResponse(null, { status: 404 })));
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+    await markRead('demo', 'ch-1');
+
+    renderDashboard();
+
+    expect(await screen.findByText(/không tìm thấy/i)).toBeInTheDocument();
+    const out = screen.getAllByRole('link').filter((a) => a.getAttribute('href') === '/courses');
+    expect(out.length, 'thẻ lỗi không có đường nào đi tiếp').toBeGreaterThanOrEqual(1);
+  }, OVERSUBSCRIBED_MS);
+
+  it('KHÔNG còn một con số học tập nào ở trang chủ — chúng đã sang /progress', async () => {
+    // Bài chống-đi-ngược. Trang này từng mở đầu bằng `streakDays` và
+    // `totalMinutes` cỡ lớn; với một tài khoản mới đó là HAI SỐ 0 to đùng, và
+    // đó là màn hình đầu tiên của cả sản phẩm. Con số nào quay lại đây sẽ đỏ.
+    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(4))));
+    server.use(
+      http.get('/stats', () =>
+        HttpResponse.json({
+          totalMinutes: 372,
+          streakDays: 5,
+          days: Array.from({ length: 30 }, (_, i) => ({ date: `2026-08-${String(i + 1).padStart(2, '0')}`, minutes: 45 })),
+          courses: [{ courseId: 'demo', minutes: 120, chaptersDone: 3 }],
+        }),
+      ),
+    );
+    await markRead('demo', 'ch-1');
+
+    renderDashboard();
+
+    // Đối chứng dương trước: trang đã dựng xong và ĐÃ ĐỌC `/stats` (nó là một
+    // trong bốn nguồn của `useOwnedCourses`), nên "không thấy con số" dưới đây
+    // không phải vì trang còn trống.
+    expect(await screen.findByText('Khóa học demo')).toBeInTheDocument();
+
+    expect(screen.queryByText('372')).not.toBeInTheDocument();
+    expect(screen.queryByText('120')).not.toBeInTheDocument();
+    expect(screen.queryByText(/ngày liên tục/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/phút đã học/i)).not.toBeInTheDocument();
+    expect(document.querySelector('.dash-chart'), 'biểu đồ 30 cột vẫn còn trên trang chủ').toBeNull();
+    expect(document.querySelectorAll('.dash-bar')).toHaveLength(0);
+  }, OVERSUBSCRIBED_MS);
+});
+
+describe('Học tiếp — ghi chú gần đây', () => {
+  it('liệt kê ghi chú mới nhất trước, mỗi ghi chú mở đúng chương của nó', async () => {
+    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(4))));
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+    await markRead('demo', 'ch-1');
+    await db.annotations.put(
+      note({ id: 'a-cu', chapterId: 'ch-1', note: 'ghi chú cũ', updatedAt: '2026-08-10T08:00:00Z' }),
+    );
+    await db.annotations.put(
+      note({ id: 'a-moi', chapterId: 'ch-3', note: 'ghi chú mới', updatedAt: '2026-08-21T08:00:00Z' }),
+    );
+
+    renderDashboard();
+
+    const list = await screen.findByRole('list');
+    const rows = within(list).getAllByRole('listitem');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('ghi chú mới');
+    expect(rows[1]).toHaveTextContent('ghi chú cũ');
+    // Đường về đúng chương, không phải về trang khoá học.
+    expect(within(rows[0]).getByRole('link')).toHaveAttribute('href', '/c/demo/ch-3');
+    // Đoạn được bôi đen đi kèm: một ghi chú không có ngữ cảnh thì phải mở
+    // chương ra mới hiểu được, tức là nó không giúp gì ở đây.
+    expect(rows[0]).toHaveTextContent('một đoạn được bôi đen');
+  }, OVERSUBSCRIBED_MS);
+
+  it('ghi chú đã xoá là BIA MỘ, không phải một hàng để hiển thị', async () => {
+    // `deletedAt` khác null vẫn nằm trong bảng để lan sang thiết bị khác
+    // (`db/local.ts`'s `AnnotationRow`). Vẽ nó ra là dựng lại thứ người dùng
+    // vừa xoá, trên chính màn hình đầu tiên họ nhìn thấy.
+    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(4))));
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+    await markRead('demo', 'ch-1');
+    await db.annotations.put(note({ id: 'a-song', note: 'còn sống', updatedAt: '2026-08-10T08:00:00Z' }));
+    await db.annotations.put(
+      note({ id: 'a-xoa', note: 'đã xoá rồi', updatedAt: '2026-08-21T08:00:00Z', deletedAt: '2026-08-21T09:00:00Z' }),
+    );
+
+    renderDashboard();
+
+    expect(await screen.findByText('còn sống')).toBeInTheDocument();
+    expect(screen.queryByText('đã xoá rồi')).not.toBeInTheDocument();
+  }, OVERSUBSCRIBED_MS);
+
+  it('chưa có ghi chú nào thì nói ra CÁCH tạo ghi chú, không chỉ nói là trống', async () => {
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+
+    renderDashboard();
+
+    expect(await screen.findByText(/bôi đen một đoạn khi đọc/i)).toBeInTheDocument();
+  }, OVERSUBSCRIBED_MS);
+});
+
+describe('Học tiếp — trạng thái rỗng và tài khoản', () => {
+  it('says the library is empty rather than rendering a blank area when GET /courses returns nothing', async () => {
     server.use(http.get('/courses', () => HttpResponse.json([])));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
 
     renderDashboard();
 
     expect(await screen.findByText(/chưa có khóa học nào/i)).toBeInTheDocument();
-    expect(document.querySelectorAll('.dash-card')).toHaveLength(0);
+    expect(document.querySelectorAll('.home-card')).toHaveLength(0);
   }, OVERSUBSCRIBED_MS);
 
   it('có lối vào /import trong lời nhắn thư viện rỗng — cửa ngữ cảnh, hiện đúng lúc cần', async () => {
@@ -272,11 +383,6 @@ describe('Dashboard', () => {
     // trống", nên nó xuất hiện đúng lúc người đọc cần. Bài này ra đời sau khi
     // mutation testing xoá cả hai liên kết `/import` mà 632 test vẫn xanh —
     // một route không ai bấm tới được là một tính năng không tồn tại.
-    //
-    // Nút ở ĐẦU TRANG đã được gỡ: `GlobalNav` cho `/import` một mục thường
-    // trực trên thanh bên, nên nút kia là cửa thứ hai cho cùng một chỗ, và nó
-    // làm phần đầu trang đọc như một hàng nút rời rạc. Phủ sóng cho cửa TOÀN
-    // CỤC nằm ở `test/globalNav.test.tsx`, có ca chạy trên đúng route "/".
     server.use(http.get('/courses', () => HttpResponse.json([])));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
 
@@ -284,34 +390,16 @@ describe('Dashboard', () => {
 
     await screen.findByText(/chưa có khóa học nào/i);
     const links = screen.getAllByRole('link').filter((a) => a.getAttribute('href') === '/import');
-    // MỘT, không phải hai: cửa thứ hai (nút ở đầu trang) đã chuyển sang thanh
-    // bên, và `globalNav.test.tsx` canh nó ở đó trên đúng route "/". Con số ở
-    // đây đo cửa NGỮ CẢNH — thứ mà thanh bên không thay thế được, vì nó xuất
-    // hiện bên trong chính lời nhắn giải thích tại sao thư viện trống.
     expect(links.length, 'lời nhắn thư viện rỗng không còn liên kết tới /import').toBeGreaterThanOrEqual(1);
     expect(links.map((a) => a.textContent).join(' ')).toMatch(/nhập/i);
   }, OVERSUBSCRIBED_MS);
 
-  /* Bài "có lối vào /library" từng ở đây và đã được CHUYỂN, không phải xoá.
-   *
-   * Nó canh đúng một điều: từ màn hình Bảng điều khiển phải có đường tới
-   * `/library`. Lúc viết, cửa duy nhất là một nút ở phần đầu trang này.
-   * `GlobalNav` sau đó cho `/library` một mục thường trực trên thanh bên, nên
-   * nút kia thành cửa thứ hai cho cùng một chỗ và đã được gỡ.
-   *
-   * Phủ sóng KHÔNG mất: `test/globalNav.test.tsx` có một ca chạy trên đúng
-   * route "/" qua `<App/>` THẬT, khẳng định thanh điều hướng chứa `/library`
-   * và `/import`. Bài ấy mạnh hơn bài này — nó render cả ứng dụng thay vì một
-   * `<Dashboard/>` cô lập, và nó còn bấm thử bằng chuột.
-   */
-
-  it('trạng thái rỗng của Bảng điều khiển là MÀN HÌNH ĐẦU TIÊN của người dùng mới — phải nói ba cách nhập, không chỉ một dòng chữ (ruling S1-F17)', async () => {
+  it('trạng thái rỗng của trang chủ là MÀN HÌNH ĐẦU TIÊN của người dùng mới — phải nói ba cách nhập, không chỉ một dòng chữ (ruling S1-F17)', async () => {
     // Task 6 deleted `KNOWN_COURSE_IDS`, so this is literally what a brand
-    // new account opens onto. Before Task 9 it was one sentence with a link;
-    // the sentence stays (the assertion above still passes) but the state now
-    // also says WHY the library is empty — §9.5 chose to ship no course,
-    // because a seeded one would hide a broken import path — and names the
-    // three ways in, including the one that works with no network at all.
+    // new account opens onto — và đặc tả IA nhắc lại nó thành ràng buộc thứ 5:
+    // "Trang chủ khi chưa có khoá học nào vẫn phải thành hành động, không phải
+    // ngõ cụt." Câu chữ nằm ở `<EmptyLibrary>`, dùng chung với `/courses`, vì
+    // hai bản sao của một cánh cửa thì bản không ai đi qua sẽ trôi.
     server.use(http.get('/courses', () => HttpResponse.json([])));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
 
@@ -332,15 +420,16 @@ describe('Dashboard', () => {
 
     renderDashboard();
 
-    // The streak panel proves the page has rendered; the note must not be
-    // there yet, because "no courses came back" is not yet true.
-    expect(await screen.findByText('ngày liên tục')).toBeInTheDocument();
+    // Nhan đề chứng minh trang đã dựng; lời nhắn kia chưa được phép có mặt, vì
+    // "không khoá nào trả về" vẫn chưa đúng.
+    expect(await screen.findByRole('heading', { name: /học tiếp/i })).toBeInTheDocument();
     expect(screen.queryByText(/chưa có khóa học nào/i)).not.toBeInTheDocument();
   }, OVERSUBSCRIBED_MS);
 
   it('shows the signed-in user\'s name and a working logout control that stops sync, clears local data, and returns to /login', async () => {
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
-    await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: new Date().toISOString() });
+    await markRead('demo', 'ch-1');
+    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(2))));
 
     const stopSyncSpy = vi.spyOn(engine, 'stopSync');
     vi.spyOn(engine, 'syncOnce').mockResolvedValue(undefined);
@@ -361,7 +450,7 @@ describe('Dashboard', () => {
   }, OVERSUBSCRIBED_MS);
 });
 
-describe('Dashboard khi /stats trả thứ không phải JSON (hồi quy trang trắng)', () => {
+describe('Học tiếp khi /stats trả thứ không phải JSON (hồi quy trang trắng)', () => {
   // Đo 2026-08-22 trên bản dựng production, API không chạy: máy chủ SPA trả
   // `200 text/html` cho `/stats`. `parseBody` lùi về trả VĂN BẢN, `request<Stats>`
   // trao chuỗi ấy dưới danh nghĩa `Stats`, `data?.courses` KHÔNG ngắn mạch vì
@@ -378,14 +467,14 @@ describe('Dashboard khi /stats trả thứ không phải JSON (hồi quy trang t
     await waitFor(() => {
       expect(document.body.textContent?.trim()).not.toBe('');
     });
-    expect(await screen.findByText(/bảng điều khiển/i)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /học tiếp/i })).toBeInTheDocument();
   });
 
   it('/courses cũng trả HTML thì vẫn không sập — hai nguồn cùng hỏng là ca thật khi API chết', async () => {
     server.use(http.get('/stats', () => HttpResponse.html(SPA_HTML)));
     server.use(http.get('/courses', () => HttpResponse.html(SPA_HTML)));
     renderDashboard();
-    expect(await screen.findByText(/bảng điều khiển/i)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /học tiếp/i })).toBeInTheDocument();
   });
 
   it('ĐỐI CHỨNG: /stats trả JSON thiếu hẳn trường courses', async () => {
@@ -393,6 +482,6 @@ describe('Dashboard khi /stats trả thứ không phải JSON (hồi quy trang t
     // (`courses: CourseStat[]` bắt buộc) nhưng dây mạng vẫn giao được.
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0 })));
     renderDashboard();
-    expect(await screen.findByText(/bảng điều khiển/i)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /học tiếp/i })).toBeInTheDocument();
   });
 });
