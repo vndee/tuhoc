@@ -267,7 +267,7 @@ describe('Dashboard', () => {
     expect(document.querySelectorAll('.dash-card')).toHaveLength(0);
   }, OVERSUBSCRIBED_MS);
 
-  it('có lối vào /import trong lời nhắn thư viện rỗng — cửa ngữ cảnh, hiện đúng lúc cần', async () => {
+  it('có lối vào phần nhập gói trong lời nhắn thư viện rỗng — cửa ngữ cảnh, hiện đúng lúc cần', async () => {
     // Cửa NGỮ CẢNH: liên kết nằm trong chính lời nhắn "thư viện của bạn đang
     // trống", nên nó xuất hiện đúng lúc người đọc cần. Bài này ra đời sau khi
     // mutation testing xoá cả hai liên kết `/import` mà 632 test vẫn xanh —
@@ -283,7 +283,11 @@ describe('Dashboard', () => {
     renderDashboard();
 
     await screen.findByText(/chưa có khóa học nào/i);
-    const links = screen.getAllByRole('link').filter((a) => a.getAttribute('href') === '/import');
+    // `/courses?import=1`, không phải `/import`: phần nhập gói nay là hộp thoại
+    // của màn Khoá học và tham số ấy là thứ mở nó ra (đặc tả IA). Cửa NGỮ CẢNH
+    // này vì thế vẫn làm đúng việc cũ — một cú bấm, và ô chọn tệp ở ngay đó —
+    // thay vì thả người đọc xuống một danh sách trống lần thứ hai.
+    const links = screen.getAllByRole('link').filter((a) => a.getAttribute('href') === '/courses?import=1');
     // MỘT, không phải hai: cửa thứ hai (nút ở đầu trang) đã chuyển sang thanh
     // bên, và `globalNav.test.tsx` canh nó ở đó trên đúng route "/". Con số ở
     // đây đo cửa NGỮ CẢNH — thứ mà thanh bên không thay thế được, vì nó xuất

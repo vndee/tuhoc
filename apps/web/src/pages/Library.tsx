@@ -126,8 +126,16 @@ function toRow(course: OwnedCourse): LibraryRow {
  * ------------------------------------------------------------------ */
 
 /**
- * `/library` — every course this reader has, in one list: title, language,
- * tier, source, and the pinned version.
+ * Tab **"Của bạn"** của `/courses` — every course this reader has, in one
+ * list: title, language, tier, source, and the pinned version.
+ *
+ * **Không còn là một route.** `/library` nay chuyển hướng sang `/courses`, và
+ * phần đầu trang (nhan đề, câu dẫn, nút "Nhập gói") thuộc về
+ * `pages/Courses.tsx` — xem chú thích trong `Library()` bên dưới. Tệp này giữ
+ * nguyên tên và vị trí có lý do đo được: sổ của
+ * `registry/ratingFence.test.tsx` gọi đích danh `apps/web/src/pages/Library.tsx`
+ * như một trong những màn hình nó PHẢI canh, nên đổi tên hay dời chỗ là làm
+ * mù một hàng rào an ninh mà không có gì đỏ lên.
  *
  * **"Every course this reader has" is not this file's opinion** (ruling
  * S1-F31). It is `course/owned.ts`, which the Dashboard asks the same
@@ -176,16 +184,14 @@ export function Library() {
 
   return (
     <div className="lib-page">
-      <div className="lib-header">
-        <div>
-          <h1 className="ch-title">{t('library.title')}</h1>
-          <p className="ch-lede">{t('library.lede')}</p>
-        </div>
-        <Link to="/import" className="btn">
-          {t('nav.import')}
-        </Link>
-      </div>
-
+      {/*
+        KHÔNG có phần đầu trang ở đây nữa, và đó là một sự chuyển giao chứ không
+        phải một mất mát: `pages/Courses.tsx` mang nhan đề, câu dẫn và nút "Nhập
+        gói" cho CẢ HAI tab. Giữ lại một `h1` "Thư viện" ở đây sẽ là `h1` thứ
+        hai trên cùng một trang, ngay dưới `h1` "Khoá học" — và một tiêu đề nói
+        rằng bạn đang ở "Thư viện" trong khi thanh bên đã đánh dấu "Khoá học" là
+        đúng loại bất đồng mà bản thiết kế lại này sinh ra để gỡ.
+      */}
       <TransportNotice error={owned.catalogError} />
 
       {/* "Do not know yet" — never rendered as "there is nothing". */}
@@ -391,21 +397,48 @@ function TierBadge({ tier }: { tier: string | undefined }) {
   }
   if (tier === 'interactive') {
     return (
-      <span
-        className="lib-tier lib-tier-code"
-        title={t('library.tier.interactiveTitle')}
-      >
+      <span className="lib-tier lib-tier-code" title={t('library.tier.interactiveTitle')}>
+        <WarnMark />
         {t('library.tier.interactiveLabel')}
       </span>
     );
   }
   return (
-    <span
-      className="lib-tier lib-tier-code"
-      title={t('library.tier.unknownTitle')}
-    >
+    <span className="lib-tier lib-tier-code" title={t('library.tier.unknownTitle')}>
+      <WarnMark />
       {t('library.tier.unknownLabel')}
     </span>
+  );
+}
+
+/**
+ * Tam giác cảnh báo đứng trước nhãn hạng chạy-mã.
+ *
+ * Hướng A của đặc tả bỏ "viên màu đỏ" và thay bằng **một dòng chữ kèm biểu
+ * tượng cảnh báo**: một viên màu bắt người đọc học nghĩa của một màu trước khi
+ * nó nói được điều gì, còn một dòng chữ thì tự nói. Biểu tượng ở đây không
+ * MANG thông tin — nguyên câu vẫn nằm trong chữ bên cạnh, và `title` nói dài
+ * hơn nữa — nên nó `aria-hidden`: đọc "hình tam giác" trước mỗi hàng chỉ làm
+ * dài thêm cái mà người dùng trình đọc màn hình đã nghe đủ.
+ *
+ * Vì sao vẽ tay chứ không dùng ký tự `⚠`: ký tự ấy được font hệ thống vẽ, nên
+ * nó đổi hình dạng và đổi cả màu (nhiều font vẽ nó bằng emoji nhiều màu) theo
+ * từng máy — với một nhãn AN NINH thì "trông thế nào" không nên do máy người
+ * đọc quyết định.
+ */
+function WarnMark() {
+  return (
+    <svg className="lib-tier-mark" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false">
+      <path
+        d="M8 1.8 15 14H1L8 1.8Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M8 6.2v3.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="8" cy="11.7" r="0.85" fill="currentColor" />
+    </svg>
   );
 }
 
@@ -443,8 +476,16 @@ export function EmptyLibrary({ heading }: { heading?: string }) {
     <div className="lib-empty">
       <h2 className="lib-empty-h">{heading ?? t('library.empty.heading')}</h2>
       <p className="lib-empty-lede">{t('library.emptyState.lede')}</p>
-      <Link to="/import" className="btn primary lib-empty-cta">
-        {t('nav.import')}
+      {/*
+        Trỏ thẳng vào `/courses?import=1`, KHÔNG vào `/import`.
+        `/import` vẫn sống và vẫn chuyển hướng về đúng đây (xem `routes.tsx`),
+        nhưng đó là lối cho những liên kết đã nằm sẵn ngoài kia — không phải
+        thứ mã trong nhà nên tự đi vòng qua. Bảng điều khiển dựng chính khối
+        này khi thư viện rỗng, nên cú bấm ấy mở luôn hộp thoại nhập gói thay vì
+        thả người đọc xuống một danh sách trống lần thứ hai.
+      */}
+      <Link to="/courses?import=1" className="btn primary lib-empty-cta">
+        {t('courses.import.action')}
       </Link>
       <ul className="lib-empty-ways">
         <li>{tNode('library.emptyState.wayFile', <code>.zip</code>)}</li>

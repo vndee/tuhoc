@@ -13,6 +13,21 @@ import { LanguageProvider } from '../i18n/LanguageProvider';
  * `/import` is not reachable while logged out — pinned, not merely written
  * down.
  *
+ * ## `/import` is now a redirect, and this file still measures the same thing
+ *
+ * The IA redesign folded the import screen into `/courses` as a dialog, so
+ * `/import` is `<Navigate to="/courses?import=1" replace/>`
+ * (`docs/superpowers/specs/2026-08-23-ia-redesign.md`). The guard did not move
+ * and neither did the risk: the destination is behind the same `<RequireAuth>`,
+ * so a logged-out visit still ends at `/login` having rendered no import UI,
+ * and a logged-in visit still ends with the importer on screen.
+ *
+ * What changed is the FINAL PATHNAME, and only that — `/courses` instead of
+ * `/import`. The assertion was re-pointed rather than dropped: it is what
+ * proves the logged-in case actually arrived somewhere instead of being
+ * bounced, and deleting it would leave the complement below asserting nothing
+ * about where the reader ended up.
+ *
  * `routes.tsx` spends seven lines explaining why this route MUST be guarded,
  * and the reason is not tidiness: an import writes into `db.packages`, and
  * `clearLocalData()` walks `db.tables` and empties every one of them on
@@ -77,6 +92,10 @@ describe('/import nằm sau RequireAuth', () => {
     renderAt('/import', pathnames);
 
     expect(await screen.findByRole('heading', { name: IMPORT_HEADING })).toBeInTheDocument();
-    expect(pathnames.at(-1)).toBe('/import');
+    // `/courses`, because `/import` redirects there — and the redirect carries
+    // `?import=1`, which is what makes the heading above appear at all. A bare
+    // `/courses` would land on the course list with no importer anywhere, and
+    // this test would be red for exactly the right reason.
+    expect(pathnames.at(-1)).toBe('/courses');
   });
 });

@@ -193,14 +193,20 @@ export function Catalog({ registryBase }: { registryBase?: string }) {
 
   return (
     <div className="lib-page">
+      {/*
+        `h2`, và KHÔNG còn nút "Thư viện của bạn".
+        Màn này nay là tab "Kho cộng đồng" bên trong `/courses`, nơi `h1` là
+        "Khoá học" và thư viện của người đọc là **tab ngay bên cạnh** — một nút
+        dẫn sang chỗ cách đó một cú bấm là đúng thứ "hai cửa cho cùng một chỗ"
+        mà `Dashboard.tsx` đã gỡ một lần rồi. Nhan đề thì ở lại: nó nói tab này
+        đang cho xem cái gì, và `registry/route.test.tsx` neo vào nó để chứng
+        minh màn hình vẫn đứng khi `index.json` hỏng.
+      */}
       <div className="lib-header">
         <div>
-          <h1 className="ch-title">{t('catalog.title')}</h1>
+          <h2 className="ch-title">{t('catalog.title')}</h2>
           <p className="ch-lede">{t('catalog.lede')}</p>
         </div>
-        <Link to="/library" className="btn">
-          {t('catalog.yourLibrary')}
-        </Link>
       </div>
 
       {query.isPending && (
@@ -466,21 +472,40 @@ function TierBadge({ tier }: { tier: string }) {
   }
   if (tier === 'interactive') {
     return (
-      <span
-        className="lib-tier lib-tier-code"
-        title={t('library.tier.interactiveTitle')}
-      >
+      <span className="lib-tier lib-tier-code" title={t('library.tier.interactiveTitle')}>
+        <WarnMark />
         {t('library.tier.interactiveLabel')}
       </span>
     );
   }
   return (
-    <span
-      className="lib-tier lib-tier-code"
-      title={t('catalog.tier.unknownTitle')}
-    >
+    <span className="lib-tier lib-tier-code" title={t('catalog.tier.unknownTitle')}>
+      <WarnMark />
       {t('library.tier.unknownLabel')}
     </span>
+  );
+}
+
+/**
+ * Cùng tam giác cảnh báo với `pages/Library.tsx`, và được chép sang đây vì
+ * chính lý do `TierBadge` ở trên đã được chép: hai màn hình này cố ý không
+ * chia sẻ một component nhãn hạng — xem chú thích của `TierBadge`. Lý do đầy
+ * đủ (vì sao vẽ tay thay vì ký tự `⚠`, vì sao `aria-hidden`) nằm ở bản trong
+ * `pages/Library.tsx`.
+ */
+function WarnMark() {
+  return (
+    <svg className="lib-tier-mark" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false">
+      <path
+        d="M8 1.8 15 14H1L8 1.8Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M8 6.2v3.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="8" cy="11.7" r="0.85" fill="currentColor" />
+    </svg>
   );
 }
 

@@ -147,7 +147,9 @@ const EN_FIRST_CHAPTER_ID = 'c1';
  * *"Trợ lý AI chạy bằng key của chính bạn"*.
  */
 const VI = {
-  navCatalog: 'Danh mục registry',
+  navCourses: 'Khoá học',
+  tabsAria: 'Hai kho khoá học',
+  tabRegistry: 'Kho cộng đồng',
   navMain: 'Điều hướng chính',
   catalogTitle: 'Danh mục khóa học',
   catalogListAria: 'Khóa học trên registry',
@@ -592,12 +594,20 @@ async function expectRightApp(page: Page): Promise<void> {
   await expect(page.getByRole('navigation', { name: VI.navMain })).toBeVisible();
 }
 
-/** Vào `/catalog` BẰNG CÁCH BẤM, không bằng cách gõ URL (S1-F29). */
+/**
+ * Vào kho cộng đồng BẰNG CÁCH BẤM, không bằng cách gõ URL (S1-F29).
+ *
+ * Hai cú bấm chứ không còn một: kho cộng đồng nay là TAB bên trong `/courses`,
+ * không phải một mục thanh bên (đặc tả IA). Đường đi dài thêm một bước nhưng
+ * câu hỏi thì không đổi — người đọc có tới được đây mà không phải gõ URL không.
+ */
 async function openCatalogByClicking(page: Page): Promise<void> {
   await page.goto(`${WEB_ORIGIN}/`);
   await expectRightApp(page);
-  await page.getByRole('navigation', { name: VI.navMain }).getByRole('link', { name: VI.navCatalog }).click();
-  await page.waitForURL((url) => url.pathname === '/catalog');
+  await page.getByRole('navigation', { name: VI.navMain }).getByRole('link', { name: VI.navCourses }).click();
+  await page.waitForURL((url) => url.pathname === '/courses');
+  await page.getByRole('navigation', { name: VI.tabsAria }).getByRole('link', { name: VI.tabRegistry }).click();
+  await page.waitForURL((url) => url.pathname === '/courses' && url.searchParams.get('tab') === 'registry');
 }
 
 function catalogList(page: Page) {
@@ -818,8 +828,10 @@ test('kéo một course về: nó vào thư viện, và chương của nó mở 
     ]);
 
     // ── nó có trong THƯ VIỆN ──────────────────────────────────────────────
-    await s.page.getByRole('navigation', { name: VI.navMain }).getByRole('link', { name: 'Thư viện' }).click();
-    await s.page.waitForURL((url) => url.pathname === '/library');
+    // Thư viện nay là tab "Của bạn" của `/courses`, và đó là tab MẶC ĐỊNH —
+    // nên một cú bấm vào "Khoá học" là đủ, không cần bấm tab.
+    await s.page.getByRole('navigation', { name: VI.navMain }).getByRole('link', { name: VI.navCourses }).click();
+    await s.page.waitForURL((url) => url.pathname === '/courses');
     const libRow = s.page.locator('li.lib-item', { hasText: EN_CONTENT_TITLE });
     await expect(libRow).toHaveCount(1);
     await expect(libRow.locator('.lib-tier')).toHaveText('content');

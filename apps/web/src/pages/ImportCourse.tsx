@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { coursesQueryKey } from '../api/courses';
@@ -37,7 +37,7 @@ import type { Finding } from '@tuhoc/course-format';
  * than queued behind it. A spinner that appears after the freeze is over is
  * worse than none.
  */
-export function ImportCourse() {
+export function ImportCourse({ onBusyChange }: { onBusyChange?: (busy: boolean) => void } = {}) {
   const { t, tNode } = useLanguage();
   const queryClient = useQueryClient();
   const [stage, setStage] = useState<ImportStage | null>(null);
@@ -53,6 +53,19 @@ export function ImportCourse() {
   const abort = useRef<AbortController | null>(null);
 
   const busy = stage !== null;
+
+  /**
+   * Nói ra "đang bận" cho ai đang BỌC màn này.
+   *
+   * `pages/Courses.tsx` đặt nó trong một hộp thoại, và hộp thoại ấy phải khoá
+   * lối đóng trong lúc một lần nhập đang chạy — tháo màn này khỏi cây giữa
+   * chừng là mất cả gói lẫn lời giải thích vì sao. Trạng thái ấy sống ở đây và
+   * chỉ ở đây, nên nó được ĐƯA RA thay vì để chỗ gọi tự đoán bằng cách dò DOM.
+   * Không ai truyền `onBusyChange` thì đây là một hàm không làm gì.
+   */
+  useEffect(() => {
+    onBusyChange?.(busy);
+  }, [busy, onBusyChange]);
 
   /**
    * Commit the stage line SYNCHRONOUSLY, so it is in the DOM before
@@ -134,7 +147,14 @@ export function ImportCourse() {
 
   return (
     <div className="import-page">
-      <h1 className="ch-title">{t('nav.import')}</h1>
+      {/*
+        `h2`, không phải `h1`, và `id` để hộp thoại bọc ngoài trỏ `aria-labelledby`
+        vào đây: màn này nay sống bên trong `/courses`, nơi `h1` đã là "Khoá học".
+        Hai `h1` trên một trang là hai lần trả lời câu "trang này nói về cái gì".
+      */}
+      <h2 className="ch-title" id="import-title">
+        {t('nav.import')}
+      </h2>
       <p className="ch-lede">{tNode('import.lede', <code>.zip</code>)}</p>
 
       <section className="import-way">

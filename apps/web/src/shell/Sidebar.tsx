@@ -65,8 +65,8 @@ function GlobalNav() {
         (`/`, `/library`), hành động (`/import`) và thiết lập (`/settings` dưới
         tên "Trợ lý AI"). Ngang hàng nhau thì người dùng phải tự phân loại hộ.
 
-        Ba mục rời đi, KHÔNG biến mất — và route cũ của chúng vẫn chuyển hướng
-        (xem `routes.tsx`):
+        Ba mục ĐÃ rời đi, KHÔNG biến mất — và route cũ của chúng vẫn chuyển
+        hướng (xem `routes.tsx`):
           `/import`   → nút "Nhập gói" bên trong `/courses`
           `/catalog`  → tab "Kho cộng đồng" bên trong `/courses`
           `/settings` → menu tài khoản ở đáy thanh bên, ngay dưới đây
@@ -81,17 +81,14 @@ function GlobalNav() {
         {t('nav.progress')}
       </NavLink>
       {/*
-        Hai mục dưới đây CÒN Ở ĐÂY vì `/courses` chưa hấp thụ chúng. Gỡ khỏi
-        thanh bên trước khi có đích là làm hai màn hình chỉ tới được bằng cách
-        gõ URL — đúng cổng mù #4 (S1-F29). Chúng rời đi trong CÙNG thay đổi
-        dựng tab và nút vào `/courses`.
+        HAI MỤC "Nhập khóa học" và "Danh mục registry" ĐÃ RỜI ĐI Ở ĐÂY, trong
+        cùng commit dựng đích cho chúng — điều kiện mà chú thích cũ đặt ra.
+
+        Chúng KHÔNG trở thành hai màn hình chỉ tới được bằng cách gõ URL (cổng
+        mù #4 / S1-F29): lối vào bằng cú bấm nay là nút "Nhập gói" và tab "Kho
+        cộng đồng" trong `/courses`, và `pages/Courses.test.tsx` canh đúng hai
+        cú bấm ấy qua `<App/>` thật. Route cũ vẫn chuyển hướng (`routes.tsx`).
       */}
-      <NavLink to="/import" className="sb-nav-link">
-        {t('nav.import')}
-      </NavLink>
-      <NavLink to="/catalog" className="sb-nav-link">
-        {t('nav.catalog')}
-      </NavLink>
 
       {/*
         Tài khoản ở ĐÁY, tách khỏi ba nơi chốn bằng khoảng trắng chứ không phải

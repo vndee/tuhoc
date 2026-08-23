@@ -168,7 +168,6 @@ export const en: Messages = {
   'nav.dashboard': 'Dashboard',
   'nav.library': 'Library',
   'nav.import': 'Import a course',
-  'nav.catalog': 'Registry catalog',
 
   'sidebar.searchPlaceholder': 'Find a chapter…',
   'sidebar.progressPlaceholder': 'Progress will appear here',
@@ -237,8 +236,14 @@ export const en: Messages = {
   'library.source.import': 'imported',
   'library.source.unknown': 'unknown source',
 
-  'library.title': 'Library',
-  'library.lede': 'Every course you have — on the server and on this device.',
+  /* ── the Courses screen (`pages/Courses.tsx`) ─────────────────────────── */
+  'courses.title': 'Courses',
+  'courses.lede': 'Your courses and the community store — one place, two tabs.',
+  'courses.tabs.aria': 'Two course collections',
+  'courses.tab.yours': 'Yours',
+  'courses.tab.registry': 'Community store',
+  'courses.import.action': 'Import a package',
+  'courses.import.close': 'Close',
   'library.loading': 'Loading your library…',
   'library.empty.headingOffline': 'No courses on this device',
   'library.empty.heading': 'Your library is empty',
@@ -534,7 +539,6 @@ export const en: Messages = {
 
   'catalog.title': 'Course catalog',
   'catalog.lede': 'The community course store. Every package here has passed the same validation rules the platform runs.',
-  'catalog.yourLibrary': 'Your library',
   'catalog.loading': 'Loading the catalog…',
   'catalog.empty': 'The registry has no courses yet. The catalog loaded fine — it is empty.',
   'catalog.listAria': 'Courses on the registry',
