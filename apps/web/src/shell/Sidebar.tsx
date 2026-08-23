@@ -150,6 +150,12 @@ export function Sidebar() {
           out loud which of those two states the sidebar is in.
         */}
         {manifestQuery.data && <p className="sb-sub">{manifestQuery.data.title}</p>}
+        {/*
+          Ô tìm chương chỉ có nghĩa KHI CÓ CHƯƠNG. Nó từng hiện trên Bảng điều
+          khiển và trang Cài đặt, nơi không có gì để tìm — và nó bị `disabled`
+          nên nó thậm chí không hứa được điều nó gợi ý.
+        */}
+        {courseId != null && (
         <div className="sb-search">
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <circle cx="9" cy="9" r="6.5" stroke="currentColor" strokeWidth="1.6" />
@@ -157,10 +163,17 @@ export function Sidebar() {
           </svg>
           <input id="nav-search" type="text" placeholder={t('sidebar.searchPlaceholder')} disabled />
         </div>
+        )}
       </div>
       <GlobalNav />
-      <div className="sb-prog">{t('sidebar.progressPlaceholder')}</div>
-      <nav id="nav">
+      {/*
+        Cùng lý do: "Tiến độ sẽ hiện ở đây" và mục lục chương là chrome của CHẾ
+        ĐỘ ĐỌC. Trên Bảng điều khiển chúng nói về một chương không tồn tại, và
+        đặc tả IA nói hai chế độ cần trông khác nhau. Tiến độ thật nay có nơi
+        chốn riêng ở `/progress`.
+      */}
+      {courseId != null && <div className="sb-prog">{t('sidebar.progressPlaceholder')}</div>}
+      <nav id="nav" hidden={courseId == null}>
         {courseId == null && <p className="nav-empty">{t('sidebar.noCourseLoaded')}</p>}
         {courseId != null && manifestQuery.isPending && <p className="nav-empty">{t('course.loading')}</p>}
         {courseId != null && manifestQuery.isError && (

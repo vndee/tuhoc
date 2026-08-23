@@ -1,0 +1,57 @@
+/* Hai CHẾ ĐỘ phải trông khác nhau — phần vỏ.
+ *
+ * Đặc tả `docs/superpowers/specs/2026-08-23-ia-redesign.md` nói sản phẩm có hai
+ * chế độ: *chọn cái để học* và *đang học*. Bốn agent dựng bốn màn hình, và
+ * `#app.reading` lo nửa "đang học". Nửa còn lại — chrome của chế độ đọc RÒ sang
+ * chế độ thư viện — không nằm trong phạm vi của ai, nên nó ở đây.
+ *
+ * Thứ rò sang, đo trên trình duyệt thật ở 1280px: một cột phải mang nhan đề
+ * "TRONG CHƯƠNG" trên Bảng điều khiển, ô "Tìm chương…" bị disabled, dòng "Tiến
+ * độ sẽ hiện ở đây", và ba nút chương trên thanh trên. Phần TSX đã tắt chúng;
+ * quy tắc dưới đây thu lại chỗ mà bố cục vẫn dành sẵn. */
+
+#app:not(.reading) #rail {
+  display: none;
+}
+
+/* `#main` của reader.css chia ba cột. Không có `.reading` thì cột phải nay
+   rỗng, nên đừng để nó ăn chỗ của cột chữ. */
+#app:not(.reading) #main {
+  grid-template-columns: 1fr;
+}
+
+/* Tài khoản ở ĐÁY thanh bên, tách khỏi ba nơi chốn.
+ *
+ * Không có quy tắc này thì "Cài đặt" đọc như MỤC THỨ TƯ ngang hàng với Học
+ * tiếp · Khoá học · Tiến độ — đúng thứ bậc phẳng mà cả cuộc thiết kế lại này
+ * tồn tại để gỡ. Nó là một loại khác, nên nó phải trông khác. */
+.sb-account {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+}
+
+.sb-account .sb-account-link {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.sb-account .sb-account-link:hover,
+.sb-account .sb-account-link[aria-current='page'] {
+  color: var(--ink);
+}
+
+/* Ba nút của chương: thuộc tính `hidden` KHÔNG đủ.
+ *
+ * `hidden` chỉ mang `display: none` từ stylesheet mặc định của trình duyệt, và
+ * `reader.css` đặt `display` cho `.tb-btn` — quy tắc tác giả thắng quy tắc mặc
+ * định, nên ba nút vẫn hiện. Đo được trên trình duyệt thật: `#mark-btn` và
+ * `#prev-btn` vẫn `offsetParent != null` trên `/` sau khi đã thêm `hidden`.
+ *
+ * Giữ CẢ HAI: `hidden` để chúng rời cây trợ năng, và quy tắc dưới đây để chúng
+ * rời bố cục. */
+#app:not(.reading) #mark-btn,
+#app:not(.reading) #prev-btn,
+#app:not(.reading) #next-btn {
+  display: none;
+}

@@ -9,6 +9,7 @@
 @import './home.css';
 @import './settings-auth.css';
 @import './reader-layout.css';
+@import './shell-modes.css';
 
 /* Task 14 — dashboard. Not part of the ported v1 stylesheet (v1 had no
    dashboard, it opened straight into the reader), so it lives here rather

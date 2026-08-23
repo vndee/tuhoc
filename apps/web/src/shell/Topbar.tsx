@@ -71,8 +71,15 @@ export function Topbar({ theme, onToggleTheme, onMenuClick }: TopbarProps) {
         ☰
       </button>
       <span id="reader-nav" className="rd-slot" />
+      {/*
+        Ba nút dưới đây — đánh dấu đã học, chương trước, chương sau — chỉ có
+        nghĩa KHI ĐANG ĐỌC. Chúng từng hiện trên mọi màn hình, kể cả Bảng
+        điều khiển, nơi không có chương nào để đánh dấu hay để lùi/tiến.
+        `hidden` chứ không phải bỏ khỏi cây: `reader.css` gắn id vào chúng và
+        `Reader` nối hành vi theo id, nên tháo ra sẽ đứt đường ấy.
+      */}
       <div id="crumb">{!isChapterRoute && 'Tuhoc'}</div>
-      <button id="mark-btn" type="button" className="tb-btn" aria-label={t('topbar.markRead')}>
+      <button id="mark-btn" type="button" className="tb-btn" hidden={!isChapterRoute} aria-label={t('topbar.markRead')}>
         <span className="mk-ico">○</span>
         <span className="mk-lbl">{t('topbar.markRead')}</span>
       </button>
@@ -87,10 +94,10 @@ export function Topbar({ theme, onToggleTheme, onMenuClick }: TopbarProps) {
       >
         {theme === 'dark' ? '☀' : '☾'}
       </button>
-      <button id="prev-btn" type="button" className="tb-btn" aria-label={t('topbar.prevChapter')}>
+      <button id="prev-btn" type="button" className="tb-btn" hidden={!isChapterRoute} aria-label={t('topbar.prevChapter')}>
         ←
       </button>
-      <button id="next-btn" type="button" className="tb-btn" aria-label={t('topbar.nextChapter')}>
+      <button id="next-btn" type="button" className="tb-btn" hidden={!isChapterRoute} aria-label={t('topbar.nextChapter')}>
         →
       </button>
     </>
