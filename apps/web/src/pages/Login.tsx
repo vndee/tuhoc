@@ -185,38 +185,101 @@ export function Login() {
   }
 
   return (
+    /*
+      HAI CỘT, và cột trái không phải trang trí.
+      Đặc tả IA: `docs/superpowers/specs/2026-08-23-ia-redesign.md`; hình:
+      artboard "S5-DangNhap" trên canvas đã duyệt.
+
+      `/login` là màn hình ĐẦU TIÊN của mọi người dùng mới, và trước đây nó là
+      một thẻ đơn độc giữa màn hình trống: người chưa có tài khoản đọc hết trang
+      vẫn không biết mình sắp đăng ký cái gì. Một trang đăng nhập trống là cơ hội
+      bỏ phí — nên nửa trái là sản phẩm tự giới thiệu, nửa phải là form.
+
+      `.auth-page` GIỮ NGUYÊN TÊN dù bố cục đổi hẳn: `test/syncLifecycle.test.tsx`
+      dùng đúng lớp này để nhận ra "đã về tới trang đăng nhập". Đổi tên nó là
+      làm hỏng một phép đo về vòng đời đồng bộ vì một lý do thẩm mỹ.
+    */
     <div className="auth-page">
-      <h1 className="ch-title">{t('login.title')}</h1>
-      <p className="ch-lede">{t('login.lede')}</p>
+      {/* Nửa TRÁI. */}
+      <section className="auth-pitch">
+        <p className="auth-brand">{t('app.name')}</p>
+        <div className="auth-pitch-body">
+          <h1 className="auth-pitch-h">{t('login.pitch.headline')}</h1>
+          <p className="auth-pitch-lede">{t('login.pitch.lede')}</p>
+        </div>
+        {/*
+          Ba gạch đầu dòng, mỗi câu là một tính chất mà mã trong repo này thật
+          sự giữ — gói nằm trên máy, key nằm ở origin kho khoá, course riêng tư
+          không lộ ra registry — chứ không phải ba khẩu hiệu.
+        */}
+        <ul className="auth-points" aria-label={t('login.pitch.aria')}>
+          {(['login.point.offline', 'login.point.ownKey', 'login.point.private'] as const).map((key) => (
+            <li key={key}>
+              <svg
+                className="auth-tick"
+                width="15"
+                height="15"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 8.5 6.5 12 13 4.5" />
+              </svg>
+              <span>{t(key)}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
 
-      <div role="tablist" aria-label={t('login.tablist.aria')} className="seg auth-tabs">
-        <button
-          type="button"
-          role="tab"
-          id={loginTabId}
-          aria-selected={tab === 'login'}
-          aria-controls="auth-panel"
-          className={tab === 'login' ? 'on' : undefined}
-          onClick={() => setTab('login')}
-        >
-          {t('login.tab.login')}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          id={registerTabId}
-          aria-selected={tab === 'register'}
-          aria-controls="auth-panel"
-          className={tab === 'register' ? 'on' : undefined}
-          onClick={() => setTab('register')}
-        >
-          {t('login.tab.register')}
-        </button>
-      </div>
+      {/*
+        Nửa PHẢI: form. Không còn là một thẻ nổi — nó LÀ nửa trang.
+        Lớp là `auth-side`, KHÔNG `auth-panel`: `id="auth-panel"` đã thuộc về
+        `<div role="tabpanel">` ngay dưới đây, và hai thứ khác hẳn nhau mang
+        cùng một cái tên là cách rẻ nhất để người sau sửa nhầm.
+      */}
+      <section className="auth-side">
+        <div className="auth-side-inner">
+          <h2 className="auth-h">{t('login.title')}</h2>
+          <p className="auth-lede">{t('login.lede')}</p>
 
-      <div role="tabpanel" id="auth-panel" aria-labelledby={tab === 'login' ? loginTabId : registerTabId}>
-        {tab === 'login' ? <LoginForm onSuccess={handleAuthenticated} /> : <RegisterForm onSuccess={handleAuthenticated} />}
-      </div>
+          <div role="tablist" aria-label={t('login.tablist.aria')} className="seg auth-tabs">
+            <button
+              type="button"
+              role="tab"
+              id={loginTabId}
+              aria-selected={tab === 'login'}
+              aria-controls="auth-panel"
+              className={tab === 'login' ? 'on' : undefined}
+              onClick={() => setTab('login')}
+            >
+              {t('login.tab.login')}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id={registerTabId}
+              aria-selected={tab === 'register'}
+              aria-controls="auth-panel"
+              className={tab === 'register' ? 'on' : undefined}
+              onClick={() => setTab('register')}
+            >
+              {t('login.tab.register')}
+            </button>
+          </div>
+
+          <div role="tabpanel" id="auth-panel" aria-labelledby={tab === 'login' ? loginTabId : registerTabId}>
+            {tab === 'login' ? (
+              <LoginForm onSuccess={handleAuthenticated} />
+            ) : (
+              <RegisterForm onSuccess={handleAuthenticated} />
+            )}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

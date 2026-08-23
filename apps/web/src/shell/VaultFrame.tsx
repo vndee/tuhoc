@@ -88,9 +88,34 @@ function originFromBuildConfig(): string | null {
   }
 }
 
+/**
+ * Ổ KHOÁ NHỎ trên thanh tiêu đề của khung. Trang trí? Không hẳn: nó là thứ
+ * phân biệt thanh này với mọi thanh tiêu đề khác của ứng dụng trong một cái
+ * liếc, và nó nằm cạnh ĐỊA CHỈ THẬT — nghĩa là cái nhìn đầu tiên đã nói được
+ * "chỗ này khác chỗ kia".
+ */
+function LockGlyph() {
+  return (
+    <svg
+      className="vault-lock"
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="7" width="10" height="6.5" rx="1.5" />
+      <path d="M5.5 7V4.8a2.5 2.5 0 0 1 5 0V7" />
+    </svg>
+  );
+}
+
 export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps) {
   const resolved = origin === undefined ? originFromBuildConfig() : origin;
-  const { lang, t: translate } = useLanguage();
+  const { lang, t: translate, tNode } = useLanguage();
 
   const [frameEl, setFrameEl] = useState<HTMLIFrameElement | null>(null);
   const [client, setClient] = useState<VaultClient | null>(null);
@@ -175,26 +200,53 @@ export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps
          * Chỉ `className` đổi, nên phần tử khung giữ nguyên qua mọi lần mở/đóng.
          */
         <div className={expanded ? 'vault-overlay' : undefined}>
-          {expanded && (
-            <div className="vault-overlay-bar">
-              <span className="vault-overlay-title">{translate('vault.frame.overlayTitle')}</span>
-              {/*
-                Nút đóng nằm ở ĐÂY chứ không ở trang cấu hình: lớp phủ che kín
-                trang bên dưới, nên một nút "Đóng" nằm dưới lớp phủ là một nút
-                không ai bấm được.
-              */}
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  setExpanded(false);
-                }}
-              >
-                {translate('vault.frame.close')}
-              </button>
-            </div>
-          )}
-          <iframe
+          {/*
+            THẺ, không phải một mặt phẳng tràn viền — và cái bọc này CÓ MẶT ở
+            cả hai trạng thái, chỉ `className` đổi.
+
+            Đó là cùng một luật với lớp bọc bên ngoài, vì cùng một lý do: React
+            THÁO VÀ GẮN LẠI một `<iframe>` bị đổi cha, và gắn lại nghĩa là nạp
+            lại tài liệu ở origin kia — xoá sạch key mà người dùng đang gõ dở.
+            Một `{expanded && <div className="vault-card">…}` bọc quanh khung sẽ
+            đúng như thế. Nên `<div>` này luôn ở đây; chỉ lớp CSS của nó đổi.
+
+            Vì sao là THẺ chứ không phải cả màn hình: lớp phủ VẪN che kín trang
+            (`inset: 0`, và `s3.spec.ts` kịch bản 5a đo đúng điều đó bằng
+            `elementFromPoint`), nhưng nền của nó nay trong mờ. Người dùng nhìn
+            thấy trang Cài đặt còn nguyên ở phía dưới và một tấm khác nổi lên
+            trên — tức là **thấy** hai mặt phẳng, thay vì được kể rằng có hai.
+          */}
+          <div className={expanded ? 'vault-card' : undefined}>
+            {expanded && (
+              <div className="vault-overlay-bar">
+                {/*
+                  ĐỊA CHỈ THẬT, không phải chữ "một địa chỉ riêng": `resolved` là
+                  chính origin mà `src` của khung trỏ tới, nên nhãn này không thể
+                  đúng trong khi cơ chế đã hỏng. Một bản dựng lỡ trỏ kho khoá về
+                  origin trang chính sẽ TỰ NÓI RA điều đó ngay tại chỗ người dùng
+                  sắp dán key.
+                */}
+                <span className="vault-overlay-title">
+                  <LockGlyph />
+                  {tNode('vault.frame.overlayLabel', <strong data-testid="vault-origin">{resolved}</strong>)}
+                </span>
+                {/*
+                  Nút đóng nằm ở ĐÂY chứ không ở trang cấu hình: lớp phủ che kín
+                  trang bên dưới, nên một nút "Đóng" nằm dưới lớp phủ là một nút
+                  không ai bấm được.
+                */}
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    setExpanded(false);
+                  }}
+                >
+                  {translate('vault.frame.close')}
+                </button>
+              </div>
+            )}
+            <iframe
             ref={setFrameEl}
             // Origin, không đường dẫn: cổng khác = origin khác = trình duyệt
             // cách ly `localStorage`. Một đường dẫn `/vault/` trên cùng cổng sẽ
@@ -257,7 +309,8 @@ export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps
             // lý do dùng nó thay vì không gắn khung khi chưa cần.
             style={expanded ? { width: '100%', height: '100%', border: 0 } : { display: 'none' }}
             data-testid="vault-frame"
-          />
+            />
+          </div>
         </div>
       )}
     </VaultFrameContext.Provider>

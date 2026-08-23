@@ -47,7 +47,54 @@ export const vi = {
    */
   'library.courseCount': (count: number) => `${count} khóa học`,
 
-  /* ── trang cấu hình TRỢ LÝ AI (`pages/Settings.tsx`) ───────────────────── */
+  /* ── trang CÀI ĐẶT (`pages/Settings.tsx`) ─────────────────────────────────
+   *
+   * `/settings` KHÔNG còn là "trang Trợ lý AI". Theo đặc tả IA
+   * (`docs/superpowers/specs/2026-08-23-ia-redesign.md`) nó là **Cài đặt**, và
+   * Trợ lý AI là MỘT MỤC bên trong nó. Tên trang dùng lại `account.settings` —
+   * cùng chữ với mục ở đáy thanh bên, vì đó là cùng một nơi chốn và hai chữ
+   * khác nhau cho một nơi là hai chữ sẽ trôi khác nhau.
+   */
+
+  'settings.nav.aria': 'Mục cài đặt',
+  'settings.section.account': 'Tài khoản',
+  'settings.section.appearance': 'Ngôn ngữ & giao diện',
+  'settings.section.localData': 'Dữ liệu trên máy',
+
+  /* ── mục Tài khoản ─────────────────────────────────────────────────────── */
+
+  'settings.account.blurb':
+    'Tài khoản giữ đúng một việc: đồng bộ tiến độ và ghi chú giữa các máy của bạn. Nội dung khoá học thì nằm trên máy này.',
+  'settings.account.loading': 'Đang hỏi máy chủ xem ai đang đăng nhập…',
+  'settings.account.unknown': 'Chưa lấy được thông tin tài khoản. Phần này cần mạng.',
+  'settings.account.signedInAs': (name: string, email: string) => `Đang đăng nhập: ${name} · ${email}`,
+  /**
+   * Câu này nói ra một hệ quả CÓ THẬT, không phải một lời doạ lịch sự:
+   * `useLogout` gọi `clearSession()`, thứ xoá mọi bảng cục bộ. Người dùng bấm
+   * "Đăng xuất" mà không biết điều đó sẽ mất ghi chú chưa kịp đồng bộ.
+   */
+  'settings.account.signOutWarning':
+    'Đăng xuất xoá dữ liệu học của phiên này khỏi trình duyệt này: gói đã tải, ghi chú và hàng đợi tiến độ chưa gửi được. Đó là cách duy nhất để dữ liệu của hai người dùng chung một máy không lẫn vào nhau.',
+
+  /* ── mục Ngôn ngữ & giao diện ──────────────────────────────────────────── */
+
+  'settings.appearance.blurb':
+    'Hai lựa chọn dưới đây thuộc về THIẾT BỊ này, không thuộc tài khoản: đăng nhập bằng tài khoản khác không đổi chúng, và chúng không đồng bộ đi đâu cả.',
+  'settings.appearance.language': 'Ngôn ngữ',
+  'settings.appearance.theme': 'Giao diện',
+  'settings.appearance.themeNowLight': 'Đang dùng giao diện sáng.',
+  'settings.appearance.themeNowDark': 'Đang dùng giao diện tối.',
+
+  /* ── mục Dữ liệu trên máy ──────────────────────────────────────────────── */
+
+  'settings.localData.blurb':
+    'Trên máy này có: gói khoá học đã tải về, ghi chú và phần tô sáng của bạn, hàng đợi tiến độ chưa gửi được — và, ở kho khoá tại một địa chỉ khác, key AI của bạn.',
+  'settings.localData.clearedOnSignOut':
+    'Cơ sở dữ liệu cục bộ mang tên TRÌNH DUYỆT chứ không mang tên người dùng, nên nó bị xoá sạch mỗi lần đổi người đăng nhập — kể cả khi không ai bấm đăng xuất.',
+  'settings.localData.kept':
+    'Ngôn ngữ và giao diện sáng/tối thì ở lại: chúng là tuỳ chọn của thiết bị, không phải dữ liệu học.',
+
+  /* ── mục Trợ lý AI ─────────────────────────────────────────────────────── */
 
   'settings.ai.title': 'Trợ lý AI',
   /**
@@ -67,6 +114,35 @@ export const vi = {
   'settings.ai.unavailable':
     'Bản dựng này không có kho khoá, nên chưa dùng được trợ lý AI. Đây là một thiếu sót của cấu hình khi triển khai, không phải của tài khoản bạn — phần đọc giáo trình vẫn chạy bình thường.',
   'settings.ai.open': 'Mở kho khoá',
+
+  /**
+   * NHÃN CỦA MẶT PHẲNG KIA, và nó mang **địa chỉ thật** chứ không phải một câu
+   * chung chung về "một địa chỉ riêng".
+   *
+   * Kiến trúc hai origin chỉ có giá trị nếu người dùng NHÌN THẤY nó. Một câu
+   * nói "chạy ở một địa chỉ riêng" thì đúng với cả một bản dựng đã lỡ trỏ kho
+   * khoá về chính origin trang chính — tức là đúng với cả bản dựng mà cơ chế đã
+   * chết. In ra origin thật làm cho lời hứa ấy KIỂM ĐƯỢC bằng mắt, ngay tại chỗ
+   * người dùng sắp dán key.
+   */
+  /* "chạy ở", KHÔNG "khung dưới đây": khung mở ra thành một tấm NỔI LÊN TRÊN
+     trang này, không nằm dưới nhãn. Một nhãn mô tả sai vị trí của thứ nó đặt
+     tên là một nhãn dạy người đọc bỏ qua nhãn. */
+  'settings.ai.frameLabel': (origin: string) =>
+    `Kho khoá chạy ở ${origin} — một địa chỉ khác, tách khỏi trang bài học.`,
+  'settings.ai.frameOpen': 'Kho khoá đang mở ở lớp trên. Bấm "Đóng" ở đó để quay lại trang này.',
+
+  'settings.ai.budgetTitle': 'Hạn mức mỗi phiên',
+  /**
+   * KHÔNG in con số ở đây, có chủ ý. Ngân sách sống ở `SESSION_CHAR_BUDGET`
+   * trong `apps/vault/src/guard.ts` — một origin khác, không có alias sang trang
+   * chính — nên một con số chép sang đây là bản sao thứ hai của một sự thật, và
+   * bản sao thứ hai thì trôi. Câu này nói đúng thứ trang chính biết chắc: rằng
+   * hạn mức tồn tại, rằng khung sẽ hỏi lại, và rằng nó định giá bằng số cú bấm
+   * chứ không chặn được gì.
+   */
+  'settings.ai.budgetBody':
+    'Kho khoá đặt một hạn mức ký tự cho mỗi phiên. Tiêu hết thì nó hỏi lại ngay trong khung, và hỏi kèm nhật ký những gì đã rời máy — con số ấy là thứ đáng nhìn nhất đúng vào lúc bấm. Hạn mức không chặn được một khoá học độc kiên nhẫn; nó chỉ khiến việc ấy phải đi qua tay bạn.',
 
   /* ══════════════════════════════════════════════════════════════════════ *
    * KHO KHOÁ (`apps/vault`) — origin riêng, và là lý do gói này không phụ
@@ -222,7 +298,13 @@ export const vi = {
   'error.boundary.reload': 'Tải lại trang',
 
   'vault.frame.configError': '[kho khoá] cấu hình sai, tính năng AI bị tắt:',
-  'vault.frame.overlayTitle': 'Kho khoá — trang này chạy ở một địa chỉ riêng, tách khỏi trang bài học',
+  /**
+   * ĐỊA CHỈ THẬT trên thanh tiêu đề của khung, không phải chữ "một địa chỉ
+   * riêng". Xem lý do đầy đủ ở `settings.ai.frameLabel`: một câu chung chung
+   * vẫn đúng với một bản dựng đã lỡ trỏ kho khoá về chính origin trang chính,
+   * còn origin in ra thì không.
+   */
+  'vault.frame.overlayLabel': (origin: string) => `Kho khoá — khung này chạy ở ${origin}, tách khỏi trang bài học`,
   'vault.frame.close': 'Đóng',
   'vault.frame.title': 'Kho khoá',
 
@@ -254,6 +336,24 @@ export const vi = {
   'dashboard.ring.aria': (percent: string) => `${percent}% hoàn thành`,
 
   /* ── đăng nhập (`pages/Login.tsx`) ─────────────────────────────────────── */
+
+  /**
+   * NỬA TRÁI — SẢN PHẨM TỰ GIỚI THIỆU.
+   *
+   * `/login` là màn hình đầu tiên của mọi người dùng mới, và trước đây nó là
+   * một thẻ trôi giữa màn hình trống: người chưa có tài khoản đọc xong vẫn
+   * không biết mình sắp đăng ký cái gì. Ba gạch đầu dòng dưới đây không phải
+   * khẩu hiệu — mỗi câu tương ứng một tính chất mà mã trong repo này thật sự
+   * giữ: gói nằm trên máy (`db/local.ts`), key nằm ở origin kho khoá
+   * (`apps/vault`), course riêng tư không lộ ra registry (`registry/`).
+   */
+  'login.pitch.headline': 'Giáo trình là một gói. Bạn giữ nó, không phải chúng tôi.',
+  'login.pitch.lede':
+    'Tải một khoá học về, đọc được cả khi mất mạng, ghi chú thẳng lên trang. Tiến độ thì đồng bộ giữa các máy của bạn.',
+  'login.pitch.aria': 'Tự học làm được gì',
+  'login.point.offline': 'Đọc ngoại tuyến — gói nằm trên máy bạn',
+  'login.point.ownKey': 'Trợ lý AI chạy bằng key của chính bạn, và key không đi qua máy chủ của chúng tôi',
+  'login.point.private': 'Khoá học riêng tư là riêng tư — không ai khác thấy',
 
   'login.title': 'Đăng nhập',
   'login.lede': 'Đăng nhập hoặc tạo tài khoản để đồng bộ tiến độ học trên nhiều thiết bị.',

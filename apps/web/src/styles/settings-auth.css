@@ -1,0 +1,628 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   `/login` · `/settings` · KHUNG KHO KHOÁ
+   ═══════════════════════════════════════════════════════════════════════════
+
+   MỘT TỆP RIÊNG, và lý do là quy trình chứ không phải thẩm mỹ: bốn agent đang
+   dựng bốn màn hình khác nhau trong cùng một nhánh, và `styles/index.css` là
+   tệp mà cả bốn đều phải chạm nếu mỗi màn để kiểu dáng ở đó. Tệp này gom trọn
+   phần của hai màn `/login` và `/settings` (kèm lớp phủ kho khoá, thứ chỉ trang
+   Cài đặt mở ra), nên `index.css` chỉ nhận đúng MỘT dòng `@import`.
+
+   Vị trí của dòng `@import` ấy — ngay sau `reader.css`, trước mọi quy tắc của
+   `index.css` — là chỗ ràng buộc: `@import` phải đứng trước mọi quy tắc, và
+   đứng sau `reader.css` nghĩa là tệp này ghi đè được token và component của
+   reader (`.btn`, `.seg`, `--ink*`, `--rule*`) chứ không bị chúng ghi đè.
+
+   ── GIAO DIỆN TỐI: HAI KHỐI, KHÔNG BA ─────────────────────────────────────
+   `packages/course-kit/reader.css` — tệp sở hữu MỌI token mà các màu dưới đây
+   ngồi lên — chỉ lật ở `html[data-theme="dark"]`. Không có nhánh
+   `prefers-color-scheme` nào trong `apps/web`, và bootstrap trong `index.html`
+   cũng chỉ áp lại lựa chọn ĐÃ LƯU. Nghĩa là trạng thái "theo hệ thống" ở trang
+   chính vẽ ra bảng màu SÁNG.
+
+   Bản `.auth-error` cũ trong `index.css` có một khối thứ ba
+   (`@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) … }`),
+   và khối ấy sai **đo được**: một người dùng hệ điều hành tối, chưa từng chọn
+   giao diện, nhận trang sáng (token của reader.css) kèm một hộp lỗi TỐI. Khối
+   ấy được bỏ ở đây, không phải quên. Nếu có ngày `reader.css` học được trạng
+   thái thứ ba thì cả tệp này và nó phải học cùng lúc — một nửa thì tệ hơn
+   không nửa nào.
+
+   (Kho khoá `apps/vault/src/ui/vault.css` THÌ theo hệ thống, và đúng như thế:
+   nó là một origin khác, không có nút chủ đề, không đọc được `localStorage`
+   của trang chính.)
+
+   ── PHÔNG CHỮ GIAO DIỆN ───────────────────────────────────────────────────
+   Đặc tả IA nói *"chữ giao diện: KHÔNG dùng `system-ui`"*. `--sans` hiện là
+   `system-ui, …` và nó được khai ở `packages/course-kit/reader.css`, tức là
+   token dùng chung của MỌI màn hình. Đổi nó ở đây sẽ hoặc chỉ đổi hai màn (làm
+   ứng dụng lệch phông) hoặc phải sửa tệp token mà ba màn khác đang được dựng
+   trên đó. Nên tệp này dùng `var(--sans)` như phần còn lại của ứng dụng, và
+   việc thay phông giao diện được ghi lại như một quyết định phải làm MỘT LẦN
+   cho cả repo. Xem báo cáo kèm theo.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ───────────────────────────────────────────────────────────────────────────
+   HAI MÀN NÀY KHÔNG PHẢI MỘT CỘT CHỮ ĐỂ ĐỌC
+   ───────────────────────────────────────────────────────────────────────────
+
+   `reader.css` giới hạn `#content` ở `--measure` (43rem) và dành 210px cho
+   `#rail`. Cả hai con số ấy đúng cho thứ chúng được đặt ra: một cột văn xuôi dễ
+   đọc, và mục lục TRONG CHƯƠNG bên phải nó.
+
+   `/login` và `/settings` không phải văn xuôi. Đo được ở 1440px trước khi có
+   khối này: hai cột của trang đăng nhập bị ép còn ~324px mỗi cột, câu tiêu đề
+   gãy làm bốn dòng — trong khi bên phải là 210px rail rỗng, chỉ hiển thị
+   "TRONG CHƯƠNG · Chưa có nội dung." trên một trang không có chương nào.
+
+   `:has()` là cách nói điều đó mà KHÔNG chạm vào `reader.css` và không bắt
+   component đi gắn lớp lên `document.body` từ một effect. Phạm vi hẹp đúng bằng
+   hai lớp được gọi tên: mọi route khác giữ nguyên từng pixel.
+
+   `#rail` đã `display:none` dưới 1240px sẵn (reader.css), nên khối này chỉ mở
+   rộng thêm ĐÚNG khoảng mà một rail rỗng đang chiếm. */
+#content-wrap:has(.auth-page) #rail,
+#content-wrap:has(.page-settings) #rail {
+  display: none;
+}
+
+#content:has(.auth-page) {
+  max-width: 60rem;
+}
+
+#content:has(.page-settings) {
+  max-width: 54rem;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   `/login` — HAI CỘT
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/*
+  Trang đăng nhập là màn hình ĐẦU TIÊN mọi người thấy. Bản trước là một thẻ có
+  tâm; bản này là hai cột, vì một trang đăng nhập trống là cơ hội bỏ phí — nửa
+  trái nói cho người mới biết họ sắp đăng ký cái gì.
+
+  KHÔNG media query, và đó là chủ ý. `.auth-page` sống trong `#content`, thứ bị
+  `reader.css` giới hạn ở `max-width: var(--measure)` và co theo việc `#rail` có
+  hiện hay không và `#sidebar` có thành ngăn kéo hay không. Một
+  `@media (min-width: …)` hỏi VIEWPORT, còn thứ quyết định hai cột có vừa hay
+  không là bề rộng của `#content` — hai con số lệch nhau tới hơn 500px. Nên bố
+  cục hỏi đúng thứ nó cần: `flex-wrap` với `flex-basis` tối thiểu cho mỗi cột.
+  Hai cột vừa thì đứng cạnh nhau; không vừa thì tự xuống dòng.
+*/
+.auth-page {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 30px 40px;
+  align-items: stretch;
+  margin: clamp(12px, 4vh, 44px) 0 56px;
+  /* Mở một ngữ cảnh truy vấn theo BỀ RỘNG CỦA CHÍNH KHỐI NÀY, cho đúng một
+     việc: vạch kẻ chia đôi bên dưới. Xem khối `@container` ngay sau đây. */
+  container-type: inline-size;
+}
+
+.auth-pitch {
+  flex: 1 1 19rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+/*
+  VẠCH KẺ CHIA ĐÔI — chỉ khi thật sự có hai cột.
+
+  Đây là chỗ DUY NHẤT trong hai màn này cần biết "đã xuống dòng hay chưa", và nó
+  không hỏi được bằng `@media`: bề rộng quyết định việc xuống dòng là của
+  `.auth-page` (co theo `#content`, theo `#rail`, theo thanh bên), không phải
+  của viewport. Đo được trên trình duyệt thật ở 375px: với một `@media` sai
+  ngưỡng, vạch kẻ đứng thành một gạch dọc lơ lửng ở mép PHẢI của khối đã xếp
+  chồng — một đường kẻ không chia đôi cái gì cả.
+
+  Ngưỡng 41rem không phải con số tròn cho đẹp: hai cột có `flex-basis: 19rem` và
+  `gap: 40px` (2.5rem), nên chúng vừa một hàng khi container ≥ 40.5rem. 41rem là
+  cùng con số ấy, làm tròn LÊN — nhầm về phía "không vẽ vạch kẻ" thì chỉ mất một
+  đường trang trí, nhầm về phía kia thì được một đường kẻ sai chỗ.
+*/
+@container (min-width: 41rem) {
+  .auth-pitch {
+    padding-right: 34px;
+    border-right: 1px solid var(--rule);
+  }
+}
+
+.auth-brand {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+/* `margin-top: auto` ở danh sách bên dưới đẩy nó xuống đáy cột, nên khối chữ
+   này giữ nguyên vị trí trên cùng dù cột cao bao nhiêu. */
+.auth-pitch-body {
+  margin: 0;
+}
+
+.auth-pitch-h {
+  margin: 0;
+  font-family: var(--serif);
+  /* Trần 31px, không 40px như canvas: canvas vẽ trên một khung 1180px không có
+     thanh bên; ở đây cột trái rộng chừng 28rem sau khi `#content` đã được nới
+     ra 60rem. Đo được: 34px làm câu này gãy làm bốn dòng, 31px giữ nó ở ba. */
+  font-size: clamp(23px, 2.4vw, 31px);
+  font-weight: 500;
+  line-height: 1.18;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  color: var(--ink);
+}
+
+.auth-pitch-lede {
+  margin: 16px 0 0;
+  font-family: var(--serif);
+  font-size: 16px;
+  line-height: 1.62;
+  color: var(--ink-2);
+}
+
+.auth-points {
+  margin: auto 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auth-points li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.auth-tick {
+  flex: 0 0 15px;
+  margin-top: 3px;
+  color: var(--accent);
+}
+
+.auth-side {
+  flex: 1 1 19rem;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.auth-side-inner {
+  width: 100%;
+  max-width: 24rem;
+}
+
+.auth-h {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 25px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
+.auth-lede {
+  margin: 8px 0 0;
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+/* `.seg` gốc là `inline-flex` và co theo nội dung — ở đây nó chỉ rộng bằng chữ,
+   và chữ "Đăng nhập" bị **xuống dòng thành hai hàng** trong ô tab. Ở đây nó
+   phải là một dải đầy đủ chia đôi. */
+.auth-tabs.seg {
+  display: flex;
+  width: 100%;
+  margin: 24px 0 4px;
+  border-radius: 8px;
+}
+
+.auth-tabs.seg button {
+  flex: 1 1 0;
+  padding-block: 8px;
+  font-size: 13px;
+  /* Không cho chữ gãy dòng: một nhãn hai hàng làm hai ô tab cao lệch nhau. */
+  white-space: nowrap;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.auth-form label {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-top: 16px;
+  letter-spacing: 0.01em;
+}
+
+.auth-form input {
+  font-family: var(--sans);
+  font-size: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 9px;
+  background: var(--surface-1);
+  color: var(--ink);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.auth-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+  /* Vòng sáng thay cho outline mặc định: giữ được dấu hiệu tiêu điểm cho người
+     dùng bàn phím mà không làm layout nhảy. */
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Nút chiếm trọn bề ngang: đây là hành động DUY NHẤT của nửa này. */
+.auth-form .btn.primary {
+  margin-top: 24px;
+  padding: 11px 14px;
+  font-size: 14px;
+  width: 100%;
+  justify-content: center;
+}
+
+.auth-error {
+  margin: 14px 0 0;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #b3261e;
+  background: #fdeceb;
+  border: 1px solid #f5c9c5;
+  border-radius: 8px;
+  padding: 9px 11px;
+}
+
+/* Khối tối, đứng riêng — xem "GIAO DIỆN TỐI: HAI KHỐI, KHÔNG BA" ở đầu tệp.
+   `@media` không đặt được trong một danh sách selector, nên kể cả khi có ngày
+   cần một trạng thái thứ ba thì nó vẫn phải là một khối riêng, không phải một
+   dòng thêm vào đây. */
+html[data-theme='dark'] .auth-error {
+  color: #ffb4ab;
+  background: #2b1513;
+  border-color: #5c2b26;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   `/settings` — CÀI ĐẶT, và Trợ lý AI là MỘT MỤC bên trong
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/*
+  `.page-settings` là lớp mà `e2e/s2.spec.ts` bám vào ở HAI chốt:
+  `.page-settings` phải thấy được, và `.page-settings input, .page-settings
+  textarea` phải đếm ra 0. Đổi tên nó là làm hỏng cả hai một cách im lặng.
+*/
+.page-settings {
+  max-width: 54rem;
+}
+
+.set-title {
+  margin: 0 0 22px;
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.018em;
+}
+
+/* Cùng lý do như `.auth-page`: bề rộng quyết định là của `#content`, không phải
+   của viewport, nên bố cục hỏi bằng `flex-wrap` chứ không bằng `@media`. */
+.set-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 32px;
+  align-items: flex-start;
+}
+
+.set-toc {
+  flex: 0 1 10.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 2px;
+}
+
+/*
+  `flex: 1 1 8rem` là thứ làm mục lục tự đổi hình: trong cột 10.5rem không có
+  chỗ cho hai mục 8rem cạnh nhau nên chúng xếp dọc; khi mục lục bị đẩy xuống
+  dòng riêng và rộng bằng cả trang thì bốn mục nằm ngang thành một hàng tab.
+*/
+.set-toc-item {
+  flex: 1 1 8rem;
+  text-align: left;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.set-toc-item:hover {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.set-toc-item.on {
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.set-main {
+  flex: 1 1 20rem;
+  min-width: 0;
+}
+
+.set-h {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
+/* 34rem — con số của canvas, và nó là một con số ĐỌC ĐƯỢC chứ không phải một
+   con số vừa khung: cột chính rộng chừng 43rem sau khi `#content` được nới ra,
+   và văn xuôi serif 16px trải hết 43rem là quá dài cho mắt. Trang này là chữ để
+   hiểu, không phải bảng để quét. */
+.set-lede {
+  margin: 12px 0 0;
+  max-width: 34rem;
+  font-family: var(--serif);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+/* Chú thích: nhỏ hơn, chữ giao diện — nó là thứ đọc SAU khi đã hiểu câu chính,
+   nên phân cấp bằng cỡ chữ chứ không bằng một hộp màu. */
+.set-note {
+  margin: 14px 0 0;
+  max-width: 34rem;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+
+.set-identity {
+  margin: 14px 0 0;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.set-sub {
+  margin-top: 30px;
+  max-width: 34rem;
+  padding-top: 18px;
+  border-top: 1px solid var(--rule);
+}
+
+.set-eyebrow {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.set-field {
+  margin-top: 22px;
+}
+
+.set-label {
+  display: block;
+  margin: 0 0 7px;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink-2);
+}
+
+.set-select {
+  font-family: var(--sans);
+  font-size: 13.5px;
+  padding: 8px 11px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--surface-1);
+  color: var(--ink);
+  min-width: 12rem;
+}
+
+.set-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.set-field .set-note {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+/* ── Khung kho khoá, ĐÓNG KHUNG rõ là một mặt phẳng khác ───────────────────
+   Đây là chỗ kiến trúc hai origin trở nên NHÌN THẤY ĐƯỢC. Hộp có viền riêng,
+   thanh tiêu đề riêng, ổ khoá, và trên thanh ấy là ĐỊA CHỈ THẬT mà khung chạy
+   ở đó — chứ không phải một câu chung chung về "một địa chỉ riêng". */
+.set-vault {
+  margin-top: 24px;
+  max-width: 34rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+.set-vault-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--rule);
+}
+
+.set-vault-lock {
+  flex: 0 0 12px;
+  color: var(--ink-2);
+}
+
+.set-vault-label {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+/* Địa chỉ ở phông chữ đơn cách: một origin là một chuỗi phải đọc từng ký tự
+   (`localhost:5174` khác `localhost:5173` đúng một chữ số), và phông đơn cách
+   là cách rẻ nhất để nói ra rằng đây là một địa chỉ, không phải văn xuôi. */
+.set-vault-label strong {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.set-vault-body {
+  padding: 18px 16px;
+}
+
+.set-vault-live {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-3);
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   LỚP PHỦ KHO KHOÁ — mặt phẳng thứ hai, thật sự
+   ───────────────────────────────────────────────────────────────────────────
+
+   Khung kho khoá là một `<iframe>` ở origin khác, gắn MỘT LẦN cho cả ứng dụng ở
+   NGOÀI `#app` (xem shell/VaultFrame.tsx) — nên nó không nằm trong luồng bố cục
+   của trang, và một chiều cao thường sẽ đẩy nó xuống dưới đáy `#app`
+   (`min-height:100vh`), tức là ra ngoài màn hình. `position: fixed` là cách rẻ
+   nhất để nó ở đúng chỗ mà không phải chép lại các con số bố cục của reader.css.
+
+   `inset: 0` KHÔNG THƯƠNG LƯỢNG. `e2e/s3.spec.ts` kịch bản 5a đo bằng
+   `document.elementFromPoint` rằng tâm `#lang-select` KHÔNG nhận được cú bấm
+   khi khung đang mở, và ghi rõ mutant `inset: 0` → `inset: 120px 0 0 0` phải
+   giết được nó. Lý do là hành vi chứ không phải hình thức: nút "Đóng" nằm trên
+   chính lớp phủ, nên một lớp phủ hở là một lớp phủ mà nút của nó phải tranh cú
+   bấm với các nút bên dưới.
+
+   Cái ĐỔI ở đây là nền: trước là `var(--surface-1)` đục kín, nay là một tấm mờ.
+   Lớp phủ vẫn che kín y hệt (vẫn chặn con trỏ, vẫn giết đúng mutant ấy), nhưng
+   người dùng NHÌN THẤY trang Cài đặt còn nguyên ở dưới và một tấm khác nổi lên
+   trên. Đó chính là điều mà cả hệ thống con này cần người dùng tin: có hai mặt
+   phẳng, và key sống ở tấm phía trên.
+
+   z-index 90: trên hộp chú thích (80/79), trên panel AI (85) và trên topbar
+   dính (40). Người dùng đang dán key thì không có gì được nằm đè lên. */
+.vault-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(0px, 3.5vh, 40px) clamp(0px, 3.5vw, 40px);
+  background: rgba(11, 11, 11, 0.44);
+}
+
+html[data-theme='dark'] .vault-overlay {
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.vault-card {
+  display: flex;
+  flex-direction: column;
+  width: min(46rem, 100%);
+  height: min(46rem, 100%);
+  background: var(--surface-1);
+  border: 1px solid var(--rule-strong);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.vault-overlay-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--rule-strong);
+  background: var(--panel);
+}
+
+/* CỐ Ý KHÔNG `display: flex`.
+   `tNode()` trả về một dãy `<Fragment>` — chữ, rồi `<strong>` chứa origin, rồi
+   chữ tiếp. Dưới một flex container, mỗi mảnh ấy thành một flex ITEM và `gap`
+   chèn khoảng trắng vào GIỮA CÂU: đo được trên trình duyệt thật, dấu phẩy ngay
+   sau origin bị đẩy ra thành "…:5274 , tách khỏi…". Ổ khoá được canh bằng
+   `vertical-align` trong luồng chữ bình thường thay vì bằng một flex item. */
+.vault-overlay-title {
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.vault-lock {
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+
+/* Cùng lý do như `.set-vault-label strong`: một origin là thứ phải đọc từng ký
+   tự, không phải văn xuôi. */
+.vault-overlay-title strong {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.vault-card iframe {
+  flex: 1 1 auto;
+  min-height: 0;
+}
