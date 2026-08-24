@@ -9,6 +9,7 @@ import { ErrorBoundary } from './shell/ErrorBoundary';
 import { Rail } from './shell/Rail';
 import { Shell } from './shell/Shell';
 import { Sidebar } from './shell/Sidebar';
+import { AccountChip, TopNav } from './shell/TopNav';
 import { Topbar } from './shell/Topbar';
 import { useMobileNav } from './shell/useMobileNav';
 import { useSidebarCollapse, WIDE_QUERY } from './shell/useSidebarCollapse';
@@ -52,6 +53,11 @@ export default function App() {
 // none of them can ask the router and all of them only ever see a pathname.
 const CHAPTER_ROUTE = /^\/c\/[^/]+\/[^/]+/;
 
+// `/c/:courseId` VÀ mọi thứ dưới nó — tức là "đang ở trong một khoá". Rộng hơn
+// `CHAPTER_ROUTE` đúng một bậc, và hai câu hỏi ấy khác nhau: trang khoá học có
+// mục lục nhưng không phải đang đọc.
+const COURSE_ROUTE = /^\/c\/[^/]+/;
+
 function AppShell() {
   const { theme, toggle: toggleTheme } = useThemeContext();
   const { toggle: toggleMobileNav } = useMobileNav();
@@ -87,10 +93,16 @@ function AppShell() {
       // nhất trong repo biết mình đang ở chế độ nào; mọi khác biệt còn lại là
       // luật CSS treo dưới `#app.reading`.
       reading={CHAPTER_ROUTE.test(location.pathname)}
+      inCourse={COURSE_ROUTE.test(location.pathname)}
       navCollapsed={collapsed}
       sidebar={<Sidebar />}
       topbar={
         <>
+          {/* TRƯỚC `<Topbar>`, nên nhãn hiệu và ba đích là thứ đầu tiên cả
+              trong thứ tự đọc lẫn thứ tự tab. Ở đây chứ không trong `<Topbar>`
+              vì `TopNav` đọc `useMe()` — xem doc của chính nó, và lý do y hệt
+              cái đã giữ `<LanguageSwitcher>` ở ngoài. */}
+          <TopNav />
           <Topbar
             theme={theme}
             onToggleTheme={toggleTheme}
@@ -104,6 +116,9 @@ function AppShell() {
               LanguageProvider.test.tsx's "CỬA" chứng minh người dùng bấm tới
               được nó qua <App/>. */}
           <LanguageSwitcher />
+          {/* SAU `<LanguageSwitcher>`: `#crumb` mang `flex:1` nên mọi thứ đứng
+              sau nó bị đẩy về mép phải, và tài khoản là thứ cuối cùng bên ấy. */}
+          <AccountChip />
         </>
       }
       rail={<Rail />}

@@ -91,111 +91,120 @@
   cục hỏi đúng thứ nó cần: `flex-wrap` với `flex-basis` tối thiểu cho mỗi cột.
   Hai cột vừa thì đứng cạnh nhau; không vừa thì tự xuống dòng.
 */
+/* ═══════════════════════════════════════════════════════════════════════════
+   MÀN ĐĂNG NHẬP — hướng A (Untitled UI)
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Hình đã duyệt: khung "Đăng nhập" trên canvas thiết kế, trang Màn hình.
+
+   MARKUP KHÔNG ĐỔI MỘT DÒNG, và đó là một lựa chọn chứ không phải sự lười:
+   cấu trúc `.auth-pitch` + `.auth-side` ĐÃ đúng hình dạng bản dựng (một panel
+   thương hiệu, một cột form), còn `pages/Login.test.tsx` — 486 dòng — ghim
+   đúng cấu trúc trợ năng ấy: vai trò tablist, nhãn ô nhập, `role="alert"` của
+   khối lỗi. Viết lại markup thành utility sẽ làm đỏ hàng loạt bài kiểm mà
+   không đổi được gì người dùng nhìn thấy. Thứ đổi là DA, nên chỉ da đổi.
+
+   Token lấy từ `styles/tokens.css` (`@theme static`), tức là cùng một thang
+   với mọi màn khác — không có màu nào viết tay ở đây. */
+
 .auth-page {
   display: flex;
   flex-wrap: wrap;
-  gap: 30px 40px;
+  gap: 28px;
   align-items: stretch;
-  margin: clamp(12px, 4vh, 44px) 0 56px;
-  /* Mở một ngữ cảnh truy vấn theo BỀ RỘNG CỦA CHÍNH KHỐI NÀY, cho đúng một
-     việc: vạch kẻ chia đôi bên dưới. Xem khối `@container` ngay sau đây. */
-  container-type: inline-size;
+  margin: clamp(12px, 3vh, 32px) 0 48px;
+  font-family: var(--font-sans);
 }
 
+/* ── PANEL THƯƠNG HIỆU ──────────────────────────────────────────────────────
+   `order: 2` ở đây + `order: 1` ở `.auth-side` là ĐỦ, cho cả hai khổ, vì hai
+   khổ muốn cùng một thứ tự: form trước, lời rao sau. Màn rộng đọc thứ tự ấy
+   theo chiều ngang (form trái, panel phải — bản dựng), màn hẹp đọc theo chiều
+   dọc (form trên, panel dưới).
+
+   Bản đầu dùng `flex-wrap: wrap-reverse` vì tôi tưởng cần nó để panel rơi
+   xuống dưới. Nó làm ngược lại — đo ở 375px trên trình duyệt thật: panel tím
+   chiếm trọn màn hình đầu tiên và ô nhập bị đẩy xuống dưới nếp gấp, tức là
+   trang đăng nhập mở ra mà không thấy chỗ đăng nhập. `wrap` thường mới đúng. */
 .auth-pitch {
-  flex: 1 1 19rem;
+  order: 2;
+  flex: 1 1 20rem;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 30px;
-}
-
-/*
-  VẠCH KẺ CHIA ĐÔI — chỉ khi thật sự có hai cột.
-
-  Đây là chỗ DUY NHẤT trong hai màn này cần biết "đã xuống dòng hay chưa", và nó
-  không hỏi được bằng `@media`: bề rộng quyết định việc xuống dòng là của
-  `.auth-page` (co theo `#content`, theo `#rail`, theo thanh bên), không phải
-  của viewport. Đo được trên trình duyệt thật ở 375px: với một `@media` sai
-  ngưỡng, vạch kẻ đứng thành một gạch dọc lơ lửng ở mép PHẢI của khối đã xếp
-  chồng — một đường kẻ không chia đôi cái gì cả.
-
-  Ngưỡng 41rem không phải con số tròn cho đẹp: hai cột có `flex-basis: 19rem` và
-  `gap: 40px` (2.5rem), nên chúng vừa một hàng khi container ≥ 40.5rem. 41rem là
-  cùng con số ấy, làm tròn LÊN — nhầm về phía "không vẽ vạch kẻ" thì chỉ mất một
-  đường trang trí, nhầm về phía kia thì được một đường kẻ sai chỗ.
-*/
-@container (min-width: 41rem) {
-  .auth-pitch {
-    padding-right: 34px;
-    border-right: 1px solid var(--rule);
-  }
+  gap: 28px;
+  padding: 36px 32px;
+  border-radius: var(--radius-xl);
+  background: linear-gradient(158deg, var(--color-brand-600) 0%, var(--color-brand-800) 58%, var(--color-brand-900) 100%);
+  color: #fff;
 }
 
 .auth-brand {
   margin: 0;
-  font-family: var(--serif);
-  font-size: 19px;
+  font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.01em;
-  color: var(--ink);
+  color: var(--color-brand-200);
 }
 
-/* `margin-top: auto` ở danh sách bên dưới đẩy nó xuống đáy cột, nên khối chữ
-   này giữ nguyên vị trí trên cùng dù cột cao bao nhiêu. */
 .auth-pitch-body {
-  margin: 0;
+  margin-top: auto;
 }
 
 .auth-pitch-h {
-  margin: 0;
-  font-family: var(--serif);
-  /* Trần 31px, không 40px như canvas: canvas vẽ trên một khung 1180px không có
-     thanh bên; ở đây cột trái rộng chừng 28rem sau khi `#content` đã được nới
-     ra 60rem. Đo được: 34px làm câu này gãy làm bốn dòng, 31px giữ nó ở ba. */
-  font-size: clamp(23px, 2.4vw, 31px);
-  font-weight: 500;
-  line-height: 1.18;
-  letter-spacing: -0.02em;
-  text-wrap: balance;
-  color: var(--ink);
+  margin: 0 0 14px;
+  font-size: clamp(26px, 3.2vw, 34px);
+  font-weight: 600;
+  line-height: 1.22;
+  letter-spacing: -0.025em;
+  color: #fff;
+  text-wrap: pretty;
 }
 
 .auth-pitch-lede {
-  margin: 16px 0 0;
-  font-family: var(--serif);
+  margin: 0;
   font-size: 16px;
-  line-height: 1.62;
-  color: var(--ink-2);
+  line-height: 1.6;
+  color: var(--color-brand-200);
 }
 
 .auth-points {
-  margin: auto 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
 }
 
 .auth-points li {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  font-family: var(--serif);
-  font-size: 14.5px;
-  line-height: 1.5;
-  color: var(--ink-2);
+  gap: 12px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-brand-100);
 }
 
+/* Dấu tích trong một đĩa tròn mờ, không phải một glyph trần: ở nền chuyển sắc
+   một nét trắng mảnh sẽ mất hút ở đầu đậm của gradient. */
 .auth-tick {
-  flex: 0 0 15px;
-  margin-top: 3px;
-  color: var(--accent);
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  padding: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  box-sizing: border-box;
 }
+
+/* ── CỘT FORM ───────────────────────────────────────────────────────────── */
 
 .auth-side {
-  flex: 1 1 19rem;
+  order: 1;
+  flex: 1 1 20rem;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -204,96 +213,138 @@
 .auth-side-inner {
   width: 100%;
   max-width: 24rem;
+  margin: 0 auto;
 }
 
 .auth-h {
-  margin: 0;
-  font-family: var(--serif);
-  font-size: 25px;
-  font-weight: 500;
-  line-height: 1.25;
-  letter-spacing: -0.015em;
+  margin: 0 0 6px;
+  font-family: var(--font-sans);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink);
 }
 
 .auth-lede {
-  margin: 8px 0 0;
-  font-family: var(--serif);
-  font-size: 14.5px;
+  margin: 0 0 26px;
+  font-family: var(--font-sans);
+  font-size: 16px;
   line-height: 1.55;
-  color: var(--ink-2);
+  color: var(--color-gray-500);
 }
 
-/* `.seg` gốc là `inline-flex` và co theo nội dung — ở đây nó chỉ rộng bằng chữ,
-   và chữ "Đăng nhập" bị **xuống dòng thành hai hàng** trong ô tab. Ở đây nó
-   phải là một dải đầy đủ chia đôi. */
+/* Segmented control: rãnh xám, viên đang chọn nổi lên bằng nền trắng + bóng —
+   khác hẳn bản cũ, nơi viên đang chọn là một khối xanh đặc và đọc như một nút
+   bấm thứ hai đứng cạnh nút Đăng nhập thật. */
 .auth-tabs.seg {
   display: flex;
   width: 100%;
-  margin: 24px 0 4px;
-  border-radius: 8px;
+  gap: 4px;
+  padding: 4px;
+  margin: 0 0 22px;
+  background: var(--color-gray-50);
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-md);
 }
 
 .auth-tabs.seg button {
-  flex: 1 1 0;
-  padding-block: 8px;
-  font-size: 13px;
-  /* Không cho chữ gãy dòng: một nhãn hai hàng làm hai ô tab cao lệch nhau. */
-  white-space: nowrap;
+  flex: 1;
+  padding: 8px 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-gray-500);
+  cursor: pointer;
+}
+
+.auth-tabs.seg button.on {
+  background: var(--surface-1);
+  box-shadow: var(--shadow-xs);
+  font-weight: 600;
+  color: var(--color-gray-700);
 }
 
 .auth-form {
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
 .auth-form label {
-  font-family: var(--sans);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ink-2);
-  margin-top: 16px;
-  letter-spacing: 0.01em;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-gray-700);
+  margin-bottom: 6px;
+}
+
+.auth-form label + input {
+  margin-bottom: 18px;
 }
 
 .auth-form input {
-  font-family: var(--sans);
-  font-size: 14px;
-  padding: 10px 12px;
-  border: 1px solid var(--rule-strong);
-  border-radius: 9px;
-  background: var(--surface-1);
+  height: 44px;
+  padding: 0 14px;
+  font-family: var(--font-sans);
+  font-size: 16px;
   color: var(--ink);
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  background: var(--surface-1);
+  border: 1px solid var(--color-gray-300);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
 }
 
+/* VÒNG FOCUS 4px, trên mọi thứ bấm được — thứ bản đang chạy không có, và là
+   khác biệt lớn nhất với người dùng bàn phím. */
 .auth-form input:focus {
   outline: none;
-  border-color: var(--accent);
-  /* Vòng sáng thay cho outline mặc định: giữ được dấu hiệu tiêu điểm cho người
-     dùng bàn phím mà không làm layout nhảy. */
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  border-color: var(--color-brand-300);
+  box-shadow: var(--shadow-ring-brand);
 }
 
 /* Nút chiếm trọn bề ngang: đây là hành động DUY NHẤT của nửa này. */
 .auth-form .btn.primary {
-  margin-top: 24px;
-  padding: 11px 14px;
-  font-size: 14px;
+  margin-top: 8px;
+  height: 44px;
+  padding: 0 16px;
   width: 100%;
   justify-content: center;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--color-brand-600);
+  border: 0;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs), inset 0 -1px 0 rgba(16, 24, 40, 0.12);
+}
+
+.auth-form .btn.primary:hover:not(:disabled) {
+  background: var(--color-brand-700);
+}
+
+.auth-form .btn.primary:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring-brand);
+}
+
+.auth-form .btn.primary:disabled {
+  background: var(--color-brand-200);
+  cursor: default;
 }
 
 .auth-error {
-  margin: 14px 0 0;
-  font-family: var(--sans);
-  font-size: 12.5px;
+  margin: 16px 0 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
   line-height: 1.5;
-  color: #b3261e;
-  background: #fdeceb;
-  border: 1px solid #f5c9c5;
-  border-radius: 8px;
-  padding: 9px 11px;
+  color: var(--color-error-700);
+  background: var(--color-error-50);
+  border: 1px solid var(--color-error-200);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
 }
 
 /* Khối tối, đứng riêng — xem "GIAO DIỆN TỐI: HAI KHỐI, KHÔNG BA" ở đầu tệp.
@@ -306,7 +357,21 @@ html[data-theme='dark'] .auth-error {
   border-color: #5c2b26;
 }
 
-/* ───────────────────────────────────────────────────────────────────────────
+html[data-theme='dark'] .auth-tabs.seg {
+  background: var(--panel);
+  border-color: var(--rule);
+}
+
+html[data-theme='dark'] .auth-tabs.seg button.on {
+  background: var(--surface-1);
+  color: var(--ink);
+}
+
+html[data-theme='dark'] .auth-form input {
+  background: var(--surface-1);
+  border-color: var(--rule-strong);
+}
+
    `/settings` — CÀI ĐẶT, và Trợ lý AI là MỘT MỤC bên trong
    ─────────────────────────────────────────────────────────────────────────── */
 

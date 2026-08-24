@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { NavLink, useLocation } from 'react-router-dom';
-import { useMe } from '../api/useMe';
+import { useLocation } from 'react-router-dom';
 import { CourseNav } from '../course/CourseNav';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
 import { useLanguage } from '../i18n/LanguageProvider';
@@ -29,81 +28,17 @@ function courseIdFromPathname(pathname: string): string | undefined {
  * unconditionally with `courseId ?? ''` for the same reason `CourseHome`
  * does — see that component's doc comment.
  */
-/**
- * The app's ONLY global navigation, and the reason it had to be added here.
+/*
+ * ĐIỀU HƯỚNG CHUNG ĐÃ RỜI KHỎI ĐÂY — nay ở `shell/TopNav.tsx`, trên thanh
+ * trên. Người dùng yêu cầu: "navigation không nên nằm cùng sidebar với mục
+ * lục, chỗ đó nên cho mục lục thôi."
  *
- * Before this, `/library` and `/import` were reachable from exactly one place
- * each: two buttons in the Dashboard's header. From a chapter, from
- * `/import`, or from the library itself, the way to any other screen was the
- * browser's back button or typing a URL. Task 9's brief listed `shell/` under
- * "Modify: … (điều hướng)" and it was not modified — a grep for
- * `Link|to=|href` across all four `shell/` files returned nothing at all.
- *
- * In the sidebar rather than the topbar because the topbar's six ids are
- * reproduced byte-for-byte from the v1 reader for `reader.css` (see
- * `Shell`'s own doc), and because `#menu-btn` already brings the sidebar out
- * as a drawer on mobile, so this is reachable at every width without a
- * second responsive rule.
- *
- * Hidden while signed out: `AppShell` renders on `/login` too, and offering a
- * link that can only bounce back to the page you are on is worse than
- * offering nothing. `useMe` is the same cached query `RequireAuth` reads, so
- * asking costs no request.
+ * Nó KHÔNG biến mất, và `TopNav` giữ nguyên hai tính chất mà bản ở đây có:
+ * ẩn khi chưa đăng nhập, và `Cài đặt` vẫn tới được bằng MỘT cú bấm (nay là
+ * `AccountChip` ở mép phải thanh trên). Điều kiện thứ hai không thương lượng
+ * được: `/settings` chỉ tới được bằng cách gõ URL là đúng hình dạng cổng mù
+ * #4 mà chính route ấy sinh ra để vá.
  */
-function GlobalNav() {
-  const meQuery = useMe();
-  const { t } = useLanguage();
-  if (!meQuery.data) return null;
-
-  return (
-    <nav className="sb-nav" aria-label={t('nav.aria.main')}>
-      {/*
-        BA nơi chốn, và chỉ ba. Đặc tả:
-        `docs/superpowers/specs/2026-08-23-ia-redesign.md`.
-
-        Danh sách cũ có năm mục ngang hàng nhưng ba LOẠI: nơi chốn
-        (`/`, `/library`), hành động (`/import`) và thiết lập (`/settings` dưới
-        tên "Trợ lý AI"). Ngang hàng nhau thì người dùng phải tự phân loại hộ.
-
-        Ba mục ĐÃ rời đi, KHÔNG biến mất — và route cũ của chúng vẫn chuyển
-        hướng (xem `routes.tsx`):
-          `/import`   → nút "Nhập gói" bên trong `/courses`
-          `/catalog`  → tab "Kho cộng đồng" bên trong `/courses`
-          `/settings` → menu tài khoản ở đáy thanh bên, ngay dưới đây
-      */}
-      <NavLink to="/" end className="sb-nav-link">
-        {t('nav.continue')}
-      </NavLink>
-      <NavLink to="/courses" className="sb-nav-link">
-        {t('nav.courses')}
-      </NavLink>
-      <NavLink to="/progress" className="sb-nav-link">
-        {t('nav.progress')}
-      </NavLink>
-      {/*
-        HAI MỤC "Nhập khóa học" và "Danh mục registry" ĐÃ RỜI ĐI Ở ĐÂY, trong
-        cùng commit dựng đích cho chúng — điều kiện mà chú thích cũ đặt ra.
-
-        Chúng KHÔNG trở thành hai màn hình chỉ tới được bằng cách gõ URL (cổng
-        mù #4 / S1-F29): lối vào bằng cú bấm nay là nút "Nhập gói" và tab "Kho
-        cộng đồng" trong `/courses`, và `pages/Courses.test.tsx` canh đúng hai
-        cú bấm ấy qua `<App/>` thật. Route cũ vẫn chuyển hướng (`routes.tsx`).
-      */}
-
-      {/*
-        Tài khoản ở ĐÁY, tách khỏi ba nơi chốn bằng khoảng trắng chứ không phải
-        bằng một mục thứ tư. `/settings` vẫn phải tới được bằng một cú bấm —
-        một trang cấu hình chỉ tới được bằng cách gõ URL là đúng hình dạng cổng
-        mù #4 (S1-F29) mà chính route ấy sinh ra để vá.
-      */}
-      <div className="sb-account">
-        <NavLink to="/settings" className="sb-nav-link sb-account-link">
-          {t('account.settings')}
-        </NavLink>
-      </div>
-    </nav>
-  );
-}
 
 export function Sidebar() {
   const location = useLocation();
@@ -117,45 +52,50 @@ export function Sidebar() {
   });
   const { doneChapterIds } = useProgress(courseId ?? '');
 
+  // THANH BÊN CHỈ TỒN TẠI KHI CÓ MỘT KHOÁ ĐANG MỞ.
+  //
+  // Trước đây nó luôn có mặt, và ngoài một khoá thì nó chứa: điều hướng
+  // chung, một ô "Tìm chương…" bị `disabled`, dòng "Tiến độ sẽ hiện ở đây",
+  // và câu "Chưa có khóa học nào được tải." Tức là một cột rộng 306px nói về
+  // một khoá không tồn tại — đo trên màn 1280 thì đó là gần một phần tư bề
+  // ngang dành cho lời xin lỗi.
+  //
+  // `null` chứ không phải ẩn bằng CSS ở phía React: `#sidebar` vẫn do
+  // `<Shell>` dựng nên khung DOM mà reader.css bám vào KHÔNG đổi, còn luật
+  // thu cột về 0 nằm ở `styles/shell-modes.css` dưới `#app:not(.in-course)`.
+  // Trả `null` ở đây chỉ để cây trợ năng không mang một `<aside>` rỗng.
+  if (courseId == null) return null;
+
+  const totalChapters = manifestQuery.data?.parts.reduce((n, part) => n + part.chapters.length, 0) ?? 0;
+  const doneCount = doneChapterIds.size;
+
   return (
     <>
       <div className="sb-head">
-        <p className="sb-title">
-          <svg
-            className="mark"
-            viewBox="0 0 20 20"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
-            <rect width="20" height="20" rx="5" fill="var(--accent)" />
-            <path d="M5 10.5L8.5 14L15 6.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          {t('app.name')}
-        </p>
-        {/*
-          The subtitle names the course that is open, and does not exist when
-          none is. It used to be one course's title, written into the JSX —
-          right back when the app shipped exactly one course, and a lie on
-          every screen after that: on `/library` it read as the name of the
-          library itself, on `/import` and the dashboard it named a course
-          nobody had opened, and with a different course open it named the
-          wrong one.
+        {/* MỘT nhan đề, và nó là tên KHOÁ chứ không phải tên app.
+            Tên app nay ở nhãn hiệu trên thanh trên; in nó lần nữa ở đây là
+            nói hai lần, và nó cướp mất dòng đầu của thứ cột này thực sự nói
+            về. Nhãn "Mục lục" ở trên tên khoá để cột tự khai nó là gì. */}
+        <p className="sb-eyebrow">{t('reader.toc')}</p>
+        {manifestQuery.data && <p className="sb-title">{manifestQuery.data.title}</p>}
 
-          Keyed off `manifestQuery.data`, not off `courseId`: a manifest is
-          the only thing that knows a course's title (the id in the URL is a
-          slug, not a name), so the pending and failed states name nothing
-          rather than guess — guessing is how the original bug got in. That
-          silence is never the only thing on screen; `#nav` right below says
-          out loud which of those two states the sidebar is in.
-        */}
-        {manifestQuery.data && <p className="sb-sub">{manifestQuery.data.title}</p>}
-        {/*
-          Ô tìm chương chỉ có nghĩa KHI CÓ CHƯƠNG. Nó từng hiện trên Bảng điều
-          khiển và trang Cài đặt, nơi không có gì để tìm — và nó bị `disabled`
-          nên nó thậm chí không hứa được điều nó gợi ý.
-        */}
-        {courseId != null && (
+        {/* Tiến độ THẬT, thay cho dòng giữ chỗ "Tiến độ sẽ hiện ở đây" — số
+            liệu đã nằm sẵn trong `useProgress` và `manifest.parts` từ trước,
+            chỉ chưa ai nối hai đầu ấy vào nhau. */}
+        {totalChapters > 0 && (
+          <div className="sb-prog-bar">
+            <div className="sb-prog-track">
+              <div
+                className="sb-prog-fill"
+                style={{ width: `${Math.round((doneCount / totalChapters) * 100)}%` }}
+              />
+            </div>
+            <span className="sb-prog-count">
+              {doneCount}/{totalChapters}
+            </span>
+          </div>
+        )}
+
         <div className="sb-search">
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <circle cx="9" cy="9" r="6.5" stroke="currentColor" strokeWidth="1.6" />
@@ -163,23 +103,13 @@ export function Sidebar() {
           </svg>
           <input id="nav-search" type="text" placeholder={t('sidebar.searchPlaceholder')} disabled />
         </div>
-        )}
       </div>
-      <GlobalNav />
-      {/*
-        Cùng lý do: "Tiến độ sẽ hiện ở đây" và mục lục chương là chrome của CHẾ
-        ĐỘ ĐỌC. Trên Bảng điều khiển chúng nói về một chương không tồn tại, và
-        đặc tả IA nói hai chế độ cần trông khác nhau. Tiến độ thật nay có nơi
-        chốn riêng ở `/progress`.
-      */}
-      {courseId != null && <div className="sb-prog">{t('sidebar.progressPlaceholder')}</div>}
-      <nav id="nav" hidden={courseId == null}>
-        {courseId == null && <p className="nav-empty">{t('sidebar.noCourseLoaded')}</p>}
-        {courseId != null && manifestQuery.isPending && <p className="nav-empty">{t('course.loading')}</p>}
-        {courseId != null && manifestQuery.isError && (
+      <nav id="nav">
+        {manifestQuery.isPending && <p className="nav-empty">{t('course.loading')}</p>}
+        {manifestQuery.isError && (
           <p className="nav-empty">{describeCourseError(manifestQuery.error, t)}</p>
         )}
-        {courseId != null && manifestQuery.data && (
+        {manifestQuery.data && (
           <CourseNav courseId={courseId} parts={manifestQuery.data.parts} doneChapterIds={doneChapterIds} />
         )}
       </nav>

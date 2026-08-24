@@ -38,6 +38,25 @@ export interface ShellProps {
    * reading mode would fork all of that in order to hide one column.
    */
   reading?: boolean;
+  /**
+   * `true` trên `/c/:courseId` và `/c/:courseId/:chapterId` — tức là người
+   * đọc đang Ở TRONG một khoá. Đặt `.in-course` lên `#app`.
+   *
+   * Nó điều khiển đúng một thứ: `#sidebar` có chiếm chỗ hay không. Thanh bên
+   * nay chỉ mang mục lục (`shell/Sidebar.tsx`), nên ngoài một khoá thì nó
+   * không có gì để mang và luật ở `styles/shell-modes.css` thu nó về 0.
+   *
+   * Một lớp trên `#app` chứ không phải một cây DOM khác, cùng lý do `.reading`
+   * đã ghi ngay trên: khung `#app > #sidebar + #main(…)` là thứ reader.css
+   * (bản port từng byte của v1) bám vào từng id, và ba tệp e2e trỏ thẳng vào
+   * `#content`.
+   *
+   * ĐỘC LẬP với `reading`, không suy ra được nhau theo chiều nào có ích:
+   * đang đọc thì cũng đang trong khoá, nhưng chế độ đọc giấu thanh bên vì một
+   * lý do KHÁC (mục lục thành ngăn kéo, xem `reader-layout.css`), nên gộp hai
+   * cờ sẽ làm mất lý do của một trong hai.
+   */
+  inCourse?: boolean;
 }
 
 /**
@@ -74,12 +93,17 @@ export function Shell({
   vaultOrigin,
   reading = false,
   navCollapsed = false,
+  inCourse = false,
 }: ShellProps) {
   // Hai lớp độc lập trên cùng một nút, không phải một enum: chế độ đọc là nơi
   // NÀO ta đang ở, thu gọn là lựa chọn của người dùng — chúng chồng nhau được
   // (đọc một chương với thanh bên đã thu gọn từ trước) và không lớp nào suy ra
   // được lớp kia.
-  const appClass = [reading ? 'reading' : null, navCollapsed ? 'nav-collapsed' : null]
+  const appClass = [
+    reading ? 'reading' : null,
+    navCollapsed ? 'nav-collapsed' : null,
+    inCourse ? 'in-course' : null,
+  ]
     .filter(Boolean)
     .join(' ');
 

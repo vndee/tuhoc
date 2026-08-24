@@ -4,10 +4,12 @@ import { join, resolve } from 'node:path';
 import { zipSync } from 'fflate';
 import {
   PASSWORD,
+  REAL_COURSE_ID,
   REPO_ROOT,
   freshEmail,
   isBenignAuthCheck401,
   openNotesTab,
+  realCoursePackageZip,
   registerNewUser,
   selectParagraphByDrag,
 } from './helpers';
@@ -744,6 +746,21 @@ test.describe('§4 — cập nhật có báo cáo thiệt hại', () => {
  * lựa chọn phải SỐNG QUA điều hướng và tải lại (khác hẳn ngăn kéo của màn hẹp,
  * thứ `useMobileNav` đóng ở mọi lần đổi route), và ở màn hẹp nút ấy phải vẫn
  * là ngăn kéo cũ chứ không phải một cơ chế thứ hai chồng lên.
+ *
+ * ── PHẠM VI THU HẸP TỪ VÒNG THIẾT KẾ LẠI ─────────────────────────────────
+ * Hai bài này TỪNG chạy trên `/` và `/courses`. Chúng không chạy được ở đó
+ * nữa, và đó là điều đúng chứ không phải một hồi quy: thanh bên nay chỉ mang
+ * MỤC LỤC, nên ngoài một khoá nó không tồn tại — không có gì để thu gọn.
+ *
+ * Yêu cầu gốc của người dùng ("The left navigation sidebar should be
+ * collapsible") vẫn được giữ nguyên vẹn, chỉ hẹp lại đúng chỗ nó còn nghĩa:
+ * thu gọn mục lục để lấy thêm bề ngang khi đang ở trong một khoá. Nên hai bài
+ * chuyển vào `/c/:courseId`, và chốt "sống qua điều hướng" nay đi giữa hai
+ * route CÙNG có thanh bên (trang khoá học ⇄ tải lại) thay vì sang một route
+ * không còn cột nào.
+ *
+ * Kèm một chốt MỚI, vì luật mới cần răng của chính nó: ngoài một khoá thì
+ * `#sidebar` phải VẮNG MẶT, chứ không phải hiện ra rỗng.
  */
 test.describe('§5 — thanh điều hướng thu gọn được', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
@@ -765,11 +782,25 @@ test.describe('§5 — thanh điều hướng thu gọn được', () => {
     return box === null || box.x + box.width <= 0;
   }
 
-  test('☰ ẩn/hiện thanh bên trên màn rộng, và lựa chọn sống qua tải lại', async ({ page }) => {
-    // `registerNewUser` GIẢ ĐỊNH trang đã ở `/login` (chú thích của chính nó),
-    // và nó đợi luôn cú chuyển hướng sau đăng ký — về `/`.
+  /**
+   * Đăng ký, nhập gói thật, rồi đứng TRONG khoá — nơi duy nhất còn thanh bên.
+   * Dùng chính gói `tuhoc pack` ghi ra, y như `import.spec.ts`, chứ không dựng
+   * một zip trong lúc chạy.
+   */
+  async function enterCourse(page: import('@playwright/test').Page): Promise<void> {
     await page.goto('/login');
     await registerNewUser(page, freshEmail(), PASSWORD);
+
+    await page.goto('/import');
+    await page.locator('.import-file input[type="file"]').setInputFiles(realCoursePackageZip());
+    await expect(page.locator('.import-ok')).toBeVisible({ timeout: 120_000 });
+
+    await page.goto(`/c/${REAL_COURSE_ID}`);
+    await expect(page.locator('#sidebar')).toBeVisible();
+  }
+
+  test('☰ ẩn/hiện thanh bên trên màn rộng, và lựa chọn sống qua tải lại', async ({ page }) => {
+    await enterCourse(page);
 
     const sidebar = page.locator('#sidebar');
     const menu = page.locator('#menu-btn');
@@ -785,11 +816,16 @@ test.describe('§5 — thanh điều hướng thu gọn được', () => {
     await expect(sidebar).toBeHidden();
     await expect(menu).toHaveAttribute('aria-expanded', 'false');
 
-    // Lựa chọn KHÔNG bị buộc vào một route: sang trang khác vẫn thu gọn.
-    // Đi bằng `goto` chứ không bấm liên kết, vì liên kết điều hướng nằm TRONG
-    // thanh bên vừa thu gọn — bản đầu của bài này bấm nó và hết giờ, đúng như
-    // nó phải thế.
+    // NGOÀI một khoá thì không có cột nào cả — luật mới, và nó cần răng riêng.
+    // Không có chốt này, một bản bỏ sót `#app:not(.in-course)` vẫn xanh.
     await page.goto('/courses');
+    await expect(page.locator('#sidebar')).toBeHidden();
+
+    // Quay lại trong khoá: lựa chọn thu gọn KHÔNG bị buộc vào một route, nên
+    // nó vẫn còn nguyên. Đi bằng `goto` chứ không bấm liên kết, vì bản đầu của
+    // bài này bấm một liên kết nằm trong chính thanh bên vừa thu gọn và hết
+    // giờ, đúng như nó phải thế.
+    await page.goto(`/c/${REAL_COURSE_ID}`);
     await expect(page.locator('#sidebar')).toBeHidden();
 
     // Và sống qua tải lại — đây là chỗ khác hẳn ngăn kéo của màn hẹp, thứ
@@ -805,8 +841,7 @@ test.describe('§5 — thanh điều hướng thu gọn được', () => {
   test('đối chứng màn hẹp: cùng nút ấy vẫn là ngăn kéo cũ, không phải cơ chế thứ hai', async ({
     page,
   }) => {
-    await page.goto('/login');
-    await registerNewUser(page, freshEmail(), PASSWORD);
+    await enterCourse(page);
     await page.setViewportSize({ width: 375, height: 800 });
 
     // Dưới 981px thanh bên là ngăn kéo: nó Ở TRONG tài liệu và Playwright gọi
@@ -827,14 +862,33 @@ test.describe('§5 — thanh điều hướng thu gọn được', () => {
 
     // Đổi route ĐÓNG ngăn kéo lại — hành vi cũ của `useMobileNav`, và là chỗ
     // hai cơ chế khác nhau rõ nhất. Nếu bản thu gọn lỡ gộp vào đây thì đỏ.
-    await page.getByRole('link', { name: /khoá học/i }).first().click();
-    await expect(page).toHaveURL(/\/courses$/);
-    await expect
-      .poll(async () => offScreenLeft(page), { message: 'đổi route phải đóng ngăn kéo' })
-      .toBe(true);
+    //
+    // BẤM MỘT CHƯƠNG TRONG CHÍNH NGĂN KÉO, không bấm mục điều hướng trên thanh
+    // trên — và đây là điều e2e dạy lại tôi chứ không phải một lựa chọn phong
+    // cách. Khi ngăn kéo mở, `reader.css` phủ `body.nav-open::after` lên cả
+    // trang; mục điều hướng nằm ở thanh trên nên nó nằm DƯỚI lớp phủ ấy và
+    // Playwright chờ "visible, enabled and stable" 173 lần rồi hết giờ. Trước
+    // vòng thiết kế lại, mục điều hướng nằm TRONG ngăn kéo nên câu hỏi này
+    // không tồn tại.
+    //
+    // Đường của người dùng thật khi ngăn kéo đang mở cũng đúng là đường này:
+    // thứ duy nhất bấm được là một chương.
+    //
+    // ĐO BẰNG `body.nav-open`, KHÔNG bằng vị trí thanh bên: đích là một chương,
+    // mà chế độ đọc ẩn hẳn `#sidebar` vì một lý do KHÁC. Đo vị trí ở đó sẽ xanh
+    // dù `useMobileNav` ngừng hoạt động hoàn toàn — hai nguyên nhân cho cùng
+    // một phép đo. `body.nav-open` là trạng thái chính hook ấy sở hữu.
+    await page.locator('#nav a.nav-item').first().click();
+    await expect(page).toHaveURL(new RegExp(`/c/${REAL_COURSE_ID}/`));
+    await expect(page.locator('body')).not.toHaveClass(/nav-open/);
 
-    // Và thanh bên KHÔNG bị `display:none` ở đây — tức luật thu gọn của màn
-    // rộng không rò xuống dưới ngưỡng, nơi nó sẽ làm ngăn kéo không mở được nữa.
+    // Quay lại trang khoá học, nơi có cột để mà đo: ngăn kéo phải đang ĐÓNG, và
+    // thanh bên KHÔNG bị `display:none` — tức luật thu gọn của màn rộng không
+    // rò xuống dưới ngưỡng, nơi nó sẽ làm ngăn kéo không mở được nữa.
+    await page.goto(`/c/${REAL_COURSE_ID}`);
     await expect(page.locator('#sidebar')).toBeVisible();
+    await expect
+      .poll(async () => offScreenLeft(page), { message: 'ngăn kéo phải đang đóng' })
+      .toBe(true);
   });
 });

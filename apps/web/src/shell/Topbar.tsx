@@ -104,7 +104,16 @@ export function Topbar({ theme, onToggleTheme, onMenuClick, navExpanded = true }
         `hidden` chứ không phải bỏ khỏi cây: `reader.css` gắn id vào chúng và
         `Reader` nối hành vi theo id, nên tháo ra sẽ đứt đường ấy.
       */}
-      <div id="crumb">{!isChapterRoute && 'Tuhoc'}</div>
+      {/*
+        `#crumb` nay RỖNG ngoài trang chương.
+
+        Nó từng in "Tuhoc" ở đó — hợp lý khi thanh trên chưa có gì khác, nhưng
+        nhãn hiệu đã đứng ở đầu thanh (`shell/TopNav.tsx`) kể từ lúc điều hướng
+        chuyển lên đây, nên in tên app lần nữa cách đó vài chục pixel là nói hai
+        lần. Phần tử vẫn ở lại vì `flex:1` của nó là thứ đẩy nhóm nút bên phải
+        về mép phải, và vì `ChapterView` portal breadcrumb thật vào chính nó.
+      */}
+      <div id="crumb" />
       <button id="mark-btn" type="button" className="tb-btn" hidden={!isChapterRoute} aria-label={t('topbar.markRead')}>
         <span className="mk-ico">○</span>
         <span className="mk-lbl">{t('topbar.markRead')}</span>

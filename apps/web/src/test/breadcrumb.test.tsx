@@ -103,11 +103,23 @@ describe('#crumb breadcrumb (Topbar + ChapterView integration)', () => {
     expect(document.getElementById('crumb')?.textContent).not.toContain('Tuhoc');
   });
 
-  it('shows the static "Tuhoc" text on a non-chapter route (course home), not blank and not a chapter breadcrumb', async () => {
+  // `#crumb` TỪNG in "Tuhoc" ở đây, và bài này canh đúng chuỗi ấy. Chuỗi đã
+  // đi: nhãn hiệu nay đứng ở đầu thanh trên (`shell/TopNav.tsx`), nên in tên
+  // app lần nữa cách đó vài chục pixel là nói hai lần.
+  //
+  // Cái đường nối mà bài này thực sự canh thì KHÔNG đi đâu cả, và nó là nửa
+  // còn lại của bài ngay trên: `#crumb` do `<Topbar>` sở hữu nhưng do
+  // `<ChapterView>` đổ nội dung vào qua portal. Rủi ro là một breadcrumb
+  // chương SỐNG SÓT sang route không phải chương. Nên câu hỏi giữ nguyên hình
+  // dạng, chỉ đổi câu trả lời đúng: rỗng, và đặc biệt là không còn thẻ `<b>`
+  // — dấu hiệu mà chính portal kia để lại.
+  it('để #crumb RỖNG trên route không phải chương, và không sót breadcrumb chương nào', async () => {
     goTo('/c/demo');
     render(<App />);
 
     await screen.findByRole('heading', { name: 'Khóa học demo' });
-    expect(document.getElementById('crumb')?.textContent).toBe('Tuhoc');
+    const crumb = document.getElementById('crumb')!;
+    expect(crumb.textContent).toBe('');
+    expect(crumb.querySelector('b')).toBeNull();
   });
 });

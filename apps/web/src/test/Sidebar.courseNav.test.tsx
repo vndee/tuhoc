@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { MemoryRouter } from 'react-router-dom';
@@ -48,10 +48,17 @@ function renderSidebar(initialPath: string) {
 }
 
 describe('Sidebar real course outline', () => {
-  it('keeps the "no course loaded" empty state on routes without a course (e.g. "/")', () => {
-    renderSidebar('/');
-    expect(screen.getByText('Chưa có khóa học nào được tải.')).toBeInTheDocument();
-    expect(screen.queryAllByRole('link')).toHaveLength(0);
+  // Bài này TỪNG canh trạng thái rỗng "Chưa có khóa học nào được tải." trên
+  // `/`. Trạng thái ấy đã đi, cùng với cả thanh bên: nó nay chỉ mang mục lục,
+  // nên ngoài một khoá nó không có gì để mang.
+  //
+  // Câu hỏi thay thế MẠNH HƠN câu cũ, chứ không nới ra: cũ chỉ đòi "đừng vẽ
+  // liên kết nào", mới đòi "đừng vẽ GÌ CẢ". Một bản gộp nửa vời — bỏ trạng
+  // thái rỗng nhưng để nguyên ô tìm chương bị disabled và dòng giữ chỗ tiến
+  // độ — vẫn xanh với câu cũ.
+  it('không dựng GÌ ngoài một khoá (e.g. "/") — thanh bên chỉ dành cho mục lục', () => {
+    const { container } = renderSidebar('/');
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('renders the course outline in #nav on /c/:courseId', async () => {
@@ -129,30 +136,35 @@ describe('Sidebar real course outline', () => {
 });
 
 /**
- * `.sb-sub` is the line under "Tự học" in the sidebar head. It used to be
+ * `.sb-title` is the course name in the sidebar head. Nó TỪNG là `.sb-title` —
+ * một dòng phụ đề dưới chữ "Tự học" — cho tới khi điều hướng chung rời thanh
+ * bên: tên app đi cùng nó lên thanh trên, nên tên KHOÁ lên làm dòng chính.
+ * Đổi tên lớp, không đổi luật.
+ *
+ * Bản gốc của khối này: It used to be
  * one course's title, written into the JSX — correct back when the app
  * shipped exactly one course, and a lie on every screen afterwards: it
  * named a course on `/library` (where it read as the name of the library
  * itself), on `/import`, on the dashboard, and — worst — named the WRONG
  * course while a different one was open.
  *
- * The rule these tests pin: `.sb-sub` names the course that is actually
+ * The rule these tests pin: the sidebar head names the course that is actually
  * open, and does not exist otherwise. "Otherwise" deliberately includes
  * the two in-between states of a course route, because a placeholder that
  * guesses is how the original bug got in — the sidebar must not name a
  * course until it has that course's own manifest in hand.
  */
-describe('Sidebar subtitle (.sb-sub)', () => {
+describe('Sidebar course name (.sb-title)', () => {
   it('names the open course on /c/:courseId, from that course’s own manifest', async () => {
     server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(manifest)));
     renderSidebar('/c/demo');
 
-    await waitFor(() => expect(document.querySelector('.sb-sub')?.textContent).toBe('Khóa học demo'));
+    await waitFor(() => expect(document.querySelector('.sb-title')?.textContent).toBe('Khóa học demo'));
   });
 
   it('names no course on a route without one (e.g. /library)', () => {
     renderSidebar('/library');
-    expect(document.querySelector('.sb-sub')).toBeNull();
+    expect(document.querySelector('.sb-title')).toBeNull();
   });
 
   it('names no course while the manifest is still loading, rather than guessing one', async () => {
@@ -164,8 +176,8 @@ describe('Sidebar subtitle (.sb-sub)', () => {
     );
     renderSidebar('/c/demo');
 
-    expect(document.querySelector('.sb-sub')).toBeNull();
-    await waitFor(() => expect(document.querySelector('.sb-sub')?.textContent).toBe('Khóa học demo'));
+    expect(document.querySelector('.sb-title')).toBeNull();
+    await waitFor(() => expect(document.querySelector('.sb-title')?.textContent).toBe('Khóa học demo'));
   });
 
   it('names no course when the manifest fails to load', async () => {
@@ -173,6 +185,6 @@ describe('Sidebar subtitle (.sb-sub)', () => {
     renderSidebar('/c/demo');
 
     await within(document.getElementById('nav')!).findByText(/không tải được/i);
-    expect(document.querySelector('.sb-sub')).toBeNull();
+    expect(document.querySelector('.sb-title')).toBeNull();
   });
 });
