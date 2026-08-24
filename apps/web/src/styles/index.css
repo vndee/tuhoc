@@ -17,6 +17,47 @@
 @import './reader-layout.css';
 @import './shell-modes.css';
 
+/* ══════════════════════════════════════════════════════════════════════════
+   BA TOKEN GỐC, ĐỔI MỘT LẦN CHO CẢ APP
+   ══════════════════════════════════════════════════════════════════════════
+
+   `--accent` và `--sans` do `packages/course-kit/reader.css` khai, và chúng
+   được gọi ở 72 và 103 chỗ trên khắp app — kể cả bên trong chính reader.css.
+   Đổi từng chỗ gọi sang thang mới là 175 lần sửa, và trong lúc sửa dở thì app
+   mang HAI bảng màu: màn đã chuyển màu tím, màn chưa chuyển màu xanh cũ.
+
+   Đổi ở NGUỒN thay vì ở chỗ gọi. Một khối, và mọi thứ đang trỏ vào hai token
+   ấy — nút, liên kết, viền tiêu điểm, mục đang chọn, cả trong trang đọc — về
+   cùng một bảng ngay lập tức.
+
+   PHẢI ĐỨNG SAU MỌI `@import`: luật CSS bắt `@import` nằm trước mọi quy tắc,
+   nên khối này tự nhiên ở sau, và `:root` cùng độ đặc hiệu thì cái sau thắng.
+   Đó chính là cơ chế nó dựa vào — không `!important`, không leo độ đặc hiệu.
+
+   `reader.css` KHÔNG bị sửa một byte nào: nó vẫn là bản port từng byte của v1
+   và cổng riêng canh nó vẫn xanh. Ở đây chỉ đổi GIÁ TRỊ mà nó đọc. */
+:root {
+  --sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --accent: var(--color-brand-600);
+  --accent-soft: var(--color-brand-50);
+}
+
+/* Giao diện tối cần một bậc SÁNG hơn, không phải cùng một màu.
+   `brand-600` trên nền `#0d0d0d` tụt xuống dưới ngưỡng tương phản đọc được —
+   cùng lý do reader.css tự nâng `--accent` của nó lên một bậc trong khối tối
+   (`#2a78d6` → `#5598e7`). Thang mới giữ đúng thói quen ấy. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --accent: var(--color-brand-400);
+    --accent-soft: rgba(126, 86, 217, 0.18);
+  }
+}
+
+html[data-theme='dark'] {
+  --accent: var(--color-brand-400);
+  --accent-soft: rgba(126, 86, 217, 0.18);
+}
+
 /* Task 14 — dashboard. Not part of the ported v1 stylesheet (v1 had no
    dashboard, it opened straight into the reader), so it lives here rather
    than in packages/course-kit/reader.css, but reuses that file's own
@@ -241,44 +282,62 @@
    column gets narrow long before any `max-width: 640px` rule would fire.
    Wrapping on content width covers both without a second number to keep in
    step with the shell's. */
+/* ── MÀN NHẬP GÓI — hướng A ────────────────────────────────────────────────
+   Hình đã duyệt: khung "Nhập gói" trên canvas thiết kế.
+
+   Thứ hỏng nặng nhất ở bản đang chạy là `<input type="file">` TRẦN: nút
+   "Choose File" của hệ điều hành, mang phông chữ và bo góc của macOS, đứng
+   giữa một giao diện không phải của macOS. Nó không sửa được bằng cách chỉnh
+   thuộc tính — điều khiển ấy do trình duyệt vẽ. Cách duy nhất là cho nó phủ
+   trong suốt lên một vùng thả do mình vẽ, và đó là việc của `.import-file`
+   bên dưới.
+
+   MARKUP KHÔNG ĐỔI: `e2e/import.spec.ts` và `e2e/s1.spec.ts` §2 đều bám
+   `.import-file input[type="file"]` bằng `setInputFiles`, và `.import-ok` /
+   `.import-findings` là hai chốt của cổng nghiệm thu hệ thống con 1. */
+
 .import-page {
   max-width: 44rem;
+  font-family: var(--font-sans);
 }
 
 .import-way {
-  margin: 0 0 26px;
+  margin: 0 0 24px;
 }
 
 .import-way-h {
-  font-family: var(--sans);
+  font-family: var(--font-sans);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--ink);
-  margin: 0 0 8px;
+  margin: 0 0 10px;
 }
 
 .import-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .import-label {
-  font-family: var(--sans);
-  font-size: 12.5px;
-  color: var(--ink-2);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-gray-700);
   flex: 0 0 auto;
 }
 
 .import-input {
-  font-family: var(--sans);
-  font-size: 13px;
-  padding: 7px 10px;
-  border: 1px solid var(--rule-strong);
-  border-radius: 6px;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--color-gray-300);
+  border-radius: var(--radius-md);
   background: var(--surface-1);
+  box-shadow: var(--shadow-xs);
   color: var(--ink);
   /* Grow to fill the row, but never force the row wider than its column:
      without `min-width: 0` a flex item refuses to shrink below its content
@@ -289,35 +348,69 @@
 
 .import-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--color-brand-300);
+  box-shadow: var(--shadow-ring-brand);
 }
 
+/* ── VÙNG THẢ ────────────────────────────────────────────────────────────
+   `.import-file` là một `<label>`, nên bấm bất cứ đâu trong nó cũng mở được
+   hộp chọn tệp — không cần một dòng JavaScript nào. */
 .import-file {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  font-family: var(--sans);
-  font-size: 13px;
+  justify-content: center;
+  gap: 6px;
+  padding: 26px 20px;
+  border: 2px dashed var(--color-brand-200);
+  border-radius: var(--radius-xl);
+  background: var(--color-brand-25);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--color-gray-500);
+  cursor: pointer;
+  text-align: center;
 }
 
+.import-file:hover {
+  border-color: var(--color-brand-300);
+  background: var(--color-brand-50);
+}
+
+.import-file .import-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-brand-700);
+}
+
+/* Ô nhập THẬT nằm nguyên trong cây, phủ kín vùng thả, trong suốt.
+   KHÔNG `display:none`: một ô ẩn hẳn thì kéo-thả không còn đích để rơi vào,
+   và điều khiển gốc là thứ duy nhất trình duyệt cho phép nhận cú thả. */
 .import-file input[type='file'] {
-  font-family: var(--sans);
-  font-size: 12.5px;
-  color: var(--ink-2);
-  max-width: 100%;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.import-file:focus-within {
+  border-color: var(--color-brand-400);
+  box-shadow: var(--shadow-ring-brand);
 }
 
 .import-note {
-  font-family: var(--sans);
-  font-size: 12.5px;
+  font-family: var(--font-sans);
+  font-size: 13px;
   line-height: 1.55;
-  color: var(--ink-3);
-  background: var(--panel);
-  border: 1px solid var(--rule);
-  border-radius: 10px;
-  padding: 10px 14px;
-  margin: 10px 0 0;
+  color: var(--color-gray-500);
+  background: var(--color-gray-50);
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-md);
+  padding: 11px 13px;
+  margin: 12px 0 0;
 }
 
 .import-status:empty {
@@ -326,85 +419,65 @@
 
 .import-busy,
 .import-ok {
-  font-family: var(--sans);
-  font-size: 13px;
-  margin: 4px 0 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  padding: 11px 13px;
+  margin: 12px 0 0;
 }
 
 .import-busy {
-  color: var(--ink-2);
+  color: var(--color-gray-600);
+  background: var(--color-gray-50);
+  border: 1px solid var(--color-gray-200);
 }
 
 .import-ok {
-  color: var(--good);
+  color: var(--color-success-700);
+  background: var(--color-success-50);
+  border: 1px solid var(--color-success-200);
 }
 
+/* ── GÓI BỊ TỪ CHỐI ──────────────────────────────────────────────────────
+   Không phải một danh sách gạch đầu dòng nữa: mỗi vấn đề là một THẺ riêng,
+   vì mỗi cái là một việc phải sửa ở một tệp cụ thể. Nói tất cả cùng lúc là
+   chủ ý của màn này — chứ không phải bắt người ta dựng lại gói bốn lần để
+   biết bốn lỗi. */
 .import-findings {
   margin: 22px 0 0;
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--color-gray-200);
   padding-top: 18px;
 }
 
 .import-finding-list {
-  font-family: var(--sans);
-  font-size: 13px;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
   line-height: 1.6;
-  color: var(--ink-2);
-  margin: 10px 0 0;
-  padding-left: 20px;
+  color: var(--color-error-700);
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .import-finding-list li {
-  margin: 0 0 8px;
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--color-error-50);
+  border: 1px solid var(--color-error-200);
+  border-radius: var(--radius-sm);
   /* A finding's detail can carry a path or a URL with no spaces in it;
      without this it widens the whole page instead of wrapping. */
   overflow-wrap: anywhere;
 }
 
-/* The app's only global navigation (shell/Sidebar.tsx's `GlobalNav`).
-
-   Sits between .sb-head and .sb-prog, both of which reader.css owns, so this
-   borrows their padding rather than inventing its own rhythm: at 18px it lines
-   up with the title above it and the progress line below. reader.css itself is
-   left alone — it is the byte-for-byte v1 port, and this is not v1. */
-.sb-nav {
-  display: flex;
-  flex-direction: column;
-  padding: 10px 18px;
-  gap: 2px;
-  border-bottom: 1px solid var(--rule);
-}
-
-.sb-nav-link {
-  font-family: var(--sans);
-  font-size: 12.5px;
-  color: var(--ink-2);
-  text-decoration: none;
-  padding: 5px 8px;
-  margin: 0 -8px;
-  border-radius: 7px;
-  /* reader.css gives every `a` a 1px accent border-bottom — right inside
-     prose, wrong for a list of nav rows, where it reads as three underlined
-     sentences. Same decision `.lib-item-title` already made, for the same
-     reason, with the affordance moved onto hover/focus. */
-  border-bottom: 1px solid transparent;
-}
-
-.sb-nav-link:hover,
-.sb-nav-link:focus-visible {
-  color: var(--ink);
-  background: var(--panel);
-  border-bottom-color: transparent;
-}
-
-/* `NavLink` sets aria-current="page" on the route you are already on, so the
-   marker is driven by the accessible state rather than by a second class —
-   one source for "where am I", visible and announced alike. */
-.sb-nav-link[aria-current='page'] {
-  color: var(--accent);
-  font-weight: 640;
-  background: var(--accent-soft);
-}
+/* `.sb-nav*` ĐÃ XOÁ Ở ĐÂY. Điều hướng chung rời thanh bên sang thanh trên
+ * (`shell/TopNav.tsx`), và mã của nó dùng utility Tailwind chứ không dùng
+ * lớp nào ở tệp này. Giữ lại thì đây là CSS không ai gọi — thứ mà lần đọc
+ * sau sẽ tưởng là còn sống. */
 
 /* S1 Task 9 — /library. Same placement and token rules as the .dash- and
    .import- blocks above: reader.css stays the ported v1 stylesheet,
@@ -625,55 +698,81 @@ html[data-theme='dark'] .lib-tier-code {
 /* The front door (ruling S1-F17). Sized and spaced like a landing block
    rather than like an error line, because it is the ordinary state of a new
    account and not a failure. */
+/* ── TRẠNG THÁI RỖNG — hướng A ────────────────────────────────────────────
+   Một lối ra, không phải một danh sách. Ba gạch đầu dòng "ba cách nhập" đã
+   rời khỏi markup (xem `pages/Library.tsx`); còn lại là icon, một câu, và
+   nút. Căn giữa vì không có gì để căn trái theo — đây là một trạng thái,
+   không phải một khối nội dung. */
 .lib-empty {
-  border: 1px solid var(--rule);
-  border-radius: 14px;
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-xl);
   background: var(--surface-1);
-  padding: 22px 24px;
+  box-shadow: var(--shadow-xs);
+  padding: 34px 28px;
   margin: 8px 0 0;
+  text-align: center;
 }
 
 .lib-empty-h {
-  font-family: var(--sans);
+  font-family: var(--font-sans);
   font-size: 16px;
-  font-weight: 680;
+  font-weight: 600;
   color: var(--ink);
-  margin: 0 0 8px;
-  letter-spacing: -0.01em;
+  margin: 0 0 6px;
 }
 
 .lib-empty-lede {
-  font-family: var(--sans);
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--ink-2);
-  margin: 0 0 16px;
-  max-width: 34rem;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-gray-500);
+  margin: 0 auto 20px;
+  max-width: 42ch;
 }
 
 .lib-empty-cta {
-  display: inline-block;
+  display: inline-flex;
 }
 
+/* Ba cách nhập: nội dung ở lại (ruling S1-F17), hình thức thì đổi.
+   `list-style: none` + hàng ngang + chữ nhỏ hơn một bậc = một câu tóm tắt.
+   Dấu chấm đầu dòng xếp dọc là thứ làm nó đọc như tài liệu, không phải ba
+   mẩu chữ ấy. */
 .lib-empty-ways {
-  font-family: var(--sans);
-  font-size: 12.5px;
-  color: var(--ink-2);
-  margin: 16px 0 0;
-  padding-left: 20px;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 18px;
+  margin: 20px auto 0;
+  padding: 0;
+  max-width: 52ch;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-gray-500);
 }
 
 .lib-empty-ways li {
-  margin: 0 0 5px;
+  margin: 0;
+}
+
+.lib-empty-ways code {
+  font-size: 12px;
+  background: var(--color-gray-100);
+  border-radius: var(--radius-xs);
+  padding: 1px 4px;
 }
 
 .lib-empty-registry {
-  font-family: var(--sans);
-  font-size: 12px;
-  color: var(--ink-3);
-  border-top: 1px solid var(--rule);
-  margin: 16px 0 0;
-  padding-top: 12px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-gray-400);
+  margin: 22px auto 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--color-gray-200);
+  max-width: 46ch;
 }
 
 /* P2 Task 3 — highlight painter (src/annotations/painter.ts).

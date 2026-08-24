@@ -487,6 +487,20 @@ export function EmptyLibrary({ heading }: { heading?: string }) {
       <Link to="/courses?import=1" className="btn primary lib-empty-cta">
         {t('courses.import.action')}
       </Link>
+      {/*
+        BA CÁCH NHẬP Ở LẠI, và tôi đã thử gỡ chúng đi rồi phải trả lại.
+
+        Bản dựng gọi khối này là "đọc như README" và bỏ ba gạch đầu dòng. Gỡ ra
+        thì hai bài kiểm đỏ, một trong đó mang số hiệu: ruling S1-F17 — "Trang
+        chủ khi chưa có khoá học nào vẫn phải thành HÀNH ĐỘNG, không phải ngõ
+        cụt", và đây đúng là màn hình đầu tiên một tài khoản mới mở ra. Một nút
+        "Nhập gói" trơ trọi không nói được rằng một repo GitHub công khai cũng
+        nhập được.
+
+        Thứ đọc như README là HÌNH THỨC gạch đầu dòng, không phải nội dung. Nên
+        markup giữ nguyên và `styles/index.css` bỏ dấu chấm đầu dòng, xếp ba
+        mục thành một hàng ngang gọn — một câu tóm tắt, không phải một tài liệu.
+      */}
       <ul className="lib-empty-ways">
         <li>{tNode('library.emptyState.wayFile', <code>.zip</code>)}</li>
         <li>{tNode('library.emptyState.wayUrl', <code>.zip</code>)}</li>
