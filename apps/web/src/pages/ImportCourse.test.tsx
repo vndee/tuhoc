@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { packZip } from '@tuhoc/course-format';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
@@ -345,12 +345,29 @@ it('bộ đếm tệp biến mất khi việc TẢI xong — nó thuộc về ch
     http.get('https://raw.githubusercontent.com/ai-do/khoa-hoc/HEAD/manifest.json', () =>
       new HttpResponse(encode(manifestJson) as BlobPart),
     ),
-    http.get('https://raw.githubusercontent.com/ai-do/khoa-hoc/HEAD/assets/:name', () =>
-      new HttpResponse(encode('x') as BlobPart),
-    ),
-    http.get('https://raw.githubusercontent.com/ai-do/khoa-hoc/HEAD/chapters/c1.html', () =>
-      new HttpResponse(encode('<h1 class="ch-title">Chương một</h1>') as BlobPart),
-    ),
+    // `delay(1)` MỖI TỆP, và nó là điều kiện của phép đo chứ không phải gia vị.
+    //
+    // Cái test này lấy mẫu bằng `MutationObserver`: nó chỉ thấy được những gì
+    // React THỰC SỰ commit ra DOM. Với handler trả lời tức thì, React 19 gộp
+    // cả chín lần cập nhật tiến độ vào một commit duy nhất, nên vùng live
+    // nhảy thẳng từ rỗng sang chặng sau và không dòng "n/9 tệp." nào từng tồn
+    // tại để mà quan sát. React 18 thì không gộp, nên cùng test này xanh.
+    //
+    // Bỏ câu canh "bộ đếm chưa bao giờ hiện ra" là cách sửa SAI: nó chính là
+    // thứ giữ cho câu khẳng định thứ hai — bộ đếm KHÔNG được rò sang chặng
+    // "kiểm tra"/"lưu vào máy" — không trở thành một phép so sánh rỗng với
+    // rỗng. Mất nó thì test vẫn xanh kể cả khi trang thôi vẽ tiến độ.
+    //
+    // Một mili-giây trả lại đúng điều kiện mà lỗi gốc được tìm ra: một repo
+    // 25 tệp tải qua mạng thật, nơi mỗi tệp là một khoảnh khắc riêng.
+    http.get('https://raw.githubusercontent.com/ai-do/khoa-hoc/HEAD/assets/:name', async () => {
+      await delay(1);
+      return new HttpResponse(encode('x') as BlobPart);
+    }),
+    http.get('https://raw.githubusercontent.com/ai-do/khoa-hoc/HEAD/chapters/c1.html', async () => {
+      await delay(1);
+      return new HttpResponse(encode('<h1 class="ch-title">Chương một</h1>') as BlobPart);
+    }),
   );
   const user = userEvent.setup();
   renderPage();

@@ -3,6 +3,11 @@
    different from runtime.js / vendor/*.js / viz.js, which are classic
    scripts that attach globals and must be loaded by URL instead — see
    vite-plugins/courseAssets.ts and the task report for why. */
+/* ĐẦU TIÊN, và có lý do: `tokens.css` khai `@layer theme, utilities` của
+   Tailwind. Layer phải được khai trước khi có luật nào dùng tới, còn CSS viết
+   tay bên dưới thì KHÔNG nằm trong layer nào nên nó vẫn thắng utility —
+   xem phần "THỨ TỰ CASCADE" trong chính tệp ấy. */
+@import './tokens.css';
 @import '@fontsource-variable/ibm-plex-sans/index.css';
 @import '@course-kit/vendor/katex.css';
 @import '@course-kit/reader.css';

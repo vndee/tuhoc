@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 import { courseAssets } from './vite-plugins/courseAssets.ts';
@@ -8,7 +9,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), courseAssets()],
+  // `tailwindcss()` là plugin RIÊNG của Tailwind v4, không phải qua PostCSS —
+  // v4 bỏ `tailwind.config.js`, token khai bằng `@theme` ngay trong CSS (xem
+  // `src/styles/tokens.css`). Nó phải có mặt ở đây thì `@import "tailwindcss"`
+  // mới được biên dịch; thiếu nó thì dòng import ấy lọt xuống trình duyệt
+  // nguyên văn và im lặng không làm gì.
+  plugins: [tailwindcss(), react(), courseAssets()],
   // Cổng 5173 trở thành CÓ TẢI TRỌNG kể từ hệ thống con 2, và đây là lý do
   // `strictPort` xuất hiện ở đây.
   //
