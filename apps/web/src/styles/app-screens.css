@@ -1,0 +1,894 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   MÀN ỨNG DỤNG — dựng đúng bản đã duyệt (hướng A, Untitled UI)
+   ══════════════════════════════════════════════════════════════════════════
+
+   Hình đã duyệt: trang "Màn hình" và khung "Token & component" trên canvas
+   thiết kế.
+
+   ── VÌ SAO TỆP NÀY TỒN TẠI, VÀ VÌ SAO NÓ NHẬP CUỐI CÙNG ──────────────────
+   Đổi token ở nguồn (xem khối `:root` trong `index.css`) đưa cả app về một
+   bảng MÀU và một họ CHỮ. Nó không đưa app về đúng HÌNH: cỡ chữ, chiều cao
+   nút, bo góc, bề rộng cột — những thứ ấy nằm rải trong `reader.css` và trong
+   sáu tệp CSS viết trước vòng thiết kế lại, mỗi tệp một thang riêng.
+
+   Tệp này là thang CHUNG cho mọi màn ngoài chế độ đọc. Nó `@import` SAU cùng
+   trong `index.css`, nên với cùng độ đặc hiệu nó thắng bằng thứ tự — không
+   `!important`, không leo specificity. Chỗ nào nó không nói thì luật cũ vẫn
+   nguyên.
+
+   ── RANH GIỚI: `#app:not(.reading)` ──────────────────────────────────────
+   Mọi luật ở đây treo dưới lớp ấy. Trang chương là địa phận của
+   `course-kit/reader.css` — serif, khổ 43rem, nhịp dòng của giáo trình — và
+   không một dòng nào dưới đây được với tới nó. Đó là ràng buộc lớn nhất của
+   hướng A: hai họ chữ trong một sản phẩm chỉ hoạt động khi mỗi họ có một địa
+   phận rõ ràng.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── CỘT NỘI DUNG ─────────────────────────────────────────────────────────
+   `reader.css` căn GIỮA `#content-wrap` và bó `#content` vào `--measure`
+   (43rem = 688px). Đó là KHỔ ĐỌC — đúng cho một chương, sai cho một bảng điều
+   khiển: đo trên màn 1440 thì màn app dùng 688px ở giữa và bỏ trống 750px hai
+   bên, trong khi bản dựng cho nội dung bắt đầu từ mép trái và rộng tới 60rem. */
+#app:not(.reading) #content-wrap {
+  justify-content: flex-start;
+  padding: 32px 40px 120px;
+}
+
+/* TOÀN BỀ NGANG, không phải một cột ghim trái.
+
+   Bản đầu bó `#content` vào 60rem. Trên màn 2000px điều đó để trống nguyên nửa
+   phải và nội dung dồn về một góc — người dùng gọi đúng tên nó: "lệch sang
+   trái, rất xấu".
+
+   `none` chứ không phải một con số lớn hơn: một con số lớn hơn chỉ dời cái
+   ngưỡng xấu sang một cỡ màn khác. Chỗ nào THỰC SỰ cần giới hạn thì giới hạn
+   ấy thuộc về chính khối đó, không thuộc về cả trang — câu dẫn có `max-width`
+   tính bằng `ch` để dòng chữ không dài quá tầm mắt, lưới thẻ tự giãn theo
+   `auto-fit`. Đó là hai luật khác nhau và chúng phải nằm ở hai chỗ khác nhau. */
+#app:not(.reading) #content {
+  max-width: none;
+}
+
+/* Các trang tự bó mình từ trước vòng thiết kế lại — mỗi trang một con số, và
+   giờ cả sáu đều chống lại bề ngang thật. Gỡ ở đây thay vì sửa sáu tệp: cùng
+   một quyết định thì nên đọc được ở cùng một chỗ. */
+#app:not(.reading) .home,
+#app:not(.reading) .courses-page,
+#app:not(.reading) .prog,
+#app:not(.reading) .page-settings,
+#app:not(.reading) .set-main,
+#app:not(.reading) .dash-summary,
+#app:not(.reading) .dash-chart,
+#app:not(.reading) .dash-stats-note,
+#app:not(.reading) .lib-list {
+  max-width: none;
+}
+
+/* ── CHỮ ──────────────────────────────────────────────────────────────────
+   `reader.css` đặt `body{font-family:var(--serif)}`, và mọi màn app thừa kế
+   nó — nên nhan đề "Học tiếp" đang dựng bằng serif trong khi bản dựng là
+   Inter. Đây là lỗi rõ nhất khi đặt hai ảnh cạnh nhau.
+
+   Áp lên `#content` chứ không lên `body`: `body` là nơi trang chương lấy chữ
+   của nó, và đổi ở đó là đổi cả giáo trình. */
+#app:not(.reading) #content {
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+/* Thang chữ của bản dựng: display-sm cho nhan đề trang, text-lg cho mục,
+   text-md cho câu dẫn. Cỡ và letter-spacing đọc thẳng từ khung "Token &
+   component". */
+#app:not(.reading) #content h1 {
+  font-family: var(--sans);
+  font-size: 30px;
+  line-height: 38px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0 0 5px;
+}
+
+#app:not(.reading) #content h2 {
+  font-family: var(--sans);
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+#app:not(.reading) #content h3 {
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Câu dẫn dưới nhan đề trang. `.ch-lede` (Khoá học) và `.home-head p`
+   (Học tiếp) là hai tên cho cùng một vai. */
+#app:not(.reading) #content .ch-lede,
+#app:not(.reading) #content .home-head p,
+#app:not(.reading) #content .prog-note {
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--ink-3);
+  margin: 0;
+}
+
+/* ── NÚT ──────────────────────────────────────────────────────────────────
+   `reader.css` cho `.btn` cao ~30px, chữ 12px, bo 7px — thang của một thanh
+   công cụ, không phải của một hành động chính trên trang. Bản dựng: cao 40px,
+   chữ 14/600, bo 8px, và bóng `xs` để nút nổi lên khỏi nền một bậc.
+
+   `:hover` của reader.css đổi cả VIỀN lẫn CHỮ sang màu nhấn — nút phụ hoá ra
+   trông như đang được chọn. Bản dựng chỉ đổi nền một bậc xám. */
+#app:not(.reading) .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0 16px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--rule-strong);
+  background: var(--surface-1);
+  color: var(--ink-2);
+  box-shadow: var(--shadow-xs);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+#app:not(.reading) .btn:hover {
+  background: var(--panel);
+  border-color: var(--rule-strong);
+  color: var(--ink);
+}
+
+#app:not(.reading) .btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring-gray);
+}
+
+#app:not(.reading) .btn.primary {
+  background: var(--color-brand-600);
+  border-color: var(--color-brand-600);
+  color: #fff;
+  /* Nét sáng trong ở mép trên + tối ở mép dưới: nút đặc của Untitled UI có một
+     bậc khối, không phải một mảng màu phẳng. */
+  box-shadow: var(--shadow-xs), inset 0 -1px 0 rgba(16, 24, 40, 0.12);
+}
+
+#app:not(.reading) .btn.primary:hover {
+  background: var(--color-brand-700);
+  border-color: var(--color-brand-700);
+  color: #fff;
+  filter: none;
+}
+
+#app:not(.reading) .btn.primary:focus-visible {
+  box-shadow: var(--shadow-ring-brand);
+}
+
+#app:not(.reading) .btn:disabled {
+  box-shadow: none;
+  cursor: default;
+}
+
+#app:not(.reading) .btn.primary:disabled {
+  background: var(--color-brand-200);
+  border-color: var(--color-brand-200);
+}
+
+/* ── ĐẦU TRANG ───────────────────────────────────────────────────────────
+   Bản dựng KHÔNG có đường kẻ dưới đầu trang. Nhan đề 30px đứng trên một câu
+   dẫn xám đã đủ tách nó khỏi phần thân; thêm một nét kẻ nữa là nói hai lần,
+   và nó bó trang thành hai hộp chồng nhau. */
+#app:not(.reading) .dash-header,
+#app:not(.reading) .courses-header,
+#app:not(.reading) .home-head {
+  border-bottom: 0;
+  padding-bottom: 0;
+  margin-bottom: 28px;
+  align-items: flex-start;
+}
+
+/* ── THẺ ─────────────────────────────────────────────────────────────────
+   Một thang bo góc và một thang bóng cho mọi mặt phẳng nổi. */
+#app:not(.reading) .dash-card,
+#app:not(.reading) .dash-stat,
+#app:not(.reading) .dash-chart,
+#app:not(.reading) .home-card,
+#app:not(.reading) .lib-row,
+#app:not(.reading) .prog-section,
+#app:not(.reading) .set-field {
+  border-radius: var(--radius-xl);
+  border-color: var(--rule);
+  box-shadow: var(--shadow-xs);
+}
+
+/* ── Ô NHẬP ──────────────────────────────────────────────────────────────
+   Cao 44px và vòng tiêu điểm 4px, giống hệt màn Đăng nhập — một app không thể
+   có hai loại ô nhập. */
+#app:not(.reading) #content input[type='text'],
+#app:not(.reading) #content input[type='url'],
+#app:not(.reading) #content input[type='email'],
+#app:not(.reading) #content input[type='password'],
+#app:not(.reading) #content select {
+  font-family: var(--sans);
+  font-size: 15px;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-xs);
+  color: var(--ink);
+}
+
+#app:not(.reading) #content input:focus,
+#app:not(.reading) #content select:focus {
+  outline: none;
+  border-color: var(--color-brand-300);
+  box-shadow: var(--shadow-ring-brand);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THANH TRÊN — cụm điều khiển bên phải
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── DẢI TIẾN ĐỘ RỖNG ────────────────────────────────────────────────────
+   `reader.css` dựng `#progwrap` (cao 3px, nền `--grid`) trên MỌI route, vì ở
+   v1 mọi route đều là một chương. Ngoài chế độ đọc nó là một băng xám rỗng
+   nằm ngay dưới viền 1px của thanh trên — mắt đọc ra một đường kẻ ĐÔI, và bản
+   dựng chỉ có một. */
+#app:not(.reading) #progwrap {
+  display: none;
+}
+
+/* ── THỨ TỰ NHÓM PHẢI ────────────────────────────────────────────────────
+   Bản dựng: tìm kiếm → chủ đề → ngôn ngữ → tài khoản.
+
+   DOM không xếp được thứ tự ấy, và đó là một ràng buộc có thật chứ không phải
+   một thiếu sót: `#theme-btn` nằm TRONG `<Topbar>`, còn ô tìm kiếm và chip tài
+   khoản do `App.tsx` gắn vào cùng khe — nên muốn tìm kiếm đứng trước nút chủ
+   đề thì phải chen vào giữa ruột của một component khác.
+
+   `order` giải quyết mà không phải tách `<Topbar>` ra. Chỉ áp NGOÀI chế độ
+   đọc: trong chương, thứ tự DOM đã đúng (đánh dấu → ghi chú → chủ đề →
+   trước/sau) và `#reader-nav`/`#reader-notes` là hai khe portal cố ý đặt đúng
+   chỗ để thứ tự tab khớp thứ tự nhìn — xem doc của `Topbar`. Đảo `order` ở đó
+   sẽ phá đúng tính chất ấy. */
+#app:not(.reading) .tn-search {
+  order: 1;
+}
+
+#app:not(.reading) #theme-btn {
+  order: 2;
+}
+
+#app:not(.reading) #lang-select {
+  order: 3;
+}
+
+#app:not(.reading) .tn-account {
+  order: 4;
+}
+
+/* ── NÚT BIỂU TƯỢNG TRÊN THANH ───────────────────────────────────────────
+   `reader.css` cho `.tb-btn` cao 30px, bo 7px, và `:hover` đổi cả viền lẫn
+   chữ sang màu nhấn — một nút phụ hoá ra trông như đang được chọn. Bản dựng:
+   36px vuông, bo 8px, bóng `xs`, hover chỉ đổi nền một bậc xám. */
+#topbar .tb-btn {
+  height: 36px;
+  min-width: 36px;
+  padding: 0 10px;
+  gap: 6px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--rule-strong);
+  background: var(--surface-1);
+  color: var(--ink-2);
+  box-shadow: var(--shadow-xs);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+#topbar .tb-btn:hover {
+  background: var(--panel);
+  border-color: var(--rule-strong);
+  color: var(--ink);
+}
+
+#topbar .tb-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring-gray);
+}
+
+/* ── BỘ CHỌN NGÔN NGỮ ────────────────────────────────────────────────────
+   Vẫn là `<select>` thật — xem doc của `LanguageSwitcher` về lý do không thay
+   nó bằng một menu tự vẽ. `appearance: none` gỡ bo góc và phông chữ mà macOS
+   vẽ đè lên, và chevron là một SVG nhúng bằng `background-image` nên nó theo
+   đúng thang icon của phần còn lại. */
+#topbar #lang-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0 30px 0 12px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4.5 6.5L8 10l3.5-3.5' stroke='%23667085' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+}
+
+html[data-theme='dark'] #topbar #lang-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4.5 6.5L8 10l3.5-3.5' stroke='%2398A2B3' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* ── LIÊN KẾT TRONG CHROME KHÔNG PHẢI LIÊN KẾT TRONG VĂN BẢN ─────────────
+   `reader.css` cho MỌI `<a>` một `border-bottom` mờ màu nhấn — đúng cho một
+   liên kết nằm giữa một đoạn văn của giáo trình, sai cho một mục điều hướng.
+
+   Đo được trên trình duyệt thật: `border-bottom: 1px color(srgb .498 .337 .851
+   / .32)` trên cả ba mục thanh trên, vẽ ra ba đường gạch chân tím nhạt trông
+   như ba mục ĐỀU đang được chọn. `no-underline` của Tailwind không gỡ được nó:
+   nó đặt `text-decoration`, còn đây là `border`. */
+#topbar a,
+#topbar a:hover {
+  border-bottom: none;
+}
+
+/* ── NHỊP CỦA THANH TRÊN ─────────────────────────────────────────────────
+   Khoảng cách của bản dựng: 28px giữa nhãn hiệu và nhóm điều hướng, 8px giữa
+   ba mục, 10px giữa các nút bên phải. `reader.css` đặt `gap: 12px` cho cả
+   thanh, tức mọi thứ cách đều nhau và không có nhóm nào đọc ra là một nhóm. */
+#app:not(.reading) #topbar {
+  gap: 10px;
+}
+
+#app:not(.reading) .tn-brand {
+  margin-right: 18px;
+}
+
+#app:not(.reading) .tn-nav {
+  gap: 8px;
+}
+
+#app:not(.reading) .tn-search {
+  width: 15.5rem;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MÀU CỦA THANH TRÊN — VÀ VÌ SAO NÓ KHÔNG THỂ VIẾT BẰNG UTILITY
+   ══════════════════════════════════════════════════════════════════════════
+
+   `shell/TopNav.tsx` viết màu bằng utility (`text-gray-600`,
+   `bg-brand-50 text-brand-700`). Chúng KHÔNG ĂN, và triệu chứng đúng như
+   `tokens.css` đã cảnh báo từ bước đặt nền: cả ba mục điều hướng đều màu tím,
+   kể cả hai mục không được chọn — người dùng báo lại đúng chỗ ấy.
+
+   Nguyên nhân là luật cascade, không phải một lỗi đánh máy: utility của
+   Tailwind sống trong `@layer utilities`, còn `reader.css` KHÔNG nằm trong
+   layer nào, và CSS không-layer thắng MỌI layer bất kể độ đặc hiệu. `reader.css`
+   có `a { color: var(--accent) }` cho liên kết trong văn bản, nên nó đè mọi
+   `text-*` đặt lên một thẻ `<a>`.
+
+   Nên MÀU của thanh trên phải viết ở đây — tệp này không nằm trong layer nào và
+   nhập sau cùng. Utility bên `TopNav.tsx` giữ lại phần BỐ CỤC (flex, gap, cỡ,
+   bo góc): không luật cũ nào chạm tới chúng, nên chúng ăn bình thường.
+
+   Bài học chung cho những màn còn lại: chỗ nào một luật cũ đã nói về thuộc tính
+   ấy, utility sẽ thua im lặng. */
+
+#app:not(.reading) .tn-nav a {
+  color: var(--ink-2);
+  background: transparent;
+  font-weight: 500;
+}
+
+#app:not(.reading) .tn-nav a:hover {
+  color: var(--ink);
+  background: var(--panel);
+}
+
+#app:not(.reading) .tn-nav a[aria-current='page'] {
+  color: var(--color-brand-700);
+  background: var(--color-brand-50);
+  font-weight: 600;
+}
+
+html[data-theme='dark'] #app:not(.reading) .tn-nav a[aria-current='page'] {
+  color: var(--color-brand-300);
+  background: rgba(127, 86, 217, 0.16);
+}
+
+#app:not(.reading) .tn-nav a:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring-gray);
+}
+
+/* Nhãn hiệu: chữ, không phải liên kết — nhưng nó nằm cạnh ba liên kết nên nó
+   phải nói rõ màu của mình, nếu không nó thừa kế `--ink` và trông nhạt hơn
+   đúng một bậc so với bản dựng. */
+#app:not(.reading) .tn-wordmark {
+  color: var(--ink);
+}
+
+/* Chip tài khoản: cùng lý do, cùng cách chữa. */
+#app:not(.reading) .tn-account {
+  color: var(--color-brand-700);
+  background: var(--color-brand-100);
+}
+
+html[data-theme='dark'] #app:not(.reading) .tn-account {
+  color: var(--color-brand-200);
+  background: rgba(127, 86, 217, 0.25);
+}
+
+#app:not(.reading) .tn-account:hover {
+  background: var(--color-brand-200);
+}
+
+html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
+  background: rgba(127, 86, 217, 0.35);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THẺ "ĐANG ĐỌC" — khung "Học tiếp" của bản dựng
+   ══════════════════════════════════════════════════════════════════════════
+   Bản cũ xếp bốn khối chồng nhau: nhãn, tên khoá, tên chương, thanh tiến độ,
+   rồi nút. Thẻ cao gấp đôi mà không nói thêm gì, và không có gì neo mắt.
+
+   Bản dựng: một BÌA gradient bên trái làm mỏ neo, phần chữ ở giữa, và tiến độ
+   + số chương + nút nằm CÙNG MỘT HÀNG ở đáy. */
+#app:not(.reading) .home-card {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-xl);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-sm);
+}
+
+#app:not(.reading) .home-cover {
+  flex: 0 0 118px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 18px;
+  background: linear-gradient(155deg, var(--color-brand-500), var(--color-brand-800));
+  color: #fff;
+}
+
+#app:not(.reading) .home-cover-big {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+#app:not(.reading) .home-card-body {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 22px;
+}
+
+#app:not(.reading) .home-eyebrow {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+#app:not(.reading) .home-chapter {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 3px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+#app:not(.reading) .home-chapter-num {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+#app:not(.reading) .home-course {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+#app:not(.reading) .home-course-link {
+  color: var(--ink-3);
+  border-bottom: none;
+}
+
+#app:not(.reading) .home-course-link:hover {
+  color: var(--ink);
+}
+
+/* MỘT HÀNG. `flex-wrap` để ở màn hẹp nút rơi xuống dưới thay vì bóp thanh
+   tiến độ xuống còn vài pixel. */
+#app:not(.reading) .home-prog {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+#app:not(.reading) .home-bar {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-gray-200);
+  overflow: hidden;
+}
+
+#app:not(.reading) .home-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-brand-600);
+}
+
+#app:not(.reading) .home-prog-text {
+  margin: 0;
+  flex: 0 0 auto;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+#app:not(.reading) .home-cta {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  #app:not(.reading) .home-card {
+    flex-direction: column;
+  }
+
+  #app:not(.reading) .home-cover {
+    flex: 0 0 auto;
+    justify-content: flex-start;
+    padding: 14px 18px;
+  }
+}
+
+/* ── BA THẺ SỐ LIỆU CỦA MÀN TIẾN ĐỘ ─────────────────────────────────────── */
+#app:not(.reading) .prog-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin: 24px 0 32px;
+}
+
+#app:not(.reading) .prog-stat {
+  padding: 18px 20px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-xl);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-xs);
+}
+
+#app:not(.reading) .prog-stat-k {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+#app:not(.reading) .prog-stat-v {
+  margin: 0 0 2px;
+  font-size: 34px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+#app:not(.reading) .prog-stat-sub {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+/* Lịch nhiệt: ô to hơn và giãn theo bề ngang thật, thay vì một khối nhỏ ghim
+   trái như bản cũ. */
+/* Lịch nhiệt giãn theo bề ngang thật: bảy cột đều nhau thay vì một khối nhỏ
+   ghim trái. `minmax(0, 1fr)` để cột co được xuống dưới bề rộng nội dung. */
+#app:not(.reading) .prog-heat {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  /* `home.css` bó lịch vào 22rem. Đúng khi cả trang còn là một cột hẹp; sai
+     kể từ khi trang dùng toàn bề ngang — 49 ô nhỏ xíu nép một góc trong khi
+     bên phải trống trơn. Trần thuộc về khối, và khối này không cần trần nào. */
+  max-width: none;
+}
+
+#app:not(.reading) .prog-heat-week {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* CHỈ ô trong lịch, KHÔNG ô trong chú giải.
+   `.prog-heat-cell` dùng chung cho cả hai, nên `width: 100%` trần kéo năm ô
+   chú giải thành năm băng dài suốt bề ngang — đo được trên trình duyệt thật
+   ngay sau khi bỏ trần bề ngang của trang. */
+#app:not(.reading) .prog-heat .prog-heat-cell {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-xs);
+}
+
+#app:not(.reading) .prog-heat-legend .prog-heat-cell {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  border-radius: var(--radius-xs);
+}
+
+#app:not(.reading) .prog-heat-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+#app:not(.reading) .prog-section {
+  padding: 22px 24px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-xl);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-xs);
+  margin-bottom: 24px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CHỮ TỰ XUỐNG DÒNG THEO BỀ NGANG THẬT
+   ══════════════════════════════════════════════════════════════════════════
+
+   Các khối chữ được bó bằng `max-width` tính theo `ch` (42ch, 46ch, 52ch) từ
+   thời cả trang còn là một cột 780px. Khi trang dùng toàn bề ngang, những con
+   số ấy thành một hòn đảo chữ ~340px nằm giữa một thẻ 1900px, ngắt dòng ba
+   lần trong khi hai bên trống trơn — người dùng gọi đúng: "tự cắt, nhìn rất
+   kỳ".
+
+   ĐÁNH ĐỔI, nói ra chứ không giấu: bỏ SẠCH trần thì một dòng chữ 14px kéo dài
+   1900px, và mắt mất dấu dòng khi quét ngược về đầu hàng — đó là lý do trần
+   tồn tại ngay từ đầu. Nên trần không bị bỏ, nó được nới lên `min(80ch, 100%)`:
+   dùng hết bề ngang có thật cho tới khi chạm ngưỡng đọc được, rồi mới dừng.
+   `100%` trong `min()` để ở màn hẹp nó không bao giờ vượt quá vật chứa.
+
+   `text-wrap: pretty` lo phần còn lại: nó cấm dòng cuối trơ một từ và cân lại
+   các điểm ngắt, tức là chữa đúng cái "ngắt dòng kỳ" chứ không chỉ nới chỗ. */
+#app:not(.reading) .lib-empty-lede,
+#app:not(.reading) .lib-empty-ways,
+#app:not(.reading) .lib-empty-registry,
+#app:not(.reading) .ch-lede,
+#app:not(.reading) .prog-sentence,
+#app:not(.reading) .dash-stats-note,
+#app:not(.reading) .home-head p {
+  max-width: min(80ch, 100%);
+  text-wrap: pretty;
+}
+
+/* Thẻ trạng thái rỗng: nội dung căn giữa nên trần phải căn giữa theo, nếu
+   không khối chữ dạt về trái trong một thẻ rộng. */
+#app:not(.reading) .lib-empty-lede,
+#app:not(.reading) .lib-empty-ways,
+#app:not(.reading) .lib-empty-registry {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LỊCH HỌC CẢ NĂM — kiểu GitHub
+   ══════════════════════════════════════════════════════════════════════════ */
+
+#app:not(.reading) .prog-year {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+#app:not(.reading) .prog-year-main {
+  flex: 1;
+  min-width: 0;
+  padding: 22px 24px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-xl);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-xs);
+}
+
+#app:not(.reading) .prog-year-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+/* ── LƯỚI ────────────────────────────────────────────────────────────────
+   53 cột × 7 hàng. `minmax(0, 1fr)` cho cột co được: lịch phải vừa mọi bề
+   ngang chứ không đẩy trang ra thanh cuộn ngang — 53 cột × một cỡ ô cố định
+   là cách chắc chắn nhất để nó tràn trên laptop. */
+#app:not(.reading) .prog-cal-grid,
+#app:not(.reading) .prog-cal-months {
+  display: grid;
+  grid-template-columns: repeat(53, minmax(0, 1fr));
+  gap: 3px;
+}
+
+#app:not(.reading) .prog-cal-months {
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+/* Nhãn tháng đặt theo `grid-column-start` từ chỗ vẽ, và `overflow: visible` để
+   một tên dài ("Th 10") không bị cắt bởi bề rộng một cột tuần. */
+#app:not(.reading) .prog-cal-month {
+  grid-row: 1;
+  white-space: nowrap;
+}
+
+#app:not(.reading) .prog-cal-week {
+  display: grid;
+  grid-template-rows: repeat(7, 1fr);
+  gap: 3px;
+}
+
+/* KHÔNG đặt `background` ở đây, và đó là một bài học đã lặp lại ba lần trong
+   nhánh này: tệp này nhập SAU `home.css`, nên một `background` chung trên
+   `.prog-cal-cell` đè sạch năm bậc màu `.prog-heat-l0…l4` và cả lịch phẳng lì
+   một màu — đo được trên trình duyệt thật với 93 ngày có học mà không ô nào
+   đổi màu.
+
+   Hình dạng thuộc về lớp này; MÀU thuộc về lớp bậc. Trộn hai thứ vào một luật
+   là cách chắc chắn để thứ nhập sau nuốt thứ nhập trước. */
+#app:not(.reading) .prog-cal-cell {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 2px;
+}
+
+/* Ô KHÔNG thuộc năm đang xem: trống hẳn, không viền, không nền. Vẽ nó như một
+   ô xám là nói rằng ngày ấy "không học" — mà nó thuộc năm khác. */
+#app:not(.reading) .prog-cal-out {
+  background: transparent;
+}
+
+/* ── CỘT NĂM ─────────────────────────────────────────────────────────────── */
+#app:not(.reading) .prog-years {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 6.5rem;
+}
+
+#app:not(.reading) .prog-year-btn {
+  padding: 9px 14px;
+  text-align: left;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+#app:not(.reading) .prog-year-btn:hover {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+#app:not(.reading) .prog-year-btn.on {
+  background: var(--color-brand-600);
+  color: #fff;
+  font-weight: 600;
+}
+
+#app:not(.reading) .prog-year-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring-brand);
+}
+
+/* ── TRỌNG SỐ KHOÁ HỌC ───────────────────────────────────────────────────── */
+#app:not(.reading) .prog-year-courses {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--rule);
+}
+
+#app:not(.reading) .prog-year-sub {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+#app:not(.reading) .prog-weights {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#app:not(.reading) .prog-weight {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 14px;
+}
+
+#app:not(.reading) .prog-weight-name {
+  flex: 0 0 14rem;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#app:not(.reading) .prog-weight-bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-gray-200);
+  overflow: hidden;
+}
+
+#app:not(.reading) .prog-weight-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-brand-600);
+}
+
+#app:not(.reading) .prog-weight-pct {
+  flex: 0 0 3rem;
+  text-align: right;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 860px) {
+  #app:not(.reading) .prog-year {
+    flex-direction: column;
+  }
+
+  #app:not(.reading) .prog-years {
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+}

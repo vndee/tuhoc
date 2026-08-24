@@ -862,7 +862,10 @@ export function ChapterView({
               title={tocOpen ? t('reader.tocClose') : t('reader.tocOpen')}
               onClick={() => setTocOpen((open) => !open)}
             >
-              <span aria-hidden="true">☰</span> <span className="rd-lbl">{t('reader.toc')}</span>
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path d="M4 5.5h12M4 10h12M4 14.5h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              </svg>{' '}
+              <span className="rd-lbl">{t('reader.toc')}</span>
             </button>
           </>,
           navSlotEl,

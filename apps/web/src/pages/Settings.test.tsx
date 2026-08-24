@@ -512,3 +512,34 @@ describe('vào Cài đặt KHÔNG qua lời mời AI', () => {
     expect(frames()[0]).not.toBeVisible();
   });
 });
+
+/**
+ * CỬA ĐĂNG XUẤT, và vì sao bài này sống ở đây kể từ vòng thiết kế lại.
+ *
+ * Nút "Đăng xuất" vốn ở đầu Bảng điều khiển, và `test/Dashboard.test.tsx` canh
+ * nó ở đó. Bản dựng đã duyệt đưa đầu trang Học tiếp sang lối vào NHẬP GÓI, nên
+ * nút ấy về đúng chỗ của nó: mục Tài khoản của `/settings`, đứng cạnh câu cảnh
+ * báo về dữ liệu trên máy — thứ một nút trơ trọi ở đầu trang không mang theo
+ * được.
+ *
+ * Bài này canh CỬA: nó có thật, nó bấm được, và nó không đứng một mình. CHUỖI
+ * HÀNH VI phía sau (dừng sync, xả outbox, POST /auth/logout, xoá mọi bảng cục
+ * bộ, về /login) có bộ canh riêng và kỹ hơn nhiều ở `auth/useLogout.test.tsx`
+ * — mười bài. Chép lại chúng ở đây là nuôi hai bản của một sự thật.
+ */
+describe('Cài đặt — cửa đăng xuất', () => {
+  it('mục Tài khoản mang nút Đăng xuất, và nút ấy không đứng trần trụi', async () => {
+    // `state: null` chứ không phải mặc định: `renderSettings` mặc định gửi
+    // `FROM_AI_INVITE`, thứ mở thẳng mục Trợ lý AI. Mục mặc định khi tới bằng
+    // đường thường mới là Tài khoản — và đó chính là mục bài này hỏi.
+    renderSettings(VAULT, SIGNED_IN, null);
+
+    const button = await screen.findByRole('button', { name: /đăng xuất/i });
+    expect(button).toBeEnabled();
+
+    // ĐỐI CHỨNG: câu cảnh báo phải ở cùng màn. Đăng xuất ở đây XOÁ ghi chú và
+    // tiến độ trên máy này (xem `auth/useLogout.ts`), và một nút làm điều đó mà
+    // không nói ra là một cái bẫy — nhất là trên máy dùng chung.
+    expect(screen.getByText(new RegExp(t('vi', 'settings.account.signOutWarning').slice(0, 24), 'i'))).toBeInTheDocument();
+  });
+});

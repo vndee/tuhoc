@@ -9,7 +9,7 @@ import { ErrorBoundary } from './shell/ErrorBoundary';
 import { Rail } from './shell/Rail';
 import { Shell } from './shell/Shell';
 import { Sidebar } from './shell/Sidebar';
-import { AccountChip, TopNav } from './shell/TopNav';
+import { AccountChip, TopNav, TopSearch } from './shell/TopNav';
 import { Topbar } from './shell/Topbar';
 import { useMobileNav } from './shell/useMobileNav';
 import { useSidebarCollapse, WIDE_QUERY } from './shell/useSidebarCollapse';
@@ -115,6 +115,9 @@ function AppShell() {
               được gì. Ở đây điều khiển vẫn nằm trong `#topbar` thật, và
               LanguageProvider.test.tsx's "CỬA" chứng minh người dùng bấm tới
               được nó qua <App/>. */}
+          {/* Ô tìm kiếm đứng ĐẦU nhóm phải: nó là thứ rộng nhất bên ấy, nên
+              nó phải là thứ co lại trước khi các nút bị đẩy đi. */}
+          <TopSearch />
           <LanguageSwitcher />
           {/* SAU `<LanguageSwitcher>`: `#crumb` mang `flex:1` nên mọi thứ đứng
               sau nó bị đẩy về mép phải, và tài khoản là thứ cuối cùng bên ấy. */}

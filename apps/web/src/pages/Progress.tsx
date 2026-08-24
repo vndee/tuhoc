@@ -1,11 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
+import { liveQuery } from 'dexie';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStats } from '../api/stats';
 import { countChapters } from '../course/chapters';
+import { db } from '../db/local';
 import { loadManifest, manifestQueryKey } from '../course/loader';
 import { manifestString, type OwnedCourse, useOwnedCourses } from '../course/owned';
 import { useLanguage } from '../i18n/LanguageProvider';
-import { buildHeatCalendar, heatLevel, todayIctIso } from '../progress/heat';
+import { buildYearCalendar, heatLevel, todayIctIso } from '../progress/heat';
 import { useProgress } from '../progress/useProgress';
 
 /**
@@ -51,12 +54,50 @@ import { useProgress } from '../progress/useProgress';
  * offline. `minutes` thì ngược lại — nó chỉ tồn tại ở máy chủ (nhịp học được
  * cộng ở đó), nên nó tới từ `stats.courses[]`.
  */
+/**
+ * BA CON SỐ ĐẦU TRANG — khung "Tiến độ" của bản dựng.
+ *
+ * Hai trong ba đọc từ MÁY NÀY, không từ máy chủ, và đó là ruling F5 chứ không
+ * phải tiện tay: đánh dấu một chương đã đọc và viết một ghi chú đều là phép ghi
+ * CỤC BỘ, nên một con số chỉ nhích lên sau khi outbox flush thành công là con số
+ * nói dối trong mọi phiên offline. Chuỗi ngày thì ngược lại — nhịp học được cộng
+ * ở máy chủ nên nó chỉ tồn tại ở đó.
+ *
+ * `liveQuery` chứ không phải một lần đọc: đánh dấu một chương ở tab khác phải
+ * làm con số ở đây nhích lên mà không cần tải lại trang.
+ */
+function useLocalTotals(): { chaptersRead: number; notes: number } {
+  const [totals, setTotals] = useState({ chaptersRead: 0, notes: 0 });
+
+  useEffect(() => {
+    const subscription = liveQuery(async () => {
+      const [progress, annotations] = await Promise.all([
+        db.progress.toArray(),
+        db.annotations.toArray(),
+      ]);
+      return {
+        chaptersRead: progress.filter((row) => row.done).length,
+        // `deletedAt` là xoá MỀM (xem `db/local.ts`): một ghi chú đã xoá vẫn còn
+        // hàng để đồng bộ, nhưng nó không còn là một ghi chú người ta đang giữ.
+        notes: annotations.filter((row) => row.deletedAt == null).length,
+      };
+    }).subscribe({
+      next: (next) => setTotals(next),
+      error: (err) => console.error('Progress: live query failed', err),
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  return totals;
+}
+
 export function Progress() {
   const { t } = useLanguage();
   const statsQuery = useStats();
   const owned = useOwnedCourses();
 
   const minutesByCourse = courseMinutes(statsQuery.data?.courses);
+  const totals = useLocalTotals();
 
   return (
     <div className="prog">
@@ -66,14 +107,34 @@ export function Progress() {
       {statsQuery.isPending && <p className="prog-note">{t('progress.loading')}</p>}
       {statsQuery.isError && <p className="prog-note">{t('progress.error')}</p>}
 
+      {/* Ba thẻ số liệu. Câu văn bên dưới KHÔNG bị thay thế — nó nói cùng dữ
+          liệu ấy thành một câu, và đó là điều `progress.lede` hứa ("kể thành
+          câu"). Con số cho người liếc, câu cho người đọc. */}
+      <div className="prog-stats">
+        <div className="prog-stat">
+          <p className="prog-stat-k">{t('progress.stat.chapters')}</p>
+          <p className="prog-stat-v">{totals.chaptersRead}</p>
+          <p className="prog-stat-sub">{t('progress.stat.chaptersSub', String(owned.courses.length))}</p>
+        </div>
+        <div className="prog-stat">
+          <p className="prog-stat-k">{t('progress.stat.streak')}</p>
+          <p className="prog-stat-v">{statsQuery.data?.streakDays ?? 0}</p>
+          <p className="prog-stat-sub">{t('progress.stat.streakSub')}</p>
+        </div>
+        <div className="prog-stat">
+          <p className="prog-stat-k">{t('progress.stat.notes')}</p>
+          <p className="prog-stat-v">{totals.notes}</p>
+          <p className="prog-stat-sub">{t('progress.stat.notesSub')}</p>
+        </div>
+      </div>
+
       {statsQuery.data != null && (
-        <>
-          <p className="prog-sentence">
-            {studySentence(t, statsQuery.data.totalMinutes, statsQuery.data.streakDays)}
-          </p>
-          <HeatCalendar days={statsQuery.data.days} />
-        </>
+        <p className="prog-sentence">
+          {studySentence(t, statsQuery.data.totalMinutes, statsQuery.data.streakDays)}
+        </p>
       )}
+
+      <YearActivity />
 
       <section className="prog-section">
         <h2 className="prog-h">{t('progress.byCourse')}</h2>
@@ -147,8 +208,6 @@ function studySentence(
 }
 
 /** Bảy tuần — con số của đặc tả, và của chính lưới 7×7 mà nó vẽ ra. */
-const HEAT_WEEKS = 7;
-
 /**
  * Lịch nhiệt: một ô một ngày, ô đậm là ngày có học.
  *
@@ -157,45 +216,137 @@ const HEAT_WEEKS = 7;
  * ngày vẫn còn — trong `title`, tức là trong tooltip của chuột và trong cây
  * accessibility của từng ô — nên thông tin không mất, chỉ không bị đọc tuần tự.
  */
-function HeatCalendar({ days }: { days: unknown }) {
-  const { t } = useLanguage();
-  const calendar = buildHeatCalendar(days, HEAT_WEEKS, todayIctIso());
+/**
+ * LỊCH CẢ NĂM, kiểu GitHub — người dùng yêu cầu đích danh.
+ *
+ * Ba thứ bản bảy-tuần không có, và cả ba đều là yêu cầu:
+ *   · cả năm, không phải một dải trượt 49 ngày;
+ *   · cột chọn năm bên phải;
+ *   · danh sách khoá học của năm ấy kèm trọng số.
+ *
+ * Dữ liệu đến từ `GET /stats?year=` — một tham số THÊM VÀO, không đổi câu trả
+ * lời mặc định mà Bảng điều khiển đang dựa vào (xem `api/stats.ts` và
+ * `apps/api/internal/stats/handler.go`).
+ */
+function YearActivity() {
+  const { t, lang } = useLanguage();
+  const thisYear = Number(todayIctIso().slice(0, 4));
+  const [year, setYear] = useState(thisYear);
+
+  const statsQuery = useStats(year);
+  const calendar = buildYearCalendar(statsQuery.data?.days, year, todayIctIso());
+
+  // Tên tháng theo NGÔN NGỮ ĐANG CHỌN, không phải theo giờ máy: `Intl` biết
+  // "Th 1" và "Jan", nên `heat.ts` không phải giữ một bảng tên tháng nào.
+  const monthName = new Intl.DateTimeFormat(lang, { month: 'short' });
+
+  // `years[]` từ máy chủ luôn kèm năm hiện tại (buildYears), nhưng một máy chủ
+  // cũ hơn không có trường ấy — lùi về đúng năm đang xem thay vì một cột rỗng.
+  const years = statsQuery.data?.years?.length ? statsQuery.data.years : [year];
 
   return (
-    <section className="prog-section">
-      <h2 className="prog-h">{t('progress.heat.title')}</h2>
+    <section className="prog-year">
+      <div className="prog-year-main">
+        <div className="prog-year-head">
+          <h2 className="prog-h">
+            {t('progress.year.title', String(calendar.activeDays), String(year))}
+          </h2>
+          {/* CÂU RIÊNG, không dùng lại `progress.error` của trang.
+              Đây là một request KHÁC (`?year=`) nên nó hỏng độc lập được — và
+              nếu cả hai cùng hỏng, in đúng một câu hai lần cách nhau vài chục
+              pixel đọc như một lỗi vẽ. Bài kiểm cũng bắt đúng chỗ ấy:
+              `findByText(/cần mạng/i)` ném khi có hai kết quả. */}
+          {statsQuery.isError && <p className="prog-note">{t('progress.year.error')}</p>}
+        </div>
 
-      <div className="prog-heat" role="img" aria-label={t('progress.heat.aria')}>
-        {calendar.weeks.map((week) => (
-          <div className="prog-heat-week" key={week[0]?.date ?? ''}>
-            {week.map((cell) => (
+        <div className="prog-cal" role="img" aria-label={t('progress.heat.aria')}>
+          <div className="prog-cal-months" aria-hidden="true">
+            {calendar.months.map((label) => (
               <span
-                key={cell.date}
-                className={
-                  cell.known
-                    ? `prog-heat-cell prog-heat-l${heatLevel(cell.minutes, calendar.maxMinutes)}`
-                    : 'prog-heat-cell prog-heat-unknown'
-                }
-                title={
-                  cell.known
-                    ? t('progress.heat.day', cell.date, String(Math.round(cell.minutes)))
-                    : t('progress.heat.noData', cell.date)
-                }
-              />
+                key={label.month}
+                className="prog-cal-month"
+                style={{ gridColumnStart: label.column + 1 }}
+              >
+                {monthName.format(new Date(Date.UTC(year, label.month, 1)))}
+              </span>
             ))}
           </div>
-        ))}
+
+          <div className="prog-cal-grid">
+            {calendar.weeks.map((week) => (
+              <div className="prog-cal-week" key={week[0]?.date ?? ''}>
+                {week.map((cell) => (
+                  <span
+                    key={cell.date}
+                    className={
+                      !cell.inRange
+                        ? 'prog-cal-cell prog-cal-out'
+                        : !cell.known
+                          ? 'prog-cal-cell prog-heat-unknown'
+                          : `prog-cal-cell prog-heat-l${heatLevel(cell.minutes, calendar.maxMinutes)}`
+                    }
+                    title={
+                      cell.inRange && cell.known
+                        ? t('progress.heat.cell', cell.date, String(Math.round(cell.minutes)))
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+
+          <p className="prog-heat-legend">
+            <span className="prog-heat-legend-label">{t('progress.heat.less')}</span>
+            <span className="prog-heat-cell prog-heat-l0" aria-hidden="true" />
+            <span className="prog-heat-cell prog-heat-l1" aria-hidden="true" />
+            <span className="prog-heat-cell prog-heat-l2" aria-hidden="true" />
+            <span className="prog-heat-cell prog-heat-l3" aria-hidden="true" />
+            <span className="prog-heat-cell prog-heat-l4" aria-hidden="true" />
+            <span className="prog-heat-legend-label">{t('progress.heat.more')}</span>
+          </p>
+        </div>
+
+        {/* KHOÁ HỌC CỦA NĂM ẤY, kèm trọng số — `share` do máy chủ tính, nên mọi
+            client vẽ cùng một thanh từ cùng một phép làm tròn. */}
+        <div className="prog-year-courses">
+          <h3 className="prog-year-sub">{t('progress.year.courses')}</h3>
+          {(statsQuery.data?.yearCourses ?? []).length === 0 && (
+            <p className="prog-note">{t('progress.year.noCourses', String(year))}</p>
+          )}
+          <ul className="prog-weights">
+            {(statsQuery.data?.yearCourses ?? []).map((course) => (
+              <li className="prog-weight" key={course.courseId}>
+                <span className="prog-weight-name">{course.courseId}</span>
+                <span className="prog-weight-bar" aria-hidden="true">
+                  <span
+                    className="prog-weight-fill"
+                    style={{ width: `${Math.max(2, Math.round(course.share * 100))}%` }}
+                  />
+                </span>
+                <span className="prog-weight-pct">{Math.round(course.share * 100)}%</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
-      <p className="prog-heat-legend">
-        <span className="prog-heat-legend-label">{t('progress.heat.less')}</span>
-        <span className="prog-heat-cell prog-heat-l0" aria-hidden="true" />
-        <span className="prog-heat-cell prog-heat-l1" aria-hidden="true" />
-        <span className="prog-heat-cell prog-heat-l2" aria-hidden="true" />
-        <span className="prog-heat-cell prog-heat-l3" aria-hidden="true" />
-        <span className="prog-heat-cell prog-heat-l4" aria-hidden="true" />
-        <span className="prog-heat-legend-label">{t('progress.heat.more')}</span>
-      </p>
+      {/* CỘT NĂM. `<nav>` chứ không phải một `<select>`: GitHub dựng nó thành
+          một danh sách nhìn thấy được, và ở đây nó cũng là một danh sách ngắn
+          mà mọi lựa chọn đều đáng hiện ra cùng lúc. */}
+      <nav className="prog-years" aria-label={t('progress.year.pickAria')}>
+        {years.map((option) => (
+          <button
+            type="button"
+            key={option}
+            className={option === year ? 'prog-year-btn on' : 'prog-year-btn'}
+            aria-current={option === year ? 'true' : undefined}
+            onClick={() => setYear(option)}
+          >
+            {option}
+          </button>
+        ))}
+      </nav>
     </section>
   );
 }

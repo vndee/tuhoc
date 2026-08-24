@@ -1,13 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { configure, getConfig, render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import { meQueryKey } from '../api/useMe';
 import { type AnnotationRow, clearLocalData, db } from '../db/local';
-import * as engine from '../sync/engine';
 import { Dashboard } from '../pages/Dashboard';
 import type { Manifest } from '../course/types';
 import { LanguageProvider } from '../i18n/LanguageProvider';
@@ -172,9 +170,6 @@ function LocationProbe() {
   return <span data-testid="path">{location.pathname}</span>;
 }
 
-function currentPath(): string | null {
-  return document.querySelector('[data-testid="path"]')?.textContent ?? null;
-}
 
 function renderDashboard() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -434,28 +429,17 @@ describe('Học tiếp — trạng thái rỗng và tài khoản', () => {
     expect(screen.queryByText(/chưa có khóa học nào/i)).not.toBeInTheDocument();
   }, OVERSUBSCRIBED_MS);
 
-  it('shows the signed-in user\'s name and a working logout control that stops sync, clears local data, and returns to /login', async () => {
-    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
-    await markRead('demo', 'ch-1');
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(2))));
-
-    const stopSyncSpy = vi.spyOn(engine, 'stopSync');
-    vi.spyOn(engine, 'syncOnce').mockResolvedValue(undefined);
-    server.use(http.post('/auth/logout', () => new HttpResponse(null, { status: 200 })));
-
-    renderDashboard();
-
-    expect(await screen.findByText(/Người học/)).toBeInTheDocument();
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /đăng xuất/i }));
-
-    await waitFor(() => expect(currentPath()).toBe('/login'));
-    expect(stopSyncSpy).toHaveBeenCalled();
-    expect(await db.progress.count()).toBe(0);
-
-    vi.restoreAllMocks();
-  }, OVERSUBSCRIBED_MS);
+  // BÀI "ĐĂNG XUẤT" ĐÃ CHUYỂN SANG `pages/Settings.test.tsx`.
+  //
+  // Nút ấy rời Bảng điều khiển cùng vòng thiết kế lại: đầu trang nay mang lối
+  // vào NHẬP GÓI (bản dựng đã duyệt), còn đăng xuất về đúng chỗ của nó trong
+  // mục Tài khoản của `/settings` — nơi nó đứng cạnh câu cảnh báo về dữ liệu
+  // trên máy, thứ mà một nút trơ trọi ở đầu trang không mang theo được.
+  //
+  // Điều kiện mà `Dashboard.tsx` đặt ra cho lần gỡ này ĐÃ THOẢ trước khi gỡ:
+  // `AccountChip` ở thanh trên có mặt trên mọi màn ngoài chế độ đọc và mở
+  // `/settings` bằng một cú bấm. Chuỗi hành vi (dừng sync, xoá dữ liệu máy,
+  // về `/login`) vốn đã có bộ canh riêng ở `auth/useLogout.test.tsx`.
 });
 
 describe('Học tiếp khi /stats trả thứ không phải JSON (hồi quy trang trắng)', () => {

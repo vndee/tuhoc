@@ -37,6 +37,17 @@
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities);
 
+/* ── BIẾN THỂ `dark:` PHẢI ĐƯỢC DẠY LẠI ─────────────────────────────────────
+   Mặc định `dark:` của Tailwind v4 nghe `prefers-color-scheme`. App này KHÔNG
+   nghe tín hiệu ấy: chủ đề là một công tắc tường minh, `html[data-theme]`, và
+   `reader.css` cùng `theme/ThemeContext.tsx` đều đứng trên nó.
+
+   Không dạy lại thì hỏng IM LẶNG, và tôi đã đo đúng cái im lặng ấy: thanh
+   trên viết bằng utility (`text-gray-900`, `bg-brand-50`) giữ nguyên màu sáng
+   khi bấm sang giao diện tối — nhãn hiệu "Tự học" thành chữ đen trên nền đen.
+   Bài kiểm đơn vị không thấy được: jsdom không tính màu. */
+@custom-variant dark (&:where(html[data-theme='dark'], html[data-theme='dark'] *));
+
 /* `static` chứ không phải `@theme` trần, và đây là một phép đo chứ không phải
    một thói quen: mặc định Tailwind v4 CHỈ sinh ra biến CSS cho những token
    thực sự có utility dùng tới. Đo trên chính bản build này — `@theme` trần cho

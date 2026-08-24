@@ -1,8 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { colorOf, quoteOf } from '../annotations/useAnnotations';
-import { useLogout } from '../auth/useLogout';
-import { useMe } from '../api/useMe';
 import { flatChapters, nextChapter } from '../course/chapters';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
 import { type OwnedCourse, useOwnedCourses } from '../course/owned';
@@ -47,10 +45,28 @@ import { EmptyLibrary } from './Library';
  * nào), trao đúng một hành động, và kể ba đường vào — trong đó một đường không
  * cần mạng.
  */
+/**
+ * MONOGRAM trên bìa khoá — chữ cái đầu của các từ trong tên khoá.
+ *
+ * Bản dựng vẽ "IEEE / 754" trên bìa, và nó KHÔNG suy ra được: tôi chọn tay hai
+ * chữ ấy cho mockup vì tôi biết khoá đó nói về IEEE 754. Bản đầu của hàm này
+ * cố đoán bằng "từ dài nhất trong tên" và cho ra "PHẨY" cho khoá "Số dấu phẩy
+ * động" — một chữ vô nghĩa in to 30px giữa bìa, tệ hơn hẳn không có bìa.
+ *
+ * Nên bìa chỉ mang thứ luôn đúng: monogram. "Số dấu phẩy động" → "SDPĐ". Nó
+ * không giả vờ biết khoá nói về gì, và nó phân biệt được các khoá với nhau —
+ * đúng việc mà một mỏ neo thị giác cần làm.
+ *
+ * Một gói khoá học không mang ảnh bìa (`packages/course-format`), nên đây là
+ * tất cả những gì dựng được mà không bịa.
+ */
+function monogram(title: string): string {
+  const words = title.split(/\s+/).filter(Boolean);
+  return words.map((w) => w[0]?.toUpperCase() ?? '').join('').slice(0, 4);
+}
+
 export function Dashboard() {
   const { t } = useLanguage();
-  const meQuery = useMe();
-  const logout = useLogout();
   // MỘT câu trả lời cho "người này có những khoá nào" — ruling S1-F31.
   const owned = useOwnedCourses();
   const lastStudied = useLastStudiedCourseId();
@@ -69,20 +85,31 @@ export function Dashboard() {
           <p className="ch-lede">{t('home.lede')}</p>
         </div>
         {/*
-          Chỉ còn danh tính + lối ra. Đặc tả đặt tài khoản ở ĐÁY THANH BÊN; cho
-          tới khi menu ấy có thật, gỡ nút này đi là bỏ mất đường đăng xuất duy
-          nhất mà người dùng bấm tới được — đúng hình dạng cổng mù #4 (S1-F29).
+          "Nhập gói", KHÔNG phải "Đăng xuất" — bản dựng đã duyệt, khung "Học
+          tiếp".
+
+          Chú thích cũ ở đây đặt ra một ĐIỀU KIỆN chứ không phải một ý thích:
+          "cho tới khi menu tài khoản có thật, gỡ nút đăng xuất đi là bỏ mất
+          đường đăng xuất duy nhất mà người dùng bấm tới được — đúng hình dạng
+          cổng mù #4 (S1-F29)."
+
+          Điều kiện ấy NAY ĐÃ THOẢ, và đó là lý do dòng này đổi được: `AccountChip`
+          ở mép phải thanh trên có mặt trên mọi màn ngoài chế độ đọc, một cú bấm
+          tới `/settings`, và `pages/Settings.tsx` đã mang sẵn nút "Đăng xuất"
+          kèm câu cảnh báo về dữ liệu trên máy. Hai cửa cho cùng một việc là thứ
+          cả cuộc thiết kế lại này tồn tại để gỡ.
+
+          Đổi lại, đầu trang lấy đúng thứ nó thiếu: lối vào NHẬP GÓI. Trước đây
+          nó chỉ tới được từ bên trong lời nhắn "thư viện của bạn đang trống" —
+          tức là biến mất ngay khi bạn có khoá học đầu tiên.
         */}
-        <div className="dash-account">
-          {meQuery.data && (
-            <span className="dash-account-name" title={meQuery.data.email}>
-              {meQuery.data.name}
-            </span>
-          )}
-          <button type="button" className="btn dash-logout" onClick={() => void logout()}>
-            {t('account.logout')}
-          </button>
-        </div>
+        <Link to="/courses?import=1" className="btn home-import">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M10 3.5v9M10 12.5l-3-3M10 12.5l3-3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M4 14.5v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+          {t('courses.import.action')}
+        </Link>
       </div>
 
       {focusCourseId !== undefined && <ContinueCard courseId={focusCourseId} />}
@@ -137,40 +164,58 @@ function ContinueCard({ courseId }: { courseId: string }) {
 
   return (
     <section className="home-card">
-      <p className="home-eyebrow">{t('home.eyebrow')}</p>
-      <p className="home-course">
-        <Link to={`/c/${courseId}`} className="home-course-link">
-          {manifest.title}
-        </Link>
-      </p>
-
-      {/* Chương là thứ TO NHẤT trên trang: đây là câu trả lời cho "mở cái gì bây giờ". */}
-      <h2 className="home-chapter">
-        {target !== undefined && target.num !== '' && <span className="home-chapter-num">{target.num}</span>}
-        <span className="home-chapter-title">{target?.title ?? manifest.title}</span>
-      </h2>
-
-      <div className="home-prog">
-        <div
-          className="home-bar"
-          role="img"
-          aria-label={t('home.progressAria', String(percent))}
-          title={t('home.progressAria', String(percent))}
-        >
-          <div className="home-bar-fill" style={{ width: `${percent}%` }} />
-        </div>
-        <p className="home-prog-text">
-          {total > 0 ? t('home.chapters', String(read), String(total)) : t('home.chaptersUnknown', String(read))}
-          {next === undefined && total > 0 && <span className="home-done"> {t('home.finished')}</span>}
-        </p>
+      {/* BÌA KHOÁ — khối gradient bên trái, bản dựng khung "Học tiếp".
+          Không phải trang trí: nó là thứ duy nhất trên trang này nhận ra được
+          từ xa, và là chỗ neo mắt trước khi đọc chữ. Hai dòng chữ trên nó lấy
+          từ chính tên khoá, nên nó không cần một tệp ảnh nào — một gói khoá học
+          không mang bìa, và bịa ra một cái là hứa thứ gói không có. */}
+      <div className="home-cover" aria-hidden="true">
+        <span className="home-cover-big">{monogram(manifest.title)}</span>
       </div>
 
-      <Link
-        to={target === undefined ? `/c/${courseId}` : `/c/${courseId}/${target.id}`}
-        className="btn primary home-cta"
-      >
-        {t(ctaKey)}
-      </Link>
+      <div className="home-card-body">
+        <div className="home-card-head">
+          <p className="home-eyebrow">{t('home.eyebrow')}</p>
+        </div>
+
+        {/* Chương là thứ TO NHẤT trên trang: đây là câu trả lời cho "mở cái gì bây giờ". */}
+        <h2 className="home-chapter">
+          {target !== undefined && target.num !== '' && <span className="home-chapter-num">{target.num}</span>}
+          <span className="home-chapter-title">{target?.title ?? manifest.title}</span>
+        </h2>
+
+        <p className="home-course">
+          <Link to={`/c/${courseId}`} className="home-course-link">
+            {manifest.title}
+          </Link>
+        </p>
+
+        {/* MỘT HÀNG: thanh tiến độ, số chương, nút. Bản cũ xếp chúng thành ba
+            khối chồng nhau, nên thẻ cao gấp đôi mà không nói thêm gì. */}
+        <div className="home-prog">
+          <div
+            className="home-bar"
+            role="img"
+            aria-label={t('home.progressAria', String(percent))}
+            title={t('home.progressAria', String(percent))}
+          >
+            <div className="home-bar-fill" style={{ width: `${percent}%` }} />
+          </div>
+          <p className="home-prog-text">
+            {total > 0 ? t('home.chapters', String(read), String(total)) : t('home.chaptersUnknown', String(read))}
+            {next === undefined && total > 0 && <span className="home-done"> {t('home.finished')}</span>}
+          </p>
+          <Link
+            to={target === undefined ? `/c/${courseId}` : `/c/${courseId}/${target.id}`}
+            className="btn primary home-cta"
+          >
+            {t(ctaKey)}
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path d="M4.5 10h11M11 5.5l4.5 4.5L11 14.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </Link>
+        </div>
+      </div>
     </section>
   );
 }

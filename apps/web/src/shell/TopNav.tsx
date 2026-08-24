@@ -39,8 +39,8 @@ function navClass({ isActive }: { isActive: boolean }): string {
   return [
     'flex items-center h-9 px-3 rounded-sm text-sm no-underline transition-colors',
     isActive
-      ? 'bg-brand-50 text-brand-700 font-semibold'
-      : 'text-gray-600 font-medium hover:bg-gray-50 hover:text-gray-900',
+      ? 'bg-brand-50 text-brand-700 font-semibold dark:bg-brand-600/15 dark:text-brand-300'
+      : 'text-gray-600 font-medium hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-50',
   ].join(' ');
 }
 
@@ -74,8 +74,8 @@ export function TopNav() {
   return (
     <>
       <div className="tn-brand flex items-center gap-2.5 font-sans">
-        <Logo size={28} color="var(--color-brand-600)" />
-        <span className="tn-wordmark text-[15px] font-semibold tracking-[-0.01em] text-gray-900">
+        <Logo size={28} boxed />
+        <span className="tn-wordmark text-[15px] font-semibold tracking-[-0.01em] text-gray-900 dark:text-gray-50">
           {t('app.name')}
         </span>
       </div>
@@ -102,6 +102,43 @@ export function TopNav() {
 }
 
 /**
+ * Ô TÌM KIẾM — bản dựng có, app thì chưa từng có.
+ *
+ * Hôm nay nó là một MẶT TIỀN chưa nối dây: bấm vào không mở gì cả, và điều đó
+ * được nói ra bằng `disabled` chứ không bằng một ô nhập trông dùng được nhưng
+ * nuốt chữ. Repo này đã có một lần như thế — ô "Tìm chương…" ở thanh bên nằm
+ * `disabled` suốt nhiều vòng, và nó hiện cả trên những màn không có chương nào
+ * để tìm.
+ *
+ * Ở đây khác một chỗ: nó CHỈ hiện khi đã đăng nhập và ngoài chế độ đọc, tức
+ * đúng những màn mà một ngày nào đó nó sẽ tìm được thật.
+ */
+export function TopSearch() {
+  const meQuery = useMe();
+  const location = useLocation();
+  const { t } = useLanguage();
+
+  if (!meQuery.data) return null;
+  if (CHAPTER_ROUTE.test(location.pathname)) return null;
+
+  return (
+    <div
+      className="tn-search hidden md:flex items-center gap-2 h-9 w-56 px-3 rounded-md border border-gray-300 bg-white shadow-xs font-sans dark:border-gray-700 dark:bg-gray-900"
+      aria-hidden="true"
+    >
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+        <circle cx="9" cy="9" r="6.25" stroke="currentColor" strokeWidth="1.5" className="text-gray-400" />
+        <path d="M17.5 17.5L13.5 13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-gray-400" />
+      </svg>
+      <span className="text-sm text-gray-400 flex-1 truncate">{t('topbar.searchPlaceholder')}</span>
+      <span className="text-[11px] font-medium text-gray-400 border border-gray-200 rounded-xs px-1.5 py-px bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+        ⌘K
+      </span>
+    </div>
+  );
+}
+
+/**
  * Tài khoản, ở mép phải thanh trên.
  *
  * Nó KHÔNG phải trang trí: `Cài đặt` vốn sống ở đáy thanh bên, và thanh bên
@@ -124,27 +161,29 @@ export function AccountChip() {
   const email = meQuery.data.email;
   const initials = (meQuery.data.name || email).slice(0, 2).toUpperCase();
 
+  // MỘT ĐĨA TRÒN ĐẶC, không phải một chip có chữ "Cài đặt" bên cạnh.
+  //
+  // Bản đầu vẽ cả chữ, và trên máy thật nó đọc như một mục điều hướng thứ tư
+  // đứng lạc ở mép phải — đúng thứ bậc phẳng mà cả cuộc thiết kế lại này tồn
+  // tại để gỡ. Bản dựng cho tài khoản một đĩa tròn: nó là DANH TÍNH, không
+  // phải một nơi chốn, nên nó không được trông giống ba nơi chốn kia.
+  //
+  // Chữ vẫn còn cho trình đọc màn hình qua `aria-label`, và `title` mang email
+  // đầy đủ cho con trỏ chuột — hai chữ cái không đủ để nhận ra mình là ai.
   return (
     <NavLink
       to="/settings"
-      title={email}
+      title={`${email} — ${t('account.settings')}`}
       aria-label={t('account.settings')}
       className={({ isActive }) =>
         [
-          'flex items-center gap-2 h-9 pl-1 pr-3 rounded-full no-underline transition-colors font-sans',
-          isActive
-            ? 'bg-brand-50 text-brand-700'
-            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+          'tn-account flex items-center justify-center w-9 h-9 rounded-full text-[12px] font-semibold no-underline transition-shadow',
+          'bg-brand-100 text-brand-700 dark:bg-brand-600/25 dark:text-brand-200',
+          isActive ? 'shadow-[0_0_0_3px_var(--color-brand-200)] dark:shadow-[0_0_0_3px_var(--color-brand-800)]' : '',
         ].join(' ')
       }
     >
-      <span
-        aria-hidden="true"
-        className="flex items-center justify-center w-7 h-7 rounded-full bg-brand-100 text-brand-700 text-[11px] font-semibold"
-      >
-        {initials}
-      </span>
-      <span className="text-sm font-medium">{t('account.settings')}</span>
+      <span aria-hidden="true">{initials}</span>
     </NavLink>
   );
 }

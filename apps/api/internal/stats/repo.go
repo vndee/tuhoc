@@ -192,6 +192,52 @@ func (r *Repo) HeartbeatDayCounts(ctx context.Context, userID uuid.UUID, tzOffse
 	return out, nil
 }
 
+// CourseYearCount is one (course, calendar year) pair with the number of
+// heartbeats userID recorded for it. Years are bucketed with the SAME
+// day-boundary shift as HeartbeatDayCounts (see dayBucketExpr): a session at
+// 00:30 ICT on 1 January belongs to that January, not to the December before
+// it, and the calendar the reader sees must agree with the totals beside it.
+type CourseYearCount struct {
+	CourseID string
+	Year     int
+	Count    int64
+}
+
+// HeartbeatCourseYearCounts returns heartbeats grouped by course AND calendar
+// year, which is what the year view of `/progress` needs and what neither of
+// the two queries above can answer: HeartbeatDayCounts drops the course,
+// HeartbeatCourseCounts drops the year.
+//
+// One query rather than a per-year loop: a reader with five years of history
+// would otherwise cost five round trips to draw one list.
+func (r *Repo) HeartbeatCourseYearCounts(ctx context.Context, userID uuid.UUID, tzOffset time.Duration) ([]CourseYearCount, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT course_id, extract(year FROM `+dayBucketExpr+`)::int AS yr, count(*) AS n
+		 FROM events
+		 WHERE user_id = $1 AND kind = 'heartbeat'
+		 GROUP BY 1, 2
+		 ORDER BY 2 DESC, 1`,
+		userID, tzOffset.Seconds(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("stats: heartbeat course-year counts: %w", err)
+	}
+	defer rows.Close()
+
+	out := []CourseYearCount{}
+	for rows.Next() {
+		var row CourseYearCount
+		if err := rows.Scan(&row.CourseID, &row.Year, &row.Count); err != nil {
+			return nil, fmt.Errorf("stats: scan course-year count row: %w", err)
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("stats: heartbeat course-year counts: %w", err)
+	}
+	return out, nil
+}
+
 // HeartbeatCourseCounts returns, for every course userID has at least one
 // kind='heartbeat' event in, the total number of heartbeats recorded for
 // that course across all time (not just the last 30 days — see

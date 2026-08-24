@@ -16,46 +16,82 @@
 @import './settings-auth.css';
 @import './reader-layout.css';
 @import './shell-modes.css';
+/* CUỐI CÙNG, và thứ tự ấy là cơ chế: `app-screens.css` là thang chung cho mọi
+   màn ngoài chế độ đọc, và nó phải thắng những thang riêng mà sáu tệp trên
+   viết trước vòng thiết kế lại. Cùng độ đặc hiệu thì cái sau thắng. */
+@import './app-screens.css';
 
 /* ══════════════════════════════════════════════════════════════════════════
-   BA TOKEN GỐC, ĐỔI MỘT LẦN CHO CẢ APP
+   TOKEN GỐC, ĐỔI Ở NGUỒN THAY VÌ Ở 175 CHỖ GỌI
    ══════════════════════════════════════════════════════════════════════════
 
-   `--accent` và `--sans` do `packages/course-kit/reader.css` khai, và chúng
-   được gọi ở 72 và 103 chỗ trên khắp app — kể cả bên trong chính reader.css.
-   Đổi từng chỗ gọi sang thang mới là 175 lần sửa, và trong lúc sửa dở thì app
-   mang HAI bảng màu: màn đã chuyển màu tím, màn chưa chuyển màu xanh cũ.
+   `--accent`, `--sans`, `--ink*`, `--rule*`, `--surface-1`, `--page`,
+   `--panel` do `packages/course-kit/reader.css` khai, và chúng được gọi ở
+   hàng trăm chỗ trên khắp app — kể cả bên trong chính reader.css. Sửa từng
+   chỗ gọi sang thang Untitled UI là hàng trăm lần sửa, và trong lúc sửa dở
+   thì app mang HAI bảng: màn đã chuyển và màn chưa chuyển đứng cạnh nhau.
 
-   Đổi ở NGUỒN thay vì ở chỗ gọi. Một khối, và mọi thứ đang trỏ vào hai token
-   ấy — nút, liên kết, viền tiêu điểm, mục đang chọn, cả trong trang đọc — về
-   cùng một bảng ngay lập tức.
+   Đổi ở NGUỒN. Một khối, và mọi thứ đang trỏ vào chúng — nút, liên kết, viền
+   tiêu điểm, thẻ, nền trang, cả chữ trong trang đọc — về cùng một bảng.
 
    PHẢI ĐỨNG SAU MỌI `@import`: luật CSS bắt `@import` nằm trước mọi quy tắc,
    nên khối này tự nhiên ở sau, và `:root` cùng độ đặc hiệu thì cái sau thắng.
    Đó chính là cơ chế nó dựa vào — không `!important`, không leo độ đặc hiệu.
 
-   `reader.css` KHÔNG bị sửa một byte nào: nó vẫn là bản port từng byte của v1
-   và cổng riêng canh nó vẫn xanh. Ở đây chỉ đổi GIÁ TRỊ mà nó đọc. */
+   `reader.css` KHÔNG bị sửa một byte: nó vẫn là bản port từng byte của v1 và
+   cổng riêng canh nó vẫn xanh. Ở đây chỉ đổi GIÁ TRỊ mà nó đọc.
+
+   GIẤY ẤM → TRẮNG LẠNH, và đó là một quyết định chứ không phải hệ quả. Bảng
+   cũ (#fcfcfb / #f7f6f3 / #f2f1ec) ngả vàng; hướng A đứng trên trắng thuần và
+   thang xám hơi lạnh. Trộn hai thứ ấy thì thẻ trắng nổi lên như một mảnh vá
+   trên nền ngà. */
 :root {
   --sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --surface-1: #ffffff;
+  --page: var(--color-gray-50);
+  --panel: var(--color-gray-50);
+
+  --ink: var(--color-gray-900);
+  --ink-2: var(--color-gray-600);
+  --ink-3: var(--color-gray-500);
+
+  --rule: var(--color-gray-200);
+  --rule-strong: var(--color-gray-300);
+  --grid: var(--color-gray-200);
+
   --accent: var(--color-brand-600);
-  --accent-soft: var(--color-brand-50);
+  --accent-soft: var(--color-brand-100);
+
+  --shadow: var(--shadow-sm);
 }
 
-/* Giao diện tối cần một bậc SÁNG hơn, không phải cùng một màu.
-   `brand-600` trên nền `#0d0d0d` tụt xuống dưới ngưỡng tương phản đọc được —
-   cùng lý do reader.css tự nâng `--accent` của nó lên một bậc trong khối tối
-   (`#2a78d6` → `#5598e7`). Thang mới giữ đúng thói quen ấy. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --accent: var(--color-brand-400);
-    --accent-soft: rgba(126, 86, 217, 0.18);
-  }
-}
+/* CHỈ `html[data-theme='dark']`, KHÔNG `@media (prefers-color-scheme)`.
+   Bản đầu của khối này có thêm một nhánh `prefers-color-scheme` — sai, và sai
+   im lặng: `reader.css` chỉ đổi màu theo công tắc tường minh, nên nhánh ấy sẽ
+   cho một máy đặt hệ điều hành ở chế độ tối nhận màu nhấn tối TRÊN NỀN SÁNG.
+   Hai nửa của cùng một bảng, mỗi nửa nghe một tín hiệu khác nhau.
 
+   `brand-400` chứ không phải `brand-600`: trên nền gray-950 màu ấy tụt dưới
+   ngưỡng tương phản đọc được. Đó cũng đúng thói quen reader.css vốn có — nó
+   tự nâng `--accent` lên một bậc trong khối tối. */
 html[data-theme='dark'] {
+  --surface-1: var(--color-gray-900);
+  --page: var(--color-gray-950);
+  --panel: var(--color-gray-900);
+
+  --ink: var(--color-gray-50);
+  --ink-2: var(--color-gray-300);
+  --ink-3: var(--color-gray-400);
+
+  --rule: var(--color-gray-800);
+  --rule-strong: var(--color-gray-700);
+  --grid: var(--color-gray-800);
+
   --accent: var(--color-brand-400);
-  --accent-soft: rgba(126, 86, 217, 0.18);
+  --accent-soft: rgba(126, 86, 217, 0.22);
+
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 /* Task 14 — dashboard. Not part of the ported v1 stylesheet (v1 had no
@@ -759,7 +795,8 @@ html[data-theme='dark'] .lib-tier-code {
 
 .lib-empty-ways code {
   font-size: 12px;
-  background: var(--color-gray-100);
+  background: var(--panel);
+  border: 1px solid var(--rule);
   border-radius: var(--radius-xs);
   padding: 1px 4px;
 }

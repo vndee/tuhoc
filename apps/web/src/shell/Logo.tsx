@@ -30,6 +30,14 @@ export interface LogoProps {
   /** Cạnh của mark tính bằng px. Mặc định 28 — cỡ nó đứng trên thanh trên. */
   size?: number;
   /**
+   * Vẽ mark trong một ô vuông bo góc màu brand, nét trắng — dạng "app icon"
+   * của bản dựng, và là dạng nó đứng trên thanh trên.
+   *
+   * Bản nét trần (`boxed={false}`) dành cho chỗ đã có nền riêng hoặc cần một
+   * màu: watermark trên panel đăng nhập, bản một màu khi in.
+   */
+  boxed?: boolean;
+  /**
    * Màu nét chữ T. Mặc định `currentColor` để mark ăn theo màu chữ của chỗ
    * đặt nó, kể cả trong giao diện tối.
    */
@@ -51,10 +59,22 @@ function strokeFor(size: number): { stem: number; pages: number } {
   return { stem: 1.9, pages: 1.5 };
 }
 
-export function Logo({ size = 28, color = 'currentColor', pageColor, className }: LogoProps) {
-  const { stem, pages } = strokeFor(size);
+export function Logo({
+  size = 28,
+  color = 'currentColor',
+  pageColor,
+  boxed = false,
+  className,
+}: LogoProps) {
+  // Trong ô vuông, mark chỉ chiếm phần lõi chứ không tràn ra sát mép: nét vẽ
+  // theo lưới 28 nhưng ô là 28, nên phải thu nét lại một bậc để có lề. Bù lại
+  // độ đậm thị giác bằng cách tính nét theo cỡ NHỎ HƠN cỡ ô.
+  const { stem, pages } = strokeFor(boxed ? size * 0.72 : size);
   // Dưới 18px thì bỏ hẳn hai đường lượn — xem đầu tệp.
-  const showPages = size >= 18;
+  const showPages = (boxed ? size * 0.72 : size) >= 18;
+
+  const strokeColor = boxed ? '#fff' : color;
+  const pagesColor = boxed ? 'var(--color-brand-200)' : (pageColor ?? color);
 
   return (
     <svg
@@ -66,20 +86,21 @@ export function Logo({ size = 28, color = 'currentColor', pageColor, className }
       className={className}
       aria-hidden="true"
     >
+      {boxed && <rect width="28" height="28" rx="7" fill="var(--color-brand-600)" />}
       <path
         d="M8 9.5h12M14 9.5V20"
-        stroke={color}
+        stroke={strokeColor}
         strokeWidth={stem}
         strokeLinecap="round"
       />
       {showPages && (
         <path
           d="M8 20c2-1.3 4-1.3 6 0 2-1.3 4-1.3 6 0"
-          stroke={pageColor ?? color}
+          stroke={pagesColor}
           strokeWidth={pages}
           strokeLinecap="round"
           strokeLinejoin="round"
-          opacity={pageColor === undefined ? 0.38 : undefined}
+          opacity={boxed || pageColor !== undefined ? undefined : 0.38}
         />
       )}
     </svg>

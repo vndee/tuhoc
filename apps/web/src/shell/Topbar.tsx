@@ -94,7 +94,13 @@ export function Topbar({ theme, onToggleTheme, onMenuClick, navExpanded = true }
         aria-controls="sidebar"
         onClick={onMenuClick}
       >
-        ☰
+        {/* SVG, không phải ký tự `☰`.
+            Một glyph dingbat lấy phông từ bất cứ font nào hệ thống có nó, nên
+            nó lệch đường cơ sở và sai độ dày so với mọi icon khác — đây là dấu
+            hiệu amateur số một của bản cũ, và nó lặp lại ở năm nút nữa. */}
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M4 5.5h12M4 10h12M4 14.5h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
       </button>
       <span id="reader-nav" className="rd-slot" />
       {/*
@@ -115,7 +121,11 @@ export function Topbar({ theme, onToggleTheme, onMenuClick, navExpanded = true }
       */}
       <div id="crumb" />
       <button id="mark-btn" type="button" className="tb-btn" hidden={!isChapterRoute} aria-label={t('topbar.markRead')}>
-        <span className="mk-ico">○</span>
+        <span className="mk-ico">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <circle cx="10" cy="10" r="6.5" stroke="currentColor" strokeWidth="1.6" />
+          </svg>
+        </span>
         <span className="mk-lbl">{t('topbar.markRead')}</span>
       </button>
       <span id="reader-notes" className="rd-slot" />
@@ -127,13 +137,36 @@ export function Topbar({ theme, onToggleTheme, onMenuClick, navExpanded = true }
         aria-pressed={theme === 'dark'}
         onClick={onToggleTheme}
       >
-        {theme === 'dark' ? '☀' : '☾'}
+        {theme === 'dark' ? (
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <circle cx="10" cy="10" r="3.6" stroke="currentColor" strokeWidth="1.6" />
+            <path
+              d="M10 2.4v1.9M10 15.7v1.9M17.6 10h-1.9M4.3 10H2.4M15.4 4.6l-1.3 1.3M6 14l-1.4 1.4M15.4 15.4l-1.3-1.3M6 6L4.6 4.6"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </svg>
+        ) : (
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M16.5 12.4A6.8 6.8 0 017.6 3.5a6.9 6.9 0 108.9 8.9z"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
       </button>
       <button id="prev-btn" type="button" className="tb-btn" hidden={!isChapterRoute} aria-label={t('topbar.prevChapter')}>
-        ←
+        <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M15.5 10h-11M9 5.5L4.5 10 9 14.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
       <button id="next-btn" type="button" className="tb-btn" hidden={!isChapterRoute} aria-label={t('topbar.nextChapter')}>
-        →
+        <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M4.5 10h11M11 5.5l4.5 4.5L11 14.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
     </>
   );
