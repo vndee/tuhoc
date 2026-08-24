@@ -131,6 +131,10 @@ export const en: Messages = {
   'vault.settings.testPrompt': 'Answer in exactly one word: OK',
   'vault.settings.openaiWarning':
     'Measured warning (2026-08-22): OpenAI blocks its text-generation endpoint with CORS when called directly from a browser — their error responses carry no Access-Control-Allow-Origin. The success path has not been measured, so OpenAI may not work here, and if it does, a wrong key will show up as "could not reach the provider" rather than "the key was rejected". Try "Test the connection" before trusting it. DeepSeek, OpenRouter, Groq and Anthropic have all been measured to work directly from a browser.',
+  /* Shown only when this page is NOT inside a frame — see vi.ts for the why. */
+  'vault.standalone.notice':
+    'This is the key vault, and it is built to sit inside the study app rather than be opened on its own. Opened on its own it can still store and erase a key, but there are no lessons here.',
+  'vault.standalone.back': 'Back to the study app',
   'vault.settings.title': 'An AI assistant running on your own key',
   'vault.settings.why':
     'The key field lives inside this frame, and this frame is a separate page on a separate origin. The browser forbids code on the lesson page from reading anything here — including the field below, including where the key is kept. The lesson page only sends questions in and receives text back; it never sees the key. That is why this field is not on the settings page outside.',

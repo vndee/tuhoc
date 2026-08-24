@@ -202,6 +202,15 @@ export const vi = {
   'vault.settings.testPrompt': 'Trả lời đúng một từ: OK',
   'vault.settings.openaiWarning':
     'Cảnh báo đã đo được (2026-08-22): OpenAI chặn đường sinh chữ bằng CORS khi gọi thẳng từ trình duyệt — hồi đáp lỗi của họ không kèm Access-Control-Allow-Origin. Đường thành công chưa đo được, nên OpenAI có thể không dùng được ở đây, và nếu có thì lỗi sai key sẽ hiện ra là "không gọi được nhà cung cấp" chứ không phải "key bị từ chối". Hãy thử "Kiểm tra kết nối" trước khi tin vào nó. DeepSeek, OpenRouter, Groq và Anthropic đều đã đo được là gọi thẳng từ trình duyệt được.',
+  /*
+   * Kho khoá được thiết kế để NHÚNG. Mở thẳng địa chỉ của nó thì trang vẫn vẽ
+   * đầy đủ mà không có một lối nào quay về bài học — người dùng báo đúng chuyện
+   * này bằng một ảnh chụp thanh địa chỉ đang ở origin kho khoá. Hai chuỗi dưới
+   * đây chỉ hiện khi trang KHÔNG nằm trong khung.
+   */
+  'vault.standalone.notice':
+    'Đây là kho khoá, và nó được làm ra để nằm trong trang học chứ không phải mở riêng. Mở riêng thì nó vẫn cất và xoá key được, nhưng không có bài học nào ở đây.',
+  'vault.standalone.back': 'Về trang học',
   'vault.settings.title': 'Trợ lý AI chạy bằng key của chính bạn',
   'vault.settings.why':
     'Ô dán key nằm trong khung này, và khung này là một trang riêng ở một origin riêng. Trình duyệt cấm mã của trang bài học đọc bất cứ thứ gì ở đây — kể cả ô bên dưới, kể cả chỗ cất key. Trang bài học chỉ gửi câu hỏi vào và nhận chữ trả lời ra; nó không bao giờ thấy key. Đó là lý do ô này không nằm ở trang cấu hình bên ngoài.',

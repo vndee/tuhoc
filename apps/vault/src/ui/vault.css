@@ -189,3 +189,37 @@ body {
   border-left: 3px solid var(--v-danger);
   background: color-mix(in srgb, var(--v-danger) 8%, transparent);
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * BIỂU NGỮ CHO TRANG ĐỨNG MỘT MÌNH
+ *
+ * Chỉ dựng khi kho khoá KHÔNG được nhúng (xem `renderStandaloneNotice` trong
+ * `main.ts`). Trong khung nó không tồn tại, nên không có luật nào ở đây cần
+ * treo dưới một điều kiện — phần tử vắng mặt là đủ.
+ *
+ * Dùng token cảnh báo (`--v-warn-*`) chứ không phải token nguy hiểm: mở thẳng
+ * trang này không hỏng gì và không mất gì, nó chỉ là chỗ người ta không định
+ * tới. Màu đỏ ở đây sẽ nói dối về mức độ.
+ * ──────────────────────────────────────────────────────────────────────────── */
+.vault-standalone {
+  margin: 0 0 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--v-line);
+  border-left: 3px solid var(--v-warn-fg);
+  border-radius: 6px;
+  background: var(--v-warn-bg);
+  color: var(--v-warn-fg);
+}
+
+.vault-standalone-line {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.vault-standalone-back {
+  display: inline-block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--v-accent);
+}

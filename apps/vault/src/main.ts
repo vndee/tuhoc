@@ -310,6 +310,70 @@ export function applyLang(raw: string | null | undefined): void {
   if (typeof document !== 'undefined') document.documentElement.lang = currentLang();
 }
 
+/**
+ * LỐI RA CHO NGƯỜI MỞ THẲNG ĐỊA CHỈ NÀY.
+ *
+ * Kho khoá được làm ra để NHÚNG, và cho tới nay nó vẽ y hệt nhau dù đang nằm
+ * trong khung của trang học hay đang là tài liệu cấp cao nhất. Mở thẳng
+ * `http://localhost:5174` (một tab còn sót, một dấu trang, hay một URL chép từ
+ * chính báo cáo của chúng ta) là vào một trang đầy đủ chức năng mà KHÔNG có một
+ * liên kết nào dẫn đi đâu. Người dùng báo đúng chuyện này, kèm ảnh chụp thanh
+ * địa chỉ.
+ *
+ * Đặt vào `document.body` chứ KHÔNG vào `#vault-ui`, và đó là điều kiện để nó
+ * tồn tại: `renderSettings` mở đầu bằng `root.textContent = ''`, nên bất cứ thứ
+ * gì nằm trong nút gốc ấy đều bị xoá ở lần vẽ lại đầu tiên.
+ *
+ * KHÔNG cần dịch lại về sau: ngôn ngữ chỉ đổi qua thông điệp `setLang` từ trang
+ * cha, mà một trang đứng một mình thì không có trang cha — nên nó ở nguyên
+ * `DEFAULT_LANG` suốt đời. Cùng lý do ấy khiến nó không cần `retranslate`.
+ *
+ * `appOrigin` là hằng số lúc build (`VITE_APP_ORIGIN`, đã qua
+ * `resolveAllowedOrigin`), không phải thứ ai đó nhét vào được — nên một liên kết
+ * tới nó không mở thêm bề mặt tấn công nào. Và nó KHÔNG làm yếu sự cô lập: đây
+ * là một `<a href>` rời trang, không phải một kênh nói chuyện.
+ */
+export function renderStandaloneNotice(
+  body: HTMLElement,
+  appOrigin: string,
+  standalone: boolean,
+): HTMLElement | null {
+  if (!standalone) return null;
+
+  const box = document.createElement('div');
+  box.className = 'vault-standalone';
+  box.dataset.testid = 'vault-standalone';
+
+  const line = document.createElement('p');
+  line.className = 'vault-standalone-line';
+  line.textContent = t('vault.standalone.notice');
+
+  const back = document.createElement('a');
+  back.className = 'vault-standalone-back';
+  back.href = appOrigin;
+  back.textContent = t('vault.standalone.back');
+
+  box.append(line, back);
+  body.prepend(box);
+  return box;
+}
+
+/** Trang này có đang là tài liệu cấp cao nhất không (tức KHÔNG được nhúng). */
+function isStandalone(w: Window): boolean {
+  /*
+   * `w.top` là cross-origin khi bị nhúng, nhưng SO SÁNH tham chiếu thì luôn
+   * được phép — chỉ ĐỌC thuộc tính của nó mới ném. Dù vậy vẫn bọc try/catch:
+   * một trình duyệt hay một tiện ích mở rộng làm `top` ném biến trang này thành
+   * trắng xoá, và một biểu ngữ chỉ-đường không đáng để đánh đổi điều đó. Đoán
+   * "đang được nhúng" khi không chắc là phía an toàn: nó chỉ bỏ qua biểu ngữ.
+   */
+  try {
+    return w.top === w.self;
+  } catch {
+    return false;
+  }
+}
+
 if (typeof window !== 'undefined' && !import.meta.env.VITEST) {
   /*
    * CÁI GIÁ ĐÃ NHẬN KHI BỎ `?lang=`, nói ra thay vì để im.
@@ -341,6 +405,9 @@ if (typeof window !== 'undefined' && !import.meta.env.VITEST) {
   // `repaintPanel`, KHÔNG vẽ lại cả màn: `onActivity` chạy sau mọi quyết định
   // của người gác, tức là mỗi lần trang chính nhắn `chat` vào — vẽ lại cả màn
   // ở đó sẽ xoá sạch key người dùng đang gõ dở mỗi lần một course gọi hộ.
+  // Trước `renderSettings`, và ở `document.body`: xem chú thích của hàm.
+  renderStandaloneNotice(document.body, allowedOrigin, isStandalone(window));
+
   const root = document.getElementById('vault-ui');
   const ui = root ? renderSettings(root, defaultSettingsDeps()) : null;
   const repaint = ui
