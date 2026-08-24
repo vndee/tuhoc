@@ -728,3 +728,113 @@ test.describe('§4 — cập nhật có báo cáo thiệt hại', () => {
     expect(noise, `console/page errors: ${noise.join(' | ')}`).toEqual([]);
   });
 });
+
+/**
+ * §5 — THANH ĐIỀU HƯỚNG THU GỌN ĐƯỢC
+ *
+ * Người dùng yêu cầu: "The left navigation sidebar should be collapsible."
+ *
+ * Đây là tầng DUY NHẤT nói được câu ấy có đúng hay không. Luật ẩn là CSS treo
+ * dưới `@media (min-width: 981px)` (`styles/shell-modes.css`), mà jsdom không
+ * tính media query và không tính bố cục — nên bài kiểm đơn vị chỉ khẳng định
+ * được cái LỚP `nav-collapsed`, và nó sẽ xanh y nguyên nếu ai đó xoá sạch khối
+ * `@media` kia. Ở đây `toBeHidden()` hỏi trình duyệt thật.
+ *
+ * Hai chốt đối chứng đi kèm, vì "ẩn được" một mình là một nửa sự thật:
+ * lựa chọn phải SỐNG QUA điều hướng và tải lại (khác hẳn ngăn kéo của màn hẹp,
+ * thứ `useMobileNav` đóng ở mọi lần đổi route), và ở màn hẹp nút ấy phải vẫn
+ * là ngăn kéo cũ chứ không phải một cơ chế thứ hai chồng lên.
+ */
+test.describe('§5 — thanh điều hướng thu gọn được', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  /**
+   * HAI CÁCH ẨN KHÁC NHAU, và phải đo bằng hai phép khác nhau.
+   *
+   * · Màn rộng thu gọn bằng `display:none` → Playwright gọi là `hidden`.
+   * · Màn hẹp ẩn bằng `transform: translateX(-100%)` (reader.css) → phần tử
+   *   BỊ ĐẨY RA NGOÀI màn hình nhưng Playwright vẫn gọi nó là `visible`, vì
+   *   `toBeHidden()` đo display/visibility/opacity/kích thước, KHÔNG đo vị trí.
+   *
+   * Bản đầu của bài kiểm này dùng `toBeHidden()` cho cả hai và đỏ ở ca thứ
+   * hai — đúng, và đó là lý do hàm dưới đây tồn tại thay vì một lời khẳng định
+   * chung chung.
+   */
+  async function offScreenLeft(page: import('@playwright/test').Page): Promise<boolean> {
+    const box = await page.locator('#sidebar').boundingBox();
+    return box === null || box.x + box.width <= 0;
+  }
+
+  test('☰ ẩn/hiện thanh bên trên màn rộng, và lựa chọn sống qua tải lại', async ({ page }) => {
+    // `registerNewUser` GIẢ ĐỊNH trang đã ở `/login` (chú thích của chính nó),
+    // và nó đợi luôn cú chuyển hướng sau đăng ký — về `/`.
+    await page.goto('/login');
+    await registerNewUser(page, freshEmail(), PASSWORD);
+
+    const sidebar = page.locator('#sidebar');
+    const menu = page.locator('#menu-btn');
+
+    // Trạng thái nghỉ. Nút PHẢI thấy được ở khổ rộng — `reader.css` để
+    // `#menu-btn{display:none}` ngoài màn hẹp, nên nếu luật
+    // `#app:not(.reading) #menu-btn` mất thì tính năng này không có cửa vào.
+    await expect(sidebar).toBeVisible();
+    await expect(menu).toBeVisible();
+    await expect(menu).toHaveAttribute('aria-expanded', 'true');
+
+    await menu.click();
+    await expect(sidebar).toBeHidden();
+    await expect(menu).toHaveAttribute('aria-expanded', 'false');
+
+    // Lựa chọn KHÔNG bị buộc vào một route: sang trang khác vẫn thu gọn.
+    // Đi bằng `goto` chứ không bấm liên kết, vì liên kết điều hướng nằm TRONG
+    // thanh bên vừa thu gọn — bản đầu của bài này bấm nó và hết giờ, đúng như
+    // nó phải thế.
+    await page.goto('/courses');
+    await expect(page.locator('#sidebar')).toBeHidden();
+
+    // Và sống qua tải lại — đây là chỗ khác hẳn ngăn kéo của màn hẹp, thứ
+    // `useMobileNav` đóng lại ở mọi lần đổi route.
+    await page.reload();
+    await expect(page.locator('#sidebar')).toBeHidden();
+
+    // Mở lại được. Một nút chỉ ẩn được mà không hiện lại là một cái bẫy.
+    await page.locator('#menu-btn').click();
+    await expect(page.locator('#sidebar')).toBeVisible();
+  });
+
+  test('đối chứng màn hẹp: cùng nút ấy vẫn là ngăn kéo cũ, không phải cơ chế thứ hai', async ({
+    page,
+  }) => {
+    await page.goto('/login');
+    await registerNewUser(page, freshEmail(), PASSWORD);
+    await page.setViewportSize({ width: 375, height: 800 });
+
+    // Dưới 981px thanh bên là ngăn kéo: nó Ở TRONG tài liệu và Playwright gọi
+    // là `visible`, chỉ nằm ngoài khung nhìn. Nên hỏi VỊ TRÍ, không hỏi hiện/ẩn.
+    await expect(page.locator('#sidebar')).toBeVisible();
+    // `poll`, không phải một phép đo một-lần: `reader.css` đặt
+    // `transition: transform .22s ease` trên `#sidebar`, và bài này vừa đổi khổ
+    // từ 1440 xuống 375 — tức thanh bên đang TRƯỢT từ vị trí cũ sang -100% ngay
+    // lúc câu khẳng định chạy. Bản đầu đo một lần và đỏ với `x` nằm giữa chừng.
+    await expect
+      .poll(async () => offScreenLeft(page), { message: 'ngăn kéo phải nằm ngoài màn hình khi đóng' })
+      .toBe(true);
+
+    await page.locator('#menu-btn').click();
+    await expect
+      .poll(async () => offScreenLeft(page), { message: 'ngăn kéo phải trượt vào' })
+      .toBe(false);
+
+    // Đổi route ĐÓNG ngăn kéo lại — hành vi cũ của `useMobileNav`, và là chỗ
+    // hai cơ chế khác nhau rõ nhất. Nếu bản thu gọn lỡ gộp vào đây thì đỏ.
+    await page.getByRole('link', { name: /khoá học/i }).first().click();
+    await expect(page).toHaveURL(/\/courses$/);
+    await expect
+      .poll(async () => offScreenLeft(page), { message: 'đổi route phải đóng ngăn kéo' })
+      .toBe(true);
+
+    // Và thanh bên KHÔNG bị `display:none` ở đây — tức luật thu gọn của màn
+    // rộng không rò xuống dưới ngưỡng, nơi nó sẽ làm ngăn kéo không mở được nữa.
+    await expect(page.locator('#sidebar')).toBeVisible();
+  });
+});

@@ -5,8 +5,21 @@ import type { Theme } from '../theme/useTheme';
 export interface TopbarProps {
   theme: Theme;
   onToggleTheme: () => void;
-  /** Toggles the mobile TOC drawer (`body.nav-open`) — see `useMobileNav`. */
+  /**
+   * Bật/tắt thanh điều hướng. Dưới 981px là ngăn kéo trượt tạm
+   * (`body.nav-open`, xem `useMobileNav`); từ 981px là thu gọn BỀN
+   * (`#app.nav-collapsed`, xem `useSidebarCollapse`). `App.tsx` chọn cơ chế
+   * theo bề rộng ngay lúc bấm; ở đây chỉ là một cú bấm.
+   */
   onMenuClick: () => void;
+  /**
+   * Thanh bên có đang HIỆN không, dùng cho `aria-expanded`.
+   *
+   * Mặc định `true` vì `#sidebar` mặc định hiện trên màn rộng, và vì ba tệp
+   * test dựng `<Topbar>` trực tiếp — một prop bắt buộc ở đây sẽ bắt cả ba sửa
+   * mà không đo thêm được gì.
+   */
+  navExpanded?: boolean;
 }
 
 // Matches the `/c/:courseId/:chapterId` route — same pathname-only check
@@ -60,14 +73,27 @@ const CHAPTER_ROUTE = /^\/c\/[^/]+\/[^/]+/;
  *     chapter they are two empty `<span>`s with `display:contents`, which
  *     paint nothing and take no space.
  */
-export function Topbar({ theme, onToggleTheme, onMenuClick }: TopbarProps) {
+export function Topbar({ theme, onToggleTheme, onMenuClick, navExpanded = true }: TopbarProps) {
   const location = useLocation();
   const { t } = useLanguage();
   const isChapterRoute = CHAPTER_ROUTE.test(location.pathname);
 
   return (
     <>
-      <button id="menu-btn" type="button" className="tb-btn" aria-label={t('topbar.menu')} onClick={onMenuClick}>
+      <button
+        id="menu-btn"
+        type="button"
+        className="tb-btn"
+        aria-label={t('topbar.menu')}
+        /*
+          `aria-expanded` + `aria-controls`: nút này nay bật/tắt một vùng còn ở
+          NGUYÊN trong tài liệu, nên trình đọc màn hình phải nói được nó đang
+          mở hay đóng. Không có cặp này thì một nút "☰" chỉ là một ký tự.
+        */
+        aria-expanded={navExpanded}
+        aria-controls="sidebar"
+        onClick={onMenuClick}
+      >
         ☰
       </button>
       <span id="reader-nav" className="rd-slot" />

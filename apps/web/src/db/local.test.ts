@@ -630,10 +630,24 @@ describe('the localStorage key registry', () => {
    * describes this DEVICE, so `clearLocalData()` must leave it alone, and
    * `i18n/LanguageProvider.test.tsx` proves that it does rather than
    * leaving it true by luck.
+   *
+   * Lần thứ BA là `itbook-nav-collapsed` (thanh bên thu gọn được). Cùng một
+   * phân loại và cùng một lập luận: nó mô tả CỬA SỔ NÀY, không phải người dùng.
+   * Đăng xuất trên máy chung phải xoá sạch ghi chú và tiến độ; nó không có lý
+   * do gì để bung lại một thanh bên mà chủ máy đã thu gọn.
+   *
+   * Nó cũng là ví dụ đúng của cổng bên trên: bản đầu của `useSidebarCollapse`
+   * gọi thẳng `localStorage` và bài "no third place for user data to hide" đỏ
+   * ngay — sửa đúng là định tuyến qua `db/local.ts`, không phải thêm tệp ấy vào
+   * `allowedIn`.
    */
   it('classifies every key, with nothing on both lists', () => {
     expect([...USER_CONTENT_KEYS]).toEqual(['itbook-note-draft']);
-    expect([...DEVICE_PREFERENCE_KEYS]).toEqual(['itbook-theme', 'itbook-lang']);
+    expect([...DEVICE_PREFERENCE_KEYS]).toEqual([
+      'itbook-theme',
+      'itbook-lang',
+      'itbook-nav-collapsed',
+    ]);
 
     const all = [...USER_CONTENT_KEYS, ...DEVICE_PREFERENCE_KEYS];
     expect(new Set(all).size).toBe(all.length);

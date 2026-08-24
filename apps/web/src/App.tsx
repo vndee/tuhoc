@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { BrowserRouter, useLocation } from 'react-router-dom';
 import { useMe } from './api/useMe';
 import { LanguageProvider } from './i18n/LanguageProvider';
@@ -11,6 +11,7 @@ import { Shell } from './shell/Shell';
 import { Sidebar } from './shell/Sidebar';
 import { Topbar } from './shell/Topbar';
 import { useMobileNav } from './shell/useMobileNav';
+import { useSidebarCollapse, WIDE_QUERY } from './shell/useSidebarCollapse';
 import './styles/index.css';
 import { startSync, stopSync } from './sync/engine';
 import { ThemeProvider, useThemeContext } from './theme/ThemeContext';
@@ -54,7 +55,28 @@ const CHAPTER_ROUTE = /^\/c\/[^/]+\/[^/]+/;
 function AppShell() {
   const { theme, toggle: toggleTheme } = useThemeContext();
   const { toggle: toggleMobileNav } = useMobileNav();
+  const { collapsed, toggle: toggleCollapse } = useSidebarCollapse();
   const location = useLocation();
+
+  /**
+   * MỘT nút, hai cơ chế, chọn theo bề rộng NGAY LÚC BẤM.
+   *
+   * Với người dùng đây là cùng một câu — "cho tôi thấy / đừng cho tôi thấy
+   * thanh điều hướng" — nên hai nút sẽ là hai cách nói một điều, đặt cạnh nhau,
+   * và đó đúng là thứ đặc tả IA gọi là mô hình điều hướng thứ hai.
+   *
+   * Hỏi `matchMedia` lúc bấm chứ không giữ bề rộng trong state: không cần
+   * listener `resize`, không có state lệch pha sau khi xoay máy, và câu hỏi chỉ
+   * có nghĩa đúng vào khoảnh khắc người ta bấm. `matchMedia` được bọc vì jsdom
+   * cũ có thể không có nó — thiếu thì coi như màn hẹp, tức giữ nguyên hành vi
+   * ngăn kéo vốn có.
+   */
+  const onMenuClick = useCallback(() => {
+    const wide =
+      typeof window.matchMedia === 'function' && window.matchMedia(WIDE_QUERY).matches;
+    if (wide) toggleCollapse();
+    else toggleMobileNav();
+  }, [toggleCollapse, toggleMobileNav]);
 
   useSyncLifecycle();
 
@@ -65,10 +87,16 @@ function AppShell() {
       // nhất trong repo biết mình đang ở chế độ nào; mọi khác biệt còn lại là
       // luật CSS treo dưới `#app.reading`.
       reading={CHAPTER_ROUTE.test(location.pathname)}
+      navCollapsed={collapsed}
       sidebar={<Sidebar />}
       topbar={
         <>
-          <Topbar theme={theme} onToggleTheme={toggleTheme} onMenuClick={toggleMobileNav} />
+          <Topbar
+            theme={theme}
+            onToggleTheme={toggleTheme}
+            onMenuClick={onMenuClick}
+            navExpanded={!collapsed}
+          />
           {/* Gắn ở khe `topbar` chứ không trong <Topbar>: <Topbar> nhận mọi
               thứ qua props và được ba tệp test render trực tiếp, nên cho nó
               đọc Context sẽ bắt ba tệp ấy phải dựng provider mà chẳng đo thêm

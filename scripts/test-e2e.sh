@@ -152,7 +152,7 @@ echo "playwright install exit=$PW_INSTALL_EXIT"
 [ "$PW_INSTALL_EXIT" -eq 0 ] || fail "playwright browser install failed (exit=$PW_INSTALL_EXIT)"
 
 log "running the Playwright P1 definition-of-done suite"
-(cd "$REPO_ROOT/apps/web" && VITE_API_URL="$API_URL" bunx playwright test)
+(cd "$REPO_ROOT/apps/web" && VITE_API_URL="$API_URL" bunx playwright test "$@")
 TEST_EXIT=$?
 echo "playwright test exit=$TEST_EXIT"
 
