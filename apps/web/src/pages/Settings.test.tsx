@@ -215,6 +215,31 @@ describe('Trang cấu hình AI của TRANG CHÍNH', () => {
   });
 
   /**
+   * Escape cũng đóng được — cùng lỗi "stuck" mà người dùng báo, ở nửa còn lại.
+   *
+   * Một lớp phủ TOÀN màn hình chỉ thoát được bằng cách bấm trúng một nút là một
+   * lớp phủ dễ thành cái bẫy. Bài này đo ở trang cha, đúng phạm vi mà bản sửa
+   * hứa: khung kho khoá ở origin khác nên khi tiêu điểm đã vào trong khung thì
+   * phím không nổi lên tới đây — giới hạn ấy ghi trong `shell/VaultFrame.tsx`
+   * và không vá được từ phía này.
+   */
+  it('Escape cũng đóng được lớp phủ, không chỉ nút Đóng', async () => {
+    const user = userEvent.setup();
+    renderSettings();
+
+    // Chốt chống-vacuous: phải đang MỞ thì "đóng được" mới có nghĩa.
+    expect(frames()[0]).toBeVisible();
+
+    await user.keyboard('{Escape}');
+    expect(frames()[0]).not.toBeVisible();
+    expect(document.querySelector('.vault-overlay')).toBeNull();
+
+    // Và mở lại được — Escape không được để trang kẹt ở trạng thái chết.
+    await user.click(screen.getByRole('button', { name: t('vi', 'settings.ai.open') }));
+    expect(frames()[0]).toBeVisible();
+  });
+
+  /**
    * Bản dựng không có kho khoá phải NÓI RA điều đó. `unavailable` tách khỏi
    * `not_configured` ở Task 5 vì đúng lý do này: mời người học "vào cấu hình để
    * cắm key" chỉ đúng khi có chỗ để cắm.

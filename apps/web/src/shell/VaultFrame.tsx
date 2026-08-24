@@ -122,6 +122,37 @@ export function VaultFrameProvider({ origin, children }: VaultFrameProviderProps
   const [expanded, setExpanded] = useState(false);
 
   /**
+   * Escape đóng lớp phủ.
+   *
+   * Lớp phủ này che TOÀN màn hình, và Escape là cử chỉ đầu tiên ai cũng thử khi
+   * thấy mình kẹt — người dùng báo đúng bằng chữ "stuck". Nút "Đóng" vẫn ở đó,
+   * nhưng một lớp phủ toàn màn hình chỉ thoát được bằng cách trúng đích một nút
+   * là một lớp phủ dễ biến thành cái bẫy.
+   *
+   * GIỚI HẠN, nói thẳng thay vì giả vờ không có: khung kho khoá ở MỘT ORIGIN
+   * KHÁC, nên khi tiêu điểm đã ở trong khung thì phím không nổi lên tới đây và
+   * Escape không ăn. Đó là hệ quả trực tiếp của chính sự cô lập khiến kho khoá
+   * an toàn, không phải thứ vá được từ phía này — muốn phủ luôn ca ấy thì
+   * `apps/vault` phải tự bắt Escape rồi gửi một thông điệp mới qua cầu nối, tức
+   * mở rộng giao thức, và đó là một thay đổi khác.
+   *
+   * Ca này vẫn đáng sửa vì nó là ca THƯỜNG GẶP: đã đo trên trang thật, ngay sau
+   * khi mở thì `document.activeElement` còn là `BODY` của trang cha — khung
+   * không tự lấy tiêu điểm. Tức đúng lúc người ta nhận ra "tôi không định mở
+   * cái này", Escape ở đây ăn.
+   */
+  useEffect(() => {
+    if (!expanded) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExpanded(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [expanded]);
+
+  /**
    * `oxlint` cảnh báo `react(set-state-in-effect)` ở đây, và cảnh báo ấy được
    * GIỮ có chủ ý. Chính lời khuyên của luật nói ra ngoại lệ: "Use an effect
    * only when synchronizing with an external system." `contentWindow` của một
