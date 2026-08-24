@@ -147,6 +147,24 @@ async function rowFor(title: string): Promise<HTMLElement> {
  * Step 1 — the three assertions the brief names
  * ====================================================================== */
 
+/**
+ * MỌI liên kết trong một hàng phải trỏ đúng khoá của hàng ấy.
+ *
+ * Bản trước hỏi `getByRole('link')` — ngầm định một hàng có ĐÚNG MỘT liên kết.
+ * Bản dựng đã duyệt cho mỗi hàng hai lối vào cùng một chỗ: tên khoá, và nút
+ * "Đọc tiếp"/"Bắt đầu đọc" ở mép phải. Hai affordance cho một đích là bình
+ * thường trong một thẻ; `getByRole` số ít thì không.
+ *
+ * Hỏi TẤT CẢ thay vì hỏi cái đầu tiên, nên câu hỏi mạnh lên chứ không yếu đi:
+ * bản cũ chỉ chứng minh "có một liên kết đúng", bản này chứng minh "không có
+ * liên kết nào SAI" — thứ bắt được một hàng lỡ trỏ sang khoá bên cạnh.
+ */
+function expectRowLinksTo(row: HTMLElement, href: string): void {
+  const links = within(row).getAllByRole('link');
+  expect(links.length).toBeGreaterThan(0);
+  for (const link of links) expect(link).toHaveAttribute('href', href);
+}
+
 describe('Thư viện — liệt kê', () => {
   it('liệt kê đủ course từ GET /courses VÀ từ Dexie, mỗi course một lần, kèm ngôn ngữ / hạng / phiên bản đang ghim / nguồn', async () => {
     server.use(
@@ -200,8 +218,8 @@ describe('Thư viện — liệt kê', () => {
     expect(bothMeta?.textContent).not.toMatch(/3\.0\.0/);
 
     // And every row opens its course.
-    expect(within(server1).getByRole('link')).toHaveAttribute('href', '/c/tren-may-chu');
-    expect(within(local).getByRole('link')).toHaveAttribute('href', '/c/goi-tu-nhap');
+    expectRowLinksTo(server1, '/c/tren-may-chu');
+    expectRowLinksTo(local, '/c/goi-tu-nhap');
   });
 
   it('một gói đã có registryId được ghi nguồn là registry, không phải tự nhập', async () => {
@@ -257,7 +275,7 @@ describe('Thư viện — bốn nguồn, một câu trả lời (S1-F31)', () =>
     renderLibrary();
 
     const row = await rowFor('Khóa đang đọc dở');
-    expect(within(row).getByRole('link')).toHaveAttribute('href', '/c/dang-doc');
+    expectRowLinksTo(row, '/c/dang-doc');
     // Named from its own manifest rather than printed as a raw id.
     expect(row.textContent).toMatch(/1\.4\.0/);
     expect(screen.queryByText(/thư viện của bạn đang trống/i)).not.toBeInTheDocument();
@@ -282,7 +300,7 @@ describe('Thư viện — bốn nguồn, một câu trả lời (S1-F31)', () =>
     // No manifest anywhere for it, so the id is all there is to print — and
     // printing the id beats leaving the reader's own course off the list.
     const row = await rowFor('may-khac');
-    expect(within(row).getByRole('link')).toHaveAttribute('href', '/c/may-khac');
+    expectRowLinksTo(row, '/c/may-khac');
     expect(within(row).getByText(/không rõ nguồn/i)).toBeInTheDocument();
   });
 
@@ -505,7 +523,7 @@ describe('Thư viện — course riêng tư', () => {
 
     // …and the row still does its job, so "render nothing" cannot satisfy
     // the negative assertion below.
-    expect(within(row).getByRole('link')).toHaveAttribute('href', '/c/cua-toi');
+    expectRowLinksTo(row, '/c/cua-toi');
 
     // Nothing anywhere offers to share it. §2.4: riêng tư means no other
     // user sees it — a share control on this row would be the one way to

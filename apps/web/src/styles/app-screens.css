@@ -60,9 +60,15 @@
 #app:not(.reading) .dash-summary,
 #app:not(.reading) .dash-chart,
 #app:not(.reading) .dash-stats-note,
-#app:not(.reading) .lib-list {
+#app:not(.reading) .lib-page,
+#app:not(.reading) .lib-list,
+#app:not(.reading) .import-page {
   max-width: none;
 }
+
+/* `.import-page` là ngoại lệ CÓ ĐIỀU KIỆN: trong hộp thoại Nhập gói nó phải
+   giữ bề ngang của hộp, chứ không phải của trang. Hộp thoại tự bó ở 620px nên
+   luật trên vô hại ở đó — nhưng nói ra để lần sau không ai đi gỡ nhầm. */
 
 /* ── CHỮ ──────────────────────────────────────────────────────────────────
    `reader.css` đặt `body{font-family:var(--serif)}`, và mọi màn app thừa kế
@@ -891,4 +897,387 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
     flex-wrap: wrap;
     width: 100%;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   HÀNG KHOÁ HỌC — khung "Khoá học" của bản dựng
+   ══════════════════════════════════════════════════════════════════════════ */
+
+#app:not(.reading) .lib-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#app:not(.reading) .lib-item-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 20px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-xl);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-xs);
+}
+
+#app:not(.reading) .lib-cover {
+  flex: 0 0 52px;
+  height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(155deg, var(--color-brand-500), var(--color-brand-800));
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+#app:not(.reading) .lib-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+#app:not(.reading) .lib-item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 5px;
+}
+
+#app:not(.reading) .lib-item-title {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  border-bottom: none;
+}
+
+#app:not(.reading) .lib-item-title:hover {
+  color: var(--color-brand-700);
+}
+
+#app:not(.reading) .lib-item-desc {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  /* Một câu, không phải cả đoạn: hàng là một mục trong danh sách, và mô tả đầy
+     đủ thuộc về trang khoá học. */
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+#app:not(.reading) .lib-meta {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+#app:not(.reading) .lib-prog {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#app:not(.reading) .lib-prog-track {
+  flex: 0 0 200px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-gray-200);
+  overflow: hidden;
+}
+
+#app:not(.reading) .lib-prog-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-brand-600);
+}
+
+#app:not(.reading) .lib-prog-text {
+  font-size: 13px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+#app:not(.reading) .lib-item-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Khối cập nhật rơi xuống hàng riêng: nó chỉ xuất hiện với một số hàng, và
+   chen nó vào nhóm nút sẽ làm chiều cao hàng nhảy giữa danh sách. */
+#app:not(.reading) .lib-item-card .lib-item-update {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+}
+
+#app:not(.reading) .lib-item-card {
+  flex-wrap: wrap;
+}
+
+#app:not(.reading) .lib-update-note {
+  font-size: 13.5px;
+  color: var(--color-brand-700);
+  font-weight: 500;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TRANG KHOÁ HỌC — mặt trước của khoá, KHÔNG phải bản sao thứ hai của mục lục
+   ══════════════════════════════════════════════════════════════════════════ */
+
+#app:not(.reading) .ch-page {
+  max-width: 46rem;
+}
+
+#app:not(.reading) .ch-badges {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+}
+
+#app:not(.reading) .ch-badge-meta {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+#app:not(.reading) .ch-page .ch-title {
+  font-size: 34px;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  margin-bottom: 10px;
+}
+
+#app:not(.reading) .ch-page .ch-lede {
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  margin-bottom: 28px;
+}
+
+#app:not(.reading) .ch-resume {
+  padding: 18px 20px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-xl);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 34px;
+}
+
+#app:not(.reading) .ch-resume-eyebrow {
+  margin: 0 0 3px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+#app:not(.reading) .ch-resume-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+#app:not(.reading) .ch-resume-body {
+  flex: 1;
+  min-width: 0;
+}
+
+#app:not(.reading) .ch-resume-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 2px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+#app:not(.reading) .ch-resume-num {
+  color: var(--ink-3);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+#app:not(.reading) .ch-resume-meta {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--ink-3);
+}
+
+#app:not(.reading) .ch-parts-h {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+#app:not(.reading) .ch-parts-hint {
+  margin: 0 0 16px;
+  font-size: 13.5px;
+  color: var(--ink-3);
+}
+
+#app:not(.reading) .ch-part-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Kẻ chỉ, không phải thẻ: đây là một bảng tóm tắt bốn dòng, và bốn cái hộp bo
+   góc xếp chồng sẽ nặng hơn thứ chúng chứa. */
+#app:not(.reading) .ch-part {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 13px 0;
+  border-top: 1px solid var(--rule);
+  font-size: 14.5px;
+  color: var(--ink);
+}
+
+#app:not(.reading) .ch-part:last-child {
+  border-bottom: 1px solid var(--rule);
+}
+
+#app:not(.reading) .ch-part-name {
+  flex: 1;
+}
+
+#app:not(.reading) .ch-part-count {
+  flex: 0 0 auto;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Phần đã học HẾT được nói bằng MÀU, không chỉ bằng con số — mắt quét dọc cột
+   phải thấy ngay chặng nào xong. */
+#app:not(.reading) .ch-part-count[data-done] {
+  color: var(--color-success-700);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CÀI ĐẶT — tab ngang, đúng khung "Cài đặt" của bản dựng
+   ══════════════════════════════════════════════════════════════════════════
+
+   `set-toc` là một CỘT DỌC bên trái từ trước vòng thiết kế lại. Bản dựng dùng
+   một hàng tab dưới nhan đề — cùng hình dạng với hai tab của màn Khoá học, nên
+   người đọc học MỘT cách chuyển mục cho cả app thay vì hai.
+
+   Bốn mục giữ nguyên. Bản dựng gộp Tài khoản với Ngôn ngữ & giao diện thành
+   "Chung", nhưng `SECTIONS` là mô hình có bài kiểm riêng và một phép gộp ở đây
+   sẽ đổi cả `settings.section.*`, cả `?section=` mà `e2e/s2.spec.ts` đi qua.
+   Hình thức đổi được mà không đụng tới mô hình; gộp mục thì không. */
+
+#app:not(.reading) .set-grid {
+  display: block;
+}
+
+#app:not(.reading) .set-toc {
+  display: flex;
+  gap: 24px;
+  margin: 0 0 24px;
+  padding: 0;
+  border-bottom: 1px solid var(--rule);
+  border-right: 0;
+}
+
+#app:not(.reading) .set-toc-item {
+  /* `flex: 0 0 auto` — luật cũ cho `flex: 1 1 8rem` để bốn mục chia đều một
+     CỘT DỌC. Trong một hàng ngang nó làm bốn tab giãn hết bề ngang trang, và
+     nét gạch chân của tab đang chọn dài bằng một phần tư màn hình. */
+  flex: 0 0 auto;
+  padding: 0 1px 11px;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#app:not(.reading) .set-toc-item:hover {
+  color: var(--ink-2);
+}
+
+/* Mục đang xem đọc được KHÔNG CHỈ bằng màu: nét 2px và chữ đậm hơn vẫn nói ra
+   nó trên màn đơn sắc hoặc với mắt không phân biệt màu. */
+#app:not(.reading) .set-toc-item.on {
+  color: var(--ink);
+  font-weight: 600;
+  border-bottom-color: var(--color-brand-600);
+}
+
+#app:not(.reading) .set-toc-item:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring-gray);
+  border-radius: var(--radius-xs);
+}
+
+#app:not(.reading) .set-main {
+  max-width: 46rem;
+}
+
+#app:not(.reading) .set-h {
+  font-size: 18px;
+  margin: 0 0 4px;
+}
+
+#app:not(.reading) .set-lede {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-3);
+  margin: 0 0 18px;
+}
+
+#app:not(.reading) .set-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin: 0 0 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  font-size: 14px;
+  color: var(--ink);
+}
+
+#app:not(.reading) .set-note {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink-3);
+}
+
+/* Khối kho khoá: nó là chỗ nói về KEY của người dùng, nên nó được đóng khung
+   rõ là một mặt phẳng khác — đúng như bản dựng, và đúng như lập luận sẵn có
+   trong `settings-auth.css` về việc kho khoá phải trông tách bạch. */
+#app:not(.reading) .set-vault {
+  border: 1px solid var(--color-brand-200);
+  border-radius: var(--radius-xl);
+  background: var(--color-brand-25);
 }

@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { CourseHome } from '../pages/CourseHome';
+import { Sidebar } from '../shell/Sidebar';
 import type { Chapter, Manifest } from '../course/types';
 import { clearLocalData, db } from '../db/local';
 import { LanguageProvider } from '../i18n/LanguageProvider';
@@ -41,11 +42,28 @@ beforeEach(async () => {
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
+/**
+ * DỰNG CẢ `<Sidebar>` LẪN `<CourseHome>`, đúng như route thật.
+ *
+ * Trước vòng thiết kế lại, `<CourseHome>` tự in trọn mục lục ở giữa màn — cùng
+ * lúc thanh bên bên trái in y hệt. Hai bản sao của một danh sách cách nhau ba
+ * trăm pixel. Bản dựng đã duyệt bỏ bản ở giữa và giữ bản ở thanh bên, nơi mục
+ * lục là nghĩa DUY NHẤT của cột ấy.
+ *
+ * Năm bài dưới đây canh `CourseNav` — `data-ch`, lớp `done`, `.nav-part`, số
+ * liên kết, phạm vi theo courseId. Chúng KHÔNG mất giá trị vì danh sách chỉ
+ * đổi chỗ, nên cách sửa đúng là dựng đúng cái route thật dựng, chứ không phải
+ * hạ câu hỏi xuống cho vừa một component đã hẹp đi.
+ *
+ * `<Sidebar>` đọc `useLocation`, nên nó phải nằm TRONG `<MemoryRouter>` chứ
+ * không nằm trong `<Routes>` — nó là chrome dựng CẠNH route, đúng như `App.tsx`.
+ */
 function renderCourseHome(initialPath = '/c/demo') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <LanguageProvider><MemoryRouter initialEntries={[initialPath]}>
+        <Sidebar />
         <Routes>
           <Route path="/c/:courseId" element={<CourseHome />} />
         </Routes>
@@ -69,7 +87,12 @@ describe('CourseHome', () => {
 
     renderCourseHome();
 
-    const links = await screen.findAllByRole('link');
+    // KHOANH VÙNG vào `#nav` — mục lục. Ngoài nó, trang khoá học nay có thêm
+    // một liên kết: nút "Đọc tiếp"/"Bắt đầu đọc" trên thẻ ĐANG DỞ. Đếm cả nó
+    // là đếm hai loại khác nhau vào một con số.
+    await screen.findByRole('heading', { name: 'Khóa học demo' });
+    const nav = document.getElementById('nav')!;
+    const links = within(nav).getAllByRole('link');
     expect(links).toHaveLength(44);
   });
 
@@ -78,7 +101,10 @@ describe('CourseHome', () => {
 
     renderCourseHome();
 
-    const links = await screen.findAllByRole('link');
+    // Cùng lý do bài trên: khoanh vùng vào mục lục, vì nút "Bắt đầu đọc" cũng
+    // là một liên kết và nó cố ý KHÔNG mang `data-ch`.
+    await screen.findByRole('heading', { name: 'Khóa học demo' });
+    const links = within(document.getElementById('nav')!).getAllByRole('link');
     expect(links).toHaveLength(3);
     for (const [i, link] of links.entries()) {
       const id = `ch-${i + 1}`;
@@ -127,7 +153,11 @@ describe('CourseHome', () => {
 
     renderCourseHome();
 
-    expect(await screen.findByText(/không tải được|not found|lỗi/i)).toBeInTheDocument();
+    // `findAllByText`: câu lỗi xuất hiện ở HAI chỗ, và cả hai đều đúng chỗ của
+    // nó — thanh bên nói vì sao cột mục lục trống, trang nói vì sao thân trang
+    // trống. Một cột im lặng khi tải hỏng thì không phân biệt được với "đang
+    // tải mãi mãi"; `Sidebar` đã ghi lại đúng lập luận ấy.
+    expect((await screen.findAllByText(/không tải được|not found|lỗi/i)).length).toBeGreaterThan(0);
     expect(screen.queryAllByRole('link')).toHaveLength(0);
   });
 
@@ -138,7 +168,7 @@ describe('CourseHome', () => {
 
     renderCourseHome();
 
-    expect(await screen.findByText(/không tải được|not found|lỗi/i)).toBeInTheDocument();
+    expect((await screen.findAllByText(/không tải được|not found|lỗi/i)).length).toBeGreaterThan(0);
     expect(screen.queryAllByRole('link')).toHaveLength(0);
   });
 });

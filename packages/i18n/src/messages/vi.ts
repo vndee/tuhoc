@@ -324,6 +324,9 @@ export const vi = {
 
   'course.loading': 'Đang tải khóa học…',
   'course.notFound': 'Không tìm thấy khóa học.',
+  'course.parts.title': (n: string) => `Khoá này đi qua ${n} chặng`,
+  'course.parts.hint': 'Chi tiết từng chương nằm ở mục lục bên trái.',
+  'course.partCount': (read: string, total: string) => `${read}/${total}`,
   'chapter.notFound': 'Không tìm thấy chương này.',
   'chapter.notFoundInCourse': 'Không tìm thấy chương này trong khóa học.',
 
@@ -459,6 +462,7 @@ export const vi = {
     'Đang đọc bản lưu trên máy — máy chủ không trả lời một lần nào. Có thể bạn đang ngoại tuyến, hoặc máy chủ đang bị cấu hình sai (CORS/DNS): trình duyệt trả về đúng một lỗi trống cho cả hai, nên trang này không phân biệt được. Chỉ những khóa học đã lưu trên thiết bị này mới hiện ở dưới.',
   'library.meta.version': (version: string) => `phiên bản ${version}`,
   'library.meta.held': 'đã tải về máy',
+  'library.meta.chapters': (read: string, total: string) => `${read}/${total} chương`,
   'library.update.available': (version: string) => `Có bản mới: v${version}`,
   'library.update.view': 'Xem thay đổi',
   'library.tier.contentTitle': 'Hạng content: chỉ HTML, CSS, hình ảnh và công thức toán — không có JavaScript.',

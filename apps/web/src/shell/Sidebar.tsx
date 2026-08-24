@@ -104,7 +104,21 @@ export function Sidebar() {
           <input id="nav-search" type="text" placeholder={t('sidebar.searchPlaceholder')} disabled />
         </div>
       </div>
-      <nav id="nav">
+      {/*
+        `aria-label` MANG TÊN KHOÁ, không phải một nhãn chung như "Mục lục".
+
+        Trang này có HAI vùng điều hướng: thanh trên ("Điều hướng chính") và cột
+        này. Hai landmark cùng vai mà không phân biệt được tên thì một người
+        dùng trình đọc màn hình phải bước vào từng cái để biết cái nào là cái
+        nào — đó chính là điều `aria-label` tồn tại để tránh.
+
+        Tên khoá cũng là thứ `e2e/helpers.ts` (`courseHomeChapterLink`) định vị
+        theo, và nó là một phép đo có ý nghĩa chứ không phải một chi tiết bám
+        vào: nó hỏi "mục lục CỦA KHOÁ NÀY có chương ấy không". Trước vòng thiết
+        kế lại, nhãn ấy nằm trên `<nav>` mà `CourseHome` tự dựng ở giữa màn; khi
+        mục lục dồn về một chỗ, nhãn phải đi theo nó.
+      */}
+      <nav id="nav" aria-label={manifestQuery.data?.title ?? t('reader.toc')}>
         {manifestQuery.isPending && <p className="nav-empty">{t('course.loading')}</p>}
         {manifestQuery.isError && (
           <p className="nav-empty">{describeCourseError(manifestQuery.error, t)}</p>

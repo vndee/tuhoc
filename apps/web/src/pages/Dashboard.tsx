@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { colorOf, quoteOf } from '../annotations/useAnnotations';
 import { flatChapters, nextChapter } from '../course/chapters';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
+import { monogram } from '../course/monogram';
 import { type OwnedCourse, useOwnedCourses } from '../course/owned';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { pickFocusCourse, useLastStudiedCourseId, useRecentNotes } from '../progress/recent';
@@ -45,26 +46,6 @@ import { EmptyLibrary } from './Library';
  * nào), trao đúng một hành động, và kể ba đường vào — trong đó một đường không
  * cần mạng.
  */
-/**
- * MONOGRAM trên bìa khoá — chữ cái đầu của các từ trong tên khoá.
- *
- * Bản dựng vẽ "IEEE / 754" trên bìa, và nó KHÔNG suy ra được: tôi chọn tay hai
- * chữ ấy cho mockup vì tôi biết khoá đó nói về IEEE 754. Bản đầu của hàm này
- * cố đoán bằng "từ dài nhất trong tên" và cho ra "PHẨY" cho khoá "Số dấu phẩy
- * động" — một chữ vô nghĩa in to 30px giữa bìa, tệ hơn hẳn không có bìa.
- *
- * Nên bìa chỉ mang thứ luôn đúng: monogram. "Số dấu phẩy động" → "SDPĐ". Nó
- * không giả vờ biết khoá nói về gì, và nó phân biệt được các khoá với nhau —
- * đúng việc mà một mỏ neo thị giác cần làm.
- *
- * Một gói khoá học không mang ảnh bìa (`packages/course-format`), nên đây là
- * tất cả những gì dựng được mà không bịa.
- */
-function monogram(title: string): string {
-  const words = title.split(/\s+/).filter(Boolean);
-  return words.map((w) => w[0]?.toUpperCase() ?? '').join('').slice(0, 4);
-}
-
 export function Dashboard() {
   const { t } = useLanguage();
   // MỘT câu trả lời cho "người này có những khoá nào" — ruling S1-F31.

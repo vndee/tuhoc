@@ -235,6 +235,9 @@ export const en: Messages = {
 
   'course.loading': 'Loading the course…',
   'course.notFound': 'Course not found.',
+  'course.parts.title': (n: string) => `This course runs through ${n} parts`,
+  'course.parts.hint': 'Each chapter is listed in the contents on the left.',
+  'course.partCount': (read: string, total: string) => `${read}/${total}`,
   'chapter.notFound': 'Chapter not found.',
   'chapter.notFoundInCourse': 'That chapter is not in this course.',
 
@@ -337,6 +340,7 @@ export const en: Messages = {
     'Showing the copy stored on this device — the server never answered. You may be offline, or the server may be misconfigured (CORS/DNS): the browser returns the same empty error for both, so this page cannot tell them apart. Only courses stored on this device appear below.',
   'library.meta.version': (version: string) => `version ${version}`,
   'library.meta.held': 'downloaded',
+  'library.meta.chapters': (read: string, total: string) => `${read}/${total} chapters`,
   'library.update.available': (version: string) => `New version available: v${version}`,
   'library.update.view': 'See what changed',
   'library.tier.contentTitle': 'Content tier: HTML, CSS, images and maths only — no JavaScript.',

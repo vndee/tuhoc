@@ -2,11 +2,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, serverAnswered } from '../api/client';
+import { countChapters } from '../course/chapters';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
+import { monogram } from '../course/monogram';
 import { manifestString, type OwnedCourse, useOwnedCourses } from '../course/owned';
 import { UpdateDialog } from '../course/UpdateDialog';
 import type { MessageKey } from '../i18n';
 import { useLanguage } from '../i18n/LanguageProvider';
+import { useProgress } from '../progress/useProgress';
 
 /* ------------------------------------------------------------------ *
  * What a library row is made of
@@ -291,12 +294,32 @@ function TransportNotice({ error }: { error: unknown }) {
 function CourseRow({ row }: { row: LibraryRow }) {
   const { t } = useLanguage();
   const needsManifest = row.title === undefined;
+  // `enabled: needsManifest` GIỮ NGUYÊN, và tôi đã thử bỏ nó rồi phải trả lại.
+  //
+  // Bản dựng cho mỗi hàng một câu mô tả và một thanh tiến độ — cả hai chỉ
+  // manifest mới biết — nên bản đầu của vòng này cho mọi hàng cùng gọi
+  // `loadManifest`. `e2e/s3.spec.ts` đỏ ngay: sau khi kéo một course từ kho
+  // cộng đồng về, mở chương của nó ra thì `#content` chỉ còn 16 ký tự — đúng
+  // độ dài chuỗi "Đang tải chương…".
+  //
+  // Nguyên nhân là CACHE DÙNG CHUNG. `manifestQueryKey` là cùng một khoá mà
+  // trang khoá học và trang đọc dùng; `retry: false` nghĩa là một lần hỏng ở
+  // màn thư viện được GHI LẠI dưới khoá ấy, và mọi màn sau đọc phải trạng thái
+  // hỏng ấy. Danh sách thư viện là chỗ dễ hỏng nhất — nó có cả hàng chưa ghim
+  // gói xong — nên bỏ `enabled` là biến màn ít quan trọng nhất thành nguồn sự
+  // thật cho màn quan trọng nhất.
+  //
+  // Hệ quả với bản dựng, nói ra chứ không giấu: hàng nào ĐÃ có tên từ bản ghi
+  // thư viện thì không tự gọi manifest, nên mô tả và thanh tiến độ của nó chỉ
+  // hiện khi cache đã ấm (Bảng điều khiển hoặc trang khoá học đã mở nó). Đổi
+  // lại, một hàng thiếu mô tả không bao giờ làm hỏng trang đọc.
   const manifestQuery = useQuery({
     queryKey: manifestQueryKey(row.courseId),
     queryFn: () => loadManifest(row.courseId),
     enabled: needsManifest,
     retry: false,
   });
+  const { doneChapterIds } = useProgress(row.courseId);
   const [updating, setUpdating] = useState(false);
 
   const manifest: unknown = manifestQuery.data;
@@ -305,33 +328,78 @@ function CourseRow({ row }: { row: LibraryRow }) {
   const version = row.version ?? manifestString(manifest, 'version') ?? '—';
   const tier = row.tier ?? manifestString(manifest, 'tier');
 
+  const description = manifestString(manifest, 'description');
+  const total = countChapters(manifest);
+  const read = doneChapterIds.size;
+  const percent = total > 0 ? Math.round((read / total) * 100) : 0;
+
+  /*
+  `lib-item-card` — LỚP RIÊNG cho hàng thư viện, và nó tồn tại vì một bài
+  kiểm an toàn.
+
+  `registry/Catalog.tsx` dùng chung `.lib-item`/`.lib-list` nhưng có cấu
+  trúc khác: câu cảnh báo "interactive — chạy JavaScript" và nút "kéo về"
+  xếp DỌC ở đó, và `e2e/s3.spec.ts` đo đúng thứ tự ấy — cảnh báo phải nằm
+  TRÊN nút, để người đọc đọc trước khi bấm. Bố cục hàng ngang của thư viện
+  đặt hai thứ ấy cùng một dòng và làm phép đo đỏ.
+
+  Nới bài kiểm là sai: nó canh một tính chất an toàn thật. Nên bố cục mới
+  treo dưới lớp riêng, và catalog giữ nguyên bố cục dọc của nó.
+  */
   return (
-    <li className={`lib-item lib-item-${row.source}`}>
-      <div className="lib-item-head">
-        <Link to={`/c/${row.courseId}`} className="lib-item-title">
-          {title}
-        </Link>
-        <TierBadge tier={tier} />
-      </div>
-      <p className="lib-meta">
-        <span className="lib-meta-part">{lang}</span>
-        <span className="lib-meta-sep" aria-hidden="true">
-          ·
-        </span>
-        <span className="lib-meta-part">{t('library.meta.version', version)}</span>
-        <span className="lib-meta-sep" aria-hidden="true">
-          ·
-        </span>
-        <span className={`lib-source lib-source-${row.source}`}>{t(SOURCE_LABEL_KEY[row.source])}</span>
-        {row.heldLocally && (
-          <>
-            <span className="lib-meta-sep" aria-hidden="true">
-              ·
-            </span>
-            <span className="lib-meta-part">{t('library.meta.held')}</span>
-          </>
+    <li className={`lib-item lib-item-card lib-item-${row.source}`}>
+      {/* BÌA — mỏ neo thị giác, cùng chữ tắt mà thẻ "Đang đọc" dùng. */}
+      <span className="lib-cover" aria-hidden="true">
+        {monogram(title)}
+      </span>
+
+      <div className="lib-item-body">
+        <div className="lib-item-head">
+          <Link to={`/c/${row.courseId}`} className="lib-item-title">
+            {title}
+          </Link>
+          {/* Nguồn gói và HẠNG AN TOÀN đứng cạnh tên, không nằm lẫn trong dòng
+              siêu dữ liệu: hạng là điều người đọc phải biết TRƯỚC khi mở, nên
+              nó không được xếp ngang hàng với "phiên bản 1.0.0". */}
+          <span className={`lib-source lib-source-${row.source}`}>{t(SOURCE_LABEL_KEY[row.source])}</span>
+          <TierBadge tier={tier} />
+        </div>
+
+        {description !== undefined && description !== '' && (
+          <p className="lib-item-desc">{description}</p>
         )}
-      </p>
+
+        <p className="lib-meta">
+          <span className="lib-meta-part">{lang}</span>
+          <span className="lib-meta-sep" aria-hidden="true">
+            ·
+          </span>
+          <span className="lib-meta-part">{t('library.meta.version', version)}</span>
+          {row.heldLocally && (
+            <>
+              <span className="lib-meta-sep" aria-hidden="true">
+                ·
+              </span>
+              <span className="lib-meta-part">{t('library.meta.held')}</span>
+            </>
+          )}
+        </p>
+
+        {total > 0 && (
+          <div className="lib-prog">
+            <span className="lib-prog-track" aria-hidden="true">
+              <span className="lib-prog-fill" style={{ width: `${percent}%` }} />
+            </span>
+            <span className="lib-prog-text">{t('library.meta.chapters', String(read), String(total))}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="lib-item-actions">
+        <Link to={`/c/${row.courseId}`} className="btn lib-open">
+          {read === 0 ? t('home.start') : t('home.continue')}
+        </Link>
+      </div>
 
       {needsManifest && manifestQuery.isError && (
         <p className="lib-row-note">{describeCourseError(manifestQuery.error, t)}</p>
@@ -385,7 +453,7 @@ function CourseRow({ row }: { row: LibraryRow }) {
  * would turn "we do not know what this ships" into a silent all-clear,
  * which is the wrong direction to fail on a security label.
  */
-function TierBadge({ tier }: { tier: string | undefined }) {
+export function TierBadge({ tier }: { tier: string | undefined }) {
   const { t } = useLanguage();
 
   if (tier === 'content') {
