@@ -191,10 +191,16 @@ describe('rời chương bằng điều hướng SPA', () => {
     expect(errorBoundaryFallback()).toBeNull();
   });
 
-  it('rời chương rồi vào trang cấu hình: trang "Trợ lý AI" thật sự dựng ra', async () => {
-    // Đúng lối đi mà `e2e/s2.spec.ts` mô tả từ phía người dùng: người học chưa
-    // cắm key bấm lời mời cấu hình. Ở đây đi bằng lối ra + điều hướng toàn cục
-    // thay vì qua panel AI — cùng một chuyển tiếp route, không cần kho khoá.
+  it('rời chương rồi vào Cài đặt: trang thật sự dựng ra, ở mục trung tính', async () => {
+    // Chủ đề là CHUYỂN TIẾP ROUTE — `/settings` có dựng ra sau khi rời chương
+    // không — chứ không phải mục nào đang hiện; đi bằng lối ra + điều hướng
+    // toàn cục thay vì qua panel AI, cùng một chuyển tiếp, không cần kho khoá.
+    //
+    // Bài này TỪNG đòi nhan đề 'Trợ lý AI', vì đó tình cờ là mục mặc định. Nay
+    // mặc định là 'Tài khoản' (xem `pages/Settings.tsx`), và đòi đúng nhan đề
+    // ấy làm bài kiểm mạnh lên chứ không yếu đi: lối vào này là THANH BÊN, nên
+    // nó phải chứng minh đúng điều người dùng báo — bấm 'Cài đặt' không được
+    // ném ra một trang cấu hình AI.
     render(<App />);
     await readingChapterOne();
 
@@ -206,8 +212,11 @@ describe('rời chương bằng điều hướng SPA', () => {
     const nav = screen.getByRole('navigation', { name: /điều hướng chính/i });
     await user.click(within(nav).getByRole('link', { name: /cài đặt/i }));
 
-    expect(await screen.findByRole('heading', { name: 'Trợ lý AI' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Tài khoản' })).toBeInTheDocument();
     expect(document.querySelector('.page-settings')).not.toBeNull();
+    // Và không có lớp phủ kho khoá nào bung ra: đây là lỗi người dùng báo,
+    // bắt ở đúng lối vào sinh ra nó.
+    expect(document.querySelector('.vault-overlay')).toBeNull();
     expect(errorBoundaryFallback()).toBeNull();
   });
 

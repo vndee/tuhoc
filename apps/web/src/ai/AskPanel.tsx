@@ -147,7 +147,15 @@ export function AskPanel({
         <div className="ai-panel-invite" data-testid="ai-needs-setup">
           <p>{t('ai.panel.needsSetup')}</p>
           <p>
-            <Link className="btn primary" to="/settings">
+            {/*
+              `state`, không phải query string: `href` phải ở nguyên `/settings`
+              (`e2e/s2.spec.ts` khoá đúng chuỗi ấy, và mục đang xem vốn không
+              nằm trong URL — xem `pages/Settings.tsx`). Ý định đi kèm ở đây là
+              thứ phân biệt "tôi vừa nói tôi cần cắm key" với "tôi bấm Cài đặt ở
+              thanh bên"; thiếu nó thì Cài đặt phải đoán, và trước đây nó đoán
+              bằng cách ném lớp phủ AI vào mặt tất cả mọi người.
+            */}
+            <Link className="btn primary" to="/settings" state={{ section: 'ai', openVault: true }}>
               {t('ai.panel.openSettings')}
             </Link>
           </p>

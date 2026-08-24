@@ -514,6 +514,20 @@ async function vaultFrame(page: Page): Promise<Frame> {
 /** Mở trang cấu hình và khẳng định đang nhìn ĐÚNG kho khoá của lần chạy này. */
 async function openVault(page: Page) {
   await page.goto('/settings');
+  /*
+   * Hai cú bấm này là hợp đồng MỚI, không phải thủ tục thừa.
+   *
+   * `/settings` mở vào mục trung tính và KHÔNG tự bung kho khoá: trợ lý AI là
+   * tuỳ chọn của sản phẩm, không phải cửa trước của Cài đặt. Trước đây helper
+   * này chỉ cần `goto` — và chính điều đó là lỗi người dùng báo, ở dạng một bài
+   * kiểm xanh: vào Cài đặt là bị ném ngay một lớp phủ toàn màn hình cấu hình AI.
+   *
+   * Lối đi mang sẵn ý định (lời mời trong panel hỏi-đáp) có chốt riêng ở
+   * `src/pages/Settings.test.tsx` và `src/reader/leaveChapter.test.tsx`; ở đây
+   * đi bằng tay, đúng như một người chủ động vào cắm key.
+   */
+  await page.locator('.set-toc').getByRole('button', { name: 'Trợ lý AI' }).click();
+  await page.getByRole('button', { name: 'Mở kho khoá' }).click();
   const ui = page.frameLocator('[data-testid="vault-frame"]');
   await expect(ui.locator('h2')).toHaveText('Trợ lý AI chạy bằng key của chính bạn');
   return ui;

@@ -28,13 +28,25 @@ const SIGNED_IN: Me = { id: 'u1', email: 'hoc@vidu.vn', name: 'Người học' }
  * `staleTime: 60_000` một mục đã gieo là mục còn tươi, nên không có `fetch` nào
  * rời khỏi bài kiểm này. Một bài kiểm giao diện đi gọi mạng thật là một bài
  * kiểm hỏng theo lịch của người khác.
+ *
+ * `state` mặc định là `FROM_AI_INVITE` — ý định mà lời mời "Mở trang cấu hình"
+ * của `ai/AskPanel.tsx` gắn vào lần điều hướng — vì gần như mọi bài dưới đây
+ * kiểm mục Trợ lý AI, tức chúng mô tả người dùng đến TỪ lời mời ấy. Vào
+ * `/settings` mà KHÔNG mang ý định là một hợp đồng khác hẳn, và nó có describe
+ * riêng ở cuối tệp: mục trung tính, không lớp phủ.
  */
-function renderSettings(origin: string | null = VAULT, me: Me | null = SIGNED_IN) {
+const FROM_AI_INVITE = { section: 'ai', openVault: true } as const;
+
+function renderSettings(
+  origin: string | null = VAULT,
+  me: Me | null = SIGNED_IN,
+  state: unknown = FROM_AI_INVITE,
+) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   queryClient.setQueryData(meQueryKey, me);
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[{ pathname: '/settings', state }]}>
         <LanguageProvider>
           <ThemeProvider>
             <VaultFrameProvider origin={origin}>
@@ -404,8 +416,74 @@ describe('khung kho khoá là một MẶT PHẲNG KHÁC, và nó nói ra địa 
     expect(frames()[0]).toBe(original);
 
     await user.click(tocItem(t('vi', 'settings.ai.title')));
+    /*
+     * Quay lại mục Trợ lý AI KHÔNG tự bung lớp phủ nữa: ý định của lối vào chỉ
+     * dùng được một lần, và lần này chính người dùng chọn mục. Chủ đề của bài
+     * kiểm này vẫn nguyên — khung không được DỰNG LẠI — nên nó vẫn là cùng một
+     * node, chỉ là đang thu.
+     */
+    expect(frames()[0]).not.toBeVisible();
+    expect(frames()[0]).toBe(original);
+
+    // Và mở lại bằng tay vẫn ra đúng khung cũ, không phải một khung mới: key gõ
+    // dở trong kho khoá không được biến mất vì người dùng đi vòng qua mục khác.
+    await user.click(screen.getByRole('button', { name: t('vi', 'settings.ai.open') }));
     expect(frames()[0]).toBeVisible();
     expect(frames()[0]).toBe(original);
     expect(frames()).toHaveLength(1);
+  });
+});
+
+/**
+ * Trợ lý AI là TUỲ CHỌN, và Cài đặt phải cư xử đúng như vậy.
+ *
+ * Người dùng báo lỗi này bằng một câu ngắn: *"I stuck at this screen, this AI
+ * settings should be optional."* Vào `/settings` từ thanh bên là rơi thẳng vào
+ * một lớp phủ TOÀN MÀN HÌNH cấu hình AI — `DEFAULT_SECTION` là `'ai'`, và
+ * `AiSection` tự gọi `setExpanded(true)` lúc mount. Muốn đổi ngôn ngữ thì phải
+ * đóng một trang cấu hình AI trước.
+ *
+ * Không bài nào cũ bắt được, vì cả tệp này lẫn `e2e/s3.spec.ts` đều mô tả
+ * người dùng đến TỪ lời mời AI — đúng tiền đề mà thiết kế cũ dựa vào, và là
+ * tiền đề mà bản IA mới đã phá khi cho "Cài đặt" một chỗ thường trực ở thanh
+ * bên. Nên những bài dưới đây kiểm đúng cái lối vào mà không ai từng kiểm.
+ */
+describe('vào Cài đặt KHÔNG qua lời mời AI', () => {
+  it('mở vào mục trung tính, không phải Trợ lý AI', () => {
+    renderSettings(VAULT, SIGNED_IN, null);
+
+    expect(tocItem(t('vi', 'settings.section.account'))).toHaveAttribute('aria-current', 'true');
+    expect(tocItem(t('vi', 'settings.ai.title'))).not.toHaveAttribute('aria-current');
+  });
+
+  it('KHÔNG bung lớp phủ kho khoá — đó là cả nội dung của lỗi được báo', () => {
+    renderSettings(VAULT, SIGNED_IN, null);
+
+    // Khung vẫn được GẮN (cầu nối postMessage cần nó), nhưng đang thu.
+    expect(frames()).toHaveLength(1);
+    expect(frames()[0]).not.toBeVisible();
+    expect(document.querySelector('.vault-overlay')).toBeNull();
+  });
+
+  it('tự bấm sang mục Trợ lý AI cũng không bung — phải tự mở mới mở', async () => {
+    const user = userEvent.setup();
+    renderSettings(VAULT, SIGNED_IN, null);
+
+    await user.click(tocItem(t('vi', 'settings.ai.title')));
+    // Đây là chỗ phân biệt "sửa đúng" với "chỉ đổi mục mặc định": chọn mục AI
+    // là muốn ĐỌC về nó, chưa chắc đã muốn một lớp phủ toàn màn hình.
+    expect(frames()[0]).not.toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: t('vi', 'settings.ai.open') }));
+    expect(frames()[0]).toBeVisible();
+  });
+
+  it('ý định hỏng hoặc bịa từ history.state không mở được lớp phủ', () => {
+    // `history.state` người dùng dựng được bằng history API và nó sống qua
+    // back/forward, nên `readIntent` chỉ nhận đúng giá trị đã biết.
+    renderSettings(VAULT, SIGNED_IN, { section: 'khong-ton-tai', openVault: 'yes' });
+
+    expect(tocItem(t('vi', 'settings.section.account'))).toHaveAttribute('aria-current', 'true');
+    expect(frames()[0]).not.toBeVisible();
   });
 });

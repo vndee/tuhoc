@@ -1029,6 +1029,15 @@ test('index.json trả HTML: catalog nói câu CỦA NÓ, không trắng trang, 
 async function openVaultOverlay(page: Page) {
   await page.goto(`${WEB_ORIGIN}/settings`);
   await expectRightApp(page);
+  /*
+   * `/settings` mở vào mục trung tính và KHÔNG tự bung kho khoá — trợ lý AI là
+   * tuỳ chọn, không phải cửa trước của Cài đặt (xem `src/pages/Settings.tsx`).
+   * Hai cú bấm dưới đây là cách một người dùng thật mở nó, và chúng phải ở đây
+   * chứ không nằm trong `Settings` tự làm: chính việc `Settings` tự làm là lỗi
+   * đã được báo.
+   */
+  await page.locator('.set-toc').getByRole('button', { name: 'Trợ lý AI' }).click();
+  await page.getByRole('button', { name: 'Mở kho khoá' }).click();
   const ui = page.frameLocator('[data-testid="vault-frame"]');
   await expect(ui.locator('h2')).toHaveText(VI.vaultHeading);
   // Lớp phủ thật sự đang mở, không chỉ khung đã nạp.

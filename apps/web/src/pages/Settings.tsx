@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useMe } from '../api/useMe';
 import { useLogout } from '../auth/useLogout';
 import { LANGS, normalizeLang } from '../i18n';
@@ -53,15 +54,45 @@ type SectionId = 'account' | 'ai' | 'appearance' | 'localData';
  * Thứ tự ở đây là thứ tự người dùng thấy, và nó theo canvas: Tài khoản trước
  * (ai đang đăng nhập), rồi Trợ lý AI, rồi hai mục thuộc về thiết bị.
  *
- * `DEFAULT_SECTION` là **Trợ lý AI**, không phải mục đầu danh sách. Lý do đo
- * được, không phải sở thích: mọi lối vào `/settings` hôm nay đều tới từ AI —
- * lời mời "Mở trang cấu hình" trong panel hỏi-đáp (`ai/AskPanel.tsx`), và
- * `e2e/s2.spec.ts` bấm đúng lối ấy rồi đòi ô dán key phải thấy được ngay. Mở
- * vào "Tài khoản" sẽ bắt người vừa bấm "tôi cần cắm key" phải bấm thêm một lần
- * nữa để tới chỗ họ đã nói là mình muốn tới.
+ * `DEFAULT_SECTION` TỪNG là **Trợ lý AI**, với lý do đo được: khi ấy mọi lối
+ * vào `/settings` đều tới từ AI — lời mời "Mở trang cấu hình" trong panel
+ * hỏi-đáp (`ai/AskPanel.tsx`) — nên mở vào "Tài khoản" sẽ bắt người vừa bấm
+ * "tôi cần cắm key" phải bấm thêm một lần nữa.
+ *
+ * Lý do ấy đã CŨ. Bản thiết kế lại IA thêm "Cài đặt" thành liên kết thường
+ * trực ở thanh bên, nên tiền đề "mọi lối vào đều tới từ AI" không còn đúng.
+ * Giữ nguyên mặc định sau khi tiền đề đổ nghĩa là: một người bấm "Cài đặt" để
+ * đổi ngôn ngữ bị ném thẳng vào trang cấu hình AI — và vì `AiSection` còn tự
+ * bung lớp phủ toàn màn hình, họ phải ĐÓNG một trang AI trước khi làm được
+ * việc mình định làm. Trợ lý AI là tuỳ chọn của sản phẩm này (giáo trình đọc
+ * được mà không cần key nào), nên nó không được là cửa trước của Cài đặt.
+ *
+ * Cách sửa không phải lật ngược mặc định mà là TÔN TRỌNG LỐI VÀO: lời mời từ
+ * panel hỏi-đáp truyền ý định qua navigation state (`{ section, openVault }`),
+ * còn mọi lối vào khác nhận mục trung tính. Dùng state chứ không phải query
+ * string là có chủ ý — `e2e/s2.spec.ts` khoá `href` đúng bằng `/settings` và
+ * URL khớp `/\/settings$/`, nên một `?section=ai` sẽ phá đúng hai khẳng định
+ * ấy trong khi không thêm được gì: mục đang xem vốn đã không nằm trong URL
+ * (xem chú thích của `<nav className="set-toc">` bên dưới).
  */
 const SECTIONS: readonly SectionId[] = ['account', 'ai', 'appearance', 'localData'];
-const DEFAULT_SECTION: SectionId = 'ai';
+const DEFAULT_SECTION: SectionId = 'account';
+
+/** Ý định do lối vào truyền sang, qua `<Link state={…}>`. Không có thì `null`. */
+export type SettingsNavIntent = {
+  readonly section?: SectionId;
+  readonly openVault?: boolean;
+};
+
+function readIntent(state: unknown): SettingsNavIntent {
+  // `history.state` là dữ liệu NGƯỜI DÙNG kiểm soát được (họ có thể tự dựng nó
+  // bằng history API, và nó sống sót qua back/forward), nên đọc phòng thủ và
+  // chỉ nhận đúng những giá trị đã biết.
+  if (typeof state !== 'object' || state === null) return {};
+  const record = state as { section?: unknown; openVault?: unknown };
+  const section = SECTIONS.find((id) => id === record.section);
+  return { section, openVault: record.openVault === true };
+}
 
 const SECTION_TITLE_KEY = {
   account: 'settings.section.account',
@@ -72,7 +103,18 @@ const SECTION_TITLE_KEY = {
 
 export function Settings() {
   const { t } = useLanguage();
-  const [section, setSection] = useState<SectionId>(DEFAULT_SECTION);
+  const intent = readIntent(useLocation().state);
+
+  /**
+   * Đọc ý định MỘT LẦN lúc mount, không phải mỗi lần render.
+   *
+   * Navigation state sống dai hơn lần điều hướng sinh ra nó: nó nằm trong
+   * `history.state`, nên vẫn còn khi người dùng bấm back rồi forward. Nếu đọc
+   * nó ở mỗi render thì mọi lần `setSection` sau đó sẽ bị kéo ngược về mục mà
+   * lối vào đã chọn — người dùng bấm "Ngôn ngữ" và bị đá lại "Trợ lý AI".
+   */
+  const [section, setSection] = useState<SectionId>(() => intent.section ?? DEFAULT_SECTION);
+  const [autoOpenVault, setAutoOpenVault] = useState(() => intent.openVault === true);
 
   return (
     <section className="page-settings">
@@ -94,6 +136,10 @@ export function Settings() {
               aria-current={id === section ? 'true' : undefined}
               onClick={() => {
                 setSection(id);
+                // Ý định của lối vào chỉ dùng được một lần. Người dùng vừa tự
+                // chọn mục, nên nếu họ quay lại "Trợ lý AI" sau đó thì đó là
+                // lựa chọn của họ — và lớp phủ không được tự bung nữa.
+                setAutoOpenVault(false);
               }}
             >
               {t(SECTION_TITLE_KEY[id])}
@@ -103,7 +149,7 @@ export function Settings() {
 
         <div className="set-main">
           {section === 'account' && <AccountSection />}
-          {section === 'ai' && <AiSection />}
+          {section === 'ai' && <AiSection autoOpen={autoOpenVault} />}
           {section === 'appearance' && <AppearanceSection />}
           {section === 'localData' && <LocalDataSection />}
         </div>
@@ -132,24 +178,37 @@ export function Settings() {
  * khung trỏ tới. Một bản dựng lỡ trỏ kho khoá về origin trang chính sẽ tự nói
  * ra điều đó ở đây, thay vì âm thầm chạy tiếp với một cơ chế đã chết.
  */
-function AiSection() {
+function AiSection({ autoOpen }: { autoOpen: boolean }) {
   const { origin, expanded, setExpanded } = useVaultFrame();
   const { t, tNode } = useLanguage();
 
   /**
-   * Mở khung khi vào mục này, đóng khi rời mục HOẶC rời trang.
+   * KHÔNG mở khung khi vào mục này — chỉ đóng khi rời mục HOẶC rời trang.
    *
-   * Đóng lại là phần bắt buộc, ở cả hai chiều: khung mở là một lớp phủ toàn màn
-   * hình, nên để nó mở sau khi người học đã bấm sang một chương là che mất giáo
-   * trình bằng một trang cấu hình — và để nó mở khi họ vừa bấm sang mục "Tài
-   * khoản" là che mất chính mục họ vừa chọn.
+   * Trước đây chỗ này gọi `setExpanded(true)` lúc mount. Cộng với
+   * `DEFAULT_SECTION` từng là `'ai'`, hệ quả là mở `/settings` sẽ ném thẳng một
+   * lớp phủ TOÀN MÀN HÌNH cấu hình AI vào mặt người dùng trước khi họ hỏi tới
+   * nó. Một người chỉ muốn đổi ngôn ngữ hay xoá dữ liệu máy phải đóng một trang
+   * cấu hình AI trước đã. Trợ lý AI là TUỲ CHỌN của sản phẩm này — cả giáo
+   * trình đọc được mà không cần một key nào — nên nó không được là cửa trước
+   * của Cài đặt. Người dùng báo đúng chuyện này.
+   *
+   * Việc tự mở còn thừa: ngay bên dưới đã có nút `settings.ai.open`
+   * ("Mở kho khoá") làm đúng việc ấy khi người ta thật sự muốn. Khung `<iframe>`
+   * vẫn luôn được gắn (`VaultFrame` chỉ `display:none` nó khi thu), nên không
+   * mở sẵn KHÔNG làm chậm hay hỏng cầu nối postMessage.
+   *
+   * Đóng lại khi rời đi thì vẫn bắt buộc, ở cả hai chiều: để lớp phủ mở sau khi
+   * người học đã bấm sang một chương là che mất giáo trình bằng một trang cấu
+   * hình — và để nó mở khi họ vừa bấm sang mục "Tài khoản" là che mất chính mục
+   * họ vừa chọn.
    */
   useEffect(() => {
-    setExpanded(true);
+    if (autoOpen) setExpanded(true);
     return () => {
       setExpanded(false);
     };
-  }, [setExpanded]);
+  }, [autoOpen, setExpanded]);
 
   return (
     <>
