@@ -1342,3 +1342,77 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
   border-radius: var(--radius-xl);
   background: var(--color-brand-25);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THANH TRÊN CHẠY SUỐT BỀ NGANG — thanh bên nằm DƯỚI nó
+   ══════════════════════════════════════════════════════════════════════════
+
+   `reader.css` dựng `#app` là flex ngang: `#sidebar` cạnh `#main`, và `#topbar`
+   nằm TRONG `#main`. Hệ quả: thanh trên chỉ phủ cột phải, còn thanh bên chạm
+   tận mép trên màn hình. Bản dựng đã duyệt thì ngược lại — thanh trên là một
+   dải liền suốt bề ngang, mục lục bắt đầu bên dưới nó.
+
+   ── VÌ SAO KHÔNG ĐỔI DOM ────────────────────────────────────────────────
+   Khung `#app > #sidebar + #main(#topbar, #progwrap, #scroller)` là bản dựng
+   lại TỪNG BYTE của giáo trình v1; `Shell.tsx` ghi rõ mọi id trong đó đều
+   chịu tải, và ba tệp e2e trỏ thẳng vào `#content`. Đảo thứ tự thẻ để lấy một
+   thanh trên rộng hơn là trả giá bằng cả cái khung ấy.
+
+   `display: contents` trên `#main` gỡ đúng MỘT hộp khỏi cây bố cục mà không
+   gỡ thẻ nào khỏi DOM: ba con của nó thành grid item của chính `#app`, nên
+   `#topbar` xếp được vào một hàng riêng trải hết hai cột.
+
+   ── `auto` CHO CỘT TRÁI, KHÔNG PHẢI `--sidebar-w` ───────────────────────
+   Thanh bên biến mất ở ba trạng thái: ngoài một khoá (`:not(.in-course)`),
+   trong chế độ đọc (`.reading`), và khi người dùng thu gọn (`.nav-collapsed`).
+   Một cột khai cứng 306px sẽ chừa một dải trắng 306px ở cả ba. `auto` để cột
+   tự co về 0 khi `#sidebar` là `display: none` — một luật thay ba. */
+#app {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-items: start;
+}
+
+#app > #main {
+  display: contents;
+}
+
+#topbar {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+#progwrap {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+#app > #sidebar {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+#app #scroller {
+  grid-column: 2;
+  grid-row: 3;
+  min-width: 0;
+}
+
+/* Thanh bên dính DƯỚI thanh trên, không dính lên mép màn hình: `reader.css`
+   cho nó `top: 0; height: 100vh` — đúng khi nó cao bằng cả trang, sai khi nó
+   bắt đầu dưới một dải 64px. Không sửa thì 64px cuối của mục lục bị đẩy ra
+   ngoài khung nhìn và không cuộn tới được. */
+#app:not(.reading) > #sidebar {
+  top: 64px;
+  height: calc(100vh - 64px);
+}
+
+/* Ngăn kéo màn hẹp: nó là `position: fixed` nên nó rời khỏi grid — trả lại
+   đúng hình dạng cũ, phủ từ dưới thanh trên xuống. */
+@media (max-width: 980px) {
+  #app:not(.reading) > #sidebar {
+    top: 0;
+    height: 100vh;
+  }
+}
