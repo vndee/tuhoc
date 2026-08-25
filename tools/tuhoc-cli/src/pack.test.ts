@@ -213,8 +213,10 @@ describe('báo lỗi của pack', () => {
     const dir = await makeFixtureCourse({ 'chapters/c1.html': '<script>x</script>' });
     const res = await runPack([dir]);
     expect(res.stderr).toContain('Cách sửa');
-    // The hint for SCRIPT_TAG has to name the way out, not just restate the rule.
-    expect(res.stderr).toContain('interactive');
+    // The hint for SCRIPT_TAG has to name the way out, not just restate the
+    // rule. Format v2's way out is a widget — "tier": "interactive" was the
+    // v1 escape hatch and no longer exists (TIER_REMOVED refuses it outright).
+    expect(res.stderr).toContain('widgets/');
   });
 
   it('giữ nguyên "detail" mà bộ luật trả về — không nuốt', async () => {
@@ -243,20 +245,25 @@ describe('báo lỗi của pack', () => {
   });
 
   it('gợi ý dài in MỘT lần cho mỗi mã, các lần sau trỏ ngược lại', async () => {
-    // Four MANIFEST_FIELD findings at once is the common case, not the corner
-    // one — it is what a v1 manifest does. Printing the whole hint four times
-    // is how a report becomes a wall nobody reads.
+    // Three MANIFEST_FIELD findings at once is the common case, not the
+    // corner one — it is what a v1 manifest does missing exactly the three
+    // fields v2 added (license, generatedBy, authors). `tier` is deliberately
+    // NOT one of them: v2 does not require it missing, it REFUSES it present
+    // (TIER_REMOVED, a different code entirely) — `delete broken['tier']` on
+    // a v2-shaped fixtureManifest() that never sets it would be a no-op
+    // assertion, not a fourth MANIFEST_FIELD finding. Printing the whole hint
+    // three times is still how a report becomes a wall nobody reads.
     const broken = { ...(fixtureManifest() as Record<string, unknown>) };
-    for (const key of ['license', 'tier', 'generatedBy', 'authors']) delete broken[key];
+    for (const key of ['license', 'generatedBy', 'authors']) delete broken[key];
     const dir = await makeFixtureCourse({ 'manifest.json': JSON.stringify(broken) });
     const res = await runPack([dir]);
     expect(res.code).toBe(1);
-    // All four locations still named in full.
-    for (const key of ['license', 'tier', 'generatedBy', 'authors']) {
+    // All three locations still named in full.
+    for (const key of ['license', 'generatedBy', 'authors']) {
       expect(res.stderr).toContain(`manifest.json#/${key}`);
     }
     // …but the hint body appears exactly once.
-    const hintBody = 'Bốn trường v2 hay thiếu nhất';
+    const hintBody = 'Ba trường v2 hay thiếu nhất';
     expect(res.stderr.split(hintBody).length - 1).toBe(1);
     expect(res.stderr).toContain('như mục 1) ở trên');
   });
@@ -381,11 +388,14 @@ describe('đọc thư mục thành gói', () => {
 // ---------------------------------------------------------------------------
 
 describe('khung mẫu của init', () => {
-  it('manifest mẫu có đủ bốn trường v2 và mặc định tier "content"', async () => {
+  it('manifest mẫu có đủ ba trường mới của v2, và không còn trường "tier"', async () => {
     const dir = await tmpdir();
     expect((await runInit([dir])).code).toBe(0);
     const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as Record<string, unknown>;
-    expect(manifest['tier']).toBe('content'); // hạng an toàn là mặc định
+    // Format v2 abolished "tier" outright — a manifest carrying the key fails
+    // TIER_REMOVED with ANY value, so the scaffold must not write one at all,
+    // safe default or otherwise.
+    expect(Object.hasOwn(manifest, 'tier')).toBe(false);
     expect(manifest['license']).toBeTypeOf('string');
     expect(manifest['generatedBy']).toBeTypeOf('string');
     expect(Array.isArray(manifest['authors'])).toBe(true);
@@ -532,7 +542,8 @@ describe('mặt tiền dòng lệnh', () => {
     expect(size).toBeGreaterThan(1024);
     expect(size).toBeLessThan(1024 * 1024);
     expect(res.stdout).toContain(' KB → ');
-    expect(res.stdout).toContain('3 tệp');
+    // manifest.json, README.md, chapters/chuong-1.html, widgets/vi-du/index.html.
+    expect(res.stdout).toContain('4 tệp');
     expect(res.stdout).toContain(out); // absolute, not whatever was typed
   });
 

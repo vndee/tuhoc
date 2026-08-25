@@ -10,18 +10,31 @@
  * with two. `pack.test.ts` runs exactly that sequence, so the templates cannot
  * drift away from the rules without the gate going red.
  *
- * The template is therefore written under the CONTENT tier — the strict one —
- * even though `interactive` would be easier to keep valid. `tier: "content"` is
- * also what the template ships as, because the safe tier is the right default:
- * a contributor who never thinks about tiers ends up with the package that
- * costs a reader the least trust, and the one the registry can merge
- * mechanically.
+ * ## Format v2: no tier, one widget
+ *
+ * Format v2 abolished `tier` outright — a manifest that still carries the key
+ * fails `TIER_REMOVED` with ANY value, so unlike the old "content vs.
+ * interactive" choice there is no longer a safe value to default it to (see
+ * `packages/course-format/src/validate.ts`). Every course is what
+ * `tier: "content"` used to mean: static HTML and CSS, checked by the same
+ * rules on every package, unconditionally. The template's `manifest.json`
+ * therefore carries no `"tier"` line at all.
+ *
+ * The one door left for code that runs is a **widget** —
+ * `widgets/<name>/index.html`, one self-contained file, sandboxed in an
+ * iframe at read time — and the template ships one (`widgets/vi-du/`) so that
+ * `init`-then-`pack` proves the eight `WIDGET_*` rules stay satisfied too, not
+ * only the content rules. It has to be REFERENCED, not merely present: an
+ * unreferenced widget fails `WIDGET_ORPHAN`, so the sample chapter carries a
+ * `data-widget="vi-du"` placeholder for it. Delete the widget and its
+ * reference together — deleting only one trips the other half of that same
+ * cross-check.
  *
  * Corollary that is easy to miss: `README.md` is IN the package, and the
- * content-tier rules read every entry, not just `.html`. So the template README
- * contains no `<` at all — a code sample showing a script tag would make the
- * scaffold fail its own gate. That applies to every substitution too, which is
- * why `{{title}}` is filtered and `{{cmd}}` has a fallback: both are built from
+ * rules read every entry, not just `.html`. So the template README contains
+ * no `<` at all — a code sample showing a script tag would make the scaffold
+ * fail its own gate. That applies to every substitution too, which is why
+ * `{{title}}` is filtered and `{{cmd}}` has a fallback: both are built from
  * strings a contributor chose.
  */
 
