@@ -88,16 +88,32 @@ type Config struct {
 	// repository. Empty means Discussions are switched off, same as an
 	// empty GitHubToken.
 	GitHubDiscussionsRepo string
+
+	// AdminToken gates the admin publish API (Task 8: PUT/DELETE
+	// /admin/courses/{slug} and friends). Task 4's CLI already sends
+	// "Authorization: Bearer <token>" on the publish path; this is the
+	// value that header is compared against.
+	//
+	// Same shape as GitHubToken and for the same reason: it belongs to
+	// the platform's OWN admin, not to any reader, so it is unrelated to
+	// spec §3.2's promise about a reader's AI provider key. Empty means
+	// the admin publish path is switched off (the exact mechanism — e.g.
+	// refusing every request rather than comparing against an empty
+	// string — is Task 8's to implement); this is the correct default for
+	// a checkout that has not chosen an admin credential yet, exactly as
+	// an unset GitHubToken leaves Discussions off rather than erroring.
+	AdminToken string
 }
 
 // Load reads Config from the process environment, applying defaults for
 // PORT and CORS_ORIGIN when unset.
 //
-// GITHUB_TOKEN and GITHUB_DISCUSSIONS_REPO get no default and no warning
-// when absent, unlike COOKIE_SECURE: an unparseable COOKIE_SECURE is a typo
-// with a security consequence, whereas an unset GitHub token is the normal
-// state of every local checkout and of production until the registry
-// repository exists. See the GitHubToken field.
+// GITHUB_TOKEN, GITHUB_DISCUSSIONS_REPO, and ADMIN_TOKEN get no default and
+// no warning when absent, unlike COOKIE_SECURE: an unparseable COOKIE_SECURE
+// is a typo with a security consequence, whereas an unset GitHub token or
+// admin token is the normal state of every local checkout and of production
+// until an operator deliberately chooses one. See the GitHubToken and
+// AdminToken fields.
 func Load() Config {
 	return Config{
 		Port:                  getEnv("PORT", DefaultPort),
@@ -106,6 +122,7 @@ func Load() Config {
 		CookieSecure:          parseCookieSecure(os.Getenv("COOKIE_SECURE")),
 		GitHubToken:           os.Getenv("GITHUB_TOKEN"),
 		GitHubDiscussionsRepo: os.Getenv("GITHUB_DISCUSSIONS_REPO"),
+		AdminToken:            os.Getenv("ADMIN_TOKEN"),
 	}
 }
 
