@@ -219,7 +219,15 @@ describe('rời chương bằng điều hướng SPA', () => {
     expect(await screen.findByRole('heading', { name: /bảng điều khiển|học tiếp/i })).toBeInTheDocument();
     expect(screen.queryByText('NỘI-DUNG-CHƯƠNG-MỘT')).toBeNull();
 
-    await user.click(screen.getByRole('link', { name: /cài đặt/i }));
+    // HAI cú bấm, và cả hai đều nằm trên thanh trên: `AccountChip` nay là một
+    // MENU (bản dựng vẽ đĩa tròn kèm mũi tên xuống — xem `shell/TopNav.tsx`),
+    // nên `Cài đặt` là mục đầu tiên bên trong nó thay vì là chính cái đĩa.
+    //
+    // Điều bài này canh KHÔNG đổi, và đó là lý do nó chỉ đi thêm một bước chứ
+    // không được nới lỏng: `/settings` phải tới được từ giao diện, vì thanh bên
+    // — chỗ ở cũ của mục ấy — không tồn tại ngoài một khoá (cổng mù #4).
+    await user.click(screen.getByRole('button', { name: /menu tài khoản/i }));
+    await user.click(screen.getByRole('menuitem', { name: /cài đặt/i }));
 
     expect(await screen.findByRole('heading', { name: 'Tài khoản' })).toBeInTheDocument();
     expect(document.querySelector('.page-settings')).not.toBeNull();

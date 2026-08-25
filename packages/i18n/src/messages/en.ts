@@ -208,6 +208,10 @@ export const en: Messages = {
 
   'topbar.menu': 'Open the menu',
   'topbar.searchPlaceholder': 'Search courses, chapters…',
+  'topbar.searchOpen': 'Open search',
+  'topbar.searchClose': 'Close search',
+  'topbar.searchSoon': 'Search is not wired up yet — coming soon.',
+  'account.menuAria': 'Account menu',
   'topbar.markRead': 'Mark as read',
   'topbar.themeToLight': 'Switch to the light theme',
   'topbar.themeToDark': 'Switch to the dark theme',

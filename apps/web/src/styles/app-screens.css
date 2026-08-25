@@ -1829,3 +1829,218 @@ html[data-theme='dark'] #app:not(.reading) .btn.danger:hover {
   background: color-mix(in srgb, var(--color-error-500) 14%, transparent);
   color: var(--color-error-300);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THANH TRÊN — Ô TÌM KIẾM BUNG RA, VÀ MENU TÀI KHOẢN
+   ══════════════════════════════════════════════════════════════════════════ */
+
+#app:not(.reading) .tn-search-wrap {
+  order: 1;
+  display: flex;
+  align-items: center;
+}
+
+/* Bề rộng chạy bằng `transition`, và ô nhập LUÔN ở trong cây (xem
+   `shell/TopNav.tsx`): một phần tử vừa được thêm vào DOM không có bề rộng cũ
+   để chạy từ đó, nên bản dựng-lại sẽ nhảy phịch thay vì trượt ra.
+
+   `max-width` chứ không `width`: ở trạng thái mở, ô phải co lại được khi thanh
+   trên chật, và `width: 15rem` sẽ ép nó đẩy các nút bên cạnh ra ngoài. */
+#app:not(.reading) .tn-search-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition:
+    max-width 0.22s ease,
+    opacity 0.16s ease,
+    margin-left 0.22s ease;
+}
+
+#app:not(.reading) .tn-search-wrap.is-open .tn-search-field {
+  max-width: 15rem;
+  opacity: 1;
+  margin-left: 8px;
+}
+
+/* Người dùng đã tắt hiệu ứng chuyển động thì thôi trượt — chỉ hiện/ẩn. */
+@media (prefers-reduced-motion: reduce) {
+  #app:not(.reading) .tn-search-field {
+    transition: none;
+  }
+}
+
+#app:not(.reading) .tn-search-input {
+  min-width: 0;
+  width: 100%;
+  height: 36px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+/* `disabled` nhưng KHÔNG mờ đi: nó vẫn phải đọc được, vì chữ trong nó là lời
+   hứa về việc ô này sẽ làm. Trình duyệt mặc định làm nhạt chữ ô `disabled`. */
+#app:not(.reading) .tn-search-input:disabled {
+  opacity: 1;
+  -webkit-text-fill-color: var(--ink-3);
+  color: var(--ink-3);
+}
+
+#app:not(.reading) .tn-search-kbd {
+  flex: none;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-gray-400);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-xs);
+  padding: 1px 5px;
+  background: var(--panel);
+}
+
+/* ── TÀI KHOẢN ───────────────────────────────────────────────────────────── */
+
+#app:not(.reading) .tn-account-wrap {
+  order: 4;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+#app:not(.reading) .tn-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 0 4px 0 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+#app:not(.reading) .tn-account-disc {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: var(--color-brand-100);
+  color: var(--color-brand-700);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+html[data-theme='dark'] #app:not(.reading) .tn-account-disc {
+  background: rgba(127, 86, 217, 0.25);
+  color: var(--color-brand-200);
+}
+
+#app:not(.reading) .tn-account[aria-expanded='true'] .tn-account-caret {
+  transform: rotate(180deg);
+}
+
+#app:not(.reading) .tn-account-caret {
+  transition: transform 0.18s ease;
+}
+
+#app:not(.reading) .tn-account:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring-brand);
+}
+
+/* Menu: `absolute` neo vào `.tn-account-wrap`, z trên thanh trên (40) nhưng
+   dưới ngăn kéo mục lục (60) và panel hỏi–đáp (85). */
+#app:not(.reading) .tn-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  min-width: 14rem;
+  padding: 6px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-lg);
+}
+
+#app:not(.reading) .tn-menu-id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 8px 10px 10px;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--sans);
+  line-height: 1.35;
+}
+
+#app:not(.reading) .tn-menu-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+#app:not(.reading) .tn-menu-email {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+
+/* `border-bottom: none` chứ không chỉ `text-decoration` — `reader.css` gạch
+   chân MỌI `<a>`, và mục "Cài đặt" là một `<a>`. Cùng cái bẫy đã ghi ở đầu
+   tệp này. */
+#app:not(.reading) .tn-menu-item {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 0;
+  border-bottom: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: left;
+  text-decoration: none;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+#app:not(.reading) .tn-menu-item:hover {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+#app:not(.reading) .tn-menu-item:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring-gray);
+}
+
+#app:not(.reading) .tn-menu-danger {
+  color: var(--color-error-700);
+}
+
+#app:not(.reading) .tn-menu-danger:hover {
+  background: var(--color-error-50);
+  color: var(--color-error-700);
+}
+
+html[data-theme='dark'] #app:not(.reading) .tn-menu-danger {
+  color: var(--color-error-300);
+}
+
+html[data-theme='dark'] #app:not(.reading) .tn-menu-danger:hover {
+  background: color-mix(in srgb, var(--color-error-500) 16%, transparent);
+  color: var(--color-error-300);
+}

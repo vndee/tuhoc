@@ -290,6 +290,10 @@ export const vi = {
 
   'topbar.menu': 'Mở menu',
   'topbar.searchPlaceholder': 'Tìm khoá, chương…',
+  'topbar.searchOpen': 'Mở ô tìm kiếm',
+  'topbar.searchClose': 'Đóng ô tìm kiếm',
+  'topbar.searchSoon': 'Tìm kiếm chưa nối dây — sắp có.',
+  'account.menuAria': 'Menu tài khoản',
   /** Cùng chữ với nhãn nút `#mark-btn` mà `reader/ChapterView.tsx` ghi đè. */
   'topbar.markRead': 'Đánh dấu đã học',
   'topbar.themeToLight': 'Chuyển sang giao diện sáng',

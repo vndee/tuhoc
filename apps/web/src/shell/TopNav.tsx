@@ -1,5 +1,7 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useMe, accountInitials } from '../api/useMe';
+import { useLogout } from '../auth/useLogout';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { Logo } from './Logo';
 
@@ -102,89 +104,184 @@ export function TopNav() {
 }
 
 /**
- * Ô TÌM KIẾM — bản dựng có, app thì chưa từng có.
+ * Ô TÌM KIẾM — MỘT BIỂU TƯỢNG BUNG RA, không phải một hộp luôn mở.
  *
- * Hôm nay nó là một MẶT TIỀN chưa nối dây: bấm vào không mở gì cả, và điều đó
- * được nói ra bằng `disabled` chứ không bằng một ô nhập trông dùng được nhưng
- * nuốt chữ. Repo này đã có một lần như thế — ô "Tìm chương…" ở thanh bên nằm
- * `disabled` suốt nhiều vòng, và nó hiện cả trên những màn không có chương nào
- * để tìm.
+ * Bản dựng đặt ở đây một nút tròn mang kính lúp; bấm vào thì nó dài ra thành
+ * một ô nhập. Bản trước dựng thẳng cái hộp 224px và để nó mở suốt — chiếm một
+ * phần tư nhóm phải của thanh trên cho một thứ chưa làm được việc gì.
  *
- * Ở đây khác một chỗ: nó CHỈ hiện khi đã đăng nhập và ngoài chế độ đọc, tức
- * đúng những màn mà một ngày nào đó nó sẽ tìm được thật.
+ * ── NÓ VẪN CHƯA TÌM ĐƯỢC GÌ, VÀ ĐIỀU ĐÓ ĐƯỢC NÓI RA ─────────────────────
+ * Sản phẩm này chưa có chỉ mục tìm kiếm. Một ô nhập trông dùng được nhưng nuốt
+ * chữ là đúng cái bẫy repo đã dính một lần (ô "Tìm chương…" ở thanh bên nằm
+ * `disabled` suốt nhiều vòng), nên ô ở đây `disabled` thật, có `title` nói ra
+ * lý do, và dòng "sắp có" hiện ngay dưới khi nó mở.
+ *
+ * Cái BUNG RA thì thật: chiều rộng chạy bằng `transition`, `aria-expanded` nói
+ * đúng trạng thái, Escape đóng lại. Khi có chỉ mục thật, chỗ duy nhất phải sửa
+ * là bỏ `disabled` và nối `onChange`.
  */
 export function TopSearch() {
   const meQuery = useMe();
   const location = useLocation();
   const { t } = useLanguage();
+  const [open, setOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Mở ra thì con trỏ phải nhảy vào ô — nếu không, người dùng bấm xong vẫn
+  // phải bấm lần nữa. `disabled` không nhận focus, nên đây là chỗ DUY NHẤT
+  // trong tệp sẽ phải đổi khi ô được nối dây thật.
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
 
   if (!meQuery.data) return null;
   if (CHAPTER_ROUTE.test(location.pathname)) return null;
 
   return (
-    <div
-      className="tn-search hidden md:flex items-center gap-2 h-9 w-56 px-3 rounded-md border border-gray-200 bg-white shadow-xs font-sans dark:border-gray-800 dark:bg-gray-900"
-      aria-hidden="true"
-    >
-      <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-        <circle cx="9" cy="9" r="6.25" stroke="currentColor" strokeWidth="1.5" className="text-gray-400" />
-        <path d="M17.5 17.5L13.5 13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-gray-400" />
-      </svg>
-      <span className="text-sm text-gray-400 flex-1 truncate">{t('topbar.searchPlaceholder')}</span>
-      <span className="text-[11px] font-medium text-gray-400 border border-gray-200 rounded-xs px-1.5 py-px bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
-        ⌘K
-      </span>
+    <div className={open ? 'tn-search-wrap is-open' : 'tn-search-wrap'}>
+      <button
+        type="button"
+        className="tb-btn tn-search-btn"
+        aria-label={t(open ? 'topbar.searchClose' : 'topbar.searchOpen')}
+        aria-expanded={open}
+        aria-controls="topbar-search"
+        onClick={() => setOpen((on) => !on)}
+      >
+        <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <circle cx="9" cy="9" r="6.25" stroke="currentColor" strokeWidth="1.6" />
+          <path d="M17.5 17.5L13.5 13.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      </button>
+
+      {/*
+        Ô nhập LUÔN Ở TRONG CÂY, chỉ bị bóp về bề rộng 0 — không phải dựng lại
+        mỗi lần mở. Một phần tử vừa được thêm vào DOM không có trạng thái "bề
+        rộng cũ" để `transition` chạy từ đó, nên bản dựng-lại sẽ nhảy phịch
+        thay vì trượt ra.
+      */}
+      <div className="tn-search-field" id="topbar-search">
+        <input
+          ref={inputRef}
+          type="search"
+          className="tn-search-input"
+          placeholder={t('topbar.searchPlaceholder')}
+          title={t('topbar.searchSoon')}
+          aria-label={t('topbar.searchPlaceholder')}
+          disabled
+          tabIndex={open ? 0 : -1}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setOpen(false);
+          }}
+        />
+        <span className="tn-search-kbd" aria-hidden="true">
+          ⌘K
+        </span>
+      </div>
     </div>
   );
 }
 
 /**
- * Tài khoản, ở mép phải thanh trên.
+ * Tài khoản, ở mép phải thanh trên — MỘT MENU, không còn là một liên kết.
  *
- * Nó KHÔNG phải trang trí: `Cài đặt` vốn sống ở đáy thanh bên, và thanh bên
- * nay không tồn tại ngoài một khoá. Không có chip này thì `/settings` chỉ tới
- * được bằng cách gõ URL — đúng hình dạng "cổng mù #4" mà chính route ấy sinh
- * ra để vá, và `Sidebar.tsx` đã ghi lại nguyên văn.
+ * Bản dựng vẽ đĩa tròn kèm một mũi tên xuống, và mũi tên ấy là một lời hứa:
+ * bấm vào thì có một danh sách. Bản trước là `<NavLink to="/settings">` không
+ * mũi tên, đúng với việc nó chỉ mang một đích.
  *
- * Một liên kết chứ chưa phải một menu: hôm nay nó chỉ cần mang đúng một việc
- * (mở Cài đặt) và mang nó bằng một cú bấm. "Đăng xuất" vẫn ở chỗ cũ trên Bảng
- * điều khiển; gom cả hai vào một menu là việc của bước dựng lại màn Cài đặt.
+ * Điều kiện cũ vẫn được giữ NGUYÊN VẸN: `Cài đặt` phải tới được — đó là ruling
+ * S1-F29 / cổng mù #4, vì thanh bên (chỗ ở cũ của nó) không tồn tại ngoài một
+ * khoá. Nay nó là mục đầu tiên trong menu.
+ *
+ * "Đăng xuất" vào cùng menu, và đó là chỗ ĐÚNG chứ không phải một cánh cửa thứ
+ * hai bừa bãi: nó là hành động về TÀI KHOẢN, và menu tài khoản là nơi mọi sản
+ * phẩm đặt nó. Bản trên trang Cài đặt ở lại vì nó đi kèm câu cảnh báo dài về
+ * dữ liệu trên máy — thứ không nhét vào một menu được.
  */
 export function AccountChip() {
   const meQuery = useMe();
   const location = useLocation();
   const { t } = useLanguage();
+  const logout = useLogout();
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  // Bấm ra ngoài và Escape đều đóng. Đăng ký MỘT lần, và tự gỡ khi component
+  // rời đi — cùng hình dạng với `useMobileNav`.
+  useEffect(() => {
+    if (!open) return;
+    function onDocPointer(e: MouseEvent) {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onDocPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  // Đổi trang thì đóng menu — nếu không, mục "Cài đặt" vừa bấm sẽ để lại một
+  // menu lơ lửng trên trang mới.
+  useEffect(() => {
+    setOpen(false);
+  }, [location.pathname]);
 
   if (!meQuery.data) return null;
   if (CHAPTER_ROUTE.test(location.pathname)) return null;
 
-  const email = meQuery.data.email;
-  const initials = accountInitials(meQuery.data.name, email);
+  const { name, email } = meQuery.data;
 
-  // MỘT ĐĨA TRÒN ĐẶC, không phải một chip có chữ "Cài đặt" bên cạnh.
-  //
-  // Bản đầu vẽ cả chữ, và trên máy thật nó đọc như một mục điều hướng thứ tư
-  // đứng lạc ở mép phải — đúng thứ bậc phẳng mà cả cuộc thiết kế lại này tồn
-  // tại để gỡ. Bản dựng cho tài khoản một đĩa tròn: nó là DANH TÍNH, không
-  // phải một nơi chốn, nên nó không được trông giống ba nơi chốn kia.
-  //
-  // Chữ vẫn còn cho trình đọc màn hình qua `aria-label`, và `title` mang email
-  // đầy đủ cho con trỏ chuột — hai chữ cái không đủ để nhận ra mình là ai.
   return (
-    <NavLink
-      to="/settings"
-      title={`${email} — ${t('account.settings')}`}
-      aria-label={t('account.settings')}
-      className={({ isActive }) =>
-        [
-          'tn-account flex items-center justify-center w-9 h-9 rounded-full text-[12px] font-semibold no-underline transition-shadow',
-          'bg-brand-100 text-brand-700 dark:bg-brand-600/25 dark:text-brand-200',
-          isActive ? 'shadow-[0_0_0_3px_var(--color-brand-200)] dark:shadow-[0_0_0_3px_var(--color-brand-800)]' : '',
-        ].join(' ')
-      }
-    >
-      <span aria-hidden="true">{initials}</span>
-    </NavLink>
+    <div className="tn-account-wrap" ref={wrapRef}>
+      <button
+        type="button"
+        className="tn-account"
+        aria-label={t('account.menuAria')}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={email}
+        onClick={() => setOpen((on) => !on)}
+      >
+        <span className="tn-account-disc" aria-hidden="true">
+          {accountInitials(name, email)}
+        </span>
+        <svg className="tn-account-caret" width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M6 8.5l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="tn-menu" role="menu" aria-label={t('account.menuAria')}>
+          {/*
+            Danh tính đứng đầu menu và KHÔNG phải một mục bấm được: hai chữ cái
+            trên đĩa tròn không đủ để nhận ra mình là ai, nhất là trên một máy
+            hai người dùng chung — đúng ca mà cả `auth/RequireAuth.tsx` và
+            `test/accountHandoff.test.tsx` tồn tại vì nó.
+          */}
+          <p className="tn-menu-id">
+            {name !== '' && <span className="tn-menu-name">{name}</span>}
+            <span className="tn-menu-email">{email}</span>
+          </p>
+          <Link to="/settings" role="menuitem" className="tn-menu-item">
+            {t('account.settings')}
+          </Link>
+          <button
+            type="button"
+            role="menuitem"
+            className="tn-menu-item tn-menu-danger"
+            onClick={() => {
+              setOpen(false);
+              void logout();
+            }}
+          >
+            {t('account.logout')}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
