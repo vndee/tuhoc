@@ -120,6 +120,27 @@ describe('format v2 — tier đã chết', () => {
     const r = validatePackage(files);
     expect(r.findings.map((f) => f.code)).not.toContain('SCRIPT_TAG');
   });
+
+  it('widgets/demo/chart.js KHÔNG bị JS_FILE_IN_PACKAGE bắt — miễn trừ theo CẢ THƯ MỤC widget, không chỉ index.html', () => {
+    // Ca này khác ca trên: đây là miễn trừ của JS_FILE_IN_PACKAGE
+    // (WIDGET_DIR_RE, mọi tệp dưới widgets/<tên>/), còn ca trên là miễn trừ
+    // của luật quét HTML (WIDGET_INDEX_RE, chỉ đúng index.html). Một widget
+    // thật thường tách JS ra một tệp riêng cạnh index.html
+    // (widgets/<tên>/index.html + widgets/<tên>/chart.js), nên nếu chỉ
+    // index.html được miễn mà chart.js thì không, mọi widget thật đều bị
+    // JS_FILE_IN_PACKAGE chặn — miễn trừ khi đó vô dụng trên thực tế.
+    const files = withChapter('<div data-widget="demo"></div>')
+      .set('widgets/demo/index.html', enc('<script src="chart.js"></script>'))
+      .set('widgets/demo/chart.js', enc('export function draw() {}'));
+    const r = validatePackage(files);
+    expect(r.findings.map((f) => f.code)).not.toContain('JS_FILE_IN_PACKAGE');
+
+    // ĐỐI CHỨNG: cùng nội dung .js đó, đặt NGOÀI widgets/, vẫn phải bị bắt —
+    // nếu không, ca "không JS_FILE_IN_PACKAGE" ở trên có thể xanh vì luật đã
+    // hỏng hẳn (không còn bắt gì) chứ không phải vì miễn trừ đúng chỗ.
+    const outside = withChapter('<p>a</p>').set('chart.js', enc('export function draw() {}'));
+    expect(codesOf(outside)).toContain('JS_FILE_IN_PACKAGE');
+  });
 });
 
 // ---------------------------------------------------------------------------
