@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
+import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import { colorOf, quoteOf } from '../annotations/useAnnotations';
+import type { AnnotationRow } from '../db/local';
 import { flatChapters, nextChapter } from '../course/chapters';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
 import { monogram } from '../course/monogram';
@@ -223,13 +225,90 @@ const RECENT_QUOTE_CHARS = 110;
  * một bản sao thứ hai của phép đọc phòng thủ ấy là đúng chỗ trôi dạt mà chú
  * thích của chính `exactOf` đã cảnh báo.
  */
+/**
+ * KÝ TỰ U+FFFC — "OBJECT REPLACEMENT CHARACTER" — thành một nhãn đọc được.
+ *
+ * Đoạn trích của một ghi chú được lưu SAU khi `CourseKit.renderKatex` chạy, nên
+ * mỗi công thức trong đoạn ấy để lại đúng một U+FFFC thay cho `$…$` gốc (xem
+ * `reader/useCourseKit.ts`). Phông chữ không có glyph cho nó, nên trên màn hình
+ * nó là một ô vuông rỗng — người đọc thấy một lỗi render giữa câu của chính họ.
+ *
+ * Sửa ở TẦNG HIỂN THỊ, không sửa `quoteOf`: `OrphanPanel` đưa đúng chuỗi ấy cho
+ * người đọc COPY đi dò lại trong chương đã dựng lại, nên chuỗi phải giữ nguyên
+ * từng ký tự. Ở đây nó chỉ được VẼ khác đi.
+ */
+function renderQuote(quote: string, label: string) {
+  const pieces = quote.split('\uFFFC');
+  return pieces.map((piece, index) => (
+    <Fragment key={index}>
+      {index > 0 && <span className="home-note-formula">{label}</span>}
+      {piece}
+    </Fragment>
+  ));
+}
+
+/**
+ * Tên khoá cho một hàng ghi chú.
+ *
+ * `useOwnedCourses` biết tên của khoá mà máy này ĐANG GIỮ (`held`, đọc từ
+ * `db.packages`) hoặc mà máy chủ có liệt kê (`catalog`). Nó KHÔNG biết tên của
+ * một khoá được phục vụ TĨNH từ chính origin của app — `course/loader.ts` NGUỒN
+ * 2, ruling S1-F31 — và với những khoá ấy hàng ghi chú in ra cái slug thô
+ * ("bat-bien-vong-lap"). Một người đọc không đặt tên khoá của mình bằng dấu gạch
+ * ngang; đó là địa chỉ, không phải tên.
+ *
+ * Nên khi và CHỈ KHI ba nguồn kia im lặng, hỏi manifest — cùng `manifestQueryKey`
+ * mà `ContinueCard`, `Sidebar` và trang khoá học đã dùng, nên với khoá đang đọc
+ * dở thì đây là một lần đọc cache chứ không phải một request thứ hai. Vẫn in
+ * slug trong lúc chờ và khi hỏi không được: một cái tên đến chậm vẫn hơn một
+ * chỗ trống, và một khoá thật sự không tra được thì slug là tất cả những gì có.
+ */
+function useCourseTitle(courseId: string, known: string | undefined): string {
+  const manifestQuery = useQuery({
+    queryKey: manifestQueryKey(courseId),
+    queryFn: () => loadManifest(courseId),
+    enabled: known === undefined,
+    retry: false,
+  });
+  return known ?? manifestQuery.data?.title ?? courseId;
+}
+
+function NoteRow({ note, known }: { note: AnnotationRow; known: string | undefined }) {
+  const { t } = useLanguage();
+  const course = useCourseTitle(note.courseId, known);
+  const quote = quoteOf(note.anchor, RECENT_QUOTE_CHARS);
+
+  return (
+    <li className={`home-note-row home-note-c-${colorOf(note.anchor)}`}>
+      {quote !== '' && <p className="home-note-quote">{renderQuote(quote, t('home.notes.formula'))}</p>}
+      <p className="home-note-text">{note.note}</p>
+      <p className="home-note-meta">
+        <span className="home-note-course">{course}</span>
+        <span className="home-note-sep" aria-hidden="true">
+          ·
+        </span>
+        <Link
+          to={`/c/${note.courseId}/${note.chapterId}`}
+          className="home-note-link"
+          aria-label={t('home.notes.aria', course)}
+        >
+          {t('home.notes.open')}
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M4.5 10h11M11 5.5l4.5 4.5L11 14.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </Link>
+      </p>
+    </li>
+  );
+}
+
 function RecentNotes({ courses }: { courses: readonly OwnedCourse[] }) {
   const { t } = useLanguage();
   const { notes, settled } = useRecentNotes(RECENT_NOTE_LIMIT);
 
-  const titleOf = (courseId: string): string => {
+  const knownTitleOf = (courseId: string): string | undefined => {
     const course = courses.find((entry) => entry.courseId === courseId);
-    return course?.held?.title ?? course?.catalog?.title ?? courseId;
+    return course?.held?.title ?? course?.catalog?.title;
   };
 
   return (
@@ -241,27 +320,9 @@ function RecentNotes({ courses }: { courses: readonly OwnedCourse[] }) {
 
       {notes.length > 0 && (
         <ul className="home-note-list">
-          {notes.map((note) => {
-            const quote = quoteOf(note.anchor, RECENT_QUOTE_CHARS);
-            const course = titleOf(note.courseId);
-            return (
-              <li key={note.id} className={`home-note-row home-note-c-${colorOf(note.anchor)}`}>
-                {quote !== '' && <p className="home-note-quote">{quote}</p>}
-                <p className="home-note-text">{note.note}</p>
-                <Link
-                  to={`/c/${note.courseId}/${note.chapterId}`}
-                  className="home-note-link"
-                  aria-label={t('home.notes.aria', course)}
-                >
-                  {course}
-                  <span className="home-note-sep" aria-hidden="true">
-                    ·
-                  </span>
-                  {t('home.notes.open')}
-                </Link>
-              </li>
-            );
-          })}
+          {notes.map((note) => (
+            <NoteRow key={note.id} note={note} known={knownTitleOf(note.courseId)} />
+          ))}
         </ul>
       )}
     </section>

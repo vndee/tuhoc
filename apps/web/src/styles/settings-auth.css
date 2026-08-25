@@ -107,12 +107,29 @@
    Token lấy từ `styles/tokens.css` (`@theme static`), tức là cùng một thang
    với mọi màn khác — không có màu nào viết tay ở đây. */
 
+/* LẤP ĐẦY KHUNG NHÌN. Bản trước cao đúng bằng nội dung của nó, nên trên một
+   màn 900px nó dùng hai phần ba trên và để lại một dải trống 400px — trang đầu
+   tiên của cả sản phẩm trông như một trang tải dở.
+
+   `100dvh` chứ không `100vh`: trên trình duyệt di động `100vh` tính theo thanh
+   địa chỉ ở trạng thái THU, nên trang cao hơn khung nhìn thật và đẩy nút "Đăng
+   nhập" xuống dưới nếp gấp — đúng lỗi mà lần sửa `wrap-reverse` trước đã đo
+   được ở 375px.
+
+   136px trừ đi là phần khung phía trên và dưới: 64px thanh trên + 32px
+   `padding-top` của `#content-wrap` + 40px `padding-bottom` mà khối ngay dưới
+   đặt riêng cho trang này. */
+#content-wrap:has(.auth-page) {
+  padding-bottom: 40px;
+}
+
 .auth-page {
   display: flex;
   flex-wrap: wrap;
   gap: 28px;
   align-items: stretch;
-  margin: clamp(12px, 3vh, 32px) 0 48px;
+  min-height: calc(100dvh - 136px);
+  margin: 0 0 8px;
   font-family: var(--font-sans);
 }
 
@@ -147,11 +164,27 @@
   color: var(--color-brand-200);
 }
 
+/* Nhãn hiệu ghim ĐỈNH, còn lời rao thì đứng GIỮA phần còn lại — hai `auto`
+   đối xứng, không phải một.
+   Bản trước chỉ có `margin-top: auto` ở đây, tức mọi thứ dồn xuống đáy. Đo
+   trên màn 900px sau khi panel cao hết khung nhìn: 344px trống giữa nhãn hiệu
+   và nhan đề, rồi 35px ở đáy — panel đọc ra như một cái hố có chữ dưới đáy.
+   `margin-bottom: auto` của cặp này nằm ở `.auth-points` bên dưới. */
 .auth-pitch-body {
   margin-top: auto;
 }
 
-.auth-pitch-h {
+/* ĐỘ ĐẶC HIỆU PHẢI THẮNG `#app:not(.reading) #content h1`, và đó là cái bẫy
+   trung tâm của repo này chứ không phải một dòng thừa.
+   `styles/app-screens.css` đặt thang chữ chung cho mọi màn app bằng
+   `#app:not(.reading) #content h1 { … color: var(--ink) }` — hai id, nên nó
+   thắng một class trần, và nó nạp SAU tệp này. Kết quả đo được trên bản đang
+   chạy: nhan đề trong panel tím render bằng `--ink`, tức chữ GẦN ĐEN trên nền
+   tím đậm — không đọc nổi, và đúng là thứ người dùng gửi ảnh chỉ vào.
+   `text-decoration`/`color` viết ở đâu không quan trọng bằng viết ở ĐỘ ĐẶC HIỆU
+   nào; hai id + hai class ở đây thắng hai id + một class ở đó. */
+#app:not(.reading) #content .auth-pitch-h {
+  font-family: var(--font-sans);
   margin: 0 0 14px;
   font-size: clamp(26px, 3.2vw, 34px);
   font-weight: 600;
@@ -169,7 +202,8 @@
 }
 
 .auth-points {
-  margin: 0;
+  /* `auto` ở dưới, cặp với `margin-top: auto` của `.auth-pitch-body` — xem ở đó. */
+  margin: 0 0 auto;
   padding: 0;
   list-style: none;
   display: flex;

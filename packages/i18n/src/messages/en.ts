@@ -257,6 +257,7 @@ export const en: Messages = {
   'home.notes.loading': 'Loading your notes…',
   'home.notes.empty': 'No notes yet. Select a passage while reading to write one.',
   'home.notes.open': 'Open the chapter',
+  'home.notes.formula': 'formula',
   'home.notes.aria': (course: string) => `Open this note in ${course}`,
 
   'progress.lede': 'Your study figures, told as a sentence.',

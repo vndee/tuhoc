@@ -124,6 +124,23 @@ function injectCourseKit(vizSrc: string | null): Promise<void> {
   return promise;
 }
 
+/**
+ * Khoá học nào đã nạp XONG runtime của nó, ở mức module — cùng hạng với
+ * `runtimeTrioPromise` và `vizPromisesBySrc`, và vì cùng một lý do.
+ *
+ * Không có nó, `useCourseKit` vứt đi chính điều hai thứ trên tồn tại để giữ:
+ * mỗi lần mount lại bắt đầu từ `ready: false` và ở đó cho tới khi
+ * `resolveVizScriptUrl` đọc xong `db.packages` — một vòng IndexedDB — dù mọi
+ * global đã gắn vào `window` từ lâu và không có gì để tải nữa. Đo trên bản
+ * dựng thật: 30–400ms mỗi lần vào một chương, trong đó `<ChapterView>` in
+ * "Đang tải chương…" đè lên một chương nó đã có sẵn.
+ *
+ * Một `Set` chỉ-thêm là đủ và đúng: script đã gắn global thì không gỡ ra được,
+ * nên một courseId đã vào đây thì vĩnh viễn còn đúng. Đường thất bại không ghi
+ * vào đây (xem nhánh lỗi trong effect), nên nó không bao giờ hứa nhầm.
+ */
+const readyCourseIds = new Set<string>();
+
 export interface UseCourseKitResult {
   /** True once katex.js, auto-render.js, runtime.js and — if this course has one — its viz.js have all loaded and attached their globals. */
   ready: boolean;
@@ -151,8 +168,32 @@ export interface UseCourseKitResult {
  * populated synchronously inside `injectCourseKit`, so concurrent mounts
  * still share one injection each.
  */
+function initialFor(courseId: string): UseCourseKitResult {
+  return { ready: readyCourseIds.has(courseId), error: null };
+}
+
 export function useCourseKit(courseId: string): UseCourseKitResult {
-  const [result, setResult] = useState<UseCourseKitResult>({ ready: false, error: null });
+  const [result, setResult] = useState<UseCourseKitResult>(() => initialFor(courseId));
+
+  /**
+   * ĐỔI KHOÁ HỌC GIỮA MỘT LẦN MOUNT thì câu trả lời cũ hết hiệu lực.
+   *
+   * `<Reader>` không bị dựng lại khi chỉ đổi tham số route, nên đi thẳng từ một
+   * chương của khoá A sang một chương của khoá B chỉ là một lần render mới với
+   * `courseId` khác. Bản trước để nguyên state ở đó: `ready` vẫn `true` từ khoá
+   * A trong khi `viz.js` của khoá B chưa tải, và `<ChapterView>` gọi `initViz`
+   * trên một sổ đăng ký chưa có mô phỏng nào của B — mọi khung mô phỏng ra chỗ
+   * giữ chỗ "chưa sẵn sàng".
+   *
+   * Đặt state NGAY TRONG THÂN RENDER chứ không trong một effect: React nhận ra
+   * mẫu này và render lại ngay trước khi commit, nên không có một khung nào bị
+   * vẽ ra với câu trả lời của khoá cũ.
+   */
+  const [seenCourseId, setSeenCourseId] = useState(courseId);
+  if (seenCourseId !== courseId) {
+    setSeenCourseId(courseId);
+    setResult(initialFor(courseId));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -161,6 +202,7 @@ export function useCourseKit(courseId: string): UseCourseKitResult {
       .then((vizSrc) => injectCourseKit(vizSrc))
       .then(
         () => {
+          readyCourseIds.add(courseId);
           if (!cancelled) setResult({ ready: true, error: null });
         },
         (err: unknown) => {
@@ -180,4 +222,5 @@ export function useCourseKit(courseId: string): UseCourseKitResult {
 export function __resetCourseKitForTests(): void {
   runtimeTrioPromise = null;
   vizPromisesBySrc.clear();
+  readyCourseIds.clear();
 }

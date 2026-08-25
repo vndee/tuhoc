@@ -39,3 +39,4 @@ apps/api/bin/
 # gỡ theo dõi bằng tay. .gitignore gốc thì được theo dõi, nên nó đi theo mọi
 # worktree.
 .superpowers/
+.playwright-mcp/

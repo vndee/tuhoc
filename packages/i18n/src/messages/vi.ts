@@ -355,6 +355,7 @@ export const vi = {
   'home.notes.loading': 'Đang tải ghi chú…',
   'home.notes.empty': 'Chưa có ghi chú nào. Bôi đen một đoạn khi đọc để ghi lại.',
   'home.notes.open': 'Mở chương',
+  'home.notes.formula': 'công thức',
   'home.notes.aria': (course: string) => `Mở ghi chú này trong ${course}`,
 
   /* ── tiến độ (`pages/Progress.tsx`) ─────────────────────────────────────── */

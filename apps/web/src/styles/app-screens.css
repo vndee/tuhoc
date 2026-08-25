@@ -1555,3 +1555,131 @@ html[data-theme='dark'] #app:not(.reading) a.nav-item:hover {
   background-position: center;
   background-size: 12px 12px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   GHI CHÚ GẦN ĐÂY — thẻ, không phải một danh sách gạch đầu dòng
+   ══════════════════════════════════════════════════════════════════════════
+   Phần này là thứ duy nhất trên trang chủ còn giữ hình dạng trước vòng thiết
+   kế lại: một nét kẻ màu bên trái, ba dòng chữ, rồi hàng kế tiếp. Cạnh một
+   thẻ "đang đọc" có nền, viền và bóng, nó đọc ra như phần chưa làm xong của
+   cùng một trang.
+
+   Nó cũng là thứ NGƯỜI HỌC TỰ VIẾT — thứ duy nhất trên màn hình này không do
+   ai khác soạn — nên nếu có một khối trên trang đáng được đóng khung thì là
+   khối này. */
+
+#app:not(.reading) .home-notes {
+  margin-top: 36px;
+}
+
+#app:not(.reading) .home-h2 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  margin: 0 0 16px;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+#app:not(.reading) .home-note-list {
+  gap: 12px;
+}
+
+/* Nét màu của ghi chú giữ nguyên vai trò cũ — nó là màu bút người đọc đã chọn,
+   và nó phải khớp với chương — chỉ chuyển từ một cái kẻ đứng một mình thành
+   MÉP TRÁI của thẻ. */
+#app:not(.reading) .home-note-row {
+  padding: 14px 16px 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--home-note-color, var(--rule-strong));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+
+/* Đoạn trích là lời của giáo trình, nên nó lùi lại một bậc so với ghi chú —
+   một dấu ngoặc kép mảnh chứ không phải một khối chữ ngang hàng. */
+#app:not(.reading) .home-note-quote {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  margin: 0 0 8px;
+}
+
+/* U+FFFC (một công thức trong đoạn trích) — xem `renderQuote` ở
+   `pages/Dashboard.tsx`. Nhỏ, chữ sans, để nó đọc ra là một CHỖ THAY THẾ chứ
+   không phải một từ trong câu. */
+#app:not(.reading) .home-note-formula {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--color-brand-700);
+  background: var(--color-brand-50);
+  border-radius: var(--radius-xs);
+  padding: 2px 5px;
+  margin: 0 2px;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
+html[data-theme='dark'] #app:not(.reading) .home-note-formula {
+  color: var(--color-brand-200);
+  background: rgba(127, 86, 217, 0.2);
+}
+
+#app:not(.reading) .home-note-text {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--ink);
+  margin: 0 0 10px;
+}
+
+#app:not(.reading) .home-note-meta {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+#app:not(.reading) .home-note-course {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#app:not(.reading) .home-note-sep {
+  margin: 0 8px;
+  color: var(--color-gray-300);
+}
+
+/* `border-bottom: none` chứ không chỉ `text-decoration: none` — và đây là cái
+   bẫy của repo này, không phải một dòng thừa. `reader.css` gạch chân MỌI liên
+   kết bằng `a { border-bottom: 1px solid … }`, thứ mà `text-decoration` không
+   với tới. Bản trước tắt `text-decoration` rồi dừng lại, nên cả tên khoá lẫn
+   "Mở chương" vẫn hiện ra có gạch chân — đúng như trên ảnh người dùng gửi. */
+#app:not(.reading) .home-note-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex: none;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-brand-700);
+  text-decoration: none;
+  border-bottom: none;
+}
+
+#app:not(.reading) .home-note-link:hover,
+#app:not(.reading) .home-note-link:focus-visible {
+  color: var(--color-brand-800);
+}
+
+html[data-theme='dark'] #app:not(.reading) .home-note-link {
+  color: var(--color-brand-300);
+}
