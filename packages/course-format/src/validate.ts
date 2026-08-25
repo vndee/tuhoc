@@ -87,6 +87,14 @@ import { Tokenizer } from 'parse5';
 import type { Token, TokenHandler } from 'parse5';
 
 import type { Chapter, Manifest } from './types';
+// A live cycle with `widgets.ts`: it imports `BoundedTokenizer` and the two
+// WIDGET_*_RE constants back from here. Both modules only reach for the
+// other's export from inside a function body — `checkWidgets(...)` here,
+// `new BoundedTokenizer(...)`/`WIDGET_DIR_RE.test(...)` there — never at
+// module top level, so this resolves the same way any other same-package ES
+// module cycle does: verified by running `widgets.test.ts` and this file's
+// own suite, not assumed.
+import { checkWidgets } from './widgets';
 
 export interface Finding {
   readonly code: string;
@@ -128,6 +136,22 @@ export const FINDING_CODES = [
   'FORM_TAG',
   'JS_FILE_IN_PACKAGE',
   'TAG_ATTR_FLOOD',
+  // --- widget rules — Task 2 of the server-side pivot. A widget is the one
+  // place a package may still ship running code (`widgets/<name>/index.html`,
+  // sandboxed in an `allow-scripts`, no-`allow-same-origin` iframe at read
+  // time — see WIDGET_DIR_RE/WIDGET_INDEX_RE above). These eight do not exist
+  // to make that safe; the sandbox does that. They exist to keep a widget
+  // small, self-contained and readable enough that the human reviewer this
+  // format still requires for anything that runs (spec §6) can actually read
+  // one before it merges. See `widgets.ts` for the rule bodies.
+  'WIDGET_TOO_LARGE',
+  'WIDGET_LINE_TOO_LONG',
+  'WIDGET_BAD_NAME',
+  'WIDGET_FORBIDDEN_API',
+  'WIDGET_EXTERNAL_URL',
+  'WIDGET_EXTRA_FILE',
+  'WIDGET_MISSING',
+  'WIDGET_ORPHAN',
 ] as const;
 
 export type FindingCode = (typeof FINDING_CODES)[number];
@@ -245,8 +269,14 @@ const JS_FILE_RE = /\.(?:js|mjs|cjs|jsx)$/i;
  * `scanHtmlText` if they contain a `<` byte, same as any other package entry.
  * Task 2 owns deciding whether that scan should also stop reading them; this
  * task narrows only what this comment claims.
+ *
+ * Exported for `widgets.ts`, which needs the identical prefix question ("is
+ * this path inside SOME widget's directory") to walk `widgets/…` and group
+ * entries by widget name. A second copy of this pattern over there is exactly
+ * the drift this comment is written down to prevent — see `widgets.ts`'s own
+ * header for why it imports this instead.
  */
-const WIDGET_DIR_RE = /^widgets\/[^/]+\//;
+export const WIDGET_DIR_RE = /^widgets\/[^/]+\//;
 
 /**
  * A widget's entry document, exactly: `widgets/<name>/index.html`. The
@@ -255,8 +285,12 @@ const WIDGET_DIR_RE = /^widgets\/[^/]+\//;
  * `SCRIPT_TAG` exists to refuse everywhere else. Narrower than
  * {@link WIDGET_DIR_RE} on purpose: see that constant's comment for what does
  * and does not follow from this exemption.
+ *
+ * Exported for `widgets.ts`, which needs this SAME exact-match question to
+ * tell a widget's entry document apart from an extra file sitting next to it
+ * (`WIDGET_EXTRA_FILE`) — see that module.
  */
-const WIDGET_INDEX_RE = /^widgets\/[^/]+\/index\.html$/;
+export const WIDGET_INDEX_RE = /^widgets\/[^/]+\/index\.html$/;
 
 const decoder = new TextDecoder('utf-8');
 
@@ -418,8 +452,15 @@ const CONTENT_TIER_RULES: readonly (readonly [FindingCode, string])[] = [
  * `tsc -b` is a real gate over this file, so a changed signature is a red
  * build, not a silent miss; a changed *meaning* (when `_leaveAttrName` fires)
  * is what the duplicate-attribute and C1/C2 tests are for.
+ *
+ * Exported so `widgets.ts`'s {@link extractWidgetRefs} drives the SAME
+ * hardened tokenizer instead of a second, unhardened `new Tokenizer(...)` —
+ * `extractWidgetRefs` reads a chapter fragment, and a chapter fragment is
+ * exactly the untrusted input the O(1) dedup and {@link MAX_ATTRS_PER_TAG}
+ * ceiling exist for. A second tokenizer path would reopen the DoS this class
+ * closes, just on a different call site.
  */
-class BoundedTokenizer extends Tokenizer {
+export class BoundedTokenizer extends Tokenizer {
   /** Attribute names already accepted for the tag currently being built. */
   private readonly seenAttrNames = new Set<string>();
 
@@ -846,8 +887,9 @@ export function validatePackage(files: ReadonlyMap<string, Uint8Array>): Validat
 
   findings.push(...checkManifestFields(parsed), ...checkVersionAndRuntime(parsed));
 
+  const locatedChapters = locateChapters(parsed);
   const seenChapterIds = new Set<string>();
-  for (const { chapter, pointer } of locateChapters(parsed)) {
+  for (const { chapter, pointer } of locatedChapters) {
     if (seenChapterIds.has(chapter.id)) {
       findings.push(finding('DUPLICATE_CHAPTER_ID', `${pointer}/id`, `chapter id "${chapter.id}" is used twice`));
     }
@@ -969,6 +1011,17 @@ export function validatePackage(files: ReadonlyMap<string, Uint8Array>): Validat
       findings.push(...scanHtmlText(path, decoder.decode(bytes)));
     }
   }
+
+  // Task 2's eight widget rules, run last: shape/size/API/URL checks on every
+  // `widgets/<name>/index.html`, plus the cross-reference between what
+  // chapters ask for (`data-widget="…"`) and what widgets the package
+  // actually ships. Unlike the loop just above, this is NOT gated on
+  // `overBudget` — the brief for Task 2 does not call for that skip, each
+  // widget's own index.html is bounded by WIDGET_MAX_BYTES regardless, and a
+  // chapter's HTML is already read once per package by `scanHtmlText` above,
+  // so this is not new proportional-to-rejected-size cost of a kind this
+  // module has not already accepted.
+  findings.push(...checkWidgets(files, locatedChapters.map(({ chapter }) => chapter.file)));
 
   return { ok: findings.length === 0, findings };
 }

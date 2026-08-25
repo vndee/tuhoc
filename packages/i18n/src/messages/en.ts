@@ -572,6 +572,22 @@ export const en: Messages = {
   'finding.JS_FILE_IN_PACKAGE':
     'The package contains a loose JavaScript file. No course may ship running code — interactive parts live only in a widget, sandboxed in its own frame.',
   'finding.TAG_ATTR_FLOOD': 'An HTML tag in the package carries too many attributes to be a real document.',
+  'finding.WIDGET_TOO_LARGE':
+    'A widget in this course is heavier than the size limit allows. Trim its content, or move anything heavy (images, data) out of it.',
+  'finding.WIDGET_LINE_TOO_LONG':
+    'A widget’s code has a line that is too long — usually a sign it was minified or squeezed onto one line. Rewrite it as normal, wrapped lines.',
+  'finding.WIDGET_BAD_NAME':
+    'A widget’s name is not valid. Widget names may only use lowercase letters, digits and hyphens, and cannot be too long.',
+  'finding.WIDGET_FORBIDDEN_API':
+    'A widget in this course uses cookies or browser storage (localStorage…) — something a widget has no access to. Remove that code.',
+  'finding.WIDGET_EXTERNAL_URL':
+    'A widget in this course loads something from the network. A widget must be fully self-contained — remove that link, even if it is only in a comment.',
+  'finding.WIDGET_EXTRA_FILE':
+    'A widget in this course carries more than one file. A widget may only have a single file — merge the rest into it, or delete it.',
+  'finding.WIDGET_MISSING':
+    'A chapter refers to a widget this course does not have. Check the widget’s name, or add the widget to the package.',
+  'finding.WIDGET_ORPHAN':
+    'This course ships a widget that no chapter uses. Remove it if it is no longer needed, or add it to the chapter that needs it.',
   'finding.BAD_URL': 'This link cannot be used.',
   'finding.FETCH_FAILED': 'Could not download it.',
   'finding.FILE_READ_FAILED': 'Could not read the file you chose.',

@@ -742,6 +742,22 @@ export const vi = {
   'finding.JS_FILE_IN_PACKAGE':
     'Gói chứa một tệp JavaScript rời. Không khóa học nào được chứa mã chạy được — phần tương tác chỉ sống trong widget, chạy trong khung sandbox riêng.',
   'finding.TAG_ATTR_FLOOD': 'Một thẻ HTML trong gói mang quá nhiều thuộc tính để có thể là một tài liệu thật.',
+  'finding.WIDGET_TOO_LARGE':
+    'Một widget trong khóa học này nặng hơn mức cho phép. Hãy cắt bớt nội dung của widget, hoặc tách phần nặng (ảnh, dữ liệu) ra khỏi nó.',
+  'finding.WIDGET_LINE_TOO_LONG':
+    'Mã của một widget có một dòng quá dài — thường là dấu hiệu mã đã bị minify hoặc bị dồn hết vào một dòng. Hãy viết lại thành nhiều dòng bình thường.',
+  'finding.WIDGET_BAD_NAME':
+    'Tên của một widget không hợp lệ. Tên widget chỉ được dùng chữ thường, số và dấu gạch ngang, và không được quá dài.',
+  'finding.WIDGET_FORBIDDEN_API':
+    'Một widget trong khóa học này dùng cookie hoặc bộ nhớ của trình duyệt (localStorage…) — thứ một widget không có quyền chạm tới. Hãy bỏ phần mã đó đi.',
+  'finding.WIDGET_EXTERNAL_URL':
+    'Một widget trong khóa học này tải một thứ gì đó từ mạng. Widget phải tự chứa hoàn toàn — hãy bỏ đường dẫn đó đi, kể cả khi nó chỉ nằm trong chú thích.',
+  'finding.WIDGET_EXTRA_FILE':
+    'Một widget trong khóa học này mang nhiều hơn một tệp. Một widget chỉ được có đúng một tệp — hãy gộp phần còn lại vào đó, hoặc xoá đi.',
+  'finding.WIDGET_MISSING':
+    'Một chương nhắc tới một widget mà khóa học không có. Hãy kiểm tra lại tên widget, hoặc thêm widget đó vào gói.',
+  'finding.WIDGET_ORPHAN':
+    'Khóa học này mang một widget mà không chương nào dùng tới. Hãy xoá widget đó nếu không còn cần, hoặc thêm nó vào chương cần nó.',
   'finding.BAD_URL': 'Đường dẫn này không dùng được.',
   'finding.FETCH_FAILED': 'Không tải được.',
   'finding.FILE_READ_FAILED': 'Không đọc được tệp bạn chọn.',

@@ -6,6 +6,7 @@ import {
   parseManifest,
   validatePackage,
 } from './validate';
+import { WIDGET_MAX_BYTES, WIDGET_MAX_LINE_BYTES } from './widgets';
 
 const enc = (s: string) => new TextEncoder().encode(s);
 // Format v2 has no "tier" — a manifest built by this helper is v2-shaped by
@@ -1157,6 +1158,22 @@ it('mọi code trong FINDING_CODES đều được ít nhất một fixture sinh
     })],
     ['chapters/c1.html', enc('<p>a</p>')],
   ]));
+  // Task 2's tám luật widget. Bốn widget dưới đây đều KHÔNG được chương nào
+  // tham chiếu, nên mỗi cái cũng kéo theo WIDGET_ORPHAN — không cần fixture
+  // riêng cho mã đó. `widgets.test.ts` là nơi mỗi luật này có test riêng,
+  // đích thân; ở đây chỉ cần MỖI mã xuất hiện ít nhất một lần qua
+  // `validatePackage`.
+  feed(withChapter('<p>a</p>').set('widgets/Bad_Name/index.html', enc('<p>x</p>'))); // WIDGET_BAD_NAME (+ WIDGET_ORPHAN)
+  feed(
+    withChapter('<div data-widget="w"></div>')
+      .set('widgets/w/index.html', enc('<p>ok</p>'))
+      .set('widgets/w/extra.js', enc('x')),
+  ); // WIDGET_EXTRA_FILE
+  feed(withChapter('<p>a</p>').set('widgets/big/index.html', new Uint8Array(WIDGET_MAX_BYTES + 1))); // WIDGET_TOO_LARGE
+  feed(withChapter('<p>a</p>').set('widgets/long/index.html', enc('a'.repeat(WIDGET_MAX_LINE_BYTES + 1)))); // WIDGET_LINE_TOO_LONG
+  feed(withChapter('<p>a</p>').set('widgets/cookie/index.html', enc('document.cookie'))); // WIDGET_FORBIDDEN_API
+  feed(withChapter('<p>a</p>').set('widgets/net/index.html', enc('http://example.com'))); // WIDGET_EXTERNAL_URL
+  feed(withChapter('<div data-widget="khong-co"></div>')); // WIDGET_MISSING
 
   expect([...produced].sort()).toEqual([...FINDING_CODES].sort());
 });
