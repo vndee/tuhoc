@@ -636,8 +636,53 @@ test('widget bị nhốt: origin mờ, không cookie, không allow-same-origin',
 
 ---
 
+### Task 17: Số phận của registry cộng đồng dưới format v2
+
+> Thêm sau khi thi công bắt đầu (phán quyết D10 trong ledger): plan gốc không hề
+> nhắc `tools/registry`, `apps/web/src/registry/`, hay `fixtures/courses/` — một
+> lỗ thật trong plan. Cơ chế registry cộng đồng (index.json + bot kiểm PR) bị
+> `/courses` của máy chủ + `tuhoc publish` thay thế, nên số phận nó là một quyết
+> định chứ không phải một phép sửa máy móc.
+
+**Files:**
+- Decide + execute: `tools/registry/` (validate-pr.ts, build-index.ts + tests),
+  `fixtures/courses/` (hai gói v1), `.github/workflows/registry.yml`,
+  Makefile targets `test-registry` + `registry-index`
+- Modify: `apps/web/src/registry/schemaContract.test.ts` (nếu registry còn sống)
+
+**Interfaces:**
+- Consumes: format v2 (Task 1–3), `tuhoc publish` (Task 4), catalog API (Task 9).
+- Produces: `make test-registry` xanh trở lại, hoặc target không còn tồn tại.
+
+**Nợ đang treo mà task này phải đóng:** sau Task 1, `bun tools/registry/src/validate-pr.ts
+--root fixtures/courses` từ chối đúng MỘT thứ —
+`JS_FILE_IN_PACKAGE` trên `fixtures/courses/so-dau-phay-dong/viz.js` (19.7 KB
+viz.js kiểu cũ). Đây là món nợ có chủ ý, ghi trong ledger, không task nào từ 1–16
+dùng `make test-registry` làm cổng nên nó không che mắt gate nào.
+
+- [ ] **Step 1: Quyết định, ghi ra trước khi sửa mã** — ba lối, chọn một và viết
+  lý do vào commit:
+  (a) **Giữ `validate-pr.ts`, bỏ `build-index.ts`** — cổng CI cho kho nguồn
+  course vẫn có ích (nó chính là `tuhoc pack`), còn index.json thì thừa vì catalog
+  nay là `/courses`. (b) **Bỏ cả `tools/registry`** — `tuhoc pack` trong CI của kho
+  nguồn làm đúng việc ấy, một implementation ít hơn để trôi. (c) **Giữ cả hai** —
+  chỉ hợp lý nếu kho registry cộng đồng vẫn sống song song, mà spec §7 nói không.
+  *Khuyến nghị: (a).*
+- [ ] **Step 2: `fixtures/courses/so-dau-phay-dong`** — hoặc chuyển `viz.js` thành
+  `widgets/<tên>/index.html` theo luật Task 2 (việc nội dung thật, đo lại bằng
+  `tuhoc pack`), hoặc thay vai trò fixture bằng `fixtures/format-v2/valid-course`
+  của Task 3 và gỡ gói v1. Nói rõ trong commit đã chọn đường nào.
+- [ ] **Step 3: Makefile + workflow** — gỡ hoặc sửa `test-registry`,
+  `registry-index`, `.github/workflows/registry.yml` cho khớp quyết định Step 1.
+- [ ] **Step 4: Chạy xanh** — `make test-registry` xanh, hoặc target đã biến mất
+  và `make test-format && make test-cli && make test-web` vẫn xanh.
+- [ ] **Step 5: Commit** — message nêu quyết định và lý do, theo tinh thần §0.3
+  của spec: mỗi cổng cũ gỡ đi phải nói vì sao.
+
+---
+
 ## Ghi chú cho người thi công
 
 1. **Hai course `interactive` hiện có** (`so-dau-phay-dong`, `***REMOVED***`) dùng viz.js kiểu cũ — chúng KHÔNG publish được lên format v2 cho tới khi được soạn lại thành widget (việc của kho course ngoài repo, skill course-authoring, sau pha này). `bat-bien-vong-lap` là content thuần: publish được ngay. Đây là trạng thái chấp nhận được của Pha 1, không phải bug.
 2. **Bốn unit test + e2e đọc chương thật** (README): sau Task 13/16 chúng đọc từ fixture `valid-course` qua đường server/msw thay vì `make courses` — task nào gặp thì chuyển fixture theo, giữ nguyên tinh thần "chương thật, không prose bịa".
-3. **Thứ tự task là thứ tự phụ thuộc** — 1→2→3 (format), 4 (CLI, cần 3), 5→6→7→8→9 (API), 10→11→12→13→14→15 (web), 16 (đóng gói). Task 4 có thể chạy song song nhánh API; trong một session tuần tự thì cứ theo số.
+3. **Thứ tự task là thứ tự phụ thuộc** — 1→2→3 (format), 4 (CLI, cần 3), 5→6→7→8→9 (API), 10→11→12→13→17→14→15 (web + registry), 16 (đóng gói). Task 4 có thể chạy song song nhánh API; trong một session tuần tự thì cứ theo số, với Task 17 chen vào ngay sau Task 13 vì cả hai cùng gỡ cơ chế registry cộng đồng.
