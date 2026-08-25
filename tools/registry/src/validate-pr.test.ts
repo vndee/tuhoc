@@ -11,8 +11,8 @@
  * `finding.where`. Neither exists. Measured against
  * `packages/course-format/src/validate.ts`:
  *
- *   - the code for a `<script>` in a `content`-tier package is **`SCRIPT_TAG`**
- *     (`FINDING_CODES`, validate.ts:100-121);
+ *   - the code for a `<script>` in a package is **`SCRIPT_TAG`**
+ *     (`FINDING_CODES`, validate.ts);
  *   - the field naming the offending file is **`path`** (`Finding`,
  *     validate.ts:85-89).
  *
@@ -46,7 +46,6 @@ function tmproot(): string {
 }
 
 interface Fixture {
-  tier: 'content' | 'interactive';
   files: Record<string, string>;
   /** Course id, which is also the directory name. */
   id?: string;
@@ -57,7 +56,16 @@ interface Fixture {
   root?: string;
 }
 
-/** Writes a course directory on disk and returns its path. */
+/**
+ * Writes a course directory on disk and returns its path.
+ *
+ * Format v2 has no `tier` (task 1 of the server-side pivot,
+ * `docs/superpowers/specs/2026-08-25-server-side-pivot.md` §2.3), so this
+ * helper writes a v2 manifest — no `tier` key at all. The two tests that
+ * still need one to exist on disk (proving the old field is refused rather
+ * than silently ignored) patch it in afterwards with {@link setTier}, the
+ * same way `tên thư mục khác manifest.id` below patches `id`.
+ */
 function writeFixture(spec: Fixture): string {
   const root = spec.root ?? tmproot();
   const id = spec.id ?? 'fixture-course';
@@ -77,7 +85,6 @@ function writeFixture(spec: Fixture): string {
     lang: 'vi',
     version: spec.version ?? '1.0.0',
     runtime: '^1',
-    tier: spec.tier,
     license: 'CC-BY-4.0',
     authors: [{ name: 'test' }],
     generatedBy: 'human',
@@ -98,9 +105,22 @@ function writeFixture(spec: Fixture): string {
   return dir;
 }
 
+/**
+ * Patches a `tier` key back onto a manifest {@link writeFixture} already
+ * wrote — for the two tests proving the dead field is REFUSED, not merely
+ * unread. Not part of `Fixture`/`writeFixture` itself: every other test gets
+ * a clean v2 manifest by default, and only these two ask for the old shape.
+ */
+function setTier(dir: string, tier: string): void {
+  const manifestPath = join(dir, 'manifest.json');
+  const raw = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+  raw['tier'] = tier;
+  writeFileSync(manifestPath, JSON.stringify(raw));
+}
+
 describe('validateChangedCourses — the bad thing is refused', () => {
-  it('gói hạng content mang <script> bị từ chối, và thông báo nêu ĐÍCH DANH tệp', async () => {
-    const dir = writeFixture({ tier: 'content', files: { 'chapters/c1.html': '<script>alert(1)</script>' } });
+  it('gói mang <script> bị từ chối, và thông báo nêu ĐÍCH DANH tệp', async () => {
+    const dir = writeFixture({ files: { 'chapters/c1.html': '<script>alert(1)</script>' } });
 
     const findings = await validateChangedCourses([dir]);
 
@@ -112,23 +132,46 @@ describe('validateChangedCourses — the bad thing is refused', () => {
     expect(findings.map((f) => `${f.courseDir} ${f.path} ${f.detail}`).join('\n')).toContain('chapters/c1.html');
   });
 
-  it('ĐỐI CHỨNG: cùng gói ấy khai tier "interactive" thì ĐƯỢC — hạng đó được phép chạy mã', async () => {
-    const dir = writeFixture({ tier: 'interactive', files: { 'chapters/c1.html': '<script>alert(1)</script>' } });
+  /**
+   * Was: "ĐỐI CHỨNG: cùng gói ấy khai tier 'interactive' thì ĐƯỢC — hạng đó
+   * được phép chạy mã" — asserting the exact bypass format v2 kills. Task 1
+   * of the server-side pivot removed the `tier` field and the gate that read
+   * it; the replacement claim is the opposite one: a manifest that still
+   * carries the old field does not reopen any exemption, and is flagged for
+   * carrying it on top of whatever content rule it also trips.
+   */
+  it('ĐỐI CHỨNG: một manifest còn ghi tier "interactive" KHÔNG được miễn — <script> vẫn bị bắt, cộng thêm TIER_REMOVED', async () => {
+    const dir = writeFixture({ files: { 'chapters/c1.html': '<script>alert(1)</script>' } });
+    setTier(dir, 'interactive');
 
-    expect(await validateChangedCourses([dir])).toEqual([]);
+    const codes = (await validateChangedCourses([dir])).map((f) => f.code);
+    expect(codes).toContain('SCRIPT_TAG');
+    expect(codes).toContain('TIER_REMOVED');
   });
 
-  it('ĐỐI CHỨNG trên bytes THẬT: gói mẫu interactive đã commit (ships viz.js) đi qua sạch', async () => {
-    expect(await validateChangedCourses([join(FIXTURE_COURSES, 'so-dau-phay-dong')])).toEqual([]);
+  /**
+   * Was: "…gói mẫu interactive đã commit (ships viz.js) đi qua sạch" —
+   * true only under the old tier gate. Format v2 runs the content rules on
+   * every package, so this fixture's 19.7 KB `viz.js` — free JavaScript
+   * outside any `widgets/` directory — now trips `JS_FILE_IN_PACKAGE`.
+   *
+   * Left AS a known, single-cause red on purpose (task 1's fix round 1):
+   * `viz.js` needs to become a widget, which is real content work for a
+   * later task, not something to paper over here by deleting the fixture,
+   * stubbing the file, or weakening the rule. Pinned exactly, so a future
+   * change to either the rule OR the fixture has to look at this line.
+   */
+  it('trên bytes THẬT: gói mẫu interactive đã commit — đúng MỘT lỗi đã biết (viz.js chưa thành widget)', async () => {
+    const findings = await validateChangedCourses([join(FIXTURE_COURSES, 'so-dau-phay-dong')]);
+    expect(findings).toMatchObject([{ code: 'JS_FILE_IN_PACKAGE', path: 'viz.js' }]);
   });
 
   it('ĐỐI CHỨNG trên bytes THẬT: gói mẫu content đã commit đi qua sạch', async () => {
     expect(await validateChangedCourses([join(FIXTURE_COURSES, 'bat-bien-vong-lap')])).toEqual([]);
   });
 
-  it('cùng gói ấy hạng content mà kèm một tệp .js thì bị từ chối', async () => {
+  it('cùng gói ấy kèm một tệp .js thì bị từ chối', async () => {
     const dir = writeFixture({
-      tier: 'content',
       files: { 'chapters/c1.html': '<p>an toàn</p>', 'viz.js': 'console.log(1)' },
       chapters: [{ id: 'c1', file: 'chapters/c1.html' }],
     });
@@ -139,8 +182,8 @@ describe('validateChangedCourses — the bad thing is refused', () => {
 
   it('mỗi thư mục hỏng đều được nêu tên — hai gói xấu cho hai nhóm finding', async () => {
     const root = tmproot();
-    const a = writeFixture({ root, id: 'a', tier: 'content', files: { 'chapters/c1.html': '<script>x</script>' } });
-    const b = writeFixture({ root, id: 'b', tier: 'content', files: { 'chapters/c1.html': '<iframe src=x>' } });
+    const a = writeFixture({ root, id: 'a', files: { 'chapters/c1.html': '<script>x</script>' } });
+    const b = writeFixture({ root, id: 'b', files: { 'chapters/c1.html': '<iframe src=x>' } });
 
     const findings = await validateChangedCourses([a, b]);
     expect(new Set(findings.map((f) => f.courseDir))).toEqual(new Set([a, b]));
@@ -154,7 +197,7 @@ describe('validateChangedCourses — the questions the rule set structurally can
   });
 
   it('symlink trong gói → finding, không phải một exception làm đỏ job vì lý do khác', async () => {
-    const dir = writeFixture({ tier: 'content', files: { 'chapters/c1.html': '<p>ok</p>' } });
+    const dir = writeFixture({ files: { 'chapters/c1.html': '<p>ok</p>' } });
     symlinkSync('/etc/passwd', join(dir, 'link.html'));
 
     const findings = await validateChangedCourses([dir]);
@@ -164,7 +207,7 @@ describe('validateChangedCourses — the questions the rule set structurally can
 
   it('tên thư mục khác manifest.id → finding (câu hỏi về BỐ CỤC registry, validatePackage không thấy được)', async () => {
     const root = tmproot();
-    const dir = writeFixture({ root, id: 'ten-thu-muc', tier: 'content', files: { 'chapters/c1.html': '<p>ok</p>' } });
+    const dir = writeFixture({ root, id: 'ten-thu-muc', files: { 'chapters/c1.html': '<p>ok</p>' } });
     // Rewrite just the id so the manifest disagrees with the directory it sits in.
     const manifestPath = join(dir, 'manifest.json');
     const raw = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;

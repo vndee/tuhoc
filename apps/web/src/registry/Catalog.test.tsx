@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { packZip } from '@tuhoc/course-format';
 import { http, HttpResponse } from 'msw';
@@ -39,7 +39,6 @@ function entry(over: Partial<RegistryEntry> = {}): RegistryEntry {
     title: 'Số dấu phẩy động',
     description: 'Vì sao 0.1 + 0.2 không bằng 0.3',
     lang: 'vi',
-    tier: 'content',
     license: 'CC-BY-4.0',
     authors: [{ name: 'Ai đó' }],
     generatedBy: 'human',
@@ -82,7 +81,6 @@ function sampleManifest(chapterHtml: string): Map<string, Uint8Array> {
           lang: 'vi',
           version: '1.0.0',
           runtime: '^1',
-          tier: 'content',
           license: 'CC-BY-4.0',
           authors: [{ name: 'Ai đó' }],
           generatedBy: 'human',
@@ -149,16 +147,13 @@ function visibleText(): string {
  * ------------------------------------------------------------------ */
 
 describe('Catalog khi registry khoẻ', () => {
-  it('liệt kê course, kèm nhãn NGÔN NGỮ và nhãn HẠNG', async () => {
+  it('liệt kê course, kèm nhãn NGÔN NGỮ', async () => {
     server.use(http.get(INDEX_URL, () => HttpResponse.json(index())));
     renderCatalog();
 
     expect(await screen.findByText('Số dấu phẩy động')).toBeInTheDocument();
     const item = screen.getByRole('listitem');
     expect(item).toHaveTextContent('vi');
-    // Hạng là một quyết định AN NINH, không phải phân loại nội dung — cùng lý
-    // do `pages/Library.tsx`'s TierBadge đã ghi.
-    expect(item).toHaveTextContent('content');
     expect(item).toHaveTextContent('1.0.0');
     expect(screen.queryByText(BOUNDARY_FALLBACK)).not.toBeInTheDocument();
   });
@@ -483,79 +478,23 @@ describe('lọc theo ngôn ngữ', () => {
 });
 
 /* ====================================================================== *
- * NHÃN PHẢI NÓI RÕ **TRƯỚC KHI** KÉO VỀ
+ * NHÃN "HẠNG" ĐÃ BỊ XOÁ — format v2, task 1 của server-side pivot
  *
- * Yêu cầu nguyên văn của chủ dự án: *"cần nhãn để user biết nên expect như thế
- * nào khi pull về thư viện cá nhân"*. Và hạng `interactive` là một quyết định
- * AN NINH — hạng ấy CHẠY MÃ trong trình duyệt người đọc.
+ * Khối `describe('nhãn hiện TRƯỚC khi kéo về', …)` từng sống ở đây, đo đúng
+ * yêu cầu gốc của chủ dự án: *"cần nhãn để user biết nên expect như thế nào
+ * khi pull về thư viện cá nhân"*, dưới quyết định an ninh cũ — hạng
+ * `interactive` CHẠY MÃ trong trình duyệt người đọc, ngay trên origin chính.
+ *
+ * Tiền đề đó không còn: `docs/superpowers/specs/2026-08-25-server-side-pivot.md`
+ * §2.3 xoá hẳn khái niệm hạng — mọi course giờ là "content" (máy kiểm được
+ * 100%, luật content chạy vô điều kiện, xem `packages/course-format`), và
+ * phần tương tác chỉ còn sống trong widget chạy trong iframe sandbox
+ * (`allow-scripts`, KHÔNG `allow-same-origin`) — Task 2. Rủi ro "JS chạy trên
+ * origin chính khi kéo về" mà nhãn cũ cảnh báo không còn tồn tại theo kiến
+ * trúc mới, nên bản thân cái nhãn không còn gì đúng để nói. `TierBadge`, câu
+ * cảnh báo `catalog.pull.interactiveWarning`, và ba bài test đo chúng đã bị
+ * xoá cùng lúc — không phải rớt lại vì quên, mà vì UI chúng đo không còn.
  * ====================================================================== */
-
-describe('nhãn hiện TRƯỚC khi kéo về', () => {
-  it('hàng có nút kéo về, và nhãn NGÔN NGỮ + nhãn HẠNG đã ở đó khi chưa ai bấm', async () => {
-    server.use(http.get(INDEX_URL, () => HttpResponse.json(index({ courses: [entry({ tier: 'interactive' })] }))));
-    renderCatalog();
-    await screen.findByText('Số dấu phẩy động');
-
-    const row = screen.getByRole('listitem');
-    const pull = within(row).getByRole('button', { name: /kéo về/i });
-
-    // Thứ tự trong DOM là thứ chịu lực: cả nhãn LẪN câu cảnh báo phải nằm
-    // TRƯỚC nút trong cùng hàng, vì đó là thứ người đọc quét qua trên đường
-    // tới nút. Sau khi bấm thì mã đã nằm trên máy họ.
-    expect(within(row).getByText('vi')).toBeInTheDocument();
-
-    // Hai thứ KHÁC NHAU, và cả hai đều được đo:
-    //   - nhãn hạng, `interactive — chạy mã JavaScript`;
-    //   - câu nói ra hậu quả, cạnh cái nút.
-    // Bài này từng chỉ đo cái thứ nhất, và một mutant dán câu cảnh báo lên
-    // MỌI hàng sống sót — bộ đo khi ấy xanh vì lý do khác lý do nó tuyên bố.
-    const badge = within(row).getByText(/chạy mã JavaScript/i);
-    const warning = within(row).getByText(/được phép chạy JavaScript/i);
-    expect(badge).not.toBe(warning);
-    for (const before of [badge, warning]) {
-      expect(before.compareDocumentPosition(pull) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    }
-
-    // Và chưa có gì được kéo về: nhãn là thứ hiện TRƯỚC, không phải hậu quả.
-    expect(pulledUrls).toEqual([]);
-  });
-
-  /**
-   * ĐỐI CHỨNG cho bài trên, và nó phải phủ CẢ HAI thứ bài trên khẳng định.
-   * Không có nó, một cài đặt dán cảnh báo an ninh vào MỌI hàng cũng xanh — và
-   * một cảnh báo hiện ở khắp nơi là một cảnh báo không còn nói gì, đúng thứ
-   * nhãn hạng sinh ra để tránh.
-   */
-  it('ĐỐI CHỨNG: hạng `content` KHÔNG nói "chạy mã" và KHÔNG mang câu cảnh báo', async () => {
-    server.use(http.get(INDEX_URL, () => HttpResponse.json(index({ courses: [entry({ tier: 'content' })] }))));
-    renderCatalog();
-    await screen.findByText('Số dấu phẩy động');
-
-    const row = screen.getByRole('listitem');
-    expect(within(row).queryByText(/chạy mã JavaScript/i)).not.toBeInTheDocument();
-    expect(within(row).queryByText(/được phép chạy JavaScript/i)).not.toBeInTheDocument();
-    expect(within(row).getByText('content')).toBeInTheDocument();
-  });
-
-  /**
-   * Hạng LẠ cũng phải cảnh báo. Một gói khai `tier: "plugin"` không có gì bảo
-   * đảm nó không chạy mã, và đọc một hạng không biết thành `content` là biến
-   * *"ta không biết gói này chở gì"* thành một lời cho qua im lặng.
-   */
-  it('hạng LẠ được cảnh báo chứ không cho qua', async () => {
-    server.use(
-      http.get(INDEX_URL, () =>
-        HttpResponse.json(index({ courses: [{ ...entry(), tier: 'plugin' } as unknown as RegistryEntry] })),
-      ),
-    );
-    renderCatalog();
-    await screen.findByText('Số dấu phẩy động');
-
-    const row = screen.getByRole('listitem');
-    expect(within(row).queryByText('content')).not.toBeInTheDocument();
-    expect(within(row).getByText(/có thể chạy mã/i)).toBeInTheDocument();
-  });
-});
 
 /* ====================================================================== *
  * KÉO VỀ — QUA ĐÚNG ĐƯỜNG `zipUrl` ĐÃ CÓ

@@ -23,7 +23,6 @@ function entry(over: Partial<RegistryEntry> = {}): RegistryEntry {
     title: 'Số dấu phẩy động',
     description: 'Vì sao 0.1 + 0.2 không bằng 0.3',
     lang: 'vi',
-    tier: 'content',
     license: 'CC-BY-4.0',
     authors: [{ name: 'Ai đó' }],
     generatedBy: 'human',

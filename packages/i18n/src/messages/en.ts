@@ -553,6 +553,8 @@ export const en: Messages = {
     `The package has no ${manifest} at its root — that is the file describing the course.`,
   'finding.MANIFEST_PARSE': (manifest: string) => `${manifest} is not valid JSON.`,
   'finding.MANIFEST_FIELD': (manifest: string) => `${manifest} is missing a required field, or that field has the wrong type.`,
+  'finding.TIER_REMOVED':
+    'This course’s manifest still has a "tier" field — the new format has no tiers any more. Remove it from manifest.json; interactive parts now live in a separate widget instead of being declared through "tier".',
   'finding.SEMVER': 'The course version number is not in X.Y.Z form.',
   'finding.RUNTIME_RANGE': 'The course requires a runtime version this app does not support.',
   'finding.DUPLICATE_CHAPTER_ID': 'Two chapters share the same id.',

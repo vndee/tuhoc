@@ -43,7 +43,7 @@ import type { MessageKey } from '../i18n';
  * ## Styling reuses `.lib-*`
  *
  * Deliberately, not out of laziness: the catalog and the library are the same
- * kind of screen (a list of courses with a language and a tier), a reader
+ * kind of screen (a list of courses with a language and a version), a reader
  * moves between them, and a second visual vocabulary for the same object is
  * how two screens drift into looking like two products. It also keeps this
  * task out of `styles/index.css`, which nothing here needed to change.
@@ -351,7 +351,6 @@ function CatalogRow({
     <li className="lib-item lib-item-registry">
       <div className="lib-item-head">
         <span className="lib-item-title">{course.title}</span>
-        <TierBadge tier={course.tier} />
       </div>
       <p className="lib-meta">
         <span className="lib-meta-part">{course.lang}</span>
@@ -378,17 +377,6 @@ function CatalogRow({
         any screen that draws private or file-imported courses.
       */}
       {rating !== undefined && <Rating registryId={course.id} summary={rating} />}
-
-      {/*
-        The security sentence sits HERE — between the labels and the button,
-        before the click, in the row it is about. `TierBadge`'s `title` says
-        the same thing but only to a reader who hovers, and this is the one
-        moment where the information can still change a decision: after the
-        pull the JavaScript is already on the reader's device.
-      */}
-      {course.tier === 'interactive' && (
-        <p className="lib-row-note lib-tier-warning">{t('catalog.pull.interactiveWarning')}</p>
-      )}
 
       <div className="lib-item-actions">
         <button
@@ -439,73 +427,6 @@ function CatalogRow({
         </div>
       )}
     </li>
-  );
-}
-
-/**
- * The tier badge, and the reason it says more than the word.
- *
- * Copied in substance from `pages/Library.tsx`'s badge, and for its reasons:
- * a tier is a SECURITY posture, not a content category. "interactive" on its
- * own reads as a promise about the content ("has simulations!"), which is the
- * opposite of what is being communicated — so the badge spells out that the
- * package is allowed to run JavaScript in the reader's browser.
- *
- * On the catalog this matters more than in the library, not less: here the
- * reader has not pulled the course yet, and this label is the last thing they
- * see before deciding to. An unknown tier is warned about rather than waved
- * through — reading a missing field as `content` would turn "we do not know
- * what this ships" into a silent all-clear.
- */
-function TierBadge({ tier }: { tier: string }) {
-  const { t } = useLanguage();
-
-  if (tier === 'content') {
-    return (
-      <span
-        className="lib-tier lib-tier-content"
-        title={t('library.tier.contentTitle')}
-      >
-        content
-      </span>
-    );
-  }
-  if (tier === 'interactive') {
-    return (
-      <span className="lib-tier lib-tier-code" title={t('library.tier.interactiveTitle')}>
-        <WarnMark />
-        {t('library.tier.interactiveLabel')}
-      </span>
-    );
-  }
-  return (
-    <span className="lib-tier lib-tier-code" title={t('catalog.tier.unknownTitle')}>
-      <WarnMark />
-      {t('library.tier.unknownLabel')}
-    </span>
-  );
-}
-
-/**
- * Cùng tam giác cảnh báo với `pages/Library.tsx`, và được chép sang đây vì
- * chính lý do `TierBadge` ở trên đã được chép: hai màn hình này cố ý không
- * chia sẻ một component nhãn hạng — xem chú thích của `TierBadge`. Lý do đầy
- * đủ (vì sao vẽ tay thay vì ký tự `⚠`, vì sao `aria-hidden`) nằm ở bản trong
- * `pages/Library.tsx`.
- */
-function WarnMark() {
-  return (
-    <svg className="lib-tier-mark" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false">
-      <path
-        d="M8 1.8 15 14H1L8 1.8Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-      <path d="M8 6.2v3.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <circle cx="8" cy="11.7" r="0.85" fill="currentColor" />
-    </svg>
   );
 }
 

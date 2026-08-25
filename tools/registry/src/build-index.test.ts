@@ -8,7 +8,7 @@
  * somebody writes `versions.sort()` and it looks right on `1.0.0 … 1.9.0`.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir as osTmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,7 +32,7 @@ function tmproot(): string {
   return dir;
 }
 
-function writeCourse(dir: string, id: string, version: string, tier: 'content' | 'interactive' = 'content'): void {
+function writeCourse(dir: string, id: string, version: string): void {
   mkdirSync(join(dir, 'chapters'), { recursive: true });
   const manifest = {
     id,
@@ -41,7 +41,6 @@ function writeCourse(dir: string, id: string, version: string, tier: 'content' |
     lang: 'vi',
     version,
     runtime: '^1',
-    tier,
     license: 'CC-BY-4.0',
     authors: [{ name: 'test' }],
     generatedBy: 'human',
@@ -116,31 +115,51 @@ describe('chốt chống cổng mù', () => {
 });
 
 describe('index từ hai gói mẫu THẬT đã commit', () => {
-  it('cả hai course có mặt, nhãn hạng và ngôn ngữ lấy từ manifest', async () => {
-    const idx = await buildIndex(FIXTURE_COURSES);
+  /**
+   * Was: "cả hai course có mặt, nhãn hạng và ngôn ngữ lấy từ manifest",
+   * building the index straight from `FIXTURE_COURSES` and reading `tier` off
+   * both. Format v2 (task 1 of the server-side pivot) removed `tier`
+   * entirely, and running the content rules unconditionally now catches
+   * `so-dau-phay-dong`'s 19.7 KB `viz.js` — a real, tracked, single-cause red
+   * (`JS_FILE_IN_PACKAGE`) that needs that course's interactive part rewritten
+   * as a widget, real content work for a later task. `buildIndex` refuses to
+   * emit ANY index while one course in the tree has findings, so this is now
+   * pinned as a rejection rather than a success — see `validate-pr.test.ts`
+   * for the same fixture pinned the same way.
+   */
+  it('trên bytes THẬT: đúng MỘT lỗi đã biết (viz.js chưa thành widget) — không sinh index', async () => {
+    await expect(buildIndex(FIXTURE_COURSES)).rejects.toMatchObject({
+      findings: [{ code: 'JS_FILE_IN_PACKAGE', path: 'viz.js' }],
+    });
+  });
 
-    expect(idx.courses.map((c) => c.id)).toEqual(['bat-bien-vong-lap', 'so-dau-phay-dong']);
+  /**
+   * The field-level coverage the test above used to carry for BOTH sample
+   * courses now only holds for the one that is clean. Copied into a fresh
+   * temp root rather than read from `FIXTURE_COURSES` directly: `buildIndex`
+   * walks every course under `root`, and the other real sample is the known
+   * red above.
+   */
+  it('trên bytes THẬT (gói content): mọi trường màn hình đọc khớp manifest', async () => {
+    const root = tmproot();
+    cpSync(join(FIXTURE_COURSES, 'bat-bien-vong-lap'), join(root, 'bat-bien-vong-lap'), { recursive: true });
 
-    const interactive = idx.courses.find((c) => c.id === 'so-dau-phay-dong');
-    expect(interactive?.tier).toBe('interactive');
-    expect(interactive?.lang).toBe('vi');
-    expect(interactive?.latest).toBe('1.0.0');
-    expect(interactive?.versions).toEqual(['1.0.0']);
-    expect(interactive?.license).toBe('CC-BY-4.0');
-    expect(interactive?.generatedBy).toBe('ai');
-    expect(interactive?.authors.map((a) => a.name)).toEqual(['tuhoc course-authoring skill']);
-    // bytes is the DECODED size of the package, the same axis the rule set
-    // budgets — the sample really does ship ~200 KB of chapters.
-    expect(interactive?.bytes).toBeGreaterThan(100_000);
-
+    const idx = await buildIndex(root);
     const content = idx.courses.find((c) => c.id === 'bat-bien-vong-lap');
-    expect(content?.tier).toBe('content');
+
+    expect(content?.lang).toBe('vi');
+    expect(content?.latest).toBe('1.0.0');
+    expect(content?.versions).toEqual(['1.0.0']);
+    expect(content?.license).toBe('CC-BY-4.0');
+    expect(content?.generatedBy).toBe('ai');
+    expect(content?.authors.map((a) => a.name)).toEqual(['tuhoc course-authoring skill']);
+    expect(content?.bytes).toBeGreaterThan(0);
   });
 
   it('gói KHÔNG hợp lệ không bao giờ lọt vào index — index và cổng PR dùng CÙNG bộ luật', async () => {
     const root = tmproot();
     const dir = join(root, 'gia-mao');
-    writeCourse(dir, 'gia-mao', '1.0.0', 'content');
+    writeCourse(dir, 'gia-mao', '1.0.0');
     writeFileSync(join(dir, 'chapters', 'c1.html'), '<script>alert(1)</script>');
 
     await expect(buildIndex(root)).rejects.toThrow(/SCRIPT_TAG/);

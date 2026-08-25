@@ -26,4 +26,4 @@
 
 export { MANIFEST_PATH, packZip, parseManifest, validatePackage } from '../../../packages/course-format/src/index.ts';
 
-export type { Author, Finding, GeneratedBy, Manifest, Tier } from '../../../packages/course-format/src/index.ts';
+export type { Author, Finding, GeneratedBy, Manifest } from '../../../packages/course-format/src/index.ts';

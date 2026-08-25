@@ -31,7 +31,7 @@ import { stat, writeFile } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
-import type { Author, GeneratedBy, Tier } from './course-format.ts';
+import type { Author, GeneratedBy } from './course-format.ts';
 import { isEntryPoint } from './entry.ts';
 import { compareSemver, sortSemverAscending } from './semver.ts';
 import { courseDirsUnder, inspectCourse, renderFinding } from './tree.ts';
@@ -54,8 +54,6 @@ export interface RegistryEntry {
   description: string;
   /** A LABEL, from the manifest. Nothing translates on it; the catalog filters and displays it. */
   lang: string;
-  /** Security posture, not a content category. `content` ships no JS; `interactive` may. */
-  tier: Tier;
   license: string;
   authors: Author[];
   generatedBy: GeneratedBy;
@@ -159,7 +157,6 @@ export async function buildIndex(root: string, options: BuildIndexOptions = {}):
       title: m.title,
       description: m.description,
       lang: m.lang,
-      tier: m.tier,
       license: m.license,
       authors: m.authors,
       generatedBy: m.generatedBy,
@@ -290,7 +287,7 @@ export async function main(argv: string[]): Promise<number> {
     );
   }
   for (const c of index.courses) {
-    process.stdout.write(`  ${c.id}  [${c.tier}] [${c.lang}]  latest ${c.latest} (${c.versions.length} bản)\n`);
+    process.stdout.write(`  ${c.id}  [${c.lang}]  latest ${c.latest} (${c.versions.length} bản)\n`);
   }
   return 0;
 }

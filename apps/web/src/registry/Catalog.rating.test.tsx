@@ -21,7 +21,6 @@ function entry(id: string, over: Partial<RegistryEntry> = {}): RegistryEntry {
     title: id,
     description: '',
     lang: 'vi',
-    tier: 'content',
     license: 'CC-BY-4.0',
     authors: [{ name: 'Ai đó' }],
     generatedBy: 'human',

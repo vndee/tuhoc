@@ -335,6 +335,7 @@ const FINDING_KEY: Readonly<Record<ImportFindingCode | FindingCode, MessageKey>>
   MANIFEST_MISSING: 'finding.MANIFEST_MISSING',
   MANIFEST_PARSE: 'finding.MANIFEST_PARSE',
   MANIFEST_FIELD: 'finding.MANIFEST_FIELD',
+  TIER_REMOVED: 'finding.TIER_REMOVED',
   SEMVER: 'finding.SEMVER',
   RUNTIME_RANGE: 'finding.RUNTIME_RANGE',
   DUPLICATE_CHAPTER_ID: 'finding.DUPLICATE_CHAPTER_ID',

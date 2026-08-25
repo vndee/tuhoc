@@ -40,7 +40,6 @@ function entry(over: Partial<RegistryEntry> = {}): RegistryEntry {
     title: 'Số dấu phẩy động',
     description: 'Mô tả',
     lang: 'vi',
-    tier: 'content',
     license: 'CC-BY-4.0',
     authors: [{ name: 'Ai đó' }],
     generatedBy: 'human',
@@ -196,8 +195,8 @@ describe('assertRegistryIndex — chốt hình dạng Ở RANH GIỚI', () => {
     }
   });
 
-  it('mục thiếu `id`, `title`, `lang`, `tier`, `latest` đều bị bắt', () => {
-    for (const field of ['id', 'title', 'lang', 'tier', 'latest'] as const) {
+  it('mục thiếu `id`, `title`, `lang`, `latest` đều bị bắt', () => {
+    for (const field of ['id', 'title', 'lang', 'latest'] as const) {
       const bad: Record<string, unknown> = { ...entry() };
       delete bad[field];
       try {

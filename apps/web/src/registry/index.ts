@@ -319,7 +319,11 @@ function entryProblems(value: unknown, at: string): string[] {
   }
   const o = value as Partial<Record<keyof RegistryEntry, unknown>>;
   const bad: string[] = [];
-  for (const field of ['id', 'title', 'lang', 'tier', 'latest'] as const) {
+  // "tier" used to be checked here too. Format v2 dropped it — see
+  // `TIER_REMOVED` and `packages/course-format/src/validate.ts` — and
+  // `build-index.ts` no longer emits it, so requiring it here would reject
+  // every real index this registry can now produce.
+  for (const field of ['id', 'title', 'lang', 'latest'] as const) {
     if (typeof o[field] !== 'string') bad.push(`${at}.${field}`);
   }
   // `description` is shown but an absent one is cosmetic, so it is checked for

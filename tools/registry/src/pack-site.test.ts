@@ -11,7 +11,7 @@
  * had already validated.
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir as osTmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,13 +35,27 @@ function tmproot(prefix = 'tuhoc-registry-pack-'): string {
   return dir;
 }
 
-function writeCourse(
-  dir: string,
-  id: string,
-  version: string,
-  chapterHtml = '<p>nội dung</p>',
-  tier: 'content' | 'interactive' = 'content',
-): void {
+/**
+ * A registry root holding just `bat-bien-vong-lap`, copied from the real
+ * committed fixture.
+ *
+ * `fixtures/courses/so-dau-phay-dong` is a known, tracked, single-cause red
+ * (task 1 of the server-side pivot's fix round 1): its 19.7 KB `viz.js` is
+ * free JavaScript outside any `widgets/` directory, and format v2 runs the
+ * content rules unconditionally now, so it trips `JS_FILE_IN_PACKAGE`.
+ * `packSite` refuses the WHOLE tree when any one course has findings, so a
+ * test that wants a REAL, currently-clean package to round-trip through has
+ * to isolate the course that still validates — see
+ * `build-index.test.ts`/`validate-pr.test.ts` for the same fixture pinned the
+ * same way instead of isolated.
+ */
+function cleanFixtureRoot(): string {
+  const root = tmproot('tuhoc-registry-pack-clean-');
+  cpSync(join(FIXTURE_COURSES, 'bat-bien-vong-lap'), join(root, 'bat-bien-vong-lap'), { recursive: true });
+  return root;
+}
+
+function writeCourse(dir: string, id: string, version: string, chapterHtml = '<p>nội dung</p>'): void {
   mkdirSync(join(dir, 'chapters'), { recursive: true });
   writeFileSync(
     join(dir, 'manifest.json'),
@@ -53,7 +67,6 @@ function writeCourse(
         lang: 'vi',
         version,
         runtime: '^1',
-        tier,
         license: 'CC-BY-4.0',
         authors: [{ name: 'test' }],
         generatedBy: 'human',
@@ -89,17 +102,27 @@ describe('sitePackagePath', () => {
  * ------------------------------------------------------------------ */
 
 describe('packSite trên hai gói mẫu THẬT trong fixtures/courses', () => {
-  it('ghi một .zip cho mỗi phiên bản, và mỗi .zip ĐI QUA ĐƯỢC validatePackage', async () => {
+  /**
+   * Was: "ghi một .zip cho mỗi phiên bản, và mỗi .zip ĐI QUA ĐƯỢC
+   * validatePackage", chạy thẳng trên `FIXTURE_COURSES` (cả hai gói). Từ khi
+   * `so-dau-phay-dong` trở thành lỗi đã biết (xem `cleanFixtureRoot` ở trên),
+   * `packSite` từ chối CẢ CÂY — đúng thứ nó phải làm, vì cổng PR và byte
+   * publish không được phép bất đồng. Ghim lời từ chối đó trước, rồi vẫn giữ
+   * phép đo VÒNG TRÒN gốc — đóng gói xong phải mở lại và qua được
+   * `validatePackage` — trên gói còn sạch.
+   */
+  it('trên bytes THẬT: đúng MỘT lỗi đã biết (viz.js chưa thành widget) — không đóng gói được cây', async () => {
     const out = tmproot('tuhoc-site-');
-    const packed = await packSite(FIXTURE_COURSES, out);
+    const err = await packSite(FIXTURE_COURSES, out).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(InvalidPackageTreeError);
+    expect((err as InvalidPackageTreeError).findings).toMatchObject([{ code: 'JS_FILE_IN_PACKAGE', path: 'viz.js' }]);
+  });
 
-    // So bằng ĐÚNG cả danh sách đường dẫn. `toContain` một cái cũng đúng với
-    // một cài đặt bỏ sót gói thứ hai — tức với một catalog liệt kê hai course
-    // mà chỉ một cái kéo về được.
-    expect(packed.map((p) => p.path)).toEqual([
-      'courses/bat-bien-vong-lap/1.0.0.zip',
-      'courses/so-dau-phay-dong/1.0.0.zip',
-    ]);
+  it('ghi một .zip cho gói còn sạch, và nó ĐI QUA ĐƯỢC validatePackage', async () => {
+    const out = tmproot('tuhoc-site-');
+    const packed = await packSite(cleanFixtureRoot(), out);
+
+    expect(packed.map((p) => p.path)).toEqual(['courses/bat-bien-vong-lap/1.0.0.zip']);
 
     for (const p of packed) {
       const bytes = new Uint8Array(readFileSync(join(out, p.path)));
@@ -161,7 +184,12 @@ describe('packSite trên hai gói mẫu THẬT trong fixtures/courses', () => {
    */
   it('KHÔNG đóng dấu `registryId` vào gói xuất bản — quyết định, không phải bỏ sót', async () => {
     const out = tmproot('tuhoc-site-regid-');
-    const packed = await packSite(FIXTURE_COURSES, out);
+    // `cleanFixtureRoot`, không `FIXTURE_COURSES` thẳng: `so-dau-phay-dong` là
+    // lỗi đã biết (xem chú thích của `cleanFixtureRoot` và bài đầu describe
+    // này) và `packSite` từ chối cả cây khi một course trong đó có finding —
+    // bài này cần MỘT gói thật đóng gói thành công để đọc lại, không cần cả
+    // hai.
+    const packed = await packSite(cleanFixtureRoot(), out);
 
     // ĐỐI CHỨNG: có gói thật để đọc. Không có dòng này, một `packSite` sinh 0
     // gói cũng "không đóng dấu gì".
@@ -196,10 +224,14 @@ describe('packSite trên hai gói mẫu THẬT trong fixtures/courses', () => {
   it('đóng gói hai lần cho ra byte y hệt — bản dựng lại không phá cache của ai', async () => {
     const a = tmproot('tuhoc-site-a-');
     const b = tmproot('tuhoc-site-b-');
-    await packSite(FIXTURE_COURSES, a);
-    await packSite(FIXTURE_COURSES, b);
+    // `cleanFixtureRoot`, không `FIXTURE_COURSES` thẳng — cùng lý do ở bài
+    // `registryId` phía trên. Tính TÁI LẬP ĐƯỢC không phụ thuộc gói nào,
+    // course sạch còn lại đo được y hệt.
+    const root = cleanFixtureRoot();
+    await packSite(root, a);
+    await packSite(root, b);
 
-    const rel = 'courses/so-dau-phay-dong/1.0.0.zip';
+    const rel = 'courses/bat-bien-vong-lap/1.0.0.zip';
     expect(readFileSync(join(a, rel)).equals(readFileSync(join(b, rel)))).toBe(true);
   });
 });
@@ -230,10 +262,10 @@ describe('packSite từ chối thay vì publish thứ hỏng', () => {
   /**
    * Cùng lời từ chối `buildIndex` đưa ra, và vì cùng lý do: cổng PR và byte
    * được publish KHÔNG ĐƯỢC phép bất đồng. Nếu tệp này ghi archive cho một gói
-   * mà bộ luật từ chối, thì một `<script>` trong gói hạng `content` sẽ có địa
-   * chỉ tải về dù CI đã chặn nó.
+   * mà bộ luật từ chối, thì một `<script>` sẽ có địa chỉ tải về dù CI đã
+   * chặn nó.
    */
-  it('gói hạng `content` mang <script> KHÔNG được có địa chỉ tải về', async () => {
+  it('gói mang <script> KHÔNG được có địa chỉ tải về', async () => {
     const root = tmproot();
     writeCourse(join(root, 'gian-lan'), 'gian-lan', '1.0.0', '<h1>Chương</h1><script>alert(1)</script>');
     const out = tmproot('tuhoc-site-');
@@ -242,23 +274,27 @@ describe('packSite từ chối thay vì publish thứ hỏng', () => {
   });
 
   /**
-   * ĐỐI CHỨNG bắt buộc. Không có nó, một cài đặt từ chối MỌI thứ cũng xanh ở
-   * bài trên — và hạng `interactive` được phép chạy mã, đó là toàn bộ ý nghĩa
-   * của hạng ấy.
+   * Was: "ĐỐI CHỨNG: cùng gói ấy khai `interactive` thì ĐƯỢC đóng gói" — the
+   * exact bypass format v2 kills (task 1 of the server-side pivot). A manifest
+   * that still sets `tier: 'interactive'` no longer buys an exemption from the
+   * content rules; `packSite` refuses it same as the plain case above, now for
+   * two reasons at once — the finding list carries both.
    */
-  it('ĐỐI CHỨNG: cùng gói ấy khai `interactive` thì ĐƯỢC đóng gói', async () => {
+  it('ĐỐI CHỨNG: một manifest còn ghi `tier: "interactive"` KHÔNG được đóng gói — cùng bị từ chối, cộng thêm TIER_REMOVED', async () => {
     const root = tmproot();
-    writeCourse(
-      join(root, 'tuong-tac'),
-      'tuong-tac',
-      '1.0.0',
-      '<h1>Chương</h1><script>alert(1)</script>',
-      'interactive',
-    );
+    const dir = join(root, 'tuong-tac');
+    writeCourse(dir, 'tuong-tac', '1.0.0', '<h1>Chương</h1><script>alert(1)</script>');
+    const manifestPath = join(dir, 'manifest.json');
+    const raw = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+    raw['tier'] = 'interactive';
+    writeFileSync(manifestPath, JSON.stringify(raw));
     const out = tmproot('tuhoc-site-');
 
-    const packed = await packSite(root, out);
-    expect(packed.map((p) => p.path)).toEqual(['courses/tuong-tac/1.0.0.zip']);
+    const err = await packSite(root, out).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(InvalidPackageTreeError);
+    const codes = (err as InvalidPackageTreeError).findings.map((f) => f.code);
+    expect(codes).toContain('SCRIPT_TAG');
+    expect(codes).toContain('TIER_REMOVED');
   });
 
   /**

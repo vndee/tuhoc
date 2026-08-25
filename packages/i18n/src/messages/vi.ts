@@ -723,6 +723,8 @@ export const vi = {
   'finding.MANIFEST_MISSING': (manifest: string) => `Gói thiếu ${manifest} ở thư mục gốc — đó là tệp mô tả khóa học.`,
   'finding.MANIFEST_PARSE': (manifest: string) => `${manifest} không phải JSON hợp lệ.`,
   'finding.MANIFEST_FIELD': (manifest: string) => `${manifest} thiếu một trường bắt buộc hoặc trường đó sai kiểu.`,
+  'finding.TIER_REMOVED':
+    'Manifest của khóa học này còn trường "tier" — định dạng mới đã bỏ khái niệm "hạng". Hãy xoá trường đó khỏi manifest.json; phần tương tác giờ là một widget riêng, không còn khai qua "tier".',
   'finding.SEMVER': 'Số phiên bản của khóa học không đúng dạng X.Y.Z.',
   'finding.RUNTIME_RANGE': 'Khóa học yêu cầu một phiên bản runtime mà ứng dụng này không hỗ trợ.',
   'finding.DUPLICATE_CHAPTER_ID': 'Hai chương dùng chung một mã id.',
