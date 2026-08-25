@@ -59,9 +59,21 @@
 }
 
 /* Giữ nguyên `justify-content:center` + `gap` của reader.css; chỉ nới khoảng
-   thở hai bên, vì không còn thanh bên làm lề trái nữa. */
+   thở hai bên, vì không còn thanh bên làm lề trái nữa.
+
+   Hai biến ở đây vì hai con số này được đọc từ nhiều chỗ. `--rd-pad-top` đổi
+   giá trị ở màn hẹp (mục 6), nên viết thẳng nó ra sẽ là hai bản sao phải nhớ
+   sửa cùng nhau. `--rd-chrome-h` là thứ nút mục lục nổi (mục 2) neo theo, và
+   nó phải là một con số đọc được từ chỗ khác chứ không phải một phép cộng lặp
+   lại trong đầu người sửa. */
+#app.reading {
+  --rd-pad-top: 56px;
+  /* Chiều cao phần khung phía trên cột chữ: 64px thanh trên + 2px dải tiến độ. */
+  --rd-chrome-h: 66px;
+}
+
 #app.reading #content-wrap {
-  padding: 56px 40px 160px;
+  padding: var(--rd-pad-top) 40px 160px;
 }
 
 /* Cột chữ được đúng khổ nó tự đặt ra, không hơn: `--measure` là 43rem, bằng
@@ -132,6 +144,47 @@
 #app.reading .rd-toc-btn,
 #app.reading .rd-notes-btn {
   flex: 0 0 auto;
+}
+
+/* ── NÚT MỤC LỤC XUỐNG MÁNG TRÁI ─────────────────────────────────────────
+   Người dùng: "nên đưa nút open mục lục xuống dưới ở khoảng trống bên trái
+   luôn thay vì để ở top bar".
+
+   Trang đọc căn cột chữ vào GIỮA KHUNG NHÌN (xem `#app.reading #rail` bên
+   dưới), nên ở 1440 nó chừa ra 376px trống bên trái và không dùng vào việc gì.
+   Một nút mở mục lục thuộc về khoảng ấy: nó chỉ về phía thứ nó mở ra, và nó
+   trả lại cho thanh trên đúng một việc — thoát, và cho biết đang ở chương nào.
+
+   SÁT GÓC TRÊN–TRÁI, cùng MỘT khoảng thụt vào ở cả hai chiều: 16px kể từ mép
+   trái, 16px kể từ đáy thanh trên. Một con số cho cả hai chiều là thứ làm nó
+   đọc ra như một GÓC được dựng; hai con số khác nhau thì nó chỉ là một nút
+   được thả ở đâu đó gần góc.
+
+   Con số ấy không viết thẳng mà lấy từ `--topbar-pad-x` — lề của chính thanh
+   trên — nên nút xếp đúng cột với `Thoát` ngay phía trên nó, và vẫn xếp đúng
+   nếu lề thanh trên đổi.
+
+   Hai bản trước đều thẳng hàng, và đều sai một cách khác nhau: bản đầu neo mép
+   phải nút vào mép trái cột chữ, nhưng cột chữ trôi theo bề rộng cửa sổ trong
+   khi `Thoát` thì không, nên hai thứ chỉ trùng cột đúng ở một bề rộng; bản thứ
+   hai neo vào DÒNG ĐẦU của chương (`--rd-pad-top`, 56px), và 56px dưới thanh
+   trên thì không còn là "sát top" nữa.
+
+   `position: fixed` chứ không `sticky`: nút phải ở nguyên chỗ suốt cả chương —
+   mục lục là thứ người đọc với tới ở giữa trang, không phải chỉ ở đầu trang.
+   Nó thừa hưởng z-index 40 của `#topbar` (tổ tiên của nó trong DOM), nên nó
+   nổi trên chữ và vẫn nằm DƯỚI ngăn kéo z-index 60 — tức mở ngăn kéo ra thì
+   ngăn kéo phủ lên nó, y như khi nút còn ở thanh trên.
+
+   Ngưỡng 1000px: dưới đó máng trái hẹp dần tới mức nút chạm vào chữ
+   ((100vw − 43rem)/2 = 156px ở 1000px, vừa đủ cho nút cộng khoảng thở), nên
+   nút ở lại thanh trên — không có máng thì không có chỗ để xuống. */
+@media (min-width: 1000px) {
+  #app.reading .rd-toc-btn {
+    position: fixed;
+    top: calc(var(--rd-chrome-h) + var(--topbar-pad-x));
+    left: var(--topbar-pad-x);
+  }
 }
 
 /* Nút mục lục khi ngăn kéo đang mở: giữ trạng thái ấy nhìn thấy được, để
@@ -427,8 +480,12 @@
   /* `#rail` đã là `display:none` ở đây theo reader.css, nên lề ghi chú không
      tồn tại và `<MarginCards>` chuyển sang tấm trượt dưới đáy (ngưỡng 1241px
      của chính nó). Cột chữ lấy hết chỗ vừa trống. */
+  #app.reading {
+    --rd-pad-top: 40px;
+  }
+
   #app.reading #content-wrap {
-    padding: 40px 28px 140px;
+    padding: var(--rd-pad-top) 28px 140px;
   }
 }
 

@@ -62,10 +62,19 @@
 
 /* 50px là chiều cao của một thanh chỉ chứa nút 30px. Nó nay chứa cả nhãn hiệu
    28px lẫn ba mục điều hướng cao 36px, nên 50px sẽ bóp chúng dính vào hai mép.
-   64px là con số trên bản dựng đã duyệt. */
+   64px là con số trên bản dựng đã duyệt.
+
+   Lề ngang là một BIẾN chứ không phải một con số viết thẳng: nút mục lục của
+   chế độ đọc nổi ở máng trái và phải xếp thẳng cột với `Thoát` trên thanh này
+   (`reader-layout.css`). Hai chỗ chép tay cùng một con số là hai chỗ sẽ lệch
+   nhau ở lần sửa sau. */
+#app {
+  --topbar-pad-x: 16px;
+}
+
 #topbar {
   height: 64px;
-  padding: 0 16px;
+  padding: 0 var(--topbar-pad-x);
   gap: 10px;
 }
 
