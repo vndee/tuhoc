@@ -14,6 +14,7 @@ package catalog
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -55,6 +56,46 @@ type PublishInput struct {
 	FromVersion int    // only meaningful when Action == "rollback"
 }
 
+// PublicCourse is the read shape Task 9's public routes serve: a
+// currently-live published course, as any anonymous reader may see it.
+// There is no owner field anywhere on this type — unlike course.Package
+// (deleted by Task 9; see that package's own file comments while they still
+// exist in git history), a published course has no owner to keep separate
+// from anyone else's, because publishing is exactly the act of making a
+// course the same for every reader.
+type PublicCourse struct {
+	Slug, Title, Lang, Description string
+	Version                        int
+
+	// ManifestJSON is nil on a result from ListPublished — see that
+	// method's own doc for why a listing must not carry it — and populated
+	// on a result from GetPublished, where it is manifest.json's content,
+	// unwrapped: the response body IS this value, not an envelope around
+	// it (GET /courses/:slug's own contract). It comes back through
+	// jsonb, so — same caveat repo.go's admin-write half already documents
+	// for course_versions — it is semantically the manifest the author
+	// packed but not necessarily byte-identical to it (key order,
+	// whitespace and numeric formatting are not preserved by jsonb). That
+	// distinction is invisible to every consumer here: the web client
+	// only ever calls .json() on this body, which parses by value, never
+	// by bytes.
+	ManifestJSON json.RawMessage
+}
+
+// PublicChapter is the read shape for one chapter of a published course,
+// before its widget references are resolved to HTML (see Usecase.GetChapter,
+// which is where that resolution happens).
+type PublicChapter struct {
+	HTML string
+	// WidgetNames is exactly published_chapters.widget_names: every
+	// data-widget name this chapter references, in the order pkgcheck first
+	// saw it, deduplicated. Never nil on a real row (the column is NOT
+	// NULL DEFAULT '{}'), but always checked as a length rather than a
+	// nilness by every caller, so a driver that ever did hand back nil
+	// costs nothing.
+	WidgetNames []string
+}
+
 // AdminCourseRow is one row of the admin listing: a live published course,
 // its current publish sequence number, and the full history of versions
 // ever published for its slug (course_versions may hold more entries than
@@ -87,6 +128,43 @@ type Repo interface {
 	// AdminList returns one AdminCourseRow per live published course,
 	// ordered by slug.
 	AdminList(ctx context.Context) ([]AdminCourseRow, error)
+
+	// --- Task 9: the public read path -----------------------------------
+	//
+	// Every method below reads published_courses/_chapters/_widgets/_assets
+	// only — the same four tables Publish writes — and none of them takes
+	// an actor or an owner, because there is nothing left to check one
+	// against: a published course is public by construction, and "the
+	// reader is allowed to see this" is not a question these queries ask.
+
+	// ListPublished returns every currently-live published course, ordered
+	// by slug — GET /courses's wire shape. ManifestJSON is left nil: a
+	// listing must not drag every course's manifest into memory for a page
+	// that displays none of it (the same reasoning course.Repo's own,
+	// now-deleted ListForOwner applied to Blob).
+	ListPublished(ctx context.Context) ([]PublicCourse, error)
+	// GetPublished returns slug's live course, manifest included, or
+	// ErrNotFound if slug names no currently-published course.
+	GetPublished(ctx context.Context, slug string) (PublicCourse, error)
+	// GetPublishedChapter returns one chapter of slug's live course, plus
+	// the course's CURRENT version (handler.go's ETag input, joined here
+	// rather than in a second round trip — the same reason
+	// GetPublishedAsset joins it), or ErrNotFound — for an unknown slug and
+	// an unknown chapter within a real slug alike. There is no private data
+	// behind that distinction (every published course is public), but a
+	// response that told the two apart would still leak "this slug exists"
+	// for no reason a public catalog has any use for.
+	GetPublishedChapter(ctx context.Context, slug, chapterID string) (chapter PublicChapter, version int, err error)
+	// GetPublishedWidgets returns the HTML of every widget named in names
+	// that slug's live course actually ships, keyed by name. A name with no
+	// matching row is simply absent from the result rather than an error —
+	// see Usecase.GetChapter for why a caller can lean on this without
+	// leaning on the guarantee that makes it true.
+	GetPublishedWidgets(ctx context.Context, slug string, names []string) (map[string]string, error)
+	// GetPublishedAsset returns one asset's bytes for (slug, assetPath),
+	// plus the course's CURRENT publish-sequence version (the caller's ETag
+	// input — see handler.go), or ErrNotFound.
+	GetPublishedAsset(ctx context.Context, slug, assetPath string) (data []byte, version int, err error)
 }
 
 // PostgresRepo is the Postgres-backed Repo.
@@ -346,4 +424,141 @@ func (r *PostgresRepo) AdminList(ctx context.Context) ([]AdminCourseRow, error) 
 	}
 
 	return out, nil
+}
+
+// --- Task 9: the public read path ---------------------------------------
+
+// ListPublished reads slug/title/lang/description/version off
+// published_courses only — never the manifest column, which is the whole
+// reason this is a distinct query from GetPublished rather than that method
+// called once per row: a catalog listing must stay cheap regardless of how
+// large any one course's manifest is.
+func (r *PostgresRepo) ListPublished(ctx context.Context) ([]PublicCourse, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT slug, title, lang, description, version
+		 FROM published_courses ORDER BY slug`)
+	if err != nil {
+		return nil, fmt.Errorf("catalog: list published courses: %w", err)
+	}
+	defer rows.Close()
+
+	out := []PublicCourse{}
+	for rows.Next() {
+		var c PublicCourse
+		if err := rows.Scan(&c.Slug, &c.Title, &c.Lang, &c.Description, &c.Version); err != nil {
+			return nil, fmt.Errorf("catalog: scan published_courses row: %w", err)
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("catalog: list published courses: %w", err)
+	}
+	return out, nil
+}
+
+// GetPublished returns slug's live row in full, manifest included.
+func (r *PostgresRepo) GetPublished(ctx context.Context, slug string) (PublicCourse, error) {
+	var c PublicCourse
+	err := r.pool.QueryRow(ctx,
+		`SELECT slug, title, lang, description, version, manifest
+		 FROM published_courses WHERE slug = $1`,
+		slug,
+	).Scan(&c.Slug, &c.Title, &c.Lang, &c.Description, &c.Version, &c.ManifestJSON)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return PublicCourse{}, ErrNotFound
+	}
+	if err != nil {
+		return PublicCourse{}, fmt.Errorf("catalog: get published course (slug=%s): %w", slug, err)
+	}
+	return c, nil
+}
+
+// GetPublishedChapter returns one chapter row joined against
+// published_courses for its CURRENT version — published_chapters carries no
+// version of its own (migration 0005 never gave it one; a chapter belongs
+// to whichever version is currently live, full stop) — in one query rather
+// than two, the same choice GetPublishedAsset makes for the identical
+// reason.
+func (r *PostgresRepo) GetPublishedChapter(ctx context.Context, slug, chapterID string) (PublicChapter, int, error) {
+	var ch PublicChapter
+	var version int
+	err := r.pool.QueryRow(ctx,
+		`SELECT pch.html, pch.widget_names, pc.version
+		 FROM published_chapters pch
+		 JOIN published_courses pc ON pc.slug = pch.slug
+		 WHERE pch.slug = $1 AND pch.chapter_id = $2`,
+		slug, chapterID,
+	).Scan(&ch.HTML, &ch.WidgetNames, &version)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return PublicChapter{}, 0, ErrNotFound
+	}
+	if err != nil {
+		return PublicChapter{}, 0, fmt.Errorf("catalog: get published chapter (slug=%s chapter=%s): %w", slug, chapterID, err)
+	}
+	return ch, version, nil
+}
+
+// GetPublishedWidgets returns every one of names that slug currently ships,
+// keyed by name. An empty result (never an error) for a chapter that
+// references no widget — the ordinary case — is why this returns early on
+// len(names) == 0 rather than sending Postgres a query with an empty ANY($2)
+// array for no reason.
+func (r *PostgresRepo) GetPublishedWidgets(ctx context.Context, slug string, names []string) (map[string]string, error) {
+	out := map[string]string{}
+	if len(names) == 0 {
+		return out, nil
+	}
+
+	rows, err := r.pool.Query(ctx,
+		`SELECT name, html FROM published_widgets WHERE slug = $1 AND name = ANY($2)`,
+		slug, names,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("catalog: get published widgets (slug=%s): %w", slug, err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var name, html string
+		if err := rows.Scan(&name, &html); err != nil {
+			return nil, fmt.Errorf("catalog: scan published_widgets row (slug=%s): %w", slug, err)
+		}
+		out[name] = html
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("catalog: get published widgets (slug=%s): %w", slug, err)
+	}
+	return out, nil
+}
+
+// GetPublishedAsset returns one asset's bytes, plus the course's CURRENT
+// version — joined from published_courses in the same query, rather than a
+// second round trip, because the version is only ever used alongside the
+// bytes (see handler.go's ETag) and never on its own here.
+//
+// The join is also what makes "no such slug" and "no such asset under a
+// real, currently-published slug" collapse into the same ErrNotFound
+// without any extra code: published_assets carries a
+// REFERENCES published_courses(slug) ON DELETE CASCADE, so an unpublished
+// course's asset rows are already gone by the time this runs — but the join
+// condition would refuse them even if they somehow survived, since an
+// asset whose course is not (or no longer) live has no published_courses
+// row to join against.
+func (r *PostgresRepo) GetPublishedAsset(ctx context.Context, slug, assetPath string) ([]byte, int, error) {
+	var data []byte
+	var version int
+	err := r.pool.QueryRow(ctx,
+		`SELECT pa.bytes, pc.version
+		 FROM published_assets pa
+		 JOIN published_courses pc ON pc.slug = pa.slug
+		 WHERE pa.slug = $1 AND pa.path = $2`,
+		slug, assetPath,
+	).Scan(&data, &version)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, 0, ErrNotFound
+	}
+	if err != nil {
+		return nil, 0, fmt.Errorf("catalog: get published asset (slug=%s path=%s): %w", slug, assetPath, err)
+	}
+	return data, version, nil
 }

@@ -393,6 +393,39 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	}
 	app.Get("/discussions/:registryId", auth.Require(deps.Pool), discussHandler.Thread)
 
+	// catalogHandler serves both the admin write routes (Task 8) and the
+	// public read routes (Task 9) below — one handler over one usecase
+	// over one repo, per this file's own "extend the layer, don't split
+	// it" convention (see internal/catalog's own package doc).
+	catalogHandler := catalog.NewHandler(catalog.NewUsecase(catalog.NewRepo(deps.Pool)))
+
+	// Public course-reading routes (Task 9): no auth in front of any of
+	// them — courses are free and public to read, spec §2.4's own
+	// decision. Three of the four new routes are mounted here for real;
+	// the fourth, GET /courses, is not, and that omission is deliberate
+	// rather than an oversight:
+	//
+	// Fiber resolves two routes registered at the IDENTICAL (method, path)
+	// by always dispatching to whichever was registered FIRST — verified
+	// empirically while building this, not assumed — so a second
+	// `app.Get("/courses", ...)` placed anywhere in this file would simply
+	// never run: the OLD courseHandler.List below already claims that
+	// exact route, and it must keep claiming it until this task's SECOND
+	// commit unmounts it (see that commit's message for why the two moves
+	// happen together). catalogHandler.PublicList is fully implemented
+	// and already covered by its own test in
+	// internal/catalog/catalog_test.go — mounted there on a throwaway
+	// app rather than through this file, specifically so its correctness
+	// does not have to wait on the route becoming reachable at
+	// GET /courses. The other three routes below have no such collision
+	// (a request's third path segment is either absent, "chapters", or
+	// "assets" — never the literal "@" the OLD manifest/asset routes
+	// require in that position — so both old and new coexist safely) and
+	// are mounted, and tested end to end, starting now.
+	app.Get("/courses/:slug", catalogHandler.PublicManifest)
+	app.Get("/courses/:slug/chapters/:chapterId", catalogHandler.PublicChapter)
+	app.Get("/courses/:slug/assets/*", catalogHandler.PublicAsset)
+
 	// Admin catalog routes (Task 8): publish/unpublish/rollback/list for
 	// the public catalog Task 9 serves reads from. Every route is mounted
 	// behind adminOrToken, whose own doc comment explains the four-handler
@@ -402,7 +435,6 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// PUT and DELETE share the path "/admin/courses/:slug" — legal in
 	// fiber, since routes are keyed by (method, path) together, not path
 	// alone.
-	catalogHandler := catalog.NewHandler(catalog.NewUsecase(catalog.NewRepo(deps.Pool)))
 	mountAdmin := func(method, path string, handler fiber.Handler) {
 		app.Add(method, path,
 			adminOrToken(cfg, handler),

@@ -130,3 +130,80 @@ func (u *Usecase) Rollback(ctx context.Context, who *uuid.UUID, slug string, toV
 func (u *Usecase) AdminList(ctx context.Context) ([]AdminCourseRow, error) {
 	return u.repo.AdminList(ctx)
 }
+
+// --- Task 9: the public read path ---------------------------------------
+
+// Widget is one widget resolved for a chapter response: the wire shape
+// GET /courses/:slug/chapters/:chapterId's "widgets" array serializes.
+type Widget struct {
+	Name, HTML string
+}
+
+// ListPublished returns every currently-live published course. There is no
+// rule here beyond "ask the repo" — unlike Publish, a read has nothing to
+// validate and no actor to check, which is why this and the three methods
+// below are thin: the interesting decisions on this path (what a 404 must
+// not distinguish, what content type an asset gets) are HTTP-shape
+// decisions and belong to handler.go, not to this file.
+func (u *Usecase) ListPublished(ctx context.Context) ([]PublicCourse, error) {
+	return u.repo.ListPublished(ctx)
+}
+
+// GetPublished returns slug's live course, or ErrNotFound.
+func (u *Usecase) GetPublished(ctx context.Context, slug string) (PublicCourse, error) {
+	return u.repo.GetPublished(ctx, slug)
+}
+
+// GetChapter returns one chapter's HTML together with its widgets, each
+// resolved to the HTML the package shipped for it — the join
+// GetPublishedChapter and GetPublishedWidgets do not do for each other, done
+// here instead of in two repo round trips the handler would otherwise have
+// to sequence itself.
+//
+// The returned slice preserves ch.WidgetNames's own order — first-seen order
+// in the chapter's own HTML, per pkgcheck.Chapter.WidgetNames's doc — rather
+// than the incidental order a map over published_widgets would produce: Go
+// map iteration is randomized, and a reader re-requesting the same chapter
+// must not see its widgets reshuffle between one response and the next.
+//
+// A name in ch.WidgetNames absent from the resolved map is silently skipped
+// rather than surfaced as an error. It should never happen: pkgcheck's
+// WIDGET_MISSING rule refuses, at publish time, any package whose chapter
+// references a widget the package does not ship, so every name stored in a
+// live chapter's widget_names is guaranteed to have a published_widgets row
+// alongside it. Skipping rather than erroring means a future gap between
+// that guarantee and reality (a hand-edited row, a migration that lets the
+// two drift) costs a reader one missing widget on an otherwise-good
+// chapter, not a 500 for a page that is mostly fine.
+func (u *Usecase) GetChapter(ctx context.Context, slug, chapterID string) (html string, widgets []Widget, version int, err error) {
+	ch, version, err := u.repo.GetPublishedChapter(ctx, slug, chapterID)
+	if err != nil {
+		return "", nil, 0, err
+	}
+
+	byName, err := u.repo.GetPublishedWidgets(ctx, slug, ch.WidgetNames)
+	if err != nil {
+		return "", nil, 0, err
+	}
+
+	// make(..., 0, len) rather than a nil slice: a chapter with widgets
+	// that all happened to be skipped (see the doc above) must still come
+	// back as an empty array on the wire, not JSON null, matching Publish's
+	// own "never null" rule for API arrays (see handler.go's rejectionResponse
+	// and the admin List's own comment).
+	widgets = make([]Widget, 0, len(ch.WidgetNames))
+	for _, name := range ch.WidgetNames {
+		html, ok := byName[name]
+		if !ok {
+			continue
+		}
+		widgets = append(widgets, Widget{Name: name, HTML: html})
+	}
+	return ch.HTML, widgets, version, nil
+}
+
+// GetAsset returns one asset's bytes for slug, plus the course's current
+// publish-sequence version (handler.go's ETag input), or ErrNotFound.
+func (u *Usecase) GetAsset(ctx context.Context, slug, assetPath string) ([]byte, int, error) {
+	return u.repo.GetPublishedAsset(ctx, slug, assetPath)
+}

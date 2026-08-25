@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -976,5 +977,443 @@ func TestAdminListReflectsPublishedCoursesAndVersionHistory(t *testing.T) {
 	}
 	if len(found.Versions) != 2 || found.Versions[0] != 1 || found.Versions[1] != 2 {
 		t.Errorf("list: versions want [1 2] got %v", found.Versions)
+	}
+}
+
+// =========================================================================
+// Task 9: the public read path.
+//
+// Every request in this section carries NO cookie and NO Authorization
+// header at all — that omission IS the test for "no auth on any of the
+// four routes" (spec §2.4); there is no separate assertion for it because
+// there is nothing to assert beyond "a request that authenticates nothing
+// still gets a 200".
+// =========================================================================
+
+// getPublic issues a plain, unauthenticated GET.
+func getPublic(t *testing.T, app *fiber.App, target string) (*http.Response, []byte) {
+	t.Helper()
+	return getPublicWithHeaders(t, app, target, nil)
+}
+
+// getPublicWithHeaders is getPublic plus arbitrary request headers — every
+// caller that passes any is testing If-None-Match.
+func getPublicWithHeaders(t *testing.T, app *fiber.App, target string, headers map[string]string) (*http.Response, []byte) {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := app.Test(req, httpTimeoutMS)
+	if err != nil {
+		t.Fatalf("GET %s: %v", target, err)
+	}
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("GET %s: read body: %v", target, err)
+	}
+	resp.Body.Close()
+	return resp, raw
+}
+
+// publicListApp mounts ONLY catalogHandler.PublicList, on a throwaway app
+// rather than through server.New — see server.go's own comment on why
+// GET /courses is not wired into the shared app until this task's second
+// commit unmounts the OLD private-catalog route at that exact path (fiber
+// dispatches an identical (method, path) pair to whichever route was
+// registered FIRST, verified empirically while building this task, so the
+// two cannot coexist at "/courses" in the same *fiber.App). This app proves
+// the production Handler.PublicList method itself is correct; server.go's
+// own wiring is proven separately once the second commit frees the path.
+func publicListApp(pool *pgxpool.Pool) *fiber.App {
+	h := catalog.NewHandler(catalog.NewUsecase(catalog.NewRepo(pool)))
+	app := fiber.New()
+	app.Get("/courses", h.PublicList)
+	return app
+}
+
+type publicCourseSummary struct {
+	Slug        string `json:"slug"`
+	Title       string `json:"title"`
+	Lang        string `json:"lang"`
+	Description string `json:"description"`
+	Version     int    `json:"version"`
+}
+
+// TestPublicListNoAuth is the brief's "list" case: GET /courses, no cookie,
+// returns every currently-live course with the version integer this SERVER
+// owns (the publish sequence), never the manifest's own semver — the two
+// are deliberately different numbers (validCourseZip's manifest says
+// "version": "1.0.0"; the assertion below is for the INTEGER 1).
+func TestPublicListNoAuth(t *testing.T) {
+	pool := store.TestPool(t)
+	adminApp := newTestApp(pool)
+	listApp := publicListApp(pool)
+
+	// Anti-vacuity, checked FIRST: an empty catalog is `[]`, never `null` —
+	// a client that calls .map() on the response must not throw.
+	resp, raw := getPublic(t, listApp, "/courses")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /courses (empty catalog): want 200 got %d body=%s", resp.StatusCode, raw)
+	}
+	if strings.TrimSpace(string(raw)) != "[]" {
+		t.Errorf("GET /courses (empty catalog): want `[]` got %s", raw)
+	}
+
+	if resp, raw := putPackage(t, adminApp, validCourseSlug, validCourseZip(t), "Bearer "+adminToken, nil); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("publish: want 201 got %d body=%s", resp.StatusCode, raw)
+	}
+
+	resp, raw = getPublic(t, listApp, "/courses")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /courses: want 200 got %d body=%s", resp.StatusCode, raw)
+	}
+	var items []publicCourseSummary
+	if err := json.Unmarshal(raw, &items); err != nil {
+		t.Fatalf("GET /courses: unmarshal %s: %v", raw, err)
+	}
+	var found *publicCourseSummary
+	for i := range items {
+		if items[i].Slug == validCourseSlug {
+			found = &items[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("GET /courses: %s not present in %+v", validCourseSlug, items)
+	}
+	if found.Lang != "vi" {
+		t.Errorf("GET /courses: lang want %q got %q", "vi", found.Lang)
+	}
+	if found.Title == "" || found.Description == "" {
+		t.Errorf("GET /courses: title/description must be populated, got %+v", found)
+	}
+	if found.Version != 1 {
+		t.Errorf("GET /courses: version want the server's publish sequence (1) got %d "+
+			"(the manifest's own semver is \"1.0.0\" — these must never be confused)", found.Version)
+	}
+
+	// ETag: present, and a repeat request naming it back gets 304 with an
+	// empty body.
+	etag := resp.Header.Get("ETag")
+	if etag == "" {
+		t.Fatal("GET /courses: no ETag header")
+	}
+	resp2, raw2 := getPublicWithHeaders(t, listApp, "/courses", map[string]string{"If-None-Match": etag})
+	if resp2.StatusCode != http.StatusNotModified {
+		t.Errorf("GET /courses with a matching If-None-Match: want 304 got %d", resp2.StatusCode)
+	}
+	if len(raw2) != 0 {
+		t.Errorf("GET /courses 304: want an empty body, got %d bytes", len(raw2))
+	}
+
+	// Republishing changes the version, which must change the listing's
+	// ETag — an old cached response becomes stale the moment the catalog
+	// state it described stops being true.
+	if resp, raw := putPackage(t, adminApp, validCourseSlug, validCourseZip(t), "Bearer "+adminToken, nil); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("republish: want 201 got %d body=%s", resp.StatusCode, raw)
+	}
+	resp3, _ := getPublicWithHeaders(t, listApp, "/courses", map[string]string{"If-None-Match": etag})
+	newETag := resp3.Header.Get("ETag")
+	if newETag == etag {
+		t.Errorf("ETag did not change after a republish: still %q", etag)
+	}
+	if resp3.StatusCode != http.StatusOK {
+		t.Errorf("GET /courses with a STALE If-None-Match after a republish: want 200 (fresh body) got %d", resp3.StatusCode)
+	}
+}
+
+// TestPublicManifestNoAuth is the brief's "manifest" case: GET
+// /courses/:slug returns manifest.json's own content, unwrapped, with no
+// cookie required.
+func TestPublicManifestNoAuth(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool)
+
+	if resp, raw := putPackage(t, app, validCourseSlug, validCourseZip(t), "Bearer "+adminToken, nil); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("publish: want 201 got %d body=%s", resp.StatusCode, raw)
+	}
+
+	resp, raw := getPublic(t, app, "/courses/"+validCourseSlug)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /courses/%s: want 200 got %d body=%s", validCourseSlug, resp.StatusCode, raw)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("GET manifest Content-Type: want application/json got %q", ct)
+	}
+
+	var manifest map[string]any
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatalf("GET manifest: unmarshal %s: %v", raw, err)
+	}
+	if manifest["id"] != validCourseSlug {
+		t.Errorf(`manifest "id": want %q got %v`, validCourseSlug, manifest["id"])
+	}
+	// The response is the manifest ITSELF, not an envelope around it — no
+	// "manifest" or "version" wrapper key.
+	if _, wrapped := manifest["manifest"]; wrapped {
+		t.Errorf("GET manifest response is wrapped in an envelope: %s", raw)
+	}
+
+	// 404 for a slug that has never been published.
+	notFound, nfBody := getPublic(t, app, "/courses/no-such-course")
+	if notFound.StatusCode != http.StatusNotFound {
+		t.Errorf("GET /courses/no-such-course: want 404 got %d body=%s", notFound.StatusCode, nfBody)
+	}
+
+	// ETag: W/"<slug>-<version>", and a matching If-None-Match gets 304.
+	wantETag := `W/"` + validCourseSlug + `-1"`
+	if etag := resp.Header.Get("ETag"); etag != wantETag {
+		t.Errorf("ETag: want %q got %q", wantETag, etag)
+	}
+	cached, cachedBody := getPublicWithHeaders(t, app, "/courses/"+validCourseSlug, map[string]string{"If-None-Match": wantETag})
+	if cached.StatusCode != http.StatusNotModified {
+		t.Errorf("GET manifest with a matching If-None-Match: want 304 got %d body=%s", cached.StatusCode, cachedBody)
+	}
+	if len(cachedBody) != 0 {
+		t.Errorf("GET manifest 304: want an empty body, got %d bytes", len(cachedBody))
+	}
+
+	// Republishing bumps the version, which must invalidate a cache holding
+	// the old ETag: the OLD validator no longer matches, so the client gets
+	// a fresh 200 (never a 304 for content that has moved on) and a NEW
+	// ETag naming the new version — this is exactly what the version
+	// integer in the ETag is for.
+	if resp, raw := putPackage(t, app, validCourseSlug, validCourseZip(t), "Bearer "+adminToken, nil); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("republish: want 201 got %d body=%s", resp.StatusCode, raw)
+	}
+	stale, staleBody := getPublicWithHeaders(t, app, "/courses/"+validCourseSlug, map[string]string{"If-None-Match": wantETag})
+	if stale.StatusCode != http.StatusOK {
+		t.Errorf("GET manifest with a STALE If-None-Match after republish: want 200 got %d", stale.StatusCode)
+	}
+	wantNewETag := `W/"` + validCourseSlug + `-2"`
+	if got := stale.Header.Get("ETag"); got != wantNewETag {
+		t.Errorf("ETag after republish: want %q got %q", wantNewETag, got)
+	}
+	if len(staleBody) == 0 {
+		t.Error("GET manifest after republish (stale If-None-Match): want a real body, got none")
+	}
+}
+
+// chapterResponse mirrors GET /courses/:slug/chapters/:chapterId's JSON
+// contract — declared here rather than imported so a change to the wire
+// shape has to be made twice, deliberately, the same discipline
+// courseSummary above already applies to the admin listing.
+type chapterResponse struct {
+	HTML    string `json:"html"`
+	Widgets []struct {
+		Name string `json:"name"`
+		HTML string `json:"html"`
+	} `json:"widgets"`
+}
+
+// TestPublicChapterNoAuth is the brief's "chapter (+ widgets đúng theo
+// widget_names)" case: valid-course's own c1 (no widget) and c2 (one
+// widget, "dem-so") pin both shapes — an ordinary chapter's widgets array
+// must be `[]`, never `null`, and a chapter that references a widget must
+// get that widget's OWN html back, not merely its name.
+func TestPublicChapterNoAuth(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool)
+
+	if resp, raw := putPackage(t, app, validCourseSlug, validCourseZip(t), "Bearer "+adminToken, nil); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("publish: want 201 got %d body=%s", resp.StatusCode, raw)
+	}
+
+	widgetHTML, err := os.ReadFile(filepath.Join(fixturesRoot, "valid-course", "widgets", "dem-so", "index.html"))
+	if err != nil {
+		t.Fatalf("read widget fixture: %v", err)
+	}
+
+	resp1, raw1 := getPublic(t, app, "/courses/"+validCourseSlug+"/chapters/c1")
+	if resp1.StatusCode != http.StatusOK {
+		t.Fatalf("GET chapter c1: want 200 got %d body=%s", resp1.StatusCode, raw1)
+	}
+	var ch1 chapterResponse
+	if err := json.Unmarshal(raw1, &ch1); err != nil {
+		t.Fatalf("GET chapter c1: unmarshal %s: %v", raw1, err)
+	}
+	if !strings.Contains(ch1.HTML, "Vì sao đếm cần một biến") {
+		t.Errorf("GET chapter c1: html does not look like the packed fixture: %s", ch1.HTML)
+	}
+	if ch1.Widgets == nil || len(ch1.Widgets) != 0 {
+		t.Errorf("GET chapter c1 (no data-widget): widgets want [] got %+v", ch1.Widgets)
+	}
+
+	resp2, raw2 := getPublic(t, app, "/courses/"+validCourseSlug+"/chapters/c2")
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("GET chapter c2: want 200 got %d body=%s", resp2.StatusCode, raw2)
+	}
+	var ch2 chapterResponse
+	if err := json.Unmarshal(raw2, &ch2); err != nil {
+		t.Fatalf("GET chapter c2: unmarshal %s: %v", raw2, err)
+	}
+	if len(ch2.Widgets) != 1 || ch2.Widgets[0].Name != "dem-so" {
+		t.Fatalf("GET chapter c2: widgets want exactly one entry named %q, got %+v", "dem-so", ch2.Widgets)
+	}
+	if ch2.Widgets[0].HTML != string(widgetHTML) {
+		t.Errorf("GET chapter c2: widget html does not match the packed widgets/dem-so/index.html "+
+			"(want %d bytes, got %d)", len(widgetHTML), len(ch2.Widgets[0].HTML))
+	}
+
+	// 404: unknown chapter within a real slug, and any chapter within an
+	// unknown slug — indistinguishable, per repo.go's own doc.
+	for _, target := range []string{
+		"/courses/" + validCourseSlug + "/chapters/no-such-chapter",
+		"/courses/no-such-slug/chapters/c1",
+	} {
+		resp, raw := getPublic(t, app, target)
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("GET %s: want 404 got %d body=%s", target, resp.StatusCode, raw)
+		}
+	}
+
+	// ETag: same shape and same republish-invalidates property as the
+	// manifest route, keyed on the SAME course version (there is no
+	// per-chapter version — see GetPublishedChapter's own doc).
+	wantETag := `W/"` + validCourseSlug + `-1"`
+	if etag := resp1.Header.Get("ETag"); etag != wantETag {
+		t.Errorf("chapter ETag: want %q got %q", wantETag, etag)
+	}
+	cached, cachedBody := getPublicWithHeaders(t, app, "/courses/"+validCourseSlug+"/chapters/c1",
+		map[string]string{"If-None-Match": wantETag})
+	if cached.StatusCode != http.StatusNotModified {
+		t.Errorf("GET chapter with a matching If-None-Match: want 304 got %d body=%s", cached.StatusCode, cachedBody)
+	}
+}
+
+// packageWithAssets builds a minimal, valid v2 package for slug carrying
+// exactly one chapter plus whatever extra package-relative paths are given
+// in extra — used where the case under test is about ASSET behavior
+// (content type, ETag) rather than chapter/widget mechanics, which
+// TestPublicChapterNoAuth already covers via valid-course.
+func packageWithAssets(t *testing.T, slug string, extra map[string][]byte) []byte {
+	t.Helper()
+
+	manifest := map[string]any{
+		"id": slug, "title": "T", "description": "d", "lang": "vi",
+		"version": "1.0.0", "runtime": "^1", "license": "CC0-1.0",
+		"generatedBy": "human",
+		"authors":     []map[string]string{{"name": "x"}},
+		"parts": []map[string]any{{
+			"title": "P",
+			"chapters": []map[string]any{
+				{"id": "c1", "num": "1", "title": "C1", "short": "C1", "file": "chapters/c1.html"},
+			},
+		}},
+	}
+	manifestJSON, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	write := func(name string, data []byte) {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatalf("zip create %s: %v", name, err)
+		}
+		if _, err := w.Write(data); err != nil {
+			t.Fatalf("zip write %s: %v", name, err)
+		}
+	}
+	write("manifest.json", manifestJSON)
+	write("chapters/c1.html", []byte("<p>hi</p>"))
+	for name, data := range extra {
+		write(name, data)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("zip close: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// pngFixtureBytes is a PNG file signature plus filler that contains no
+// '<' byte, so pkgcheck's content scan (gated on bytes.ContainsRune(data,
+// '<')) never runs over it — the point of this fixture is Content-Type by
+// EXTENSION, not package validation, and a false content-rule finding here
+// would fail the publish for a reason unrelated to what this test checks.
+var pngFixtureBytes = []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D}
+
+// svgFixtureBytes is a small, benign SVG document: it DOES contain '<' and
+// so is content-scanned at publish time, but carries none of the seven
+// content rules' triggers (no <script>, no event-handler attribute, no
+// javascript: URL, no embedded frame, no <form>), so it publishes cleanly —
+// the point of this fixture is that SVG, despite being "an image" and
+// despite passing every content rule, is STILL served as octet-stream, not
+// as image/svg+xml (see assetContentType's own doc for why).
+var svgFixtureBytes = []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2 2"><rect width="2" height="2"/></svg>`)
+
+// TestPublicAssetContentTypeAndETag is the brief's "asset" case: a bitmap
+// extension gets its real Content-Type; everything else — SVG included —
+// gets application/octet-stream plus X-Content-Type-Options: nosniff.
+func TestPublicAssetContentTypeAndETag(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool)
+	const slug = "asset-content-type"
+
+	pkg := packageWithAssets(t, slug, map[string][]byte{
+		"pic.png":  pngFixtureBytes,
+		"icon.svg": svgFixtureBytes,
+	})
+	if resp, raw := putPackage(t, app, slug, pkg, "Bearer "+adminToken, nil); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("publish: want 201 got %d body=%s", resp.StatusCode, raw)
+	}
+
+	png, pngBody := getPublic(t, app, "/courses/"+slug+"/assets/pic.png")
+	if png.StatusCode != http.StatusOK {
+		t.Fatalf("GET pic.png: want 200 got %d body=%s", png.StatusCode, pngBody)
+	}
+	if ct := png.Header.Get("Content-Type"); ct != "image/png" {
+		t.Errorf("GET pic.png Content-Type: want image/png got %q", ct)
+	}
+	if !bytes.Equal(pngBody, pngFixtureBytes) {
+		t.Errorf("GET pic.png: bytes do not round-trip: want %v got %v", pngFixtureBytes, pngBody)
+	}
+	if nosniff := png.Header.Get("X-Content-Type-Options"); nosniff != "" {
+		t.Errorf("GET pic.png: a bitmap must not carry nosniff (its type is trusted), got %q", nosniff)
+	}
+
+	svg, svgBody := getPublic(t, app, "/courses/"+slug+"/assets/icon.svg")
+	if svg.StatusCode != http.StatusOK {
+		t.Fatalf("GET icon.svg: want 200 got %d body=%s", svg.StatusCode, svgBody)
+	}
+	if ct := svg.Header.Get("Content-Type"); ct != "application/octet-stream" {
+		t.Errorf("GET icon.svg Content-Type: want application/octet-stream (SVG can carry script — "+
+			"see assetContentType's own doc) got %q", ct)
+	}
+	if nosniff := svg.Header.Get("X-Content-Type-Options"); nosniff != "nosniff" {
+		t.Errorf("GET icon.svg X-Content-Type-Options: want nosniff got %q", nosniff)
+	}
+	if !bytes.Equal(svgBody, svgFixtureBytes) {
+		t.Errorf("GET icon.svg: bytes do not round-trip: want %s got %s", svgFixtureBytes, svgBody)
+	}
+
+	// 404: unknown asset within a real slug, and any asset within an
+	// unknown slug.
+	for _, target := range []string{
+		"/courses/" + slug + "/assets/does-not-exist.png",
+		"/courses/no-such-slug/assets/pic.png",
+	} {
+		resp, raw := getPublic(t, app, target)
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("GET %s: want 404 got %d body=%s", target, resp.StatusCode, raw)
+		}
+	}
+
+	// ETag: keyed on the course's version (there is no per-asset version —
+	// see GetPublishedAsset's own doc), same shape as manifest/chapter.
+	wantETag := `W/"` + slug + `-1"`
+	if etag := png.Header.Get("ETag"); etag != wantETag {
+		t.Errorf("asset ETag: want %q got %q", wantETag, etag)
+	}
+	cached, cachedBody := getPublicWithHeaders(t, app, "/courses/"+slug+"/assets/pic.png",
+		map[string]string{"If-None-Match": wantETag})
+	if cached.StatusCode != http.StatusNotModified {
+		t.Errorf("GET asset with a matching If-None-Match: want 304 got %d body=%s", cached.StatusCode, cachedBody)
+	}
+	if len(cachedBody) != 0 {
+		t.Errorf("GET asset 304: want an empty body, got %d bytes", len(cachedBody))
 	}
 }
