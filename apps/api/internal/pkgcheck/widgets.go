@@ -23,20 +23,63 @@
 // answers the same question: what does a reviewer or reader lose if this
 // rule were absent?
 //
-// # Detail text: English here, Vietnamese in widgets.ts — a deliberate,
-// file-scoped choice, not a fidelity gap
+// # Detail text is English here. Not a style choice — a hard rule with a
+// tripwire, and this paragraph exists to stop the next person from
+// "fixing" it to Vietnamese and rediscovering why the hard way.
 //
-// widgets.ts writes its Finding.detail strings in Vietnamese; every other
-// finding this Go package emits (content.go, pkgcheck.go — ported from
-// validate.ts, whose own detail strings are English throughout) is
-// English. Finding.Detail is documented on the Finding type itself as
-// "a human-readable sentence, not meant to be matched on" — nothing in
-// this package or its tests compares Detail text, only Code and Path are
-// load-bearing. Rather than being the first file in this Go package to
-// switch languages mid-package, the widget rules below carry the same
-// information the Vietnamese sentences do (byte counts, thresholds, the
-// offending name/API/URL), written in the English this package already
-// uses everywhere else.
+// It is tempting to read Finding.Code as the boring, load-bearing part and
+// Finding.Detail as free text a Go file can set however it pleases,
+// especially since widgets.ts's OWN Detail text — the file this one is
+// otherwise a line-for-line port of — is Vietnamese. Resist that reading.
+// The two fields answer different questions and follow different rules:
+//
+//   - Code is the cross-implementation CONTRACT. fixtures/format-v2/ pins
+//     it — both this package and widgets.ts must agree on which Code a
+//     hostile input produces, checked by the shared corpus. Nothing about
+//     WHERE either implementation runs changes what a Code means.
+//   - Detail's language is a property of WHERE THE CODE RUNS, not of which
+//     rule fired. widgets.ts runs in `tuhoc pack`, ON THE AUTHOR'S OWN
+//     MACHINE — it may say whatever helps that one specific person, in
+//     whatever language helps them, because it is a local CLI tool with
+//     one Vietnamese-speaking user in front of it. This package runs ON
+//     THE SERVER, which is a different machine talking to readers with NO
+//     KNOWN LANGUAGE PREFERENCE: no request header, no field anywhere in
+//     this platform's protocol carries a reader's chosen language to the
+//     server (the choice is deliberately device-local — see
+//     apps/api/internal/server/i18n_server_speaks_codes_test.go, which
+//     measured this: no file under apps/web/src reads a response body to
+//     decide anything, because the client already translates by HTTP
+//     STATUS CODE alone). A Vietnamese sentence written into ANY response
+//     this package's caller sends reaches an English-reading user in
+//     silence, and no other gate in this repo can catch that — the
+//     bilingual system's hardcoded-string check scans only TypeScript/
+//     JavaScript under apps/web, nothing server-side.
+//
+// apps/api/internal/server/i18n_server_speaks_codes_test.go enforces this
+// with a token-level scan of every non-test .go file under apps/api,
+// TestServerSpeaksNoVietnamese — deliberately with NO per-package
+// exemption, and its own header explains why: a "this package is
+// different" carve-out is exactly the shape no_key_transit_test.go (right
+// next to it) already rejected once. Adding one here — even with a
+// justification attached to allowedVietnameseInProduction — would make
+// this the SECOND file to try that argument, not the first, and it would
+// still fail for the same reason: this Finding.Detail can reach a reader
+// through a path Code alone does not, the moment a caller forwards it
+// verbatim into a response.
+//
+// This is not a loss for the Vietnamese-speaking course AUTHOR `tuhoc
+// publish` is for: the architecture already has a place for that
+// translation, and it is not here. The server sends {code, path, detail} —
+// English detail, for logs and bug reports — and `tuhoc publish` renders
+// Code through the CLI's own Vietnamese FIX_HINTS table. The author still
+// reads Vietnamese; it is produced by the process running on their own
+// machine, the same one widgets.ts already runs in, not manufactured
+// server-side and shipped to a reader who never asked for it.
+//
+// content.go's seven content rules and pkgcheck.go's manifest/package-shape
+// rules are English for the identical reason, not merely for consistency
+// with this file — every Finding this package emits runs the same "where
+// does this run" test, and every one of them runs on the server.
 //
 // # Sizes and line lengths: BYTES, not characters
 //
@@ -51,7 +94,11 @@
 // needed a utf8.RuneCountInString next to it. It does not: this file reads
 // raw bytes throughout (data []byte, never a decoded string), which keeps
 // every len() and bytes.Contains call in it a byte-level operation by
-// construction, matching widgets.ts's own explicit .byteLength/encoder use.
+// construction. For WIDGET_TOO_LARGE this is an exact match with
+// widgets.ts, which also measures raw byteLength there. For
+// WIDGET_LINE_TOO_LONG the two sides can genuinely diverge on invalid
+// UTF-8 input specifically — see checkWidgetIndex's own comment for where,
+// why, and why Go's raw count is the one to keep.
 package pkgcheck
 
 import (
@@ -217,17 +264,73 @@ func isRealWidget(byName map[string]*widgetGroup, name string) bool {
 // there is no proportional-cost reason to skip any of these checks even
 // when an earlier one already fired.
 //
-// Every check here reads data directly as bytes — bytes.Contains and
-// len(line), never a decoded string — which is what makes "measured in
-// bytes" true by construction rather than by discipline (see this file's
-// header comment). This also sidesteps a question widgets.ts has to answer
-// by decoding first (TextDecoder('utf-8') replaces invalid byte sequences
-// with U+FFFD before searching): whether that replacement could ever hide
-// or fabricate one of these ASCII needles. It cannot — U+FFFD's own UTF-8
-// encoding (0xEF 0xBF 0xBD) contains no ASCII byte, so decoding-then-
-// searching and raw-byte-searching agree on every input for a pure-ASCII
-// needle — but operating on bytes.Contains(data, …) directly means this Go
-// port never has to rely on that argument to be correct.
+// # WIDGET_TOO_LARGE and the forbidden-API/URL substring checks: exact
+// agreement with widgets.ts, provably
+//
+// WIDGET_TOO_LARGE measures len(data) directly — the same quantity
+// widgets.ts measures (bytes.byteLength, the raw Uint8Array's own length,
+// never decoded). No divergence is possible here for any input.
+//
+// WIDGET_FORBIDDEN_API and WIDGET_EXTERNAL_URL read data directly with
+// bytes.Contains, where widgets.ts decodes first (TextDecoder('utf-8'),
+// which replaces invalid byte sequences with U+FFFD) and searches the
+// decoded string. These agree on EVERY input, not only well-formed ones:
+// U+FFFD's own UTF-8 encoding (0xEF 0xBF 0xBD) contains no ASCII byte, so
+// no invalid byte sequence — however a decoder chops it up — can ever be
+// replaced INTO, or have a byte silently dropped FROM, one of these
+// pure-ASCII needles ("document.cookie", "https://", …). That is a proof,
+// not an empirical claim: it holds for adversarial invalid-UTF-8 input
+// exactly as it holds for well-formed input. Operating on
+// bytes.Contains(data, …) directly just means this Go port never has to
+// invoke that proof at runtime to get the right answer — it is correct by
+// construction, with no decode step to reason about at all.
+//
+// # WIDGET_LINE_TOO_LONG: the one place this file's measurement CAN
+// genuinely diverge from widgets.ts's, and why the divergent direction is
+// the safe one to have kept
+//
+// Go measures len(line) where line is bytes.Split(data, []byte{'\n'})'s
+// output — the exact raw bytes between two '\n' bytes in the file as it
+// will actually be stored and served inside the widget's iframe.
+//
+// widgets.ts measures something else: decoder.decode(bytes) ONCE over the
+// WHOLE file (TextDecoder('utf-8'), replacing every invalid byte sequence
+// with U+FFFD), THEN text.split('\n') on the resulting string, THEN
+// encoder.encode(line).byteLength — re-encoding each already-replaced line
+// back to UTF-8. For well-formed UTF-8 — every realistic widget's HTML/
+// CSS/JS, Vietnamese comments included — decode-then-re-encode is lossless
+// and idempotent, so this produces the identical byte count Go's raw split
+// does, on every line, always: no divergence for any input a real widget
+// author would ever write.
+//
+// For a line containing genuinely INVALID UTF-8 byte sequences, agreement
+// is not guaranteed, and the difference can run in EITHER direction. A
+// single invalid byte standing alone typically decodes to one U+FFFD,
+// which re-encodes to 3 bytes — INFLATING TS's count relative to Go's for
+// that byte. A longer invalid or overlong multi-byte attempt (4-6 raw
+// bytes) can instead be consumed as one "maximal subpart" by the decoder
+// and likewise collapse to a single 3-byte U+FFFD — DEFLATING TS's count
+// below the true raw byte count of that run. The second direction is the
+// one that matters for what this rule exists to stop: it means TS's own
+// measured number can be made to UNDERSTATE the true number of bytes a
+// line actually contains once served, by padding it with invalid
+// multi-byte junk engineered to collapse under decode. Go's raw count
+// cannot be fooled this way, for the simple reason that it never takes a
+// decode step at all — len(line) IS the number of bytes that will be
+// read, byte for byte, by whatever renders widgets/<name>/index.html.
+// That is the more principled quantity for a rule whose entire point (see
+// this file's header) is bounding what a human reviewer actually has to
+// read, so keeping Go's direct measurement — rather than matching TS's
+// lossy proxy for it — is the safe direction: it cannot be made to
+// under-report a line's true size the way a decode-based measurement can.
+//
+// This divergence is real but UNEXERCISED BY ANY TEST, Go or TypeScript:
+// no legitimate widget author's editor emits invalid UTF-8, and neither
+// this package's test suite nor widgets.test.ts constructs an
+// invalid-UTF-8 input to pin the two sides' actual behavior against each
+// other on this specific axis. Said explicitly here so a future reader
+// does not read "ported unchanged" at the top of this comment as a claim
+// that covers this case too — it does not.
 func checkWidgetIndex(path string, data []byte) []Finding {
 	var out []Finding
 

@@ -90,9 +90,15 @@ func TestWidgetTooLargeGenerated(t *testing.T) {
 // --- WIDGET_LINE_TOO_LONG: generated content, no fixture -----------------
 
 func TestWidgetLineTooLongGenerated(t *testing.T) {
+	// Each case below references its own widget via data-widget, even
+	// though this test's assertions never look at WIDGET_MISSING/ORPHAN —
+	// an unreferenced-but-real widgets/w/index.html would otherwise also
+	// produce an incidental WIDGET_ORPHAN finding that hasCode's
+	// non-exhaustive checks wouldn't catch, making the fixture say
+	// something about orphan-ness this test isn't about.
 	atCap := mustValidate(t, map[string]string{
 		"manifest.json":        minimalManifest,
-		"chapters/c1.html":     `<p>a</p>`,
+		"chapters/c1.html":     `<div data-widget="w"></div>`,
 		"widgets/w/index.html": strings.Repeat("a", widgetMaxLineBytes),
 	})
 	if hasCode(atCap, "WIDGET_LINE_TOO_LONG") {
@@ -127,7 +133,7 @@ func TestWidgetLineTooLongGenerated(t *testing.T) {
 	}
 	vnFindings := mustValidate(t, map[string]string{
 		"manifest.json":        minimalManifest,
-		"chapters/c1.html":     `<p>a</p>`,
+		"chapters/c1.html":     `<div data-widget="w"></div>`,
 		"widgets/w/index.html": vnLine,
 	})
 	if !hasCode(vnFindings, "WIDGET_LINE_TOO_LONG") {
@@ -138,10 +144,15 @@ func TestWidgetLineTooLongGenerated(t *testing.T) {
 // --- WIDGET_BAD_NAME: generated content, no fixture -----------------------
 
 func TestWidgetBadNameGenerated(t *testing.T) {
+	// Each case references its own widget via data-widget (even though a
+	// bad name still leaves the widget "real" per isRealWidget, so an
+	// unreferenced one would also — harmlessly, but confusingly — produce
+	// an incidental WIDGET_ORPHAN this test isn't about; same reasoning as
+	// TestWidgetLineTooLongGenerated).
 	tooLong := strings.Repeat("a", widgetNameMax+1)
 	findings := mustValidate(t, map[string]string{
 		"manifest.json":                      minimalManifest,
-		"chapters/c1.html":                   `<p>a</p>`,
+		"chapters/c1.html":                   fmt.Sprintf(`<div data-widget="%s"></div>`, tooLong),
 		"widgets/" + tooLong + "/index.html": validWidgetHTML,
 	})
 	if !hasCode(findings, "WIDGET_BAD_NAME") {
@@ -160,7 +171,7 @@ func TestWidgetBadNameGenerated(t *testing.T) {
 
 	findings = mustValidate(t, map[string]string{
 		"manifest.json":               minimalManifest,
-		"chapters/c1.html":            `<p>a</p>`,
+		"chapters/c1.html":            `<div data-widget="Bad_Name"></div>`,
 		"widgets/Bad_Name/index.html": validWidgetHTML,
 	})
 	f := findByCode(findings, "WIDGET_BAD_NAME")
@@ -294,6 +305,13 @@ func TestWidgetMissingEmptyDataWidgetGetsPlaceholderDetail(t *testing.T) {
 	if strings.Contains(f.Detail, "widgets//index.html") {
 		t.Fatalf("an empty data-widget must not be reported as a reference to widgets//index.html — got detail %q", f.Detail)
 	}
+	// Positive check, mirroring widgets.test.ts's own
+	// toMatch(/không mang tên|chưa.*tên|placeholder/i): the detail must
+	// actually say this is an unnamed placeholder, not just happen to
+	// avoid the literal path string above.
+	if !strings.Contains(f.Detail, "names no widget") {
+		t.Fatalf("detail should say this data-widget names no widget, got %q", f.Detail)
+	}
 }
 
 // --- data-widget is read case-insensitively, via content.go's tokenizer -
@@ -338,6 +356,29 @@ func TestWidgetReferencedByEitherOfTwoChaptersIsNotOrphan(t *testing.T) {
 	}
 	if len(findings) != 0 {
 		t.Fatalf("expected zero findings, got %+v", findings)
+	}
+}
+
+// TestWidgetOrphanPathIsIndexHTML pins WIDGET_ORPHAN's Path — every other
+// one of the eight rules has its Path checked somewhere in this file or in
+// contract_test.go's fixture cases; this was the one left unasserted (the
+// contract test matches on codes only). A regression that dropped the
+// "/index.html" suffix from widgetsPrefix+name+"/index.html", or that
+// pointed the finding at the widget's bare directory instead of its entry
+// file, would pass every other test in this package and go uncaught
+// without this one.
+func TestWidgetOrphanPathIsIndexHTML(t *testing.T) {
+	findings := mustValidate(t, map[string]string{
+		"manifest.json":             minimalManifest,
+		"chapters/c1.html":          `<p>no widget mentioned here</p>`,
+		"widgets/mo-coi/index.html": validWidgetHTML,
+	})
+	f := findByCode(findings, "WIDGET_ORPHAN")
+	if f == nil {
+		t.Fatalf("expected WIDGET_ORPHAN, got %+v", findings)
+	}
+	if f.Path != "widgets/mo-coi/index.html" {
+		t.Errorf("WIDGET_ORPHAN path = %q, want widgets/mo-coi/index.html", f.Path)
 	}
 }
 
