@@ -190,7 +190,7 @@ export const USER_CONTENT_KEYS = ['itbook-note-draft'] as const;
  * `db.outbox`, which `i18n/LanguageProvider.test.tsx` asserts stays empty
  * across a language change.
  */
-export const DEVICE_PREFERENCE_KEYS = ['itbook-theme', 'itbook-lang', 'itbook-nav-collapsed'] as const;
+export const DEVICE_PREFERENCE_KEYS = ['itbook-theme', 'itbook-lang'] as const;
 
 /**
  * Every `localStorage` key this app is allowed to touch.

@@ -732,46 +732,41 @@ test.describe('§4 — cập nhật có báo cáo thiệt hại', () => {
 });
 
 /**
- * §5 — THANH ĐIỀU HƯỚNG THU GỌN ĐƯỢC
+ * §5 — MỤC LỤC: NGĂN KÉO Ở MÀN HẸP, CỘT CỐ ĐỊNH Ở MÀN RỘNG
  *
- * Người dùng yêu cầu: "The left navigation sidebar should be collapsible."
+ * ── TÍNH NĂNG THU GỌN ĐÃ BỊ GỠ, VÀ VÌ SAO ────────────────────────────────
+ * Mục này TỪNG canh câu "The left navigation sidebar should be collapsible".
+ * Tính năng ấy không còn, theo yêu cầu của chính người dùng ("bỏ nút đó ở
+ * trang này luôn"), và lý do đọc được từ sản phẩm: thu gọn mục lục tồn tại để
+ * lấy thêm bề ngang khi đang học — mà lúc đang học thì `#app.reading` đã gỡ
+ * hẳn thanh bên đi rồi. Chỗ duy nhất còn nút là TRANG KHOÁ HỌC, nơi nội dung
+ * là một bản tóm tắt ngắn và bề ngang thừa chứ không thiếu. Lập luận đầy đủ ở
+ * `src/shell/TopNav.tsx`.
  *
- * Đây là tầng DUY NHẤT nói được câu ấy có đúng hay không. Luật ẩn là CSS treo
- * dưới `@media (min-width: 981px)` (`styles/shell-modes.css`), mà jsdom không
- * tính media query và không tính bố cục — nên bài kiểm đơn vị chỉ khẳng định
- * được cái LỚP `nav-collapsed`, và nó sẽ xanh y nguyên nếu ai đó xoá sạch khối
- * `@media` kia. Ở đây `toBeHidden()` hỏi trình duyệt thật.
+ * Nên hai bài dưới đây đổi việc chứ không biến mất, và việc mới của chúng là
+ * canh đúng ba câu còn lại:
  *
- * Hai chốt đối chứng đi kèm, vì "ẩn được" một mình là một nửa sự thật:
- * lựa chọn phải SỐNG QUA điều hướng và tải lại (khác hẳn ngăn kéo của màn hẹp,
- * thứ `useMobileNav` đóng ở mọi lần đổi route), và ở màn hẹp nút ấy phải vẫn
- * là ngăn kéo cũ chứ không phải một cơ chế thứ hai chồng lên.
+ *   · màn rộng: mục lục là một CỘT CỐ ĐỊNH, và KHÔNG có nút nào bật tắt nó —
+ *     đây là răng của bản dựng đã duyệt, thứ mà một lần "khôi phục" vô ý sẽ
+ *     bẻ gãy trong im lặng;
+ *   · ngoài một khoá: `#sidebar` phải VẮNG MẶT, chứ không hiện ra rỗng;
+ *   · màn hẹp: `#menu-btn` vẫn là ngăn kéo cũ — ở đó nó là cách DUY NHẤT gọi
+ *     mục lục ra, vì `reader.css` đẩy `#sidebar` ra ngoài khung nhìn.
  *
- * ── PHẠM VI THU HẸP TỪ VÒNG THIẾT KẾ LẠI ─────────────────────────────────
- * Hai bài này TỪNG chạy trên `/` và `/courses`. Chúng không chạy được ở đó
- * nữa, và đó là điều đúng chứ không phải một hồi quy: thanh bên nay chỉ mang
- * MỤC LỤC, nên ngoài một khoá nó không tồn tại — không có gì để thu gọn.
- *
- * Yêu cầu gốc của người dùng ("The left navigation sidebar should be
- * collapsible") vẫn được giữ nguyên vẹn, chỉ hẹp lại đúng chỗ nó còn nghĩa:
- * thu gọn mục lục để lấy thêm bề ngang khi đang ở trong một khoá. Nên hai bài
- * chuyển vào `/c/:courseId`, và chốt "sống qua điều hướng" nay đi giữa hai
- * route CÙNG có thanh bên (trang khoá học ⇄ tải lại) thay vì sang một route
- * không còn cột nào.
- *
- * Kèm một chốt MỚI, vì luật mới cần răng của chính nó: ngoài một khoá thì
- * `#sidebar` phải VẮNG MẶT, chứ không phải hiện ra rỗng.
+ * Đây vẫn là tầng duy nhất nói được ba câu ấy: luật ẩn/hiện là CSS treo dưới
+ * `@media`, mà jsdom không tính media query và không tính bố cục.
  */
-test.describe('§5 — thanh điều hướng thu gọn được', () => {
+test.describe('§5 — mục lục: ngăn kéo ở màn hẹp, cột cố định ở màn rộng', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
   /**
    * HAI CÁCH ẨN KHÁC NHAU, và phải đo bằng hai phép khác nhau.
    *
-   * · Màn rộng thu gọn bằng `display:none` → Playwright gọi là `hidden`.
-   * · Màn hẹp ẩn bằng `transform: translateX(-100%)` (reader.css) → phần tử
-   *   BỊ ĐẨY RA NGOÀI màn hình nhưng Playwright vẫn gọi nó là `visible`, vì
-   *   `toBeHidden()` đo display/visibility/opacity/kích thước, KHÔNG đo vị trí.
+   * · `display:none` → Playwright gọi là `hidden`.
+   * · Ngăn kéo của màn hẹp ẩn bằng `transform: translateX(-100%)`
+   *   (reader.css) → phần tử BỊ ĐẨY RA NGOÀI màn hình nhưng Playwright vẫn
+   *   gọi nó là `visible`, vì `toBeHidden()` đo display/visibility/opacity/
+   *   kích thước, KHÔNG đo vị trí.
    *
    * Bản đầu của bài kiểm này dùng `toBeHidden()` cho cả hai và đỏ ở ca thứ
    * hai — đúng, và đó là lý do hàm dưới đây tồn tại thay vì một lời khẳng định
@@ -799,50 +794,37 @@ test.describe('§5 — thanh điều hướng thu gọn được', () => {
     await expect(page.locator('#sidebar')).toBeVisible();
   }
 
-  test('☰ ẩn/hiện thanh bên trên màn rộng, và lựa chọn sống qua tải lại', async ({ page }) => {
-    await enterCourse(page);
-
-    const sidebar = page.locator('#sidebar');
-    const menu = page.locator('#menu-btn');
-
-    // Trạng thái nghỉ. Nút PHẢI thấy được ở khổ rộng — `reader.css` để
-    // `#menu-btn{display:none}` ngoài màn hẹp, nên nếu luật
-    // `#app:not(.reading) #menu-btn` mất thì tính năng này không có cửa vào.
-    await expect(sidebar).toBeVisible();
-    await expect(menu).toBeVisible();
-    await expect(menu).toHaveAttribute('aria-expanded', 'true');
-
-    await menu.click();
-    await expect(sidebar).toBeHidden();
-    await expect(menu).toHaveAttribute('aria-expanded', 'false');
-
-    // NGOÀI một khoá thì không có cột nào cả — luật mới, và nó cần răng riêng.
-    // Không có chốt này, một bản bỏ sót `#app:not(.in-course)` vẫn xanh.
-    await page.goto('/courses');
-    await expect(page.locator('#sidebar')).toBeHidden();
-
-    // Quay lại trong khoá: lựa chọn thu gọn KHÔNG bị buộc vào một route, nên
-    // nó vẫn còn nguyên. Đi bằng `goto` chứ không bấm liên kết, vì bản đầu của
-    // bài này bấm một liên kết nằm trong chính thanh bên vừa thu gọn và hết
-    // giờ, đúng như nó phải thế.
-    await page.goto(`/c/${REAL_COURSE_ID}`);
-    await expect(page.locator('#sidebar')).toBeHidden();
-
-    // Và sống qua tải lại — đây là chỗ khác hẳn ngăn kéo của màn hẹp, thứ
-    // `useMobileNav` đóng lại ở mọi lần đổi route.
-    await page.reload();
-    await expect(page.locator('#sidebar')).toBeHidden();
-
-    // Mở lại được. Một nút chỉ ẩn được mà không hiện lại là một cái bẫy.
-    await page.locator('#menu-btn').click();
-    await expect(page.locator('#sidebar')).toBeVisible();
-  });
-
-  test('đối chứng màn hẹp: cùng nút ấy vẫn là ngăn kéo cũ, không phải cơ chế thứ hai', async ({
+  test('màn rộng: mục lục là cột cố định, không có nút bật tắt, và vắng mặt ngoài một khoá', async ({
     page,
   }) => {
     await enterCourse(page);
+
+    // Cột có mặt và ĐỨNG YÊN: không nút nào trên trang thu nó lại.
+    await expect(page.locator('#sidebar')).toBeVisible();
+    await expect(
+      page.locator('#menu-btn'),
+      'màn rộng không được có nút bật tắt mục lục — bản dựng đã duyệt không có nút nào ở đó',
+    ).toBeHidden();
+
+    // Và sống qua tải lại: một cột cố định thì không có trạng thái để mất.
+    await page.reload();
+    await expect(page.locator('#sidebar')).toBeVisible();
+    await expect(page.locator('#menu-btn')).toBeHidden();
+
+    // NGOÀI một khoá thì không có cột nào cả. Không có chốt này, một bản bỏ sót
+    // `#app:not(.in-course)` vẫn xanh.
+    await page.goto('/courses');
+    await expect(page.locator('#sidebar')).toBeHidden();
+  });
+
+  test('màn hẹp: `#menu-btn` xuất hiện và là ngăn kéo cũ', async ({ page }) => {
+    await enterCourse(page);
     await page.setViewportSize({ width: 375, height: 800 });
+
+    // Nút CHỈ tồn tại ở đây, và ở đây nó không tuỳ chọn: `reader.css` đẩy
+    // `#sidebar` ra ngoài khung nhìn dưới 981px, nên không có nút thì mục lục
+    // không có cửa nào để vào.
+    await expect(page.locator('#menu-btn')).toBeVisible();
 
     // Dưới 981px thanh bên là ngăn kéo: nó Ở TRONG tài liệu và Playwright gọi
     // là `visible`, chỉ nằm ngoài khung nhìn. Nên hỏi VỊ TRÍ, không hỏi hiện/ẩn.
@@ -883,8 +865,8 @@ test.describe('§5 — thanh điều hướng thu gọn được', () => {
     await expect(page.locator('body')).not.toHaveClass(/nav-open/);
 
     // Quay lại trang khoá học, nơi có cột để mà đo: ngăn kéo phải đang ĐÓNG, và
-    // thanh bên KHÔNG bị `display:none` — tức luật thu gọn của màn rộng không
-    // rò xuống dưới ngưỡng, nơi nó sẽ làm ngăn kéo không mở được nữa.
+    // thanh bên KHÔNG bị `display:none` — một luật ẩn nào đó rò xuống dưới
+    // ngưỡng sẽ làm ngăn kéo không mở được nữa.
     await page.goto(`/c/${REAL_COURSE_ID}`);
     await expect(page.locator('#sidebar')).toBeVisible();
     await expect

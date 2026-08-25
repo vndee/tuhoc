@@ -21,6 +21,23 @@ import { useProgress } from '../progress/useProgress';
  * shape `manifestQuery`'s `enabled: courseId != null` already uses for
  * the "route param not resolved yet" case below.
  */
+/**
+ * "Phần I · Entropy" → `['Phần I', 'Entropy']`.
+ *
+ * Bản dựng vẽ mỗi chặng thành HAI cột — một nhãn thứ tự nhạt bên trái, tên
+ * chặng đậm bên phải — trong khi manifest chỉ có MỘT chuỗi. Dấu chấm giữa là
+ * quy ước sẵn có của chính các gói (`Phần 0 · Nền móng`, `Phần II · Mã hoá &
+ * kênh`), nên hai cột ấy đọc ra được chứ không phải bịa thêm dữ liệu.
+ *
+ * Không có dấu ngăn thì KHÔNG tách: "Phụ lục" là tên chặng, không phải một
+ * nhãn thứ tự thiếu tên. Tách bừa theo khoảng trắng sẽ cho "Phụ" / "lục".
+ */
+export function splitPartTitle(title: string): [string | undefined, string] {
+  const at = title.indexOf(' · ');
+  if (at === -1) return [undefined, title];
+  return [title.slice(0, at), title.slice(at + 3)];
+}
+
 export function CourseHome() {
   const { courseId } = useParams<{ courseId: string }>();
   const { t } = useLanguage();
@@ -53,14 +70,26 @@ export function CourseHome() {
   return (
     <div className="ch-page">
       {/* HÀNG BADGE trước nhan đề — bản dựng đã duyệt.
-          Chỉ những gì MANIFEST biết: hạng an toàn, phiên bản, ngôn ngữ. Nguồn
-          gói ("registry" / "tự nhập") KHÔNG có ở đây — nó là thuộc tính của
-          hàng thư viện, không của gói — và bịa nó ra là nói một điều trang này
-          không biết. */}
+
+          MỘT badge, rồi một dòng chữ. Bản trước vẽ cả ba thành viên bo tròn và
+          hàng ấy đọc ra là ba thứ ngang hạng — sai, vì chỉ MỘT trong ba là một
+          lời cảnh báo (gói này có chạy JavaScript trong trình duyệt của người
+          đọc hay không). Phiên bản và ngôn ngữ là siêu dữ liệu; chúng thuộc về
+          một dòng chữ xám, ngăn nhau bằng dấu chấm giữa, đúng như bản dựng.
+
+          Chỉ những gì MANIFEST biết. Nguồn gói ("registry" / "tự nhập") có
+          trong bản dựng nhưng KHÔNG có ở đây — nó là thuộc tính của hàng thư
+          viện, không của gói — và bịa nó ra là nói một điều trang này không
+          biết. */}
       <p className="ch-badges">
         <TierBadge tier={manifestString(manifest, 'tier')} />
-        <span className="ch-badge-meta">{t('library.meta.version', manifest.version)}</span>
-        <span className="ch-badge-meta">{manifest.lang}</span>
+        <span className="ch-badge-meta">
+          {t('library.meta.version', manifest.version)}
+          <span className="ch-badge-dot" aria-hidden="true">
+            ·
+          </span>
+          {manifest.lang}
+        </span>
       </p>
       <h1 className="ch-title">{manifest.title}</h1>
       <p className="ch-lede">{manifest.description}</p>
@@ -105,10 +134,18 @@ export function CourseHome() {
         <ul className="ch-part-list">
           {manifest.parts.map((part, index) => {
             const partRead = part.chapters.filter((chapter) => doneChapterIds.has(chapter.id)).length;
+            const [eyebrow, name] = splitPartTitle(part.title);
             return (
               <li className="ch-part" key={`${index}-${part.title}`}>
-                <span className="ch-part-name">{part.title}</span>
-                <span className="ch-part-count" data-done={partRead === part.chapters.length ? 'true' : undefined}>
+                {/* Ô rỗng chứ không phải BỎ HẲN khi chặng không có nhãn thứ tự
+                    ("Phụ lục"): cột tên phải giữ nguyên một mép trái cho mọi
+                    hàng, còn bỏ ô sẽ kéo riêng hàng ấy thụt về bên trái. */}
+                <span className="ch-part-eyebrow">{eyebrow ?? ''}</span>
+                <span className="ch-part-name">{name}</span>
+                <span
+                  className="ch-part-count"
+                  data-state={partRead === 0 ? 'none' : partRead === part.chapters.length ? 'done' : 'partial'}
+                >
                   {t('course.partCount', String(partRead), String(part.chapters.length))}
                 </span>
               </li>

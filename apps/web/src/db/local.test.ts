@@ -631,23 +631,19 @@ describe('the localStorage key registry', () => {
    * `i18n/LanguageProvider.test.tsx` proves that it does rather than
    * leaving it true by luck.
    *
-   * Lần thứ BA là `itbook-nav-collapsed` (thanh bên thu gọn được). Cùng một
-   * phân loại và cùng một lập luận: nó mô tả CỬA SỔ NÀY, không phải người dùng.
-   * Đăng xuất trên máy chung phải xoá sạch ghi chú và tiến độ; nó không có lý
-   * do gì để bung lại một thanh bên mà chủ máy đã thu gọn.
+   * `itbook-nav-collapsed` (thanh bên thu gọn được) TỪNG là mục thứ ba ở đây và
+   * nay đã rời danh sách — cùng một quyết định, đi theo chiều ngược lại. Tính
+   * năng thu gọn-bền bị gỡ (lý do ở `shell/TopNav.tsx`), nên không còn ai ghi
+   * khoá ấy; để nó nằm lại là để `clearLocalData()` canh một thứ không tồn tại,
+   * và danh sách này chỉ có nghĩa khi mọi dòng trong nó còn thật.
    *
-   * Nó cũng là ví dụ đúng của cổng bên trên: bản đầu của `useSidebarCollapse`
-   * gọi thẳng `localStorage` và bài "no third place for user data to hide" đỏ
-   * ngay — sửa đúng là định tuyến qua `db/local.ts`, không phải thêm tệp ấy vào
-   * `allowedIn`.
+   * Nó cũng từng là ví dụ đúng của cổng bên trên: bản đầu của hook ấy gọi thẳng
+   * `localStorage` và bài "no third place for user data to hide" đỏ ngay — sửa
+   * đúng là định tuyến qua `db/local.ts`, không phải thêm tệp ấy vào `allowedIn`.
    */
   it('classifies every key, with nothing on both lists', () => {
     expect([...USER_CONTENT_KEYS]).toEqual(['itbook-note-draft']);
-    expect([...DEVICE_PREFERENCE_KEYS]).toEqual([
-      'itbook-theme',
-      'itbook-lang',
-      'itbook-nav-collapsed',
-    ]);
+    expect([...DEVICE_PREFERENCE_KEYS]).toEqual(['itbook-theme', 'itbook-lang']);
 
     const all = [...USER_CONTENT_KEYS, ...DEVICE_PREFERENCE_KEYS];
     expect(new Set(all).size).toBe(all.length);

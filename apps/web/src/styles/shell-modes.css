@@ -41,40 +41,6 @@
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   THU GỌN THANH ĐIỀU HƯỚNG — chỉ trên màn rộng
-   ════════════════════════════════════════════════════════════════════════════
-
-   Dưới 981px `#sidebar` đã là một ngăn kéo trượt (`reader.css`:
-   `@media (max-width:980px)` đặt `position:fixed` + `translateX(-100%)`, và
-   `body.nav-open` kéo nó ra). Thu gọn ở đó là thu gọn một thứ vốn đã ẩn — tệ
-   hơn, `display:none` sẽ làm ngăn kéo không mở được nữa. Nên MỌI luật ở đây
-   treo dưới `min-width: 981px`, khít với ngưỡng của reader.css.
-
-   Ngưỡng này cũng là ngưỡng mà `useSidebarCollapse.WIDE_QUERY` hỏi lúc bấm
-   nút. Hai con số phải bằng nhau; lệch một luật là có một dải bề rộng mà nút
-   bấm không làm gì cả. */
-@media (min-width: 981px) {
-  #app.nav-collapsed #sidebar {
-    display: none;
-  }
-
-  /* `#menu-btn` là `display:none` ở reader.css ngoài màn hẹp. Nó nay là điều
-     khiển thu gọn nên phải thấy được ở màn rộng — trừ chế độ đọc, nơi thanh
-     bên không tồn tại và nút mục lục ngay bên cạnh mới là thứ mở ra một mục
-     lục (luật `#app.reading #menu-btn` ở trên vẫn thắng nhờ `!important`).
-
-     Hai id ở bộ chọn này (`#app` + `#menu-btn`) thắng một id của reader.css,
-     nên không cần `!important` ở đây. */
-  /* `.in-course` thêm vào từ vòng thiết kế lại: nút này bật/tắt `#sidebar`, mà
-     ngoài một khoá thì `#sidebar` không tồn tại. Một nút thu gọn một thứ không
-     có ở đó là một nút không làm gì — đúng cái bẫy mà luật `#app.reading
-     #menu-btn` phía trên đã dựng lên để tránh. */
-  #app.in-course:not(.reading) #menu-btn {
-    display: inline-flex;
-  }
-}
-
-/* ════════════════════════════════════════════════════════════════════════════
    THANH BÊN CÓ MỘT NGHĨA: BẠN ĐANG Ở TRONG MỘT KHOÁ
    ════════════════════════════════════════════════════════════════════════════
 
@@ -196,8 +162,8 @@
 /* `#menu-btn` NGOÀI một khoá, ở mọi khổ màn.
    `reader.css` cho nó hiện dưới 981px vì ở đó nó mở ngăn kéo. Ngăn kéo ấy là
    `#sidebar`, và ngoài một khoá `#sidebar` không tồn tại — nên nút mở ra một
-   thứ rỗng. Đúng cái bẫy mà luật `#app.reading #menu-btn` phía trên dựng lên
-   để tránh, chỉ khác chỗ đứng. */
+   thứ rỗng. Từ 981px trở lên `reader.css` đã tự ẩn nó, và nay KHÔNG còn luật
+   nào bật lại: thu gọn-bền đã bị gỡ, xem `shell/TopNav.tsx`. */
 #app:not(.in-course) #menu-btn {
   display: none !important;
 }

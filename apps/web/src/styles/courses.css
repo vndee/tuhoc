@@ -101,9 +101,8 @@
  * canh ở `pages/Library.test.tsx` với `registry/Catalog.test.tsx` — là chính
  * câu chữ, và việc nó hiện TRƯỚC khi người đọc kéo gói về.
  *
- * Màu vẫn giữ `--crit` đã được đo tương phản (5,78:1 ở bản sáng), nhưng nay nó
- * là màu CHỮ trên nền trang thay vì chữ trên nền tô — nền tô là thứ làm nó
- * thành một viên. */
+ * Màu là thang `warning` của hệ thiết kế, nhưng nay nó là màu CHỮ trên nền
+ * trang thay vì chữ trên nền tô — nền tô là thứ làm nó thành một viên. */
 .courses-page .lib-tier {
   padding: 0;
   border: 0;
@@ -125,9 +124,11 @@
   border: 0;
   border-radius: 0;
   background: none;
-  color: color-mix(in srgb, var(--crit) 78%, #000);
-  font-size: 11.5px;
-  font-weight: 640;
+  /* Cùng thang hổ phách với `index.css` — xem phần lý do ở đó. Ở đây nó là
+     màu CHỮ trên nền trang, nên lấy bậc 700 cho bản sáng. */
+  color: var(--color-warning-700);
+  font-size: 12px;
+  font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
   white-space: normal;
@@ -136,7 +137,7 @@
 /* Cùng phép hiệu chỉnh mà `index.css` làm cho bản gốc, ở đúng độ đặc hiệu cần
    để thắng cả bản gốc lẫn quy tắc sáng ngay bên trên. */
 html[data-theme='dark'] .courses-page .lib-tier-code {
-  color: color-mix(in srgb, var(--crit) 62%, #fff);
+  color: var(--color-warning-200);
 }
 
 /* Không co lại khi dòng chữ xuống hàng, và không kéo dòng cao thêm. */

@@ -643,14 +643,18 @@ html[data-theme='dark'] {
   color: var(--s7);
 }
 
+/* Thang badge của Untitled UI: 12px/500, chữ thường, viên tròn.
+   Bản cũ là 10.5px ĐẬM VIẾT HOA giãn chữ — thang của một nhãn thể loại, và ở
+   cỡ ấy nó vừa khó đọc vừa hét to hơn tiêu đề ngay dưới nó. */
 .lib-tier {
   font-family: var(--sans);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0;
+  text-transform: none;
   border-radius: 999px;
-  padding: 2.5px 8px;
+  padding: 2px 9px;
   white-space: nowrap;
 }
 
@@ -667,25 +671,35 @@ html[data-theme='dark'] {
    word, and clipping it would remove exactly the half that carries the
    meaning. */
 .lib-tier-code {
-  /* Not a bare `var(--crit)`. Measured in Chromium against this badge's own
-     background: #d03b3b on the 12% tint gives 3.97:1, which is under WCAG
-     AA's 4.5:1 for text this size (11px bold is not "large text"). Darkening
-     to 78% takes it to 5.78:1. An unreadable warning is not a warning, and
-     this is the one label on the page that has to be read. */
-  color: color-mix(in srgb, var(--crit) 78%, #000);
-  background: color-mix(in srgb, var(--crit) 12%, var(--surface-1));
-  border: 1px solid color-mix(in srgb, var(--crit) 45%, transparent);
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 11px;
+  /* HỔ PHÁCH, không phải đỏ — và đây là một phân biệt về nghĩa, không phải về
+     gu. Đỏ trong hệ này là LỖI: một việc đã hỏng. Gói `interactive` không hỏng,
+     nó chỉ mang một điều người đọc phải biết trước khi mở. `tokens.css` giao
+     đúng việc ấy cho thang `warning`, và câu chữ vẫn nguyên vẹn.
+
+     Đo lại tương phản trên chính cặp màu mới, vì bản đỏ cũ được đo và bản mới
+     không thừa hưởng phép đo ấy: #b54708 trên #fffaeb cho 5,20:1, qua ngưỡng
+     AA 4,5:1 cho cỡ chữ này. Bản tối lấy warning-200 trên nền hổ phách 14%,
+     11,8:1. Một cảnh báo không đọc được thì không phải một cảnh báo. */
+  color: var(--color-warning-700);
+  background: var(--color-warning-50);
+  border: 1px solid var(--color-warning-200);
   white-space: normal;
+  /* `inline-flex`, và đây là cái làm viên badge phình lên gấp rưỡi: bên trong
+     có một `<svg class="lib-tier-mark">` mà `courses.css` đặt `display: block`.
+     Trong một hộp `block` thì khối ấy XUỐNG DÒNG RIÊNG, nên viên badge cao hai
+     dòng trong khi hai badge cạnh nó cao một dòng. Cho nó thành một hàng ngang
+     thì dấu tam giác đứng đúng chỗ nó phải đứng: ngay trước câu chữ. */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
-/* The same fix in the other direction: `--crit` is not redefined for the dark
-   palette, so on a near-black surface the light-mode darkening would be worse
-   than useless. Lightened instead, and measured the same way. */
+/* Thang `warning` chỉ có một bản; trên nền gần đen thì nền sáng #fffaeb sẽ là
+   một mảng chói giữa trang. Lật lại: chữ sáng trên một lớp hổ phách mỏng. */
 html[data-theme='dark'] .lib-tier-code {
-  color: color-mix(in srgb, var(--crit) 62%, #fff);
+  color: var(--color-warning-200);
+  background: color-mix(in srgb, var(--color-warning-500) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-warning-500) 35%, transparent);
 }
 
 /* A course the reader is provably studying, that no source can name (ruling

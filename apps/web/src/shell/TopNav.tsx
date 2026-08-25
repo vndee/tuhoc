@@ -48,18 +48,7 @@ function navClass({ isActive }: { isActive: boolean }): string {
  * Nhãn hiệu + ba đích. Dựng ở ĐẦU `#topbar`, nên nó cũng là thứ đầu tiên
  * trong thứ tự tab — khớp với thứ tự mắt đọc.
  */
-export interface TopNavProps {
-  /**
-   * Bật/tắt thanh bên. Dưới 981px là ngăn kéo trượt tạm (`body.nav-open`, xem
-   * `useMobileNav`); từ 981px là thu gọn BỀN (`#app.nav-collapsed`, xem
-   * `useSidebarCollapse`). `App.tsx` chọn cơ chế theo bề rộng ngay lúc bấm.
-   */
-  onMenuClick: () => void;
-  /** Thanh bên có đang HIỆN không, cho `aria-expanded`. */
-  navExpanded?: boolean;
-}
-
-export function TopNav({ onMenuClick, navExpanded = true }: TopNavProps) {
+export function TopNav() {
   const meQuery = useMe();
   const location = useLocation();
   const { t } = useLanguage();
@@ -84,37 +73,6 @@ export function TopNav({ onMenuClick, navExpanded = true }: TopNavProps) {
   // học" ở 375px và hết giờ, vì liên kết bị đẩy ra ngoài thanh.
   return (
     <>
-      {/*
-        NÚT THU GỌN Ở MÉP TRÁI, ngay phía trên cột nó thu gọn.
-        Trước đây nó đứng sau ba mục điều hướng và đọc như một mục thứ tư.
-        Đây cũng là chỗ shadcn đặt `SidebarTrigger`.
-
-        Ở ĐẦU DOM chứ không phải `order` trong CSS: `#topbar` là flex, nên
-        `order` sẽ vẽ nó ở mép trái trong khi thứ tự TAB vẫn để nó sau ba mục
-        — một người dùng bàn phím sẽ gặp các điều khiển theo thứ tự khác với
-        thứ tự họ nhìn thấy.
-
-        `id="menu-btn"` giữ nguyên: `reader.css` và `shell-modes.css` gắn luật
-        theo id ấy, và `useMobileNav` cùng ba tệp e2e định vị theo nó.
-      */}
-      <button
-        id="menu-btn"
-        type="button"
-        className="tb-btn"
-        aria-label={t('topbar.menu')}
-        aria-expanded={navExpanded}
-        aria-controls="sidebar"
-        onClick={onMenuClick}
-      >
-        {/* `PanelLeft` — một khung với vách ngăn bên trái, đúng icon shadcn
-            dùng cho nút này. Hamburger nói "có một menu ở đây"; icon này nói
-            "có một CỘT bật tắt được", tức đúng việc nút này làm. */}
-        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-          <rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2.25" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M8 3.75v12.5" stroke="currentColor" strokeWidth="1.5" />
-        </svg>
-      </button>
-
       <div className="tn-brand flex items-center gap-2.5 font-sans">
         <Logo size={28} boxed />
         <span className="tn-wordmark text-[15px] font-semibold tracking-[-0.01em] text-gray-900 dark:text-gray-50">
@@ -227,5 +185,62 @@ export function AccountChip() {
     >
       <span aria-hidden="true">{initials}</span>
     </NavLink>
+  );
+}
+
+export interface SidebarTriggerProps {
+  /** Mở/đóng ngăn kéo mục lục (`body.nav-open`, xem `useMobileNav`). */
+  onMenuClick: () => void;
+  /** Ngăn kéo có đang mở không, cho `aria-expanded`. */
+  navExpanded?: boolean;
+}
+
+/**
+ * NÚT MỤC LỤC CỦA MÀN HẸP — và CHỈ của màn hẹp.
+ *
+ * ── VÌ SAO NÓ KHÔNG CÒN LÀ NÚT THU GỌN ───────────────────────────────────
+ * Nút này đã đi qua bốn chỗ: sau ba mục điều hướng (đọc như mục thứ tư), mép
+ * trái thanh trên (vẫn nằm TRÊN một dải chạy suốt bề ngang), một hàng riêng
+ * dưới thanh trên (đẩy cả trang xuống), rồi cùng hàng với hàng badge (đè lên
+ * nội dung). Người dùng bác cả bốn, và câu cuối là: "bỏ nút đó ở trang này
+ * luôn".
+ *
+ * Điều đó ĐÚNG, và lý do đọc được từ chính sản phẩm: thu gọn mục lục tồn tại
+ * để lấy thêm bề ngang khi đang học — mà lúc đang học thì `#app.reading` đã
+ * gỡ hẳn thanh bên đi rồi. Chỗ duy nhất còn nút là TRANG KHOÁ HỌC, nơi nội
+ * dung là một bản tóm tắt ngắn và bề ngang thừa chứ không thiếu. Một điều
+ * khiển chỉ xuất hiện ở nơi nó vô ích thì không phải một tính năng.
+ *
+ * Nên thu gọn-bền bị gỡ (`useSidebarCollapse` không còn), và nút này lui về
+ * đúng việc v1 giao cho nó: mở NGĂN KÉO mục lục dưới 981px, nơi `#sidebar`
+ * mặc định trượt ra ngoài màn hình và không còn cách nào khác để gọi nó ra.
+ * `reader.css` đã tự lo phần hiện/ẩn ấy (`#menu-btn{display:none}` mặc định,
+ * `display:inline-flex !important` dưới `max-width:980px`), nên bản này không
+ * cần một luật nào để chỉ có mặt trên điện thoại.
+ *
+ * `id="menu-btn"` giữ nguyên qua cả bốn lần: `reader.css`, `shell-modes.css`,
+ * `useMobileNav` và ba tệp e2e đều định vị theo nó.
+ */
+export function SidebarTrigger({ onMenuClick, navExpanded = true }: SidebarTriggerProps) {
+  const { t } = useLanguage();
+
+  return (
+    <button
+      id="menu-btn"
+      type="button"
+      className="tb-btn"
+      aria-label={t('topbar.menu')}
+      aria-expanded={navExpanded}
+      aria-controls="sidebar"
+      onClick={onMenuClick}
+    >
+      {/* `PanelLeft` — một khung với vách ngăn bên trái, đúng icon shadcn dùng
+          cho nút này. Hamburger nói "có một menu ở đây"; icon này nói "có một
+          CỘT bật tắt được", tức đúng việc nút này làm. */}
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2.25" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M8 3.75v12.5" stroke="currentColor" strokeWidth="1.5" />
+      </svg>
+    </button>
   );
 }

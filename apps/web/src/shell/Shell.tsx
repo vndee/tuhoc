@@ -17,13 +17,6 @@ export interface ShellProps {
    */
   vaultOrigin?: string | null;
   /**
-   * Người dùng đã thu gọn thanh điều hướng trên màn rộng (`useSidebarCollapse`).
-   * Đặt `.nav-collapsed` lên `#app`; luật ẩn nằm ở `styles/shell-modes.css` và
-   * treo dưới `@media (min-width: 981px)` — dưới ngưỡng ấy `#sidebar` vốn đã là
-   * ngăn kéo, nên cờ này không nói gì ở đó.
-   */
-  navCollapsed?: boolean;
-  /**
    * `true` on `/c/:courseId/:chapterId` — the READING mode of the two this
    * product has (đặc tả: `docs/superpowers/specs/2026-08-23-ia-redesign.md`).
    * It puts `.reading` on `#app` and nothing else; every difference between
@@ -92,16 +85,13 @@ export function Shell({
   rail,
   vaultOrigin,
   reading = false,
-  navCollapsed = false,
   inCourse = false,
 }: ShellProps) {
-  // Hai lớp độc lập trên cùng một nút, không phải một enum: chế độ đọc là nơi
-  // NÀO ta đang ở, thu gọn là lựa chọn của người dùng — chúng chồng nhau được
-  // (đọc một chương với thanh bên đã thu gọn từ trước) và không lớp nào suy ra
-  // được lớp kia.
+  // Hai lớp độc lập, không phải một enum: `in-course` là "có một khoá đang
+  // mở", `reading` là "đang ở trong một chương của nó". Cái sau kéo theo cái
+  // trước, nhưng chúng điều khiển hai thứ khác nhau — xem doc của từng prop.
   const appClass = [
     reading ? 'reading' : null,
-    navCollapsed ? 'nav-collapsed' : null,
     inCourse ? 'in-course' : null,
   ]
     .filter(Boolean)

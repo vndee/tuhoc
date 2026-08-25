@@ -1046,17 +1046,28 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
   max-width: 46rem;
 }
 
+/* HÀNG ĐẦU TRANG: MỘT viên, rồi một dòng chữ.
+   Viên bo tròn là hình dạng của một lời cảnh báo. Phiên bản và ngôn ngữ không
+   cảnh báo điều gì, nên chúng không được mang hình dạng ấy — cho ba thứ cùng
+   một viên là xoá mất bậc duy nhất mà hàng này có. */
 #app:not(.reading) .ch-badges {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  margin: 0 0 12px;
+  margin: 0 0 16px;
 }
 
 #app:not(.reading) .ch-badge-meta {
   font-size: 13px;
   color: var(--ink-3);
+}
+
+/* Dấu chấm giữa, không phải khoảng trắng: hai mẩu siêu dữ liệu đứng cạnh nhau
+   mà không có dấu ngăn thì đọc thành một câu. */
+#app:not(.reading) .ch-badge-dot {
+  margin: 0 6px;
+  color: var(--color-gray-300);
 }
 
 #app:not(.reading) .ch-page .ch-title {
@@ -1147,7 +1158,7 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
 #app:not(.reading) .ch-part {
   display: flex;
   align-items: baseline;
-  gap: 16px;
+  gap: 14px;
   padding: 13px 0;
   border-top: 1px solid var(--rule);
   font-size: 14.5px;
@@ -1158,21 +1169,43 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
   border-bottom: 1px solid var(--rule);
 }
 
+/* Nhãn thứ tự ("PHẦN I") thành một cột riêng, rộng cố định — mắt chạy dọc mép
+   trái gặp một cột thẳng thay vì bốn chuỗi dài ngắn khác nhau. `ch` chứ không
+   phải `px`: cột này chứa chữ, nên nó phải giãn theo cỡ chữ của người dùng. */
+#app:not(.reading) .ch-part-eyebrow {
+  flex: 0 0 auto;
+  min-width: 9ch;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
 #app:not(.reading) .ch-part-name {
   flex: 1;
+  font-weight: 500;
 }
 
 #app:not(.reading) .ch-part-count {
   flex: 0 0 auto;
   font-size: 13.5px;
   font-weight: 500;
-  color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
 
-/* Phần đã học HẾT được nói bằng MÀU, không chỉ bằng con số — mắt quét dọc cột
-   phải thấy ngay chặng nào xong. */
-#app:not(.reading) .ch-part-count[data-done] {
+/* BA trạng thái, ba màu, vì mắt quét dọc cột này để trả lời "còn chặng nào".
+   Bản trước chỉ phân biệt xong / chưa-xong, nên một chặng đã đi được 2/3 trông
+   y hệt một chặng chưa động tới. */
+#app:not(.reading) .ch-part-count[data-state='none'] {
+  color: var(--color-gray-400);
+}
+
+#app:not(.reading) .ch-part-count[data-state='partial'] {
+  color: var(--color-brand-700);
+}
+
+#app:not(.reading) .ch-part-count[data-state='done'] {
   color: var(--color-success-700);
 }
 
@@ -1363,13 +1396,14 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
    `#topbar` xếp được vào một hàng riêng trải hết hai cột.
 
    ── `auto` CHO CỘT TRÁI, KHÔNG PHẢI `--sidebar-w` ───────────────────────
-   Thanh bên biến mất ở ba trạng thái: ngoài một khoá (`:not(.in-course)`),
-   trong chế độ đọc (`.reading`), và khi người dùng thu gọn (`.nav-collapsed`).
-   Một cột khai cứng 306px sẽ chừa một dải trắng 306px ở cả ba. `auto` để cột
-   tự co về 0 khi `#sidebar` là `display: none` — một luật thay ba. */
+   Thanh bên biến mất ở hai trạng thái: ngoài một khoá (`:not(.in-course)`) và
+   trong chế độ đọc (`.reading`). Một cột khai cứng 306px sẽ chừa một dải trắng
+   306px ở cả hai. `auto` để cột tự co về 0 khi `#sidebar` là `display: none` —
+   một luật thay hai. */
 #app {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
+  /* Ba hàng: thanh trên, dải tiến độ, rồi nội dung. */
   grid-template-rows: auto auto minmax(0, 1fr);
   align-items: start;
 }
@@ -1415,4 +1449,109 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
     top: 0;
     height: 100vh;
   }
+}
+
+/* ── NÚT THU GỌN: hàng DƯỚI thanh trên, cột trái ──────────────────────────
+   Người dùng yêu cầu nó nằm dưới thanh top shell chứ không trên thanh ấy.
+   Lý do đứng vững: thanh trên chạy suốt bề ngang, còn thứ nút này bật tắt chỉ
+   chiếm cột trái — đặt nó trên dải kia là đặt một điều khiển ở xa vật nó điều
+   khiển. Ở đây nó nằm THẲNG PHÍA TRÊN `#sidebar`.
+
+   Nó là grid item của `#app` nhờ `display: contents` trên `#main`, nên nó xếp
+   được vào hàng 3 cột 1 dù trong DOM nó là con của `#main`.
+
+   `position: sticky` để nó theo người đọc khi cuộn — nếu không, cuộn xuống
+   giữa một chương dài thì cách duy nhất để bung lại mục lục là cuộn ngược lên
+   đầu trang. */
+/* CỘT 2, không phải cột 1 — người dùng chỉ đúng chỗ: khi mục lục đang mở, nút
+   phải nằm BÊN PHẢI nó, không ăn chỗ bên trong pane ấy.
+
+   Một luật đúng cho CẢ HAI trạng thái: thu gọn thì cột 1 co về 0, nên cột 2 bắt
+   đầu ở x=0 và nút tự về sát mép trái. Không cần luật thứ hai cho trạng thái
+   thứ hai, và không cần nút thứ hai. */
+/* ══════════════════════════════════════════════════════════════════════════
+   MỤC LỤC — thang chữ, màu và nhịp theo bản dựng
+   ══════════════════════════════════════════════════════════════════════════
+   `reader.css` đặt thang của giáo trình v1: nhãn phần 10.5px/700 với
+   letter-spacing .09em, mục chương 13px, số chương 11.5px — thang của một cột
+   hẹp in ra giấy. Bản dựng hướng A rộng hơn một bậc ở mọi cỡ và giãn chữ ít
+   hơn: mục lục là thứ mắt QUÉT, và quét thì cần khoảng trắng chứ không cần chữ
+   nhỏ. Màu thì KHÔNG nhạt đi — xem phép đo ở `.nav-part`. */
+
+#app:not(.reading) .nav-part {
+  margin: 18px 0 6px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  /* `--ink-3`, KHÔNG phải gray-400. Đo trên nền thật của thanh bên (gray-50):
+     gray-400 cho 2,50:1 — dưới xa ngưỡng AA 4,5:1, và ở 11px thì nhãn phần
+     gần như biến mất. `--ink-3` là gray-500 ở bản sáng (4,83:1) và gray-400 ở
+     bản tối, tức đúng một token cho cả hai đầu. */
+  color: var(--ink-3);
+}
+
+#app:not(.reading) a.nav-item {
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+/* Nền thanh bên CHÍNH LÀ `--panel`, nên tô `--panel` khi rê chuột là không tô
+   gì cả. Một bậc lên từ nền thanh bên, và bậc ấy đi ngược chiều nhau ở hai bản
+   màu — nên nó phải viết ra hai lần chứ không mượn được một token ngữ nghĩa. */
+#app:not(.reading) a.nav-item:hover {
+  background: var(--color-gray-100);
+  color: var(--ink);
+}
+
+html[data-theme='dark'] #app:not(.reading) a.nav-item:hover {
+  background: var(--color-gray-800);
+}
+
+/* KHÔNG có luật `.active` ở đây, và đó là một phép đo chứ không phải một chỗ
+   bỏ sót: mục lục bên này chỉ tồn tại NGOÀI chế độ đọc, còn `.active` nghĩa là
+   "chương đang mở" — hai điều ấy không bao giờ đúng cùng lúc. Đo trên bản đang
+   chạy: vào một chương thì `#app` thành `reading in-course`, `#sidebar` là
+   `display: none`, và mục đang đọc nằm trong `.rd-nav` — hộp mục lục của trang
+   đọc, địa phận của `course-kit/reader.css`. Viết một luật `.active` ở đây là
+   viết CSS chết trông như một quyết định. */
+
+#app:not(.reading) .nav-num {
+  min-width: 24px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* ĐÃ HỌC — chấm tròn xanh ở mép phải hàng, không phải một dấu "✓" dính sau số
+   chương. `reader.css` gắn nó vào `.nav-num::after`, tức nó chen vào GIỮA số và
+   tên chương và đẩy tên chương lệch đi vài pixel so với các hàng chưa học. Bản
+   dựng để nó ở cột phải, nơi mọi hàng dùng chung một mép và mắt quét dọc được.
+
+   Làm bằng CSS chứ không thêm một thẻ vào `CourseNav`: cùng một markup ấy còn
+   dựng ngăn kéo mục lục của trang đọc, nơi `reader.css` mới là chủ, và một thẻ
+   thừa sẽ đi theo sang đó. */
+#app:not(.reading) a.nav-item {
+  align-items: center;
+}
+
+#app:not(.reading) a.nav-item.done .nav-num::after {
+  content: none;
+}
+
+#app:not(.reading) a.nav-item.done::after {
+  content: '';
+  flex: none;
+  margin-left: auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background-color: var(--color-success-500);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.6 6.2 4.9 8.5 9.4 3.9' fill='none' stroke='%23fff' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 12px 12px;
 }

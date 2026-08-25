@@ -66,17 +66,20 @@ export function Topbar({ theme, onToggleTheme }: TopbarProps) {
   return (
     <>
       {/*
-        `#menu-btn` ĐÃ RỜI KHỎI ĐÂY sang `shell/TopNav.tsx`.
+        `#menu-btn` NAY DỰNG Ở `App.tsx`, không ở đây — nó đứng TRƯỚC `<TopNav>`
+        trong khe `topbar`, tức là phần tử đầu tiên của thanh, cả trong thứ tự
+        đọc lẫn thứ tự tab.
 
-        Nó đứng ngay sau ba mục điều hướng, và ở đó nó đọc như một mục thứ tư
-        — người dùng chỉ đúng chỗ ấy. Một nút thu gọn thuộc về phía TRÊN CỘT
-        NÓ THU GỌN, tức mép trái thanh trên, ngay phía trên `#sidebar`; đó cũng
-        là chỗ shadcn đặt `SidebarTrigger`.
+        Không thể để lại trong tệp này và dùng `order` của CSS để kéo nó về mép
+        trái: `#topbar` là một flex container, nên `order` chỉ đổi chỗ VẼ mà
+        không đổi chỗ TAB — người dùng bàn phím sẽ gặp nút mục lục sau ba mục
+        điều hướng trong khi mắt thấy nó đứng đầu. Doc của chính component này
+        đã nêu đúng cái bẫy ấy khi giải thích vì sao có HAI khe portal thay vì
+        một.
 
-        Nó phải đổi TỆP chứ không chỉ đổi `order` trong CSS: `#topbar` là một
-        flex container, nên `order` sẽ vẽ nó ở mép trái trong khi thứ tự TAB
-        vẫn để nó sau ba mục điều hướng. Doc của chính component này đã nêu
-        đúng cái bẫy ấy khi giải thích vì sao có HAI khe portal thay vì một.
+        Nó cũng KHÔNG còn là nút thu gọn: từ 981px trở lên `reader.css` ẩn hẳn
+        nó, và trên máy bàn mục lục là một cột cố định. Lý do đầy đủ ở
+        `shell/TopNav.tsx`.
       */}
       <span id="reader-nav" className="rd-slot" />
       {/*

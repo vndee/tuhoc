@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useCallback, useEffect } from 'react';
+import { useEffect } from 'react';
 import { BrowserRouter, useLocation } from 'react-router-dom';
 import { useMe } from './api/useMe';
 import { LanguageProvider } from './i18n/LanguageProvider';
@@ -9,10 +9,9 @@ import { ErrorBoundary } from './shell/ErrorBoundary';
 import { Rail } from './shell/Rail';
 import { Shell } from './shell/Shell';
 import { Sidebar } from './shell/Sidebar';
-import { AccountChip, TopNav, TopSearch } from './shell/TopNav';
+import { AccountChip, SidebarTrigger, TopNav, TopSearch } from './shell/TopNav';
 import { Topbar } from './shell/Topbar';
 import { useMobileNav } from './shell/useMobileNav';
-import { useSidebarCollapse, WIDE_QUERY } from './shell/useSidebarCollapse';
 import './styles/index.css';
 import { startSync, stopSync } from './sync/engine';
 import { ThemeProvider, useThemeContext } from './theme/ThemeContext';
@@ -60,29 +59,8 @@ const COURSE_ROUTE = /^\/c\/[^/]+/;
 
 function AppShell() {
   const { theme, toggle: toggleTheme } = useThemeContext();
-  const { toggle: toggleMobileNav } = useMobileNav();
-  const { collapsed, toggle: toggleCollapse } = useSidebarCollapse();
+  const { open: mobileNavOpen, toggle: toggleMobileNav } = useMobileNav();
   const location = useLocation();
-
-  /**
-   * MỘT nút, hai cơ chế, chọn theo bề rộng NGAY LÚC BẤM.
-   *
-   * Với người dùng đây là cùng một câu — "cho tôi thấy / đừng cho tôi thấy
-   * thanh điều hướng" — nên hai nút sẽ là hai cách nói một điều, đặt cạnh nhau,
-   * và đó đúng là thứ đặc tả IA gọi là mô hình điều hướng thứ hai.
-   *
-   * Hỏi `matchMedia` lúc bấm chứ không giữ bề rộng trong state: không cần
-   * listener `resize`, không có state lệch pha sau khi xoay máy, và câu hỏi chỉ
-   * có nghĩa đúng vào khoảnh khắc người ta bấm. `matchMedia` được bọc vì jsdom
-   * cũ có thể không có nó — thiếu thì coi như màn hẹp, tức giữ nguyên hành vi
-   * ngăn kéo vốn có.
-   */
-  const onMenuClick = useCallback(() => {
-    const wide =
-      typeof window.matchMedia === 'function' && window.matchMedia(WIDE_QUERY).matches;
-    if (wide) toggleCollapse();
-    else toggleMobileNav();
-  }, [toggleCollapse, toggleMobileNav]);
 
   useSyncLifecycle();
 
@@ -94,15 +72,19 @@ function AppShell() {
       // luật CSS treo dưới `#app.reading`.
       reading={CHAPTER_ROUTE.test(location.pathname)}
       inCourse={COURSE_ROUTE.test(location.pathname)}
-      navCollapsed={collapsed}
       sidebar={<Sidebar />}
       topbar={
         <>
+          {/* NÚT NGĂN KÉO CỦA MÀN HẸP, đứng trước nhãn hiệu — chỗ mọi người
+              tìm nó trên điện thoại. `reader.css` giữ nó ẩn từ 981px trở lên,
+              nên trên máy bàn hàng này bắt đầu thẳng bằng nhãn hiệu, đúng như
+              bản dựng đã duyệt. */}
+          <SidebarTrigger onMenuClick={toggleMobileNav} navExpanded={mobileNavOpen} />
           {/* TRƯỚC `<Topbar>`, nên nhãn hiệu và ba đích là thứ đầu tiên cả
               trong thứ tự đọc lẫn thứ tự tab. Ở đây chứ không trong `<Topbar>`
               vì `TopNav` đọc `useMe()` — xem doc của chính nó, và lý do y hệt
               cái đã giữ `<LanguageSwitcher>` ở ngoài. */}
-          <TopNav onMenuClick={onMenuClick} navExpanded={!collapsed} />
+          <TopNav />
           <Topbar theme={theme} onToggleTheme={toggleTheme} />
           {/* Gắn ở khe `topbar` chứ không trong <Topbar>: <Topbar> nhận mọi
               thứ qua props và được ba tệp test render trực tiếp, nên cho nó
