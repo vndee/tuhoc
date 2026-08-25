@@ -18,17 +18,18 @@
 // one exception, checked for EQUALITY with the empty set: it is the
 // package a later task serves to a real browser, so it must be flawless.
 //
-// This file covers the CONTENT cases only — script-tag, event-handler-attr,
-// javascript-url, embedded-frame, tier-field, loose-js — because Task 7
-// adds the eight WIDGET_* rules and owns the remaining five hostile cases
-// (widget-extra-file, widget-orphan, widget-external-url, widget-missing,
-// widget-forbidden-api). contentCases below is an EXPLICIT slice, not a
-// directory listing: globbing every hostile/* directory and silently
-// skipping the ones this task does not cover would mean a renamed or
-// newly-added case fails to get its own test with no signal that it was
-// ever supposed to. wantAllHostileCasesCovered documents (and checks) that
-// the two lists partition the whole hostile/ corpus between this task and
-// Task 7, so a case neither list names fails loudly instead of quietly
+// This file covers the whole hostile/ corpus, split across two explicit
+// lists: contentCases — script-tag, event-handler-attr, javascript-url,
+// embedded-frame, tier-field, loose-js — is Task 6's six content cases,
+// run by TestHostileContentCases. widgetCases — widget-extra-file,
+// widget-orphan, widget-external-url, widget-missing, widget-forbidden-api
+// — is Task 7's five widget cases, run by TestHostileWidgetCases. Both
+// lists are EXPLICIT slices, not a directory listing: globbing every
+// hostile/* directory and silently skipping the ones a task does not cover
+// would mean a renamed or newly-added case fails to get its own test with
+// no signal that it was ever supposed to. TestHostileCorpusIsFullyAccountedFor
+// documents (and checks) that the two lists partition the whole hostile/
+// corpus, so a case neither list names fails loudly instead of quietly
 // being skipped by both.
 package pkgcheck
 
@@ -58,11 +59,9 @@ var contentCases = []string{
 	"loose-js",
 }
 
-// widgetCases is Task 7's five, named here ONLY so
-// TestHostileCorpusIsFullyAccountedFor can prove contentCases plus
-// widgetCases covers every directory under hostile/ — not to run them:
-// running them is that task's job, against rules this package does not
-// implement yet.
+// widgetCases is Task 7's five, run by TestHostileWidgetCases below and
+// also named here so TestHostileCorpusIsFullyAccountedFor can prove
+// contentCases plus widgetCases covers every directory under hostile/.
 var widgetCases = []string{
 	"widget-extra-file",
 	"widget-orphan",
@@ -230,20 +229,18 @@ func codeSet(t *testing.T, dir string) map[string]bool {
 	return set
 }
 
-func TestHostileContentCases(t *testing.T) {
-	if len(contentCases) == 0 {
-		// If this ever loses its entries, every case below is a t.Run
-		// that never runs — a describe-block-shaped false green, exactly
-		// what contract.test.ts's "kho hostile khong rong" guards against
-		// on the TypeScript side. Keep the analogous guard here too.
-		t.Fatal("contentCases is empty — this test would silently pass without checking anything")
-	}
-
-	for _, name := range contentCases {
+// runHostileCases runs the SAME subset assertion against every name in
+// cases: dir must exist, its expect.json's codes must all appear in what
+// Validate finds. Shared by TestHostileContentCases and
+// TestHostileWidgetCases — the two tests differ only in which half of the
+// corpus each is responsible for, never in what "passing" means for a case.
+func runHostileCases(t *testing.T, cases []string) {
+	t.Helper()
+	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
 			dir := filepath.Join(fixturesRoot, "hostile", name)
 			if _, err := os.Stat(dir); err != nil {
-				t.Fatalf("listed in contentCases but not found on disk: %v", err)
+				t.Fatalf("listed but not found on disk: %v", err)
 			}
 
 			expected := readExpect(t, dir)
@@ -265,6 +262,26 @@ func TestHostileContentCases(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHostileContentCases(t *testing.T) {
+	if len(contentCases) == 0 {
+		// If this ever loses its entries, every case below is a t.Run
+		// that never runs — a describe-block-shaped false green, exactly
+		// what contract.test.ts's "kho hostile khong rong" guards against
+		// on the TypeScript side. Keep the analogous guard here too.
+		t.Fatal("contentCases is empty — this test would silently pass without checking anything")
+	}
+	runHostileCases(t, contentCases)
+}
+
+// TestHostileWidgetCases is Task 7's half of TestHostileContentCases: the
+// five widget-* hostile cases, run through the exact same subset assertion.
+func TestHostileWidgetCases(t *testing.T) {
+	if len(widgetCases) == 0 {
+		t.Fatal("widgetCases is empty — this test would silently pass without checking anything")
+	}
+	runHostileCases(t, widgetCases)
 }
 
 func TestValidCourseHasZeroFindings(t *testing.T) {

@@ -501,6 +501,18 @@ func Validate(zipBytes []byte) (findings []Finding, pkg *Package, err error) {
 		findings = append(findings, scanHTMLText(path, data)...)
 	}
 
+	// Task 7's eight widget rules, run last — mirrors validate.ts's own
+	// call order, where checkWidgets is pushed after the content-rule scan
+	// finishes. Unlike that scan, TypeScript's checkWidgets call is NOT
+	// gated on the byte budget (validate.ts's own comment on its call
+	// site says so explicitly). That gate is moot here for a different
+	// reason: a Go package over MaxUncompressedBytes already returned a
+	// TOO_LARGE finding above, during inflation, long before this line is
+	// reached — see the TOO_LARGE branch's own comment for why stopping
+	// there matches what the real pipeline does end to end, not a
+	// divergence this line would need to compensate for.
+	findings = append(findings, checkWidgets(files, paths, located)...)
+
 	if len(findings) > 0 {
 		return findings, nil, nil
 	}
