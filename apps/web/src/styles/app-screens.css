@@ -692,6 +692,7 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
 #app:not(.reading) .lib-empty-lede,
 #app:not(.reading) .lib-empty-ways,
 #app:not(.reading) .lib-empty-registry,
+#app:not(.reading) .set-note,
 #app:not(.reading) .ch-lede,
 #app:not(.reading) .prog-sentence,
 #app:not(.reading) .dash-stats-note,
@@ -1220,8 +1221,18 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
   white-space: nowrap;
 }
 
+/* `background: transparent` phải nói TƯỜNG MINH ở cả hover lẫn `.on`:
+   `settings-auth.css` cho hover nền `--accent-soft` và cho mục đang chọn nền
+   `--panel` — hợp lý với một cột dọc, nhưng trong một hàng tab nó vẽ ra một
+   cái hộp xám quanh nhãn, chồng lên nét gạch chân. Đo được trên trình duyệt
+   thật: mục "Tài khoản" mang một khung mờ mà bản dựng không có. */
 #app:not(.reading) .set-toc-item:hover {
+  background: transparent;
   color: var(--ink-2);
+}
+
+#app:not(.reading) .set-toc-item.on {
+  background: transparent;
 }
 
 /* Mục đang xem đọc được KHÔNG CHỈ bằng màu: nét 2px và chữ đậm hơn vẫn nói ra
@@ -1238,8 +1249,58 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
   border-radius: var(--radius-xs);
 }
 
+/* ── HAI CỘT: nhãn trái, điều khiển phải ─────────────────────────────────
+   Bản dựng xếp mỗi mục thành một hàng: bên trái là tên mục cùng một câu giải
+   thích, bên phải là thứ bấm được. Cột trái hẹp và cố định nên mắt quét dọc
+   nó như một mục lục; cột phải lấy hết chỗ còn lại.
+
+   Làm bằng grid trên `.set-main` thay vì bọc thêm thẻ trong bốn component:
+   mỗi lần chỉ MỘT mục được dựng (`section === 'account' && …`), nên thứ tự
+   con của `.set-main` luôn là h2 → câu dẫn → phần còn lại.
+
+   `>` là load-bearing: `AiSection` có `.set-sub` lồng bên trong với
+   `.set-lede` riêng của nó, và một bộ chọn không có `>` sẽ kéo cả chúng sang
+   cột trái. `:first-of-type` cũng vậy — mục Trợ lý AI có HAI `<p class="set-lede">`
+   ở cấp ngoài, và chỉ cái đầu là câu giải thích của mục. */
 #app:not(.reading) .set-main {
-  max-width: 46rem;
+  display: grid;
+  /* Cột phải có TRẦN, và nó không mâu thuẫn với "trang dùng toàn bề ngang":
+     trang trải hết, nội dung thì dừng ở khổ đọc được. Không có trần, thẻ danh
+     tính kéo dài 1800px với đúng một dòng chữ ở mép trái — rỗng ruột, và câu
+     cảnh báo bên dưới thành một dải chữ dài quá tầm mắt quét ngược. */
+  grid-template-columns: minmax(11rem, 16rem) minmax(0, 52rem);
+  column-gap: 40px;
+  align-items: start;
+  max-width: none;
+}
+
+#app:not(.reading) .set-main > * {
+  grid-column: 2;
+  min-width: 0;
+}
+
+#app:not(.reading) .set-main > .set-h:first-of-type {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+#app:not(.reading) .set-main > .set-lede:first-of-type {
+  grid-column: 1;
+  grid-row: 2;
+  margin-bottom: 0;
+}
+
+@media (max-width: 860px) {
+  #app:not(.reading) .set-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #app:not(.reading) .set-main > *,
+  #app:not(.reading) .set-main > .set-h:first-of-type,
+  #app:not(.reading) .set-main > .set-lede:first-of-type {
+    grid-column: 1;
+    grid-row: auto;
+  }
 }
 
 #app:not(.reading) .set-h {
