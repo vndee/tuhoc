@@ -307,15 +307,22 @@ func Validate(zipBytes []byte) (findings []Finding, pkg *Package, err error) {
 			// Bound the work: stop reading the archive the moment the
 			// ceiling is crossed, mid-entry if that is where it happens,
 			// rather than finishing the read first and checking after.
-			// validate.ts's validatePackage can afford to keep running
-			// its cheap manifest/duplicate/JS-path checks past this
-			// point because course-format's zip.ts has ALREADY paid for
-			// (and bounded) decompression by the time that function
-			// runs; this Validate does its own bomb-bounded inflation
-			// and has no such earlier layer, so continuing here would
-			// mean inflating attacker-controlled bytes past the budget
-			// just to collect findings that do not change the outcome —
-			// TOO_LARGE alone already makes pkg nil.
+			// This is NOT a deliberate divergence from the real TypeScript
+			// pipeline — it is what that pipeline does too. CLI, CI and the
+			// browser all read a package through course-format's zip.ts
+			// BEFORE validatePackage ever sees it, and zip.ts bounds
+			// decompression itself and throws its own TOO_LARGE mid-archive
+			// (see zip.ts's onfile/ondata: the claimed-size check and the
+			// running-total check both fire before a byte reaches
+			// validatePackage). validatePackage's own overBudget branch,
+			// which keeps running its cheap manifest/duplicate/JS-path
+			// checks against an already-decompressed map, is reachable only
+			// by calling that function directly with a synthetic map that
+			// skips zip.ts entirely — a shape validatePackage's own unit
+			// tests use, not a shape any real caller produces. So there is
+			// no real pipeline for this Go code to have chosen a different
+			// finding set from: stopping here matches what course-format
+			// actually does end to end.
 			return append(findings, finding(
 				"TOO_LARGE", packageRoot,
 				fmt.Sprintf("uncompressed size exceeds the %d byte budget", MaxUncompressedBytes),
@@ -337,15 +344,28 @@ func Validate(zipBytes []byte) (findings []Finding, pkg *Package, err error) {
 	// own approach directly: checkManifestFields walks a dynamically-typed
 	// JSON value so it can tell "field absent" apart from "field present
 	// with the wrong type" — exactly the distinction a Go struct's zero
-	// values erase. json.Unmarshal into a map also rejects a top-level
+	// values erase. json.Unmarshal into a map ALMOST rejects a top-level
 	// JSON array or scalar on its own (Go: "cannot unmarshal array/number
-	// into Go value of type map[string]interface {}"), which is what
-	// gives MANIFEST_PARSE both "invalid JSON syntax" and "valid JSON but
-	// not an object" through the one error path, matching validate.ts's
-	// separate isRecord check folded into one.
+	// into Go value of type map[string]interface {}"), which is most of
+	// what gives MANIFEST_PARSE both "invalid JSON syntax" and "valid JSON
+	// but not an object" through the one error path, matching validate.ts's
+	// separate isRecord check folded into one — EXCEPT for the JSON literal
+	// null, which encoding/json treats as "no error, set the destination to
+	// its zero value" for a map exactly as it would for a pointer. A
+	// manifest.json containing exactly `null` therefore parses with
+	// jsonErr == nil and manifest == nil, and the explicit nil check right
+	// below is what turns that back into MANIFEST_PARSE instead of letting
+	// it fall through to checkManifestFields, which would otherwise read a
+	// nil map as "every field absent" and report a pile of MANIFEST_FIELD
+	// findings for a document validate.ts's isRecord(v) — v !== null — has
+	// always refused in one step (see TestManifestParseNull).
 	var manifest map[string]any
 	if jsonErr := json.Unmarshal(manifestBytes, &manifest); jsonErr != nil {
 		findings = append(findings, finding("MANIFEST_PARSE", manifestPath, fmt.Sprintf("invalid JSON: %v", jsonErr)))
+		return findings, nil, nil
+	}
+	if manifest == nil {
+		findings = append(findings, finding("MANIFEST_PARSE", manifestPath, "top-level value must be a JSON object, not null"))
 		return findings, nil, nil
 	}
 

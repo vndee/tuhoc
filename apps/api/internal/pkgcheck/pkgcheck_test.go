@@ -303,3 +303,199 @@ func TestPathEscapeInZipEntry(t *testing.T) {
 		t.Fatalf("expected PATH_ESCAPE, got %+v", findings)
 	}
 }
+
+// --- package-shape rules the shared corpus does not cover -----------------
+//
+// fixtures/format-v2/hostile/ holds only the six content cases and Task 7's
+// five widget cases (see contract_test.go's own file comment). None of the
+// eleven package-shape codes below has a corpus fixture, so — the same
+// reasoning that produced TestFormTagIsFlagged/TestTagAttrFloodIsFlagged
+// above — each gets its own direct test rather than resting on "the corpus
+// happens to exercise it".
+
+func TestManifestMissingIsFlagged(t *testing.T) {
+	findings, pkg, err := Validate(buildZip(t, map[string]string{
+		"chapters/c1.html": `<p>a package with no manifest.json at all</p>`,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected system error: %v", err)
+	}
+	if pkg != nil {
+		t.Fatal("a package with no manifest.json must be rejected")
+	}
+	if !hasCode(findings, "MANIFEST_MISSING") {
+		t.Fatalf("expected MANIFEST_MISSING, got %+v", findings)
+	}
+}
+
+func TestManifestParseInvalidJSON(t *testing.T) {
+	findings, pkg, err := Validate(buildZip(t, map[string]string{
+		"manifest.json": `{not valid json`,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected system error: %v", err)
+	}
+	if pkg != nil {
+		t.Fatal("a package with unparseable manifest.json must be rejected")
+	}
+	if !hasCode(findings, "MANIFEST_PARSE") {
+		t.Fatalf("expected MANIFEST_PARSE, got %+v", findings)
+	}
+}
+
+// TestManifestParseNull pins the fix for a hostile input the corpus does
+// not carry and the original fidelity review missed: manifest.json
+// containing exactly the JSON literal null. json.Unmarshal into a
+// map[string]any returns no error and leaves the map nil for that one
+// input (see the comment at the null check in Validate), so without an
+// explicit check this fell through into checkManifestFields, which read
+// the nil map as "every field absent" and reported roughly nine
+// MANIFEST_FIELD findings instead of the single MANIFEST_PARSE
+// validate.ts's isRecord (v !== null) reports for the same input.
+func TestManifestParseNull(t *testing.T) {
+	findings, pkg, err := Validate(buildZip(t, map[string]string{
+		"manifest.json": `null`,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected system error: %v", err)
+	}
+	if pkg != nil {
+		t.Fatal("a package whose manifest.json is the JSON literal null must be rejected")
+	}
+	if !hasCode(findings, "MANIFEST_PARSE") {
+		t.Fatalf("expected MANIFEST_PARSE, got %+v", findings)
+	}
+	if hasCode(findings, "MANIFEST_FIELD") {
+		t.Fatalf("a null manifest must stop at MANIFEST_PARSE, matching validate.ts, not fall through to per-field checks — got %+v", findings)
+	}
+}
+
+func TestManifestFieldMissingRequiredFields(t *testing.T) {
+	findings, pkg, err := Validate(buildZip(t, map[string]string{
+		"manifest.json": `{"id": "x"}`,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected system error: %v", err)
+	}
+	if pkg != nil {
+		t.Fatal("a manifest missing title/lang/version/runtime/license/authors/parts must be rejected")
+	}
+	if !hasCode(findings, "MANIFEST_FIELD") {
+		t.Fatalf("expected MANIFEST_FIELD, got %+v", findings)
+	}
+}
+
+func TestSemverIsFlagged(t *testing.T) {
+	manifest := strings.Replace(minimalManifest, `"version": "1.0.0",`, `"version": "not-a-semver",`, 1)
+	if manifest == minimalManifest {
+		t.Fatal("test fixture bug: the version replacement did not match minimalManifest")
+	}
+	findings, pkg, err := Validate(buildZip(t, map[string]string{
+		"manifest.json":    manifest,
+		"chapters/c1.html": `<p>hi</p>`,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected system error: %v", err)
+	}
+	if pkg != nil {
+		t.Fatal("a manifest with a non-semver version must be rejected")
+	}
+	if !hasCode(findings, "SEMVER") {
+		t.Fatalf("expected SEMVER, got %+v", findings)
+	}
+}
+
+func TestRuntimeRangeIsFlagged(t *testing.T) {
+	manifest := strings.Replace(minimalManifest, `"runtime": "^1",`, `"runtime": ">=1",`, 1)
+	if manifest == minimalManifest {
+		t.Fatal("test fixture bug: the runtime replacement did not match minimalManifest")
+	}
+	findings, pkg, err := Validate(buildZip(t, map[string]string{
+		"manifest.json":    manifest,
+		"chapters/c1.html": `<p>hi</p>`,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected system error: %v", err)
+	}
+	if pkg != nil {
+		t.Fatal("a manifest with a non-caret-range runtime must be rejected")
+	}
+	if !hasCode(findings, "RUNTIME_RANGE") {
+		t.Fatalf("expected RUNTIME_RANGE, got %+v", findings)
+	}
+}
+
+const duplicateChapterIDManifest = `{
+  "id": "unit-test",
+  "title": "Unit test package",
+  "description": "",
+  "lang": "vi",
+  "version": "1.0.0",
+  "runtime": "^1",
+  "license": "CC0-1.0",
+  "authors": [{"name": "test"}],
+  "generatedBy": "ai",
+  "parts": [{"title": "Part", "chapters": [
+    {"id": "c1", "num": "1", "title": "C1a", "short": "C1a", "file": "chapters/c1.html"},
+    {"id": "c1", "num": "2", "title": "C1b", "short": "C1b", "file": "chapters/c2.html"}
+  ]}]
+}`
+
+func TestDuplicateChapterIDIsFlagged(t *testing.T) {
+	findings, pkg, err := Validate(buildZip(t, map[string]string{
+		"manifest.json":    duplicateChapterIDManifest,
+		"chapters/c1.html": `<p>one</p>`,
+		"chapters/c2.html": `<p>two</p>`,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected system error: %v", err)
+	}
+	if pkg != nil {
+		t.Fatal("a manifest with two chapters sharing one id must be rejected")
+	}
+	if !hasCode(findings, "DUPLICATE_CHAPTER_ID") {
+		t.Fatalf("expected DUPLICATE_CHAPTER_ID, got %+v", findings)
+	}
+	// Both chapter files genuinely exist — isolates DUPLICATE_CHAPTER_ID
+	// from CHAPTER_FILE_MISSING so this test fails only if THIS rule breaks.
+	if hasCode(findings, "CHAPTER_FILE_MISSING") {
+		t.Fatalf("test fixture bug: both chapter files exist, CHAPTER_FILE_MISSING should not fire — got %+v", findings)
+	}
+}
+
+func TestChapterFileMissingIsFlagged(t *testing.T) {
+	findings, pkg, err := Validate(buildZip(t, map[string]string{
+		"manifest.json": minimalManifest,
+		// chapters/c1.html deliberately absent: the manifest names it, the
+		// package does not carry it.
+	}))
+	if err != nil {
+		t.Fatalf("unexpected system error: %v", err)
+	}
+	if pkg != nil {
+		t.Fatal("a manifest naming a chapter file the package does not carry must be rejected")
+	}
+	if !hasCode(findings, "CHAPTER_FILE_MISSING") {
+		t.Fatalf("expected CHAPTER_FILE_MISSING, got %+v", findings)
+	}
+}
+
+func TestTooLargeIsFlagged(t *testing.T) {
+	// Highly compressible on purpose: DEFLATE squeezes MaxUncompressedBytes
+	// of one repeated byte down to a few KiB, so the test zip stays small
+	// and fast to build even though it must decompress past the budget.
+	big := strings.Repeat("a", MaxUncompressedBytes+4096)
+	findings, pkg, err := Validate(buildZip(t, map[string]string{
+		"manifest.json":    minimalManifest,
+		"chapters/c1.html": big,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected system error: %v", err)
+	}
+	if pkg != nil {
+		t.Fatal("a package whose decompressed size exceeds the budget must be rejected")
+	}
+	if !hasCode(findings, "TOO_LARGE") {
+		t.Fatalf("expected TOO_LARGE, got %+v", findings)
+	}
+}
