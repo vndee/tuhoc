@@ -22,8 +22,8 @@ import (
 	"github.com/vndee/tuhoc-api/internal/auth"
 	"github.com/vndee/tuhoc-api/internal/catalog"
 	"github.com/vndee/tuhoc-api/internal/config"
-	"github.com/vndee/tuhoc-api/internal/course"
 	"github.com/vndee/tuhoc-api/internal/discuss"
+	"github.com/vndee/tuhoc-api/internal/pkgcheck"
 	"github.com/vndee/tuhoc-api/internal/rating"
 	"github.com/vndee/tuhoc-api/internal/stats"
 	// appsync is internal/sync under an explicit alias, not its default
@@ -47,39 +47,14 @@ const (
 	authRateLimitExpiration = time.Minute
 )
 
-// courseUploadRateLimitMax and courseUploadRateLimitExpiration are the
-// request budget applied to POST /courses, per SESSION rather than per IP
-// (see the KeyGenerator where it is mounted).
-//
-// It answers the half of "an authenticated account can upload without
-// limit" that a storage quota cannot: course.MaxOwnerBytes bounds the
-// disk, but an upload also costs CPU and memory expanding an archive, and
-// that is spent whether or not the row is ever stored — an owner already
-// at their quota can still make the server expand a 20 MiB package, and
-// so can an owner posting zip bombs that are rejected only after being
-// expanded. Both are refusals, so the budget counts REQUESTS and not
-// successful imports; skipping failures would leave exactly the cheapest
-// flood unrationed.
-//
-// 60 a minute is deliberately generous. It is not the storage defense,
-// and a person importing course packages will never approach it; what it
-// removes is the unbounded case. A budget denominated in BYTES rather
-// than requests would be the better shape (twenty 20 MiB packages and
-// twenty malformed ones cost the server very different amounts), and is
-// recorded as debt rather than improvised here.
-const (
-	courseUploadRateLimitMax        = 60
-	courseUploadRateLimitExpiration = time.Minute
-)
-
 // bodyLimit refuses a request whose body is larger than max, one route at
 // a time.
 //
-// fiber v2's own BodyLimit is an APP setting, and POST /courses needs a
-// far larger one than anything else here — so without this, every route
-// inherits the package-upload ceiling. A review measured the widening on
-// the two endpoints that got it by accident: the items one request could
-// carry went from ~39 303 to ~204 919 (5.21×).
+// fiber v2's own BodyLimit is an APP setting, and PUT /admin/courses/:slug
+// needs a far larger one than anything else here — so without this, every
+// route inherits the package-upload ceiling. A review measured the
+// widening on the two endpoints that got it by accident: the items one
+// request could carry went from ~39 303 to ~204 919 (5.21×).
 //
 // It is mounted BEFORE auth.Require on the routes that use it, so an
 // oversized body is refused without spending a pool connection on
@@ -203,11 +178,22 @@ type Deps struct {
 // New builds a Fiber app with the standard middleware stack (recover,
 // logger, CORS) and the health check route.
 func New(cfg config.Config, deps Deps) *fiber.App {
-	// BodyLimit is raised from fiber's 4 MiB default because POST /courses
-	// accepts a course package, and a legitimate one may be up to 20 MiB
-	// of contents that barely compress (a course is mostly images once it
-	// stops being mostly prose). course.MaxUploadBytes is that ceiling
-	// plus room for zip and multipart framing.
+	// BodyLimit is raised from fiber's 4 MiB default because
+	// PUT /admin/courses/:slug accepts a course package, and a legitimate
+	// one may be up to 20 MiB of contents that barely compress (a course
+	// is mostly images once it stops being mostly prose). pkgcheck.
+	// MaxUploadBytes is that ceiling plus room for zip framing — the same
+	// constant catalog.Handler.Publish itself checks the body against (see
+	// that method), so there is one number, not two that could drift.
+	//
+	// This used to be internal/course's own MaxUploadBytes, back when the
+	// route that needed the wide ceiling was POST /courses (an
+	// authenticated user's private import). Task 9 deleted that route along
+	// with the per-user package store; the wide ceiling still exists for
+	// the same underlying reason — a course package's contents can be
+	// 20 MiB — it is just PUT /admin/courses/:slug that needs it now, and
+	// pkgcheck (Tasks 6-7's validation gate, which both the CLI and this
+	// server import) is where that number is defined today.
 	//
 	// It is a per-APP setting in fiber v2, not a per-route one, so every
 	// other route would inherit it. This comment once called that "a real,
@@ -227,9 +213,10 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	//
 	// This limit is NOT the package size rule and must never be mistaken
 	// for it: it bounds the bytes on the wire, while the rule that matters
-	// (course.MaxUncompressedBytes) bounds the bytes after expansion. A
-	// zip bomb passes this one comfortably.
-	app := fiber.New(fiber.Config{BodyLimit: int(course.MaxUploadBytes)})
+	// (pkgcheck.MaxUncompressedBytes) bounds the bytes after expansion. A
+	// zip bomb passes this one comfortably — pkgcheck.Validate is what
+	// actually stops it, during decompression.
+	app := fiber.New(fiber.Config{BodyLimit: int(pkgcheck.MaxUploadBytes)})
 
 	// Fiber's CORS middleware treats an empty AllowOrigins as the
 	// wildcard "*", which it refuses to combine with AllowCredentials —
@@ -313,48 +300,12 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	app.Post("/events/batch", bodyLimit(stats.MaxBatchBytes), auth.Require(deps.Pool), statsHandler.EventsBatch)
 	app.Get("/stats", auth.Require(deps.Pool), statsHandler.Stats)
 
-	// Course routes. Behind auth.Require(deps.Pool) like every route
-	// above, and for a sharper reason than most: every course.Repo method
-	// is keyed on an owner id, and that id must come from the
-	// authenticated session (auth.UID) — never from a request body, form
-	// field, or query parameter. See handler.go.
-	//
-	// The manifest route is registered BEFORE the wildcard so it wins the
-	// match. Both would serve the same bytes, but the explicit route is
-	// the one the brief names as a contract, and leaving it implicit would
-	// make it disappear the day the wildcard's shape changes.
-	//
-	// POST additionally carries a per-session request budget, mounted
-	// AFTER auth.Require so the key can be the authenticated user id
-	// rather than a client IP: what is being rationed is the work one
-	// ACCOUNT can force the server to do expanding archives, and an IP is
-	// neither necessary nor sufficient to identify one. See
-	// courseUploadRateLimitMax, and course.MaxOwnerBytes for the other
-	// half of the answer (this one bounds work, that one bounds storage).
-	courseHandler := course.NewHandler(course.NewUsecase(course.NewRepo(deps.Pool)))
-	uploadLimiter := limiter.New(limiter.Config{
-		Max:        courseUploadRateLimitMax,
-		Expiration: courseUploadRateLimitExpiration,
-		KeyGenerator: func(c *fiber.Ctx) string {
-			return auth.UID(c).String()
-		},
-		LimitReached: func(c *fiber.Ctx) error {
-			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
-				"error": "too many package uploads; try again in a minute",
-			})
-		},
-	})
-	app.Get("/courses", auth.Require(deps.Pool), courseHandler.List)
-	app.Post("/courses", auth.Require(deps.Pool), uploadLimiter, courseHandler.Post)
-	app.Get("/courses/:id/@:version/manifest.json", auth.Require(deps.Pool), courseHandler.Manifest)
-	app.Get("/courses/:id/@:version/*", auth.Require(deps.Pool), courseHandler.Asset)
-
 	// Rating routes. Behind auth.Require(deps.Pool) like every route
-	// above, and for the same sharp reason as the course routes: the voter
-	// on every write is auth.UID(c), never a body field, query parameter,
-	// or header. rating.Repo.Put takes the user id as an argument so that
-	// decision is made in the open here rather than inside a struct
-	// literal. See internal/rating/handler.go.
+	// above, and for a sharp reason of its own: the voter on every write is
+	// auth.UID(c), never a body field, query parameter, or header.
+	// rating.Repo.Put takes the user id as an argument so that decision is
+	// made in the open here rather than inside a struct literal. See
+	// internal/rating/handler.go.
 	//
 	// GET /ratings deliberately has no "everything" form: it answers only
 	// about the ids the caller names, which is what keeps a private course
@@ -363,8 +314,8 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// adding one.
 	//
 	// bodyLimit is not mounted: the body is one small JSON object, and
-	// fiber's app-wide ceiling (raised for POST /courses) is not a
-	// meaningful bound on it. The bound that matters for this endpoint is
+	// fiber's app-wide ceiling (raised for PUT /admin/courses/:slug) is not
+	// a meaningful bound on it. The bound that matters for this endpoint is
 	// rating.MaxRatingsPerUser, which caps rows rather than bytes —
 	// registry_id has no foreign key, so an account could otherwise write
 	// unboundedly many rows by inventing ids.
@@ -400,28 +351,23 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	catalogHandler := catalog.NewHandler(catalog.NewUsecase(catalog.NewRepo(deps.Pool)))
 
 	// Public course-reading routes (Task 9): no auth in front of any of
-	// them — courses are free and public to read, spec §2.4's own
-	// decision. Three of the four new routes are mounted here for real;
-	// the fourth, GET /courses, is not, and that omission is deliberate
-	// rather than an oversight:
+	// them — courses are free and public to read, spec §2.4's own decision.
 	//
-	// Fiber resolves two routes registered at the IDENTICAL (method, path)
-	// by always dispatching to whichever was registered FIRST — verified
-	// empirically while building this, not assumed — so a second
-	// `app.Get("/courses", ...)` placed anywhere in this file would simply
-	// never run: the OLD courseHandler.List below already claims that
-	// exact route, and it must keep claiming it until this task's SECOND
-	// commit unmounts it (see that commit's message for why the two moves
-	// happen together). catalogHandler.PublicList is fully implemented
-	// and already covered by its own test in
-	// internal/catalog/catalog_test.go — mounted there on a throwaway
-	// app rather than through this file, specifically so its correctness
-	// does not have to wait on the route becoming reachable at
-	// GET /courses. The other three routes below have no such collision
-	// (a request's third path segment is either absent, "chapters", or
-	// "assets" — never the literal "@" the OLD manifest/asset routes
-	// require in that position — so both old and new coexist safely) and
-	// are mounted, and tested end to end, starting now.
+	// This is the ONLY reader-facing meaning "/courses" has left. Until
+	// this commit, GET /courses/POST /courses/GET .../manifest.json and
+	// GET .../@:version/* belonged to internal/course — a per-user package
+	// store, gated behind auth.Require, keyed on owner_id. That package,
+	// its table (course_packages), and the routes below are deleted
+	// together in this commit (see the commit message for why: readers no
+	// longer import a private copy, so there is nothing left for any of it
+	// to protect). Three of these four routes were already mounted, and
+	// already tested end to end, in the commit before this one; GET
+	// /courses itself could not be, because fiber dispatches an identical
+	// (method, path) pair to whichever route was registered FIRST — the
+	// OLD private listing claimed that exact path — so PublicList's real
+	// wiring waits for the old route's removal right here, in the same
+	// commit.
+	app.Get("/courses", catalogHandler.PublicList)
 	app.Get("/courses/:slug", catalogHandler.PublicManifest)
 	app.Get("/courses/:slug/chapters/:chapterId", catalogHandler.PublicChapter)
 	app.Get("/courses/:slug/assets/*", catalogHandler.PublicAsset)
