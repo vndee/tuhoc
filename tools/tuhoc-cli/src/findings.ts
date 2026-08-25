@@ -53,6 +53,11 @@ export const FIX_HINTS: Record<FindingCode, string> = {
     '  "generatedBy": "human"       (hoặc "ai", "mixed" — phải trung thực)\n' +
     '  "authors": [{ "name": "Tên bạn" }]\n' +
     'Mô tả đầy đủ từng trường: docs/course-format.md.',
+  // format v2 xoá hẳn khái niệm "hạng" — không còn "content" lẫn "interactive"
+  // để chọn. Hint này CHỈ nói xoá trường, không nói đổi giá trị: xem
+  // WIDGET_* bên dưới cho đường thay thế của phần tương tác.
+  TIER_REMOVED:
+    'Xoá hẳn trường "tier" khỏi manifest.json, dù nó đang mang giá trị gì. Định dạng mới không còn khái niệm "hạng" — mọi course đều là nội dung tĩnh; phần cần chạy mã (đếm điểm, vẽ biểu đồ tương tác…) tách ra thành widget riêng dưới widgets/<tên>/index.html. Xem docs/course-format.md §4.',
   SEMVER: 'Trường "version" phải là semver ba số, ví dụ "1.0.0" hoặc "0.2.1-beta.1".',
   RUNTIME_RANGE:
     'Trường "runtime" chỉ nhận dải caret 1–3 số, ví dụ "^1", "^1.2", "^1.2.3". Không dùng ">=", "||" hay "x".',
@@ -74,6 +79,25 @@ export const FIX_HINTS: Record<FindingCode, string> = {
     'Xoá tệp JavaScript này khỏi gói, hoặc đổi "tier" trong manifest.json thành "interactive" nếu course thật sự cần nó.',
   TAG_ATTR_FLOOD:
     'Một thẻ đơn lẻ trong tệp này mang quá 1024 thuộc tính. Gần như chắc chắn đây không phải HTML thật — hay gặp nhất là JavaScript đã minify bị đặt nhầm đuôi .html.',
+  // Tám hint dưới đây là của Task 2 (luật widget). KHÔNG nhắc "tier" — hạng đã
+  // bị xoá (xem TIER_REMOVED ở trên); phần tương tác nay LUÔN là widget, không
+  // còn hai đường để chọn.
+  WIDGET_TOO_LARGE:
+    'widgets/<tên>/index.html của widget này nặng hơn mức cho phép. Cắt bớt nội dung, viết CSS/JS gọn hơn (không minify — xem WIDGET_LINE_TOO_LONG), hoặc bỏ hẳn phần nặng (ảnh, dữ liệu lớn): widget không tải được gì từ mạng nên không có chỗ nào để "chuyển ra ngoài" mà vẫn dùng được.',
+  WIDGET_LINE_TOO_LONG:
+    'Một dòng trong widgets/<tên>/index.html dài hơn mức cho phép — dấu hiệu quen thuộc của mã đã bị minify hoặc dồn hết vào một dòng. Viết lại thành nhiều dòng bình thường, thụt lề rõ ràng: người duyệt phải đọc được mã này bằng mắt, không chỉ máy chạy được.',
+  WIDGET_BAD_NAME:
+    'Tên thư mục widget không hợp lệ. Chỉ dùng chữ thường a-z, số 0-9 và dấu gạch ngang, bắt đầu bằng chữ hoặc số, tối đa 64 ký tự — ví dụ "widgets/dem-so/index.html", không phải "widgets/Dem_So/index.html" hay "widgets/_demo/index.html".',
+  WIDGET_FORBIDDEN_API:
+    'widgets/<tên>/index.html gọi document.cookie, localStorage, sessionStorage hoặc indexedDB. Widget chạy trong iframe sandbox không có cookie hay bộ nhớ trình duyệt — gọi những API này chỉ ném lỗi lúc chạy, không phải lúc "vị trí" chỉ ra. Bỏ hẳn đoạn mã đó; cần nhớ trạng thái thì giữ nó trong một biến JavaScript sống trong phiên đọc.',
+  WIDGET_EXTERNAL_URL:
+    'widgets/<tên>/index.html có một địa chỉ http:// hoặc https:// — kể cả khi nó chỉ nằm trong chú thích. Widget phải tự chứa hoàn toàn, không tải gì từ mạng. Xoá đường dẫn đó; nhúng trực tiếp nội dung cần thiết vào widget nếu bản quyền cho phép, hoặc bỏ tính năng đó.',
+  WIDGET_EXTRA_FILE:
+    'Một widget chỉ được có đúng một tệp: widgets/<tên>/index.html. Gộp nội dung của tệp thừa ("vị trí" ở trên) — CSS, JS, ảnh nhỏ — trực tiếp vào index.html (inline <style>/<script>, hoặc data: URL cho ảnh), rồi xoá tệp đó đi.',
+  WIDGET_MISSING:
+    'Một chương dùng <div data-widget="…"> trỏ tới một widget mà gói không có (hoặc thư mục widget đó không có index.html). Kiểm tra tên trong data-widget khớp đúng tên thư mục widgets/<tên>/, hoặc thêm widgets/<tên>/index.html còn thiếu vào gói.',
+  WIDGET_ORPHAN:
+    'Gói mang một widgets/<tên>/index.html mà không chương nào tham chiếu qua data-widget. Xoá cả thư mục widget này nếu không còn dùng, hoặc thêm <div data-widget="<tên>"></div> vào chương cần nó.',
 };
 
 /** Label for a finding's `path`, which may be a file, a JSON pointer, or `.` for the package as a whole. */

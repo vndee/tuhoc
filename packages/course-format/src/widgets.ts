@@ -276,6 +276,21 @@ function checkOneWidget(name: string, group: WidgetGroup): Finding[] {
 }
 
 /**
+ * True when `name` names a widget that can actually render: a directory with
+ * an `index.html` in it. A `widgets/<name>/` directory holding only stray
+ * files (no `index.html` — already flagged `WIDGET_EXTRA_FILE` for each
+ * stray file by {@link checkOneWidget}) is NOT a real widget as far as the
+ * missing/orphan cross-reference is concerned, even though `byName.has(name)`
+ * is true for it. Getting this wrong in both directions was review round 1's
+ * finding: a chapter referencing such a directory got no `WIDGET_MISSING`
+ * (the directory "existed"), and an unreferenced one got a `WIDGET_ORPHAN`
+ * pointing at an `index.html` that was never created.
+ */
+function isRealWidget(byName: ReadonlyMap<string, WidgetGroup>, name: string): boolean {
+  return byName.get(name)?.indexBytes !== undefined;
+}
+
+/**
  * Runs all eight widget rules over a package: per-widget shape/size/content
  * checks, plus the cross-reference between what chapters ask for
  * (`data-widget="…"`) and what widgets the package actually ships.
@@ -293,6 +308,12 @@ function checkOneWidget(name: string, group: WidgetGroup): Finding[] {
  * their package. `extractWidgetRefs` itself stays undeduplicated — see its
  * own doc comment for why a RENDERER needs every occurrence even though a
  * FINDING does not.
+ *
+ * An empty `data-widget=""` gets its own sentence rather than being reported
+ * as a reference to the widget named `""`: naming the empty string as a
+ * widget and pointing at `widgets//index.html` reads like this tool is
+ * broken, not like a diagnosis of the chapter's actual mistake — a
+ * placeholder nobody finished writing.
  */
 export function checkWidgets(
   files: ReadonlyMap<string, Uint8Array>,
@@ -313,20 +334,18 @@ export function checkWidgets(
     const reportedMissing = new Set<string>();
     for (const ref of extractWidgetRefs(decoder.decode(bytes))) {
       referenced.add(ref);
-      if (byName.has(ref) || reportedMissing.has(ref)) continue;
+      if (isRealWidget(byName, ref) || reportedMissing.has(ref)) continue;
       reportedMissing.add(ref);
-      out.push(
-        finding(
-          'WIDGET_MISSING',
-          chapterPath,
-          `chương này tham chiếu widget "${ref}" qua data-widget, nhưng gói không có ${WIDGETS_PREFIX}${ref}/index.html`,
-        ),
-      );
+      const detail =
+        ref === ''
+          ? 'chương này có một data-widget="" không mang tên widget nào — đặt tên cụ thể, ví dụ data-widget="dem-so", khớp với thư mục widgets/dem-so/'
+          : `chương này tham chiếu widget "${ref}" qua data-widget, nhưng gói không có ${WIDGETS_PREFIX}${ref}/index.html`;
+      out.push(finding('WIDGET_MISSING', chapterPath, detail));
     }
   }
 
   for (const name of byName.keys()) {
-    if (referenced.has(name)) continue;
+    if (!isRealWidget(byName, name) || referenced.has(name)) continue;
     out.push(
       finding(
         'WIDGET_ORPHAN',

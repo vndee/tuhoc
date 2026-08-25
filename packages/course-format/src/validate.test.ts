@@ -7,27 +7,7 @@ import {
   validatePackage,
 } from './validate';
 import { WIDGET_MAX_BYTES, WIDGET_MAX_LINE_BYTES } from './widgets';
-
-const enc = (s: string) => new TextEncoder().encode(s);
-// Format v2 has no "tier" — a manifest built by this helper is v2-shaped by
-// default, i.e. tier-less. Pass `{ tier: 'content' }` (or any value) to build
-// a manifest that still carries the dead field, for the TIER_REMOVED tests.
-const MANIFEST = (over: Record<string, unknown> = {}) => enc(JSON.stringify({
-  id: 'demo', title: 'Demo', description: 'd', lang: 'vi', version: '1.0.0',
-  runtime: '^1', license: 'CC-BY-4.0',
-  authors: [{ name: 'A' }], generatedBy: 'human',
-  parts: [{ title: 'P', chapters: [{ id: 'c1', num: '1', title: 'T', short: 'T', file: 'chapters/c1.html' }] }],
-  ...over,
-}));
-
-/** A content package that is valid except for whatever `chapter` says. */
-const withChapter = (chapter: string, over: Record<string, unknown> = {}) =>
-  new Map([
-    ['manifest.json', MANIFEST(over)],
-    ['chapters/c1.html', enc(chapter)],
-  ]);
-
-const codesOf = (files: ReadonlyMap<string, Uint8Array>) => validatePackage(files).findings.map((f) => f.code);
+import { MANIFEST, codesOf, enc, withChapter } from './test-fixtures';
 
 /**
  * `<img a0=1 a1=1 … >` — n attributes with DISTINCT names on exactly one start
@@ -1158,11 +1138,12 @@ it('mọi code trong FINDING_CODES đều được ít nhất một fixture sinh
     })],
     ['chapters/c1.html', enc('<p>a</p>')],
   ]));
-  // Task 2's tám luật widget. Bốn widget dưới đây đều KHÔNG được chương nào
-  // tham chiếu, nên mỗi cái cũng kéo theo WIDGET_ORPHAN — không cần fixture
-  // riêng cho mã đó. `widgets.test.ts` là nơi mỗi luật này có test riêng,
-  // đích thân; ở đây chỉ cần MỖI mã xuất hiện ít nhất một lần qua
-  // `validatePackage`.
+  // Task 2's tám luật widget. Năm widget dưới đây (Bad_Name, big, long,
+  // cookie, net) đều KHÔNG được chương nào tham chiếu, nên mỗi cái cũng kéo
+  // theo WIDGET_ORPHAN — không cần fixture riêng cho mã đó. Widget "w" ngay
+  // dưới thì CÓ được tham chiếu, để không lẫn với WIDGET_MISSING/ORPHAN của
+  // chính nó. `widgets.test.ts` là nơi mỗi luật này có test riêng, đích thân;
+  // ở đây chỉ cần MỖI mã xuất hiện ít nhất một lần qua `validatePackage`.
   feed(withChapter('<p>a</p>').set('widgets/Bad_Name/index.html', enc('<p>x</p>'))); // WIDGET_BAD_NAME (+ WIDGET_ORPHAN)
   feed(
     withChapter('<div data-widget="w"></div>')

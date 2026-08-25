@@ -7,29 +7,7 @@ import {
   WIDGET_NAME_MAX,
   extractWidgetRefs,
 } from './widgets';
-
-// Same helpers as validate.test.ts, reproduced here rather than imported —
-// they are one-liners over a test-only fixture shape, not rule logic, so a
-// second copy is not the drift risk `WIDGET_DIR_RE`/`WIDGET_INDEX_RE` are
-// (see task-2-report.md for that call).
-const enc = (s: string) => new TextEncoder().encode(s);
-
-const MANIFEST = (over: Record<string, unknown> = {}) => enc(JSON.stringify({
-  id: 'demo', title: 'Demo', description: 'd', lang: 'vi', version: '1.0.0',
-  runtime: '^1', license: 'CC-BY-4.0',
-  authors: [{ name: 'A' }], generatedBy: 'human',
-  parts: [{ title: 'P', chapters: [{ id: 'c1', num: '1', title: 'T', short: 'T', file: 'chapters/c1.html' }] }],
-  ...over,
-}));
-
-/** A content package that is valid except for whatever `chapter` says. */
-const withChapter = (chapter: string, over: Record<string, unknown> = {}) =>
-  new Map([
-    ['manifest.json', MANIFEST(over)],
-    ['chapters/c1.html', enc(chapter)],
-  ]);
-
-const codesOf = (files: ReadonlyMap<string, Uint8Array>) => validatePackage(files).findings.map((f) => f.code);
+import { codesOf, enc, withChapter } from './test-fixtures';
 
 /**
  * The widget the task brief gives as the "this must validate clean" example:
@@ -164,6 +142,44 @@ describe('checkWidgets — tám luật', () => {
     const findings = validatePackage(files).findings;
     const f = findings.find((x) => x.code === 'WIDGET_ORPHAN');
     expect(f?.path).toBe('widgets/mo-coi/index.html');
+  });
+
+  // Fix round 1, finding 1: một thư mục widgets/<tên>/ CHỈ có tệp thừa (không
+  // có index.html) không phải một widget THẬT — dù `byName.has(name)` vẫn
+  // đúng cho nó. Trước bản sửa này, chương tham chiếu một thư mục như vậy
+  // không hề bị WIDGET_MISSING (thư mục "có tồn tại"), còn nếu không được
+  // tham chiếu thì lại bị WIDGET_ORPHAN trỏ tới một index.html chưa từng
+  // được tạo ra. Cả hai đều là báo sai.
+  it('WIDGET_MISSING: thư mục widget CHỈ có tệp thừa, không có index.html, mà chương tham chiếu tới — vẫn phải báo thiếu', () => {
+    const files = withChapter('<div data-widget="foo"></div>')
+      .set('widgets/foo/notes.txt', enc('không phải index.html'));
+    const findings = validatePackage(files).findings;
+    expect(findings.map((f) => f.code)).toContain('WIDGET_MISSING');
+    expect(findings.map((f) => f.code)).toContain('WIDGET_EXTRA_FILE'); // notes.txt vẫn là tệp thừa, độc lập với WIDGET_MISSING
+    const missing = findings.find((f) => f.code === 'WIDGET_MISSING');
+    expect(missing?.path).toBe('chapters/c1.html');
+  });
+
+  it('WIDGET_ORPHAN: thư mục widget CHỈ có tệp thừa, không có index.html, không được tham chiếu — KHÔNG được báo mồ côi', () => {
+    const files = withChapter('<p>không nhắc tới widget nào</p>')
+      .set('widgets/foo/notes.txt', enc('không phải index.html'));
+    const findings = validatePackage(files).findings;
+    // Không có index.html thì không có gì để "mồ côi" — path widgets/foo/index.html
+    // chưa từng tồn tại trong gói. WIDGET_EXTRA_FILE là đủ để chỉ ra vấn đề thật.
+    expect(findings.map((f) => f.code)).not.toContain('WIDGET_ORPHAN');
+    expect(findings.map((f) => f.code)).toContain('WIDGET_EXTRA_FILE');
+  });
+
+  it('WIDGET_MISSING: data-widget="" không mang tên — detail phải nói đó là ô trống, không phải bịa ra một tên widget rỗng', () => {
+    const files = withChapter('<div data-widget=""></div>');
+    const findings = validatePackage(files).findings;
+    const f = findings.find((x) => x.code === 'WIDGET_MISSING');
+    expect(f?.path).toBe('chapters/c1.html');
+    // Không được đọc như một cái tên widget hợp lệ tên là "" — câu phải nói
+    // đây là một ô/placeholder chưa được điền tên, không phải trỏ tới
+    // "widgets//index.html".
+    expect(f?.detail).not.toContain('widgets//index.html');
+    expect(f?.detail).toMatch(/không mang tên|chưa.*tên|placeholder/i);
   });
 });
 

@@ -71,7 +71,6 @@ function fixtureManifest(): unknown {
     lang: 'vi',
     version: '1.0.0',
     runtime: '^1',
-    tier: 'content',
     license: 'CC-BY-4.0',
     authors: [{ name: 'Người thử' }],
     generatedBy: 'human',
