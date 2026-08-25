@@ -506,6 +506,83 @@ func TestUnpublishClearsPublishedButKeepsVersions(t *testing.T) {
 	}
 }
 
+// TestUnpublishAndRollbackRecordSessionActor is the same audit.who/actor
+// assertion TestPublishRequiresAdminRole makes for Publish, but for the
+// OTHER two admin actions that write an audit row (Unpublish, Rollback).
+// Every earlier test in this file drives Unpublish/Rollback through the
+// token path (actor='cli', who=NULL) — this is the one place a session-
+// authenticated admin's uid is checked all the way through to
+// admin_audit.who for both of them, rather than assumed to work because
+// Publish's own check passed.
+func TestUnpublishAndRollbackRecordSessionActor(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool)
+	cookie, uid, email := registerUser(t, app, "session-actor")
+	promoteToAdmin(t, pool, email)
+	zipBytes := validCourseZip(t)
+
+	if resp, raw := putPackage(t, app, validCourseSlug, zipBytes, "", cookie); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("publish v1 (session): want 201 got %d body=%s", resp.StatusCode, raw)
+	}
+	if resp, raw := putPackage(t, app, validCourseSlug, zipBytes, "", cookie); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("publish v2 (session): want 201 got %d body=%s", resp.StatusCode, raw)
+	}
+
+	// rollbackPackage/deletePackage below only accept an auth HEADER
+	// string, not a cookie, so this test builds its own requests directly
+	// to authenticate via the session cookie instead.
+	req := httptest.NewRequest(http.MethodPost, "/admin/courses/"+validCourseSlug+"/rollback",
+		bytes.NewReader(mustJSONBody(t, map[string]int{"version": 1})))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	resp, err := app.Test(req, httpTimeoutMS)
+	if err != nil {
+		t.Fatalf("rollback (session): %v", err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("rollback (session): want 201 got %d body=%s", resp.StatusCode, raw)
+	}
+
+	rollbackAudit := lastAudit(t, pool, validCourseSlug, "rollback")
+	if rollbackAudit.who == nil || *rollbackAudit.who != uid {
+		t.Errorf("rollback audit.who: want %s got %v", uid, rollbackAudit.who)
+	}
+	if rollbackAudit.actor != "user" {
+		t.Errorf("rollback audit.actor: want %q got %q", "user", rollbackAudit.actor)
+	}
+
+	unpubResp := httptest.NewRequest(http.MethodDelete, "/admin/courses/"+validCourseSlug, nil)
+	unpubResp.AddCookie(cookie)
+	uResp, err := app.Test(unpubResp, httpTimeoutMS)
+	if err != nil {
+		t.Fatalf("unpublish (session): %v", err)
+	}
+	uRaw, _ := io.ReadAll(uResp.Body)
+	uResp.Body.Close()
+	if uResp.StatusCode != http.StatusOK {
+		t.Fatalf("unpublish (session): want 200 got %d body=%s", uResp.StatusCode, uRaw)
+	}
+
+	unpublishAudit := lastAudit(t, pool, validCourseSlug, "unpublish")
+	if unpublishAudit.who == nil || *unpublishAudit.who != uid {
+		t.Errorf("unpublish audit.who: want %s got %v", uid, unpublishAudit.who)
+	}
+	if unpublishAudit.actor != "user" {
+		t.Errorf("unpublish audit.actor: want %q got %q", "user", unpublishAudit.actor)
+	}
+}
+
+func mustJSONBody(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return b
+}
+
 // --- (f): rollback re-reads and republishes, never mutates history -------
 
 func TestRollbackRepublishesFromStoredZip(t *testing.T) {
@@ -827,6 +904,30 @@ func TestWrongAdminTokenIsRejected(t *testing.T) {
 	resp, _ := putPackage(t, app, validCourseSlug, validCourseZip(t), "Bearer not-the-configured-token", nil)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("wrong token, no session: want 401 got %d", resp.StatusCode)
+	}
+}
+
+// TestAdminRoutesAllRequireAuth hits every one of the four admin routes
+// with neither a token nor a session cookie. mountAdmin (server.go)
+// registers all four through the identical four-handler chain, and the
+// other tests in this file only ever exercise that chain via PUT — this
+// closes the gap directly rather than resting on "the other three surely
+// compose the same way".
+func TestAdminRoutesAllRequireAuth(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool)
+
+	if resp, _ := putPackage(t, app, validCourseSlug, validCourseZip(t), "", nil); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("PUT /admin/courses/:slug without auth: want 401 got %d", resp.StatusCode)
+	}
+	if resp, _ := listAdminCourses(t, app, ""); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("GET /admin/courses without auth: want 401 got %d", resp.StatusCode)
+	}
+	if resp, _ := deletePackage(t, app, validCourseSlug, ""); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("DELETE /admin/courses/:slug without auth: want 401 got %d", resp.StatusCode)
+	}
+	if resp, _ := rollbackPackage(t, app, validCourseSlug, 1, ""); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("POST /admin/courses/:slug/rollback without auth: want 401 got %d", resp.StatusCode)
 	}
 }
 
