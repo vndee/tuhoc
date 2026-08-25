@@ -1,0 +1,32 @@
+{
+  "id": "mau-hop-le",
+  "title": "Biến đếm: từ vòng lặp đến sự kiện",
+  "description": "Hai chương ngắn về dạng biến trạng thái đơn giản nhất — bộ đếm — từ vòng lặp cộng dồn tới một nút bấm phản ứng sự kiện.",
+  "lang": "vi",
+  "version": "1.0.0",
+  "runtime": "^1",
+  "license": "CC-BY-4.0",
+  "authors": [{ "name": "tuhoc course-format fixtures" }],
+  "generatedBy": "ai",
+  "parts": [
+    {
+      "title": "Phần I · Biến đếm",
+      "chapters": [
+        {
+          "id": "c1",
+          "num": "1.1",
+          "title": "Vì sao đếm cần một biến",
+          "short": "Vì sao cần biến đếm",
+          "file": "chapters/c1.html"
+        },
+        {
+          "id": "c2",
+          "num": "1.2",
+          "title": "Bộ đếm phản ứng với một sự kiện",
+          "short": "Bộ đếm phản ứng sự kiện",
+          "file": "chapters/c2.html"
+        }
+      ]
+    }
+  ]
+}

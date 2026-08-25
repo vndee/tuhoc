@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Bộ đếm</title>
+<style>
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    height: 100vh;
+    margin: 0;
+    background: #fafafa;
+    color: #1a1a1a;
+  }
+  p {
+    margin: 0;
+    font-size: 0.95rem;
+    color: #555555;
+  }
+  button {
+    font-size: 2.25rem;
+    line-height: 1;
+    min-width: 4.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.75rem;
+    border: 2px solid #1a1a1a;
+    background: #ffffff;
+    cursor: pointer;
+  }
+  button:active {
+    background: #eaeaea;
+  }
+</style>
+</head>
+<body>
+<p>Bấm để tăng biến đếm:</p>
+<button id="b" type="button" aria-label="Bộ đếm, bấm để tăng thêm một">0</button>
+<script>
+  (function () {
+    var n = 0;
+    var nut = document.getElementById('b');
+    nut.addEventListener('click', function () {
+      n += 1;
+      nut.textContent = String(n);
+    });
+  })();
+</script>
+</body>
+</html>

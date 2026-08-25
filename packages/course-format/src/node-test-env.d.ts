@@ -22,6 +22,17 @@ declare module 'node:fs' {
   export function readFileSync(path: string): Uint8Array;
   export function readdirSync(path: string): string[];
   /**
+   * Added at task 3 (`contract.test.ts`), which has to tell a case
+   * subdirectory (`chapters/`, `widgets/<name>/`) apart from a file while
+   * walking `fixtures/format-v2/` — the name-only overload above cannot say
+   * which entries are directories.
+   */
+  export function readdirSync(path: string, options: { withFileTypes: true }): Dirent[];
+  export interface Dirent {
+    readonly name: string;
+    isDirectory(): boolean;
+  }
+  /**
    * Added at task 11. The course left the repo that day, so "the package is
    * not on disk" went from impossible to ordinary, and the difference between
    * a raw `ENOENT` and a sentence naming `make courses` is the whole value.

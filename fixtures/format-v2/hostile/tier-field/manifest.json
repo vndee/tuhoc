@@ -1,0 +1,26 @@
+{
+  "id": "tier-field",
+  "title": "Case hostile: TIER_REMOVED",
+  "description": "Gói tối thiểu mang đúng một vi phạm: manifest còn giữ trường tier đã bị format v2 bỏ.",
+  "lang": "vi",
+  "version": "1.0.0",
+  "runtime": "^1",
+  "tier": "content",
+  "license": "CC0-1.0",
+  "authors": [{ "name": "tuhoc course-format fixtures" }],
+  "generatedBy": "ai",
+  "parts": [
+    {
+      "title": "Phần kiểm thử",
+      "chapters": [
+        {
+          "id": "c1",
+          "num": "1",
+          "title": "Chương kiểm thử",
+          "short": "Chương kiểm thử",
+          "file": "chapters/c1.html"
+        }
+      ]
+    }
+  ]
+}

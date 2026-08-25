@@ -1,0 +1,10 @@
+<button id="b">0</button>
+<script>
+  // Tài liệu tham khảo: https://developer.mozilla.org/
+  var n = 0;
+  var btn = document.getElementById('b');
+  btn.addEventListener('click', function () {
+    n += 1;
+    btn.textContent = String(n);
+  });
+</script>
