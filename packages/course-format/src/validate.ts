@@ -12,13 +12,19 @@
  *
  * ## Scope, stated plainly
  *
- * This module is a **first fence, not the only fence**. For `tier: 'content'`
- * it makes a mechanical promise (no executable code paths it knows how to
- * spot). For `tier: 'interactive'` it makes no promise about the JavaScript at
- * all — that tier's guarantee comes from human review at the registry. Read
- * {@link scanHtmlText} for exactly what the content-tier scan catches and what
- * it misses; that list is written down so nobody mistakes this for a
- * sanitizer.
+ * This module is a **first fence, not the only fence**. Format v2 has no
+ * `tier` any more (task 1 of the server-side pivot — see
+ * `docs/superpowers/specs/2026-08-25-server-side-pivot.md` §2.3): every
+ * package now gets the one mechanical promise `tier: 'content'` used to make
+ * alone — no executable code paths this module knows how to spot, anywhere in
+ * the package. Read {@link scanHtmlText} for exactly what the scan catches and
+ * what it misses; that list is written down so nobody mistakes this for a
+ * sanitizer. The old escape hatch — `tier: 'interactive'`, free-running
+ * JavaScript vouched for only by a human reviewer at the registry — is refused
+ * outright (`TIER_REMOVED`, below). An interactive part is a **widget** now,
+ * under `widgets/<name>/index.html`, sandboxed at read time; this module still
+ * does not try to sanitize what runs inside one, but validating a widget's
+ * shape is Task 2's rule set, not this one's.
  *
  * ## Why an HTML parser, and why the tokenizer specifically
  *
@@ -53,7 +59,7 @@
  * other. The token stream is a superset of both — every attribute the HTML
  * tokenizer builds, in every context, with character references already
  * decoded exactly as a browser decodes them. Over-approximating is the right
- * direction here: this tier's promise is that the package *cannot* execute
+ * direction here: this module's promise is that a package *cannot* execute
  * code, so a miss is fatal and a false positive costs one reviewer glance.
  *
  * The cost is that `Tokenizer` is marked `@internal` by parse5 even though it
@@ -98,18 +104,23 @@ export interface ValidationResult {
  * and so `validate.test.ts` can assert that no code exists without a test.
  */
 export const FINDING_CODES = [
-  // --- every tier -------------------------------------------------------
+  // --- package shape — every package --------------------------------------
   'EMPTY_PACKAGE',
   'TOO_LARGE',
   'PATH_ESCAPE',
   'MANIFEST_MISSING',
   'MANIFEST_PARSE',
   'MANIFEST_FIELD',
+  'TIER_REMOVED',
   'SEMVER',
   'RUNTIME_RANGE',
   'DUPLICATE_CHAPTER_ID',
   'CHAPTER_FILE_MISSING',
-  // --- tier: 'content' only ---------------------------------------------
+  // --- content rules — ALSO every package now. Format v2 has no `tier` left
+  // to gate these on (see TIER_REMOVED above); "content" is the only shape a
+  // package can take, so these run unconditionally. Kept as their own group
+  // because a real HTML tokenizer decides them, not a JSON-shape check — see
+  // CONTENT_TIER_RULES and scanHtmlText below.
   'SCRIPT_TAG',
   'EVENT_HANDLER_ATTR',
   'JAVASCRIPT_URL',
@@ -213,8 +224,39 @@ const RUNTIME_RANGE_RE = /^\^(0|[1-9]\d*)(?:\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?)?$
  * different suffix, and leaving them out would be a hole with no upside.
  * `.ts` is NOT here: a browser cannot load it directly, and a package shipping
  * uncompiled sources next to nothing that runs them is odd, not dangerous.
+ *
+ * `JS_FILE_IN_PACKAGE` no longer runs everywhere it matches — see
+ * {@link WIDGET_DIR_RE}.
  */
 const JS_FILE_RE = /\.(?:js|mjs|cjs|jsx)$/i;
+
+/**
+ * A path under a widget's own directory: `widgets/<name>/…`, any depth. This
+ * is Task 2's territory — a widget ships JS on purpose, sandboxed at read
+ * time in an `allow-scripts`, no-`allow-same-origin` iframe — so
+ * `JS_FILE_IN_PACKAGE` must not fire inside it. Deliberately a PREFIX match,
+ * not just `index.html`'s directory: a widget may ship its JS as a separate
+ * file next to `index.html` (`widgets/graph/index.html` +
+ * `widgets/graph/chart.js`), and only the widget's own rules (Task 2) get to
+ * decide what is or is not allowed in there.
+ *
+ * This exemption is scoped to `JS_FILE_IN_PACKAGE` ONLY. It does not touch
+ * the content scan below: a widget's non-`index.html` files are still read by
+ * `scanHtmlText` if they contain a `<` byte, same as any other package entry.
+ * Task 2 owns deciding whether that scan should also stop reading them; this
+ * task narrows only what this comment claims.
+ */
+const WIDGET_DIR_RE = /^widgets\/[^/]+\//;
+
+/**
+ * A widget's entry document, exactly: `widgets/<name>/index.html`. The
+ * content rules (`scanHtmlText`, below) must not read this ONE file — it is
+ * expected to carry the `<script>` a widget needs, which is exactly what
+ * `SCRIPT_TAG` exists to refuse everywhere else. Narrower than
+ * {@link WIDGET_DIR_RE} on purpose: see that constant's comment for what does
+ * and does not follow from this exemption.
+ */
+const WIDGET_INDEX_RE = /^widgets\/[^/]+\/index\.html$/;
 
 const decoder = new TextDecoder('utf-8');
 
@@ -314,13 +356,20 @@ function isJavascriptUrlValue(value: string): boolean {
 /**
  * Fixed report order, so two runs over the same file list their findings the
  * same way regardless of where in the document each one was seen.
+ *
+ * Still named `CONTENT_TIER_RULES` after format v2 killed `tier` (task 1 of
+ * the server-side pivot): renaming a `const` referenced across this file is
+ * its own diff, not this task's. The name still reads true — "content" is
+ * not gone, only the *choice* of it is: content is the only shape a package
+ * can take now, so these rules run on all of them, unconditionally, instead
+ * of behind a `tier === 'content'` check.
  */
 const CONTENT_TIER_RULES: readonly (readonly [FindingCode, string])[] = [
-  ['SCRIPT_TAG', 'tier "content" must not contain a <script> tag'],
-  ['EVENT_HANDLER_ATTR', 'tier "content" must not contain an inline on*= event handler'],
-  ['JAVASCRIPT_URL', 'tier "content" must not contain a javascript: URL'],
-  ['EMBEDDED_FRAME', 'tier "content" must not embed a frame (<iframe>/<object>/<embed>)'],
-  ['FORM_TAG', 'tier "content" must not contain a <form> tag'],
+  ['SCRIPT_TAG', 'must not contain a <script> tag'],
+  ['EVENT_HANDLER_ATTR', 'must not contain an inline on*= event handler'],
+  ['JAVASCRIPT_URL', 'must not contain a javascript: URL'],
+  ['EMBEDDED_FRAME', 'must not embed a frame (<iframe>/<object>/<embed>)'],
+  ['FORM_TAG', 'must not contain a <form> tag'],
   [
     'TAG_ATTR_FLOOD',
     `a single start tag carries more than ${MAX_ATTRS_PER_TAG} attributes, which no document does by accident`,
@@ -358,8 +407,8 @@ const CONTENT_TIER_RULES: readonly (readonly [FindingCode, string])[] = [
  * {@link attrFlood} goes true. That is a real gap in the scan and it is closed
  * by the report rather than by the scan: `TAG_ATTR_FLOOD` is itself a finding,
  * so a package that floods a tag fails validation whatever else the tag hides.
- * The tier's promise ("this package cannot execute code") is kept by rejecting
- * it, not by understanding it.
+ * This module's promise ("a package cannot execute code") is kept by
+ * rejecting it, not by understanding it.
  *
  * ### The parse5 coupling
  *
@@ -408,14 +457,15 @@ class BoundedTokenizer extends Tokenizer {
 }
 
 /**
- * The content-tier rules, run over parse5's token stream.
+ * The content rules, run over parse5's token stream, over EVERY package —
+ * format v2 has no `tier` left to gate them on (see `TIER_REMOVED`).
  *
  * Only START TAGS are inspected. Text, comments, doctypes and end tags carry
  * nothing a browser executes: measured in Chromium, `<div id=t>x</div
  * onclick="…">` builds an element whose attribute list is exactly `["id"]` and
  * clicking it runs nothing, and a comment's contents are inert. That single
  * distinction — markup vs. text — is what a regex could not draw and what makes
- * a chapter that *teaches* HTML publishable at this tier (see the table).
+ * a chapter that *teaches* HTML publishable at all (see the table).
  *
  * Every row below was **measured**, not assumed: each is a case that was run
  * through this function and observed, and the false-positive rows were run
@@ -428,7 +478,7 @@ class BoundedTokenizer extends Tokenizer {
  * | `EVENT_HANDLER_ATTR` | any attribute named `on`+letters on any start tag, however it is separated    | a handler NAME written with a character reference (`&#111;nclick=`) — not a |
  * |                      | from the previous one (space, newline, `/`, a closing quote), quoted or bare, | bypass: measured in Chromium, the element keeps an attribute literally      |
  * |                      | upper or lower case, behind a `>` trapped in a quoted value, on `<body>`/     | named `&#111;nerror` and does not fire; a handler attached from script      |
- * |                      | `<html>` (which run when a chapter file is opened directly as a document)     | (`el.onclick = …`), which needs the JavaScript this tier already forbids    |
+ * |                      | `<html>` (which run when a chapter file is opened directly as a document)     | (`el.onclick = …`), which needs the JavaScript this rule set already forbids |
  * | `JAVASCRIPT_URL`     | any attribute value on any start tag whose scheme normalizes to               | a `javascript:` URL that is not at the START of the value, notably CSS      |
  * |                      | `javascript:` — numeric and named character references, whitespace- and       | `style="background:url(javascript:…)"` (no current browser executes it);    |
  * |                      | control-split schemes, unquoted values, `xlink:href`, and attributes that are | `data:text/html` URLs, which have no code in this rule set at all           |
@@ -450,19 +500,27 @@ class BoundedTokenizer extends Tokenizer {
  * decide to render. Tokenizing a few megabytes of image bytes is cheap, and
  * random bytes cannot spell `<img … onerror=` by accident.
  *
- * **The one entry it does NOT look at is `manifest.json`** — see the comment at
- * the call site in {@link validatePackage}. Short version: the manifest is JSON
- * data whose fields the reader renders as text, markup in them is therefore
- * inert, and scanning it produced false positives with no correct spelling
- * available to the author. That is an exception about what the bytes *are*, not
- * about what they are called: every other `.json` entry is still scanned.
+ * **Two entries it does NOT look at.** Both are exceptions about what the
+ * bytes ARE, not about what they are called — see the comment at the call
+ * site in {@link validatePackage} for each:
+ *
+ *   - `manifest.json` — JSON data whose fields the reader renders as text,
+ *     markup in them is therefore inert, and scanning it produced false
+ *     positives with no correct spelling available to the author. Every
+ *     OTHER `.json` entry is still scanned.
+ *   - `widgets/<name>/index.html` — a widget's own entry document (task 1 of
+ *     the server-side pivot, format v2 §2.3). It is expected to carry the
+ *     `<script>` these rules exist to refuse everywhere else; Task 2's
+ *     widget rules read it instead. Narrow on purpose: a widget's other
+ *     files are still read by this scan like any other package entry — see
+ *     {@link WIDGET_INDEX_RE}.
  *
  * **Deliberate over-approximation.** The tokenizer is run in its default state,
  * so the raw-text bodies the TREE builder would switch on — `<script>`,
  * `<style>`, `<textarea>`, `<title>` — are tokenized as markup here. That can
  * only ever over-report (a `<textarea>` containing `<img onerror=…>` is flagged
  * although a browser would show it as text), never under-report, and
- * over-reporting is the direction this tier can afford.
+ * over-reporting is the direction this rule set can afford.
  *
  * **The false positives, and the way out of each.** There is no single escape;
  * an earlier draft of this comment claimed there was, and review round 2
@@ -479,8 +537,9 @@ class BoundedTokenizer extends Tokenizer {
  *      `.css` file for markup inside a comment — the scan sees a package entry,
  *      not a fenced block or a comment in some other language. **Escaping is
  *      not available**: escaping a markdown fence changes what markdown
- *      renders. Ship the built output without the sources, or publish at tier
- *      `interactive`. (Measured clean next to those: CSS
+ *      renders. Ship the built output without the sources — code that must
+ *      stay live belongs in a widget (`widgets/<name>/index.html`, Task 2),
+ *      not in a package entry these rules read. (Measured clean next to those: CSS
  *      `a[href^="javascript:"]`, CSS `content:"<"`, real SVG including an
  *      export with `<style>`, plain-text LICENSE/CHANGELOG, and an escaped
  *      `.md`.) This is the price of C3's lesson that a scan may not be keyed on
@@ -499,8 +558,8 @@ class BoundedTokenizer extends Tokenizer {
  * `<meta http-equiv="refresh">` redirects, external `<link>`/`<img>`/CSS
  * `url()` references (not executable, but still a network call the reader never
  * asked for), `data:` URLs, a `.js` file renamed to an extension `JS_FILE_RE`
- * does not know (harmless at this tier only because loading it would need a
- * `<script>` tag, which is flagged), and an entry that is not UTF-8 — a UTF-16
+ * does not know (harmless only because loading it would need a `<script>`
+ * tag, which is flagged), and an entry that is not UTF-8 — a UTF-16
  * chapter is decoded to mojibake here and reads as clean, which is safe only
  * for as long as every consumer decodes it as UTF-8 too, exactly as
  * `Response.text()` and this module both do.
@@ -559,8 +618,22 @@ function checkManifestFields(value: unknown): Finding[] {
   // is allowed to say so — but it must be present and a string.
   if (typeof value['description'] !== 'string') bad('description', 'missing or not a string: "description"');
 
-  if (value['tier'] !== 'content' && value['tier'] !== 'interactive') {
-    bad('tier', 'must be exactly "content" or "interactive"');
+  // `tier` is not a field to VALIDATE any more — it is a field to REFUSE.
+  // Format v2 killed the choice it named (task 1 of the server-side pivot,
+  // `docs/superpowers/specs/2026-08-25-server-side-pivot.md` §2.3): every
+  // package is what `tier: 'content'` used to mean, so a manifest that still
+  // carries the key — with ANY value, including a once-valid one — is
+  // authored against the old format and must say so. `Object.hasOwn`, not
+  // `value['tier'] !== undefined`: a manifest that sets `"tier": null` is
+  // still carrying the field on purpose and both must be caught the same way.
+  if (Object.hasOwn(value, 'tier')) {
+    out.push(
+      finding(
+        'TIER_REMOVED',
+        MANIFEST_PATH,
+        'format v2 đã bỏ hạng: xoá trường "tier" khỏi manifest; phần tương tác nay là widget (docs/course-format.md §4)',
+      ),
+    );
   }
   if (value['generatedBy'] !== 'ai' && value['generatedBy'] !== 'human' && value['generatedBy'] !== 'mixed') {
     bad('generatedBy', 'must be exactly "ai", "human" or "mixed"');
@@ -721,9 +794,11 @@ export function parseManifest(raw: string): { manifest: Manifest } | { error: Fi
  * whose cost is proportional to the very quantity being refused — see the
  * comment on the loop itself for the measurements.
  *
- * Tier-specific rules run only when the manifest parsed and named a tier. A
- * package with no readable manifest already fails; guessing a tier for it would
- * add noise, not safety.
+ * The content rules run whenever the manifest parsed, full stop — format v2
+ * has no `tier` to name and nothing to guess: a package with no readable
+ * manifest already fails, and every OTHER package gets the same rules. A
+ * manifest that still carries a `tier` key is flagged on its own
+ * (`TIER_REMOVED`) rather than read for what value it holds.
  */
 export function validatePackage(files: ReadonlyMap<string, Uint8Array>): ValidationResult {
   const findings: Finding[] = [];
@@ -791,81 +866,107 @@ export function validatePackage(files: ReadonlyMap<string, Uint8Array>): Validat
     }
   }
 
-  if (parsed['tier'] === 'content') {
-    for (const path of files.keys()) {
-      if (JS_FILE_RE.test(path)) {
-        findings.push(finding('JS_FILE_IN_PACKAGE', path, 'tier "content" must not ship JavaScript files'));
-      }
+  // Everything below used to run only `if (parsed['tier'] === 'content')`.
+  // Format v2 deleted that gate along with the field: content is the only
+  // shape a package can take now (task 1 of the server-side pivot,
+  // `docs/superpowers/specs/2026-08-25-server-side-pivot.md` §2.3), so these
+  // rules run for every package that got this far, unconditionally. A
+  // manifest that still sets `tier` was already flagged above
+  // (`TIER_REMOVED`, in {@link checkManifestFields}) — on its own, not as a
+  // switch that used to turn this section off.
+  for (const path of files.keys()) {
+    // `widgets/<name>/…` is Task 2's territory: a widget ships JS on
+    // purpose, sandboxed at read time in an iframe with `allow-scripts` and
+    // NOT `allow-same-origin`. See {@link WIDGET_DIR_RE}.
+    if (WIDGET_DIR_RE.test(path)) continue;
+    if (JS_FILE_RE.test(path)) {
+      findings.push(
+        finding(
+          'JS_FILE_IN_PACKAGE',
+          path,
+          'JavaScript rời không còn đường chạy nào: viz.js kiểu cũ đã bị thay bằng widget (docs/course-format.md §4). Chuyển mã vào widgets/<tên>/index.html.',
+        ),
+      );
     }
-    // EVERY entry, with no extension list and no binary skip — see
-    // {@link scanHtmlText}. The previous version read only `.html?/.xhtml/.svg`
-    // and nothing constrains the extension of `chapter.file`, so renaming a
-    // chapter to `c1.txt` switched all five rules off at once.
-    //
-    // The ONE exception is `manifest.json`, and it is an exception about what
-    // the bytes ARE, not about what they are called. Every other entry is a
-    // file some consumer may decide to render; the manifest is a JSON document
-    // whose shape THIS module defines, and whose fields the reader renders as
-    // TEXT — `{manifest.title}` / `{manifest.description}` in
-    // `apps/web/src/pages/CourseHome.tsx:46-47` and `Dashboard.tsx:250`, plus
-    // `aria-label={manifest.title}`. React escapes all of those. Running markup
-    // rules over them was a category error with no way out for the author: a
-    // course about web forms could not put `<form>` in its own description
-    // (FORM_TAG), and writing `&lt;form&gt;` to get past the gate only made the
-    // catalog display the literal string `&lt;form&gt;`, because nothing ever
-    // un-escapes it. Both halves measured in review round 2 (N2).
-    //
-    // THE INVARIANT THIS RESTS ON: manifest fields are rendered as text. If a
-    // consumer ever feeds `manifest.title`/`description` — or any other
-    // manifest string — to `innerHTML`, `dangerouslySetInnerHTML` or an
-    // equivalent, this exclusion becomes a hole, and closing it here again is
-    // not the fix: the fix is that the consumer escapes what it injects. Task 7
-    // touches `loader.ts` and carries the note to put the matching fence on the
-    // `apps/web` side.
-    //
-    // Structural manifest rules are UNAFFECTED: MANIFEST_MISSING,
-    // MANIFEST_PARSE, MANIFEST_FIELD, SEMVER, RUNTIME_RANGE,
-    // DUPLICATE_CHAPTER_ID, CHAPTER_FILE_MISSING and PATH_ESCAPE all still read
-    // this file. Only the five HTML rules stop looking at it.
-    // Skipped once the package is over the byte budget, and this is the one
-    // place `validatePackage` stops short of reporting everything.
-    //
-    // The line it draws is not "the first finding wins" but "no more work
-    // proportional to the quantity that has already been refused". Every other
-    // rule in this function costs O(entries) or O(manifest); this loop alone
-    // costs O(bytes) — it decodes and tokenizes each entry — and bytes is
-    // exactly what TOO_LARGE says there are too many of. Measured on packages
-    // of binary assets: 25 MB took 1,494 ms, 64 MB 3,532 ms, 256 MB 13,195 ms,
-    // and the Task 3 reviewer measured 2 GB at over ten minutes. All of it
-    // spent on a package that is already refused.
-    //
-    // What a contributor loses: the five content rules and TAG_ATTR_FLOOD, for
-    // a package they must shrink before it can ship at all — and after they
-    // shrink it, the content is different content, which the next run reads.
-    // What they keep: everything cheap, in the same one pass — PATH_ESCAPE,
-    // MANIFEST_*, SEMVER, RUNTIME_RANGE, DUPLICATE_CHAPTER_ID,
-    // CHAPTER_FILE_MISSING, JS_FILE_IN_PACKAGE. The tier's promise is kept the
-    // way TAG_ATTR_FLOOD keeps it a few lines up: by refusing the file, not by
-    // understanding it.
-    //
-    // Note what this does NOT fix, so nobody reads a bigger claim into it: a
-    // package UNDER the budget still pays full price — a valid 19 MB package of
-    // images measured 1,045 ms here (7 s on the reviewer's machine), because
-    // binary bytes contain `<` and go through the tokenizer. That is the "no
-    // binary skip" decision above, and it is a separate question from this one.
-    if (!overBudget) {
-      for (const [path, bytes] of files) {
-        if (path === MANIFEST_PATH) continue;
-        // The one shortcut taken, and it is a proof rather than a heuristic: a
-        // start tag cannot exist without a U+003C, 0x3C is that character and
-        // nothing else in UTF-8 (continuation bytes are all >= 0x80), a
-        // character reference decodes to a character token and never re-enters
-        // the tag-open state, and an invalid byte decodes to U+FFFD. No `<`
-        // byte therefore means no start tag, and every content rule reads start
-        // tags. It is what keeps a 20 MB image out of the tokenizer.
-        if (!bytes.includes(0x3c)) continue;
-        findings.push(...scanHtmlText(path, decoder.decode(bytes)));
-      }
+  }
+  // EVERY entry, with no extension list and no binary skip — see
+  // {@link scanHtmlText}. The previous version read only `.html?/.xhtml/.svg`
+  // and nothing constrains the extension of `chapter.file`, so renaming a
+  // chapter to `c1.txt` switched all five rules off at once.
+  //
+  // TWO exceptions, and both are about what the bytes ARE, not about what
+  // they are called:
+  //
+  //   - `manifest.json` is a JSON document whose shape THIS module defines,
+  //     and whose fields the reader renders as TEXT — `{manifest.title}` /
+  //     `{manifest.description}` in `apps/web/src/pages/CourseHome.tsx:46-47`
+  //     and `Dashboard.tsx:250`, plus `aria-label={manifest.title}`. React
+  //     escapes all of those. Running markup rules over them was a category
+  //     error with no way out for the author: a course about web forms could
+  //     not put `<form>` in its own description (FORM_TAG), and writing
+  //     `&lt;form&gt;` to get past the gate only made the catalog display the
+  //     literal string `&lt;form&gt;`, because nothing ever un-escapes it.
+  //     Both halves measured in review round 2 (N2).
+  //   - `widgets/<name>/index.html` is a widget's own entry document (task 1
+  //     of the server-side pivot, format v2 §2.3): it is expected to carry
+  //     the `<script>` these rules exist to refuse everywhere else, and
+  //     Task 2's widget rules read it instead. See {@link WIDGET_INDEX_RE} —
+  //     narrow on purpose; a widget's OTHER files are still read by this
+  //     scan like any other package entry.
+  //
+  // THE INVARIANT `manifest.json`'S EXCLUSION RESTS ON: manifest fields are
+  // rendered as text. If a consumer ever feeds `manifest.title`/`description`
+  // — or any other manifest string — to `innerHTML`, `dangerouslySetInnerHTML`
+  // or an equivalent, this exclusion becomes a hole, and closing it here again
+  // is not the fix: the fix is that the consumer escapes what it injects.
+  // Task 7 touches `loader.ts` and carries the note to put the matching fence
+  // on the `apps/web` side.
+  //
+  // Structural manifest rules are UNAFFECTED by manifest.json's exclusion:
+  // MANIFEST_MISSING, MANIFEST_PARSE, MANIFEST_FIELD, TIER_REMOVED, SEMVER,
+  // RUNTIME_RANGE, DUPLICATE_CHAPTER_ID, CHAPTER_FILE_MISSING and PATH_ESCAPE
+  // all still read this file. Only the five HTML rules stop looking at it.
+  //
+  // The whole loop below is skipped once the package is over the byte
+  // budget, and this is the one place `validatePackage` stops short of
+  // reporting everything.
+  //
+  // The line it draws is not "the first finding wins" but "no more work
+  // proportional to the quantity that has already been refused". Every other
+  // rule in this function costs O(entries) or O(manifest); this loop alone
+  // costs O(bytes) — it decodes and tokenizes each entry — and bytes is
+  // exactly what TOO_LARGE says there are too many of. Measured on packages
+  // of binary assets: 25 MB took 1,494 ms, 64 MB 3,532 ms, 256 MB 13,195 ms,
+  // and the Task 3 reviewer measured 2 GB at over ten minutes. All of it
+  // spent on a package that is already refused.
+  //
+  // What a contributor loses: the five content rules and TAG_ATTR_FLOOD, for
+  // a package they must shrink before it can ship at all — and after they
+  // shrink it, the content is different content, which the next run reads.
+  // What they keep: everything cheap, in the same one pass — PATH_ESCAPE,
+  // MANIFEST_*, TIER_REMOVED, SEMVER, RUNTIME_RANGE, DUPLICATE_CHAPTER_ID,
+  // CHAPTER_FILE_MISSING, JS_FILE_IN_PACKAGE. This module's promise is kept
+  // the way TAG_ATTR_FLOOD keeps it a few lines up: by refusing the file, not
+  // by understanding it.
+  //
+  // Note what this does NOT fix, so nobody reads a bigger claim into it: a
+  // package UNDER the budget still pays full price — a valid 19 MB package of
+  // images measured 1,045 ms here (7 s on the reviewer's machine), because
+  // binary bytes contain `<` and go through the tokenizer. That is the "no
+  // binary skip" decision above, and it is a separate question from this one.
+  if (!overBudget) {
+    for (const [path, bytes] of files) {
+      if (path === MANIFEST_PATH) continue;
+      if (WIDGET_INDEX_RE.test(path)) continue;
+      // The one shortcut taken, and it is a proof rather than a heuristic: a
+      // start tag cannot exist without a U+003C, 0x3C is that character and
+      // nothing else in UTF-8 (continuation bytes are all >= 0x80), a
+      // character reference decodes to a character token and never re-enters
+      // the tag-open state, and an invalid byte decodes to U+FFFD. No `<`
+      // byte therefore means no start tag, and every content rule reads start
+      // tags. It is what keeps a 20 MB image out of the tokenizer.
+      if (!bytes.includes(0x3c)) continue;
+      findings.push(...scanHtmlText(path, decoder.decode(bytes)));
     }
   }
 

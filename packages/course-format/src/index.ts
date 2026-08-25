@@ -8,7 +8,7 @@
  * implementation detail.
  */
 
-export type { Author, Chapter, GeneratedBy, Manifest, Part, Tier } from './types';
+export type { Author, Chapter, GeneratedBy, Manifest, Part } from './types';
 
 export {
   FINDING_CODES,
