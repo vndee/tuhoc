@@ -67,7 +67,8 @@ export const vi = {
     'Tài khoản giữ đúng một việc: đồng bộ tiến độ và ghi chú giữa các máy của bạn. Nội dung khoá học thì nằm trên máy này.',
   'settings.account.loading': 'Đang hỏi máy chủ xem ai đang đăng nhập…',
   'settings.account.unknown': 'Chưa lấy được thông tin tài khoản. Phần này cần mạng.',
-  'settings.account.signedInAs': (name: string, email: string) => `Đang đăng nhập: ${name} · ${email}`,
+  'settings.account.signedInAs': (name: string, email: string) =>
+    name === '' ? `Đang đăng nhập: ${email}` : `Đang đăng nhập: ${name} · ${email}`,
   /**
    * Câu này nói ra một hệ quả CÓ THẬT, không phải một lời doạ lịch sự:
    * `useLogout` gọi `clearSession()`, thứ xoá mọi bảng cục bộ. Người dùng bấm

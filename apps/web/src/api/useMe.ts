@@ -124,3 +124,19 @@ export function useMe() {
 
   return query;
 }
+
+/**
+ * Hai chữ cái đại diện cho một tài khoản.
+ *
+ * Ở đây, cạnh chính hình dạng `Me`, chứ không ở component đầu tiên cần nó: đĩa
+ * tròn trên thanh trên (`shell/TopNav.tsx`) và thẻ danh tính ở trang Cài đặt
+ * (`pages/Settings.tsx`) phải hiện ĐÚNG hai chữ giống nhau — nếu không thì với
+ * người dùng chúng là hai tài khoản khác nhau.
+ *
+ * Lấy tên trước, email sau: một tài khoản chưa đặt tên vẫn phải ra được hai
+ * chữ, và `name` rỗng là trạng thái có thật (`POST /auth/register` nhận tên,
+ * nhưng dữ liệu cũ có thể không có).
+ */
+export function accountInitials(name: string, email: string): string {
+  return (name || email).slice(0, 2).toUpperCase();
+}

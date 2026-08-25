@@ -299,7 +299,15 @@
   padding: 0 10px;
   gap: 6px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--rule-strong);
+  /* `--rule` (gray-200), KHÔNG phải `--rule-strong` (gray-300).
+     gray-300 là viền của một Ô NHẬP — nơi người dùng phải thấy rõ mép để biết
+     gõ vào đâu. Ở đây là ba điều khiển phụ đứng liền nhau trên một dải chrome,
+     và ba khung gray-300 cạnh nhau vẽ ra một cái giàn giáo nặng hơn thứ chúng
+     chứa. Chrome phải lùi lại; người dùng nói đúng điều đó.
+
+     Bù lại ở HOVER: viền lên một bậc thành `--rule-strong` cùng lúc nền đổi,
+     nên nút vẫn đáp lại rõ ràng thay vì chỉ đổi một chút nền. */
+  border: 1px solid var(--rule);
   background: var(--surface-1);
   color: var(--ink-2);
   box-shadow: var(--shadow-xs);
@@ -1336,12 +1344,19 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
   }
 }
 
+/* `font-family` PHẢI nói ra ở đây. `settings-auth.css` đặt serif cho hai lớp
+   này từ trước vòng thiết kế lại; `#content h2` (hai id + một tên thẻ) tình cờ
+   thắng nó cho `.set-h`, nhưng `.set-lede` là một `<p>` mà không luật nào của
+   khung với tới — nên câu giải thích của mỗi mục Cài đặt vẫn đang render bằng
+   serif của trang đọc, một mình, giữa một trang toàn chữ giao diện. */
 #app:not(.reading) .set-h {
+  font-family: var(--sans);
   font-size: 18px;
   margin: 0 0 4px;
 }
 
 #app:not(.reading) .set-lede {
+  font-family: var(--sans);
   font-size: 14px;
   line-height: 1.55;
   color: var(--ink-3);
@@ -1352,13 +1367,41 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   margin: 0 0 14px;
   border: 1px solid var(--rule);
   border-radius: var(--radius-lg);
   background: var(--surface-1);
+  box-shadow: var(--shadow-xs);
   font-size: 14px;
   color: var(--ink);
+}
+
+/* Cùng đĩa tròn với `AccountChip` trên thanh trên, cùng thang màu — thẻ này và
+   cái chip ấy nói về một người, nên chúng phải trông như nói về một người. */
+#app:not(.reading) .set-identity-avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: var(--color-brand-100);
+  color: var(--color-brand-700);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+html[data-theme='dark'] #app:not(.reading) .set-identity-avatar {
+  background: rgba(127, 86, 217, 0.25);
+  color: var(--color-brand-200);
+}
+
+#app:not(.reading) .set-identity-text {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 #app:not(.reading) .set-note {
@@ -1682,4 +1725,92 @@ html[data-theme='dark'] #app:not(.reading) .home-note-formula {
 
 html[data-theme='dark'] #app:not(.reading) .home-note-link {
   color: var(--color-brand-300);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TIẾN ĐỘ — hai chỗ còn mang thang chữ trước vòng thiết kế lại
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* CÂU TÓM TẮT giữ nguyên VIỆC của nó — `progress.lede` hứa "kể thành câu", và
+   con số cho người liếc còn câu cho người đọc là một quyết định đã ghi ở
+   `pages/Progress.tsx`. Thứ đổi là DA: serif 24px là thang của trang đọc, và
+   trên một màn hình toàn thẻ số liệu nó đọc như một đoạn văn lạc chỗ. */
+#app:not(.reading) .prog-sentence {
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.55;
+  color: var(--ink-2);
+  margin: 0 0 28px;
+  /* 64ch, ĐO CHỨ KHÔNG ĐOÁN. Câu này có hai bản: bản thường ("Bạn đã học 465
+     phút…") rộng 372px, và bản rỗng ("Chưa có phút học nào được ghi lại. Mở
+     một chương và đọc; số liệu bắt đầu từ đó.") rộng 614px. `46ch` = 475px nên
+     bản rỗng bị bẻ làm hai, chừa lại một dòng thứ hai có hai chữ — trong khi
+     bên phải còn trống gần 900px. 64ch = 660px chứa được cả hai trên một dòng,
+     và vẫn là một khổ đọc được chứ không phải cả bề ngang trang.
+
+     `pretty` cho ca vẫn phải xuống dòng — bản tiếng Anh dài hơn, và một bản
+     dịch sau này có thể dài hơn nữa: nó cấm dòng cuối chỉ còn một chữ. */
+  max-width: 64ch;
+  text-wrap: pretty;
+}
+
+/* NĂM ĐANG CHỌN: nền brand nhạt, không phải một khối brand đặc.
+   Danh sách này thường chỉ có MỘT năm, và một nút tô đặc đứng một mình cạnh
+   thẻ lịch đọc ra như một mẩu giao diện bị bỏ quên chứ không như một lựa chọn
+   đang bật. Cùng phép chọn đã dùng cho mục lục đang đọc. */
+#app:not(.reading) .prog-year-btn.on {
+  background: var(--color-brand-50);
+  color: var(--color-brand-700);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--color-brand-200);
+}
+
+html[data-theme='dark'] #app:not(.reading) .prog-year-btn.on {
+  background: rgba(127, 86, 217, 0.18);
+  color: var(--color-brand-200);
+  box-shadow: inset 0 0 0 1px rgba(127, 86, 217, 0.45);
+}
+
+/* Tên khoá dài thì cắt bằng dấu ba chấm, không đẩy thanh trọng số co lại. */
+#app:not(.reading) .prog-weight-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── NÚT PHÁ HUỶ ─────────────────────────────────────────────────────────
+   Một hành động không hoàn tác được (đăng xuất xoá sạch dữ liệu học trên máy)
+   mà trông y hệt "Huỷ" là một cái bẫy. Viền + chữ đỏ, KHÔNG phải một khối đỏ
+   đặc: nút này không phải hành động chính của trang nó đứng trên, nên nó không
+   được nặng hơn nút chính ở bất kỳ đâu khác trong app.
+
+   `--color-error-700` trên `--surface-1` cho 7,1:1; bản tối lấy `error-300`
+   trên nền trang, 8,4:1. Cả hai đo trên chính cặp màu này. */
+#app:not(.reading) .btn.danger {
+  border-color: var(--color-error-300);
+  color: var(--color-error-700);
+  background: var(--surface-1);
+}
+
+#app:not(.reading) .btn.danger:hover {
+  border-color: var(--color-error-500);
+  background: var(--color-error-50);
+  color: var(--color-error-700);
+}
+
+#app:not(.reading) .btn.danger:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring-error);
+}
+
+html[data-theme='dark'] #app:not(.reading) .btn.danger {
+  border-color: color-mix(in srgb, var(--color-error-500) 45%, transparent);
+  color: var(--color-error-300);
+  background: transparent;
+}
+
+html[data-theme='dark'] #app:not(.reading) .btn.danger:hover {
+  background: color-mix(in srgb, var(--color-error-500) 14%, transparent);
+  color: var(--color-error-300);
 }

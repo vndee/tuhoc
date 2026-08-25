@@ -6,7 +6,7 @@ import { useStats } from '../api/stats';
 import { countChapters } from '../course/chapters';
 import { db } from '../db/local';
 import { loadManifest, manifestQueryKey } from '../course/loader';
-import { manifestString, type OwnedCourse, useOwnedCourses } from '../course/owned';
+import { manifestString, type OwnedCourse, useCourseTitle, useOwnedCourses } from '../course/owned';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { buildYearCalendar, heatLevel, todayIctIso } from '../progress/heat';
 import { useProgress } from '../progress/useProgress';
@@ -134,7 +134,7 @@ export function Progress() {
         </p>
       )}
 
-      <YearActivity />
+      <YearActivity courses={owned.courses} />
 
       <section className="prog-section">
         <h2 className="prog-h">{t('progress.byCourse')}</h2>
@@ -228,7 +228,38 @@ function studySentence(
  * lời mặc định mà Bảng điều khiển đang dựa vào (xem `api/stats.ts` và
  * `apps/api/internal/stats/handler.go`).
  */
-function YearActivity() {
+/** Tên khoá mà `useOwnedCourses` đã biết, hoặc `undefined` để `useCourseTitle` đi hỏi manifest. */
+function knownTitleOf(courses: readonly OwnedCourse[], courseId: string): string | undefined {
+  const course = courses.find((entry) => entry.courseId === courseId);
+  return course?.held?.title ?? course?.catalog?.title;
+}
+
+/**
+ * Một hàng trong "Khoá học trong năm".
+ *
+ * Là component riêng chỉ vì MỘT lý do: `useCourseTitle` là một hook, và một
+ * hook không gọi được bên trong `.map()`. Trước đây hàng này in thẳng
+ * `course.courseId` — tức cái slug ("so-dau-phay-dong") — trong khi `CourseRow`
+ * ngay dưới cùng trang đã tra tên đúng cách từ lâu.
+ */
+function CourseWeight({ courseId, share, known }: { courseId: string; share: number; known: string | undefined }) {
+  const title = useCourseTitle(courseId, known);
+  const pct = Math.round(share * 100);
+
+  return (
+    <li className="prog-weight">
+      <span className="prog-weight-name" title={title}>
+        {title}
+      </span>
+      <span className="prog-weight-bar" aria-hidden="true">
+        <span className="prog-weight-fill" style={{ width: `${Math.max(2, pct)}%` }} />
+      </span>
+      <span className="prog-weight-pct">{pct}%</span>
+    </li>
+  );
+}
+
+function YearActivity({ courses }: { courses: readonly OwnedCourse[] }) {
   const { t, lang } = useLanguage();
   const thisYear = Number(todayIctIso().slice(0, 4));
   const [year, setYear] = useState(thisYear);
@@ -316,16 +347,12 @@ function YearActivity() {
           )}
           <ul className="prog-weights">
             {(statsQuery.data?.yearCourses ?? []).map((course) => (
-              <li className="prog-weight" key={course.courseId}>
-                <span className="prog-weight-name">{course.courseId}</span>
-                <span className="prog-weight-bar" aria-hidden="true">
-                  <span
-                    className="prog-weight-fill"
-                    style={{ width: `${Math.max(2, Math.round(course.share * 100))}%` }}
-                  />
-                </span>
-                <span className="prog-weight-pct">{Math.round(course.share * 100)}%</span>
-              </li>
+              <CourseWeight
+                key={course.courseId}
+                courseId={course.courseId}
+                share={course.share}
+                known={knownTitleOf(courses, course.courseId)}
+              />
             ))}
           </ul>
         </div>

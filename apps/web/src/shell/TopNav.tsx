@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { useMe } from '../api/useMe';
+import { useMe, accountInitials } from '../api/useMe';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { Logo } from './Logo';
 
@@ -123,7 +123,7 @@ export function TopSearch() {
 
   return (
     <div
-      className="tn-search hidden md:flex items-center gap-2 h-9 w-56 px-3 rounded-md border border-gray-300 bg-white shadow-xs font-sans dark:border-gray-700 dark:bg-gray-900"
+      className="tn-search hidden md:flex items-center gap-2 h-9 w-56 px-3 rounded-md border border-gray-200 bg-white shadow-xs font-sans dark:border-gray-800 dark:bg-gray-900"
       aria-hidden="true"
     >
       <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
@@ -159,7 +159,7 @@ export function AccountChip() {
   if (CHAPTER_ROUTE.test(location.pathname)) return null;
 
   const email = meQuery.data.email;
-  const initials = (meQuery.data.name || email).slice(0, 2).toUpperCase();
+  const initials = accountInitials(meQuery.data.name, email);
 
   // MỘT ĐĨA TRÒN ĐẶC, không phải một chip có chữ "Cài đặt" bên cạnh.
   //

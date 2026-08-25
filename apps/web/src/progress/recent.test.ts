@@ -32,6 +32,8 @@ function owned(courseId: string, held: boolean): OwnedCourse {
           title: courseId,
           lang: 'vi',
           tier: 'content',
+          description: undefined,
+          chapters: undefined,
           registryId: undefined,
         }
       : undefined,

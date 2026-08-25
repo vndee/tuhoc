@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useMe } from '../api/useMe';
+import { useMe, accountInitials } from '../api/useMe';
 import { useLogout } from '../auth/useLogout';
 import { LANGS, normalizeLang } from '../i18n';
 import { useLanguage } from '../i18n/LanguageProvider';
@@ -307,16 +307,32 @@ function AccountSection() {
       */}
       {!meQuery.isPending && meQuery.data == null && <p className="set-note">{t('settings.account.unknown')}</p>}
       {meQuery.data != null && (
-        <p className="set-identity" data-testid="account-identity">
-          {t('settings.account.signedInAs', meQuery.data.name, meQuery.data.email)}
-        </p>
+        <div className="set-identity">
+          {/* Hai chữ cái GIỐNG HỆT đĩa tròn trên thanh trên — cùng
+              `accountInitials`, vì hai chỗ hiện hai chữ khác nhau thì với người
+              dùng đó là hai tài khoản khác nhau. `aria-hidden` vì dòng chữ ngay
+              bên phải đã nói đầy đủ. */}
+          <span className="set-identity-avatar" aria-hidden="true">
+            {accountInitials(meQuery.data.name, meQuery.data.email)}
+          </span>
+          <p className="set-identity-text" data-testid="account-identity">
+            {t('settings.account.signedInAs', meQuery.data.name, meQuery.data.email)}
+          </p>
+        </div>
       )}
 
       <p className="set-note">{t('settings.account.signOutWarning')}</p>
       <p>
+        {/*
+          `danger`, không phải một nút thứ cấp xám. Nút này xoá SẠCH dữ liệu học
+          trên máy — gói đã tải, ghi chú, và hàng đợi tiến độ chưa gửi được (câu
+          cảnh báo ngay trên nói đúng thế). Một hành động không hoàn tác được mà
+          trông y hệt "Huỷ" là một cái bẫy; màu ở đây là một lời cảnh báo, không
+          phải trang trí.
+        */}
         <button
           type="button"
-          className="btn"
+          className="btn danger"
           onClick={() => {
             void logout();
           }}

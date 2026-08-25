@@ -69,6 +69,17 @@ interface LibraryRow {
   heldLocally: boolean;
   /** The newer version the server offers for a course this device holds, if any. */
   updateTo: string | undefined;
+  /**
+   * Câu mô tả và tổng số chương, KHI gói đã ghim biết chúng.
+   *
+   * Chúng ở đây để một hàng đã có gói không phải đi hỏi `loadManifest` cho thứ
+   * `db.packages` đang cầm sẵn — xem `HeldPackage`. Không có chúng, hàng của
+   * một khoá đã nhập là hàng duy nhất trong danh sách thiếu mô tả và thiếu
+   * thanh tiến độ, vì `enabled: needsManifest` (đúng, và phải giữ) tắt truy
+   * vấn cho đúng những hàng ĐÃ có tên.
+   */
+  description: string | undefined;
+  chapters: number | undefined;
 }
 
 /**
@@ -121,6 +132,8 @@ function toRow(course: OwnedCourse): LibraryRow {
     source,
     heldLocally: held !== undefined,
     updateTo,
+    description: held?.description,
+    chapters: held?.chapters,
   };
 }
 
@@ -328,8 +341,10 @@ function CourseRow({ row }: { row: LibraryRow }) {
   const version = row.version ?? manifestString(manifest, 'version') ?? '—';
   const tier = row.tier ?? manifestString(manifest, 'tier');
 
-  const description = manifestString(manifest, 'description');
-  const total = countChapters(manifest);
+  // Gói đã ghim trả lời trước, manifest trả lời sau — cùng thứ tự với bốn dòng
+  // ngay trên, và cùng lý do: bản cục bộ là bản sẽ thực sự mở ra.
+  const description = row.description ?? manifestString(manifest, 'description');
+  const total = row.chapters ?? countChapters(manifest);
   const read = doneChapterIds.size;
   const percent = total > 0 ? Math.round((read / total) * 100) : 0;
 

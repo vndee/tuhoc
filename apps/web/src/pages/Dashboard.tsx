@@ -6,7 +6,7 @@ import type { AnnotationRow } from '../db/local';
 import { flatChapters, nextChapter } from '../course/chapters';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
 import { monogram } from '../course/monogram';
-import { type OwnedCourse, useOwnedCourses } from '../course/owned';
+import { type OwnedCourse, useCourseTitle, useOwnedCourses } from '../course/owned';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { pickFocusCourse, useLastStudiedCourseId, useRecentNotes } from '../progress/recent';
 import { useProgress } from '../progress/useProgress';
@@ -245,32 +245,6 @@ function renderQuote(quote: string, label: string) {
       {piece}
     </Fragment>
   ));
-}
-
-/**
- * Tên khoá cho một hàng ghi chú.
- *
- * `useOwnedCourses` biết tên của khoá mà máy này ĐANG GIỮ (`held`, đọc từ
- * `db.packages`) hoặc mà máy chủ có liệt kê (`catalog`). Nó KHÔNG biết tên của
- * một khoá được phục vụ TĨNH từ chính origin của app — `course/loader.ts` NGUỒN
- * 2, ruling S1-F31 — và với những khoá ấy hàng ghi chú in ra cái slug thô
- * ("bat-bien-vong-lap"). Một người đọc không đặt tên khoá của mình bằng dấu gạch
- * ngang; đó là địa chỉ, không phải tên.
- *
- * Nên khi và CHỈ KHI ba nguồn kia im lặng, hỏi manifest — cùng `manifestQueryKey`
- * mà `ContinueCard`, `Sidebar` và trang khoá học đã dùng, nên với khoá đang đọc
- * dở thì đây là một lần đọc cache chứ không phải một request thứ hai. Vẫn in
- * slug trong lúc chờ và khi hỏi không được: một cái tên đến chậm vẫn hơn một
- * chỗ trống, và một khoá thật sự không tra được thì slug là tất cả những gì có.
- */
-function useCourseTitle(courseId: string, known: string | undefined): string {
-  const manifestQuery = useQuery({
-    queryKey: manifestQueryKey(courseId),
-    queryFn: () => loadManifest(courseId),
-    enabled: known === undefined,
-    retry: false,
-  });
-  return known ?? manifestQuery.data?.title ?? courseId;
 }
 
 function NoteRow({ note, known }: { note: AnnotationRow; known: string | undefined }) {

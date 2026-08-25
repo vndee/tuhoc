@@ -63,7 +63,7 @@ import { useEffect, useState } from 'react';
 import { coursesQueryKey, type CourseSummary, listCourses } from '../api/courses';
 import { fetchStats, statsQueryKey } from '../api/stats';
 import { db } from '../db/local';
-import { pickPinned } from './loader';
+import { loadManifest, manifestQueryKey, pickPinned } from './loader';
 
 /**
  * The fields a course list needs out of one row of `db.packages` — never the
@@ -83,6 +83,19 @@ export interface HeldPackage {
   readonly lang: string | undefined;
   readonly tier: string | undefined;
   readonly registryId: string | undefined;
+  /**
+   * Hai trường dưới đây KHÔNG phải mở rộng phạm vi — chúng đã nằm sẵn trong
+   * chính `row.manifest` mà hàm này đang đọc, và không đọc chúng là bắt màn
+   * thư viện đi hỏi lại `loadManifest` để lấy thứ nó đang cầm trong tay.
+   *
+   * Hệ quả đo được trước khi thêm: một khoá ĐÃ ghim gói (tức đã có `title`)
+   * không kích hoạt truy vấn manifest, nên hàng của nó là hàng DUY NHẤT trong
+   * danh sách không có câu mô tả và không có thanh tiến độ — cao 104px cạnh
+   * hai hàng 151px, vì một lý do người dùng không thể nhìn ra.
+   */
+  readonly description: string | undefined;
+  /** Tổng số chương, đếm từ `manifest.parts` của chính gói đã ghim. */
+  readonly chapters: number | undefined;
 }
 
 /** One course this reader has, and which of the four sources knew about it. */
@@ -103,6 +116,25 @@ export interface OwnedCourses {
   readonly settled: boolean;
   /** Whatever `GET /courses` failed with, for a caller that reports transport state. */
   readonly catalogError: unknown;
+}
+
+/**
+ * Số chương trong một manifest, đọc phòng thủ.
+ *
+ * Cùng hạng với `manifestString`: `manifest` ở đây là `unknown` — nó đi ra từ
+ * một tệp `.zip` mà người dùng nhập vào — nên mọi bước phải tự kiểm tra hình
+ * dạng thay vì tin vào một kiểu đã khai.
+ */
+export function manifestChapterCount(manifest: unknown): number | undefined {
+  if (typeof manifest !== 'object' || manifest === null) return undefined;
+  const parts = (manifest as { parts?: unknown }).parts;
+  if (!Array.isArray(parts)) return undefined;
+  let total = 0;
+  for (const part of parts) {
+    const chapters = (part as { chapters?: unknown } | null)?.chapters;
+    if (Array.isArray(chapters)) total += chapters.length;
+  }
+  return total;
 }
 
 export function manifestString(manifest: unknown, key: string): string | undefined {
@@ -133,6 +165,8 @@ function useHeldPackages(): HeldPackage[] | null {
             lang: manifestString(row.manifest, 'lang'),
             tier: manifestString(row.manifest, 'tier'),
             registryId: manifestString(row.manifest, 'registryId'),
+            description: manifestString(row.manifest, 'description'),
+            chapters: manifestChapterCount(row.manifest),
           }),
         ),
       ),
@@ -249,4 +283,34 @@ export function useOwnedCourses(): OwnedCourses {
     settled: !catalogQuery.isPending && !statsQuery.isPending && held !== null && progressCourseIds !== null,
     catalogError: catalogQuery.isError ? catalogQuery.error : null,
   };
+}
+
+/**
+ * Tên hiển thị của một khoá, cho những chỗ chỉ có `courseId` trong tay.
+ *
+ * `useOwnedCourses` biết tên của khoá mà máy này ĐANG GIỮ (`held`, đọc từ
+ * `db.packages`) hoặc mà máy chủ có liệt kê (`catalog`). Nó KHÔNG biết tên của
+ * một khoá được phục vụ TĨNH từ chính origin của app — `course/loader.ts` NGUỒN
+ * 2, ruling S1-F31 — và với những khoá ấy màn hình in ra cái slug thô
+ * ("bat-bien-vong-lap"). Một người học không đặt tên khoá của mình bằng dấu
+ * gạch ngang; đó là địa chỉ, không phải tên.
+ *
+ * Nên khi và CHỈ KHI ba nguồn kia im lặng, hỏi manifest — cùng `manifestQueryKey`
+ * mà thẻ "đang đọc", thanh bên và trang khoá học đã dùng, nên với khoá đang đọc
+ * dở thì đây là một lần đọc cache chứ không phải một request thứ hai. Vẫn in
+ * slug trong lúc chờ và khi hỏi không được: một cái tên đến chậm vẫn hơn một
+ * chỗ trống, và một khoá thật sự không tra được thì slug là tất cả những gì có.
+ *
+ * Ở `course/owned.ts` chứ không ở màn hình đầu tiên cần nó: hai màn đã cần
+ * (ghi chú gần đây ở `/`, danh sách khoá trong năm ở `/progress`), và hai bản
+ * sao của cùng một chuỗi dự phòng bốn tầng là đúng chỗ trôi dạt.
+ */
+export function useCourseTitle(courseId: string, known: string | undefined): string {
+  const manifestQuery = useQuery({
+    queryKey: manifestQueryKey(courseId),
+    queryFn: () => loadManifest(courseId),
+    enabled: known === undefined && courseId !== '',
+    retry: false,
+  });
+  return known ?? manifestString(manifestQuery.data, 'title') ?? courseId;
 }
