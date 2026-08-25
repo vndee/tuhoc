@@ -167,10 +167,22 @@ export function AskPanel({
    * cha. Không có capture thì kéo qua nó là mất luôn thao tác kéo.
    */
   const onResizeStart = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
-    const panel = e.currentTarget.closest('.ai-panel');
+    /**
+     * `grip` và `pointerId` được GIỮ RA BIẾN NGAY, không đọc lại từ `e` sau này.
+     *
+     * `e.currentTarget` của một sự kiện React chỉ có giá trị TRONG lúc React
+     * phát sự kiện; xong lượt phát nó về `null`. Bản đầu của hàm này gỡ listener
+     * bằng `e.currentTarget.removeEventListener(...)` bên trong `onUp` — thứ
+     * chạy sau đó rất lâu — nên lệnh gỡ nổ vào `null` và KHÔNG listener nào
+     * được gỡ. Hệ quả đúng như người dùng mô tả: kéo một lần rồi buông, sau đó
+     * chỉ cần rê chuột ngang tay kéo là panel lại chạy theo chuột, vĩnh viễn.
+     */
+    const grip = e.currentTarget;
+    const pointerId = e.pointerId;
+    const panel = grip.closest('.ai-panel');
     if (!(panel instanceof HTMLElement)) return;
     e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
+    grip.setPointerCapture(pointerId);
 
     const startX = e.clientX;
     const startY = e.clientY;
@@ -186,11 +198,16 @@ export function AskPanel({
       });
     };
     const onUp = () => {
-      e.currentTarget.removeEventListener('pointermove', onMove);
-      e.currentTarget.removeEventListener('pointerup', onUp);
+      grip.removeEventListener('pointermove', onMove);
+      // Trả lại capture cho trình duyệt. `pointerup` tự thả, nhưng
+      // `pointercancel` (chạm bị hệ điều hành cắt ngang) thì không chắc — và
+      // một con trỏ còn bị giữ là một trang không bấm được ở đâu khác nữa.
+      if (grip.hasPointerCapture?.(pointerId)) grip.releasePointerCapture(pointerId);
     };
-    e.currentTarget.addEventListener('pointermove', onMove);
-    e.currentTarget.addEventListener('pointerup', onUp);
+    grip.addEventListener('pointermove', onMove);
+    // `once` cho cả hai đường kết thúc: buông chuột, và thao tác bị cắt ngang.
+    grip.addEventListener('pointerup', onUp, { once: true });
+    grip.addEventListener('pointercancel', onUp, { once: true });
   }, []);
 
   return createPortal(
