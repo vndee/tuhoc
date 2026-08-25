@@ -144,7 +144,7 @@ function renderNavAt(path: string, me: unknown) {
   return render(
     <QueryClientProvider client={queryClient}>
       <LanguageProvider><MemoryRouter initialEntries={[path]}>
-        <TopNav />
+        <TopNav onMenuClick={() => {}} />
       </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
   );

@@ -5,21 +5,6 @@ import type { Theme } from '../theme/useTheme';
 export interface TopbarProps {
   theme: Theme;
   onToggleTheme: () => void;
-  /**
-   * Bật/tắt thanh điều hướng. Dưới 981px là ngăn kéo trượt tạm
-   * (`body.nav-open`, xem `useMobileNav`); từ 981px là thu gọn BỀN
-   * (`#app.nav-collapsed`, xem `useSidebarCollapse`). `App.tsx` chọn cơ chế
-   * theo bề rộng ngay lúc bấm; ở đây chỉ là một cú bấm.
-   */
-  onMenuClick: () => void;
-  /**
-   * Thanh bên có đang HIỆN không, dùng cho `aria-expanded`.
-   *
-   * Mặc định `true` vì `#sidebar` mặc định hiện trên màn rộng, và vì ba tệp
-   * test dựng `<Topbar>` trực tiếp — một prop bắt buộc ở đây sẽ bắt cả ba sửa
-   * mà không đo thêm được gì.
-   */
-  navExpanded?: boolean;
 }
 
 // Matches the `/c/:courseId/:chapterId` route — same pathname-only check
@@ -73,35 +58,26 @@ const CHAPTER_ROUTE = /^\/c\/[^/]+\/[^/]+/;
  *     chapter they are two empty `<span>`s with `display:contents`, which
  *     paint nothing and take no space.
  */
-export function Topbar({ theme, onToggleTheme, onMenuClick, navExpanded = true }: TopbarProps) {
+export function Topbar({ theme, onToggleTheme }: TopbarProps) {
   const location = useLocation();
   const { t } = useLanguage();
   const isChapterRoute = CHAPTER_ROUTE.test(location.pathname);
 
   return (
     <>
-      <button
-        id="menu-btn"
-        type="button"
-        className="tb-btn"
-        aria-label={t('topbar.menu')}
-        /*
-          `aria-expanded` + `aria-controls`: nút này nay bật/tắt một vùng còn ở
-          NGUYÊN trong tài liệu, nên trình đọc màn hình phải nói được nó đang
-          mở hay đóng. Không có cặp này thì một nút "☰" chỉ là một ký tự.
-        */
-        aria-expanded={navExpanded}
-        aria-controls="sidebar"
-        onClick={onMenuClick}
-      >
-        {/* SVG, không phải ký tự `☰`.
-            Một glyph dingbat lấy phông từ bất cứ font nào hệ thống có nó, nên
-            nó lệch đường cơ sở và sai độ dày so với mọi icon khác — đây là dấu
-            hiệu amateur số một của bản cũ, và nó lặp lại ở năm nút nữa. */}
-        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-          <path d="M4 5.5h12M4 10h12M4 14.5h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-        </svg>
-      </button>
+      {/*
+        `#menu-btn` ĐÃ RỜI KHỎI ĐÂY sang `shell/TopNav.tsx`.
+
+        Nó đứng ngay sau ba mục điều hướng, và ở đó nó đọc như một mục thứ tư
+        — người dùng chỉ đúng chỗ ấy. Một nút thu gọn thuộc về phía TRÊN CỘT
+        NÓ THU GỌN, tức mép trái thanh trên, ngay phía trên `#sidebar`; đó cũng
+        là chỗ shadcn đặt `SidebarTrigger`.
+
+        Nó phải đổi TỆP chứ không chỉ đổi `order` trong CSS: `#topbar` là một
+        flex container, nên `order` sẽ vẽ nó ở mép trái trong khi thứ tự TAB
+        vẫn để nó sau ba mục điều hướng. Doc của chính component này đã nêu
+        đúng cái bẫy ấy khi giải thích vì sao có HAI khe portal thay vì một.
+      */}
       <span id="reader-nav" className="rd-slot" />
       {/*
         Ba nút dưới đây — đánh dấu đã học, chương trước, chương sau — chỉ có

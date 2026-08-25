@@ -48,7 +48,18 @@ function navClass({ isActive }: { isActive: boolean }): string {
  * Nhãn hiệu + ba đích. Dựng ở ĐẦU `#topbar`, nên nó cũng là thứ đầu tiên
  * trong thứ tự tab — khớp với thứ tự mắt đọc.
  */
-export function TopNav() {
+export interface TopNavProps {
+  /**
+   * Bật/tắt thanh bên. Dưới 981px là ngăn kéo trượt tạm (`body.nav-open`, xem
+   * `useMobileNav`); từ 981px là thu gọn BỀN (`#app.nav-collapsed`, xem
+   * `useSidebarCollapse`). `App.tsx` chọn cơ chế theo bề rộng ngay lúc bấm.
+   */
+  onMenuClick: () => void;
+  /** Thanh bên có đang HIỆN không, cho `aria-expanded`. */
+  navExpanded?: boolean;
+}
+
+export function TopNav({ onMenuClick, navExpanded = true }: TopNavProps) {
   const meQuery = useMe();
   const location = useLocation();
   const { t } = useLanguage();
@@ -73,6 +84,37 @@ export function TopNav() {
   // học" ở 375px và hết giờ, vì liên kết bị đẩy ra ngoài thanh.
   return (
     <>
+      {/*
+        NÚT THU GỌN Ở MÉP TRÁI, ngay phía trên cột nó thu gọn.
+        Trước đây nó đứng sau ba mục điều hướng và đọc như một mục thứ tư.
+        Đây cũng là chỗ shadcn đặt `SidebarTrigger`.
+
+        Ở ĐẦU DOM chứ không phải `order` trong CSS: `#topbar` là flex, nên
+        `order` sẽ vẽ nó ở mép trái trong khi thứ tự TAB vẫn để nó sau ba mục
+        — một người dùng bàn phím sẽ gặp các điều khiển theo thứ tự khác với
+        thứ tự họ nhìn thấy.
+
+        `id="menu-btn"` giữ nguyên: `reader.css` và `shell-modes.css` gắn luật
+        theo id ấy, và `useMobileNav` cùng ba tệp e2e định vị theo nó.
+      */}
+      <button
+        id="menu-btn"
+        type="button"
+        className="tb-btn"
+        aria-label={t('topbar.menu')}
+        aria-expanded={navExpanded}
+        aria-controls="sidebar"
+        onClick={onMenuClick}
+      >
+        {/* `PanelLeft` — một khung với vách ngăn bên trái, đúng icon shadcn
+            dùng cho nút này. Hamburger nói "có một menu ở đây"; icon này nói
+            "có một CỘT bật tắt được", tức đúng việc nút này làm. */}
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2.25" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M8 3.75v12.5" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      </button>
+
       <div className="tn-brand flex items-center gap-2.5 font-sans">
         <Logo size={28} boxed />
         <span className="tn-wordmark text-[15px] font-semibold tracking-[-0.01em] text-gray-900 dark:text-gray-50">

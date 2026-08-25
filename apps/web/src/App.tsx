@@ -102,13 +102,8 @@ function AppShell() {
               trong thứ tự đọc lẫn thứ tự tab. Ở đây chứ không trong `<Topbar>`
               vì `TopNav` đọc `useMe()` — xem doc của chính nó, và lý do y hệt
               cái đã giữ `<LanguageSwitcher>` ở ngoài. */}
-          <TopNav />
-          <Topbar
-            theme={theme}
-            onToggleTheme={toggleTheme}
-            onMenuClick={onMenuClick}
-            navExpanded={!collapsed}
-          />
+          <TopNav onMenuClick={onMenuClick} navExpanded={!collapsed} />
+          <Topbar theme={theme} onToggleTheme={toggleTheme} />
           {/* Gắn ở khe `topbar` chứ không trong <Topbar>: <Topbar> nhận mọi
               thứ qua props và được ba tệp test render trực tiếp, nên cho nó
               đọc Context sẽ bắt ba tệp ấy phải dựng provider mà chẳng đo thêm

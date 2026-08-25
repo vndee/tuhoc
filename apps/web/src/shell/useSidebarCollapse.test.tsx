@@ -2,10 +2,11 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 import { Shell } from './Shell';
-import { Topbar } from './Topbar';
+import { TopNav } from './TopNav';
 import { useSidebarCollapse } from './useSidebarCollapse';
 
 /**
@@ -105,15 +106,30 @@ describe('lớp trên #app', () => {
   });
 });
 
-describe('nút ☰ nói ra trạng thái của mình', () => {
-  const topbar = (navExpanded: boolean) =>
+/**
+ * Nút thu gọn ĐÃ CHUYỂN TỆP: từ `<Topbar>` sang `<TopNav>`.
+ *
+ * Nó từng đứng ngay sau ba mục điều hướng và đọc như một mục thứ tư. Nay nó ở
+ * mép trái thanh trên, ngay phía trên cột nó thu gọn — chỗ shadcn đặt
+ * `SidebarTrigger`. Đổi tệp chứ không đổi `order` trong CSS, vì `order` sẽ vẽ
+ * nó ở mép trái trong khi thứ tự TAB vẫn để nó sau ba mục.
+ *
+ * Câu hỏi của ba bài dưới đây không đổi một chữ; chỉ chỗ dựng đổi. `TopNav`
+ * đọc `useMe()` nên nó cần `QueryClientProvider` — đó là toàn bộ khác biệt.
+ */
+describe('nút thu gọn nói ra trạng thái của mình', () => {
+  const renderNav = (navExpanded: boolean, onMenuClick: () => void = () => {}) =>
     render(
-      <MemoryRouter>
-        <LanguageProvider>
-          <Topbar theme="light" onToggleTheme={() => {}} onMenuClick={() => {}} navExpanded={navExpanded} />
-        </LanguageProvider>
-      </MemoryRouter>,
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <LanguageProvider>
+            <TopNav onMenuClick={onMenuClick} navExpanded={navExpanded} />
+          </LanguageProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
+
+  const topbar = (navExpanded: boolean) => renderNav(navExpanded);
 
   it('aria-expanded đi theo trạng thái, và trỏ vào đúng vùng nó điều khiển', () => {
     topbar(true);
@@ -132,19 +148,9 @@ describe('nút ☰ nói ra trạng thái của mình', () => {
   it('vẫn bấm được bằng bàn phím', async () => {
     const user = userEvent.setup();
     let clicks = 0;
-    render(
-      <MemoryRouter>
-        <LanguageProvider>
-          <Topbar
-            theme="light"
-            onToggleTheme={() => {}}
-            onMenuClick={() => {
-              clicks += 1;
-            }}
-          />
-        </LanguageProvider>
-      </MemoryRouter>,
-    );
+    renderNav(true, () => {
+      clicks += 1;
+    });
 
     await user.tab();
     expect(document.activeElement).toBe(screen.getByRole('button', { expanded: true }));
