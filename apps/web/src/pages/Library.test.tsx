@@ -568,7 +568,7 @@ describe('Thư viện — người dùng mới tinh (thư viện RỖNG)', () =>
     expect(screen.getByText(/github/i)).toBeInTheDocument();
 
     // And the registry's place is held, without a link that goes nowhere.
-    const registryNote = screen.getByText(/registry|kho khóa học cộng đồng/i);
+    const registryNote = screen.getByText(/registry/i);
     expect(registryNote).toBeInTheDocument();
     expect(within(registryNote).queryByRole('link')).not.toBeInTheDocument();
 

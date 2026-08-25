@@ -793,7 +793,7 @@ html[data-theme='dark'] .lib-tier-code {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 6px 18px;
+  gap: 4px 14px;
   margin: 20px auto 0;
   padding: 0;
   max-width: 52ch;
@@ -803,8 +803,25 @@ html[data-theme='dark'] .lib-tier-code {
   color: var(--color-gray-500);
 }
 
+/* DẤU NGĂN giữa ba mục — không có nó, ba mẩu chỉ cách nhau bằng khoảng trắng
+   và khi hàng xuống dòng thì hai mục còn lại đứng cạnh nhau đọc thành MỘT câu
+   chắp vá. Đúng thứ người dùng chỉ vào.
+
+   `<li>` KHÔNG được thành flex container: `tNode` trả về nhiều nút con (chữ,
+   `<code>.zip</code>`, chữ), nên một `display: inline-flex` biến từng mẩu chữ
+   trong CÙNG một mục thành một flex item và `gap` xé "một tệp .zip trên máy
+   bạn" ra làm ba. Dấu ngăn là `::before` của mục sau, tự mang lề của nó. */
 .lib-empty-ways li {
   margin: 0;
+}
+
+.lib-empty-ways li + li::before {
+  content: '·';
+  margin-right: 14px;
+  /* gray-400, không phải gray-300: ở 13px một dấu chấm giữa gray-300 trên nền
+     trắng gần như không thấy, tức là ba mục lại dính vào nhau đúng như cũ khi
+     hàng phải xuống dòng. */
+  color: var(--color-gray-400);
 }
 
 .lib-empty-ways code {

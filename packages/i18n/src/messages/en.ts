@@ -360,9 +360,9 @@ export const en: Messages = {
   'library.tier.interactiveLabel': 'interactive — runs JavaScript',
   'library.tier.unknownTitle': 'This package declares no tier, so nothing guarantees it contains no JavaScript.',
   'library.tier.unknownLabel': 'unknown tier — may run code',
-  'library.emptyState.lede':
-    'You have no courses yet. tuhoc deliberately ships none — you choose what you read, and the only way to begin is to import a package.',
-  'library.emptyState.wayFile': (zip: string) => `a ${zip} file already on your device — this way works offline`,
+  'library.emptyState.lede': (app: string) =>
+    `${app} deliberately ships no courses — you choose what you read. Start by importing a package.`,
+  'library.emptyState.wayFile': (zip: string) => `a ${zip} file on this machine`,
   'library.emptyState.wayUrl': (zip: string) => `a link to a ${zip} file`,
   'library.emptyState.wayRepo': 'a public GitHub repository',
   'library.emptyState.registry':

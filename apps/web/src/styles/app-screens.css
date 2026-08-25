@@ -1295,14 +1295,14 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
    thích, bên phải là thứ bấm được. Cột trái hẹp và cố định nên mắt quét dọc
    nó như một mục lục; cột phải lấy hết chỗ còn lại.
 
-   Làm bằng grid trên `.set-main` thay vì bọc thêm thẻ trong bốn component:
-   mỗi lần chỉ MỘT mục được dựng (`section === 'account' && …`), nên thứ tự
-   con của `.set-main` luôn là h2 → câu dẫn → phần còn lại.
-
-   `>` là load-bearing: `AiSection` có `.set-sub` lồng bên trong với
-   `.set-lede` riêng của nó, và một bộ chọn không có `>` sẽ kéo cả chúng sang
-   cột trái. `:first-of-type` cũng vậy — mục Trợ lý AI có HAI `<p class="set-lede">`
-   ở cấp ngoài, và chỉ cái đầu là câu giải thích của mục. */
+   Cột trái là MỘT thẻ bọc (`.set-side`) do chính bốn component dựng, không
+   phải hai con phẳng được đặt vào hai hàng lưới. Bản trước làm cách kia để
+   khỏi phải sửa bốn component, và trả giá bằng một lỗi bố cục thật: chiều cao
+   một hàng lưới do phần tử cao nhất trong hàng quyết định, nên hộp kho khoá ở
+   cột phải đẩy câu giải thích ở cột trái xuống dưới một khoảng trống 100px.
+   Thẻ bọc cũng gỡ luôn hai chỗ mong manh mà bản trước phải dựa vào — `>` và
+   `:first-of-type`, cần thiết vì mục Trợ lý AI có `.set-lede` thứ hai lồng
+   trong `.set-sub`. */
 #app:not(.reading) .set-main {
   display: grid;
   /* Cột phải có TRẦN, và nó không mâu thuẫn với "trang dùng toàn bề ngang":
@@ -1320,15 +1320,26 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
   min-width: 0;
 }
 
-#app:not(.reading) .set-main > .set-h:first-of-type {
+/* MỘT ô cho cả nhan đề lẫn câu giải thích — xem `pages/Settings.tsx`.
+   `align-self: start` vì ô này nằm trong một hàng cao bằng khối bên phải; không
+   có nó, hai dòng chữ bị kéo giãn theo chiều cao ấy. */
+#app:not(.reading) .set-main > .set-side {
   grid-column: 1;
   grid-row: 1;
+  align-self: start;
 }
 
-#app:not(.reading) .set-main > .set-lede:first-of-type {
-  grid-column: 1;
-  grid-row: 2;
+#app:not(.reading) .set-side .set-lede {
   margin-bottom: 0;
+}
+
+/* Hàng chỉ chứa một nút phải tự chừa khoảng thở phía trên.
+   Trước khi cột trái gộp thành một ô, nó có khoảng ấy một cách TÌNH CỜ: nhan
+   đề và câu dẫn chiếm hai hàng lưới nên các hàng bên phải bị đẩy giãn ra. Gộp
+   ô lại thì khoảng tình cờ ấy mất, và nút "Đăng xuất" dính sát vào câu cảnh
+   báo ngay trên nó — đúng chỗ cần một quãng nghỉ nhất. */
+#app:not(.reading) .set-main > p:has(> .btn) {
+  margin-top: 18px;
 }
 
 @media (max-width: 860px) {
@@ -1337,10 +1348,14 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
   }
 
   #app:not(.reading) .set-main > *,
-  #app:not(.reading) .set-main > .set-h:first-of-type,
-  #app:not(.reading) .set-main > .set-lede:first-of-type {
+  #app:not(.reading) .set-main > .set-side {
     grid-column: 1;
     grid-row: auto;
+  }
+
+  /* Ở một cột, câu giải thích lại cần khoảng thở dưới nó như mọi câu dẫn khác. */
+  #app:not(.reading) .set-side .set-lede {
+    margin-bottom: 18px;
   }
 }
 

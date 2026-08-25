@@ -72,16 +72,22 @@
   color: var(--ink-2);
 }
 
+/* 600, không phải 700: cùng bậc với tab đang chọn ở trang Cài đặt. 700 cạnh
+   560 là một bước nhảy đủ lớn để nhãn tab NHÍCH đi khi đổi tab. */
 .courses-tab[aria-current='page'] {
   color: var(--ink);
-  font-weight: 700;
-  border-bottom-color: var(--accent);
+  font-weight: 600;
+  border-bottom-color: var(--color-brand-600);
 }
 
+/* Vòng focus MỀM 4px, cùng thang với mọi thứ bấm được khác trong app.
+   Bản cũ vẽ `outline: 2px solid` lệch ra 3px, tức một khung chữ nhật cứng bao
+   quanh nhãn — trên một tab kiểu gạch chân nó đọc như một cái hộp lạc chỗ đè
+   lên chính nét gạch chân. */
 .courses-tab:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-  border-radius: 3px;
+  outline: none;
+  border-radius: var(--radius-xs);
+  box-shadow: var(--shadow-ring-brand);
 }
 
 /* Nhan đề của tab "Kho cộng đồng" là `h2` (h1 thuộc về trang). Nó phải ĐỌC ra

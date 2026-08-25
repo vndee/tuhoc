@@ -212,16 +212,31 @@ function AiSection({ autoOpen }: { autoOpen: boolean }) {
 
   return (
     <>
-      <h2 className="set-h">{t('settings.ai.title')}</h2>
-
       {/*
-        `tNode`, không `t`: `<strong>kho khoá</strong>` nằm GIỮA câu. Đây là ca
-        đã chốt QĐ-2 — nếu `t()` trả `ReactNode` thì mọi `aria-label`/`title`/
-        `throw` trong 37 tệp còn lại phải thu hẹp kiểu bằng tay.
+        CỘT TRÁI LÀ MỘT Ô, KHÔNG PHẢI HAI Ô CHỒNG NHAU.
+
+        Trước đây `.set-h` và `.set-lede` là hai con phẳng của `.set-main`, đặt
+        vào hàng 1 và hàng 2 của lưới. Nhưng CHIỀU CAO của một hàng lưới do phần
+        tử CAO NHẤT trong hàng ấy quyết định — và hàng 1 còn chứa cả khối bên
+        phải. Đo trên mục Trợ lý AI: hàng 1 cao 138px vì hộp kho khoá, nên nhan
+        đề 36px đứng ở đỉnh còn câu giải thích của chính nó bị đẩy xuống dưới
+        một khoảng trống 100px.
+
+        Một thẻ bọc gộp hai thứ vào MỘT ô, nên chúng lại xếp liền nhau — và nó
+        đồng thời gỡ hai chỗ mong manh mà bản trước phải dựa vào: `>` và
+        `:first-of-type` (mục này có `.set-lede` thứ hai lồng trong `.set-sub`).
       */}
-      <p className="set-lede" data-testid="vault-explainer">
-        {tNode('settings.ai.blurb', <strong>{t('settings.ai.blurbVault')}</strong>)}
-      </p>
+      <div className="set-side">
+        <h2 className="set-h">{t('settings.ai.title')}</h2>
+        {/*
+          `tNode`, không `t`: `<strong>kho khoá</strong>` nằm GIỮA câu. Đây là ca
+          đã chốt QĐ-2 — nếu `t()` trả `ReactNode` thì mọi `aria-label`/`title`/
+          `throw` trong 37 tệp còn lại phải thu hẹp kiểu bằng tay.
+        */}
+        <p className="set-lede" data-testid="vault-explainer">
+          {tNode('settings.ai.blurb', <strong>{t('settings.ai.blurbVault')}</strong>)}
+        </p>
+      </div>
 
       {origin === null ? (
         <p className="set-note" data-testid="vault-unavailable">
@@ -295,8 +310,10 @@ function AccountSection() {
 
   return (
     <>
-      <h2 className="set-h">{t('settings.section.account')}</h2>
-      <p className="set-lede">{t('settings.account.blurb')}</p>
+      <div className="set-side">
+        <h2 className="set-h">{t('settings.section.account')}</h2>
+        <p className="set-lede">{t('settings.account.blurb')}</p>
+      </div>
 
       {meQuery.isPending && <p className="set-note">{t('settings.account.loading')}</p>}
       {/*
@@ -378,8 +395,10 @@ function AppearanceSection() {
 
   return (
     <>
-      <h2 className="set-h">{t('settings.section.appearance')}</h2>
-      <p className="set-lede">{t('settings.appearance.blurb')}</p>
+      <div className="set-side">
+        <h2 className="set-h">{t('settings.section.appearance')}</h2>
+        <p className="set-lede">{t('settings.appearance.blurb')}</p>
+      </div>
 
       <div className="set-field">
         <label className="set-label" htmlFor={languageId}>
@@ -442,8 +461,10 @@ function LocalDataSection() {
 
   return (
     <>
-      <h2 className="set-h">{t('settings.section.localData')}</h2>
-      <p className="set-lede">{t('settings.localData.blurb')}</p>
+      <div className="set-side">
+        <h2 className="set-h">{t('settings.section.localData')}</h2>
+        <p className="set-lede">{t('settings.localData.blurb')}</p>
+      </div>
       <p className="set-note">{t('settings.localData.clearedOnSignOut')}</p>
       <p className="set-note">{t('settings.localData.kept')}</p>
     </>

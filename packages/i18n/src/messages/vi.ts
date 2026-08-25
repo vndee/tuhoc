@@ -483,12 +483,12 @@ export const vi = {
   'library.tier.interactiveLabel': 'interactive — chạy mã JavaScript',
   'library.tier.unknownTitle': 'Gói này không khai báo hạng, nên không có gì bảo đảm nó không chứa JavaScript.',
   'library.tier.unknownLabel': 'hạng không rõ — có thể chạy mã',
-  'library.emptyState.lede':
-    'Bạn chưa có khóa học nào. tuhoc cố ý không đóng gói sẵn khóa học nào — bạn tự chọn thứ mình đọc, và cách duy nhất để bắt đầu là nhập một gói.',
-  'library.emptyState.wayFile': (zip: string) => `một tệp ${zip} có sẵn trên máy bạn — cách này chạy được cả khi mất mạng`,
+  'library.emptyState.lede': (app: string) =>
+    `${app} cố ý không đóng gói sẵn nội dung — bạn tự chọn thứ mình đọc. Bắt đầu bằng cách nhập một gói.`,
+  'library.emptyState.wayFile': (zip: string) => `một tệp ${zip} trên máy bạn`,
   'library.emptyState.wayUrl': (zip: string) => `một đường dẫn tới tệp ${zip}`,
   'library.emptyState.wayRepo': 'một repo GitHub công khai',
-  'library.emptyState.registry': 'Kho khóa học cộng đồng (registry) đang được xây dựng — khi có, nó sẽ hiện ngay ở đây.',
+  'library.emptyState.registry': 'Kho khoá học cộng đồng (registry) đang được xây dựng — khi có, nó sẽ hiện ngay ở đây.',
 
   /* ── nhập khóa học (`pages/ImportCourse.tsx`) ──────────────────────────── */
 

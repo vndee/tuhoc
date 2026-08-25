@@ -9,6 +9,7 @@ import { type AnnotationRow, clearLocalData, db } from '../db/local';
 import { Dashboard } from '../pages/Dashboard';
 import type { Manifest } from '../course/types';
 import { LanguageProvider } from '../i18n/LanguageProvider';
+import { t as tr } from '../i18n';
 
 /**
  * `/` — **Học tiếp**, sau khi thiết kế lại thứ bậc.
@@ -369,7 +370,7 @@ describe('Học tiếp — trạng thái rỗng và tài khoản', () => {
 
     renderDashboard();
 
-    expect(await screen.findByText(/chưa có khóa học nào/i)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: tr('vi', 'library.empty.heading') })).toBeInTheDocument();
     expect(document.querySelectorAll('.home-card')).toHaveLength(0);
   }, OVERSUBSCRIBED_MS);
 
@@ -383,7 +384,7 @@ describe('Học tiếp — trạng thái rỗng và tài khoản', () => {
 
     renderDashboard();
 
-    await screen.findByText(/chưa có khóa học nào/i);
+    await screen.findByRole('heading', { name: tr('vi', 'library.empty.heading') });
     // `/courses?import=1`, không phải `/import`: phần nhập gói nay là hộp thoại
     // của màn Khoá học và tham số ấy là thứ mở nó ra (đặc tả IA). Cửa NGỮ CẢNH
     // này vì thế vẫn làm đúng việc cũ — một cú bấm, và ô chọn tệp ở ngay đó —
@@ -408,7 +409,7 @@ describe('Học tiếp — trạng thái rỗng và tài khoản', () => {
 
     renderDashboard();
 
-    await screen.findByText(/chưa có khóa học nào/i);
+    await screen.findByRole('heading', { name: tr('vi', 'library.empty.heading') });
     expect(screen.getAllByText(/\.zip/).length).toBeGreaterThan(0);
     expect(screen.getByText(/github/i)).toBeInTheDocument();
     // The registry's place is held by words, not by a link that goes
@@ -426,7 +427,7 @@ describe('Học tiếp — trạng thái rỗng và tài khoản', () => {
     // Nhan đề chứng minh trang đã dựng; lời nhắn kia chưa được phép có mặt, vì
     // "không khoá nào trả về" vẫn chưa đúng.
     expect(await screen.findByRole('heading', { name: /học tiếp/i })).toBeInTheDocument();
-    expect(screen.queryByText(/chưa có khóa học nào/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: tr('vi', 'library.empty.heading') })).not.toBeInTheDocument();
   }, OVERSUBSCRIBED_MS);
 
   // BÀI "ĐĂNG XUẤT" ĐÃ CHUYỂN SANG `pages/Settings.test.tsx`.

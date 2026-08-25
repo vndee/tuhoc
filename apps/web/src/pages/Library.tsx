@@ -558,7 +558,7 @@ export function EmptyLibrary({ heading }: { heading?: string }) {
   return (
     <div className="lib-empty">
       <h2 className="lib-empty-h">{heading ?? t('library.empty.heading')}</h2>
-      <p className="lib-empty-lede">{t('library.emptyState.lede')}</p>
+      <p className="lib-empty-lede">{t('library.emptyState.lede', t('app.name'))}</p>
       {/*
         Trỏ thẳng vào `/courses?import=1`, KHÔNG vào `/import`.
         `/import` vẫn sống và vẫn chuyển hướng về đúng đây (xem `routes.tsx`),
