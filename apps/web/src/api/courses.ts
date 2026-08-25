@@ -130,8 +130,8 @@ export class UnsafePackageError extends Error {
 
   constructor(courseId: string, version: string, findings: readonly Finding[]) {
     super(
-      `Course package ${courseId}@${version} declares tier "content" but breaks ${findings.length} of the ` +
-        `rules that tier stands for: ${findings.map((f) => `${f.code} (${f.path})`).join(', ')}`,
+      `Course package ${courseId}@${version} breaks ${findings.length} rule(s) every package must satisfy: ` +
+        findings.map((f) => `${f.code} (${f.path})`).join(', '),
     );
     this.name = 'UnsafePackageError';
     this.courseId = courseId;
@@ -171,11 +171,24 @@ export class UnsafePackageError extends Error {
  *     proof of safety — the reason `course/version.ts` parses chapters into an
  *     inert document (ruling S1-F30) rather than trusting this check.
  *
- * And the case this check cannot touch at all, stated so nobody mistakes it
- * for covered: a package that declares `tier: "interactive"` is ENTITLED to
- * every one of these, so `validatePackage` reports nothing for it. The tier
- * rules protect a reader from a package that LIES about its tier. They do not
- * protect one from a package that is honest about running code.
+ * There used to be a case this check could not touch at all: a manifest that
+ * declared `tier: "interactive"` was ENTITLED to every one of these, so
+ * `validatePackage` reported nothing for it, and this boundary had nothing to
+ * refuse. Format v2 (task 1 of the server-side pivot,
+ * `docs/superpowers/specs/2026-08-25-server-side-pivot.md` §2.3) closed that
+ * gap by deleting the field it ran on: there is no `tier` any more, honest or
+ * dishonest, and `validatePackage` runs the seven rules above on every
+ * package unconditionally. A manifest that still sets `tier: "interactive"`
+ * buys nothing here — it is refused exactly like any other package that
+ * breaks one of these rules.
+ *
+ * `TIER_REMOVED` — the code `validatePackage` reports for a manifest that
+ * still carries the dead field — is deliberately NOT in the set below,
+ * alongside the missing-`license`-etc. codes reason 1 above already covers:
+ * carrying a stale field is staleness, not danger, the same reasoning that
+ * keeps this whole set to what markup will DO rather than what the manifest
+ * merely says about itself. The one limit that remains is reason 2 above:
+ * what this boundary never downloads, it cannot see.
  */
 const REFUSED_CODES: ReadonlySet<string> = new Set([
   'SCRIPT_TAG',
@@ -229,14 +242,15 @@ function refuseUnsafePackage(courseId: string, version: string, files: Record<st
  * a few kilobytes each, and a 40-chapter course fetched in sequence is 40
  * round trips of latency for no reason.
  *
- * **Every byte that leaves here has been through the tier rules.** See
+ * **Every byte that leaves here has been through the content rules.** See
  * {@link REFUSED_CODES} for which ones and why only those — the short version
  * is that this used to be the one way into the app for a package that had
- * never met `validatePackage`, and a package that declared `content` could
- * carry `onerror` down it and be drawn with a reassuring `content` badge.
- * The scan is synchronous and proportional to the text downloaded (~1 s per
- * 20 MB, measured in `course/import.ts`); it runs on the manifest + chapters,
- * which is the small half of a package.
+ * never met `validatePackage`, and — before format v2 unconditionally ran
+ * these rules on every package (task 1 of the server-side pivot) — a package
+ * that declared `tier: "interactive"` could carry `onerror` down this route
+ * with nothing to stop it. The scan is synchronous and proportional to the
+ * text downloaded (~1 s per 20 MB, measured in `course/import.ts`); it runs
+ * on the manifest + chapters, which is the small half of a package.
  */
 export async function fetchPackage(
   courseId: string,

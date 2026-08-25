@@ -522,7 +522,7 @@ export const en: Messages = {
   'update.error.courseKit':
     'Could not preview: the chapter renderer (maths) failed to load. Check your connection and try again.',
   'update.error.unsafe': (version: string, findings: string) =>
-    `Cannot update: version ${version} declares itself “content” tier (text only) but contains executable code. ${findings}`,
+    `Cannot update: version ${version} contains running code, which no course may ship. ${findings}`,
   'update.error.versionUnavailable': (version: string) =>
     `Could not preview: version ${version} of this course could not be fetched.`,
   'update.summary.exact': (exact: string, total: string) => `${exact}/${total} notes stay exactly in place`,
@@ -560,17 +560,17 @@ export const en: Messages = {
   'finding.DUPLICATE_CHAPTER_ID': 'Two chapters share the same id.',
   'finding.CHAPTER_FILE_MISSING': 'The table of contents names a chapter file that is not in the package.',
   'finding.SCRIPT_TAG':
-    'This chapter contains a <script> tag. A “content” tier course may only contain text and images, never executable code.',
+    'This chapter contains a <script> tag. No course may ship running code — interactive parts live only in a widget, sandboxed in its own frame.',
   'finding.EVENT_HANDLER_ATTR':
-    'This chapter has event-handler attributes (onclick, onerror…), which are executable code. A “content” tier course may not.',
+    'This chapter has event-handler attributes (onclick, onerror…), which are executable code. No course may ship running code — interactive parts live only in a widget, sandboxed in its own frame.',
   'finding.JAVASCRIPT_URL':
-    'This chapter has a javascript: link, which is executable code. A “content” tier course may not.',
+    'This chapter has a javascript: link, which is executable code. No course may ship running code — interactive parts live only in a widget, sandboxed in its own frame.',
   'finding.EMBEDDED_FRAME':
-    'This chapter embeds another page (iframe/embed/object). A “content” tier course may not.',
+    'This chapter embeds another page (iframe/embed/object). No course may ship running code — interactive parts live only in a widget, sandboxed in its own frame.',
   'finding.FORM_TAG':
-    'This chapter has a <form>. A “content” tier course may not — a form sends data somewhere else.',
+    'This chapter has a <form> — a form sends data somewhere else. No course may ship running code — interactive parts live only in a widget, sandboxed in its own frame.',
   'finding.JS_FILE_IN_PACKAGE':
-    'The package contains JavaScript files while the course declares itself “content” tier (text and images only).',
+    'The package contains a loose JavaScript file. No course may ship running code — interactive parts live only in a widget, sandboxed in its own frame.',
   'finding.TAG_ATTR_FLOOD': 'An HTML tag in the package carries too many attributes to be a real document.',
   'finding.BAD_URL': 'This link cannot be used.',
   'finding.FETCH_FAILED': 'Could not download it.',
@@ -666,8 +666,6 @@ export const en: Messages = {
   'catalog.empty': 'The registry has no courses yet. The catalog loaded fine — it is empty.',
   'catalog.listAria': 'Courses on the registry',
   'catalog.versionCount': (count: string) => `${count} versions`,
-  'catalog.tier.unknownTitle':
-    'This package declares a tier the platform does not know, so nothing guarantees it contains no JavaScript.',
 
   /* ── HC-3: lọc theo ngôn ngữ ───────────────────────────────────────────── */
 
@@ -682,8 +680,6 @@ export const en: Messages = {
   'catalog.pull.done': (title: string, version: string) => `Pulled ${title} version ${version} onto this device. `,
   'catalog.pull.open': 'Open the course',
   'catalog.pull.failed': (title: string) => `Could not pull ${title}:`,
-  'catalog.pull.interactiveWarning':
-    'This package is allowed to run JavaScript in your browser when you open it.',
 
   /* ── hệ thống con 4: chấm sao ──────────────────────────────────────────── */
 

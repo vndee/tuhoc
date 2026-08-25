@@ -681,7 +681,7 @@ export const vi = {
   'update.error.courseKit':
     'Chưa xem trước được: không tải được bộ dựng chương (công thức toán). Hãy kiểm tra kết nối rồi thử lại.',
   'update.error.unsafe': (version: string, findings: string) =>
-    `Không thể cập nhật: bản ${version} tự khai là hạng “content” (chỉ có chữ) nhưng lại chứa mã chạy được. ${findings}`,
+    `Không thể cập nhật: bản ${version} chứa mã chạy được, điều không khóa học nào được phép. ${findings}`,
   'update.error.versionUnavailable': (version: string) =>
     `Chưa xem trước được: không lấy được bản ${version} của khoá học này.`,
   'update.summary.exact': (exact: string, total: string) => `${exact}/${total} ghi chú giữ đúng chỗ`,
@@ -730,17 +730,17 @@ export const vi = {
   'finding.DUPLICATE_CHAPTER_ID': 'Hai chương dùng chung một mã id.',
   'finding.CHAPTER_FILE_MISSING': 'Mục lục nhắc tới một tệp chương không có trong gói.',
   'finding.SCRIPT_TAG':
-    'Chương này chứa thẻ <script>. Khóa học hạng "content" chỉ được chứa chữ và hình, không chứa mã chạy được.',
+    'Chương này chứa thẻ <script>. Không khóa học nào được chứa mã chạy được — phần tương tác chỉ sống trong widget, chạy trong khung sandbox riêng.',
   'finding.EVENT_HANDLER_ATTR':
-    'Chương này có thuộc tính bắt sự kiện (onclick, onerror…), tức là mã chạy được. Khóa học hạng "content" không được phép.',
+    'Chương này có thuộc tính bắt sự kiện (onclick, onerror…), tức là mã chạy được. Không khóa học nào được chứa mã chạy được — phần tương tác chỉ sống trong widget, chạy trong khung sandbox riêng.',
   'finding.JAVASCRIPT_URL':
-    'Chương này có liên kết javascript:, tức là mã chạy được. Khóa học hạng "content" không được phép.',
+    'Chương này có liên kết javascript:, tức là mã chạy được. Không khóa học nào được chứa mã chạy được — phần tương tác chỉ sống trong widget, chạy trong khung sandbox riêng.',
   'finding.EMBEDDED_FRAME':
-    'Chương này nhúng một trang khác (iframe/embed/object). Khóa học hạng "content" không được phép.',
+    'Chương này nhúng một trang khác (iframe/embed/object). Không khóa học nào được chứa mã chạy được — phần tương tác chỉ sống trong widget, chạy trong khung sandbox riêng.',
   'finding.FORM_TAG':
-    'Chương này có biểu mẫu <form>. Khóa học hạng "content" không được phép — biểu mẫu gửi dữ liệu đi nơi khác.',
+    'Chương này có biểu mẫu <form> — biểu mẫu gửi dữ liệu đi nơi khác. Không khóa học nào được chứa mã chạy được — phần tương tác chỉ sống trong widget, chạy trong khung sandbox riêng.',
   'finding.JS_FILE_IN_PACKAGE':
-    'Gói chứa tệp JavaScript, trong khi khóa học tự khai là hạng "content" (chỉ chữ và hình).',
+    'Gói chứa một tệp JavaScript rời. Không khóa học nào được chứa mã chạy được — phần tương tác chỉ sống trong widget, chạy trong khung sandbox riêng.',
   'finding.TAG_ATTR_FLOOD': 'Một thẻ HTML trong gói mang quá nhiều thuộc tính để có thể là một tài liệu thật.',
   'finding.BAD_URL': 'Đường dẫn này không dùng được.',
   'finding.FETCH_FAILED': 'Không tải được.',
@@ -844,8 +844,6 @@ export const vi = {
   'catalog.empty': 'Registry chưa có khóa học nào. Danh mục tải được bình thường — nó rỗng.',
   'catalog.listAria': 'Khóa học trên registry',
   'catalog.versionCount': (count: string) => `${count} bản`,
-  'catalog.tier.unknownTitle':
-    'Gói này khai một hạng nền tảng không biết, nên không có gì bảo đảm nó không chứa JavaScript.',
 
   /* ── HC-3: lọc theo ngôn ngữ ───────────────────────────────────────────
    *
@@ -865,13 +863,6 @@ export const vi = {
   'catalog.pull.done': (title: string, version: string) => `Đã kéo ${title} phiên bản ${version} về thiết bị này. `,
   'catalog.pull.open': 'Mở khóa học',
   'catalog.pull.failed': (title: string) => `Không kéo được ${title} về:`,
-  /**
-   * Câu nói ra HẬU QUẢ AN NINH của hạng `interactive`, ở đúng chỗ nó còn kịp
-   * đổi một quyết định: cạnh cái nút, TRƯỚC khi bấm. Sau khi kéo về thì mã
-   * đã nằm trên máy người đọc và một câu cảnh báo chỉ còn là một lời xin lỗi.
-   */
-  'catalog.pull.interactiveWarning':
-    'Gói này được phép chạy JavaScript trong trình duyệt của bạn khi bạn mở nó.',
 
   /* ── hệ thống con 4: CHẤM SAO (`registry/Rating.tsx`) ──────────────────
    *
