@@ -60,6 +60,15 @@ export const vi = {
   'settings.section.account': 'Tài khoản',
   'settings.section.appearance': 'Ngôn ngữ & giao diện',
   'settings.section.localData': 'Dữ liệu trên máy',
+  'settings.section.general': 'Chung',
+  'settings.lede': 'Tài khoản, giao diện, và những gì đang nằm trên máy này.',
+  'settings.account.syncBlurb': 'Tiến độ đồng bộ qua tài khoản này.',
+  'settings.appearance.themeLight': 'Sáng',
+  'settings.appearance.themeDark': 'Tối',
+  'settings.localData.statPackages': 'gói',
+  'settings.localData.statNotes': 'ghi chú',
+  'settings.localData.statBytes': 'đang chiếm',
+  'settings.localData.statsAria': 'Máy này đang giữ những gì',
 
   /* ── mục Tài khoản ─────────────────────────────────────────────────────── */
 
@@ -79,8 +88,7 @@ export const vi = {
 
   /* ── mục Ngôn ngữ & giao diện ──────────────────────────────────────────── */
 
-  'settings.appearance.blurb':
-    'Hai lựa chọn dưới đây thuộc về THIẾT BỊ này, không thuộc tài khoản: đăng nhập bằng tài khoản khác không đổi chúng, và chúng không đồng bộ đi đâu cả.',
+  'settings.appearance.blurb': 'Áp cho khung ứng dụng. Nội dung khoá học giữ ngôn ngữ của chính nó.',
   'settings.appearance.language': 'Ngôn ngữ',
   'settings.appearance.theme': 'Giao diện',
   'settings.appearance.themeNowLight': 'Đang dùng giao diện sáng.',

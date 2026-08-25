@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useMe, accountInitials } from '../api/useMe';
 import { useLogout } from '../auth/useLogout';
+import { db } from '../db/local';
 import { LANGS, normalizeLang } from '../i18n';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { useVaultFrame } from '../shell/VaultFrame';
@@ -48,7 +49,18 @@ import { useThemeContext } from '../theme/ThemeContext';
  * `GET /me` chỉ vì ai đó vào xem cấu hình AI.
  */
 
-type SectionId = 'account' | 'ai' | 'appearance' | 'localData';
+/**
+ * BA mục, không phải bốn — bản dựng gộp "Tài khoản" với "Ngôn ngữ & giao diện"
+ * thành "Chung", và người dùng yêu cầu đúng phép gộp ấy.
+ *
+ * Một vòng trước tôi đã TỪ CHỐI gộp, với lý do: `SECTIONS` là mô hình có bài
+ * kiểm riêng, nên gộp sẽ đổi cả `settings.section.*` lẫn `?section=`. Lý do ấy
+ * đúng về phạm vi nhưng sai về kết luận — phạm vi thật chỉ là tệp này và bài
+ * kiểm của nó: `AskPanel` truyền `section: 'ai'` (không đụng), và `e2e/s2` gọi
+ * tab theo CHỮ "Trợ lý AI" (không đụng). Hai mục bị gộp đều không có ai ngoài
+ * tệp này gọi tên.
+ */
+type SectionId = 'general' | 'ai' | 'localData';
 
 /**
  * Thứ tự ở đây là thứ tự người dùng thấy, và nó theo canvas: Tài khoản trước
@@ -75,8 +87,8 @@ type SectionId = 'account' | 'ai' | 'appearance' | 'localData';
  * ấy trong khi không thêm được gì: mục đang xem vốn đã không nằm trong URL
  * (xem chú thích của `<nav className="set-toc">` bên dưới).
  */
-const SECTIONS: readonly SectionId[] = ['account', 'ai', 'appearance', 'localData'];
-const DEFAULT_SECTION: SectionId = 'account';
+const SECTIONS: readonly SectionId[] = ['general', 'ai', 'localData'];
+const DEFAULT_SECTION: SectionId = 'general';
 
 /** Ý định do lối vào truyền sang, qua `<Link state={…}>`. Không có thì `null`. */
 export type SettingsNavIntent = {
@@ -95,9 +107,8 @@ function readIntent(state: unknown): SettingsNavIntent {
 }
 
 const SECTION_TITLE_KEY = {
-  account: 'settings.section.account',
+  general: 'settings.section.general',
   ai: 'settings.ai.title',
-  appearance: 'settings.section.appearance',
   localData: 'settings.section.localData',
 } as const;
 
@@ -119,6 +130,10 @@ export function Settings() {
   return (
     <section className="page-settings">
       <h1 className="set-title">{t('account.settings')}</h1>
+      {/* Câu dẫn của trang — bản dựng có, bản đang chạy thì nhảy thẳng từ nhan
+          đề xuống hàng tab. Nó nói ra trang này gồm những gì, tức đúng việc mà
+          bốn (nay ba) cái tab một mình không làm được. */}
+      <p className="set-page-lede">{t('settings.lede')}</p>
 
       <div className="set-grid">
         {/*
@@ -148,9 +163,13 @@ export function Settings() {
         </nav>
 
         <div className="set-main">
-          {section === 'account' && <AccountSection />}
+          {section === 'general' && (
+            <>
+              <AccountSection />
+              <AppearanceSection />
+            </>
+          )}
           {section === 'ai' && <AiSection autoOpen={autoOpenVault} />}
-          {section === 'appearance' && <AppearanceSection />}
           {section === 'localData' && <LocalDataSection />}
         </div>
       </div>
@@ -211,7 +230,20 @@ function AiSection({ autoOpen }: { autoOpen: boolean }) {
   }, [autoOpen, setExpanded]);
 
   return (
-    <>
+    <section className="set-block">
+      <div className="set-side">
+        <h2 className="set-h">{t('settings.ai.title')}</h2>
+        {/*
+          `tNode`, không `t`: `<strong>kho khoá</strong>` nằm GIỮA câu. Đây là ca
+          đã chốt QĐ-2 — nếu `t()` trả `ReactNode` thì mọi `aria-label`/`title`/
+          `throw` trong 37 tệp còn lại phải thu hẹp kiểu bằng tay.
+        */}
+        <p className="set-lede" data-testid="vault-explainer">
+          {tNode('settings.ai.blurb', <strong>{t('settings.ai.blurbVault')}</strong>)}
+        </p>
+      </div>
+
+      <div className="set-block-main">
       {/*
         CỘT TRÁI LÀ MỘT Ô, KHÔNG PHẢI HAI Ô CHỒNG NHAU.
 
@@ -226,17 +258,6 @@ function AiSection({ autoOpen }: { autoOpen: boolean }) {
         đồng thời gỡ hai chỗ mong manh mà bản trước phải dựa vào: `>` và
         `:first-of-type` (mục này có `.set-lede` thứ hai lồng trong `.set-sub`).
       */}
-      <div className="set-side">
-        <h2 className="set-h">{t('settings.ai.title')}</h2>
-        {/*
-          `tNode`, không `t`: `<strong>kho khoá</strong>` nằm GIỮA câu. Đây là ca
-          đã chốt QĐ-2 — nếu `t()` trả `ReactNode` thì mọi `aria-label`/`title`/
-          `throw` trong 37 tệp còn lại phải thu hẹp kiểu bằng tay.
-        */}
-        <p className="set-lede" data-testid="vault-explainer">
-          {tNode('settings.ai.blurb', <strong>{t('settings.ai.blurbVault')}</strong>)}
-        </p>
-      </div>
 
       {origin === null ? (
         <p className="set-note" data-testid="vault-unavailable">
@@ -287,7 +308,8 @@ function AiSection({ autoOpen }: { autoOpen: boolean }) {
         <h3 className="set-eyebrow">{t('settings.ai.budgetTitle')}</h3>
         <p className="set-lede">{t('settings.ai.budgetBody')}</p>
       </section>
-    </>
+      </div>
+    </section>
   );
 }
 
@@ -309,11 +331,18 @@ function AccountSection() {
   const logout = useLogout();
 
   return (
-    <>
+    <section className="set-block">
       <div className="set-side">
         <h2 className="set-h">{t('settings.section.account')}</h2>
-        <p className="set-lede">{t('settings.account.blurb')}</p>
+        {/* Câu NGẮN, không phải cả đoạn giải thích. Mục này nay đứng chung một
+            trang với hai mục khác (xem `SectionId`), nên ba cột trái phải quét
+            được bằng mắt — một đoạn bốn dòng ở đây sẽ đẩy hai mục kia xuống
+            dưới nếp gấp. Đoạn dài chuyển thành câu cảnh báo cạnh nút Đăng xuất,
+            nơi nó thật sự cần đọc. */}
+        <p className="set-lede">{t('settings.account.syncBlurb')}</p>
       </div>
+
+      <div className="set-block-main">
 
       {meQuery.isPending && <p className="set-note">{t('settings.account.loading')}</p>}
       {/*
@@ -333,31 +362,43 @@ function AccountSection() {
             {accountInitials(meQuery.data.name, meQuery.data.email)}
           </span>
           <p className="set-identity-text" data-testid="account-identity">
-            {t('settings.account.signedInAs', meQuery.data.name, meQuery.data.email)}
+            {/* Tên và email trên HAI dòng, đúng bản dựng: gộp vào một dòng ngăn
+                bằng dấu chấm giữa thì cái quan trọng hơn (email — thứ định danh
+                thật) tụt xuống hàng thứ hai của một câu. Chuỗi gộp vẫn còn
+                trong `aria-label` để trình đọc màn hình nghe trọn một câu. */}
+            <span className="sr-only">
+              {t('settings.account.signedInAs', meQuery.data.name, meQuery.data.email)}
+            </span>
+            <span aria-hidden="true">
+              {meQuery.data.name !== '' && <span className="set-identity-name">{meQuery.data.name}</span>}
+              <span className="set-identity-email">{meQuery.data.email}</span>
+            </span>
           </p>
+          {/*
+            NÚT NẰM TRONG THẺ, dồn phải — bản dựng đặt nó đúng đây, và chỗ ấy
+            đúng: nó là hành động thuộc về CHÍNH tài khoản đang hiện, nên đặt
+            nó cạnh danh tính thì không ai phải hỏi "đăng xuất khỏi cái gì".
+
+            `danger`, không phải một nút thứ cấp xám: nó xoá sạch dữ liệu học
+            trên máy — gói đã tải, ghi chú, và hàng đợi tiến độ chưa gửi được
+            (câu cảnh báo ngay dưới nói đúng thế). Một hành động không hoàn tác
+            được mà trông y hệt "Huỷ" là một cái bẫy.
+          */}
+          <button
+            type="button"
+            className="btn danger set-identity-action"
+            onClick={() => {
+              void logout();
+            }}
+          >
+            {t('account.logout')}
+          </button>
         </div>
       )}
 
       <p className="set-note">{t('settings.account.signOutWarning')}</p>
-      <p>
-        {/*
-          `danger`, không phải một nút thứ cấp xám. Nút này xoá SẠCH dữ liệu học
-          trên máy — gói đã tải, ghi chú, và hàng đợi tiến độ chưa gửi được (câu
-          cảnh báo ngay trên nói đúng thế). Một hành động không hoàn tác được mà
-          trông y hệt "Huỷ" là một cái bẫy; màu ở đây là một lời cảnh báo, không
-          phải trang trí.
-        */}
-        <button
-          type="button"
-          className="btn danger"
-          onClick={() => {
-            void logout();
-          }}
-        >
-          {t('account.logout')}
-        </button>
-      </p>
-    </>
+      </div>
+    </section>
   );
 }
 
@@ -392,13 +433,16 @@ function AppearanceSection() {
   const { lang, setLang, t } = useLanguage();
   const { theme, toggle } = useThemeContext();
   const languageId = useId();
+  const themeLabelId = useId();
 
   return (
-    <>
+    <section className="set-block">
       <div className="set-side">
         <h2 className="set-h">{t('settings.section.appearance')}</h2>
         <p className="set-lede">{t('settings.appearance.blurb')}</p>
       </div>
+
+      <div className="set-block-main">
 
       <div className="set-field">
         <label className="set-label" htmlFor={languageId}>
@@ -425,16 +469,71 @@ function AppearanceSection() {
         </select>
       </div>
 
+      {/*
+        HAI NÚT ĐỨNG CẠNH NHAU, không phải một nút "đổi sang giao diện tối".
+
+        Một nút chuyển đổi nói ra thứ SẮP xảy ra; một hàng chọn nói ra thứ ĐANG
+        đúng. Bản dựng vẽ hàng chọn, và nó đúng hơn cho một trang cấu hình —
+        nơi người ta vào để biết mình đang ở đâu chứ không chỉ để lật.
+
+        Bản dựng có BA lựa chọn (Sáng / Tối / Theo máy). Ở đây chỉ có hai, và
+        chỗ thiếu là một tính năng chứ không phải một nút bị quên: `useTheme`
+        chỉ biết `'light' | 'dark'`, còn "Theo máy" cần theo dõi
+        `prefers-color-scheme` và phải đi qua cả đoạn khởi động nội tuyến trong
+        `index.html` (thứ chặn một khung nhấp nháy sai màu, và có bài kiểm
+        riêng). Dựng một nút thứ ba không làm gì là tệ hơn hai nút thật.
+
+        `role="radiogroup"` chứ không phải hai `<button>` rời: chúng loại trừ
+        nhau, và `aria-checked` là thứ nói ra điều đó cho trình đọc màn hình.
+      */}
       <div className="set-field">
-        <p className="set-label">{t('settings.appearance.theme')}</p>
+        <p className="set-label" id={themeLabelId}>
+          {t('settings.appearance.theme')}
+        </p>
+        <div className="set-seg" role="radiogroup" aria-labelledby={themeLabelId}>
+          {(['light', 'dark'] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={theme === option}
+              className={theme === option ? 'set-seg-btn on' : 'set-seg-btn'}
+              onClick={() => {
+                if (theme !== option) toggle();
+              }}
+            >
+              {option === 'light' ? (
+                <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <circle cx="10" cy="10" r="3.4" stroke="currentColor" strokeWidth="1.6" />
+                  <path
+                    d="M10 2.6v1.8M10 15.6v1.8M17.4 10h-1.8M4.4 10H2.6M15.2 4.8l-1.3 1.3M6.1 13.9l-1.3 1.3M15.2 15.2l-1.3-1.3M6.1 6.1L4.8 4.8"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              ) : (
+                <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path
+                    d="M16.4 12.3A6.7 6.7 0 017.7 3.6a6.8 6.8 0 108.7 8.7z"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+              {t(option === 'light' ? 'settings.appearance.themeLight' : 'settings.appearance.themeDark')}
+            </button>
+          ))}
+        </div>
+        {/* Câu này ở lại: `Settings.test.tsx` đo nó, và nó là bản CHỮ của cùng
+            sự thật mà hàng nút vừa nói bằng hình. */}
         <p className="set-note" data-testid="theme-now">
           {t(theme === 'dark' ? 'settings.appearance.themeNowDark' : 'settings.appearance.themeNowLight')}
         </p>
-        <button type="button" className="btn" onClick={toggle}>
-          {t(theme === 'dark' ? 'topbar.themeToLight' : 'topbar.themeToDark')}
-        </button>
       </div>
-    </>
+      </div>
+    </section>
   );
 }
 
@@ -456,17 +555,92 @@ function AppearanceSection() {
  * Cái mục này thật sự nợ người dùng là một câu trả lời cho *"máy này đang giữ
  * những gì của tôi, và khi nào thì mất?"* — và đó là chữ.
  */
+/**
+ * Ba con số: gói, ghi chú, dung lượng.
+ *
+ * Chú thích trên nói mục này nợ người dùng câu trả lời cho *"máy này đang giữ
+ * những gì của tôi"* — và cho tới nay nó trả lời bằng CHỮ. Ba con số trả lời
+ * đúng câu ấy bằng thứ đọc trong một giây, và cả ba đều đọc từ chỗ đã có: hai
+ * bảng Dexie, và `navigator.storage.estimate()`.
+ *
+ * `null` là "chưa biết", KHÁC với 0 — và khác biệt ấy quan trọng ở đây hơn ở
+ * hầu hết chỗ khác: vẽ "0 gói" cho một người có ba gói, chỉ vì Dexie chưa trả
+ * lời xong, là nói với họ rằng máy đã mất dữ liệu.
+ *
+ * `storage.estimate()` không có ở mọi trình duyệt và trả về ƯỚC LƯỢNG của cả
+ * origin (không riêng bảng nào), nên nó được nói là "đang chiếm" chứ không
+ * phải "dữ liệu của bạn nặng bằng này", và vắng mặt thì cột ấy biến mất chứ
+ * không hiện 0.
+ */
+function useLocalFootprint(): { packages: number | null; notes: number | null; bytes: number | null } {
+  const [state, setState] = useState<{ packages: number | null; notes: number | null; bytes: number | null }>({
+    packages: null,
+    notes: null,
+    bytes: null,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [packages, notes] = await Promise.all([db.packages.count(), db.annotations.count()]);
+      let bytes: number | null = null;
+      try {
+        const estimate = await navigator.storage?.estimate?.();
+        bytes = typeof estimate?.usage === 'number' ? estimate.usage : null;
+      } catch {
+        bytes = null;
+      }
+      if (!cancelled) setState({ packages, notes, bytes });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return state;
+}
+
+/** Byte → "4,2 MB". Dấu phẩy thập phân vì catalog mặc định là tiếng Việt. */
+function formatBytes(bytes: number, lang: string): string {
+  const mb = bytes / (1024 * 1024);
+  const unit = mb >= 1 ? 'MB' : 'KB';
+  const value = mb >= 1 ? mb : bytes / 1024;
+  return `${value.toLocaleString(lang === 'en' ? 'en-US' : 'vi-VN', { maximumFractionDigits: 1 })} ${unit}`;
+}
+
 function LocalDataSection() {
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
+  const footprint = useLocalFootprint();
 
   return (
-    <>
+    <section className="set-block">
       <div className="set-side">
         <h2 className="set-h">{t('settings.section.localData')}</h2>
         <p className="set-lede">{t('settings.localData.blurb')}</p>
       </div>
+
+      <div className="set-block-main">
+
+      <dl className="set-stats" aria-label={t('settings.localData.statsAria')}>
+        <div className="set-stat">
+          <dt className="set-stat-v">{footprint.packages ?? '—'}</dt>
+          <dd className="set-stat-k">{t('settings.localData.statPackages')}</dd>
+        </div>
+        <div className="set-stat">
+          <dt className="set-stat-v">{footprint.notes ?? '—'}</dt>
+          <dd className="set-stat-k">{t('settings.localData.statNotes')}</dd>
+        </div>
+        {footprint.bytes !== null && (
+          <div className="set-stat">
+            <dt className="set-stat-v">{formatBytes(footprint.bytes, lang)}</dt>
+            <dd className="set-stat-k">{t('settings.localData.statBytes')}</dd>
+          </div>
+        )}
+      </dl>
+
       <p className="set-note">{t('settings.localData.clearedOnSignOut')}</p>
       <p className="set-note">{t('settings.localData.kept')}</p>
-    </>
+      </div>
+    </section>
   );
 }

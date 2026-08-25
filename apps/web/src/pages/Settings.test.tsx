@@ -120,19 +120,22 @@ describe('Trang cấu hình AI của TRANG CHÍNH', () => {
    * không vẽ gì cả, nên mỗi mục phải tự chứng minh nó có mặt bằng tiêu đề của
    * chính nó trước khi lời khẳng định "không có ô nào" có nghĩa.
    */
-  it('KHÔNG có ô nhập nào ở BẤT KỲ mục nào trong bốn mục — không riêng mục mặc định', async () => {
+  it('KHÔNG có ô nhập nào ở BẤT KỲ mục nào trong ba mục — không riêng mục mặc định', async () => {
     const user = userEvent.setup();
     const { container } = renderSettings();
 
+    // Tên TAB và tên tiêu đề bên trong không còn trùng nhau ở mục đầu: tab là
+    // "Chung", còn bên trong nó là hai tiêu đề "Tài khoản" và "Ngôn ngữ & giao
+    // diện". Nên chốt chống-vacuous phải hỏi tiêu đề THẬT của mục, không phải
+    // nhãn tab.
     const sections = [
-      t('vi', 'settings.section.account'),
-      t('vi', 'settings.ai.title'),
-      t('vi', 'settings.section.appearance'),
-      t('vi', 'settings.section.localData'),
+      { tab: t('vi', 'settings.section.general'), heading: t('vi', 'settings.section.account') },
+      { tab: t('vi', 'settings.ai.title'), heading: t('vi', 'settings.ai.title') },
+      { tab: t('vi', 'settings.section.localData'), heading: t('vi', 'settings.section.localData') },
     ];
 
-    for (const name of sections) {
-      await user.click(tocItem(name));
+    for (const { tab, heading: name } of sections) {
+      await user.click(tocItem(tab));
 
       // Mục này thật sự đang hiện — nếu không, khẳng định dưới đây rỗng.
       expect(screen.getByRole('heading', { name }), name).toBeInTheDocument();
@@ -265,17 +268,30 @@ describe('/settings là CÀI ĐẶT, không phải trang Trợ lý AI', () => {
    * xoá một mục khác trong cùng một commit. Danh sách này là hợp đồng thứ bậc
    * của đặc tả IA, nên nó phải đọc được như một hợp đồng.
    */
-  it('có mục lục với đủ bốn mục, đúng tên và đúng thứ tự', () => {
+  it('có mục lục với đủ ba mục, đúng tên và đúng thứ tự', () => {
     renderSettings();
     const toc = screen.getByRole('navigation', { name: t('vi', 'settings.nav.aria') });
     expect(
       Array.from(toc.querySelectorAll('button')).map((b) => b.textContent),
     ).toEqual([
-      t('vi', 'settings.section.account'),
+      t('vi', 'settings.section.general'),
       t('vi', 'settings.ai.title'),
-      t('vi', 'settings.section.appearance'),
       t('vi', 'settings.section.localData'),
     ]);
+  });
+
+  /**
+   * "Chung" GỘP hai mục cũ, và bài này là thứ chứng minh phép gộp không đánh
+   * rơi cái nào. Không có nó, một bản xoá nhầm `<AppearanceSection/>` khỏi
+   * nhánh `general` vẫn xanh: danh sách tab ở bài trên chỉ đếm tab.
+   */
+  it('mục "Chung" mang CẢ tài khoản lẫn ngôn ngữ & giao diện', async () => {
+    const user = userEvent.setup();
+    renderSettings();
+
+    await user.click(tocItem(t('vi', 'settings.section.general')));
+    expect(screen.getByRole('heading', { name: t('vi', 'settings.section.account') })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: t('vi', 'settings.section.appearance') })).toBeInTheDocument();
   });
 
   it('tên trang là "Cài đặt" — cùng chữ với mục ở đáy thanh bên', () => {
@@ -291,7 +307,7 @@ describe('/settings là CÀI ĐẶT, không phải trang Trợ lý AI', () => {
   it('mở vào mục Trợ lý AI, và mục ấy được đánh dấu là đang xem', () => {
     renderSettings();
     expect(tocItem(t('vi', 'settings.ai.title'))).toHaveAttribute('aria-current', 'true');
-    expect(tocItem(t('vi', 'settings.section.account'))).not.toHaveAttribute('aria-current');
+    expect(tocItem(t('vi', 'settings.section.general'))).not.toHaveAttribute('aria-current');
     expect(screen.getByRole('heading', { name: t('vi', 'settings.ai.title') })).toBeInTheDocument();
   });
 
@@ -311,7 +327,7 @@ describe('/settings là CÀI ĐẶT, không phải trang Trợ lý AI', () => {
     const user = userEvent.setup();
     renderSettings();
 
-    await user.click(tocItem(t('vi', 'settings.section.account')));
+    await user.click(tocItem(t('vi', 'settings.section.general')));
 
     expect(screen.getByTestId('account-identity')).toHaveTextContent(
       t('vi', 'settings.account.signedInAs', SIGNED_IN.name, SIGNED_IN.email),
@@ -331,7 +347,7 @@ describe('/settings là CÀI ĐẶT, không phải trang Trợ lý AI', () => {
     const user = userEvent.setup();
     const { container } = renderSettings();
 
-    await user.click(tocItem(t('vi', 'settings.section.appearance')));
+    await user.click(tocItem(t('vi', 'settings.section.general')));
 
     const select = screen.getByLabelText(t('vi', 'settings.appearance.language'));
     expect(select.tagName).toBe('SELECT');
@@ -343,11 +359,18 @@ describe('/settings là CÀI ĐẶT, không phải trang Trợ lý AI', () => {
     const user = userEvent.setup();
     renderSettings();
 
-    await user.click(tocItem(t('vi', 'settings.section.appearance')));
+    await user.click(tocItem(t('vi', 'settings.section.general')));
     expect(screen.getByTestId('theme-now')).toHaveTextContent(t('vi', 'settings.appearance.themeNowLight'));
 
-    await user.click(screen.getByRole('button', { name: t('vi', 'topbar.themeToDark') }));
+    // MỘT HÀNG CHỌN, không còn là một nút "đổi sang giao diện tối" — bản dựng
+    // vẽ hàng chọn, và `role="radio"` là thứ nói ra "hai lựa chọn loại trừ
+    // nhau" thay vì "một nút lật". Bài này đi theo hình dạng mới; điều nó đo —
+    // đổi được thật, và trang nói ra thứ đang đúng — không đổi.
+    const dark = screen.getByRole('radio', { name: t('vi', 'settings.appearance.themeDark') });
+    expect(screen.getByRole('radio', { name: t('vi', 'settings.appearance.themeLight') })).toBeChecked();
+    await user.click(dark);
 
+    expect(dark).toBeChecked();
     expect(screen.getByTestId('theme-now')).toHaveTextContent(t('vi', 'settings.appearance.themeNowDark'));
     expect(document.documentElement.dataset.theme).toBe('dark');
   });
@@ -435,7 +458,7 @@ describe('khung kho khoá là một MẶT PHẲNG KHÁC, và nó nói ra địa 
 
     const original = frames()[0];
 
-    await user.click(tocItem(t('vi', 'settings.section.account')));
+    await user.click(tocItem(t('vi', 'settings.section.general')));
     // Rời mục Trợ lý AI ⇒ lớp phủ đóng lại, nếu không nó che mất mục vừa chọn.
     expect(frames()[0]).not.toBeVisible();
     expect(frames()[0]).toBe(original);
@@ -477,7 +500,7 @@ describe('vào Cài đặt KHÔNG qua lời mời AI', () => {
   it('mở vào mục trung tính, không phải Trợ lý AI', () => {
     renderSettings(VAULT, SIGNED_IN, null);
 
-    expect(tocItem(t('vi', 'settings.section.account'))).toHaveAttribute('aria-current', 'true');
+    expect(tocItem(t('vi', 'settings.section.general'))).toHaveAttribute('aria-current', 'true');
     expect(tocItem(t('vi', 'settings.ai.title'))).not.toHaveAttribute('aria-current');
   });
 
@@ -508,7 +531,7 @@ describe('vào Cài đặt KHÔNG qua lời mời AI', () => {
     // back/forward, nên `readIntent` chỉ nhận đúng giá trị đã biết.
     renderSettings(VAULT, SIGNED_IN, { section: 'khong-ton-tai', openVault: 'yes' });
 
-    expect(tocItem(t('vi', 'settings.section.account'))).toHaveAttribute('aria-current', 'true');
+    expect(tocItem(t('vi', 'settings.section.general'))).toHaveAttribute('aria-current', 'true');
     expect(frames()[0]).not.toBeVisible();
   });
 });

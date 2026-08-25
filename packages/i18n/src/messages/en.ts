@@ -52,6 +52,15 @@ export const en: Messages = {
   'settings.section.account': 'Account',
   'settings.section.appearance': 'Language & appearance',
   'settings.section.localData': 'Data on this device',
+  'settings.section.general': 'General',
+  'settings.lede': 'Your account, how the app looks, and what is sitting on this machine.',
+  'settings.account.syncBlurb': 'Progress syncs through this account.',
+  'settings.appearance.themeLight': 'Light',
+  'settings.appearance.themeDark': 'Dark',
+  'settings.localData.statPackages': 'packages',
+  'settings.localData.statNotes': 'notes',
+  'settings.localData.statBytes': 'in use',
+  'settings.localData.statsAria': 'What this machine is holding',
 
   'settings.account.blurb':
     'The account does exactly one job: it syncs your progress and notes between your own machines. Course content lives on this device.',
@@ -61,8 +70,7 @@ export const en: Messages = {
   'settings.account.signOutWarning':
     'Signing out erases the study data of this session from this browser: downloaded packages, notes, and the progress queue that has not been sent yet. That is the only way two people sharing one machine never see data belonging to the other.',
 
-  'settings.appearance.blurb':
-    'Both choices below belong to THIS DEVICE, not to your account: signing in as somebody else does not change them, and they are never synced anywhere.',
+  'settings.appearance.blurb': 'Applies to the app frame. Course content keeps its own language.',
   'settings.appearance.language': 'Language',
   'settings.appearance.theme': 'Appearance',
   'settings.appearance.themeNowLight': 'Currently using the light theme.',

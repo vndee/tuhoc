@@ -1290,80 +1290,56 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
   border-radius: var(--radius-xs);
 }
 
-/* ── HAI CỘT: nhãn trái, điều khiển phải ─────────────────────────────────
+/* ── MỖI MỤC LÀ MỘT KHỐI HAI CỘT CỦA RIÊNG NÓ ────────────────────────────
    Bản dựng xếp mỗi mục thành một hàng: bên trái là tên mục cùng một câu giải
-   thích, bên phải là thứ bấm được. Cột trái hẹp và cố định nên mắt quét dọc
-   nó như một mục lục; cột phải lấy hết chỗ còn lại.
+   thích, bên phải là thứ bấm được. Cột trái hẹp và cố định nên mắt quét dọc nó
+   như một mục lục; cột phải lấy hết chỗ còn lại.
 
-   Cột trái là MỘT thẻ bọc (`.set-side`) do chính bốn component dựng, không
-   phải hai con phẳng được đặt vào hai hàng lưới. Bản trước làm cách kia để
-   khỏi phải sửa bốn component, và trả giá bằng một lỗi bố cục thật: chiều cao
-   một hàng lưới do phần tử cao nhất trong hàng quyết định, nên hộp kho khoá ở
-   cột phải đẩy câu giải thích ở cột trái xuống dưới một khoảng trống 100px.
-   Thẻ bọc cũng gỡ luôn hai chỗ mong manh mà bản trước phải dựa vào — `>` và
-   `:first-of-type`, cần thiết vì mục Trợ lý AI có `.set-lede` thứ hai lồng
-   trong `.set-sub`. */
+   MỘT LƯỚI CHO MỖI MỤC, không phải một lưới cho cả trang — và đây là lần sửa
+   thứ hai cho cùng một nguyên nhân. Lưới-cả-trang buộc mọi phần tử vào chung
+   một bộ hàng, mà chiều cao một hàng do phần tử cao nhất trong hàng quyết
+   định. Đo được: câu giải thích năm dòng ở cột trái của mục "Ngôn ngữ & giao
+   diện" đẩy ô "Giao diện" ở cột PHẢI xuống dưới một khoảng trống 100px. Lần
+   trước tôi vá bằng cách gộp hai phần tử cột trái vào một ô; vá ấy chỉ chữa
+   được một cặp hàng, vì cái sai nằm ở chỗ hai cột dùng chung hàng.
+
+   Khối riêng thì hai cột của một mục không còn ràng buộc gì với mục khác, và
+   cột phải tự trôi theo nội dung của chính nó. */
 #app:not(.reading) .set-main {
-  display: grid;
-  /* Cột phải có TRẦN, và nó không mâu thuẫn với "trang dùng toàn bề ngang":
-     trang trải hết, nội dung thì dừng ở khổ đọc được. Không có trần, thẻ danh
-     tính kéo dài 1800px với đúng một dòng chữ ở mép trái — rỗng ruột, và câu
-     cảnh báo bên dưới thành một dải chữ dài quá tầm mắt quét ngược. */
-  grid-template-columns: minmax(11rem, 16rem) minmax(0, 52rem);
-  column-gap: 40px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
   max-width: none;
 }
 
-#app:not(.reading) .set-main > * {
-  grid-column: 2;
+#app:not(.reading) .set-block {
+  display: grid;
+  /* Cột phải có TRẦN, và nó không mâu thuẫn với "trang dùng toàn bề ngang":
+     trang trải hết, nội dung thì dừng ở khổ đọc được. Không có trần, thẻ danh
+     tính kéo dài 1800px với đúng một dòng chữ ở mép trái — rỗng ruột. */
+  grid-template-columns: minmax(11rem, 16rem) minmax(0, 52rem);
+  column-gap: 40px;
+  align-items: start;
+}
+
+/* Hai mục trên một trang cần một đường kẻ giữa chúng — nếu không, câu dẫn của
+   mục dưới đọc như dòng cuối của mục trên. */
+#app:not(.reading) .set-block + .set-block {
+  margin-top: 32px;
+  padding-top: 32px;
+  border-top: 1px solid var(--rule);
+}
+
+#app:not(.reading) .set-block-main {
   min-width: 0;
 }
 
-/* MỘT ô cho cả nhan đề lẫn câu giải thích — xem `pages/Settings.tsx`.
-   `align-self: start` vì ô này nằm trong một hàng cao bằng khối bên phải; không
-   có nó, hai dòng chữ bị kéo giãn theo chiều cao ấy. */
-#app:not(.reading) .set-main > .set-side {
-  grid-column: 1;
-  grid-row: 1;
-  align-self: start;
-}
-
-#app:not(.reading) .set-side .set-lede {
-  margin-bottom: 0;
-}
-
-/* Hàng chỉ chứa một nút phải tự chừa khoảng thở phía trên.
-   Trước khi cột trái gộp thành một ô, nó có khoảng ấy một cách TÌNH CỜ: nhan
-   đề và câu dẫn chiếm hai hàng lưới nên các hàng bên phải bị đẩy giãn ra. Gộp
-   ô lại thì khoảng tình cờ ấy mất, và nút "Đăng xuất" dính sát vào câu cảnh
-   báo ngay trên nó — đúng chỗ cần một quãng nghỉ nhất. */
-#app:not(.reading) .set-main > p:has(> .btn) {
-  margin-top: 18px;
-}
-
 @media (max-width: 860px) {
-  #app:not(.reading) .set-main {
+  #app:not(.reading) .set-block {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  #app:not(.reading) .set-main > *,
-  #app:not(.reading) .set-main > .set-side {
-    grid-column: 1;
-    grid-row: auto;
-  }
-
-  /* Ở một cột, câu giải thích lại cần khoảng thở dưới nó như mọi câu dẫn khác. */
-  #app:not(.reading) .set-side .set-lede {
-    margin-bottom: 18px;
+    row-gap: 14px;
   }
 }
 
-/* `font-family` PHẢI nói ra ở đây. `settings-auth.css` đặt serif cho hai lớp
-   này từ trước vòng thiết kế lại; `#content h2` (hai id + một tên thẻ) tình cờ
-   thắng nó cho `.set-h`, nhưng `.set-lede` là một `<p>` mà không luật nào của
-   khung với tới — nên câu giải thích của mỗi mục Cài đặt vẫn đang render bằng
-   serif của trang đọc, một mình, giữa một trang toàn chữ giao diện. */
 #app:not(.reading) .set-h {
   font-family: var(--sans);
   font-size: 18px;
@@ -2043,4 +2019,156 @@ html[data-theme='dark'] #app:not(.reading) .tn-menu-danger {
 html[data-theme='dark'] #app:not(.reading) .tn-menu-danger:hover {
   background: color-mix(in srgb, var(--color-error-500) 16%, transparent);
   color: var(--color-error-300);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CÀI ĐẶT — ba mục, và ba mảnh còn thiếu so với bản dựng
+   ══════════════════════════════════════════════════════════════════════════ */
+
+#app:not(.reading) .set-page-lede {
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-3);
+  margin: 0 0 22px;
+  max-width: 60ch;
+}
+
+/* ── THẺ DANH TÍNH: nút Đăng xuất nằm TRONG thẻ ─────────────────────────── */
+
+#app:not(.reading) .set-identity-action {
+  margin-left: auto;
+  flex: none;
+}
+
+#app:not(.reading) .set-identity-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.35;
+}
+
+#app:not(.reading) .set-identity-name {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+#app:not(.reading) .set-identity-email {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* Chỉ đọc được bằng trình đọc màn hình. Ở đây nó mang câu GỘP ("Đang đăng
+   nhập: Tên · email") trong khi mắt thấy hai dòng — cùng một sự thật, hai cách
+   trình bày. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── HÀNG CHỌN GIAO DIỆN ────────────────────────────────────────────────── */
+
+#app:not(.reading) .set-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+#app:not(.reading) .set-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+#app:not(.reading) .set-seg-btn:hover {
+  color: var(--ink-2);
+}
+
+/* Lựa chọn ĐANG đúng: một viên trắng nổi lên trên rãnh xám — cùng hình dạng
+   với hai tab "Đăng nhập / Đăng ký" của bản dựng, nên người dùng học một cách
+   đọc cho cả app. */
+#app:not(.reading) .set-seg-btn.on {
+  background: var(--surface-1);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: var(--shadow-xs);
+}
+
+#app:not(.reading) .set-seg-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring-brand);
+}
+
+/* ── BA CON SỐ CỦA "DỮ LIỆU TRÊN MÁY" ───────────────────────────────────── */
+
+#app:not(.reading) .set-stats {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin: 0 0 18px;
+  padding: 14px 4px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-xs);
+}
+
+#app:not(.reading) .set-stat {
+  flex: 1;
+  min-width: 0;
+  padding: 0 18px;
+}
+
+/* Đường kẻ giữa các cột, KHÔNG phải viền quanh từng cột: ba con số này là một
+   câu trả lời cho một câu hỏi, không phải ba thẻ rời. */
+#app:not(.reading) .set-stat + .set-stat {
+  border-left: 1px solid var(--rule);
+}
+
+#app:not(.reading) .set-stat-v {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+#app:not(.reading) .set-stat-k {
+  margin: 2px 0 0;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+/* Hàng chỉ chứa một nút phải tự chừa khoảng thở phía trên — nó đứng ngay dưới
+   một câu cảnh báo, tức đúng chỗ cần một quãng nghỉ nhất. */
+#app:not(.reading) .set-block-main > p:has(> .btn) {
+  margin-top: 18px;
 }
