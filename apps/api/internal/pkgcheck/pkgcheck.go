@@ -250,14 +250,61 @@ func Validate(zipBytes []byte) (findings []Finding, pkg *Package, err error) {
 		return []Finding{finding("EMPTY_PACKAGE", packageRoot, "package contains no files")}, nil, nil
 	}
 
-	// Path safety first, over every entry NAME, before a single byte is
-	// inflated — cheapest and most decisive first, same ordering
-	// course-format's zip.ts documents for the same reason: an attacker
-	// should not be able to buy any inflation work with a hostile path.
+	// Path safety AND duplicate-name detection first, over every entry
+	// NAME, before a single byte is inflated — cheapest and most decisive
+	// first, same ordering and same two checks course-format's zip.ts
+	// runs in its onfile callback (escapesPackage, then the
+	// already-announced-name check), in the same order, before either
+	// module inflates anything.
+	//
+	// DUPLICATE_ENTRY is a Go finding code with no member in validate.ts's
+	// FindingCode/FINDING_CODES — and that is correct, not a gap to close
+	// there. TypeScript splits this into two layers: zip.ts is the
+	// archive-reading layer, and it raises UnsafeArchiveError with an
+	// UnsafeArchiveCode (PATH_ESCAPE, DUPLICATE_ENTRY, TOO_LARGE,
+	// MALFORMED) before validate.ts's rule layer ever runs; validate.ts
+	// produces Findings with FindingCodes for what is already a
+	// clean, decompressed file map. This Go Validate collapses both
+	// layers into one function and one []Finding return, which is why it
+	// already reports PATH_ESCAPE and TOO_LARGE — both ALSO members of
+	// UnsafeArchiveCode in TypeScript, not of FindingCode — as findings.
+	// DUPLICATE_ENTRY joins them by the identical logic: an archive-layer
+	// refusal reported through the one return type this function has,
+	// not a new member of the rule layer's own code list. Adding it to
+	// validate.ts's FINDING_CODES would be the wrong fix, not merely an
+	// unnecessary one — that array is a different, smaller set of
+	// concerns than what this function's zip-reading half has to decide.
+	//
+	// Unlike TypeScript's duplicateKey (NFC-normalized, lower-cased, so
+	// APFS/NTFS-style filesystem folding is caught too), this compares
+	// entry names byte-for-byte. That fold exists in zip.ts because its
+	// archives eventually get extracted onto a real, possibly
+	// case/normalization-folding filesystem (the browser import path);
+	// this reader never writes to a filesystem at all — every entry's
+	// bytes live in the in-memory `files` map below, keyed by the exact
+	// string archive/zip handed back, read and served by the same map in
+	// the same process. An exact-name collision is the shape that
+	// actually reproduces the bug this closes (internal/course/
+	// usecase.go's measured [dirty manifest][chapter][clean manifest]
+	// exploit turned on two entries named identically, not on a case or
+	// normalization variant), so that is the fold this function commits
+	// to. If a future caller extracts this package's Assets/Widgets/
+	// Chapters onto a case-folding filesystem, that caller inherits the
+	// same question zip.ts answers for the browser import path, and
+	// should answer it the same way there — not by asking this function
+	// to guess at a destination filesystem it never touches.
+	seenNames := make(map[string]bool, len(zr.File))
 	for _, f := range zr.File {
 		if escapesPackage(f.Name) {
 			findings = append(findings, finding("PATH_ESCAPE", f.Name, "entry path escapes the package root"))
 		}
+		if seenNames[f.Name] {
+			findings = append(findings, finding(
+				"DUPLICATE_ENTRY", f.Name,
+				"two entries share this name; which one is \"the\" file is not decidable",
+			))
+		}
+		seenNames[f.Name] = true
 	}
 
 	// Inflate every entry that did not already fail path safety, bounded
@@ -269,14 +316,14 @@ func Validate(zipBytes []byte) (findings []Finding, pkg *Package, err error) {
 	// streaming reader has to, so the polyglot/local-vs-central mismatch
 	// defenses zip.ts carries do not apply to this reader the same way.
 	//
-	// A repeated entry name is not given its own finding code (course-
-	// format has none for it): the LAST entry with a given name wins,
-	// ordinary Go map semantics, and that is safe here specifically
-	// because the map built by this loop is the ONLY copy of the bytes
-	// this package ever reads again — unlike internal/course's Asset(),
-	// which re-opens the stored zip later and could disagree with an
-	// earlier pass about which duplicate is "the" file, there is no
-	// second read here to disagree with the first.
+	// A repeated name already produced a DUPLICATE_ENTRY finding above,
+	// so this loop's own tie-break (ordinary Go map assignment: the LAST
+	// entry with a given name wins) never reaches a caller — findings
+	// non-empty already makes Validate return pkg == nil before anything
+	// built from `files` is handed back. It is left as "last wins" rather
+	// than restructured to skip the second occurrence because there is
+	// nothing left for that choice to protect once the package is
+	// rejected outright.
 	//
 	// An entry that fails to open or copy is treated as absent rather
 	// than given its own finding: course-format has no code for "corrupt

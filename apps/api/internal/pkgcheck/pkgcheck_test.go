@@ -37,6 +37,36 @@ func buildZip(t *testing.T, files map[string]string) []byte {
 	return buf.Bytes()
 }
 
+// zipEntry is one (name, content) pair for buildZipFromEntries — a slice,
+// not buildZip's map, specifically so a test can write two entries under
+// the same name. A Go map cannot hold a duplicate key, which is exactly
+// the shape TestDuplicateEntryIsFlagged needs to build.
+type zipEntry struct {
+	name, content string
+}
+
+// buildZipFromEntries is buildZip's sibling for tests that need entries in
+// a specific order or sharing a name — archive/zip.Writer does not itself
+// refuse a repeated name; it is Validate's job to.
+func buildZipFromEntries(t *testing.T, entries []zipEntry) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, e := range entries {
+		w, err := zw.Create(e.name)
+		if err != nil {
+			t.Fatalf("zw.Create(%q): %v", e.name, err)
+		}
+		if _, err := w.Write([]byte(e.content)); err != nil {
+			t.Fatalf("write %q: %v", e.name, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("closing zip writer: %v", err)
+	}
+	return buf.Bytes()
+}
+
 // minimalManifest is a manifest that passes every package-shape rule on
 // its own, so a test built on top of it isolates the ONE rule it means to
 // exercise.
@@ -301,6 +331,51 @@ func TestPathEscapeInZipEntry(t *testing.T) {
 	}
 	if !hasCode(findings, "PATH_ESCAPE") {
 		t.Fatalf("expected PATH_ESCAPE, got %+v", findings)
+	}
+}
+
+// TestDuplicateEntryIsFlagged pins the fix for review round 1's finding 1:
+// a repeated zip entry name used to resolve silently to "last one wins"
+// (ordinary Go map assignment), on the reasoning that the map Validate
+// builds is the only copy of the bytes anyone reads again. That premise
+// was false — Task 8 stores the raw zip and Task 9's rollback path
+// re-parses it later — and the shape is exactly the one
+// internal/course/usecase.go's own comment names as a MEASURED exploit
+// against the code this package replaces: a
+// [dirty manifest][chapter][clean manifest] archive accepted with a 201
+// and then served a manifest naming a path no check had ever seen. This
+// test reproduces that shape directly rather than a minimal two-entries
+// case, so a future change that "fixes" the general check but leaves this
+// specific ordering alone still fails loudly.
+//
+// DUPLICATE_ENTRY has no member in validate.ts's FINDING_CODES; it is an
+// UnsafeArchiveCode there (course-format/src/zip.ts), the archive-reading
+// layer's own code, not the rule layer's. Go's Validate collapses both
+// layers into one function, so this is reported as a Finding here the
+// same way PATH_ESCAPE and TOO_LARGE already are — see the comment at the
+// duplicate-name check in pkgcheck.go for the full reasoning, and
+// TestHostileCorpusIsFullyAccountedFor / TestGoOnlyCodesAreNotDoubleCounted
+// in contract_test.go for where that split is pinned as a test rather
+// than left as a comment only.
+func TestDuplicateEntryIsFlagged(t *testing.T) {
+	dirtyManifest := strings.Replace(minimalManifest, `"file": "chapters/c1.html"`, `"file": "../../../etc/passwd"`, 1)
+	if dirtyManifest == minimalManifest {
+		t.Fatal("test fixture bug: the chapter-file replacement did not match minimalManifest")
+	}
+
+	findings, pkg, err := Validate(buildZipFromEntries(t, []zipEntry{
+		{"manifest.json", dirtyManifest},
+		{"chapters/c1.html", `<p>hi</p>`},
+		{"manifest.json", minimalManifest}, // the "clean" manifest, written last
+	}))
+	if err != nil {
+		t.Fatalf("unexpected system error: %v", err)
+	}
+	if pkg != nil {
+		t.Fatal("a package with two manifest.json entries must be rejected outright, regardless of which one a naive reader would pick")
+	}
+	if !hasCode(findings, "DUPLICATE_ENTRY") {
+		t.Fatalf("expected DUPLICATE_ENTRY, got %+v", findings)
 	}
 }
 

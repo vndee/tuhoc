@@ -71,6 +71,79 @@ var widgetCases = []string{
 	"widget-forbidden-api",
 }
 
+// ruleLayerFindingCodes is validate.ts's FINDING_CODES, copied by hand —
+// not derived, because deriving it would need a TypeScript build step
+// this Go test suite has no reason to depend on. Kept in step by a human
+// reading both files side by side, the same property fixtures/format-v2
+// exists to check for rule BEHAVIOUR; this is the analogous check for the
+// rule-layer CODE LIST specifically. Includes Task 7's eight WIDGET_*
+// codes even though this package does not emit them yet, because the
+// question this map answers — "is this a validate.ts FindingCode" — does
+// not depend on whether Task 7 has landed.
+var ruleLayerFindingCodes = map[string]bool{
+	"EMPTY_PACKAGE":        true,
+	"TOO_LARGE":            true,
+	"PATH_ESCAPE":          true,
+	"MANIFEST_MISSING":     true,
+	"MANIFEST_PARSE":       true,
+	"MANIFEST_FIELD":       true,
+	"TIER_REMOVED":         true,
+	"SEMVER":               true,
+	"RUNTIME_RANGE":        true,
+	"DUPLICATE_CHAPTER_ID": true,
+	"CHAPTER_FILE_MISSING": true,
+	"SCRIPT_TAG":           true,
+	"EVENT_HANDLER_ATTR":   true,
+	"JAVASCRIPT_URL":       true,
+	"EMBEDDED_FRAME":       true,
+	"FORM_TAG":             true,
+	"JS_FILE_IN_PACKAGE":   true,
+	"TAG_ATTR_FLOOD":       true,
+	"WIDGET_TOO_LARGE":     true,
+	"WIDGET_LINE_TOO_LONG": true,
+	"WIDGET_BAD_NAME":      true,
+	"WIDGET_FORBIDDEN_API": true,
+	"WIDGET_EXTERNAL_URL":  true,
+	"WIDGET_EXTRA_FILE":    true,
+	"WIDGET_MISSING":       true,
+	"WIDGET_ORPHAN":        true,
+}
+
+// goOnlyFindingCodes are codes this package emits that are deliberately
+// NOT members of ruleLayerFindingCodes: TypeScript's archive-reading
+// layer (course-format/src/zip.ts) raises these as an UnsafeArchiveCode,
+// one layer below the FindingCode rule layer ruleLayerFindingCodes
+// enumerates. Go's Validate collapses both TypeScript layers into one
+// function and one []Finding return, so it reports these the same way it
+// already reports PATH_ESCAPE and TOO_LARGE — both ALSO UnsafeArchiveCode
+// members in TypeScript, not FindingCode ones — as findings. See the
+// comment at the duplicate-name check in pkgcheck.go for the full
+// reasoning (review round 1, finding 1).
+//
+// This map — and TestGoOnlyCodesAreNotDoubleCounted below — exist so a
+// future Go-only code is a DELIBERATE decision about which layer it
+// belongs to, recorded here, rather than a silent third thing that is in
+// neither list.
+var goOnlyFindingCodes = map[string]bool{
+	"DUPLICATE_ENTRY": true,
+}
+
+// TestGoOnlyCodesAreNotDoubleCounted guards the split itself: a code
+// cannot honestly be both "this IS a validate.ts rule" and "this is NOT
+// a validate.ts rule, it is Go's own archive-layer code" at once. Cheap,
+// and it is exactly the kind of contradiction that is easy to introduce
+// by copy-pasting an entry into the wrong map and easy to miss by eye.
+func TestGoOnlyCodesAreNotDoubleCounted(t *testing.T) {
+	if len(goOnlyFindingCodes) == 0 {
+		t.Fatal("goOnlyFindingCodes is empty — DUPLICATE_ENTRY should be here; an empty map here would make this test pass without checking anything")
+	}
+	for code := range goOnlyFindingCodes {
+		if ruleLayerFindingCodes[code] {
+			t.Errorf("%q is listed as both a Go-only archive-layer code and a validate.ts rule-layer FindingCode — pick one, it cannot honestly be both", code)
+		}
+	}
+}
+
 type expectedFindings struct {
 	Codes []string `json:"codes"`
 }
