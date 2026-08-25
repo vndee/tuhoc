@@ -4,9 +4,11 @@
 package server
 
 import (
+	"crypto/subtle"
 	"io"
 	"log"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/vndee/tuhoc-api/internal/apilog"
 	"github.com/vndee/tuhoc-api/internal/auth"
+	"github.com/vndee/tuhoc-api/internal/catalog"
 	"github.com/vndee/tuhoc-api/internal/config"
 	"github.com/vndee/tuhoc-api/internal/course"
 	"github.com/vndee/tuhoc-api/internal/discuss"
@@ -96,6 +99,87 @@ func bodyLimit(max int64) fiber.Handler {
 			return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{
 				"error": "request body is too large for this endpoint",
 			})
+		}
+		return c.Next()
+	}
+}
+
+// bearerToken extracts the token from an "Authorization: Bearer <token>"
+// header, or reports ok=false if the header is absent or a different
+// scheme.
+func bearerToken(c *fiber.Ctx) (token string, ok bool) {
+	const prefix = "Bearer "
+	h := c.Get(fiber.HeaderAuthorization)
+	if !strings.HasPrefix(h, prefix) {
+		return "", false
+	}
+	return strings.TrimPrefix(h, prefix), true
+}
+
+// adminTokenMatches is the one comparison the whole admin-token path rests
+// on, pulled out as its own pure function so the property that actually
+// matters — an EMPTY configured token must never match, no matter what a
+// client sends — is directly unit-testable (see admin_gate_test.go)
+// without needing to reproduce a real HTTP request that carries a
+// zero-length Bearer token. That reproduction turns out to be its own
+// trap: fasthttp trims trailing OWS from header VALUES while parsing (a
+// request literally spelling "Authorization: Bearer " arrives at
+// bearerToken as "Bearer", six bytes, no trailing space, which does not
+// even match bearerToken's own prefix and never reaches this function at
+// all) — a fact about fasthttp's parser, not a guarantee this function
+// gets to lean on. If bearerToken ever became more lenient (trimming the
+// scheme more loosely, accepting a lowercase "bearer", …) an empty
+// suppliedToken could reach here for real, so the guard has to hold on
+// its own terms.
+//
+// configuredToken == "" is checked FIRST and is NOT folded into the
+// ConstantTimeCompare call below: subtle.ConstantTimeCompare(a, b) returns
+// 1 when len(a) == len(b) and every byte matches, and two EMPTY slices
+// satisfy both conditions trivially. Without this guard, a checkout that
+// has simply never set ADMIN_TOKEN (the documented default — see
+// config.Config.AdminToken) would treat a client supplying an empty token
+// as admin-authenticated. An unset token must mean this path is OFF,
+// never "matches the empty string".
+func adminTokenMatches(configuredToken, suppliedToken string) bool {
+	if configuredToken == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(suppliedToken), []byte(configuredToken)) == 1
+}
+
+// adminOrToken is the outer gate on every /admin/courses* route: a request
+// carrying a Bearer token that matches cfg.AdminToken skips straight to
+// the route's own handler (the CLI path — Task 4's `tuhoc publish` sends
+// exactly this header); anything else falls back to a real admin session,
+// checked by the SAME auth.Require + auth.RequireAdmin pair every other
+// session-gated route in this file already uses.
+//
+// next is that route's terminal handler, called DIRECTLY (a plain Go
+// function call) on the token path rather than via c.Next(). This is
+// deliberate, not a shortcut: fiber's Ctx.Next() advances exactly one
+// position through the REGISTERED handler chain (c.indexHandler++, then
+// invoke c.route.Handlers[c.indexHandler] — see gofiber/fiber/v2's own
+// ctx.go), and there is no public API to skip ahead by more than one step.
+// A route registered as [adminOrToken, auth.Require, auth.RequireAdmin,
+// handler] means calling auth.Require's closure directly from inside
+// adminOrToken (rather than letting fiber invoke it) would still trigger
+// ITS internal c.Next(), which — because c.indexHandler is a single
+// counter shared by the whole chain, not scoped to whoever calls Next() —
+// would jump straight to auth.RequireAdmin, and RequireAdmin's own
+// c.Next() would jump straight to handler, silently skipping nothing on
+// the failure path but running every step out of the order this comment
+// describes on the success path. Calling next(c) directly sidesteps the
+// counter entirely: a terminal route handler never calls c.Next() itself
+// (every handler in this file just returns a response), so invoking it
+// out of its registered position is safe, and it is the only way for the
+// token path to reach the handler WITHOUT running auth.Require or
+// auth.RequireAdmin at all — which is the point, since a token-authenticated
+// request has no session cookie to validate in the first place.
+func adminOrToken(cfg config.Config, next fiber.Handler) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		if tok, ok := bearerToken(c); ok && adminTokenMatches(cfg.AdminToken, tok) {
+			catalog.MarkTokenActor(c)
+			return next(c)
 		}
 		return c.Next()
 	}
@@ -308,6 +392,28 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 		log.Printf("server: discussions disabled: %v", err)
 	}
 	app.Get("/discussions/:registryId", auth.Require(deps.Pool), discussHandler.Thread)
+
+	// Admin catalog routes (Task 8): publish/unpublish/rollback/list for
+	// the public catalog Task 9 serves reads from. Every route is mounted
+	// behind adminOrToken, whose own doc comment explains the four-handler
+	// chain shape below and why the token path calls its terminal handler
+	// directly instead of relying on fiber's c.Next().
+	//
+	// PUT and DELETE share the path "/admin/courses/:slug" — legal in
+	// fiber, since routes are keyed by (method, path) together, not path
+	// alone.
+	catalogHandler := catalog.NewHandler(catalog.NewUsecase(catalog.NewRepo(deps.Pool)))
+	mountAdmin := func(method, path string, handler fiber.Handler) {
+		app.Add(method, path,
+			adminOrToken(cfg, handler),
+			auth.Require(deps.Pool),
+			auth.RequireAdmin(deps.Pool),
+			handler)
+	}
+	mountAdmin(fiber.MethodPut, "/admin/courses/:slug", catalogHandler.Publish)
+	mountAdmin(fiber.MethodGet, "/admin/courses", catalogHandler.List)
+	mountAdmin(fiber.MethodDelete, "/admin/courses/:slug", catalogHandler.Unpublish)
+	mountAdmin(fiber.MethodPost, "/admin/courses/:slug/rollback", catalogHandler.Rollback)
 
 	return app
 }

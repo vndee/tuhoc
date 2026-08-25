@@ -43,10 +43,25 @@ CREATE TABLE course_versions (
   published_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (slug, version));
 
--- Sổ cái thao tác admin. Không bao giờ DELETE. who NULL = đường token CLI.
+-- Sổ cái thao tác admin. Không bao giờ DELETE.
+--
+-- actor, không chỉ who: đặc tả gốc ghi "who NULL = đường token CLI", nhưng
+-- ON DELETE SET NULL cũng đưa who về NULL khi một admin THẬT bị xoá khỏi
+-- users — hai chuyện khác nhau (đi bằng token CLI, hay đi bằng một tài
+-- khoản nay không còn) mà cột who một mình không phân biệt được, và một sổ
+-- audit tồn tại chính là để trả lời "ai đã làm việc này". actor NOT NULL
+-- ghi lại tại THỜI ĐIỂM HÀNH ĐỘNG con đường nào đã xác thực request, độc
+-- lập với việc who có bị SET NULL sau đó hay không:
+--   'user' — request đi qua một phiên đăng nhập thật; who là uuid của
+--            người đó tại lúc ghi (có thể thành NULL sau nếu người đó bị
+--            xoá — actor vẫn nói "đã từng là một người dùng thật").
+--   'cli'  — request xác thực bằng ADMIN_TOKEN dùng chung, không gắn với
+--            tài khoản nào; who luôn NULL ngay từ đầu, không phải do
+--            ON DELETE SET NULL.
 CREATE TABLE admin_audit (
   id     bigserial PRIMARY KEY,
   who    uuid REFERENCES users(id) ON DELETE SET NULL,
+  actor  text NOT NULL CHECK (actor IN ('user','cli')),
   action text NOT NULL,
   target text NOT NULL,
   at     timestamptz NOT NULL DEFAULT now(),
