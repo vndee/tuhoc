@@ -11,6 +11,7 @@ import { clearLocalData, db } from '../db/local';
 import { Login } from './Login';
 import { t } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageProvider';
+import { ThemeProvider } from '../theme/ThemeContext';
 
 /**
  * `GET /me` is answered 401 ("nobody signed in") by DEFAULT for every test
@@ -43,13 +44,16 @@ function renderLogin(initialEntry: InitialEntry = '/login') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
-      <LanguageProvider><MemoryRouter initialEntries={[initialEntry]}>
+      {/* `<Login>` nay dựng cả nút chủ đề — trang này không còn thanh trên để
+          chứa nó (xem `ShellProps.authScreen`) — nên nó cần provider ấy, đúng
+          như `<App/>` vẫn luôn cung cấp. */}
+      <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<div>Home dashboard</div>} />
           <Route path="/c/:courseId/:chapterId" element={<div>Chapter content</div>} />
         </Routes>
-      </MemoryRouter></LanguageProvider>
+      </MemoryRouter></LanguageProvider></ThemeProvider>
     </QueryClientProvider>,
   );
   return { queryClient };
@@ -90,12 +94,20 @@ async function renderLoginForm(initialEntry: InitialEntry = '/login') {
  *      và form thật thì nằm trọn trong nửa phải.
  */
 describe('Login — hai cột: sản phẩm tự giới thiệu bên trái, form bên phải', () => {
-  it('nửa trái nói ra sản phẩm này là gì: tên, một câu lớn, và ba gạch đầu dòng', async () => {
+  /**
+   * TÊN SẢN PHẨM ĐÃ RỜI SANG CỘT FORM, và bài này đi theo nó thay vì được nới
+   * lỏng. Bản dựng đã duyệt đặt nhãn hiệu ở góc trên–trái cột form; người dùng
+   * xác nhận lại bằng đúng chữ ("cái logo phải là ở pane bên trái chứ"). Điều
+   * bài kiểm này canh — trang tự khai nó là gì, và lời rao có mặt chứ không
+   * phải một panel rỗng — không đổi; chỉ chỗ của một trong hai đổi.
+   */
+  it('trang tự khai tên sản phẩm, và panel lời rao có một câu lớn cùng ba gạch đầu dòng', async () => {
     await renderLoginForm();
 
     const pitch = document.querySelector('.auth-pitch');
+    const side = document.querySelector('.auth-side');
     expect(pitch).not.toBeNull();
-    expect(pitch).toHaveTextContent(t('vi', 'app.name'));
+    expect(side).toHaveTextContent(t('vi', 'app.name'));
     expect(screen.getByRole('heading', { name: t('vi', 'login.pitch.headline') })).toBeInTheDocument();
     expect(pitch).toHaveTextContent(t('vi', 'login.pitch.lede'));
 
@@ -127,7 +139,7 @@ describe('Login — hai cột: sản phẩm tự giới thiệu bên trái, form
 
     expect(pitch?.querySelectorAll('input')).toHaveLength(0);
     expect(side).toContainElement(screen.getByLabelText(/email/i));
-    expect(side).toContainElement(screen.getByLabelText(/mật khẩu/i));
+    expect(side).toContainElement(screen.getByLabelText(/^mật khẩu$/i));
     expect(side).toContainElement(screen.getByRole('button', { name: /đăng nhập/i }));
   });
 
@@ -149,14 +161,14 @@ describe('Login page', () => {
     await renderLoginForm();
 
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/mật khẩu/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^mật khẩu$/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/tên/i)).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('tab', { name: /đăng ký/i }));
+    await user.click(screen.getByRole('button', { name: /^tạo tài khoản$/i }));
 
     expect(screen.getByLabelText(/tên/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/mật khẩu/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^mật khẩu$/i)).toBeInTheDocument();
   });
 
   it('successful login populates the useMe cache and navigates to "/" by default', async () => {
@@ -167,7 +179,7 @@ describe('Login page', () => {
     const { queryClient } = await renderLoginForm();
 
     await user.type(screen.getByLabelText(/email/i), 'a@example.com');
-    await user.type(screen.getByLabelText(/mật khẩu/i), 'secret123');
+    await user.type(screen.getByLabelText(/^mật khẩu$/i), 'secret123');
     await user.click(screen.getByRole('button', { name: /đăng nhập/i }));
 
     await waitFor(() => expect(screen.getByText('Home dashboard')).toBeInTheDocument());
@@ -182,7 +194,7 @@ describe('Login page', () => {
     await renderLoginForm({ pathname: '/login', state: { from: { pathname: '/c/demo/c1', search: '', hash: '' } } });
 
     await user.type(screen.getByLabelText(/email/i), 'a@example.com');
-    await user.type(screen.getByLabelText(/mật khẩu/i), 'secret123');
+    await user.type(screen.getByLabelText(/^mật khẩu$/i), 'secret123');
     await user.click(screen.getByRole('button', { name: /đăng nhập/i }));
 
     expect(await screen.findByText('Chapter content')).toBeInTheDocument();
@@ -196,7 +208,7 @@ describe('Login page', () => {
     await renderLoginForm();
 
     await user.type(screen.getByLabelText(/email/i), 'a@example.com');
-    await user.type(screen.getByLabelText(/mật khẩu/i), 'wrong-password');
+    await user.type(screen.getByLabelText(/^mật khẩu$/i), 'wrong-password');
     await user.click(screen.getByRole('button', { name: /đăng nhập/i }));
 
     const alert = await screen.findByRole('alert');
@@ -212,7 +224,7 @@ describe('Login page', () => {
     await renderLoginForm();
 
     await user.type(screen.getByLabelText(/email/i), 'a@example.com');
-    await user.type(screen.getByLabelText(/mật khẩu/i), 'secret123');
+    await user.type(screen.getByLabelText(/^mật khẩu$/i), 'secret123');
     await user.click(screen.getByRole('button', { name: /đăng nhập/i }));
 
     const alert = await screen.findByRole('alert');
@@ -226,10 +238,10 @@ describe('Login page', () => {
     const user = userEvent.setup();
     await renderLoginForm();
 
-    await user.click(screen.getByRole('tab', { name: /đăng ký/i }));
+    await user.click(screen.getByRole('button', { name: /^tạo tài khoản$/i }));
     await user.type(screen.getByLabelText(/tên/i), 'A');
     await user.type(screen.getByLabelText(/email/i), 'a@example.com');
-    await user.type(screen.getByLabelText(/mật khẩu/i), 'secret123');
+    await user.type(screen.getByLabelText(/^mật khẩu$/i), 'secret123');
     await user.click(screen.getByRole('button', { name: /đăng ký/i }));
 
     const alert = await screen.findByRole('alert');
@@ -244,10 +256,10 @@ describe('Login page', () => {
     const user = userEvent.setup();
     const { queryClient } = await renderLoginForm();
 
-    await user.click(screen.getByRole('tab', { name: /đăng ký/i }));
+    await user.click(screen.getByRole('button', { name: /^tạo tài khoản$/i }));
     await user.type(screen.getByLabelText(/tên/i), 'B');
     await user.type(screen.getByLabelText(/email/i), 'b@example.com');
-    await user.type(screen.getByLabelText(/mật khẩu/i), 'secret123');
+    await user.type(screen.getByLabelText(/^mật khẩu$/i), 'secret123');
     await user.click(screen.getByRole('button', { name: /đăng ký/i }));
 
     await waitFor(() => expect(screen.getByText('Home dashboard')).toBeInTheDocument());
@@ -262,11 +274,11 @@ describe('Login page', () => {
     await renderLoginForm();
 
     await user.type(screen.getByLabelText(/email/i), 'a@example.com');
-    await user.type(screen.getByLabelText(/mật khẩu/i), 'wrong-password');
+    await user.type(screen.getByLabelText(/^mật khẩu$/i), 'wrong-password');
     await user.click(screen.getByRole('button', { name: /đăng nhập/i }));
     await screen.findByRole('alert');
 
-    await user.click(screen.getByRole('tab', { name: /đăng ký/i }));
+    await user.click(screen.getByRole('button', { name: /^tạo tài khoản$/i }));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
@@ -353,18 +365,18 @@ describe('Login — local state does not survive a change of signed-in user (C1)
     render(
       <QueryClientProvider client={queryClient}>
         <SyncLifecycleProbe onSyncCouldStart={onSyncCouldStart} />
-        <LanguageProvider><MemoryRouter initialEntries={['/login']}>
+        <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={['/login']}>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/" element={<div>Home dashboard</div>} />
           </Routes>
-        </MemoryRouter></LanguageProvider>
+        </MemoryRouter></LanguageProvider></ThemeProvider>
       </QueryClientProvider>,
     );
 
     await screen.findByLabelText(/email/i);
     await user.type(screen.getByLabelText(/email/i), 'new@example.com');
-    await user.type(screen.getByLabelText(/mật khẩu/i), 'secret123');
+    await user.type(screen.getByLabelText(/^mật khẩu$/i), 'secret123');
     await user.click(screen.getByRole('button', { name: /đăng nhập/i }));
 
     await waitFor(() => expect(screen.getByText('Home dashboard')).toBeInTheDocument());
@@ -385,10 +397,10 @@ describe('Login — local state does not survive a change of signed-in user (C1)
     const user = userEvent.setup();
     await renderLoginForm();
 
-    await user.click(screen.getByRole('tab', { name: /đăng ký/i }));
+    await user.click(screen.getByRole('button', { name: /^tạo tài khoản$/i }));
     await user.type(screen.getByLabelText(/tên/i), 'Reg');
     await user.type(screen.getByLabelText(/email/i), 'reg@example.com');
-    await user.type(screen.getByLabelText(/mật khẩu/i), 'secret123');
+    await user.type(screen.getByLabelText(/^mật khẩu$/i), 'secret123');
     await user.click(screen.getByRole('button', { name: /đăng ký/i }));
 
     await waitFor(() => expect(screen.getByText('Home dashboard')).toBeInTheDocument());
@@ -419,7 +431,7 @@ describe('Login — local state does not survive a change of signed-in user (C1)
     queryClient.setQueryData(['stats'], { totalMinutes: 999, streakDays: 42, days: [], courses: [] });
 
     await user.type(screen.getByLabelText(/email/i), 'new@example.com');
-    await user.type(screen.getByLabelText(/mật khẩu/i), 'secret123');
+    await user.type(screen.getByLabelText(/^mật khẩu$/i), 'secret123');
     await user.click(screen.getByRole('button', { name: /đăng nhập/i }));
 
     await waitFor(() => expect(screen.getByText('Home dashboard')).toBeInTheDocument());
@@ -443,7 +455,7 @@ describe('Login — ?from= redirect target (deferred-minor #17)', () => {
     await renderLoginForm(`/login?from=${encodeURIComponent('/c/demo/c1')}`);
 
     await user.type(screen.getByLabelText(/email/i), 'a@example.com');
-    await user.type(screen.getByLabelText(/mật khẩu/i), 'secret123');
+    await user.type(screen.getByLabelText(/^mật khẩu$/i), 'secret123');
     await user.click(screen.getByRole('button', { name: /đăng nhập/i }));
 
     expect(await screen.findByText('Chapter content')).toBeInTheDocument();
@@ -461,7 +473,7 @@ describe('Login — ?from= redirect target (deferred-minor #17)', () => {
     await renderLoginForm(`/login?from=${encodeURIComponent(from)}`);
 
     await user.type(screen.getByLabelText(/email/i), 'a@example.com');
-    await user.type(screen.getByLabelText(/mật khẩu/i), 'secret123');
+    await user.type(screen.getByLabelText(/^mật khẩu$/i), 'secret123');
     await user.click(screen.getByRole('button', { name: /đăng nhập/i }));
 
     expect(await screen.findByText('Home dashboard')).toBeInTheDocument();
@@ -478,7 +490,7 @@ describe('Login — ?from= redirect target (deferred-minor #17)', () => {
     });
 
     await user.type(screen.getByLabelText(/email/i), 'a@example.com');
-    await user.type(screen.getByLabelText(/mật khẩu/i), 'secret123');
+    await user.type(screen.getByLabelText(/^mật khẩu$/i), 'secret123');
     await user.click(screen.getByRole('button', { name: /đăng nhập/i }));
 
     expect(await screen.findByText('Chapter content')).toBeInTheDocument();

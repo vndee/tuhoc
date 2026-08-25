@@ -50,6 +50,22 @@ export interface ShellProps {
    * cờ sẽ làm mất lý do của một trong hai.
    */
   inCourse?: boolean;
+  /**
+   * `true` trên `/login` — màn hình đăng nhập, thứ KHÔNG có thanh trên.
+   *
+   * Người dùng yêu cầu: "bỏ top shell ra khỏi trang đăng nhập". Nó đúng ở một
+   * mức sâu hơn thẩm mỹ: thanh trên mang nhãn hiệu, ba đích điều hướng, ô tìm
+   * kiếm và chip tài khoản — bốn thứ mà một người CHƯA ĐĂNG NHẬP không dùng
+   * được cái nào. `TopNav` đã tự ẩn phần điều hướng khi chưa đăng nhập, nên
+   * thứ còn lại là một dải 64px chỉ để chứa hai điều khiển; hai điều khiển ấy
+   * nay nằm trong chính panel của trang (`pages/Login.tsx`).
+   *
+   * `App.tsx` truyền `topbar={null}` cùng lúc, và đó là VẾ BẮT BUỘC chứ không
+   * phải tối ưu: ẩn `#topbar` bằng CSS mà vẫn dựng nội dung của nó sẽ để lại
+   * MỘT bộ chọn ngôn ngữ thứ hai trong cây — cùng `id`, cùng nhãn trợ năng —
+   * và `getByLabelText('Ngôn ngữ giao diện')` sẽ ném lỗi "nhiều phần tử".
+   */
+  authScreen?: boolean;
 }
 
 /**
@@ -86,6 +102,7 @@ export function Shell({
   vaultOrigin,
   reading = false,
   inCourse = false,
+  authScreen = false,
 }: ShellProps) {
   // Hai lớp độc lập, không phải một enum: `in-course` là "có một khoá đang
   // mở", `reading` là "đang ở trong một chương của nó". Cái sau kéo theo cái
@@ -93,6 +110,7 @@ export function Shell({
   const appClass = [
     reading ? 'reading' : null,
     inCourse ? 'in-course' : null,
+    authScreen ? 'auth-screen' : null,
   ]
     .filter(Boolean)
     .join(' ');

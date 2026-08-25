@@ -6,9 +6,11 @@ import { useEffect } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { clearLocalData, readSessionVerifiedAt, rememberSessionVerified } from '../db/local';
+import { t } from '../i18n';
 import { Login } from '../pages/Login';
 import { RequireAuth } from './RequireAuth';
 import { LanguageProvider } from '../i18n/LanguageProvider';
+import { ThemeProvider } from '../theme/ThemeContext';
 
 const server = setupServer();
 
@@ -39,7 +41,7 @@ function renderApp(initialPath: string, pathnames: string[]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <LanguageProvider><MemoryRouter initialEntries={[initialPath]}>
+      <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={[initialPath]}>
         <LocationRecorder onChange={(p) => pathnames.push(p)} />
         <Routes>
           <Route path="/login" element={<Login />} />
@@ -52,7 +54,7 @@ function renderApp(initialPath: string, pathnames: string[]) {
             }
           />
         </Routes>
-      </MemoryRouter></LanguageProvider>
+      </MemoryRouter></LanguageProvider></ThemeProvider>
     </QueryClientProvider>,
   );
 }
@@ -69,7 +71,7 @@ describe('RequireAuth', () => {
     renderApp('/', pathnames);
 
     expect(screen.queryByText('Protected content')).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /đăng nhập/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: t('vi', 'login.heading.login') })).not.toBeInTheDocument();
 
     await waitFor(() => expect(screen.getByText('Protected content')).toBeInTheDocument());
   });
@@ -116,7 +118,7 @@ describe('RequireAuth', () => {
 
     // Settle on /login.
     await waitFor(() => expect(pathnames.at(-1)).toBe('/login'));
-    expect(await screen.findByRole('heading', { name: /đăng nhập/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: t('vi', 'login.heading.login') })).toBeInTheDocument();
 
     // Give the app plenty of time to loop if it were going to.
     await new Promise((r) => setTimeout(r, 100));
@@ -125,7 +127,7 @@ describe('RequireAuth', () => {
     // Login itself never calls GET /me, so the only call is RequireAuth's
     // original check — this is the concrete guarantee against a loop.
     expect(meCallCount).toBe(1);
-    expect(screen.getByRole('heading', { name: /đăng nhập/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: t('vi', 'login.heading.login') })).toBeInTheDocument();
   });
 });
 
@@ -234,7 +236,7 @@ describe('RequireAuth — reading offline after a cold page load', () => {
     const pathnames: string[] = [];
     renderApp('/', pathnames);
 
-    expect(screen.queryByRole('heading', { name: /đăng nhập/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: t('vi', 'login.heading.login') })).not.toBeInTheDocument();
     expect(screen.queryByText(/kết nối/i)).not.toBeInTheDocument();
 
     await screen.findByText('Protected content');
@@ -300,7 +302,7 @@ describe('RequireAuth — một lần /me hỏng thoáng qua', () => {
     const log: string[] = [];
     render(
       <QueryClientProvider client={queryClient}>
-        <LanguageProvider>
+        <ThemeProvider><LanguageProvider>
           <MemoryRouter initialEntries={['/']}>
             <Routes>
               <Route path="/login" element={<Login />} />
@@ -314,7 +316,7 @@ describe('RequireAuth — một lần /me hỏng thoáng qua', () => {
               />
             </Routes>
           </MemoryRouter>
-        </LanguageProvider>
+        </LanguageProvider></ThemeProvider>
       </QueryClientProvider>,
     );
 

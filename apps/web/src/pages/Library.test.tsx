@@ -11,6 +11,7 @@ import { clearLocalData, db } from '../db/local';
 import { AppRoutes } from '../routes';
 import { Library } from './Library';
 import { LanguageProvider } from '../i18n/LanguageProvider';
+import { ThemeProvider } from '../theme/ThemeContext';
 
 /* ====================================================================== *
  * Fixtures
@@ -122,9 +123,9 @@ function renderLibrary() {
   queryClient.setQueryData(meQueryKey, { id: 'u1', email: 'a@vi.vn', name: 'Người học' });
   return render(
     <QueryClientProvider client={queryClient}>
-      <LanguageProvider><MemoryRouter initialEntries={['/library']}>
+      <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={['/library']}>
         <Library />
-      </MemoryRouter></LanguageProvider>
+      </MemoryRouter></LanguageProvider></ThemeProvider>
     </QueryClientProvider>,
   );
 }
@@ -652,10 +653,10 @@ function renderRouteAt(path: string, pathnames: string[]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <LanguageProvider><MemoryRouter initialEntries={[path]}>
+      <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={[path]}>
         <Recorder onChange={(p) => pathnames.push(p)} />
         <AppRoutes />
-      </MemoryRouter></LanguageProvider>
+      </MemoryRouter></LanguageProvider></ThemeProvider>
     </QueryClientProvider>,
   );
 }

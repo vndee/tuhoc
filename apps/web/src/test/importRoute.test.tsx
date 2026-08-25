@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { AppRoutes } from '../routes';
 import { clearLocalData } from '../db/local';
 import { LanguageProvider } from '../i18n/LanguageProvider';
+import { ThemeProvider } from '../theme/ThemeContext';
 
 /**
  * `/import` is not reachable while logged out — pinned, not merely written
@@ -62,10 +63,10 @@ function renderAt(path: string, pathnames: string[]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <LanguageProvider><MemoryRouter initialEntries={[path]}>
+      <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={[path]}>
         <Recorder onChange={(p) => pathnames.push(p)} />
         <AppRoutes />
-      </MemoryRouter></LanguageProvider>
+      </MemoryRouter></LanguageProvider></ThemeProvider>
     </QueryClientProvider>,
   );
 }

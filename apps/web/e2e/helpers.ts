@@ -217,10 +217,12 @@ async function submitAuthForm(page: Page, what: string, submit: () => Promise<vo
  */
 export async function registerNewUser(page: Page, email: string, password: string): Promise<void> {
   await submitAuthForm(page, 'đăng ký', async () => {
-    await page.getByRole('tab', { name: 'Đăng ký' }).click();
+    // Hai tab "Đăng nhập / Đăng ký" đã bỏ — đường tới form đăng ký nay là dòng
+    // ở chân cột, đúng một cú bấm như trước. Xem `pages/Login.tsx`.
+    await page.getByRole('button', { name: 'Tạo tài khoản', exact: true }).click();
     await page.getByLabel('Tên').fill('E2E Learner');
     await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Mật khẩu').fill(password);
+    await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Đăng ký', exact: true }).click();
   });
   await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 15_000 });
@@ -230,7 +232,7 @@ export async function registerNewUser(page: Page, email: string, password: strin
 export async function loginExistingUser(page: Page, email: string, password: string): Promise<void> {
   await submitAuthForm(page, 'đăng nhập', async () => {
     await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Mật khẩu').fill(password);
+    await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
   });
   await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 15_000 });

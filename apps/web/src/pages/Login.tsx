@@ -5,7 +5,10 @@ import { api, describeAuthError } from '../api/client';
 import { meQueryKey, useMe, type Me } from '../api/useMe';
 import { clearSession } from '../auth/session';
 import { useLanguage } from '../i18n/LanguageProvider';
+import { LanguageSwitcher } from '../i18n/LanguageSwitcher';
+import { Logo } from '../shell/Logo';
 import { stopSync } from '../sync/engine';
+import { useThemeContext } from '../theme/ThemeContext';
 
 type Tab = 'login' | 'register';
 
@@ -120,13 +123,12 @@ function redirectTarget(state: unknown, search: string): string {
  */
 export function Login() {
   const { t } = useLanguage();
+  const { theme, toggle: toggleTheme } = useThemeContext();
   const [tab, setTab] = useState<Tab>('login');
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const meQuery = useMe();
-  const loginTabId = useId();
-  const registerTabId = useId();
 
   async function handleAuthenticated(user: Me) {
     // ORDERING IS THE FIX HERE, not an implementation detail. The sync
@@ -200,87 +202,258 @@ export function Login() {
       làm hỏng một phép đo về vòng đời đồng bộ vì một lý do thẩm mỹ.
     */
     <div className="auth-page">
-      {/* Nửa TRÁI. */}
+      {/*
+        NỬA PHẢI (`order: 2` ở CSS — nó đứng trước trong DOM vì thứ tự ĐỌC là
+        form trước, lời rao sau; xem `styles/settings-auth.css`).
+
+        Nó mang hai điều khiển mà trang này không còn thanh trên để chứa: nút
+        chủ đề và bộ chọn ngôn ngữ. Nhãn hiệu thì KHÔNG — nó ở đầu cột form,
+        đúng bản dựng ("cái logo phải là ở pane bên trái chứ").
+
+        BỘ CHỌN NGÔN NGỮ Ở ĐÂY LÀ BẢN DUY NHẤT trên route này, và đó là điều
+        kiện chứ không phải một chi tiết: `App.tsx` không dựng thanh trên trên
+        `/login` nữa, nên nếu chỗ này không có nó thì một người không đọc được
+        tiếng Việt gặp màn hình đầu tiên của sản phẩm mà không có đường đổi
+        ngôn ngữ. `i18n/LanguageProvider.test.tsx` ("CỬA") lái `<App/>` thật và
+        đo đúng câu ấy — và nó đo trên `/login`, vì một người chưa đăng nhập bị
+        đẩy về đây.
+      */}
       <section className="auth-pitch">
-        <p className="auth-brand">{t('app.name')}</p>
+        <div className="auth-pitch-top">
+          <div className="auth-chrome">
+            <button
+              type="button"
+              className="auth-chrome-btn"
+              aria-label={t(theme === 'dark' ? 'topbar.themeToLight' : 'topbar.themeToDark')}
+              aria-pressed={theme === 'dark'}
+              onClick={toggleTheme}
+            >
+              {theme === 'dark' ? (
+                <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <circle cx="10" cy="10" r="3.6" stroke="currentColor" strokeWidth="1.6" />
+                  <path
+                    d="M10 2.4v1.9M10 15.7v1.9M17.6 10h-1.9M4.3 10H2.4M15.4 4.6l-1.3 1.3M6 14l-1.4 1.4M15.4 15.4l-1.3-1.3M6 6L4.6 4.6"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              ) : (
+                <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path
+                    d="M16.5 12.4A6.8 6.8 0 017.6 3.5a6.9 6.9 0 108.9 8.9z"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </button>
+            <LanguageSwitcher />
+          </div>
+        </div>
+
+        {/*
+          KHỐI CHỮ CHỒNG LÊN ĐÁY ẢNH — hình dạng của mẫu Untitled UI "log in
+          split quote image", nhưng KHÔNG phải nội dung của nó.
+
+          Mẫu ấy đặt ở đây một LỜI CHỨNG THỰC của khách hàng: câu trích trong
+          ngoặc kép, tên người, chức danh, công ty, năm ngôi sao. Sản phẩm này
+          chưa có khách hàng nào, nên dựng ba thứ ấy ra là bịa một bài đánh giá
+          — và một bài đánh giá bịa trên chính màn hình đăng ký là thứ không
+          sửa lại được bằng một dòng chú thích ở đâu đó.
+
+          Thay vào đó là lời của CHÍNH SẢN PHẨM, đúng câu đã có trên canvas đã
+          duyệt, và không có ngoặc kép: ngoặc kép sẽ ngụ ý một người nào đó đã
+          nói nó. Ba gạch đầu dòng ở dưới là ba tính chất mà mã trong repo này
+          thật sự giữ, không phải ba khẩu hiệu.
+        */}
         <div className="auth-pitch-body">
           <h1 className="auth-pitch-h">{t('login.pitch.headline')}</h1>
           <p className="auth-pitch-lede">{t('login.pitch.lede')}</p>
+          <ul className="auth-points" aria-label={t('login.pitch.aria')}>
+            {(['login.point.offline', 'login.point.ownKey', 'login.point.private'] as const).map((key) => (
+              <li key={key}>
+                <svg
+                  className="auth-tick"
+                  width="15"
+                  height="15"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M3 8.5 6.5 12 13 4.5" />
+                </svg>
+                <span>{t(key)}</span>
+              </li>
+            ))}
+          </ul>
         </div>
-        {/*
-          Ba gạch đầu dòng, mỗi câu là một tính chất mà mã trong repo này thật
-          sự giữ — gói nằm trên máy, key nằm ở origin kho khoá, course riêng tư
-          không lộ ra registry — chứ không phải ba khẩu hiệu.
-        */}
-        <ul className="auth-points" aria-label={t('login.pitch.aria')}>
-          {(['login.point.offline', 'login.point.ownKey', 'login.point.private'] as const).map((key) => (
-            <li key={key}>
-              <svg
-                className="auth-tick"
-                width="15"
-                height="15"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M3 8.5 6.5 12 13 4.5" />
-              </svg>
-              <span>{t(key)}</span>
-            </li>
-          ))}
-        </ul>
       </section>
 
       {/*
-        Nửa PHẢI: form. Không còn là một thẻ nổi — nó LÀ nửa trang.
+        NỬA TRÁI: form. Không còn là một thẻ nổi — nó LÀ nửa trang.
         Lớp là `auth-side`, KHÔNG `auth-panel`: `id="auth-panel"` đã thuộc về
         `<div role="tabpanel">` ngay dưới đây, và hai thứ khác hẳn nhau mang
         cùng một cái tên là cách rẻ nhất để người sau sửa nhầm.
       */}
       <section className="auth-side">
         <div className="auth-side-inner">
-          <h2 className="auth-h">{t('login.title')}</h2>
-          <p className="auth-lede">{t('login.lede')}</p>
+          {/* Nhãn hiệu ĐỨNG GIỮA, ngay trên nhan đề — chỗ mẫu Untitled UI đặt
+              nó, và nó ở cột trái đúng như người dùng yêu cầu. Ba dòng đầu cột
+              (mark, nhan đề, câu dẫn) căn giữa; từ hàng tab trở xuống căn trái,
+              vì một ô nhập căn giữa thì mắt không có mép nào để bám. */}
+          <p className="auth-brand">
+            <Logo size={34} boxed />
+            <span>{t('app.name')}</span>
+          </p>
+          {/*
+            MỘT nhan đề, và nó đổi theo form đang mở.
 
-          <div role="tablist" aria-label={t('login.tablist.aria')} className="seg auth-tabs">
+            HAI TAB "Đăng nhập / Đăng ký" ĐÃ BỎ. Chúng nói cùng một điều với
+            dòng "Chưa có tài khoản? Tạo tài khoản" ở chân cột — và người dùng
+            gọi đúng tên chỗ thừa ấy: "chúng ta có nút tạo tài khoản ở dưới rồi
+            mà". Hai điều khiển cho một việc, cách nhau bốn trăm pixel, là thứ
+            cả vòng thiết kế lại này tồn tại để gỡ.
+
+            Bỏ tab thì `role="tablist"` và `role="tabpanel"` cũng phải đi theo:
+            một `tabpanel` không còn `tab` nào trỏ vào là ARIA hỏng, và một
+            trình đọc màn hình sẽ khai một cấu trúc không tồn tại.
+
+            Nhan đề PHẢI đổi theo tab, vì nó là thứ duy nhất còn nói ra bạn
+            đang ở form nào — trước đây tab đang sáng làm việc đó.
+          */}
+          <h2 className="auth-h">{t(tab === 'login' ? 'login.heading.login' : 'login.heading.register')}</h2>
+
+          {tab === 'login' ? (
+            <LoginForm onSuccess={handleAuthenticated} />
+          ) : (
+            <RegisterForm onSuccess={handleAuthenticated} />
+          )}
+
+          {/*
+            CÂU TRẢ LỜI CHO "TÔI CÓ PHẢI ĐĂNG KÝ KHÔNG" — và nó là KHÔNG.
+            Gói khoá học đọc được mà không cần tài khoản; đăng nhập chỉ mua thêm
+            việc tiến độ theo bạn sang máy khác. Nói ra ngay dưới nút là chỗ duy
+            nhất nó còn kịp có ích.
+          */}
+          <p className="auth-reassure">
+            <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path
+                d="M10 2.6l5.7 2.2v4.6c0 3.4-2.3 6.5-5.7 7.9-3.4-1.4-5.7-4.5-5.7-7.9V4.8L10 2.6z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span>{t('login.reassure')}</span>
+          </p>
+
+          {/*
+            ĐỔI TAB, KHÔNG PHẢI ĐIỀU HƯỚNG: hai form là hai tab của cùng một
+            trang, nên đây là một `<button>`. Một `<a href="/register">` sẽ hứa
+            một route không tồn tại.
+
+            Nhãn của nó luôn là hành động của tab KIA, nên nó không bao giờ
+            trùng tên với nút gửi đang hiện — điều kiện để `getByRole('button',
+            { name: /đăng nhập/i })` trong `Login.test.tsx` và
+            `{ name: 'Đăng ký', exact: true }` trong `e2e/helpers.ts` vẫn chỉ
+            khớp đúng một phần tử.
+          */}
+          <p className="auth-switch">
+            {t(tab === 'login' ? 'login.switch.noAccount' : 'login.switch.hasAccount')}{' '}
             <button
               type="button"
-              role="tab"
-              id={loginTabId}
-              aria-selected={tab === 'login'}
-              aria-controls="auth-panel"
-              className={tab === 'login' ? 'on' : undefined}
-              onClick={() => setTab('login')}
+              className="auth-switch-link"
+              onClick={() => setTab(tab === 'login' ? 'register' : 'login')}
             >
-              {t('login.tab.login')}
+              {t(tab === 'login' ? 'login.switch.toRegister' : 'login.switch.toLogin')}
             </button>
-            <button
-              type="button"
-              role="tab"
-              id={registerTabId}
-              aria-selected={tab === 'register'}
-              aria-controls="auth-panel"
-              className={tab === 'register' ? 'on' : undefined}
-              onClick={() => setTab('register')}
-            >
-              {t('login.tab.register')}
-            </button>
-          </div>
-
-          <div role="tabpanel" id="auth-panel" aria-labelledby={tab === 'login' ? loginTabId : registerTabId}>
-            {tab === 'login' ? (
-              <LoginForm onSuccess={handleAuthenticated} />
-            ) : (
-              <RegisterForm onSuccess={handleAuthenticated} />
-            )}
-          </div>
+          </p>
         </div>
       </section>
     </div>
+  );
+}
+
+/**
+ * Ô mật khẩu kèm nút hiện/ẩn — bản dựng đã duyệt vẽ con mắt ấy ở mép phải ô.
+ *
+ * KHÔNG phải một nút "đẹp hơn": một người gõ mật khẩu dài trên bàn phím ảo mà
+ * không xem lại được thì hoặc gõ sai rồi đoán, hoặc chọn một mật khẩu ngắn hơn
+ * để đỡ sai. Đây là một trong vài chỗ mà một điều khiển giao diện thật sự đổi
+ * được chất lượng của thứ người dùng nhập vào.
+ *
+ * `type` đổi giữa `password` và `text`, KHÔNG dùng `-webkit-text-security`:
+ * trình quản lý mật khẩu nhận diện ô theo `type` + `autoComplete`, và một ô
+ * `text` giả dạng sẽ không được điền tự động.
+ *
+ * `aria-pressed` chứ không đổi `aria-label` theo trạng thái ẩn/hiện: nút giữ
+ * MỘT tên, còn trạng thái thì nói bằng đúng thuộc tính sinh ra để nói nó.
+ */
+function PasswordField({
+  id,
+  value,
+  onChange,
+  autoComplete,
+  minLength,
+}: {
+  id: string;
+  value: string;
+  onChange: (next: string) => void;
+  autoComplete: string;
+  minLength?: number;
+}) {
+  const { t } = useLanguage();
+  const [shown, setShown] = useState(false);
+
+  return (
+    <span className="auth-pw">
+      <input
+        id={id}
+        type={shown ? 'text' : 'password'}
+        required
+        minLength={minLength}
+        autoComplete={autoComplete}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <button
+        type="button"
+        className="auth-pw-eye"
+        aria-label={t(shown ? 'login.password.hide' : 'login.password.show')}
+        aria-pressed={shown}
+        aria-controls={id}
+        onClick={() => setShown((on) => !on)}
+      >
+        {shown ? (
+          <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M3 3l14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <path
+              d="M7.3 7.4A2.7 2.7 0 0010 12.7c.7 0 1.4-.3 1.9-.8M5.2 5.6C3.6 6.7 2.4 8.2 1.8 10c1.3 3.3 4.5 5.5 8.2 5.5 1.4 0 2.7-.3 3.9-.9M8.4 4.7A9.4 9.4 0 0110 4.5c3.7 0 6.9 2.2 8.2 5.5-.5 1.4-1.4 2.6-2.5 3.6"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        ) : (
+          <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M1.8 10C3.1 6.7 6.3 4.5 10 4.5s6.9 2.2 8.2 5.5c-1.3 3.3-4.5 5.5-8.2 5.5S3.1 13.3 1.8 10z"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinejoin="round"
+            />
+            <circle cx="10" cy="10" r="2.7" stroke="currentColor" strokeWidth="1.5" />
+          </svg>
+        )}
+      </button>
+    </span>
   );
 }
 
@@ -332,18 +505,17 @@ function LoginForm({ onSuccess }: AuthFormProps) {
         type="email"
         required
         autoComplete="email"
+        placeholder={t('login.field.emailPlaceholder')}
         value={email}
         onChange={(e) => setEmail(e.target.value)}
       />
 
       <label htmlFor={passwordId}>{t('login.field.password')}</label>
-      <input
+      <PasswordField
         id={passwordId}
-        type="password"
-        required
         autoComplete="current-password"
         value={password}
-        onChange={(e) => setPassword(e.target.value)}
+        onChange={setPassword}
       />
 
       {error != null && (
@@ -395,19 +567,18 @@ function RegisterForm({ onSuccess }: AuthFormProps) {
         type="email"
         required
         autoComplete="email"
+        placeholder={t('login.field.emailPlaceholder')}
         value={email}
         onChange={(e) => setEmail(e.target.value)}
       />
 
       <label htmlFor={passwordId}>{t('login.field.password')}</label>
-      <input
+      <PasswordField
         id={passwordId}
-        type="password"
-        required
-        minLength={8}
         autoComplete="new-password"
+        minLength={8}
         value={password}
-        onChange={(e) => setPassword(e.target.value)}
+        onChange={setPassword}
       />
 
       {error != null && (

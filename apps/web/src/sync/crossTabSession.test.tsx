@@ -219,15 +219,19 @@ async function bSignsInAnotherTab(): Promise<void> {
   // `useLanguage()` ném. Đo được: đúng lỗi ấy, ở đúng dòng
   // `Login.tsx`'s `useLanguage()`.
   const { LanguageProvider } = await import('../i18n/LanguageProvider');
+  // Cùng lý do nhập ĐỘNG như dòng trên: `<Login>` nay dựng nút chủ đề của
+  // chính nó, nên nó cần provider ấy — và provider ấy phải đến từ cùng một
+  // bản module với `<Login>` vừa được nhập.
+  const { ThemeProvider } = await import('../theme/ThemeContext');
   const { MemoryRouter, Route, Routes } = await import('react-router-dom');
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <LanguageProvider><MemoryRouter initialEntries={['/login']}>
+      <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={['/login']}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<div data-testid="tab1-landed" />} />
         </Routes>
-      </MemoryRouter></LanguageProvider>
+      </MemoryRouter></LanguageProvider></ThemeProvider>
     </QueryClientProvider>,
   );
   await bSignsInThroughTheRealForm();
@@ -238,12 +242,12 @@ async function bSignsInThroughTheRealForm(): Promise<void> {
   const user = userEvent.setup();
   await screen.findByLabelText(/email/i);
   await user.type(screen.getByLabelText(/email/i), B.email);
-  await user.type(screen.getByLabelText(/mật khẩu/i), 'secret123');
+  await user.type(screen.getByLabelText(/^mật khẩu$/i), 'secret123');
   await user.click(screen.getByRole('button', { name: /đăng nhập/i }));
   // The form is gone: `handleAuthenticated` ran to completion — `stopSync()`,
   // `clearSession()`, the `me` seed, the navigate — so everything this tab
   // does on the way in has already happened when the assertions below run.
-  await waitFor(() => expect(screen.queryByLabelText(/mật khẩu/i)).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByLabelText(/^mật khẩu$/i)).not.toBeInTheDocument());
 }
 
 beforeEach(() => {

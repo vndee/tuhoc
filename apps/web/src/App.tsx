@@ -57,10 +57,14 @@ const CHAPTER_ROUTE = /^\/c\/[^/]+\/[^/]+/;
 // mục lục nhưng không phải đang đọc.
 const COURSE_ROUTE = /^\/c\/[^/]+/;
 
+// `/login` — màn hình duy nhất KHÔNG có thanh trên. Xem `ShellProps.authScreen`.
+const AUTH_ROUTE = /^\/login/;
+
 function AppShell() {
   const { theme, toggle: toggleTheme } = useThemeContext();
   const { open: mobileNavOpen, toggle: toggleMobileNav } = useMobileNav();
   const location = useLocation();
+  const authScreen = AUTH_ROUTE.test(location.pathname);
 
   useSyncLifecycle();
 
@@ -72,8 +76,10 @@ function AppShell() {
       // luật CSS treo dưới `#app.reading`.
       reading={CHAPTER_ROUTE.test(location.pathname)}
       inCourse={COURSE_ROUTE.test(location.pathname)}
+      authScreen={authScreen}
       sidebar={<Sidebar />}
       topbar={
+        authScreen ? null : (
         <>
           {/* NÚT NGĂN KÉO CỦA MÀN HẸP, đứng trước nhãn hiệu — chỗ mọi người
               tìm nó trên điện thoại. `reader.css` giữ nó ẩn từ 981px trở lên,
@@ -100,6 +106,7 @@ function AppShell() {
               sau nó bị đẩy về mép phải, và tài khoản là thứ cuối cùng bên ấy. */}
           <AccountChip />
         </>
+        )
       }
       rail={<Rail />}
     >
