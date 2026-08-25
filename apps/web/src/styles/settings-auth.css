@@ -519,53 +519,6 @@ html[data-theme='dark'] .auth-form input {
   letter-spacing: -0.018em;
 }
 
-/* Cùng lý do như `.auth-page`: bề rộng quyết định là của `#content`, không phải
-   của viewport, nên bố cục hỏi bằng `flex-wrap` chứ không bằng `@media`. */
-.set-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px 32px;
-  align-items: flex-start;
-}
-
-.set-toc {
-  flex: 0 1 10.5rem;
-  display: flex;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  gap: 2px;
-}
-
-/*
-  `flex: 1 1 8rem` là thứ làm mục lục tự đổi hình: trong cột 10.5rem không có
-  chỗ cho hai mục 8rem cạnh nhau nên chúng xếp dọc; khi mục lục bị đẩy xuống
-  dòng riêng và rộng bằng cả trang thì bốn mục nằm ngang thành một hàng tab.
-*/
-.set-toc-item {
-  flex: 1 1 8rem;
-  text-align: left;
-  font-family: var(--sans);
-  font-size: 13px;
-  line-height: 1.4;
-  padding: 7px 10px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--ink-2);
-  cursor: pointer;
-}
-
-.set-toc-item:hover {
-  background: var(--accent-soft);
-  color: var(--ink);
-}
-
-.set-toc-item.on {
-  background: var(--panel);
-  color: var(--ink);
-  font-weight: 600;
-}
-
 .set-main {
   flex: 1 1 20rem;
   min-width: 0;

@@ -50,45 +50,21 @@ import { useThemeContext } from '../theme/ThemeContext';
  */
 
 /**
- * BA mục, không phải bốn — bản dựng gộp "Tài khoản" với "Ngôn ngữ & giao diện"
- * thành "Chung", và người dùng yêu cầu đúng phép gộp ấy.
+ * MỘT TRANG, KHÔNG CÒN TAB.
  *
- * Một vòng trước tôi đã TỪ CHỐI gộp, với lý do: `SECTIONS` là mô hình có bài
- * kiểm riêng, nên gộp sẽ đổi cả `settings.section.*` lẫn `?section=`. Lý do ấy
- * đúng về phạm vi nhưng sai về kết luận — phạm vi thật chỉ là tệp này và bài
- * kiểm của nó: `AskPanel` truyền `section: 'ai'` (không đụng), và `e2e/s2` gọi
- * tab theo CHỮ "Trợ lý AI" (không đụng). Hai mục bị gộp đều không có ai ngoài
- * tệp này gọi tên.
+ * Trang này có bốn khối và tổng cộng khoảng một màn rưỡi nội dung. Chia một
+ * lượng như thế thành ba tab bắt người dùng trả một cái giá mà không nhận lại
+ * gì: mỗi lần muốn biết "mình đã cắm key chưa" hay "máy đang giữ bao nhiêu"
+ * đều là một cú bấm và một lần đoán xem nó nằm ở tab nào. Cuộn thì rẻ hơn.
+ *
+ * `SectionId` VẪN CÒN, và nó không phải tàn dư: `ai/AskPanel.tsx` điều hướng
+ * sang đây với `state={{ section: 'ai', openVault: true }}`, và ý định ấy nay
+ * có nghĩa "CUỘN tới khối ấy" thay vì "mở tab ấy". Cùng một hợp đồng, một cách
+ * thực hiện khác — nên lối vào từ panel hỏi-đáp không phải sửa một dòng nào.
  */
 type SectionId = 'general' | 'ai' | 'localData';
 
-/**
- * Thứ tự ở đây là thứ tự người dùng thấy, và nó theo canvas: Tài khoản trước
- * (ai đang đăng nhập), rồi Trợ lý AI, rồi hai mục thuộc về thiết bị.
- *
- * `DEFAULT_SECTION` TỪNG là **Trợ lý AI**, với lý do đo được: khi ấy mọi lối
- * vào `/settings` đều tới từ AI — lời mời "Mở trang cấu hình" trong panel
- * hỏi-đáp (`ai/AskPanel.tsx`) — nên mở vào "Tài khoản" sẽ bắt người vừa bấm
- * "tôi cần cắm key" phải bấm thêm một lần nữa.
- *
- * Lý do ấy đã CŨ. Bản thiết kế lại IA thêm "Cài đặt" thành liên kết thường
- * trực ở thanh bên, nên tiền đề "mọi lối vào đều tới từ AI" không còn đúng.
- * Giữ nguyên mặc định sau khi tiền đề đổ nghĩa là: một người bấm "Cài đặt" để
- * đổi ngôn ngữ bị ném thẳng vào trang cấu hình AI — và vì `AiSection` còn tự
- * bung lớp phủ toàn màn hình, họ phải ĐÓNG một trang AI trước khi làm được
- * việc mình định làm. Trợ lý AI là tuỳ chọn của sản phẩm này (giáo trình đọc
- * được mà không cần key nào), nên nó không được là cửa trước của Cài đặt.
- *
- * Cách sửa không phải lật ngược mặc định mà là TÔN TRỌNG LỐI VÀO: lời mời từ
- * panel hỏi-đáp truyền ý định qua navigation state (`{ section, openVault }`),
- * còn mọi lối vào khác nhận mục trung tính. Dùng state chứ không phải query
- * string là có chủ ý — `e2e/s2.spec.ts` khoá `href` đúng bằng `/settings` và
- * URL khớp `/\/settings$/`, nên một `?section=ai` sẽ phá đúng hai khẳng định
- * ấy trong khi không thêm được gì: mục đang xem vốn đã không nằm trong URL
- * (xem chú thích của `<nav className="set-toc">` bên dưới).
- */
 const SECTIONS: readonly SectionId[] = ['general', 'ai', 'localData'];
-const DEFAULT_SECTION: SectionId = 'general';
 
 /** Ý định do lối vào truyền sang, qua `<Link state={…}>`. Không có thì `null`. */
 export type SettingsNavIntent = {
@@ -106,72 +82,54 @@ function readIntent(state: unknown): SettingsNavIntent {
   return { section, openVault: record.openVault === true };
 }
 
-const SECTION_TITLE_KEY = {
-  general: 'settings.section.general',
-  ai: 'settings.ai.title',
-  localData: 'settings.section.localData',
-} as const;
+/** Neo để cuộn tới. Cũng là `id` thật trên DOM, nên `#ai` trên URL cũng chạy. */
+const SECTION_ANCHOR: Record<SectionId, string> = {
+  general: 'settings-general',
+  ai: 'settings-ai',
+  localData: 'settings-local-data',
+};
 
 export function Settings() {
   const { t } = useLanguage();
   const intent = readIntent(useLocation().state);
 
+  // Đọc ý định MỘT LẦN lúc mount: `history.state` sống dai hơn lần điều hướng
+  // sinh ra nó (nó còn nguyên qua back/forward), nên đọc lại ở mỗi render sẽ
+  // bung kho khoá lần thứ hai sau khi người dùng đã đóng nó.
+  const [autoOpenVault] = useState(() => intent.openVault === true);
+
   /**
-   * Đọc ý định MỘT LẦN lúc mount, không phải mỗi lần render.
+   * Cuộn tới khối mà lối vào chỉ định — MỘT LẦN, sau khi cây đã dựng.
    *
-   * Navigation state sống dai hơn lần điều hướng sinh ra nó: nó nằm trong
-   * `history.state`, nên vẫn còn khi người dùng bấm back rồi forward. Nếu đọc
-   * nó ở mỗi render thì mọi lần `setSection` sau đó sẽ bị kéo ngược về mục mà
-   * lối vào đã chọn — người dùng bấm "Ngôn ngữ" và bị đá lại "Trợ lý AI".
+   * `intent` đọc từ `history.state`, thứ sống dai hơn lần điều hướng sinh ra nó
+   * (nó còn nguyên khi người dùng bấm back rồi forward). Nên hiệu ứng này có
+   * deps rỗng: cuộn lại mỗi lần render sẽ kéo người dùng ngược lên mỗi khi họ
+   * vừa tự cuộn xuống chỗ khác.
    */
-  const [section, setSection] = useState<SectionId>(() => intent.section ?? DEFAULT_SECTION);
-  const [autoOpenVault, setAutoOpenVault] = useState(() => intent.openVault === true);
+  useEffect(() => {
+    if (intent.section === undefined) return;
+    const target = document.getElementById(SECTION_ANCHOR[intent.section]);
+    // `scrollIntoView` được BỌC, không gọi thẳng: jsdom không cài nó, và quan
+    // trọng hơn — cuộn ở đây là một phần thưởng thêm, không phải điều kiện.
+    // Mọi khối đều đã ở trên trang; không cuộn được thì người dùng vẫn thấy
+    // đúng thứ họ tới xem, chỉ là phải tự kéo. Một ngoại lệ ở đây sẽ làm hỏng
+    // cả trang vì một thứ trang trí.
+    if (typeof target?.scrollIntoView === 'function') target.scrollIntoView({ block: 'start' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <section className="page-settings">
       <h1 className="set-title">{t('account.settings')}</h1>
       {/* Câu dẫn của trang — bản dựng có, bản đang chạy thì nhảy thẳng từ nhan
-          đề xuống hàng tab. Nó nói ra trang này gồm những gì, tức đúng việc mà
-          bốn (nay ba) cái tab một mình không làm được. */}
+          đề xuống nội dung. Nó nói ra trang này gồm những gì. */}
       <p className="set-page-lede">{t('settings.lede')}</p>
 
-      <div className="set-grid">
-        {/*
-          Mục lục là `<nav>` với `<button>`, không phải `<a href>`: mục đang xem
-          không đổi URL, nên một liên kết ở đây sẽ hứa một thứ (một địa chỉ chia
-          sẻ được) mà nó không giữ. `aria-current` là cách nói "bạn đang ở đây"
-          cho một điều khiển không phải liên kết.
-        */}
-        <nav className="set-toc" aria-label={t('settings.nav.aria')}>
-          {SECTIONS.map((id) => (
-            <button
-              key={id}
-              type="button"
-              className={id === section ? 'set-toc-item on' : 'set-toc-item'}
-              aria-current={id === section ? 'true' : undefined}
-              onClick={() => {
-                setSection(id);
-                // Ý định của lối vào chỉ dùng được một lần. Người dùng vừa tự
-                // chọn mục, nên nếu họ quay lại "Trợ lý AI" sau đó thì đó là
-                // lựa chọn của họ — và lớp phủ không được tự bung nữa.
-                setAutoOpenVault(false);
-              }}
-            >
-              {t(SECTION_TITLE_KEY[id])}
-            </button>
-          ))}
-        </nav>
-
-        <div className="set-main">
-          {section === 'general' && (
-            <>
-              <AccountSection />
-              <AppearanceSection />
-            </>
-          )}
-          {section === 'ai' && <AiSection autoOpen={autoOpenVault} />}
-          {section === 'localData' && <LocalDataSection />}
-        </div>
+      <div className="set-main">
+        <AccountSection anchor={SECTION_ANCHOR.general} />
+        <AppearanceSection />
+        <AiSection anchor={SECTION_ANCHOR.ai} autoOpen={autoOpenVault} />
+        <LocalDataSection anchor={SECTION_ANCHOR.localData} />
       </div>
     </section>
   );
@@ -197,7 +155,7 @@ export function Settings() {
  * khung trỏ tới. Một bản dựng lỡ trỏ kho khoá về origin trang chính sẽ tự nói
  * ra điều đó ở đây, thay vì âm thầm chạy tiếp với một cơ chế đã chết.
  */
-function AiSection({ autoOpen }: { autoOpen: boolean }) {
+function AiSection({ anchor, autoOpen }: { anchor: string; autoOpen: boolean }) {
   const { origin, expanded, setExpanded } = useVaultFrame();
   const { t, tNode } = useLanguage();
 
@@ -230,7 +188,7 @@ function AiSection({ autoOpen }: { autoOpen: boolean }) {
   }, [autoOpen, setExpanded]);
 
   return (
-    <section className="set-block">
+    <section className="set-block" id={anchor}>
       <div className="set-side">
         <h2 className="set-h">{t('settings.ai.title')}</h2>
         {/*
@@ -325,13 +283,13 @@ function AiSection({ autoOpen }: { autoOpen: boolean }) {
  * Người bấm mà không biết điều đó sẽ mất ghi chú chưa kịp đồng bộ — và câu ấy
  * là chỗ duy nhất trong giao diện nói ra.
  */
-function AccountSection() {
+function AccountSection({ anchor }: { anchor: string }) {
   const { t } = useLanguage();
   const meQuery = useMe();
   const logout = useLogout();
 
   return (
-    <section className="set-block">
+    <section className="set-block" id={anchor}>
       <div className="set-side">
         <h2 className="set-h">{t('settings.section.account')}</h2>
         {/* Câu NGẮN, không phải cả đoạn giải thích. Mục này nay đứng chung một
@@ -531,7 +489,7 @@ function AppearanceSection() {
         <p className="set-note" data-testid="theme-now">
           {t(theme === 'dark' ? 'settings.appearance.themeNowDark' : 'settings.appearance.themeNowLight')}
         </p>
-      </div>
+        </div>
       </div>
     </section>
   );
@@ -608,12 +566,12 @@ function formatBytes(bytes: number, lang: string): string {
   return `${value.toLocaleString(lang === 'en' ? 'en-US' : 'vi-VN', { maximumFractionDigits: 1 })} ${unit}`;
 }
 
-function LocalDataSection() {
+function LocalDataSection({ anchor }: { anchor: string }) {
   const { lang, t } = useLanguage();
   const footprint = useLocalFootprint();
 
   return (
-    <section className="set-block">
+    <section className="set-block" id={anchor}>
       <div className="set-side">
         <h2 className="set-h">{t('settings.section.localData')}</h2>
         <p className="set-lede">{t('settings.localData.blurb')}</p>

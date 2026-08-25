@@ -76,23 +76,20 @@ export const en: Messages = {
   'settings.appearance.themeNowLight': 'Currently using the light theme.',
   'settings.appearance.themeNowDark': 'Currently using the dark theme.',
 
-  'settings.localData.blurb':
-    'This device holds: the course packages you downloaded, your notes and highlights, the progress queue that has not been sent yet — and, in the key vault at a separate address, your AI key.',
+  'settings.localData.blurb': 'Course packages and notes live in this browser.',
   'settings.localData.clearedOnSignOut':
-    'The local database is named after the BROWSER, not after a user, so it is wiped every time the signed-in user changes — even when nobody pressed sign out.',
-  'settings.localData.kept':
-    'Language and light/dark do stay: they are device preferences, not study data.',
+    'The local database is named after the BROWSER, not the user — so it is wiped whenever a different person signs in, even if nobody signed out.',
+  'settings.localData.kept': 'Language and theme stay: they belong to the device.',
 
   'settings.ai.title': 'AI assistant',
   /**
    * Chỗ trống nằm ở VỊ TRÍ KHÁC so với bản tiếng Việt, và đó chính là lý do câu
    * này là một khoá chứ không phải ba mảnh ghép trong JSX.
    */
-  'settings.ai.blurb': (vault: string) =>
-    `You use your own key, and that key is kept in the ${vault} — a separate page served from a separate address, which opens over this one when you come here. The browser forbids code on the lesson page from reading anything inside the key vault, so an interactive course that slipped through review still cannot take your key. That is why the key field lives in the vault and not on this page.`,
+  'settings.ai.blurb': (vault: string) => `Runs on your own key, kept in the ${vault} at a separate address.`,
   'settings.ai.blurbVault': 'key vault',
   'settings.ai.keyStays':
-    'Your key never leaves this browser: it is not synced between devices and never passes through our servers. On a new machine you enter it again; if you delete it, it cannot be recovered.',
+    'Your key never leaves this browser, is never synced, and never passes through our servers.',
   'settings.ai.unavailable':
     'This build has no key vault, so the AI assistant is unavailable. That is a deployment configuration gap, not a problem with your account — reading the course still works normally.',
   'settings.ai.open': 'Open the key vault',

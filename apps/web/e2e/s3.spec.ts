@@ -1036,7 +1036,9 @@ async function openVaultOverlay(page: Page) {
    * chứ không nằm trong `Settings` tự làm: chính việc `Settings` tự làm là lỗi
    * đã được báo.
    */
-  await page.locator('.set-toc').getByRole('button', { name: 'Trợ lý AI' }).click();
+  // Cài đặt nay là MỘT trang, không còn hàng tab — nên không phải chọn mục
+  // trước; khối "Trợ lý AI" đã ở sẵn trên trang. Điều chốt này canh KHÔNG đổi:
+  // `/settings` không tự bung kho khoá, người dùng phải bấm mở.
   await page.getByRole('button', { name: 'Mở kho khoá' }).click();
   const ui = page.frameLocator('[data-testid="vault-frame"]');
   await expect(ui.locator('h2')).toHaveText(VI.vaultHeading);

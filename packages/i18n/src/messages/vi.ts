@@ -96,12 +96,10 @@ export const vi = {
 
   /* ── mục Dữ liệu trên máy ──────────────────────────────────────────────── */
 
-  'settings.localData.blurb':
-    'Trên máy này có: gói khoá học đã tải về, ghi chú và phần tô sáng của bạn, hàng đợi tiến độ chưa gửi được — và, ở kho khoá tại một địa chỉ khác, key AI của bạn.',
+  'settings.localData.blurb': 'Gói khoá học và ghi chú nằm trong trình duyệt này.',
   'settings.localData.clearedOnSignOut':
-    'Cơ sở dữ liệu cục bộ mang tên TRÌNH DUYỆT chứ không mang tên người dùng, nên nó bị xoá sạch mỗi lần đổi người đăng nhập — kể cả khi không ai bấm đăng xuất.',
-  'settings.localData.kept':
-    'Ngôn ngữ và giao diện sáng/tối thì ở lại: chúng là tuỳ chọn của thiết bị, không phải dữ liệu học.',
+    'Cơ sở dữ liệu mang tên TRÌNH DUYỆT, không mang tên người dùng — nên nó bị xoá sạch mỗi lần đổi người đăng nhập, kể cả khi không ai bấm đăng xuất.',
+  'settings.localData.kept': 'Ngôn ngữ và giao diện thì ở lại: chúng là tuỳ chọn của thiết bị.',
 
   /* ── mục Trợ lý AI ─────────────────────────────────────────────────────── */
 
@@ -115,11 +113,10 @@ export const vi = {
    * Câu giữ nguyên vẹn trong catalog thay vì bị cắt làm ba khoá, nên trật tự từ
    * của bản tiếng Anh khác được mà chỗ vẽ không phải biết.
    */
-  'settings.ai.blurb': (vault: string) =>
-    `Bạn dùng key của chính mình, và key ấy được cất trong ${vault} — một trang riêng chạy ở một địa chỉ riêng, mở ra đè lên trang này khi bạn vào đây. Trình duyệt cấm mã của trang bài học đọc bất cứ thứ gì bên trong kho khoá, nên một khóa học tương tác bị duyệt sót vẫn không lấy được key của bạn. Vì thế ô dán key nằm trong kho khoá, không nằm trên trang này.`,
+  'settings.ai.blurb': (vault: string) => `Chạy bằng key của chính bạn, cất trong ${vault} ở một địa chỉ riêng.`,
   'settings.ai.blurbVault': 'kho khoá',
   'settings.ai.keyStays':
-    'Key không rời khỏi trình duyệt này: nó không được đồng bộ giữa các thiết bị và không đi qua máy chủ của chúng tôi. Đổi máy thì cắm lại; xoá thì không lấy lại được.',
+    'Key không rời trình duyệt này, không đồng bộ, không đi qua máy chủ của chúng tôi.',
   'settings.ai.unavailable':
     'Bản dựng này không có kho khoá, nên chưa dùng được trợ lý AI. Đây là một thiếu sót của cấu hình khi triển khai, không phải của tài khoản bạn — phần đọc giáo trình vẫn chạy bình thường.',
   'settings.ai.open': 'Mở kho khoá',
@@ -151,7 +148,7 @@ export const vi = {
    * chứ không chặn được gì.
    */
   'settings.ai.budgetBody':
-    'Kho khoá đặt một hạn mức ký tự cho mỗi phiên. Tiêu hết thì nó hỏi lại ngay trong khung, và hỏi kèm nhật ký những gì đã rời máy — con số ấy là thứ đáng nhìn nhất đúng vào lúc bấm. Hạn mức không chặn được một khoá học độc kiên nhẫn; nó chỉ khiến việc ấy phải đi qua tay bạn.',
+    'Kho khoá đặt một hạn mức ký tự cho mỗi phiên. Tiêu hết thì nó hỏi lại, kèm nhật ký những gì đã rời máy.',
 
   /* ══════════════════════════════════════════════════════════════════════ *
    * KHO KHOÁ (`apps/vault`) — origin riêng, và là lý do gói này không phụ
