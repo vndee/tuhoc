@@ -7,6 +7,15 @@ import { VaultFrameContext } from '../shell/VaultFrame';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 import { useAI } from './useAI';
 
+/**
+ * Câu trả lời của lượt CUỐI. Hook nay giữ cả cuộc hội thoại (`turns`) thay vì
+ * một chuỗi `text` duy nhất — xem `AITurn`; những bài dưới đây chỉ quan tâm
+ * lượt vừa hỏi, nên chúng hỏi qua đây thay vì đọc chỉ số bằng tay.
+ */
+function lastAnswer(r: { turns: readonly { answer: string }[] }): string {
+  return r.turns.length === 0 ? '' : r.turns[r.turns.length - 1].answer;
+}
+
 const VAULT = 'http://localhost:5174';
 
 /**
@@ -115,13 +124,13 @@ describe('useAI — dòng chữ chảy về', () => {
     await act(async () => {
       h.reply({ v: 1, id, kind: 'chunk', text: 'Entropy ' });
     });
-    expect(result.current.text).toBe('Entropy ');
+    expect(lastAnswer(result.current)).toBe('Entropy ');
     expect(result.current.state).toBe('streaming');
 
     await act(async () => {
       h.reply({ v: 1, id, kind: 'chunk', text: 'là số bit.' });
     });
-    expect(result.current.text).toBe('Entropy là số bit.');
+    expect(lastAnswer(result.current)).toBe('Entropy là số bit.');
 
     await act(async () => {
       h.reply({ v: 1, id, kind: 'done' });
@@ -130,20 +139,90 @@ describe('useAI — dòng chữ chảy về', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('một câu hỏi mới xoá câu trả lời cũ thay vì nối vào', async () => {
+  /**
+   * Bài này TỪNG khẳng định điều ngược lại — "một câu hỏi mới xoá câu trả lời
+   * cũ" — và nó xanh, vì hook khi ấy chỉ giữ một chuỗi. Đó chính là lỗi người
+   * dùng báo: hỏi câu thứ hai thì câu thứ nhất biến mất.
+   *
+   * Điều đáng canh thì KHÔNG đổi, chỉ chuyển chỗ: mẩu chữ của lời gọi mới không
+   * được nối vào câu trả lời cũ. Nay hai lượt là hai mục riêng, nên cả hai đều
+   * đo được cùng lúc.
+   */
+  it('câu hỏi mới mở một LƯỢT mới; lượt cũ ở nguyên đó', async () => {
     const h = harness();
     const { result } = renderHook(() => useAI(), { wrapper: h.wrapper });
-    const id = await askUntilChat(h, result);
+    const first = await askUntilChat(h, result);
     await act(async () => {
-      h.reply({ v: 1, id, kind: 'chunk', text: 'cũ' });
-      h.reply({ v: 1, id, kind: 'done' });
+      h.reply({ v: 1, id: first, kind: 'chunk', text: 'cũ' });
+      h.reply({ v: 1, id: first, kind: 'done' });
     });
-    expect(result.current.text).toBe('cũ');
 
     act(() => {
       void result.current.ask('câu khác');
     });
-    expect(result.current.text).toBe('');
+    await act(async () => {
+      h.reply({ v: 1, id: h.sent(2).id, ...CONFIGURED });
+    });
+    const second = h.sent(3).id;
+    await act(async () => {
+      h.reply({ v: 1, id: second, kind: 'chunk', text: 'mới' });
+    });
+
+    expect(result.current.turns.map((turn) => [turn.question, turn.answer])).toEqual([
+      ['Giải thích entropy', 'cũ'],
+      ['câu khác', 'mới'],
+    ]);
+  });
+
+  /**
+   * "Hỏi tiếp" chỉ có nghĩa nếu mô hình THẤY được lượt trước. Trước thay đổi
+   * này mỗi lời gọi chỉ mang `[system, user]`, nên lượt thứ hai là một cuộc trò
+   * chuyện mới — người dùng gõ "giải thích rõ hơn" và nhận lại một câu trả lời
+   * về một chủ đề mà mô hình vừa quên.
+   */
+  it('lượt sau mang theo CẢ hội thoại trước đó', async () => {
+    const h = harness();
+    const { result } = renderHook(() => useAI(), { wrapper: h.wrapper });
+    const first = await askUntilChat(h, result);
+    await act(async () => {
+      h.reply({ v: 1, id: first, kind: 'chunk', text: 'Là số bit.' });
+      h.reply({ v: 1, id: first, kind: 'done' });
+    });
+
+    act(() => {
+      void result.current.ask('Rõ hơn được không?');
+    });
+    await act(async () => {
+      h.reply({ v: 1, id: h.sent(2).id, ...CONFIGURED });
+    });
+
+    expect(h.sent(3).messages).toEqual([
+      { role: 'user', content: 'Giải thích entropy' },
+      { role: 'assistant', content: 'Là số bit.' },
+      { role: 'user', content: 'Rõ hơn được không?' },
+    ]);
+  });
+
+  /**
+   * Một lượt hỏng KHÔNG vào lịch sử: gửi một câu hỏi kèm một câu trả lời rỗng
+   * dạy mô hình rằng im lặng là một câu trả lời hợp lệ.
+   */
+  it('lượt hỏng không được mang sang lượt sau', async () => {
+    const h = harness();
+    const { result } = renderHook(() => useAI(), { wrapper: h.wrapper });
+    const first = await askUntilChat(h, result);
+    await act(async () => {
+      h.reply({ v: 1, id: first, kind: 'error', code: 'provider_error', message: 'hỏng' });
+    });
+
+    act(() => {
+      void result.current.ask('Thử lại');
+    });
+    await act(async () => {
+      h.reply({ v: 1, id: h.sent(2).id, ...CONFIGURED });
+    });
+
+    expect(h.sent(3).messages).toEqual([{ role: 'user', content: 'Thử lại' }]);
   });
 
   it('CHỮ GIẢ từ origin lạ KHÔNG lọt vào câu trả lời', async () => {
@@ -157,7 +236,7 @@ describe('useAI — dòng chữ chảy về', () => {
       h.reply({ v: 1, id, kind: 'chunk', text: 'GIA-MAO' }, 'https://evil.example');
     });
 
-    expect(result.current.text).toBe('thật');
+    expect(lastAnswer(result.current)).toBe('thật');
   });
 });
 
@@ -237,7 +316,7 @@ describe('useAI — cancel() huỷ THẬT', () => {
     await act(async () => {
       h.reply({ v: 1, id, kind: 'chunk', text: 'KHONG-DUOC-CO' });
     });
-    expect(result.current.text).toBe('một nửa');
+    expect(lastAnswer(result.current)).toBe('một nửa');
     expect(result.current.state).toBe('idle');
   });
 

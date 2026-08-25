@@ -787,14 +787,36 @@ export function ChapterView({
       />
       {aiReady && (
         <>
-          <button
-            type="button"
-            className="ai-launch"
-            onClick={askAboutChapter}
-            disabled={annotationContent.root === null}
-          >
-            {t('reader.askAi')}
-          </button>
+          {/*
+            BONG BÓNG NỔI, không phải một nút nằm trong dòng chữ.
+
+            Nút này vốn đứng ở cuối phần nội dung, nên muốn hỏi về chương thì
+            phải cuộn xuống tận đấy tìm nó — hoặc bôi đen một đoạn, thứ chỉ hợp
+            khi câu hỏi thuộc về đúng đoạn ấy. Người dùng nói đúng: phải mở được
+            BẤT KỲ LÚC NÀO.
+
+            Ẩn khi panel đang mở: một bong bóng "mở chat" nổi ngay cạnh khung
+            chat đang mở là một nút không làm gì.
+          */}
+          {ai === null && (
+            <button
+              type="button"
+              className="ai-launch ai-launch-fab"
+              onClick={askAboutChapter}
+              disabled={annotationContent.root === null}
+              aria-label={t('reader.askAi')}
+              title={t('reader.askAi')}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  d="M17 9.5c0 3.2-3.1 5.8-7 5.8-.9 0-1.7-.1-2.5-.4L3 16.5l1.3-3.2A5.4 5.4 0 013 9.5C3 6.3 6.1 3.7 10 3.7s7 2.6 7 5.8z"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          )}
           {ai?.kind === 'chapter' && (
             <AskPanel heading={t('reader.askHeading')} system={ai.system} onClose={closeAi} />
           )}

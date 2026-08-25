@@ -474,6 +474,11 @@ export const en: Messages = {
   'ann.orphan.barCancel': 'Cancel',
 
   'ai.panel.close': 'Close the assistant',
+  'ai.panel.expand': 'Expand the ask panel',
+  'ai.panel.resize': 'Drag to resize the panel',
+  'ai.panel.collapse': 'Collapse the ask panel',
+  'ai.panel.newThread': 'New conversation',
+  'ai.panel.thinking': 'Thinking…',
   'ai.panel.needsSetup':
     'The AI assistant runs on your own key, and this device has none yet. The key is kept in the key vault — a separate page at a separate address, so a course cannot read it.',
   'ai.panel.openSettings': 'Open the settings page',

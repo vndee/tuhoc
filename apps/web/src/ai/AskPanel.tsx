@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { useVaultFrame } from '../shell/VaultFrame';
+import { renderMarkdown } from './markdown';
 import { useAI } from './useAI';
 
 /**
@@ -60,7 +61,15 @@ export function AskPanel({
 }: AskPanelProps) {
   const { t } = useLanguage();
   const { client, origin } = useVaultFrame();
-  const { ask, text, state, error, cancel } = useAI();
+  const { ask, turns, state, error, cancel, reset } = useAI();
+  const [expanded, setExpanded] = useState(false);
+  const threadRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * Cỡ do người dùng KÉO ra. `null` = chưa kéo lần nào, tức để CSS quyết định
+   * (kể cả khi bấm "mở rộng"). Một giá trị mặc định bằng số sẽ khoá cứng panel
+   * ở đúng cỡ ấy và làm nút mở rộng thành nút không làm gì.
+   */
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [question, setQuestion] = useState(initialQuestion);
   const [probe, setProbe] = useState<Probe>('checking');
   /** `autoAsk` được phép nổ ĐÚNG MỘT LẦN. Dưới StrictMode, React chạy effect
@@ -104,10 +113,26 @@ export function AskPanel({
     (q: string) => {
       const trimmed = q.trim();
       if (!trimmed) return;
+      // Ô câu hỏi trống lại sau khi gửi. Giữ nguyên chữ cũ ở đó là mời người
+      // dùng bấm Hỏi lần nữa và trả tiền cho đúng một câu hỏi hai lần.
+      setQuestion('');
       void ask(trimmed, { system });
     },
     [ask, system],
   );
+
+  /**
+   * Cuộn xuống đáy khi chữ dài ra — nhưng CHỈ khi người đọc đang ở gần đáy.
+   *
+   * Kéo họ xuống trong lúc họ vừa cuộn ngược lên đọc lại lượt trước là cách
+   * chắc chắn nhất để một khung chat thành thứ không đọc được.
+   */
+  useEffect(() => {
+    const el = threadRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (nearBottom) el.scrollTop = el.scrollHeight;
+  }, [turns]);
 
   useEffect(() => {
     if (!autoAsk || probe !== 'ready' || fired.current) return;
@@ -128,20 +153,105 @@ export function AskPanel({
   const blocked = needsSetup || unavailable;
   const streaming = state === 'streaming';
 
+  /**
+   * KÉO ĐỂ ĐỔI CỠ, từ góc TRÊN–TRÁI.
+   *
+   * Panel neo ở góc dưới–phải (`position: fixed; right; bottom`), nên góc đối
+   * diện là góc duy nhất kéo ra được mà không phải đổi cả hệ neo: kéo lên và
+   * sang trái thì hai cạnh kia đứng yên, và panel lớn ra về phía màn hình
+   * trống. Kéo từ góc dưới–phải sẽ đẩy panel ra ngoài khung nhìn.
+   *
+   * `setPointerCapture` chứ không phải nghe `mousemove` trên `document`: nó giữ
+   * được cả khi con trỏ chạy ra ngoài cửa sổ hoặc lướt qua một `<iframe>` — và
+   * trang này CÓ một iframe (khung kho khoá), thứ nuốt sự kiện chuột của trang
+   * cha. Không có capture thì kéo qua nó là mất luôn thao tác kéo.
+   */
+  const onResizeStart = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    const panel = e.currentTarget.closest('.ai-panel');
+    if (!(panel instanceof HTMLElement)) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const rect = panel.getBoundingClientRect();
+
+    const onMove = (move: PointerEvent) => {
+      setSize({
+        // Kéo sang TRÁI (dx âm) là rộng ra, nên dấu trừ. Chặn dưới ở 22rem/14rem
+        // để panel không co về một mẩu không đọc được và không kéo được nữa;
+        // chặn trên ở khung nhìn trừ hai lề.
+        w: Math.max(320, Math.min(window.innerWidth - 32, rect.width - (move.clientX - startX))),
+        h: Math.max(220, Math.min(window.innerHeight - 32, rect.height - (move.clientY - startY))),
+      });
+    };
+    const onUp = () => {
+      e.currentTarget.removeEventListener('pointermove', onMove);
+      e.currentTarget.removeEventListener('pointerup', onUp);
+    };
+    e.currentTarget.addEventListener('pointermove', onMove);
+    e.currentTarget.addEventListener('pointerup', onUp);
+  }, []);
+
   return createPortal(
-    <aside className="ai-panel" role="dialog" aria-label={heading}>
+    <aside
+      className={expanded ? 'ai-panel is-expanded' : 'ai-panel'}
+      role="dialog"
+      aria-label={heading}
+      style={size ? { width: size.w, height: size.h, maxHeight: 'none' } : undefined}
+    >
+      {/*
+        Tay kéo là một `<button>` chứ không phải một `<div>`: nó nhận focus, nên
+        người dùng bàn phím ít nhất TAB tới được và biết nó có ở đó. Đổi cỡ bằng
+        phím thì chưa có — nói ra chứ không giả vờ, và `aria-label` không hứa
+        điều panel không làm được.
+      */}
+      <button
+        type="button"
+        className="ai-panel-grip"
+        aria-label={t('ai.panel.resize')}
+        onPointerDown={onResizeStart}
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <path d="M11 1L1 11M11 5L5 11M11 9L9 11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        </svg>
+      </button>
       <header className="ai-panel-bar">
         <b>{heading}</b>
-        <button type="button" className="btn" aria-label={t('ai.panel.close')} onClick={onClose}>
-          ×
-        </button>
+        <span className="ai-panel-bar-actions">
+          {turns.length > 0 && (
+            <button type="button" className="ai-panel-bar-btn" onClick={reset}>
+              {t('ai.panel.newThread')}
+            </button>
+          )}
+          {/* MỞ RỘNG. Một câu trả lời có khối mã và công thức không đọc được
+              trong một cột 320px, và đó là hình dạng mặc định của panel này. */}
+          <button
+            type="button"
+            className="ai-panel-bar-btn"
+            aria-label={t(expanded ? 'ai.panel.collapse' : 'ai.panel.expand')}
+            aria-pressed={expanded}
+            onClick={() => {
+              // Bỏ cỡ đã kéo tay. Một cỡ inline thắng mọi luật CSS, nên sau khi
+              // người dùng kéo một lần thì nút này im lặng không làm gì — đúng
+              // thứ vừa được báo là hỏng. Bấm mở rộng là nói "cho tôi cỡ chuẩn",
+              // nên nó phải trả quyền quyết định lại cho CSS.
+              setSize(null);
+              setExpanded((on) => !on);
+            }}
+          >
+            {expanded ? '⤡' : '⤢'}
+          </button>
+          <button
+            type="button"
+            className="ai-panel-bar-btn"
+            aria-label={t('ai.panel.close')}
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </span>
       </header>
-
-      {quote && (
-        <blockquote className="ai-panel-quote" data-testid="ai-quote">
-          {quote}
-        </blockquote>
-      )}
 
       {needsSetup && (
         <div className="ai-panel-invite" data-testid="ai-needs-setup">
@@ -174,13 +284,64 @@ export function AskPanel({
         </p>
       )}
 
-      {(text || streaming) && (
-        <div className="ai-panel-answer" data-testid="ai-answer" aria-live="polite">
-          {text}
-        </div>
-      )}
+      {/*
+        CẢ CUỘC HỘI THOẠI, không chỉ câu trả lời cuối. `aria-live="polite"` ở
+        vùng bao chứ không ở từng lượt: một `aria-live` cho mỗi lượt sẽ đọc lại
+        toàn bộ lượt cũ mỗi lần thêm một lượt mới.
+      */}
+      {/*
+        MỘT vùng cuộn, không phải ba.
 
-      {error && !blocked && (
+        Trước đây panel tự cuộn, hội thoại cuộn, và khối trích dẫn cũng có
+        `max-height` cộng `overflow-y` của riêng nó — ba thanh cuộn lồng nhau
+        trên một khung rộng 30rem. Người dùng gọi đúng tên nó, và cái giá thật
+        không chỉ là xấu: với ba vùng cuộn thì bánh xe chuột dừng ở vùng nào là
+        chuyện may rủi.
+
+        Nay chỉ khối này cuộn. Trích dẫn nằm TRONG nó — nó là phần mở đầu của
+        cuộc hội thoại chứ không phải một thanh công cụ — nên nó cuộn đi cùng và
+        hiện ra TRỌN VẸN thay vì bị cắt ở 7rem.
+      */}
+      <div className="ai-panel-thread" ref={threadRef} data-testid="ai-thread" aria-live="polite">
+        {quote && (
+          <blockquote className="ai-panel-quote" data-testid="ai-quote">
+            {quote}
+          </blockquote>
+        )}
+        {turns.length > 0 && (
+          <>
+          {turns.map((turn, index) => (
+            <div className="ai-turn" key={turn.id}>
+              <p className="ai-turn-q">{turn.question}</p>
+              {turn.answer !== '' && (
+                /*
+                  `ai-answer` ở trên CÂU TRẢ LỜI CUỐI, không phải trên cả khung
+                  hội thoại — và đó là một sửa chữa do e2e chỉ ra, không phải một
+                  chi tiết. Khi tôi gắn nó lên khung, `toHaveText(FULL_ANSWER)`
+                  bắt đầu thấy cả đoạn trích và cả câu hỏi của người học trộn vào
+                  câu trả lời, còn `toHaveCount(0)` (dùng để khẳng định "chưa có
+                  câu trả lời nào") thì không bao giờ về 0 nữa vì khung luôn được
+                  dựng. Cái tên phải chỉ đúng thứ nó tên.
+                */
+                <div className="ai-turn-a" data-testid={index === turns.length - 1 ? 'ai-answer' : undefined}>
+                  {renderMarkdown(turn.answer)}
+                </div>
+              )}
+              {turn.failure && !blocked && (
+                <p className="ai-panel-error" role="alert">
+                  {turn.failure.message}
+                </p>
+              )}
+              {turn.answer === '' && !turn.failure && streaming && (
+                <p className="ai-turn-wait">{t('ai.panel.thinking')}</p>
+              )}
+            </div>
+          ))}
+          </>
+        )}
+      </div>
+
+      {error && !blocked && turns.length === 0 && (
         <p className="ai-panel-error" role="alert">
           {error.message}
         </p>

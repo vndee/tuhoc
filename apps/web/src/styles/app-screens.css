@@ -2107,3 +2107,316 @@ html[data-theme='dark'] #app:not(.reading) .tn-menu-danger:hover {
 #app:not(.reading) .set-block-main > p:has(> .btn) {
   margin-top: 18px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   KHUNG HỎI–ĐÁP AI — cuộc hội thoại, và markdown của nó
+   ══════════════════════════════════════════════════════════════════════════
+
+   Không treo dưới `#app:not(.reading)`: panel này sống CHỦ YẾU trong trang đọc,
+   và nó portal thẳng vào `document.body` nên nó còn không nằm trong `#app`. */
+
+/* MỞ RỘNG. Một câu trả lời có khối mã và công thức không đọc nổi trong một cột
+   30rem, và đó là bề rộng mặc định. Mở rộng thì nó thành một cột đọc thật —
+   nhưng vẫn là một panel neo góc phải, KHÔNG phải một hộp thoại chiếm cả màn:
+   người học đang đọc chương, và câu trả lời chỉ có nghĩa khi còn nhìn được
+   đoạn chữ sinh ra nó. */
+/* KHÔNG cuộn ở cấp panel. Chỉ `.ai-panel-thread` cuộn — xem `ai/AskPanel.tsx`.
+   `index.css` cho `.ai-panel` một `overflow-y: auto`; đó là thanh cuộn thứ ba
+   trong ba thanh lồng nhau mà người dùng chỉ ra.
+
+   KHÔNG khai `position` ở đây. Tôi đã viết `position: relative` để tay kéo
+   `absolute` có mốc, và nó ĐÈ mất `position: fixed` của `index.css` — tệp này
+   nạp sau. Panel rơi khỏi neo góc dưới–phải và nút mở rộng trông như hỏng.
+   `fixed` vốn đã là một containing block cho con `absolute`, nên dòng ấy không
+   những sai mà còn thừa. */
+.ai-panel {
+  overflow: hidden;
+}
+
+.ai-panel.is-expanded {
+  width: min(46rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+}
+
+/* Tay kéo ở góc TRÊN–TRÁI: panel neo ở góc dưới–phải, nên đây là góc duy nhất
+   kéo ra được mà không phải đổi hệ neo. */
+.ai-panel-grip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-gray-300);
+  /* `nwse-resize`, không phải `nw-resize`: con trỏ hai đầu nói rằng kéo được cả
+     ra lẫn vào. */
+  cursor: nwse-resize;
+  /* Xoay để mấy nét chéo chỉ đúng hướng kéo. */
+  transform: scaleX(-1);
+  touch-action: none;
+}
+
+.ai-panel-grip:hover {
+  color: var(--ink-3);
+}
+
+.ai-panel-grip:focus-visible {
+  outline: none;
+  color: var(--ink-2);
+  box-shadow: var(--shadow-ring-gray);
+  border-radius: var(--radius-xs);
+}
+
+/* Trích dẫn nay nằm TRONG vùng cuộn của hội thoại: bỏ khung cuộn riêng của nó
+   và cho nó hiện trọn vẹn. */
+.ai-panel-thread .ai-panel-quote {
+  max-height: none;
+  overflow: visible;
+  flex: none;
+}
+
+.ai-panel-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ai-panel-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--ink-3);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ai-panel-bar-btn:hover {
+  border-color: var(--rule-strong);
+  color: var(--ink);
+}
+
+.ai-panel-bar-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring-gray);
+}
+
+/* Vùng cuộn RIÊNG cho hội thoại, không phải cả panel. Cuộn cả panel thì ô nhập
+   câu hỏi trôi lên mất mỗi khi câu trả lời dài ra — tức người dùng phải cuộn
+   xuống mới hỏi tiếp được. */
+.ai-panel-thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-right: 2px;
+}
+
+.ai-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Câu hỏi của người học: viên bo tròn, dồn PHẢI — hình dạng mà mọi người đã
+   biết đọc, và nó phân biệt "tôi hỏi" với "máy trả lời" mà không cần nhãn. */
+.ai-turn-q {
+  align-self: flex-end;
+  max-width: 85%;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 14px 14px 4px 14px;
+  background: var(--color-brand-50);
+  color: var(--color-brand-800);
+  font-size: 13.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+html[data-theme='dark'] .ai-turn-q {
+  background: rgba(127, 86, 217, 0.2);
+  color: var(--color-brand-100);
+}
+
+.ai-turn-a {
+  font-size: 14px;
+  line-height: 1.62;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.ai-turn-wait {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* ── MARKDOWN ─────────────────────────────────────────────────────────────
+   Các lớp `md-*` do `ai/markdown.tsx` phát ra. Thang chữ ở đây là thang GIAO
+   DIỆN, không phải thang của chương: câu trả lời là chữ của một công cụ, và nó
+   không được giả làm nội dung giáo trình. */
+
+.ai-turn-a > :first-child {
+  margin-top: 0;
+}
+
+.ai-turn-a > :last-child {
+  margin-bottom: 0;
+}
+
+.ai-turn-a p {
+  margin: 0 0 10px;
+}
+
+.ai-turn-a .md-h {
+  margin: 16px 0 6px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.ai-turn-a .md-list {
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+
+.ai-turn-a .md-list li {
+  margin: 0 0 4px;
+}
+
+.ai-turn-a .md-quote {
+  margin: 0 0 10px;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--rule-strong);
+  color: var(--ink-2);
+}
+
+.ai-turn-a code {
+  padding: 1px 5px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-xs);
+  background: var(--panel);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.88em;
+}
+
+/* Khối mã cuộn NGANG chứ không bẻ dòng: một dòng lệnh bị bẻ giữa chừng là một
+   dòng lệnh chép ra sẽ chạy sai. */
+.ai-turn-a .md-pre {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.ai-turn-a .md-pre code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+/* Địa chỉ của một liên kết — VẼ RA, không bấm được (xem `ai/markdown.tsx`).
+   Nó phải trông như một địa chỉ, để người đọc biết đó là thứ họ có thể tự chép
+   đi, chứ không phải một chỗ bấm hỏng. */
+.ai-turn-a .md-link {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.86em;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+
+.ai-turn-a .md-math-display {
+  display: block;
+  margin: 10px 0;
+  overflow-x: auto;
+}
+
+/* ── BONG BÓNG MỞ CHAT ────────────────────────────────────────────────────
+   Neo góc dưới–phải, cùng góc với panel nó mở ra — nên khi panel hiện lên, nó
+   hiện lên đúng từ chỗ người dùng vừa bấm. */
+.ai-launch-fab {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 80;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-brand-600);
+  color: #fff;
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+}
+
+.ai-launch-fab:hover:not(:disabled) {
+  background: var(--color-brand-700);
+}
+
+.ai-launch-fab:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-lg), var(--shadow-ring-brand);
+}
+
+/* `disabled` là ca thật: chương chưa dựng xong thì chưa có gì để hỏi về. */
+.ai-launch-fab:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ── THANH CUỘN: CHỈ CÒN CON TRƯỢT ────────────────────────────────────────
+   Cái RÃNH của thanh cuộn là một dải xám chạy dọc mép panel, và nó vẽ ra một
+   đường viền thứ hai bên trong đường viền thật. Bỏ rãnh đi thì con trượt nổi
+   trên nền panel và chỉ hiện khi có gì để cuộn. */
+.ai-panel-thread {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule-strong) transparent;
+}
+
+.ai-panel-thread::-webkit-scrollbar {
+  width: 8px;
+}
+
+.ai-panel-thread::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ai-panel-thread::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--rule-strong);
+  /* Viền trong suốt + `background-clip` là cách duy nhất cho con trượt một lề
+     mà không vẽ thêm một cái rãnh. */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.ai-panel-thread::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-3);
+  background-clip: content-box;
+}

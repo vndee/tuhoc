@@ -622,6 +622,11 @@ export const vi = {
   /* ── bảng hỏi AI (`ai/AskPanel.tsx`, `ai/DeepDive.tsx`, `ai/useAI.ts`) ─── */
 
   'ai.panel.close': 'Đóng trợ lý',
+  'ai.panel.expand': 'Mở rộng khung hỏi–đáp',
+  'ai.panel.resize': 'Kéo để đổi cỡ khung',
+  'ai.panel.collapse': 'Thu khung hỏi–đáp',
+  'ai.panel.newThread': 'Hội thoại mới',
+  'ai.panel.thinking': 'Đang nghĩ…',
   'ai.panel.needsSetup':
     'Trợ lý AI chạy bằng key của chính bạn, và máy này chưa có key nào. Key được cất trong kho khoá — một trang riêng ở một địa chỉ riêng, nên khoá học không đọc được nó.',
   'ai.panel.openSettings': 'Mở trang cấu hình',
