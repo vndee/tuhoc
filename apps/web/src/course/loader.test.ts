@@ -408,8 +408,43 @@ describe('resolveVizScriptUrl', () => {
   beforeEach(() => revokeVizScriptUrls());
   afterEach(() => revokeVizScriptUrls());
 
-  it('points at the static course directory when the course is not a cached package', async () => {
+  /** Manifest tĩnh của một khoá phục vụ từ `courses/`, hạng khai tường minh. */
+  function serveStaticManifest(tier: string): void {
+    server.use(
+      http.get('/courses/:courseId/manifest.json', () => HttpResponse.json({ ...validManifest, tier })),
+    );
+  }
+
+  it('points at the static course directory when a non-cached course declares tier interactive', async () => {
+    serveStaticManifest('interactive');
+
     await expect(resolveVizScriptUrl(COURSE_ID)).resolves.toBe('/courses/demo/viz.js');
+  });
+
+  /**
+   * HỒI QUY, đo trên trình duyệt thật ngày 2026-08-25.
+   *
+   * Mở `/c/bat-bien-vong-lap/c1` — gói hạng `content`, phục vụ tĩnh, KHÔNG có
+   * gói ghim trên máy — và cả trang đọc chỉ còn một câu: "Không tải được công
+   * cụ đọc (KaTeX/mô phỏng)." Chương không hỏng, KaTeX không hỏng; thứ duy
+   * nhất thiếu là `viz.js`, một tệp mà hạng `content` theo định nghĩa KHÔNG
+   * được phép có (`packages/course-format` từ chối `.js` ở hạng ấy).
+   *
+   * Phán quyết S1-F14 đã nói đúng câu này rồi — "một gói content không được
+   * treo vì chờ một tệp mà theo định nghĩa nó không có" — nhưng bản vá chỉ đặt
+   * ở nhánh CÓ gói ghim. Khoá phục vụ tĩnh đi qua nhánh khác, và không ai vá
+   * nó cho tới khi có người mở đúng một khoá như thế.
+   */
+  it('answers null for a non-cached course at tier content — S1-F14 áp cho CẢ khoá phục vụ tĩnh', async () => {
+    serveStaticManifest('content');
+
+    await expect(resolveVizScriptUrl(COURSE_ID)).resolves.toBeNull();
+  });
+
+  it('answers null when the static manifest itself cannot be read — chương sẽ tự báo lỗi bằng câu của nó', async () => {
+    server.use(http.get('/courses/:courseId/manifest.json', () => new HttpResponse(null, { status: 404 })));
+
+    await expect(resolveVizScriptUrl(COURSE_ID)).resolves.toBeNull();
   });
 
   it('answers null for a cached package with no viz.js — a content package ships none, and the static path is a different course', async () => {
@@ -419,6 +454,8 @@ describe('resolveVizScriptUrl', () => {
   });
 
   it('percent-encodes the course id it puts in the static URL', async () => {
+    serveStaticManifest('interactive');
+
     await expect(resolveVizScriptUrl('a b/c')).resolves.toBe('/courses/a%20b%2Fc/viz.js');
   });
 

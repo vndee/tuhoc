@@ -484,6 +484,46 @@ export function revokeVizScriptUrls(): void {
 }
 
 /**
+ * Đường dẫn `viz.js` cho một khoá KHÔNG có gói ghim trên máy — tức khoá do
+ * chính app này phục vụ tĩnh từ thư mục `courses/`.
+ *
+ * ── LỖI NÓ SỬA, đo trên trình duyệt thật ────────────────────────────────
+ * Bản trước trả `/courses/<id>/viz.js` VÔ ĐIỀU KIỆN ở nhánh này. Mở
+ * `/c/bat-bien-vong-lap/c1` — một gói hạng `content`, tức KHÔNG có tệp
+ * JavaScript nào theo định nghĩa — thì file ấy 404, `injectCourseKit` bị từ
+ * chối, và cả trang đọc chỉ còn một câu: "Không tải được công cụ đọc
+ * (KaTeX/mô phỏng)." Chương không hỏng; KaTeX không hỏng; thứ duy nhất thiếu
+ * là một tệp mà gói này đúng ra không được phép có.
+ *
+ * Phán quyết S1-F14 đã nói đúng câu này rồi — "một gói content không được
+ * treo vì chờ một tệp mà theo định nghĩa nó không có" — nhưng bản vá chỉ đặt
+ * ở nhánh CÓ gói ghim (`files[VIZ_FILE] === undefined`). Khoá phục vụ tĩnh đi
+ * qua nhánh khác và không ai vá nó.
+ *
+ * ── VÌ SAO HỎI HẠNG, KHÔNG PHẢI HEAD-request ───────────────────────────
+ * Hạng là NGUỒN SỰ THẬT cho câu hỏi "gói này có JavaScript không":
+ * `packages/course-format`'s validator từ chối một tệp `.js` ở hạng
+ * `content`, nên `content` ⇒ không viz, không cần hỏi mạng. Một HEAD-request
+ * sẽ đúng nhưng trả lời chậm hơn và, tệ hơn, biến một quy tắc ĐÃ BIẾT thành
+ * một phép đo có thể hỏng vì mạng.
+ *
+ * Manifest không tải được thì trả `null`: chương sẽ tự báo lỗi bằng câu của
+ * chính nó (`describeCourseError`), và đó là câu nói đúng chuyện gì đang xảy
+ * ra — chứ không phải "không tải được công cụ đọc".
+ */
+async function staticVizScriptUrl(courseId: string): Promise<string | null> {
+  let manifest: Manifest;
+  try {
+    manifest = await loadStaticManifest(courseId);
+  } catch {
+    return null;
+  }
+
+  const tier = (manifest as { tier?: unknown }).tier;
+  return tier === 'interactive' ? `/courses/${encodeURIComponent(courseId)}/viz.js` : null;
+}
+
+/**
  * Where `courseId`'s own `viz.js` lives, or `null` when this course has
  * none — the same two-source question as the manifest and the chapters,
  * asked about the one file that is loaded as a `<script src>` rather than
@@ -531,7 +571,7 @@ export function revokeVizScriptUrls(): void {
  */
 export async function resolveVizScriptUrl(courseId: string): Promise<string | null> {
   const cached = await pinnedPackage(courseId);
-  if (!cached) return `/courses/${encodeURIComponent(courseId)}/viz.js`;
+  if (!cached) return staticVizScriptUrl(courseId);
 
   const bytes = cached.files[VIZ_FILE];
   // No viz.js in the package — a `content` course, which is most of them.

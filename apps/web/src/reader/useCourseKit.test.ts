@@ -1,5 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { http, HttpResponse } from 'msw';
+import { setupServer } from 'msw/node';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, type PackageRow } from '../db/local';
 import { __resetCourseKitForTests, useCourseKit } from './useCourseKit';
 
@@ -56,6 +58,48 @@ function mockScriptLoading(shouldFail: (src: string) => boolean = () => false) {
   });
   return { requestedSrcs, spy };
 }
+
+/**
+ * MANIFEST TĨNH khai `tier: 'interactive'`, phục vụ cho MỌI courseId trong tệp
+ * này.
+ *
+ * Các bài dưới đây xoá `db.packages` để mô phỏng khoá do app phục vụ TĨNH, và
+ * chúng đo bộ máy tiêm script — thứ tự, singleton, thử lại — nên chúng cần một
+ * khoá THỰC SỰ CÓ `viz.js`.
+ *
+ * Trước đây điều đó là mặc định: `resolveVizScriptUrl` trả đường dẫn viz.js cho
+ * mọi khoá tĩnh, không hỏi gì. Đó chính là lỗi vừa sửa (xem
+ * `course/loader.test.ts` — mở một khoá hạng `content` phục vụ tĩnh làm hỏng cả
+ * trang đọc vì một tệp 404). Nay câu trả lời phụ thuộc HẠNG, nên hạng phải được
+ * nói ra ở đây.
+ *
+ * Phục vụ manifest thật thay vì mock `resolveVizScriptUrl`: các bài này vẫn đi
+ * qua đúng đường mà app đi, nên chúng còn bắt được một thay đổi ở loader làm
+ * đứt dây giữa hai bên.
+ */
+const server = setupServer(
+  http.get('/courses/:courseId/manifest.json', ({ params }) =>
+    HttpResponse.json({
+      id: String(params.courseId),
+      title: 'Khoá tương tác',
+      description: 'Có viz.js',
+      lang: 'vi',
+      version: '1.0.0',
+      runtime: '^1',
+      tier: 'interactive',
+      parts: [
+        {
+          title: 'Phần 1',
+          chapters: [{ id: 'c1', num: '1.1', title: 'Một', short: 'Một', file: 'chapters/c1.html' }],
+        },
+      ],
+    }),
+  ),
+);
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
 
 describe('useCourseKit', () => {
   beforeEach(async () => {
