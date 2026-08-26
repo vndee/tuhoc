@@ -57,18 +57,16 @@ export const en: Messages = {
   'settings.account.syncBlurb': 'Progress syncs through this account.',
   'settings.appearance.themeLight': 'Light',
   'settings.appearance.themeDark': 'Dark',
-  'settings.localData.statPackages': 'packages',
   'settings.localData.statNotes': 'notes',
   'settings.localData.statBytes': 'in use',
   'settings.localData.statsAria': 'What this machine is holding',
 
-  'settings.account.blurb':
-    'The account does exactly one job: it syncs your progress and notes between your own machines. Course content lives on this device.',
   'settings.account.loading': 'Asking the server who is signed in…',
   'settings.account.unknown': 'Could not load your account details. This part needs the network.',
   'settings.account.signedInAs': (name: string, email: string) => `Signed in as ${name} · ${email}`,
+  /** "downloaded packages" dropped at fix-round-1 (task-14) — see vi.ts's comment. */
   'settings.account.signOutWarning':
-    'Signing out erases the study data of this session from this browser: downloaded packages, notes, and the progress queue that has not been sent yet. That is the only way two people sharing one machine never see data belonging to the other.',
+    'Signing out erases the study data of this session from this browser: notes, and the progress queue that has not been sent yet. That is the only way two people sharing one machine never see data belonging to the other.',
 
   'settings.appearance.blurb': 'Applies to the app frame. Course content keeps its own language.',
   'settings.appearance.language': 'Language',
@@ -76,7 +74,8 @@ export const en: Messages = {
   'settings.appearance.themeNowLight': 'Currently using the light theme.',
   'settings.appearance.themeNowDark': 'Currently using the dark theme.',
 
-  'settings.localData.blurb': 'Course packages and notes live in this browser.',
+  /** Rewritten at fix-round-1 (task-14) — see vi.ts's comment. */
+  'settings.localData.blurb': 'Notes live in this browser. Courses aren’t downloaded as packages — they’re read straight from the server.',
   'settings.localData.clearedOnSignOut':
     'The local database is named after the BROWSER, not the user — so it is wiped whenever a different person signs in, even if nobody signed out.',
   'settings.localData.kept': 'Language and theme stay: they belong to the device.',
@@ -330,8 +329,8 @@ export const en: Messages = {
   'login.field.emailPlaceholder': 'you@example.com',
   'login.password.show': 'Show password',
   'login.password.hide': 'Hide password',
-  /** Trimmed to one clause at task-14 — see vi.ts's comment for why. */
-  'login.reassure': 'Signing in only carries your progress and notes to another machine.',
+  /** Reframed at fix-round-1 (task-14) — see vi.ts's comment for why. */
+  'login.reassure': 'Not signing in now costs you nothing — create an account whenever you actually want one.',
   'login.switch.noAccount': 'No account yet?',
   'login.switch.hasAccount': 'Already have an account?',
   'login.switch.toRegister': 'Create an account',

@@ -337,12 +337,15 @@ export function Login() {
 
           {/*
             CÂU TRẢ LỜI CHO "TÔI CÓ PHẢI ĐĂNG KÝ KHÔNG" — và nó là KHÔNG.
-            Khoá học đọc được ngay, miễn phí, không cần tài khoản; đăng nhập chỉ
-            mua thêm việc tiến độ và ghi chú theo bạn sang máy khác. Panel bên
-            trái đã nói cả hai điều này bằng nhan đề và ba gạch đầu dòng, nên câu
-            ở đây được rút còn một vế (task-14) — không lặp lại "đọc được mà
-            không cần tài khoản", chỉ giữ phần lý do để bấm nút đăng nhập, cho
-            người chỉ đọc cột form mà bỏ qua panel bên trái.
+
+            Panel bên trái đã nói HẾT lợi ích của việc đăng nhập (nhan đề + ba
+            gạch đầu dòng: đọc miễn phí không cần tài khoản, key riêng, tiến độ
+            + ghi chú theo bạn qua thiết bị). fix-round-1 (task-14) từng rút câu
+            này xuống còn một vế nói lại đúng lợi ích ấy — vẫn là lặp, chỉ lặp
+            với MỘT bullet thay vì lặp với cả panel. fix-round-2 đổi góc: câu ở
+            đây không nói lợi ích nữa, nó nói thứ panel bên trái không nói —
+            KHÔNG MẤT GÌ nếu chưa đăng nhập ngay, cho người chỉ đọc cột form mà
+            bỏ qua panel bên trái.
           */}
           <p className="auth-reassure">
             <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">

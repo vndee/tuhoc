@@ -65,15 +65,12 @@ export const vi = {
   'settings.account.syncBlurb': 'Tiến độ đồng bộ qua tài khoản này.',
   'settings.appearance.themeLight': 'Sáng',
   'settings.appearance.themeDark': 'Tối',
-  'settings.localData.statPackages': 'gói',
   'settings.localData.statNotes': 'ghi chú',
   'settings.localData.statBytes': 'đang chiếm',
   'settings.localData.statsAria': 'Máy này đang giữ những gì',
 
   /* ── mục Tài khoản ─────────────────────────────────────────────────────── */
 
-  'settings.account.blurb':
-    'Tài khoản giữ đúng một việc: đồng bộ tiến độ và ghi chú giữa các máy của bạn. Nội dung khoá học thì nằm trên máy này.',
   'settings.account.loading': 'Đang hỏi máy chủ xem ai đang đăng nhập…',
   'settings.account.unknown': 'Chưa lấy được thông tin tài khoản. Phần này cần mạng.',
   'settings.account.signedInAs': (name: string, email: string) =>
@@ -82,9 +79,14 @@ export const vi = {
    * Câu này nói ra một hệ quả CÓ THẬT, không phải một lời doạ lịch sự:
    * `useLogout` gọi `clearSession()`, thứ xoá mọi bảng cục bộ. Người dùng bấm
    * "Đăng xuất" mà không biết điều đó sẽ mất ghi chú chưa kịp đồng bộ.
+   *
+   * ĐÃ BỎ "gói đã tải" ở fix-round-1 (task-14): Task 13 xoá bảng `db.packages`
+   * — không còn gói khoá học nào tải về máy để đăng xuất xoá đi cả. Hai thứ
+   * còn lại (ghi chú, hàng đợi tiến độ chưa gửi) vẫn đúng: `clearLocalData()`
+   * xoá cả hai qua `useLogout`.
    */
   'settings.account.signOutWarning':
-    'Đăng xuất xoá dữ liệu học của phiên này khỏi trình duyệt này: gói đã tải, ghi chú và hàng đợi tiến độ chưa gửi được. Đó là cách duy nhất để dữ liệu của hai người dùng chung một máy không lẫn vào nhau.',
+    'Đăng xuất xoá dữ liệu học của phiên này khỏi trình duyệt này: ghi chú và hàng đợi tiến độ chưa gửi được. Đó là cách duy nhất để dữ liệu của hai người dùng chung một máy không lẫn vào nhau.',
 
   /* ── mục Ngôn ngữ & giao diện ──────────────────────────────────────────── */
 
@@ -96,7 +98,14 @@ export const vi = {
 
   /* ── mục Dữ liệu trên máy ──────────────────────────────────────────────── */
 
-  'settings.localData.blurb': 'Gói khoá học và ghi chú nằm trong trình duyệt này.',
+  /**
+   * SỬA Ở fix-round-1 (task-14): bản cũ nói "Gói khoá học và ghi chú nằm
+   * trong trình duyệt này" — sai từ Task 13, khi `db.packages` bị xoá khỏi
+   * lược đồ Dexie (spec `2026-08-25-server-side-pivot.md` §1). Không còn gói
+   * nào để nằm ở đây; hai con số ngay dưới câu này (`statNotes`, `statBytes`)
+   * đã tự nói đúng những gì bảng này còn giữ.
+   */
+  'settings.localData.blurb': 'Ghi chú nằm trong trình duyệt này. Khoá học không tải gói nào về máy — đọc thẳng từ máy chủ.',
   'settings.localData.clearedOnSignOut':
     'Cơ sở dữ liệu mang tên TRÌNH DUYỆT, không mang tên người dùng — nên nó bị xoá sạch mỗi lần đổi người đăng nhập, kể cả khi không ai bấm đăng xuất.',
   'settings.localData.kept': 'Ngôn ngữ và giao diện thì ở lại: chúng là tuỳ chọn của thiết bị.',
@@ -463,14 +472,20 @@ export const vi = {
   'login.password.show': 'Hiện mật khẩu',
   'login.password.hide': 'Ẩn mật khẩu',
   /**
-   * ĐÃ RÚT còn MỘT vế ở task-14: bản trước có hai câu ("không cần tài khoản
-   * vẫn đọc được" + "đăng nhập chỉ để đồng bộ"), và cả hai giờ đã được nói
-   * trước đó rồi — vế thứ nhất ở `login.pitch.headline` lẫn `login.point.free`,
-   * vế thứ hai ở `login.point.sync`. Giữ nguyên cả hai câu ở đây sẽ là nói lại
-   * đúng một lời hứa hai lần ngay trên cùng một màn hình. Câu còn lại đứng
-   * ngay dưới nút gửi, cho người chỉ đọc cột form mà bỏ qua panel bên trái.
+   * fix-round-1 (task-14) — vòng đầu chỉ rút bản hai câu xuống còn một câu
+   * ("đăng nhập chỉ để tiến độ và ghi chú theo bạn sang máy khác"), nhưng câu
+   * còn lại vẫn là gần như NGUYÊN VĂN `login.point.sync` ("Đăng nhập để tiến
+   * độ và ghi chú theo bạn trên mọi thiết bị") đứng cách đó vài dòng — chỗ
+   * lặp chỉ chuyển từ "hai câu trùng nhau" sang "một câu trùng một bullet".
+   *
+   * SỬA THẬT ở vòng này: đổi góc nhìn thay vì rút gọn thêm. Panel bên trái đã
+   * nói HẾT lợi ích của việc đăng nhập (tiến độ + ghi chú theo bạn); câu ở
+   * đây không cần nói lại lợi ích ấy lần nữa, nó nói thứ panel bên trái không
+   * nói: KHÔNG CÓ GÌ MẤT nếu chưa đăng nhập ngay bây giờ. Đây là câu trả lời
+   * thật cho "tôi có phải quyết định ngay không" — và câu trả lời là không,
+   * tài khoản tạo lúc nào cũng được.
    */
-  'login.reassure': 'Đăng nhập chỉ để tiến độ và ghi chú theo bạn sang máy khác.',
+  'login.reassure': 'Không đăng nhập ngay cũng không mất gì — tạo tài khoản lúc nào cần thì tạo.',
   'login.switch.noAccount': 'Chưa có tài khoản?',
   'login.switch.hasAccount': 'Đã có tài khoản?',
   'login.switch.toRegister': 'Tạo tài khoản',
