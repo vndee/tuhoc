@@ -155,6 +155,21 @@ When a later task adds `apps/api/migrations/0002_*.up.sql` (and a matching `.dow
 
 If a migration ever needs reverting: `migrate -path apps/api/migrations -database "$NEON_DIRECT_URL" down 1` rolls back exactly one step (not exercised in this task's verification, but it's the same tool/flags, just `down` instead of `up`).
 
+**If your database already ran `0005_published_catalog` before this branch** (final whole-branch review, M10): that file was amended IN PLACE, not superseded by a new migration number — `admin_audit` gained an explicit `actor` column after some databases had already applied the original version (see `0005_published_catalog.up.sql`'s own comment on why). `golang-migrate` records only `(version, dirty)` in `schema_migrations`; it does not checksum migration files, so a database already at version 5 (or later) will never re-run 0005 no matter how its contents changed — `migrate up` reports `no change` and exits 0, looking exactly like success. The silent gap (a missing `admin_audit.actor` column) does not surface at migration time at all; it surfaces later, as a 500 on the first real publish.
+
+Fix: check where the database actually is, then go back to *before* 0005 and come back up through the current files —
+
+```bash
+migrate -path apps/api/migrations -database "$NEON_DIRECT_URL" version
+# reports 5, or 6 if this database already ran the newer 0006 on top of
+# the stale 0005 content — either way, drop below 0005 (version 4) before
+# coming back up:
+migrate -path apps/api/migrations -database "$NEON_DIRECT_URL" down <reported-version-minus-4>
+migrate -path apps/api/migrations -database "$NEON_DIRECT_URL" up
+```
+
+A genuinely fresh database (never migrated before pulling this branch) is unaffected — it reads the current, already-amended `0005_published_catalog.up.sql` the first and only time it ever runs migration 5.
+
 ---
 
 ## 4. Deploy the API
