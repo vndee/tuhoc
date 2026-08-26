@@ -445,6 +445,35 @@ func TestManifestParseNull(t *testing.T) {
 	}
 }
 
+// TestManifestParseWithUTF8BOM pins the fix for the final whole-branch
+// review's Minor 1 — the one author-hostile divergence its differential
+// fuzzer found between the two rule-set ports. validate.ts decodes
+// manifest.json with `new TextDecoder('utf-8')`, which strips a leading
+// UTF-8 byte-order mark by default (WHATWG's TextDecoder does this unless
+// constructed with `ignoreBOM: true`), so a manifest saved as
+// UTF-8-with-BOM — a real, non-adversarial shape: Windows PowerShell 5.1's
+// default redirection encoding, several editors' "UTF-8 with BOM" preset —
+// packs clean under `tuhoc pack`. Before this fix, json.Unmarshal here got
+// no such courtesy: the three BOM bytes (EF BB BF) are not valid JSON at
+// position 0, so publish failed with MANIFEST_PARSE for a package the
+// author's own CLI had just blessed. See Validate's own comment at the
+// trim for the fix.
+func TestManifestParseWithUTF8BOM(t *testing.T) {
+	findings, pkg, err := Validate(buildZip(t, map[string]string{
+		"manifest.json":    "\xEF\xBB\xBF" + minimalManifest,
+		"chapters/c1.html": `<p>Nội dung</p>`,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected system error: %v", err)
+	}
+	if hasCode(findings, "MANIFEST_PARSE") {
+		t.Fatalf("a UTF-8 BOM before an otherwise-valid manifest.json must not produce MANIFEST_PARSE (validate.ts accepts the identical bytes) — got %+v", findings)
+	}
+	if pkg == nil {
+		t.Fatalf("expected a valid Package once the BOM is trimmed, findings: %+v", findings)
+	}
+}
+
 func TestManifestFieldMissingRequiredFields(t *testing.T) {
 	findings, pkg, err := Validate(buildZip(t, map[string]string{
 		"manifest.json": `{"id": "x"}`,

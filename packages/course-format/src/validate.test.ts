@@ -296,6 +296,32 @@ describe('luật chung', () => {
     expect(codesOf(new Map([['manifest.json', enc('[1, 2, 3]')]]))).toContain('MANIFEST_PARSE');
   });
 
+  /**
+   * Pins the accept side of the final whole-branch review's Minor 1 — the
+   * one author-hostile divergence its differential fuzzer found between
+   * this module and `apps/api/internal/pkgcheck`'s Go port. `decoder`
+   * (`new TextDecoder('utf-8')`, above) strips a leading UTF-8 byte-order
+   * mark by default before `JSON.parse` ever sees the bytes, so a
+   * manifest.json saved as UTF-8-with-BOM — a real, non-adversarial shape:
+   * Windows PowerShell 5.1's default redirection encoding, several
+   * editors' "UTF-8 with BOM" preset — has always packed clean here. The
+   * Go side did not extend that courtesy (`json.Unmarshal` does not skip a
+   * BOM), so the same bytes failed publish with MANIFEST_PARSE — see
+   * `pkgcheck_test.go`'s `TestManifestParseWithUTF8BOM`, which pins the
+   * Go-side fix. This test exists so a future change to `decoder` here
+   * cannot silently re-open that gap from this side instead.
+   */
+  it('BOM UTF-8 ở đầu manifest.json KHÔNG gây MANIFEST_PARSE — TextDecoder tự lột nó trước JSON.parse', () => {
+    const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf]);
+    const withBOM = new Uint8Array([...UTF8_BOM, ...MANIFEST()]);
+    const result = validatePackage(new Map([
+      ['manifest.json', withBOM],
+      ['chapters/c1.html', enc('<p>Nội dung</p>')],
+    ]));
+    expect(result.findings.map((f) => f.code)).not.toContain('MANIFEST_PARSE');
+    expect(result).toEqual({ ok: true, findings: [] });
+  });
+
   it('MANIFEST_FIELD: thiếu trường bắt buộc, kèm con trỏ tới đúng trường', () => {
     // Trước đây ca này xoá "tier" — trường đó giờ không còn được VALIDATE
     // (thiếu nó không sai nữa, xem describe 'format v2 — tier đã chết' phía

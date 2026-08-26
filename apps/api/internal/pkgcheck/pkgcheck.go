@@ -172,6 +172,11 @@ var semverRE = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-
 // ^1.2, ^1.2.3. Deliberately narrower than npm's range grammar.
 var runtimeRangeRE = regexp.MustCompile(`^\^(0|[1-9]\d*)(?:\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?)?$`)
 
+// utf8BOM is the three-byte UTF-8 byte-order mark (U+FEFF encoded as
+// EF BB BF). Trimmed from manifest.json before it is parsed — see the
+// trim's own call site for why.
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
+
 func finding(code, path, detail string) Finding {
 	return Finding{Code: code, Path: path, Detail: detail}
 }
@@ -386,6 +391,26 @@ func Validate(zipBytes []byte) (findings []Finding, pkg *Package, err error) {
 		findings = append(findings, finding("MANIFEST_MISSING", manifestPath, "package has no manifest.json at its root"))
 		return findings, nil, nil
 	}
+
+	// Final whole-branch review, Minor 1: trim a leading UTF-8 byte-order
+	// mark before this package ever looks at manifestBytes again — both
+	// for json.Unmarshal below AND for the Package.ManifestJSON this
+	// function eventually returns (catalog.Repo.Publish inserts that value
+	// straight into a `jsonb` column, which Postgres's own JSON parser
+	// rejects a BOM-prefixed value for just as strictly as encoding/json
+	// does; trimming only the Unmarshal call's copy would have swapped one
+	// failure for a worse one three layers downstream, at publish time,
+	// as a raw 500 instead of a MANIFEST_PARSE finding).
+	//
+	// validate.ts decodes with `new TextDecoder('utf-8')`, which strips a
+	// BOM by default (WHATWG spec, unless constructed with
+	// `ignoreBOM: true`) — so a manifest.json saved as UTF-8-with-BOM (a
+	// real, non-adversarial shape: Windows PowerShell 5.1's default
+	// redirection encoding, several editors' "UTF-8 with BOM" preset)
+	// packs clean under `tuhoc pack` and, before this fix, then failed
+	// publish here with MANIFEST_PARSE — the CLI blessing what the server
+	// rejected. See TestManifestParseWithUTF8BOM.
+	manifestBytes = bytes.TrimPrefix(manifestBytes, utf8BOM)
 
 	// map[string]any (rather than a typed struct) mirrors validate.ts's
 	// own approach directly: checkManifestFields walks a dynamically-typed
