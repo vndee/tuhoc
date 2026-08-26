@@ -115,4 +115,51 @@ describe('rewriteAssetUrls', () => {
     const container = fragment('<p>Chỉ văn xuôi, không hình, không liên kết.</p>');
     expect(() => rewriteAssetUrls(container, 'demo')).not.toThrow();
   });
+
+  /**
+   * Re-review finding: `encodeURIComponent('..')` returns `'..'` unchanged
+   * (dots are unreserved), so a `..` segment survived `assetUrl` untouched
+   * and the browser normalized the resulting `/courses/:slug/assets/../../x`
+   * path itself before the request ever left — capable of walking clean out
+   * from under `/courses/:slug/assets/` into another real route (e.g.
+   * `/admin/courses`), on the MAIN document, carrying the reader's session
+   * cookie (this runs outside the widget sandbox). Matches
+   * `pkgcheck.escapesPackage`'s own precedent: a path SEGMENT equal to
+   * `".."`, anywhere, is rejected — not a substring match (a filename like
+   * `..foo.png` is one weird-looking but harmless segment, not a traversal).
+   */
+  it('leaves a leading ".." traversal untouched — never handed to assetUrl', () => {
+    const container = fragment('<img src="../../../admin/courses">');
+    rewriteAssetUrls(container, 'demo');
+
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('../../../admin/courses');
+  });
+
+  it('leaves a ".." segment buried in the middle of the path untouched', () => {
+    const container = fragment('<img src="a/../../x.png">');
+    rewriteAssetUrls(container, 'demo');
+
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('a/../../x.png');
+  });
+
+  it('leaves a value that is EXACTLY ".." untouched', () => {
+    const container = fragment('<a href="..">lên trên</a>');
+    rewriteAssetUrls(container, 'demo');
+
+    expect(container.querySelector('a')?.getAttribute('href')).toBe('..');
+  });
+
+  it('does NOT over-reject: a dot inside a segment (not a whole ".." segment) is still rewritten', () => {
+    const container = fragment('<img src="images/fig.1.png">');
+    rewriteAssetUrls(container, 'demo');
+
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('/courses/demo/assets/images/fig.1.png');
+  });
+
+  it('does NOT over-reject: a directory segment that merely CONTAINS dots (e.g. "v1.2") is still rewritten', () => {
+    const container = fragment('<img src="v1.2/chart.png">');
+    rewriteAssetUrls(container, 'demo');
+
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('/courses/demo/assets/v1.2/chart.png');
+  });
 });

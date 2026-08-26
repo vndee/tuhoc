@@ -55,6 +55,29 @@ const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
  * event-handler attributes, never `http(s):` itself — see
  * `apps/api/internal/pkgcheck/content.go`), so those must be left exactly
  * as authored, not rewritten into a 404 under `/courses/:slug/assets/`.
+ *
+ * Re-review finding, final whole-branch review: a `".."` path SEGMENT must
+ * also be rejected here, not just at the string's start. `assetUrl`
+ * (`api/catalog.ts`) percent-encodes each segment with `encodeURIComponent`,
+ * which leaves `".."` completely unchanged (dots are unreserved), so
+ * `<img src="../../../admin/courses">` used to survive into
+ * `/courses/:slug/assets/../../../admin/courses` — a path the BROWSER
+ * normalizes before ever sending the request, landing the actual fetch on
+ * `/admin/courses` (a real, admin-gated route) instead. This runs on the
+ * main chapter DOM, outside the widget sandbox, so that fetch carries the
+ * reader's session cookie. Checked by SEGMENT equality, matching
+ * `pkgcheck.escapesPackage`'s own precedent for the identical question
+ * about package entry names (`apps/api/internal/pkgcheck/pkgcheck.go`) —
+ * not a substring match, so an unusual but harmless filename like
+ * `..foo.png` (one segment, not equal to `".."`) is not falsely rejected.
+ *
+ * A bare `"."` segment is deliberately NOT rejected, for the same reason
+ * `escapesPackage` does not reject it either: `.` cannot move the
+ * resolved path outside `/courses/:slug/assets/` the way `..` can — at
+ * worst `./images/fig1.png` becomes a URL the browser normalizes back to
+ * `images/fig1.png` under the same prefix, or (if written some other way)
+ * a 404 against a `published_assets.path` key that legitimately does not
+ * exist, which is an authoring mistake, not a security boundary.
  */
 function isPackageRelative(value: string): boolean {
   if (value === '') return false;
@@ -62,6 +85,7 @@ function isPackageRelative(value: string): boolean {
   if (value.startsWith('//')) return false; // protocol-relative
   if (value.startsWith('/')) return false; // origin-absolute (e.g. the SPA's own /favicon.svg) — never a valid package path; pkgcheck's escapesPackage rejects a leading "/"
   if (SCHEME_RE.test(value)) return false; // http:, https:, mailto:, tel:, data:, javascript:, ...
+  if (value.split('/').some((segment) => segment === '..')) return false; // path traversal — see this function's own doc comment
   return true;
 }
 
