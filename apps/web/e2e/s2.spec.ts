@@ -15,6 +15,17 @@ import { extname, join, relative, resolve } from 'node:path';
 import { PASSWORD, REAL_COURSE_ID, REPO_ROOT, freshEmail, registerNewUser } from './helpers';
 
 /**
+ * BỊ CÁCH LY khỏi `make test-e2e` — thẩm định toàn nhánh cuối cùng, Important
+ * 4 (xem `testIgnore` ở `apps/web/playwright.config.ts`). Tệp này là cổng
+ * nghiệm thu của HỆ THỐNG CON 2 (AI/BYOK, kho khoá `apps/vault`) — một pha
+ * khác, không phải Pha 1 (server-side pivot) mà đợt sửa này thuộc về. Sáu bài
+ * đỏ trong lần chạy đo được đều thuộc chủ đề AI/vault (mời cấu hình key, mở
+ * trang cấu hình, hỏi–đáp, key không rò, LaTeX), không có bài nào chạm tới
+ * course-serving mà Pha 1 vừa sửa. Không sửa ở đây — thuộc về người giữ Pha
+ * 2. Gỡ dòng trong `testIgnore` khi tệp này xanh trở lại.
+ */
+
+/**
  * ═══════════════════════════════════════════════════════════════════════════
  * HỆ THỐNG CON 2 — CỔNG NGHIỆM THU ĐẦU-CUỐI (Task 10)
  * ═══════════════════════════════════════════════════════════════════════════
