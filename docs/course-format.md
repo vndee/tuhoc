@@ -394,11 +394,20 @@ Quy trình:
    còn đúng cho tới khi có một lượt kiểm riêng.
 5. Sau khi merge, registry gán `registryId`. Đừng tự điền trường đó.
 
-Cập nhật course: tăng `version` theo semver rồi mở PR mới. Người học **ghim**
-phiên bản họ đã pull và không bị tự động cập nhật; họ thấy thông báo có bản mới
-và được xem trước ghi chú nào sẽ mất neo trước khi đồng ý. Nghĩa là **sửa nội
-dung chương là có giá thật cho người đọc** — sửa chính tả thì rẻ, viết lại cả
-mục thì đắt.
+**Không còn đúng, sửa tại đây:** đoạn dưới đây từng mô tả `UpdateDialog.tsx`
+kèm `version.ts`'s `pickPinned` — cả hai đã bị xoá (commit `f541a9c`) cùng lúc
+với toàn bộ mô hình "gói đã pull về máy, ghim một bản cũ": máy chủ giờ luôn
+phục vụ đúng bản hiện hành qua `GET /courses/:slug` (Task 9-11), không có
+"bản đã ghim" nào ở phía người đọc để so hay để hỏi có muốn cập nhật không.
+
+Cập nhật course hôm nay: tăng `version` theo semver rồi `tuhoc publish` (hoặc
+mở PR mới nếu đi qua registry — xem lưu ý về luồng này ở đầu mục). Người đọc
+thấy nội dung mới ngay ở lần tải trang kế tiếp — không có màn hình xác nhận,
+không có bản xem trước ghi chú nào sẽ mất neo. Việc bảo toàn `id` chương vẫn y
+nguyên tầm quan trọng cũ: ghi chú của người đọc neo vào `chapter.id`
+(`DUPLICATE_CHAPTER_ID`, §10), nên đổi `id` của một chương đã publish vẫn làm
+mất neo ghi chú của người đã đọc nó — chỉ là bây giờ không còn màn hình nào
+cảnh báo trước khi việc đó xảy ra.
 
 Thảo luận về một course diễn ra ở GitHub Discussions của repo registry, không
 phải trong nền tảng.
@@ -448,8 +457,15 @@ dịch course và không hứa sẽ dịch.
 ## 10. Mọi mã lỗi, và cách sửa từng cái
 
 Danh sách này là toàn bộ `FINDING_CODES` trong
-`packages/course-format/src/validate.ts`. `tuhoc pack` in mã, vị trí, mô tả và
-một dòng "Cách sửa" cho mỗi phát hiện; bảng dưới là bản đầy đủ hơn.
+`packages/course-format/src/validate.ts`, **cộng thêm một mã**:
+`DUPLICATE_ENTRY`, ở cuối bảng "Hình dạng gói" dưới đây. Mã đó không nằm
+trong `FINDING_CODES` — và đúng là không nên nằm ở đó — vì nó là một luật ở
+tầng đọc file zip (hai entry trùng tên trong chính tệp `.zip`), không phải
+một luật của tầng nội dung mà `validate.ts` quyết định; `tuhoc pack` không
+bao giờ tự tạo ra ca này (nó tự đóng gói từ một thư mục, không thể trùng
+tên tệp hai lần), nên bạn chỉ có thể thấy mã này trong một phản hồi 400 từ
+`tuhoc publish`. `tuhoc pack` in mã, vị trí, mô tả và một dòng "Cách sửa"
+cho mỗi phát hiện; bảng dưới là bản đầy đủ hơn.
 
 ### Hình dạng gói — áp dụng cho mọi gói
 
@@ -466,6 +482,7 @@ một dòng "Cách sửa" cho mỗi phát hiện; bảng dưới là bản đầ
 | `RUNTIME_RANGE` | `runtime` không phải dải caret 1–3 số | Đúng dạng `"^1"`, `"^1.2"`, `"^1.2.3"`. Không `">=1 <3"`, không `"1.x"`, không `"*"`. Không rõ thì để `"^1"`. |
 | `DUPLICATE_CHAPTER_ID` | hai chương mang cùng `id` | Đổi một trong hai. `id` là khoá lưu tiến độ đọc và neo ghi chú, nên phải duy nhất trong cả course — và **đừng đổi `id` của chương đã phát hành**, làm vậy là làm mất ghi chú của người đọc. |
 | `CHAPTER_FILE_MISSING` | `chapter.file` trỏ tới tệp không có trong gói | Kiểm tra chính tả, **phân biệt hoa thường** (máy bạn có thể không phân biệt, CI thì có), và nhớ đường dẫn tính từ gốc gói: `"chapters/p1-1.html"`, không phải `"./p1-1.html"`. Cũng kiểm tra tệp có bắt đầu bằng `.` không — mục ẩn bị bỏ qua trước khi luật chạy. |
+| `DUPLICATE_ENTRY` | hai entry trong chính tệp `.zip` mang cùng tên đường dẫn | **Chỉ máy chủ publish bắt được** — không phải một mã trong `FINDING_CODES` của `validate.ts`, xem đoạn mở đầu mục này. `tuhoc pack` không tạo ra ca này; nếu bạn thấy mã này khi `tuhoc publish`, tệp `.zip` đã bị chỉnh sửa hoặc dựng lại bằng công cụ khác ngoài `tuhoc pack` — đóng gói lại từ thư mục nguồn bằng `tuhoc pack` thay vì sửa tay bên trong zip. |
 
 ### Bảy luật của chương — chạy trên MỌI gói (§4)
 

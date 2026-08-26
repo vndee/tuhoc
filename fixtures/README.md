@@ -9,35 +9,49 @@ Hai gói, hai vai khác nhau:
 
 | | `bat-bien-vong-lap` | `so-dau-phay-dong` |
 |---|---|---|
-| Hạng | `content` | `interactive` |
 | Chương | 3 | 8 (4 phần, có phụ lục `num: ""`) |
-| Vai | gói hợp lệ nhỏ, nhanh, cho màn hình Import | **ngữ liệu chính** của 10 tệp test |
+| Vai | gói hợp lệ nhỏ, nhanh, cho cổng nghiệm thu | **ngữ liệu chính** của 10 tệp test |
 | Có JavaScript | không | `viz.js`, 9 mô phỏng canvas |
+
+**Không còn "hạng" nào để ghi ở đây.** Format v2 xoá hẳn khái niệm `tier`
+(`content`/`interactive` — xem `docs/course-format.md` §4); cả hai
+`manifest.json` dưới đây đã không còn trường đó. `so-dau-phay-dong` vẫn giữ
+nguyên `viz.js` ở gốc gói — hình dạng v1, cố ý — vì đó chính là ngữ liệu mười
+tệp test bên dưới cần đo trên đó (viz engine, canvas, …); nó **không** còn là
+một gói publish-được dưới bộ luật v2 hiện hành (`.js` ngoài `widgets/<tên>/`
+bị `JS_FILE_IN_PACKAGE` từ chối). Gói sạch bộ luật v2 dùng để publish/seed
+thật nằm ở `fixtures/format-v2/valid-course`, không phải ở đây.
 
 `make courses` bung **cả hai** vào `courses/` trước mỗi cổng test — xem
 `scripts/course_workspace.py`.
 
 ## `courses/bat-bien-vong-lap/`
 
-Một course thật, nhỏ: 3 chương, hạng `content`, `lang: "vi"`,
-`generatedBy: "ai"` (đúng như nó là — do skill `course-authoring` sinh ra).
+Một course thật, nhỏ: 3 chương, `lang: "vi"`, `generatedBy: "ai"` (đúng như nó
+là — do skill `course-authoring` sinh ra).
 
 Nó ra đời như **cổng nghiệm thu của Task 4**: dùng chính
 `.claude/skills/course-authoring/SKILL.md` để soạn một course, rồi đóng gói. Một
 tài liệu hướng dẫn không chạy được thì không ai phát hiện nó sai; đây là cách
 phát hiện.
 
-Nó ở lại vì Task 8 (import từ tệp/URL/git) và Task 12 (cổng e2e) cần **một gói
-hợp lệ, đủ nhỏ để chạy nhanh, và đủ thật để bắt lỗi** — nó có công thức KaTeX,
-SVG nội tuyến, bảng, khối `<details>` gập được, và tiếng Việt có dấu, tức đủ
-mặt những thứ trình đọc phải xử lý đúng.
+**Không còn đúng, sửa tại đây:** đoạn này từng nói nó ở lại vì "Task 8 (import
+từ tệp/URL/git)" cần một tệp thật để thả vào màn hình Import — màn hình đó
+(`pages/ImportCourse.tsx`, `course/import.ts`) đã bị xoá cùng toàn bộ mô hình
+"kéo một gói vào máy mình" (commit `f541a9c`, server-side pivot): đọc chương
+giờ luôn tới từ `/courses/:slug` của máy chủ. Nó ở lại hôm nay vì
+`packages/course-format`/`tools/tuhoc-cli` (`pack.test.ts`) và
+`tools/registry` (`validate-pr.test.ts`) vẫn cần **một gói hợp lệ, đủ nhỏ để
+chạy nhanh, và đủ thật để bắt lỗi** — nó có công thức KaTeX, SVG nội tuyến,
+bảng, khối `<details>` gập được, và tiếng Việt có dấu, tức đủ mặt những thứ
+trình đọc phải xử lý đúng.
 
 | | |
 |---|---|
 | Số mục trong gói | 4 (`manifest.json` + 3 chương) |
 | Kích thước đã giải nén | 61.790 byte — 0,29% trần 20 MiB |
 | Kích thước zip | 21.856 byte |
-| Hạng | `content` (không JavaScript, kiểm được hoàn toàn bằng máy) |
+| JavaScript | không — kiểm được hoàn toàn bằng máy (không có "hạng" nào để gán từ format v2) |
 
 ### Đóng gói lại
 
@@ -97,7 +111,7 @@ không** tái tạo và năng lực bắt lỗi bị mất — nằm ở
 | Số mục trong gói | 10 (`manifest.json` + 8 chương + `viz.js`) |
 | Kích thước đã giải nén | 190.693 byte — 0,91% trần 20 MiB |
 | Kích thước zip | 68.479 byte |
-| Hạng | `interactive` (có JavaScript; máy **không** kiểm được `viz.js`) |
+| JavaScript | `viz.js`, ở gốc gói — hình dạng v1, cố ý giữ nguyên; máy **không** kiểm được nội dung của nó, và bộ luật v2 hiện hành từ chối `.js` ngoài `widgets/<tên>/` (`JS_FILE_IN_PACKAGE`) nên gói này không còn publish-được, chỉ còn dùng làm ngữ liệu test |
 | Công thức KaTeX trong dòng | 1.457 (182/chương) |
 | Khối `<details>` gập được | 30 |
 | Tham chiếu chéo "Chương N.M" | 64 |
