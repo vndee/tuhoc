@@ -18,7 +18,6 @@
 
 import { liveQuery } from 'dexie';
 import { useEffect, useState } from 'react';
-import type { OwnedCourse } from '../course/owned';
 import type { AnnotationRow, ProgressRow } from '../db/local';
 import { db } from '../db/local';
 
@@ -88,26 +87,26 @@ export function useLastStudiedCourseId(): LastStudied {
  * Thứ tự ưu tiên, mỗi bậc có lý do riêng:
  *
  *  1. **Khoá vừa chạm tới gần nhất** (`db.progress`). Đúng trong hầu hết mọi
- *     phiên, và nó KHÔNG cần `useOwnedCourses` trả lời xong — một hàng progress
- *     tự nó đã là quyền sở hữu (S1-F31, nguồn 3), nên chờ ba nguồn kia chỉ làm
- *     chậm màn hình đầu tiên mà không đổi câu trả lời.
- *  2. **Một khoá thiết bị này ĐANG GIỮ.** Nó mở được ngay, kể cả offline.
- *  3. **Khoá đầu tiên bất kỳ**, theo thứ tự `courseId` mà `unionOwnedCourses`
- *     đã sắp — ổn định giữa các lần vẽ, không xáo lại khi nguồn mạng về sau
- *     nguồn cục bộ.
+ *     phiên, và nó KHÔNG cần `courseIds` trả lời xong — một hàng progress tự
+ *     nó đã là quyền sở hữu, nên chờ nguồn kia chỉ làm chậm màn hình đầu tiên
+ *     mà không đổi câu trả lời.
+ *  2. **Khoá đầu tiên** trong `courseIds`, theo bất kỳ thứ tự chỗ gọi đã sắp
+ *     sẵn — ổn định giữa các lần vẽ nếu chỗ gọi giữ thứ tự ổn định.
+ *
+ * Từng có một bậc thứ hai riêng — "một khoá thiết bị này ĐANG GIỮ" — cho một
+ * course đã nhập vào `db.packages` nhưng chưa có hàng progress nào. Bậc ấy
+ * mất đi cùng luồng import (Task 13): không còn "giữ" course nào theo nghĩa
+ * đó, mọi course đọc thẳng từ máy chủ. `courseIds` giờ do chỗ gọi tự hợp từ
+ * bất kỳ nguồn nào nó cho là hợp lý làm gợi ý (`pages/Dashboard.tsx` hợp danh
+ * mục công khai với `stats.courses[]`) — hàm này không còn biết, và không cần
+ * biết, course đến từ đâu.
  *
  * `undefined` = "chưa có gì để tiếp tục". Chỗ gọi phân biệt nó với "chưa biết"
- * bằng `settled`, KHÔNG bằng giá trị này — đó là cùng một sự phân biệt mà
- * `OwnedCourses.settled` tồn tại để giữ.
+ * bằng `settled`, KHÔNG bằng giá trị này.
  */
-export function pickFocusCourse(
-  courses: readonly OwnedCourse[],
-  lastStudiedCourseId: string | null,
-): string | undefined {
+export function pickFocusCourse(courseIds: readonly string[], lastStudiedCourseId: string | null): string | undefined {
   if (lastStudiedCourseId !== null && lastStudiedCourseId !== '') return lastStudiedCourseId;
-  const held = courses.find((course) => course.held !== undefined);
-  if (held !== undefined) return held.courseId;
-  return courses[0]?.courseId;
+  return courseIds[0];
 }
 
 /* ------------------------------------------------------------------ *

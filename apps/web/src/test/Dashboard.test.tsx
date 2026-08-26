@@ -129,14 +129,18 @@ async function clearAll() {
 }
 
 /**
- * One entry of `GET /courses`'s response — apps/api/internal/course/
- * handler.go's `courseSummary`. Written out here rather than imported so
- * the wire contract has to be restated on this side: a change to the
- * backend's JSON shape should break a test, not silently produce a home
- * screen with nothing to continue.
+ * One entry of `GET /courses`'s response — the PUBLIC catalog's wire shape
+ * (`api/catalog.ts`'s `CatalogCourse`), not the old per-reader library shape
+ * this file used before Task 13. Written out here rather than imported so the
+ * wire contract has to be restated on this side: a change to the backend's
+ * JSON shape should break a test, not silently produce a home screen with
+ * nothing to continue — which is exactly what the OLD shape did here once
+ * `Dashboard.tsx` started reading `course.slug`: the mock still sent `id`, so
+ * every entry's `slug` was `undefined` and the fallback course list was
+ * silently empty.
  */
-function catalogEntry(id: string, title: string) {
-  return { id, title, lang: 'vi', tier: 'content', versions: ['1.0.0'], pinned: '1.0.0' };
+function catalogEntry(slug: string, title: string) {
+  return { slug, title, lang: 'vi', description: '', version: 1 };
 }
 
 /** Một hàng progress cục bộ — nguồn DUY NHẤT của "chương nào đã đọc" (ruling F5). */
@@ -364,61 +368,44 @@ describe('Học tiếp — ghi chú gần đây', () => {
 });
 
 describe('Học tiếp — trạng thái rỗng và tài khoản', () => {
-  it('says the library is empty rather than rendering a blank area when GET /courses returns nothing', async () => {
+  it('says there is nothing to continue yet, rather than rendering a blank area, when the catalog is empty', async () => {
     server.use(http.get('/courses', () => HttpResponse.json([])));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
 
     renderDashboard();
 
-    expect(await screen.findByRole('heading', { name: tr('vi', 'library.empty.heading') })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: tr('vi', 'home.empty.heading') })).toBeInTheDocument();
     expect(document.querySelectorAll('.home-card')).toHaveLength(0);
   }, OVERSUBSCRIBED_MS);
 
-  it('có lối vào phần nhập gói trong lời nhắn thư viện rỗng — cửa ngữ cảnh, hiện đúng lúc cần', async () => {
-    // Cửa NGỮ CẢNH: liên kết nằm trong chính lời nhắn "thư viện của bạn đang
-    // trống", nên nó xuất hiện đúng lúc người đọc cần. Bài này ra đời sau khi
-    // mutation testing xoá cả hai liên kết `/import` mà 632 test vẫn xanh —
-    // một route không ai bấm tới được là một tính năng không tồn tại.
-    server.use(http.get('/courses', () => HttpResponse.json([])));
-    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
-
-    renderDashboard();
-
-    await screen.findByRole('heading', { name: tr('vi', 'library.empty.heading') });
-    // `/courses?import=1`, không phải `/import`: phần nhập gói nay là hộp thoại
-    // của màn Khoá học và tham số ấy là thứ mở nó ra (đặc tả IA). Cửa NGỮ CẢNH
-    // này vì thế vẫn làm đúng việc cũ — một cú bấm, và ô chọn tệp ở ngay đó —
-    // thay vì thả người đọc xuống một danh sách trống lần thứ hai.
-    const links = screen.getAllByRole('link').filter((a) => a.getAttribute('href') === '/courses?import=1');
-    // MỘT, không phải hai: cửa thứ hai (nút ở đầu trang) đã chuyển sang thanh
-    // bên, và `globalNav.test.tsx` canh nó ở đó trên đúng route "/". Con số ở
-    // đây đo cửa NGỮ CẢNH — thứ mà thanh bên không thay thế được, vì nó xuất
-    // hiện bên trong chính lời nhắn giải thích tại sao thư viện trống.
-    expect(links.length, 'lời nhắn thư viện rỗng không còn liên kết tới /import').toBeGreaterThanOrEqual(1);
-    expect(links.map((a) => a.textContent).join(' ')).toMatch(/nhập/i);
-  }, OVERSUBSCRIBED_MS);
-
-  it('trạng thái rỗng của trang chủ là MÀN HÌNH ĐẦU TIÊN của người dùng mới — phải nói ba cách nhập, không chỉ một dòng chữ (ruling S1-F17)', async () => {
+  /**
+   * `pages/ImportCourse.tsx` chết cùng Task 13 (spec
+   * `2026-08-25-server-side-pivot.md` §1): "cửa ngữ cảnh tới `/courses?import=1`"
+   * mà bài này từng canh không còn dẫn tới đâu — `?import=1` nay chỉ đáp
+   * xuống `/courses` trơn, không mở hộp thoại nào (không hộp thoại nào còn
+   * tồn tại để mở). Ruling S1-F17 ("trang chủ rỗng vẫn phải là một hành
+   * động") không mất đi — bài kế tiếp canh hình dạng MỚI của nó.
+   */
+  it('trạng thái rỗng dẫn thẳng vào danh mục — hành động DUY NHẤT còn ý nghĩa khi mọi course đã sẵn sàng đọc (ruling S1-F17)', async () => {
     // Task 6 deleted `KNOWN_COURSE_IDS`, so this is literally what a brand
     // new account opens onto — và đặc tả IA nhắc lại nó thành ràng buộc thứ 5:
     // "Trang chủ khi chưa có khoá học nào vẫn phải thành hành động, không phải
-    // ngõ cụt." Câu chữ nằm ở `<EmptyLibrary>`, dùng chung với `/courses`, vì
-    // hai bản sao của một cánh cửa thì bản không ai đi qua sẽ trôi.
+    // ngõ cụt." Trước Task 13 hành động ấy là "nhập một gói"; nay là "mở danh
+    // mục" — mọi course đã sẵn trên máy chủ, không ai cần nhập gì nữa.
     server.use(http.get('/courses', () => HttpResponse.json([])));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
 
     renderDashboard();
 
-    await screen.findByRole('heading', { name: tr('vi', 'library.empty.heading') });
-    expect(screen.getAllByText(/\.zip/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/github/i)).toBeInTheDocument();
-    // The registry's place is held by words, not by a link that goes
-    // nowhere: subsystem 3 has not built it.
-    const registryNote = screen.getByText(/registry|kho khóa học cộng đồng/i);
-    expect(within(registryNote).queryByRole('link')).not.toBeInTheDocument();
+    await screen.findByRole('heading', { name: tr('vi', 'home.empty.heading') });
+    const cta = screen.getByRole('link', { name: tr('vi', 'home.empty.cta') });
+    expect(cta).toHaveAttribute('href', '/courses');
+    // Không còn ".zip"/"github" nào để nói — không ai đọc chúng ra nữa.
+    expect(screen.queryByText(/\.zip/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/github/i)).not.toBeInTheDocument();
   }, OVERSUBSCRIBED_MS);
 
-  it('does not flash the empty-library note while GET /courses is still in flight', async () => {
+  it('does not flash the "nothing to continue" note while GET /courses is still in flight', async () => {
     server.use(http.get('/courses', () => new Promise(() => {}))); // never resolves
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
 
@@ -427,15 +414,15 @@ describe('Học tiếp — trạng thái rỗng và tài khoản', () => {
     // Nhan đề chứng minh trang đã dựng; lời nhắn kia chưa được phép có mặt, vì
     // "không khoá nào trả về" vẫn chưa đúng.
     expect(await screen.findByRole('heading', { name: /học tiếp/i })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: tr('vi', 'library.empty.heading') })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: tr('vi', 'home.empty.heading') })).not.toBeInTheDocument();
   }, OVERSUBSCRIBED_MS);
 
   // BÀI "ĐĂNG XUẤT" ĐÃ CHUYỂN SANG `pages/Settings.test.tsx`.
   //
-  // Nút ấy rời Bảng điều khiển cùng vòng thiết kế lại: đầu trang nay mang lối
-  // vào NHẬP GÓI (bản dựng đã duyệt), còn đăng xuất về đúng chỗ của nó trong
-  // mục Tài khoản của `/settings` — nơi nó đứng cạnh câu cảnh báo về dữ liệu
-  // trên máy, thứ mà một nút trơ trọi ở đầu trang không mang theo được.
+  // Nút ấy rời Bảng điều khiển cùng vòng thiết kế lại: đăng xuất về đúng chỗ
+  // của nó trong mục Tài khoản của `/settings` — nơi nó đứng cạnh câu cảnh
+  // báo về dữ liệu trên máy, thứ mà một nút trơ trọi ở đầu trang không mang
+  // theo được.
   //
   // Điều kiện mà `Dashboard.tsx` đặt ra cho lần gỡ này ĐÃ THOẢ trước khi gỡ:
   // `AccountChip` ở thanh trên có mặt trên mọi màn ngoài chế độ đọc và mở

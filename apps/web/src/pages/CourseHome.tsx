@@ -3,9 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMe } from '../api/useMe';
 import { flatChapters, nextChapter } from '../course/chapters';
-import { TierBadge } from './Library';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
-import { manifestString } from '../course/owned';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { useProgress } from '../progress/useProgress';
 
@@ -82,20 +80,15 @@ export function CourseHome() {
           Renders nothing; it only ever reports `doneChapterIds` upward. */}
       {confirmedLoggedIn && <CourseProgress courseId={courseId} onChange={setDoneChapterIds} />}
 
-      {/* HÀNG BADGE trước nhan đề — bản dựng đã duyệt.
-
-          MỘT badge, rồi một dòng chữ. Bản trước vẽ cả ba thành viên bo tròn và
-          hàng ấy đọc ra là ba thứ ngang hạng — sai, vì chỉ MỘT trong ba là một
-          lời cảnh báo (gói này có chạy JavaScript trong trình duyệt của người
-          đọc hay không). Phiên bản và ngôn ngữ là siêu dữ liệu; chúng thuộc về
-          một dòng chữ xám, ngăn nhau bằng dấu chấm giữa, đúng như bản dựng.
-
-          Chỉ những gì MANIFEST biết. Nguồn gói ("registry" / "tự nhập") có
-          trong bản dựng nhưng KHÔNG có ở đây — nó là thuộc tính của hàng thư
-          viện, không của gói — và bịa nó ra là nói một điều trang này không
-          biết. */}
+      {/* Không còn nhãn hạng (`TierBadge`, `pages/Library.tsx`) — format v2 bỏ
+          hẳn trường `tier` khỏi manifest (spec
+          `2026-08-25-server-side-pivot.md` §2.3): "hạng interactive" theo
+          nghĩa cũ (JavaScript tự do trong chương) bị khai tử, mọi chương đều
+          là hạng `content`, và phần tương tác tách hẳn thành widget chạy
+          trong iframe sandbox riêng. Vẽ một nhãn hạng cho một trường không
+          còn tồn tại sẽ luôn rơi vào nhánh "không rõ hạng — có thể chạy mã"
+          — một cảnh báo sai cho mọi course, tệ hơn không có cảnh báo nào. */}
       <p className="ch-badges">
-        <TierBadge tier={manifestString(manifest, 'tier')} />
         <span className="ch-badge-meta">
           {t('library.meta.version', manifest.version)}
           <span className="ch-badge-dot" aria-hidden="true">

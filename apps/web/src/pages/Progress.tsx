@@ -6,7 +6,6 @@ import { useStats } from '../api/stats';
 import { countChapters } from '../course/chapters';
 import { db } from '../db/local';
 import { loadManifest, manifestQueryKey } from '../course/loader';
-import { manifestString, type OwnedCourse, useCourseTitle, useOwnedCourses } from '../course/owned';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { buildYearCalendar, heatLevel, todayIctIso } from '../progress/heat';
 import { useProgress } from '../progress/useProgress';
@@ -33,16 +32,18 @@ import { useProgress } from '../progress/useProgress';
  *
  * ## Hai câu hỏi, hai nguồn — và cả hai đều là nguồn DUY NHẤT của nó
  *
- * *"Người này có những khoá nào"* → `useOwnedCourses()` (ruling S1-F31). Không
- * phải `stats.courses[]`: danh sách ấy chỉ chứa khoá máy chủ đã thấy nhịp học
- * hoặc chương hoàn thành, nên một khoá vừa nhập, hoặc một khoá đọc offline
- * chưa kịp đồng bộ, sẽ biến mất khỏi trang tiến độ trong khi `/courses` vẫn
- * liệt kê nó. Đó đúng là hai màn hình, hai công thức, một câu hỏi — thứ
- * `course/owned.ts` được bóc ra để chấm dứt.
+ * *"Người này có những khoá nào"* → `db.progress` cục bộ (`useLocalProgress`
+ * bên dưới), KHÔNG phải danh mục công khai (`fetchCatalog`). Sau khi luồng
+ * import chết (Task 13), "sở hữu" một khoá không còn nghĩa gì — danh mục là
+ * chung, ai cũng thấy y hệt nhau — nên trang này hỏi một câu hẹp hơn và đúng
+ * hơn: "tôi đã học chương nào của khoá nào". Cũng KHÔNG phải `stats.courses[]`:
+ * danh sách ấy chỉ chứa khoá máy chủ đã thấy nhịp học hoặc chương hoàn thành,
+ * nên một khoá vừa đọc dở, offline, chưa kịp đồng bộ, sẽ biến mất khỏi trang
+ * tiến độ nếu đây là nguồn duy nhất.
  *
  * *"Bao nhiêu phút, chuỗi mấy ngày"* → `useStats()` từ `api/stats.ts`, dùng
- * chung, không có bản sao thứ hai. `useOwnedCourses` đọc cùng `statsQueryKey`,
- * nên hai hook trên trang này là MỘT request.
+ * chung với `pages/Dashboard.tsx`'s `statsQueryKey`, nên hai trang không cùng
+ * gọi hai request khác nhau cho cùng một câu hỏi.
  *
  * ## Vì sao số chương vẫn tính từ máy (ruling F5)
  *
@@ -55,19 +56,30 @@ import { useProgress } from '../progress/useProgress';
  * cộng ở đó), nên nó tới từ `stats.courses[]`.
  */
 /**
- * BA CON SỐ ĐẦU TRANG — khung "Tiến độ" của bản dựng.
+ * BA CON SỐ ĐẦU TRANG, và câu trả lời cho "khoá nào" — một `liveQuery` duy
+ * nhất trên `db.progress`/`db.annotations` cho cả hai việc.
  *
- * Hai trong ba đọc từ MÁY NÀY, không từ máy chủ, và đó là ruling F5 chứ không
- * phải tiện tay: đánh dấu một chương đã đọc và viết một ghi chú đều là phép ghi
- * CỤC BỘ, nên một con số chỉ nhích lên sau khi outbox flush thành công là con số
- * nói dối trong mọi phiên offline. Chuỗi ngày thì ngược lại — nhịp học được cộng
- * ở máy chủ nên nó chỉ tồn tại ở đó.
+ * Hai trong ba con số đọc từ MÁY NÀY, không từ máy chủ, và đó là ruling F5
+ * chứ không phải tiện tay: đánh dấu một chương đã đọc và viết một ghi chú đều
+ * là phép ghi CỤC BỘ, nên một con số chỉ nhích lên sau khi outbox flush thành
+ * công là con số nói dối trong mọi phiên offline. Chuỗi ngày thì ngược lại —
+ * nhịp học được cộng ở máy chủ nên nó chỉ tồn tại ở đó.
+ *
+ * `courseIds` — `null` cho tới khi `liveQuery` phát lần đầu, phân biệt với
+ * `[]` ("chưa đọc chương nào ở đâu cả") vì lần phát đầu tiên của Dexie là bất
+ * đồng bộ: coi giá trị khởi tạo là "không có gì" sẽ nháy trạng thái rỗng vào
+ * mặt một người học đang có dở dang — cùng cái bẫy `course/owned.ts` từng
+ * tách `settled` ra để tránh, trước khi module đó bị gỡ (Task 13).
  *
  * `liveQuery` chứ không phải một lần đọc: đánh dấu một chương ở tab khác phải
  * làm con số ở đây nhích lên mà không cần tải lại trang.
  */
-function useLocalTotals(): { chaptersRead: number; notes: number } {
-  const [totals, setTotals] = useState({ chaptersRead: 0, notes: 0 });
+function useLocalProgress(): { chaptersRead: number; notes: number; courseIds: string[] | null } {
+  const [state, setState] = useState<{ chaptersRead: number; notes: number; courseIds: string[] | null }>({
+    chaptersRead: 0,
+    notes: 0,
+    courseIds: null,
+  });
 
   useEffect(() => {
     const subscription = liveQuery(async () => {
@@ -80,24 +92,27 @@ function useLocalTotals(): { chaptersRead: number; notes: number } {
         // `deletedAt` là xoá MỀM (xem `db/local.ts`): một ghi chú đã xoá vẫn còn
         // hàng để đồng bộ, nhưng nó không còn là một ghi chú người ta đang giữ.
         notes: annotations.filter((row) => row.deletedAt == null).length,
+        // Sắp xếp để thứ tự hàng ổn định giữa các lần phát của `liveQuery`.
+        courseIds: Array.from(new Set(progress.map((row) => row.courseId))).sort(),
       };
     }).subscribe({
-      next: (next) => setTotals(next),
+      next: (next) => setState(next),
       error: (err) => console.error('Progress: live query failed', err),
     });
     return () => subscription.unsubscribe();
   }, []);
 
-  return totals;
+  return state;
 }
 
 export function Progress() {
   const { t } = useLanguage();
   const statsQuery = useStats();
-  const owned = useOwnedCourses();
+  const local = useLocalProgress();
 
   const minutesByCourse = courseMinutes(statsQuery.data?.courses);
-  const totals = useLocalTotals();
+  const courseIds = local.courseIds ?? [];
+  const coursesSettled = local.courseIds !== null;
 
   return (
     <div className="prog">
@@ -113,8 +128,8 @@ export function Progress() {
       <div className="prog-stats">
         <div className="prog-stat">
           <p className="prog-stat-k">{t('progress.stat.chapters')}</p>
-          <p className="prog-stat-v">{totals.chaptersRead}</p>
-          <p className="prog-stat-sub">{t('progress.stat.chaptersSub', String(owned.courses.length))}</p>
+          <p className="prog-stat-v">{local.chaptersRead}</p>
+          <p className="prog-stat-sub">{t('progress.stat.chaptersSub', String(courseIds.length))}</p>
         </div>
         <div className="prog-stat">
           <p className="prog-stat-k">{t('progress.stat.streak')}</p>
@@ -123,7 +138,7 @@ export function Progress() {
         </div>
         <div className="prog-stat">
           <p className="prog-stat-k">{t('progress.stat.notes')}</p>
-          <p className="prog-stat-v">{totals.notes}</p>
+          <p className="prog-stat-v">{local.notes}</p>
           <p className="prog-stat-sub">{t('progress.stat.notesSub')}</p>
         </div>
       </div>
@@ -134,14 +149,14 @@ export function Progress() {
         </p>
       )}
 
-      <YearActivity courses={owned.courses} />
+      <YearActivity />
 
       <section className="prog-section">
         <h2 className="prog-h">{t('progress.byCourse')}</h2>
 
-        {/* "Chưa biết" không được vẽ thành "không có gì" — `settled`, không `length`. */}
-        {owned.courses.length === 0 && !owned.settled && <p className="prog-note">{t('progress.loading')}</p>}
-        {owned.courses.length === 0 && owned.settled && (
+        {/* "Chưa biết" không được vẽ thành "không có gì" — `coursesSettled`, không `length`. */}
+        {courseIds.length === 0 && !coursesSettled && <p className="prog-note">{t('progress.loading')}</p>}
+        {courseIds.length === 0 && coursesSettled && (
           <p className="prog-note">
             {t('progress.noCourses')}{' '}
             <Link to="/courses" className="prog-empty-link">
@@ -150,14 +165,10 @@ export function Progress() {
           </p>
         )}
 
-        {owned.courses.length > 0 && (
+        {courseIds.length > 0 && (
           <ul className="prog-list">
-            {owned.courses.map((course) => (
-              <CourseProgress
-                key={course.courseId}
-                course={course}
-                minutes={minutesByCourse.get(course.courseId)}
-              />
+            {courseIds.map((courseId) => (
+              <CourseProgress key={courseId} courseId={courseId} minutes={minutesByCourse.get(courseId)} />
             ))}
           </ul>
         )}
@@ -228,22 +239,34 @@ function studySentence(
  * lời mặc định mà Bảng điều khiển đang dựa vào (xem `api/stats.ts` và
  * `apps/api/internal/stats/handler.go`).
  */
-/** Tên khoá mà `useOwnedCourses` đã biết, hoặc `undefined` để `useCourseTitle` đi hỏi manifest. */
-function knownTitleOf(courses: readonly OwnedCourse[], courseId: string): string | undefined {
-  const course = courses.find((entry) => entry.courseId === courseId);
-  return course?.held?.title ?? course?.catalog?.title;
+/**
+ * Tên hiển thị của một khoá, cho một hàng chỉ mang `courseId` trong tay.
+ *
+ * Từng đọc "known" title qua `course/owned.ts`'s `useCourseTitle` — nguồn ấy
+ * (catalog/held) chết cùng luồng import (Task 13): danh mục giờ là chung, ai
+ * cũng thấy y hệt, nên nó không còn là một bộ nhớ đệm đáng tin cho tên của
+ * MỘT course cụ thể trong năm ấy. Hỏi thẳng `loadManifest`, cùng
+ * `manifestQueryKey` mà mọi màn khác dùng — cache hit trên đường đi thường.
+ */
+function useCourseTitleFallback(courseId: string): string {
+  const manifestQuery = useQuery({
+    queryKey: manifestQueryKey(courseId),
+    queryFn: () => loadManifest(courseId),
+    retry: false,
+  });
+  return manifestQuery.data?.title ?? courseId;
 }
 
 /**
  * Một hàng trong "Khoá học trong năm".
  *
- * Là component riêng chỉ vì MỘT lý do: `useCourseTitle` là một hook, và một
- * hook không gọi được bên trong `.map()`. Trước đây hàng này in thẳng
+ * Là component riêng chỉ vì MỘT lý do: `useCourseTitleFallback` là một hook,
+ * và một hook không gọi được bên trong `.map()`. Trước đây hàng này in thẳng
  * `course.courseId` — tức cái slug ("so-dau-phay-dong") — trong khi `CourseRow`
  * ngay dưới cùng trang đã tra tên đúng cách từ lâu.
  */
-function CourseWeight({ courseId, share, known }: { courseId: string; share: number; known: string | undefined }) {
-  const title = useCourseTitle(courseId, known);
+function CourseWeight({ courseId, share }: { courseId: string; share: number }) {
+  const title = useCourseTitleFallback(courseId);
   const pct = Math.round(share * 100);
 
   return (
@@ -259,7 +282,7 @@ function CourseWeight({ courseId, share, known }: { courseId: string; share: num
   );
 }
 
-function YearActivity({ courses }: { courses: readonly OwnedCourse[] }) {
+function YearActivity() {
   const { t, lang } = useLanguage();
   const thisYear = Number(todayIctIso().slice(0, 4));
   const [year, setYear] = useState(thisYear);
@@ -347,12 +370,7 @@ function YearActivity({ courses }: { courses: readonly OwnedCourse[] }) {
           )}
           <ul className="prog-weights">
             {(statsQuery.data?.yearCourses ?? []).map((course) => (
-              <CourseWeight
-                key={course.courseId}
-                courseId={course.courseId}
-                share={course.share}
-                known={knownTitleOf(courses, course.courseId)}
-              />
+              <CourseWeight key={course.courseId} courseId={course.courseId} share={course.share} />
             ))}
           </ul>
         </div>
@@ -381,25 +399,28 @@ function YearActivity({ courses }: { courses: readonly OwnedCourse[] }) {
 /**
  * Một khoá học: tên, thanh, số chương từng phần, và số phút nếu máy chủ biết.
  *
- * Mẫu số đến từ manifest, dùng chung `manifestQueryKey` với mọi màn hình khác,
- * nên trên đường đi thông thường đây là một lần đọc cache chứ không phải một
- * request. Khi manifest chưa về (hoặc không về được), hàng vẫn hiện — với số
- * chương đã đọc và KHÔNG có mẫu số, thay vì một mẫu số đoán bừa. `0/0` sẽ vẽ
- * ra một thanh rỗng cho một người đã đọc mười chương.
+ * Mẫu số VÀ TÊN đều đến từ manifest — dùng chung `manifestQueryKey` với mọi
+ * màn hình khác, nên trên đường đi thông thường đây là một lần đọc cache chứ
+ * không phải một request. Trước Task 13, tên có thể tới từ `OwnedCourse.held`/
+ * `.catalog` khi biết trước; nguồn ấy chết cùng luồng import, và không đổi
+ * chi phí ở đây — hàng này đã luôn tự hỏi manifest cho MẪU SỐ bất kể tên có
+ * biết trước hay không. Khi manifest chưa về (hoặc không về được), hàng vẫn
+ * hiện — với số chương đã đọc, tên là `courseId` thô, và KHÔNG có mẫu số, thay
+ * vì một mẫu số đoán bừa. `0/0` sẽ vẽ ra một thanh rỗng cho một người đã đọc
+ * mười chương.
  */
-function CourseProgress({ course, minutes }: { course: OwnedCourse; minutes: number | undefined }) {
+function CourseProgress({ courseId, minutes }: { courseId: string; minutes: number | undefined }) {
   const { t } = useLanguage();
   const manifestQuery = useQuery({
-    queryKey: manifestQueryKey(course.courseId),
-    queryFn: () => loadManifest(course.courseId),
+    queryKey: manifestQueryKey(courseId),
+    queryFn: () => loadManifest(courseId),
     retry: false,
   });
-  const { partStats } = useProgress(course.courseId);
+  const { partStats } = useProgress(courseId);
 
   const total = countChapters(manifestQuery.data);
   const read = partStats.chaptersRead;
-  const title =
-    course.held?.title ?? course.catalog?.title ?? manifestString(manifestQuery.data, 'title') ?? course.courseId;
+  const title = manifestQuery.data?.title ?? courseId;
   // `Math.min` là chốt chặn cho một thực tế đo được: chương bị gỡ khỏi khoá học
   // ở phiên bản mới vẫn để lại hàng progress cũ trên máy, nên `read` có thể lớn
   // hơn `total`. Một thanh 137% là một lỗi vẽ; con số thật vẫn được in cạnh nó.
@@ -408,7 +429,7 @@ function CourseProgress({ course, minutes }: { course: OwnedCourse; minutes: num
   return (
     <li className="prog-row">
       <div className="prog-row-head">
-        <Link to={`/c/${course.courseId}`} className="prog-row-title">
+        <Link to={`/c/${courseId}`} className="prog-row-title">
           {title}
         </Link>
         <span className="prog-row-n">

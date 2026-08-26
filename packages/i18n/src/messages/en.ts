@@ -269,6 +269,11 @@ export const en: Messages = {
   'home.notes.formula': 'formula',
   'home.notes.aria': (course: string) => `Open this note in ${course}`,
 
+  /** Dashboard empty state, after the import flow died — see vi.ts's comment. */
+  'home.empty.heading': 'You have not started a course yet',
+  'home.empty.lede': 'Every course is readable right away — no import, no download to wait for.',
+  'home.empty.cta': 'Browse the course catalog',
+
   'progress.lede': 'Your study figures, told as a sentence.',
   'progress.loading': 'Loading your progress…',
   'progress.error': 'Could not load progress. These figures live on the server, so this part needs a connection.',
@@ -342,14 +347,14 @@ export const en: Messages = {
   'library.source.import': 'imported',
   'library.source.unknown': 'unknown source',
 
-  /* ── the Courses screen (`pages/Courses.tsx`) ─────────────────────────── */
+  /* ── the Courses screen (`pages/Courses.tsx`) — see vi.ts's comment ────── */
   'courses.title': 'Courses',
-  'courses.lede': 'Your courses and the community store — one place, two tabs.',
-  'courses.tabs.aria': 'Two course collections',
-  'courses.tab.yours': 'Yours',
-  'courses.tab.registry': 'Community store',
+  'courses.lede': 'Every course, public — free to read, no account needed.',
+  'courses.loading': 'Loading the catalog…',
+  'courses.empty': 'No courses have been published yet.',
+  'courses.list.aria': 'Course catalog',
+  /** Last user: `pages/Library.tsx`'s `EmptyLibrary` — see vi.ts's comment. */
   'courses.import.action': 'Import a package',
-  'courses.import.close': 'Close',
   'library.loading': 'Loading your library…',
   'library.empty.headingOffline': 'No courses on this device',
   'library.empty.heading': 'Your library is empty',

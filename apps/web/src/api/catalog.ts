@@ -109,6 +109,17 @@ export function fetchCatalog(): Promise<CatalogCourse[]> {
   return getJson<CatalogCourse[]>(apiUrl('/courses'));
 }
 
+/**
+ * TanStack Query key for the catalog listing, shared by every screen that
+ * reads it (`pages/Courses.tsx` today) — same convention as
+ * `manifestQueryKey` below and `api/stats.ts`'s `statsQueryKey`, so two
+ * screens asking the same question share one cache entry instead of two
+ * requests.
+ */
+export function catalogQueryKey(): readonly ['catalog'] {
+  return ['catalog'] as const;
+}
+
 /** `slug`'s manifest, verbatim off the server — no client-side shape/runtime check any more (see `course/loader.ts`'s doc comment for why). */
 export function fetchManifest(slug: string): Promise<Manifest> {
   return getJson<Manifest>(apiUrl(coursePath(slug)));

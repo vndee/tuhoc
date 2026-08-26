@@ -74,9 +74,15 @@ function thirtyDays(lastIso: string, minutesOf: (index: number) => number) {
 
 const EMPTY_STATS = { totalMinutes: 0, streakDays: 0, days: [], courses: [] };
 
-function stub(stats: Record<string, unknown>, courses: Record<string, unknown>[] = []) {
+/**
+ * Chỉ còn `/stats` — `/courses` đã rời khỏi tệp này cùng Task 13. Trang
+ * `/progress` không còn đọc danh mục công khai cho bất cứ việc gì: danh sách
+ * "khoá học theo trang" nay đọc thẳng `db.progress` cục bộ (xem
+ * `pages/Progress.tsx`'s `useLocalProgress`), nên không có handler nào cho
+ * `/courses` ở đây nữa — và không cần, vì không lời gọi nào còn hỏi tới nó.
+ */
+function stub(stats: Record<string, unknown>) {
   server.use(http.get('/stats', () => HttpResponse.json(stats)));
-  server.use(http.get('/courses', () => HttpResponse.json(courses)));
 }
 
 function renderProgress() {
@@ -132,7 +138,6 @@ describe('Tiến độ — con số kể thành CÂU', () => {
 
   it('/stats hỏng thì nói ra, và nói rằng phần này cần mạng', async () => {
     server.use(http.get('/stats', () => new HttpResponse(null, { status: 500 })));
-    server.use(http.get('/courses', () => HttpResponse.json([])));
 
     renderProgress();
 
@@ -141,7 +146,6 @@ describe('Tiến độ — con số kể thành CÂU', () => {
 
   it('/stats trả HTML (SPA fallback khi API chết) không làm trắng trang', async () => {
     server.use(http.get('/stats', () => HttpResponse.html('<!doctype html>\n<html lang="vi"><body></body></html>')));
-    server.use(http.get('/courses', () => HttpResponse.json([])));
 
     renderProgress();
 
@@ -243,15 +247,12 @@ describe('Tiến độ — theo khoá học', () => {
     // Máy chủ nói 1 chương; máy nói 3. Ruling F5: cái đúng là cái trên máy —
     // đánh dấu đã đọc là một phép ghi cục bộ, và một thanh chỉ nhích sau khi
     // outbox flush được là một thanh nói dối trong mọi phiên offline.
-    stub(
-      {
-        ...EMPTY_STATS,
-        totalMinutes: 120,
-        streakDays: 1,
-        courses: [{ courseId: 'demo', minutes: 75.4, chaptersDone: 1 }],
-      },
-      [{ id: 'demo', title: 'Khóa học demo', lang: 'vi', tier: 'content', versions: ['1.0.0'], pinned: '1.0.0' }],
-    );
+    stub({
+      ...EMPTY_STATS,
+      totalMinutes: 120,
+      streakDays: 1,
+      courses: [{ courseId: 'demo', minutes: 75.4, chaptersDone: 1 }],
+    });
     for (const id of ['ch-1', 'ch-2', 'ch-3']) {
       await db.progress.put({ courseId: 'demo', chapterId: id, status: 'read', done: true, updatedAt: '2026-08-20T00:00:00Z' });
     }
@@ -268,13 +269,13 @@ describe('Tiến độ — theo khoá học', () => {
     expect(within(row).getByRole('link', { name: 'Khóa học demo' })).toHaveAttribute('href', '/c/demo');
   }, OVERSUBSCRIBED_MS);
 
-  it('liệt kê khoá mà CHỈ máy này biết — danh sách khoá học là useOwnedCourses, không phải stats.courses', async () => {
+  it('liệt kê khoá mà CHỈ máy này biết — danh sách khoá học đọc db.progress cục bộ, không phải stats.courses', async () => {
     // `stats.courses[]` chỉ chứa khoá máy chủ đã thấy nhịp học hoặc chương hoàn
-    // thành. Một khoá vừa nhập, hay một khoá đọc offline chưa kịp đồng bộ, sẽ
-    // biến mất khỏi trang tiến độ trong khi `/courses` vẫn liệt kê nó — đúng
-    // "hai màn hình, hai công thức, một câu hỏi" mà S1-F31 chấm dứt.
+    // thành. Một khoá đọc offline chưa kịp đồng bộ sẽ biến mất khỏi trang tiến
+    // độ nếu `stats.courses[]` là nguồn duy nhất — đúng lý do `useLocalProgress`
+    // đọc thẳng `db.progress` thay vì tin máy chủ biết hết.
     server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(2))));
-    stub(EMPTY_STATS, []);
+    stub(EMPTY_STATS);
     await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: '2026-08-20T00:00:00Z' });
 
     renderProgress();
@@ -289,7 +290,7 @@ describe('Tiến độ — theo khoá học', () => {
   it('manifest không về thì hàng vẫn hiện, với số chương đã đọc và KHÔNG có mẫu số đoán bừa', async () => {
     // `0/0` sẽ vẽ ra một thanh rỗng cho một người đã đọc mười chương.
     server.use(http.get('/courses/demo', () => new HttpResponse(null, { status: 404 })));
-    stub(EMPTY_STATS, []);
+    stub(EMPTY_STATS);
     await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: '2026-08-20T00:00:00Z' });
     await db.progress.put({ courseId: 'demo', chapterId: 'ch-2', status: 'read', done: true, updatedAt: '2026-08-20T00:00:00Z' });
 
@@ -301,7 +302,7 @@ describe('Tiến độ — theo khoá học', () => {
   }, OVERSUBSCRIBED_MS);
 
   it('chưa có khoá nào là một HÀNH ĐỘNG, không phải một dòng chữ cụt', async () => {
-    stub(EMPTY_STATS, []);
+    stub(EMPTY_STATS);
 
     renderProgress();
 
@@ -309,13 +310,22 @@ describe('Tiến độ — theo khoá học', () => {
     expect(screen.getByRole('link', { name: /khoá học/i })).toHaveAttribute('href', '/courses');
   }, OVERSUBSCRIBED_MS);
 
-  it('KHÔNG nháy "chưa có khoá nào" khi GET /courses còn đang bay', async () => {
-    server.use(http.get('/stats', () => HttpResponse.json(EMPTY_STATS)));
-    server.use(http.get('/courses', () => new Promise(() => {})));
+  /**
+   * Bài này từng canh `GET /courses` còn đang bay — tiền đề ấy chết cùng
+   * `course/owned.ts` (Task 13): danh sách khoá của khối này không còn đọc
+   * mạng ở đâu cả, chỉ đọc `db.progress` cục bộ. Cái phải KHÔNG nháy bây giờ
+   * là kết quả của chính `liveQuery` đó — `courseIds` bắt đầu là `null`
+   * (chưa nguồn nào phát), và lần phát đầu tiên của Dexie là một tác vụ bất
+   * đồng bộ xảy ra SAU khi `render()` đã trả về. Khẳng định ngay sau
+   * `render()`, trước khi await bất cứ điều gì, là chỗ chộp được khoảnh khắc
+   * ấy — coi giá trị khởi tạo là "không có khoá nào" sẽ làm dòng đầu tiên đỏ.
+   */
+  it('KHÔNG nháy "chưa có khoá nào" trước khi db.progress cục bộ trả lời xong', async () => {
+    stub(EMPTY_STATS);
 
     renderProgress();
-
-    expect(await screen.findByText(/Chưa có phút học nào được ghi lại/)).toBeInTheDocument();
     expect(screen.queryByText(/Chưa có khoá học nào để đo/)).not.toBeInTheDocument();
+
+    expect(await screen.findByText(/Chưa có khoá học nào để đo/)).toBeInTheDocument();
   }, OVERSUBSCRIBED_MS);
 });

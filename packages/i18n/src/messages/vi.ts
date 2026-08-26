@@ -368,6 +368,19 @@ export const vi = {
   'home.notes.formula': 'công thức',
   'home.notes.aria': (course: string) => `Mở ghi chú này trong ${course}`,
 
+  /**
+   * Trạng thái rỗng của Bảng điều khiển, sau khi luồng import chết.
+   *
+   * Bản trước dùng `<EmptyLibrary>` (`pages/Library.tsx`) — ba cách NHẬP một
+   * gói. Nay không ai nhập gì nữa: mọi khoá học đã ở sẵn trên máy chủ, công
+   * khai, đọc được ngay. Ruling S1-F17 ("trang chủ rỗng vẫn phải là một HÀNH
+   * ĐỘNG") vẫn đúng nguyên vẹn — chỉ có hành động ấy đổi từ "nhập một gói"
+   * thành "mở danh mục".
+   */
+  'home.empty.heading': 'Bạn chưa bắt đầu khoá nào',
+  'home.empty.lede': 'Mọi khoá học đều đọc được ngay — không cần nhập gói, không cần chờ tải về.',
+  'home.empty.cta': 'Xem danh mục khoá học',
+
   /* ── tiến độ (`pages/Progress.tsx`) ─────────────────────────────────────── */
 
   'progress.lede': 'Số liệu học tập của bạn, kể thành câu.',
@@ -460,19 +473,27 @@ export const vi = {
 
   /* ── màn Khoá học (`pages/Courses.tsx`) ────────────────────────────────
    *
-   * MỘT nơi chốn, hai tab và một nút — thay cho ba mục thanh bên. Đặc tả:
-   * `docs/superpowers/specs/2026-08-23-ia-redesign.md`. `library.title` và
-   * `library.lede` cũ đã bị XOÁ chứ không để lại: phần đầu trang nay thuộc về
-   * `Courses.tsx`, và hai khoá mô tả một cái đầu trang không còn ai vẽ là thứ
-   * lần sau có người dịch lại mà không biết nó chết rồi.
+   * MỘT danh mục công khai, không tab, không nút nhập — spec
+   * `2026-08-25-server-side-pivot.md` §1, §2.4. Bản trước (hai tab, một nút
+   * "Nhập gói", `courses.tabs.aria`/`courses.tab.*`/`courses.import.*`) đi
+   * cùng luồng import của người đọc, nay đã chết; những khoá ấy ĐÃ BỊ XOÁ chứ
+   * không để lại — một khoá mô tả một điều khiển không còn ai vẽ là thứ lần
+   * sau có người dịch lại mà không biết nó chết rồi (task-13 report ghi rõ).
+   * `courses.lede` đổi CÂU, không đổi TÊN KHOÁ: nó vẫn là câu dẫn của đúng
+   * trang này, chỉ là trang ấy không còn "của bạn" lẫn "hai tab" để nói tới.
    */
   'courses.title': 'Khoá học',
-  'courses.lede': 'Khoá học của bạn và kho cộng đồng — một nơi, hai tab.',
-  'courses.tabs.aria': 'Hai kho khoá học',
-  'courses.tab.yours': 'Của bạn',
-  'courses.tab.registry': 'Kho cộng đồng',
+  'courses.lede': 'Mọi khoá học, công khai — đọc miễn phí, không cần tài khoản.',
+  'courses.loading': 'Đang tải danh mục…',
+  'courses.empty': 'Chưa có khoá học nào được xuất bản.',
+  'courses.list.aria': 'Danh mục khoá học',
+  /**
+   * `pages/Library.tsx`'s `EmptyLibrary` là nơi DUY NHẤT còn dùng khoá này —
+   * `pages/Dashboard.tsx` đã tự viết lời mời riêng của nó (xem `home.empty.*`
+   * bên dưới) vì thư viện không còn là khái niệm của trang chủ. Khoá này rời
+   * đi cùng `pages/Library.tsx` ở một commit sau, không phải ở đây.
+   */
   'courses.import.action': 'Nhập gói',
-  'courses.import.close': 'Đóng',
   'library.loading': 'Đang tải thư viện…',
   'library.empty.headingOffline': 'Chưa có khóa học nào trên thiết bị này',
   'library.empty.heading': 'Thư viện của bạn đang trống',
