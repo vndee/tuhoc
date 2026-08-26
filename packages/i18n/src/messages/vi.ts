@@ -1034,6 +1034,57 @@ export const vi = {
    */
   'courseKit.vizMissing': (name: string) => `[mô phỏng "${name}" chưa sẵn sàng]`,
   'courseKit.vizFailed': 'Không dựng được mô phỏng này trong trình duyệt hiện tại.',
+
+  /* ══════════════════════════════════════════════════════════════════════ *
+   * QUẢN TRỊ — `/admin` (Task 15, `admin/AdminGuard.tsx`,
+   * `admin/AdminCourses.tsx`, `admin/adminApi.ts`)
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  'admin.title': 'Quản trị khoá học',
+  'admin.lede': 'Phát hành, gỡ, hoặc lùi phiên bản một khoá học — đi cùng bộ kiểm định mà `tuhoc pack` dùng ở dòng lệnh.',
+  'admin.loading': 'Đang tải danh sách…',
+  'admin.empty': 'Chưa có khoá học nào được phát hành.',
+
+  'admin.table.slug': 'Slug',
+  'admin.table.title': 'Tên khoá học',
+  'admin.table.version': 'Phiên bản',
+  'admin.table.publishedAt': 'Phát hành lúc',
+  'admin.table.actions': 'Hành động',
+
+  'admin.upload.heading': 'Phát hành gói mới',
+  'admin.upload.fileLabel': 'Gói .zip',
+  'admin.upload.slugLabel': 'Slug',
+  'admin.upload.submit': 'Phát hành',
+  'admin.upload.submitting': 'Đang phát hành…',
+  'admin.upload.success': (slug: string, version: number) => `Đã phát hành ${slug}, phiên bản ${version}.`,
+
+  /**
+   * BẢNG FINDINGS — đúng tinh thần "in mọi vấn đề một lần" của `tuhoc pack`
+   * ở dòng lệnh: một lần 400 mang MỌI phát hiện, và màn này vẽ hết, không
+   * chỉ cái đầu tiên.
+   */
+  'admin.findings.heading': (count: number) => (count === 1 ? '1 vấn đề' : `${count} vấn đề`),
+  'admin.findings.code': 'Mã',
+  'admin.findings.path': 'Đường dẫn',
+  'admin.findings.detail': 'Chi tiết',
+
+  'admin.unpublish.button': 'Gỡ',
+  'admin.unpublish.confirmPrompt': (slug: string) => `Chắc chắn muốn gỡ "${slug}"? Khoá học sẽ ngừng đọc được công khai.`,
+  'admin.unpublish.confirmYes': 'Gỡ khoá học này',
+  'admin.unpublish.confirmCancel': 'Thôi',
+
+  'admin.rollback.label': 'Lùi về phiên bản',
+  'admin.rollback.placeholder': 'Chọn một phiên bản…',
+  'admin.rollback.button': 'Lùi phiên bản',
+  'admin.rollback.versionOption': (version: number, current: boolean) => `v${version}${current ? ' (hiện tại)' : ''}`,
+  'admin.rollback.success': (version: number) => `Đã lùi về phiên bản ${version}.`,
+
+  'admin.error.badRequest': 'Yêu cầu không hợp lệ.',
+  'admin.error.notFound': 'Không tìm thấy khoá học này.',
+  'admin.error.serverDown': 'Máy chủ đang gặp sự cố. Vui lòng thử lại sau.',
+  'admin.error.unknown': 'Đã xảy ra lỗi không xác định.',
+  'admin.error.unreachable':
+    'Không thể kết nối tới máy chủ. Có thể bạn đang ngoại tuyến, hoặc máy chủ đang bị cấu hình sai (CORS/DNS).',
 };
 
 /** Hình dạng mà MỌI ngôn ngữ phải phủ đúng. Xem chú thích trên `vi`. */

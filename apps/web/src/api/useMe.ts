@@ -3,11 +3,27 @@ import { useEffect } from 'react';
 import { announceSessionUser } from '../auth/sessionIdentity';
 import { api, ApiError } from './client';
 
-/** Shape returned by GET /me — see apps/api/internal/auth/handler.go's meResponse (id/email/name only, never a password hash). */
+/**
+ * Shape returned by GET /me — see apps/api/internal/auth/handler.go's
+ * meResponse (id/email/name/role only, never a password hash).
+ *
+ * `role` is Task 8/15's addition (`"user"` or `"admin"` on the wire today,
+ * per `meResponse`'s own doc comment) and it is the ONLY thing
+ * `admin/AdminGuard.tsx` trusts to decide who may reach `/admin` — never a
+ * client-side guess. Declared OPTIONAL rather than required on purpose: a
+ * bunch of this file's own tests (and several other suites —
+ * `pages/Settings.test.tsx` in particular) construct a `Me` literal by hand
+ * with no `role` at all, predating Task 15, and a required field would make
+ * every one of them a compile error for a field they have no reason to
+ * care about. Optional also happens to be the SAFE shape for a guard that
+ * must fail closed: `data?.role !== 'admin'` reads `undefined` exactly like
+ * any other non-admin value.
+ */
 export interface Me {
   id: string;
   email: string;
   name: string;
+  role?: string;
 }
 
 /**

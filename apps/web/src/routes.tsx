@@ -1,4 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { AdminCourses } from './admin/AdminCourses';
+import { AdminGuard } from './admin/AdminGuard';
 import { RequireAuth } from './auth/RequireAuth';
 import { CourseHome } from './pages/CourseHome';
 import { Courses } from './pages/Courses';
@@ -144,6 +146,24 @@ export function AppRoutes() {
       <Route path="/library" element={<Navigate to="/courses" replace />} />
       <Route path="/import" element={<Navigate to="/courses?import=1" replace />} />
       <Route path="/catalog" element={<Navigate to="/courses?tab=registry" replace />} />
+
+      {/*
+        Task 15 — `/admin`, the browser face of Task 8's admin write path.
+        `AdminGuard` (not `RequireAuth`): `role !== 'admin'` sends a signed-
+        in but ordinary reader to `/`, not to `/login` — they ARE
+        authenticated, they are simply not allowed here, and `RequireAuth`
+        has no concept of that distinction (it only asks "is anyone signed
+        in"). See `admin/AdminGuard.tsx` for the guard's own three-state
+        contract.
+      */}
+      <Route
+        path="/admin"
+        element={
+          <AdminGuard>
+            <AdminCourses />
+          </AdminGuard>
+        }
+      />
     </Routes>
   );
 }

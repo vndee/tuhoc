@@ -16,6 +16,12 @@
 @import './settings-auth.css';
 @import './reader-layout.css';
 @import './shell-modes.css';
+/* Task 15 — `/admin`. Own file rather than a block inside `app-screens.css`:
+   see `admin.css`'s own header for why (that file carries the user's own
+   unrelated uncommitted work at the time this task landed). Imported in the
+   same group as the other screen stylesheets above, before the shared
+   `app-screens.css` layer that intentionally wins any later conflict. */
+@import './admin.css';
 /* CUỐI CÙNG, và thứ tự ấy là cơ chế: `app-screens.css` là thang chung cho mọi
    màn ngoài chế độ đọc, và nó phải thắng những thang riêng mà sáu tệp trên
    viết trước vòng thiết kế lại. Cùng độ đặc hiệu thì cái sau thắng. */

@@ -749,4 +749,47 @@ export const en: Messages = {
 
   'courseKit.vizMissing': (name: string) => `[simulation "${name}" is not ready]`,
   'courseKit.vizFailed': 'This simulation could not be built in your current browser.',
+
+  /* ── quản trị — /admin ──────────────────────────────────────────────── */
+
+  'admin.title': 'Course administration',
+  'admin.lede': 'Publish, unpublish, or roll back a course — the same validation rules `tuhoc pack` runs on the command line.',
+  'admin.loading': 'Loading the list…',
+  'admin.empty': 'No courses have been published yet.',
+
+  'admin.table.slug': 'Slug',
+  'admin.table.title': 'Title',
+  'admin.table.version': 'Version',
+  'admin.table.publishedAt': 'Published',
+  'admin.table.actions': 'Actions',
+
+  'admin.upload.heading': 'Publish a new package',
+  'admin.upload.fileLabel': '.zip package',
+  'admin.upload.slugLabel': 'Slug',
+  'admin.upload.submit': 'Publish',
+  'admin.upload.submitting': 'Publishing…',
+  'admin.upload.success': (slug: string, version: number) => `Published ${slug}, version ${version}.`,
+
+  'admin.findings.heading': (count: number) => (count === 1 ? '1 problem' : `${count} problems`),
+  'admin.findings.code': 'Code',
+  'admin.findings.path': 'Path',
+  'admin.findings.detail': 'Detail',
+
+  'admin.unpublish.button': 'Unpublish',
+  'admin.unpublish.confirmPrompt': (slug: string) => `Unpublish "${slug}"? It will stop being publicly readable.`,
+  'admin.unpublish.confirmYes': 'Unpublish this course',
+  'admin.unpublish.confirmCancel': 'Cancel',
+
+  'admin.rollback.label': 'Roll back to version',
+  'admin.rollback.placeholder': 'Choose a version…',
+  'admin.rollback.button': 'Roll back',
+  'admin.rollback.versionOption': (version: number, current: boolean) => `v${version}${current ? ' (current)' : ''}`,
+  'admin.rollback.success': (version: number) => `Rolled back to version ${version}.`,
+
+  'admin.error.badRequest': 'Invalid request.',
+  'admin.error.notFound': 'This course could not be found.',
+  'admin.error.serverDown': 'The server is having trouble. Please try again later.',
+  'admin.error.unknown': 'An unknown error occurred.',
+  'admin.error.unreachable':
+    'Could not connect to the server. You may be offline, or the server may be misconfigured (CORS/DNS).',
 };
