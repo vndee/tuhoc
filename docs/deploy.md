@@ -199,6 +199,36 @@ Then edit `CORS_ORIGIN` in `apps/api/fly.toml`'s `[env]` block from the placehol
 
 ---
 
+## 4c. First admin: opening the publish door on a fresh deploy
+
+The admin publish API (`PUT`/`DELETE /admin/courses/{slug}` and friends) has **two doors**, and a fresh deploy ships with both shut — correctly, but with nothing in the product itself that opens either one. There is no UI for this and no migration seed; it is entirely an operator step, done once per environment. Skipping this section is why a freshly deployed API can pass every health check and still have no way to publish a single course.
+
+**The two doors, and what each one is for:**
+
+| Door | Credential | Opens | Set where |
+|---|---|---|---|
+| CLI / scripted publish | `ADMIN_TOKEN` (a shared secret, `Authorization: Bearer <token>`) | Every admin route, with no login session at all — `who = nil`, logged in `admin_audit` as `actor = 'cli'`. What `tuhoc-cli publish` and `scripts/test-e2e.sh`'s seed step use. | Render: Environment tab (`sync: false` in `render.yaml`). Fly: `flyctl secrets set ADMIN_TOKEN=...` — never `fly.toml`'s committed `[env]` block. Local dev: `.env`/shell env. See `.env.example` for the full explanation. |
+| Admin login (`/admin` in the web app) | A real user account with `users.role = 'admin'` | The same admin routes, via a normal signed-in session — `who = <that user's id>`, logged as `actor = 'user'`. What a human clicks through in the browser. | The one SQL statement below. |
+
+`adminTokenMatches` (`apps/api/internal/server/server.go`) treats an unconfigured `ADMIN_TOKEN` as "never matches" rather than comparing against an empty string, so an unset token cannot be defeated by an empty `Authorization` header — the CLI door fails closed, not open, when nobody has chosen a value yet. The admin-login door has no equivalent bootstrap at all: `users.role` defaults to `'user'` on every signup (`0005_published_catalog.up.sql`), so even the very first account created on a fresh deploy is an ordinary reader, not an admin. Both doors are closed by design; getting through either one is the step this section fills in.
+
+**To open the CLI door**: set `ADMIN_TOKEN` on the API host — see the table above and `.env.example`'s own comment on that variable (a real secret, e.g. `openssl rand -hex 32`; never the literal fixture value `apps/api/compose.e2e.yml` uses for its own throwaway e2e stack).
+
+**To open the admin-login door** (needed for the `/admin` screen in the browser, independent of whether `ADMIN_TOKEN` is also set):
+
+1. Register a normal account through the web app's own sign-up screen first (`/register`) — this section grants an *existing* account admin, it does not create one.
+2. Promote it directly in Postgres, against the same database `DATABASE_URL` points at:
+   ```sql
+   UPDATE users SET role = 'admin' WHERE email = 'you@example.com';
+   ```
+   Use the **pooled** connection string for this (any ordinary `psql`/GUI client — this is not a schema change, so it does not need the direct/migrations connection from §2). `role` has a `CHECK (role IN ('user','admin'))` constraint (`0005_published_catalog.up.sql`), so a typo'd value fails loudly rather than silently doing nothing.
+3. No re-login needed: `IsAdmin` (`apps/api/internal/auth/usecase.go`) reads `users.role` fresh from the database on every request through `RequireAdmin` — it is not cached in the session cookie — so the very next request from that account's already-open session sees the new role.
+4. Verify: sign in as that account and open `/admin` in the web app; `GET /me`'s `role` field should read `"admin"`.
+
+Neither door is a substitute for the other, and either alone is sufficient to publish — a deploy that only ever uses `tuhoc-cli publish` from a trusted machine can skip step 2 entirely and never create an admin-login account at all.
+
+---
+
 ## 5. Deploy the web app (Cloudflare Pages)
 
 Pick names before you start if you're following the custom-domain path from §0 — you'll want `CORS_ORIGIN` (API) and `VITE_API_URL` (web) set correctly on **first** deploy rather than chasing a chicken-and-egg update afterward. If you're on default hostnames instead, both Pages (`<project-name>.pages.dev`) and Render (`<service-name>.onrender.com`)/Fly (`<app-name>.fly.dev`) URLs are deterministic from the project/service/app name you pick — so you still don't need to deploy one before naming the other.
@@ -388,6 +418,7 @@ Both builds exited 0 — the failure mode isn't a build error, it's a container 
 | Variable | Secret? | Lives where | Notes |
 |---|---|---|---|
 | `DATABASE_URL` | **Yes** | Render: Environment tab (`sync: false` in `render.yaml`, prompted at Blueprint creation). Fly: `flyctl secrets set DATABASE_URL=...` (never in `fly.toml`'s `[env]`, which is committed). | Use the **pooled** Neon string here — see §2. |
+| `ADMIN_TOKEN` | **Yes** | Render: Environment tab (`sync: false` in `render.yaml`). Fly: `flyctl secrets set ADMIN_TOKEN=...` (never in `fly.toml`'s `[env]`). | Opens the CLI-publish door — see §4c for both doors and why unset fails closed rather than open. |
 | `CORS_ORIGIN` | No, but environment-specific | `render.yaml` `[env]` / `fly.toml` `[env]` — both ship with an obvious `REPLACE-WITH-PAGES-ORIGIN` placeholder | Not a credential, but must be your *exact* production origin, not the placeholder, or CORS silently rejects the web app. |
 | `PORT` | No | `render.yaml` / `fly.toml` `[env]` | Fixed at `8080`, matches the Dockerfile's `EXPOSE`. |
 | `COOKIE_SECURE` | No | `render.yaml` / `fly.toml` `[env]` | Ships as `"true"` already — production is always https on both sides. |
