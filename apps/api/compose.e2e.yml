@@ -71,5 +71,15 @@ services:
       # run. Never set this to false for a real deployment — see
       # docs/deploy.md.
       COOKIE_SECURE: 'false'
+      # Task 16: gates PUT/DELETE /admin/courses/{slug} (internal/config's
+      # AdminToken — see config.go). Without it the admin publish path is
+      # switched off entirely, and scripts/test-e2e.sh's seed step (the
+      # `curl -X PUT .../admin/courses/mau-hop-le` that puts a course in
+      # front of the widget.spec.ts/p1.spec.ts suites) would 401 against a
+      # fresh stack that never chose a token. A fixed literal, not a
+      # generated secret: this stack is thrown away by `down -v` at the end
+      # of every run (see this file's own header), so there is nothing here
+      # worth rotating — only test-e2e.sh needs to know it, and it does.
+      ADMIN_TOKEN: 'e2e-admin-token'
     ports:
       - '${TUHOC_E2E_API_PORT:-8089}:8080'

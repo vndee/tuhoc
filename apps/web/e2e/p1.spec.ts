@@ -4,48 +4,63 @@ import {
   PASSWORD,
   REAL_COURSE_ID,
   courseHomeChapterLink,
-  expectVizCanvasDrawn,
   freshEmail,
   isBenignAuthCheck401,
   loginExistingUser,
   registerNewUser,
 } from './helpers';
 
-/** Chương dùng ở cả bốn tệp e2e: nó có mô phỏng VÀ có đoạn văn xuôi thuần. */
-const CHAPTER_ID = 'p2-2';
-/** Mô phỏng của p2-2. Nó dựng HAI `Plot` trong một host — xem expectVizCanvasDrawn. */
-const CHAPTER_VIZ = 'sum-drift';
+/** Chương của `mau-hop-le` có cả công thức KaTeX VÀ widget — xem chú thích ở đầu describe block bên dưới. */
+const CHAPTER_ID = 'c2';
+/** `data-widget` mà chương c2 tham chiếu — bộ đếm mẫu widget.spec.ts cũng lái. */
+const CHAPTER_WIDGET = 'dem-so';
+
+/** Nơi API THẬT lắng nghe — cùng phép tính với `playwright.config.ts`, `s2/s3/s4.spec.ts`. */
+const API_ORIGIN = (
+  process.env.VITE_API_URL ?? `http://localhost:${process.env.TUHOC_E2E_API_PORT ?? '8089'}`
+).replace(/\/+$/, '');
 
 /**
- * Task 17 — the P1 end-to-end gate. This is the only test in this repo
- * that ever exercises the real stack together: real Postgres (via
+ * Task 17 (original) / Task 16 of the server-side pivot (this revision) —
+ * the P1 end-to-end gate. This is the only test in this file that ever
+ * exercises the real stack together: real Postgres (via
  * apps/api/compose.e2e.yml, brought up by scripts/test-e2e.sh before this
- * suite runs), the real Go API, the real Vite dev server, the real
- * course-kit runtime (KaTeX + the viz engine), and two genuinely separate
- * browser profiles standing in for two devices. Every other test in this
- * codebase mocks at least one of those boundaries; this one is the proof
- * that the seams actually line up.
+ * suite runs), the real Go API, the real PRODUCTION web bundle (`vite build`
+ * + `vite preview` — see playwright.config.ts), the real course-kit runtime
+ * (KaTeX), and two genuinely separate browser profiles standing in for two
+ * devices. Every other test in this codebase mocks at least one of those
+ * boundaries; this one is the proof that the seams actually line up.
  *
- * The phase's definition of done, verbatim from the task brief, is what
- * this test is FOR — not "does `make test-e2e` exit 0":
+ * The phase's definition of done, verbatim from the original task brief, is
+ * what this test is FOR — not "does `make test-e2e` exit 0":
  *
  *   A learner signs in, reads a chapter with its mathematics and
  *   interactive visualizations intact, marks it read on one device, and
  *   sees that progress on a second device. The reading experience is not
  *   worse than the original single-file textbook.
  *
- * Chapter/selector choice. Task 17 named one chapter of the private textbook,
- * and the `[data-viz]` simulation inside it, as the contractual selectors
- * earlier tasks were told to preserve. Task 13 moved the
- * ngữ liệu to the public sample package `so-dau-phay-dong`, and picked its
- * replacement by the same criterion rather than by convenience: p2-2 ("Cộng
- * một triệu số") is the chapter that has BOTH an interactive simulation and
- * substantial plain-prose paragraphs, which is what makes one chapter serve
- * this file, `p2.spec.ts` and `import.spec.ts` at once. Verified against the
- * packed course before writing this: `chapters/p2-2.html` contains exactly
- * `data-viz="sum-drift"`, and `manifest.json` lists p2-2 under
- * "Phần II · Sai số dồn" — so this test is exercising a real chapter of a real
- * package, not a fixture built to make the test pass.
+ * "Interactive visualizations" now reads as "widgets" — format v2 (this
+ * phase) retired the course-wide `viz.js`/`data-viz` mechanism (Task 11
+ * removed `initViz`/`REDRAWS` from `ChapterView.tsx` entirely) in favor of
+ * one-file widgets sandboxed in `<iframe sandbox="allow-scripts">`. The
+ * definition of done did not change; what satisfies "interactive" did.
+ *
+ * Chapter/selector choice. The original test named one chapter of the
+ * private textbook, and the `[data-viz]` simulation inside it, as the
+ * contractual selectors earlier tasks were told to preserve. Task 13 moved
+ * the ngữ liệu to the public sample package `so-dau-phay-dong`
+ * (`p2-2`/`sum-drift`) — but that package is format v1 (`tier: interactive`)
+ * and can no longer be PUBLISHED at all under v2's rules (`TIER_REMOVED`),
+ * so it stopped being reachable through the real server this test now reads
+ * from (`GET /courses/so-dau-phay-dong` 404s — confirmed by actually running
+ * this suite before this revision, see task-16-report.md). This revision
+ * picks `mau-hop-le`'s chapter `c2` ("Bộ đếm phản ứng với một sự kiện") by
+ * the SAME criterion, restated for v2: it is the chapter that has BOTH a
+ * widget (`data-widget="dem-so"`, the exact counter `widget.spec.ts` also
+ * drives) and substantial KaTeX math ($n$ appears throughout), and it is a
+ * REAL package — the shared TS/Go fixture corpus's own zero-finding case
+ * (ruling D5) — seeded onto the real server by `scripts/test-e2e.sh`, not a
+ * fixture built to make this test pass.
  */
 
 test.describe('P1 definition-of-done gate', () => {
@@ -79,8 +94,20 @@ test.describe('P1 definition-of-done gate', () => {
     expect(runtime.status(), 'GET /course-kit/runtime.js').toBe(200);
     expect(await runtime.text()).toContain('window.CourseKit');
 
-    const manifest = await request.get(`/courses/${REAL_COURSE_ID}/manifest.json`);
-    expect(manifest.status(), `GET /courses/${REAL_COURSE_ID}/manifest.json`).toBe(200);
+    // Task 16: this used to check `/courses/${REAL_COURSE_ID}/manifest.json`
+    // at the WEB origin — the courseAssets plugin's static copy of whatever
+    // `make courses` had unpacked locally. That mechanism is retired for
+    // real course content (Task 9-13: the server is the only source, spec
+    // §2.4), and `test-e2e` no longer runs `make courses` at all (see the
+    // Makefile's own comment on `test-e2e`'s dropped `courses`
+    // prerequisite) — a course now exists only because
+    // `scripts/test-e2e.sh` published it to the real API. So the check that
+    // actually matters is that the BUILT bundle correctly reaches that API:
+    // `VITE_API_URL` (playwright.config.ts's `webServer.env`) is baked in at
+    // build time, and this asks the API directly, the same way the reader
+    // running inside the built page does.
+    const manifest = await request.get(`${API_ORIGIN}/courses/${REAL_COURSE_ID}`);
+    expect(manifest.status(), `GET ${API_ORIGIN}/courses/${REAL_COURSE_ID}`).toBe(200);
     expect((await manifest.json()).id).toBe(REAL_COURSE_ID);
 
     // SPA fallback: a deep link must return the app document, not a 404.
@@ -118,7 +145,7 @@ test.describe('P1 definition-of-done gate', () => {
     const email = freshEmail();
 
     // ---------------------------------------------------------------
-    // Device 1: register, open the chapter, verify math + viz are real.
+    // Device 1: register, open the chapter, verify math + widget are real.
     // ---------------------------------------------------------------
     const deviceA = await browser.newContext();
     const p1 = await deviceA.newPage();
@@ -129,12 +156,17 @@ test.describe('P1 definition-of-done gate', () => {
 
     await p1.goto(`/c/${REAL_COURSE_ID}/${CHAPTER_ID}`);
     await expect(p1.locator('.katex').first()).toBeVisible();
-    // 0.02 explicitly, not the sweep's general MIN_PAINTED_RATIO floor:
-    // `sum-drift` draws axes plus a filled area under the running-error curve
-    // on BOTH of its plots, so this gate can afford to be far stricter than a
-    // threshold that has to hold for every viz in the package. Measured in the
-    // task-13 sweep before being pinned here — see the report.
-    await expectVizCanvasDrawn(p1, CHAPTER_VIZ, 0.02);
+    // The chapter's widget, actually running — not just present in the DOM.
+    // `widget.spec.ts` is the dedicated gate for the SECURITY boundary this
+    // rests on (sandbox equality, opaque origin, no cookie reach); this
+    // assertion's job is narrower and different: prove that "interactive
+    // parts intact" — the DoD's own words, see this file's header comment —
+    // still holds for a signed-in reader on the real built artifact, the
+    // same way the KaTeX check above does for the math half.
+    const widgetCounter = p1.frameLocator(`iframe.widget-frame[title="${CHAPTER_WIDGET}"]`).locator('#b');
+    await expect(widgetCounter).toHaveText('0');
+    await widgetCounter.click();
+    await expect(widgetCounter).toHaveText('1');
 
     // ---------------------------------------------------------------
     // Judgment 3 — what a "second device" must not share. `browser.
@@ -142,23 +174,35 @@ test.describe('P1 definition-of-done gate', () => {
     // and IndexedDB origin-partition — NOT a second tab/page in the same
     // context, which would share all three via Dexie's `tuhoc` database
     // and the browser's own per-context cookie store. This is verified
-    // here, not just assumed from the API: `deviceB` visits the course
-    // route BEFORE ever logging in and must bounce to /login exactly like
-    // a brand-new browser would (proves no shared session cookie), and
-    // then — signed in with the SAME real account, but before device 1
-    // has marked anything read — must show nothing as done (proves no
-    // shared local IndexedDB/localStorage state). Doing this check before
-    // device 1 marks the chapter read is what makes it meaningful: after
-    // marking, "device 2 shows nothing done" would be genuinely ambiguous
-    // between "isolated, correctly" and "sync just hasn't run yet."
-    // Checking it here, when there is truly nothing to sync yet, removes
-    // that ambiguity.
+    // here, not just assumed from the API.
+    //
+    // Task 16: the ORIGINAL proof of "no shared session cookie" sent
+    // `deviceB` to the COURSE route before ever logging in and expected a
+    // bounce to `/login` — that was true before Task 12 (spec §2.4) made
+    // `/c/:courseId` public. It no longer bounces anybody, logged in or
+    // not, which is the whole point of that route now — so a redirect
+    // there would prove the OPPOSITE of a regression. `/progress` is still
+    // wrapped in `<RequireAuth>` (routes.tsx: it shows a specific reader's
+    // own numbers, not a course's public content) and serves exactly the
+    // same purpose the course route used to: a page `deviceB` can only
+    // reach by carrying device A's session cookie, which a fresh context
+    // never does.
+    //
+    // The second half is unchanged: signed in with the SAME real account,
+    // but before device 1 has marked anything read, `deviceB` must show
+    // nothing as done on the (public) course route — proving no shared
+    // local IndexedDB/localStorage state. Doing this check before device 1
+    // marks the chapter read is what makes it meaningful: after marking,
+    // "device 2 shows nothing done" would be genuinely ambiguous between
+    // "isolated, correctly" and "sync just hasn't run yet." Checking it
+    // here, when there is truly nothing to sync yet, removes that
+    // ambiguity.
     // ---------------------------------------------------------------
     const deviceB = await browser.newContext();
     const p2 = await deviceB.newPage();
     watch(p2, 'device2');
 
-    await p2.goto(`/c/${REAL_COURSE_ID}`);
+    await p2.goto('/progress');
     await expect(p2).toHaveURL(/\/login/);
 
     await loginExistingUser(p2, email, PASSWORD);
@@ -272,12 +316,21 @@ test.describe('§5 — mục lục: ngăn kéo ở màn hẹp, cột cố địn
     return box === null || box.x + box.width <= 0;
   }
 
-  /** Đăng ký, rồi đứng TRONG khoá công khai `REAL_COURSE_ID` — nơi duy nhất còn thanh bên. */
+  /**
+   * Đứng TRONG khoá công khai `REAL_COURSE_ID` — nơi duy nhất còn thanh bên.
+   *
+   * Task 16 — KHÔNG đăng ký/đăng nhập nữa, có chủ ý: `/c/:courseId` công khai
+   * từ Task 12 (spec §2.4, `routes.tsx` không còn bọc nó trong
+   * `<RequireAuth>`), và mục lục khoá học (`Sidebar`/`CourseNav`) không đọc
+   * gì từ phiên — nó chỉ vẽ cây chương của manifest. Bản trước của hàm này đi
+   * qua `/login` chỉ vì đó là thói quen thừa kế từ trước khi đọc công khai
+   * tồn tại (xem chú thích của khối describe này); bỏ bước ấy không đổi việc
+   * hai bài dưới đây kiểm, và tự nó là một khẳng định: đọc mục lục không cần
+   * tài khoản.
+   */
   async function enterCourse(page: Page): Promise<void> {
-    await page.goto('/login');
-    await registerNewUser(page, freshEmail(), PASSWORD);
-
     await page.goto(`/c/${REAL_COURSE_ID}`);
+    await expect(page).not.toHaveURL(/\/login/);
     await expect(page.locator('#sidebar')).toBeVisible();
   }
 

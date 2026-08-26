@@ -3,13 +3,16 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * Shared fixtures for the two Playwright suites in this directory:
- * `p1.spec.ts` (the fast definition-of-done gate) and `viz.spec.ts` (the
- * slow, exhaustive visualization sweep). Extracted rather than copied:
- * `isBenignAuthCheck401` in particular is a deliberately NARROW filter
- * whose exact scope was established by a one-off debug run (see its own
- * doc comment) — two hand-maintained copies of a rule like that drift, and
- * the drift shows up as a suite that stops failing when it should.
+ * Shared fixtures for the Playwright suites in this directory —
+ * `p1.spec.ts` (the fast definition-of-done gate), `p2.spec.ts` (the
+ * annotation phase's own gate) and `s2.spec.ts`. (`viz.spec.ts`, once a
+ * third consumer, was deleted by Task 11 of the server-side pivot alongside
+ * course-wide `viz.js` — see the Makefile's `test-e2e` comment.) Extracted
+ * rather than copied: `isBenignAuthCheck401` in particular is a deliberately
+ * NARROW filter whose exact scope was established by a one-off debug run
+ * (see its own doc comment) — two hand-maintained copies of a rule like that
+ * drift, and the drift shows up as a suite that stops failing when it
+ * should.
  *
  * Not itself a spec file: Playwright's default `testMatch` only picks up
  * `*.spec.ts`/`*.test.ts`, and vitest excludes `./e2e/**` wholesale (see
@@ -17,11 +20,26 @@ import { fileURLToPath } from 'node:url';
  */
 
 export const PASSWORD = 'secret123';
-/** fixtures/courses/so-dau-phay-dong/manifest.json's `title` — also the `<nav aria-label>` CourseHome renders it into (see courseHomeChapterLink below). */
-export const COURSE_TITLE = 'Số dấu phẩy động';
+/**
+ * `fixtures/format-v2/valid-course/manifest.json`'s `title` — also the
+ * `<nav aria-label>` CourseHome renders it into (see courseHomeChapterLink
+ * below).
+ *
+ * Task 16: was `so-dau-phay-dong`/`'Số dấu phẩy động'`, a format-v1 package
+ * (`tier: interactive`, course-wide `viz.js`) that `make courses` unpacked
+ * into a local `courses/` directory the built web app served statically.
+ * Both halves of that are gone — format v2 abolished `tier` (Task 1) and
+ * course content now comes from the server, not a static directory (Task
+ * 9-13) — and a v1 package could not even be PUBLISHED under v2's rules
+ * (`TIER_REMOVED`) if something tried. `mau-hop-le` is the shared TS/Go
+ * fixture corpus's own zero-finding v2 package (ruling D5); this suite's
+ * `scripts/test-e2e.sh` seed step is what puts it on the real server before
+ * any of these tests run.
+ */
+export const COURSE_TITLE = 'Biến đếm: từ vòng lặp đến sự kiện';
 
-/** `manifest.id` của gói mẫu — cũng là tên thư mục `make courses` bung ra. */
-export const REAL_COURSE_ID = 'so-dau-phay-dong';
+/** `manifest.id` của gói mẫu — cũng là slug được publish lên server bởi bước seed trong `scripts/test-e2e.sh` (xem chú thích của COURSE_TITLE). */
+export const REAL_COURSE_ID = 'mau-hop-le';
 
 /** apps/web/e2e/ → gốc repo là ba tầng lên. Xuất ra vì `s2`/`s3`/`s4.spec.ts` cũng đọc theo đường dẫn tuyệt đối từ gốc repo, và hai bản sao của phép tính này thì trôi. */
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -229,171 +247,6 @@ export async function loginExistingUser(page: Page, email: string, password: str
  */
 export function courseHomeChapterLink(page: Page, courseTitle: string, chapterId: string): Locator {
   return page.getByRole('navigation', { name: courseTitle }).locator(`[data-ch="${chapterId}"]`);
-}
-
-/**
- * Judgment 1 — "what does 'the visualization works' mean in a test?"
- *
- * A `<canvas>` existing in the DOM proves almost nothing: `initViz`
- * (packages/course-kit/runtime.js) creates the `<canvas>` element
- * unconditionally as part of `new Plot(...)`, BEFORE the viz function's
- * own `render()` ever runs — a `[data-viz] canvas` selector matching is
- * exactly as true whether or not a single pixel was ever painted onto it.
- *
- * What this asserts instead: that a *meaningful fraction* of the canvas's
- * own pixel buffer is non-transparent. `Plot.resize()` always calls
- * `this.render()` once, on construction, via `requestAnimationFrame`, and
- * `sum-drift`'s own `render()` (courses/so-dau-phay-dong/viz.js) always
- * draws axes/gridlines via `Plot.axes()` plus a filled area under the
- * running-error curve via `Plot.area()`, with zero user interaction
- * required. So:
- *
- *   - if KaTeX/runtime.js/viz.js failed to load, or `initViz` threw
- *     (caught in runtime.js's own try/catch, which replaces the node's
- *     innerHTML with an error message), the `canvas` locator itself would
- *     never resolve — a DIFFERENT, earlier failure than this check.
- *   - if the canvas exists but `render()` never actually ran (a broken
- *     `ResizeObserver`/`requestAnimationFrame` path, a JS exception
- *     inside `render()` itself that isn't caught anywhere) the canvas
- *     stays exactly as `clearRect` (or the browser's own default) leaves
- *     it: fully transparent, alpha 0 at every pixel. THIS is what the
- *     ratio check below actually catches, and a DOM-presence-only check
- *     would not.
- *   - what this does NOT catch: whether the drawing is *correct* (right
- *     numbers, right colors, right axis labels) — only that the runtime
- *     executed and produced real pixel output. Pixel-perfect correctness
- *     is a job for a visual-regression tool, not a fast e2e gate; reading
- *     `getImageData` here is the cheap, dependency-free middle ground
- *     between "element exists" (proves nothing) and a full screenshot
- *     diff (expensive, brittle across renderers/fonts).
- *
- * `expect.poll` rather than a single read: `render()`'s first call is
- * scheduled via `requestAnimationFrame` inside `Plot`'s constructor, not
- * synchronous with `initViz` returning — a single evaluate() immediately
- * after the canvas becomes visible could legitimately race that one
- * frame. Polling (bounded at 10s, far more than one frame ever needs) is
- * the fix; a longer FIXED wait here would be the same anti-pattern the
- * task brief warns about for the cross-device sync wait below, just on a
- * smaller scale.
- */
-/**
- * The general "this canvas was painted at all" floor, used by the sweep over
- * every registered viz.
- *
- * Chosen from measurement, not taste. On the private textbook (task 17) a
- * one-off diagnostic read `getImageData` for all 70 canvases its 58
- * chapter-referenced visualizations created: the LOWEST real render was
- * `huffman` at 0.0170 (a sparse tree diagram — thin edges and small labels on
- * a 736x300 canvas), the next lowest `kle` at 0.0329, the highest
- * `eval-curves` at 0.594.
- *
- * Task 13 swapped the ngữ liệu to the public sample package
- * `so-dau-phay-dong`, whose 8 canvas-drawing viz build 10 canvases. Its own
- * sweep is recorded in the task-13 report; the floor is kept at the SAME
- * number rather than re-derived downward, because the number is not a claim
- * about how much any viz ought to draw — it is a floor against the actual
- * failure mode. `clearRect` leaves alpha 0 at EVERY pixel, so a viz whose
- * `render()` never ran scores exactly 0, and 0.005 is ~1100 px above nothing
- * on a 736x300 canvas.
- *
- * Deliberately NOT the stricter number `p1.spec.ts` passes for its own one
- * viz: that is a property of that viz specifically, which is why the call
- * site keeps passing it explicitly rather than being relaxed to this floor.
- * Applying one viz's shape as a universal threshold is what made `huffman` —
- * a working visualization — fail the sweep's first run.
- */
-export const MIN_PAINTED_RATIO = 0.005;
-
-export async function expectVizCanvasDrawn(page: Page, dataViz: string, minPaintedRatio = MIN_PAINTED_RATIO): Promise<void> {
-  const canvases: Locator = page.locator(`[data-viz="${dataViz}"] canvas`);
-  await expect(canvases.first()).toBeVisible();
-
-  // EVERY canvas, not the first. On the private textbook, 16 of its 59
-  // visualizations built two or three `Plot`s in one host; the sample package
-  // that replaced it keeps that shape deliberately — `bit-lab` and `sum-drift`
-  // each build two — because asserting only `.first()` would leave a second,
-  // blank plot invisible to this check, and a package where no host holds two
-  // plots stops exercising this loop at all. Passing the multi-match locator
-  // straight to `toBeVisible` would instead be a Playwright strict-mode
-  // violation, which is how this surfaced.
-  const total = await canvases.count();
-  for (let i = 0; i < total; i += 1) {
-    const canvas = canvases.nth(i);
-    await expect(canvas).toBeVisible();
-
-    const readNonBlankRatio = () =>
-      canvas.evaluate((el) => {
-        const c = el as HTMLCanvasElement;
-        const { width, height } = c;
-        if (width === 0 || height === 0) return 0;
-        const ctx = c.getContext('2d');
-        if (!ctx) return 0;
-        const { data } = ctx.getImageData(0, 0, width, height);
-        let nonBlank = 0;
-        for (let j = 3; j < data.length; j += 4) {
-          if (data[j] !== 0) nonBlank += 1;
-        }
-        return nonBlank / (width * height);
-      });
-
-    await expect
-      .poll(readNonBlankRatio, {
-        timeout: 10_000,
-        message: `[data-viz="${dataViz}"] canvas ${i + 1}/${total} painted less than ${minPaintedRatio * 100}% of its pixels — the viz runtime likely failed silently (a canvas whose render() never ran scores exactly 0)`,
-      })
-      .toBeGreaterThan(minPaintedRatio);
-  }
-}
-
-/** The message `runtime.js`'s `initViz` puts in a node when the viz function THREW — the friendly in-page degradation that makes a broken viz invisible unless something looks for it. */
-export const VIZ_THREW_TEXT = 'Không dựng được mô phỏng này';
-/** The message `initViz` puts in a node whose `data-viz` name is not registered in viz.js at all. */
-export const VIZ_UNREGISTERED_TEXT = 'chưa sẵn sàng';
-
-/**
- * "This visualization actually ran" — the assertion the spec's §10 exit
- * gate needs, for EVERY registered viz, not just the canvas-drawing ones.
- *
- * Three things are checked, and the third has two shapes:
- *
- *  1. `initViz` reached the node at all (`data-done="1"`, which it sets
- *     immediately before invoking the viz function).
- *  2. The node does not carry either of `initViz`'s two failure texts.
- *     This is the check that matters most: a viz whose implicit dependency
- *     went missing during the extraction from the v1 shell throws, is
- *     CAUGHT by initViz, and is replaced with a polite Vietnamese message
- *     — no exception escapes, and the page looks fine to a passing glance.
- *  3. It produced real output:
- *       - canvas-based viz (8 of the sample package's 9) → every canvas
- *         painted pixels, via expectVizCanvasDrawn at the measured
- *         MIN_PAINTED_RATIO floor.
- *       - `nextafter-walk` builds no canvas at all: it is a DOM widget
- *         (a readout plus a segmented control and two buttons). For it,
- *         "it ran" means it built its interactive controls. This branch is
- *         narrower than the canvas one and says so — it is chosen by what
- *         the viz IS, not to make a failing case pass. The private textbook
- *         had two such viz (`twenty-q`, `grouping`) and the sample package
- *         keeps one on purpose, so this branch still has something to run.
- */
-export async function expectVizRendered(page: Page, dataViz: string): Promise<void> {
-  const node = page.locator(`[data-viz="${dataViz}"]`);
-  await expect(node, `[data-viz="${dataViz}"] is not on the page`).toBeVisible();
-  await expect(node, `[data-viz="${dataViz}"]: initViz never initialized this node`).toHaveAttribute('data-done', '1');
-
-  const text = (await node.innerText()).trim();
-  expect(text, `[data-viz="${dataViz}"]: initViz caught an exception from this viz and replaced it with its fallback message — a genuinely broken visualization, degrading quietly`).not.toContain(VIZ_THREW_TEXT);
-  expect(text, `[data-viz="${dataViz}"]: this name is not registered in viz.js`).not.toContain(VIZ_UNREGISTERED_TEXT);
-
-  if ((await node.locator('canvas').count()) > 0) {
-    await expectVizCanvasDrawn(page, dataViz);
-    return;
-  }
-
-  const controls = await node.locator('input, button').count();
-  expect(
-    controls,
-    `[data-viz="${dataViz}"]: no canvas and no interactive controls — it produced nothing`,
-  ).toBeGreaterThan(0);
 }
 
 /**

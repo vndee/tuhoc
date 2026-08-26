@@ -5,22 +5,44 @@ import { useLanguage } from '../i18n/LanguageProvider';
 /**
  * One course's rating: what everybody thinks, and what this reader said.
  *
- * ## Where this may be mounted, and why that is a privacy rule
+ * ## Not mounted anywhere right now — read before you re-mount it
  *
- * **Only on a screen where every row came from the registry's `index.json`.**
- * Today that is exactly one screen, `registry/Catalog.tsx`, and
- * `registry/ratingFence.test.tsx` holds the list to it in both directions —
- * a file that starts drawing stars without being in the ledger goes red, and
- * so does a ledger entry that stopped drawing them.
+ * The server-side pivot's Task 13 deleted `registry/Catalog.tsx`, the only
+ * screen that ever rendered this component, and `registry/ratingFence.test.tsx`
+ * with it. Nothing in the app currently imports `Rating`. It was left in
+ * place on purpose, not deleted as dead code: its backend (`PUT`/`GET
+ * /ratings`) is live and unchanged, and this is UI waiting for a future task
+ * to give it a home, not a component this platform is done with.
  *
- * The rule is not a styling preference. Ratings exist to compare courses
- * *between* readers, which a private course or one imported from a file has
- * nothing to be compared against — and more sharply: `apps/api` cannot tell
- * a registry id from a private one (it never reads the registry, and
- * `TestAPIProductCodeMakesNoOutboundCall` is why it never can). Its barrier
- * is therefore *"no route enumerates"*, and that only holds while clients
- * ask about ids they already had from the public index. The component that
- * could break it is this one.
+ * ## The mounting rule this component USED to lean on, and why it is now MOOT
+ *
+ * Verbatim, for the record, what this header said before Task 16 of the
+ * server-side pivot: *only mount on a screen where every row came from the
+ * registry's `index.json`*. The reasoning was that `apps/api` could not tell
+ * a registry id from a private one — it never read the registry — so its
+ * only barrier against leaking one reader's private/imported course id to
+ * another was *"no route enumerates,"* which held only as long as every
+ * client asked about ids it already had from the public index. `Rating` was
+ * the one component that could have broken that barrier, by asking the API
+ * about an id nobody was supposed to have a reason to guess.
+ *
+ * **There is no "private id" left for that rule to be about.** Course
+ * import, the per-reader library, and the public/private registry split it
+ * all rested on are gone (Task 9/13); every published course now lives in
+ * one public catalog, directly enumerable with no auth at all via `GET
+ * /courses` (spec `2026-08-25-server-side-pivot.md` §2.4). So this is not a
+ * protection a future re-mount inherits for free — there is nothing left to
+ * inherit. Read this as "the guard used to matter, and no longer does,"
+ * never as "the guard still holds."
+ *
+ * **What an actual re-mount needs to think through, fresh, not assumed from
+ * this comment:** whether every browsable course should carry a rating
+ * widget (plausible now that there is no private tier to exclude, but that
+ * is a product call, not a fact this file can settle); and, separately and
+ * still very much live, whether the no-voter-leak property below
+ * (`assertRatings`) still holds at whatever the new call site turns out to
+ * be — that part of this component's contract has nothing to do with WHERE
+ * it is mounted, and needs no rethinking on that account.
  *
  * ## Two numbers, always both
  *

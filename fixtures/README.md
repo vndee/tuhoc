@@ -36,7 +36,7 @@ mặt những thứ trình đọc phải xử lý đúng.
 |---|---|
 | Số mục trong gói | 4 (`manifest.json` + 3 chương) |
 | Kích thước đã giải nén | 61.790 byte — 0,29% trần 20 MiB |
-| Kích thước zip | 21.867 byte |
+| Kích thước zip | 21.856 byte |
 | Hạng | `content` (không JavaScript, kiểm được hoàn toàn bằng máy) |
 
 ### Đóng gói lại

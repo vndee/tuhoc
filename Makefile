@@ -256,10 +256,15 @@ check-publish: courses ; python3 scripts/check_publishable.py
 # Task 16 writes its replacement, a real browser driving a real widget and
 # asserting it cannot reach the session.
 #
-# `courses` first, for the same reason test-web has it: all four e2e files open
-# the real course over HTTP, and the production bundle only carries it if it is
-# on disk when `vite build` runs.
-test-e2e: courses ; ./scripts/test-e2e.sh
+# No `courses` prerequisite (Task 16 dropped it — it used to be here for the
+# same reason test-web has it). Courses now live on the server, not in a
+# statically-bundled `courses/` directory: `scripts/test-e2e.sh` seeds the
+# one course this gate reads (`mau-hop-le`, from `fixtures/format-v2/
+# valid-course`) straight into Postgres via `PUT /admin/courses/mau-hop-le`,
+# once the API is up — a real HTTP publish, not a build-time file copy. A
+# `make courses` run beforehand costs this target nothing (it would just sit
+# unused in `courses/`), but nothing here depends on it any more.
+test-e2e: ; ./scripts/test-e2e.sh
 # One-time setup for a fresh machine: test-extract depends on pytest, which
 # is not part of this repo's own dependency graph (tools/ has no
 # venv/lockfile of its own) and is not guaranteed to be installed by

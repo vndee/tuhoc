@@ -12,6 +12,18 @@ import { useLanguage } from '../i18n/LanguageProvider';
 /**
  * One course's GitHub discussion, embedded READ-ONLY.
  *
+ * ## Not mounted anywhere right now
+ *
+ * The server-side pivot's Task 13 deleted `registry/Catalog.tsx`, the only
+ * screen that ever rendered this component. Nothing in the app currently
+ * imports `Discussion`. It stays in place on purpose — its backend
+ * (`GET /discussions/:id`) is live and unchanged — as UI waiting for a
+ * future task to give it a home, not dead code. Unlike `Rating.tsx` next to
+ * it, nothing below is a mounting-context privacy rule that a re-mount needs
+ * to re-derive: the budget this section describes is a global,
+ * mount-independent rate limit (`internal/discuss`'s own window), not
+ * something that depended on which screen embedded the component.
+ *
  * ## It does not fetch until the reader opens it, and that is a budget
  *
  * The GitHub token belongs to the PLATFORM, so the quota is global:
@@ -21,10 +33,13 @@ import { useLanguage } from '../i18n/LanguageProvider';
  * who paid for it would be the other readers, who would see `rate_limited`
  * for a thread nobody asked to see.
  *
- * So the request is behind a disclosure, and
- * `Catalog.rating.test.tsx` measures the property the way S2 Task 9 taught:
- * by counting **requests that actually leave the page**, not responses. A
- * version that fetched eagerly and hid the result would render identically.
+ * So the request is behind a disclosure, and `Discussion.test.tsx` measures
+ * the property the way S2 Task 9 taught: by counting **requests that
+ * actually leave the page**, not responses. A version that fetched eagerly
+ * and hid the result would render identically. (This used to be measured in
+ * `Catalog.rating.test.tsx`, deleted alongside `Catalog.tsx` — the same
+ * property now lives in this component's own test file, where it belongs
+ * regardless of what eventually mounts `Discussion`.)
  *
  * `staleTime` is the same idea one layer up: `internal/discuss` already
  * caches each thread with its own TTL, so asking again a few seconds later

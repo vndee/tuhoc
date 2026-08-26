@@ -52,7 +52,7 @@
  *
  * ## Usage
  *
- *   bun tools/registry/src/validate-pr.ts --root fixtures/courses [--changed-from <file>]
+ *   bun tools/registry/src/validate-pr.ts --root fixtures/registry [--changed-from <file>]
  *
  * With no `--changed-from`, every course under the root is validated — which is
  * what a scheduled run or a local `make test-registry` wants. With one, only
