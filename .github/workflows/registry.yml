@@ -115,10 +115,14 @@ jobs:
           set -euo pipefail
           bun run --cwd tools/registry typecheck
 
-      # These are the tests that assert the load-bearing claim: a `content`-tier
-      # package carrying `<script>` is REFUSED and the message names the file,
-      # and the same bytes declared `interactive` are ACCEPTED. Without the
-      # second, a validator that refused everything would also be green.
+      # These are the tests that assert the load-bearing claim: format v2 has
+      # no "tier" any more (see this file's own header) — EVERY package
+      # carrying `<script>` is REFUSED, unconditionally, and the message
+      # names the exact file. The control case is a manifest that still sets
+      # `tier: "interactive"`: that field grants no exemption any more, it
+      # only adds an EXTRA finding (`TIER_REMOVED`) on top of the same
+      # `SCRIPT_TAG` refusal every other package gets. Without that control,
+      # a validator that refused everything would also be green.
       - name: test tools/registry
         shell: bash
         run: |
