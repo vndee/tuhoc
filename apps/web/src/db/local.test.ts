@@ -10,7 +10,6 @@ import {
   db,
   DEVICE_PREFERENCE_KEYS,
   mergeRow,
-  type PackageRow,
   type ProgressRow,
   readSessionVerifiedAt,
   rememberSessionVerified,
@@ -25,32 +24,6 @@ async function clearAll() {
 
 beforeEach(clearAll);
 afterEach(clearAll);
-
-/** A minimal, valid cached course package — enough to seed `db.packages`. */
-function packageRow(courseId = 'demo', version = '1.0.0'): PackageRow {
-  const manifest = {
-    id: courseId,
-    title: 'Khóa học đã lưu',
-    description: '',
-    lang: 'vi',
-    version,
-    runtime: '^1',
-    tier: 'content',
-    parts: [{ title: 'Phần 1', chapters: [{ id: 'c1', num: '1.1', title: 'Chương một', short: 'C1', file: 'chapters/c1.html' }] }],
-  };
-  const encode = (s: string) => new TextEncoder().encode(s);
-  return {
-    key: `${courseId}@${version}`,
-    courseId,
-    version,
-    manifest,
-    files: {
-      'manifest.json': encode(JSON.stringify(manifest)),
-      'chapters/c1.html': encode('<h1 class="ch-title">Chương một</h1>'),
-    },
-    pinnedAt: '2026-08-21T10:00:00.000Z',
-  };
-}
 
 describe('mergeRow (pure LWW)', () => {
   // The four cases the brief names verbatim: incoming newer / incoming
@@ -184,45 +157,42 @@ describe('clearLocalData', () => {
   /**
    * THE TRIPWIRE, and the number it guards.
    *
-   * Five, as of Task 7's `packages` table. It was four
-   * (`progress`/`annotations`/`outbox`/`meta`) and the count was raised
-   * DELIBERATELY, which is the only way it is ever allowed to move —
-   * `docs/carried-forward.md`'s standing warning is "change the number,
-   * do not 'fix' the helper," because the helper (`clearLocalData`
-   * enumerating `db.tables`) being right about a table nobody has written
-   * yet is precisely what makes this assertion cheap enough to keep.
+   * Four — back to what it was before Task 7's `packages` table, which Task
+   * 13 removed from the schema entirely (spec
+   * `2026-08-25-server-side-pivot.md` §1: the reader import flow that was
+   * its only writer is gone, so there is nothing left for it to hold). This
+   * is the tripwire moving DOWN, and it is allowed to move for the same
+   * reason it was allowed to move up in Task 7 — `docs/carried-forward.md`'s
+   * standing warning is "change the number, do not 'fix' the helper,"
+   * because the helper (`clearLocalData` enumerating `db.tables`) being
+   * right about the schema it is actually handed is what makes this
+   * assertion cheap enough to keep, in either direction.
    *
-   * What the fifth table holds and why it belongs on the clearing side of
-   * the line: an imported course package is the reader's own copy of
-   * somebody's course, sitting in a browser-scoped database that never
-   * expires. A private course surviving into the next person's session on
-   * a shared laptop is the same failure as their half-typed note doing so
-   * — see USER_CONTENT_KEYS's comment for the incident that rule came
-   * from. `packages` is user CONTENT, not a device preference.
+   * The two tests this tripwire used to sit beside — "signing out deletes
+   * cached course packages too" and `packages` seeded in "empties every
+   * table" below — are gone rather than adjusted, and deliberately not
+   * because they stopped compiling: the risk they guarded (a private course
+   * surviving into the next person's session on a shared laptop) is gone
+   * STRUCTURALLY. There is no `db.packages` on the machine for a course to
+   * survive IN any more — every course is server-side and public (spec
+   * §2.4), so there is no private per-reader copy left to leak. Verified,
+   * not assumed: `grep -rn "db\.packages" apps/web/src` finds no production
+   * code, and `LocalDB`'s version-3 upgrade (`db/local.ts`) drops the store
+   * on an existing reader's own browser, not just for a fresh install.
    *
-   * Written out by name rather than only counted: `toHaveLength(5)` would
-   * also pass if somebody added a sixth table and deleted a different one.
+   * Written out by name rather than only counted: `toHaveLength(4)` would
+   * also pass if somebody added a fifth table and deleted a different one.
    */
-  it('has exactly five tables, and they are the five this file knows about', () => {
+  it('has exactly four tables, and they are the four this file knows about', () => {
     expect(db.tables.map((t) => t.name).sort()).toEqual([
       'annotations',
       'meta',
       'outbox',
-      'packages',
       'progress',
     ]);
   });
 
-  it('signing out deletes cached course packages too — a private course is user data, not a device setting', async () => {
-    await db.packages.put(packageRow());
-    expect(await db.packages.count()).toBe(1);
-
-    await clearLocalData();
-
-    expect(await db.packages.count()).toBe(0);
-  });
-
-  it('empties every table in the schema, not a hand-maintained list of five', async () => {
+  it('empties every table in the schema, not a hand-maintained list', async () => {
     await db.progress.put({ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: '2026-08-20T10:00:00.000Z' });
     await db.annotations.put({
       id: '11111111-1111-4111-8111-111111111111',
@@ -236,13 +206,12 @@ describe('clearLocalData', () => {
     });
     await db.outbox.add({ table: 'progress', row: {} });
     await db.meta.put({ key: 'syncCursor', value: '2026-08-20T10:00:00Z' });
-    await db.packages.put(packageRow());
 
     // Pre-condition: every table genuinely has something in it, so the
     // assertion below can't pass vacuously.
     const before = await Promise.all(db.tables.map((t) => t.count()));
     expect(before.every((n) => n > 0)).toBe(true);
-    expect(db.tables).toHaveLength(5);
+    expect(db.tables).toHaveLength(4);
 
     await clearLocalData();
 
@@ -922,9 +891,16 @@ const HTML_SINKS_ALLOWED: readonly {
  * arrive from strangers' packages instead of from this repo.
  *
  * Task 7 is where manifests started arriving from strangers: an imported
- * package's manifest goes into `db.packages` and comes back out through
+ * package's manifest went into `db.packages` and came back out through
  * `course/loader.ts` with no markup scan anywhere along the way — by
- * design, per the ruling. So the ruling's floor gets a test.
+ * design, per the ruling. Task 13 removed that table and its import flow
+ * (spec `2026-08-25-server-side-pivot.md` §1), but the condition this floor
+ * depends on did not become safer for it: a manifest is STILL a stranger's
+ * data. It arrives a different way now — `api/catalog.ts` fetches it fresh
+ * off the server's public catalog for every course, published by whoever
+ * ran `tuhoc publish` — but "a course author, not this repo, wrote every
+ * string in it" is exactly as true as it was when the bytes came from a
+ * `.zip` a reader dropped in. So the ruling's floor still gets a test.
  *
  * If this goes red, the fix is almost never "add the file to the
  * allowlist." It is: render the string as text. And if some future feature

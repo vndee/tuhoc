@@ -42,6 +42,12 @@ export function AppRoutes() {
         Bảng route cũ có năm mục ngang hàng nhưng chúng là ba LOẠI khác nhau —
         nơi chốn (`/`, `/library`), hành động (`/import`) và thiết lập
         (`/settings` dưới tên "Trợ lý AI"). Người dùng phải tự phân loại hộ.
+
+        Task 13 (spec `2026-08-25-server-side-pivot.md` §1) xoá "hành động" ấy
+        khỏi danh sách hẳn — không phải chỉ gộp nó vào chỗ khác. `/import`
+        từng là NÚT "Nhập gói" bên trong `/courses`; nay hành động ấy không
+        còn tồn tại (server là nguồn duy nhất của mọi course, qua
+        `tuhoc publish`), nên chỉ còn hai loại thật: nơi chốn và thiết lập.
       */}
       <Route
         path="/"
@@ -54,22 +60,25 @@ export function AppRoutes() {
       <Route path="/login" element={<Login />} />
 
       {/*
-        `/courses` gộp ba màn cũ: thư viện của bạn, kho cộng đồng (một TAB), và
-        nhập gói (một NÚT). Cả ba đều là "khoá học"; tách chúng ra ba mục thanh
-        bên là bắt người dùng biết trước gói mình muốn đến từ đâu.
+        `/courses` — MỘT danh mục công khai. Trước Task 13 nó gộp ba màn cũ:
+        thư viện của bạn, kho cộng đồng (một TAB), và nhập gói (một NÚT); tất
+        cả đã đi cùng luồng import chết (spec
+        `2026-08-25-server-side-pivot.md` §1). Nay `<Courses>` chỉ còn vẽ
+        danh mục `fetchCatalog` trả về — không tab, không nút, không hộp
+        thoại nào.
 
         KHÔNG còn `<RequireAuth>` (Task 12) — spec §2.4 làm đọc thành công
-        khai, và tab "Kho cộng đồng" của chính màn này phải dựng được cho
-        người chưa đăng nhập, vì nó không thuộc về ai cả.
+        khai.
 
-        Việc này ĐỂ LẠI một điểm chưa vá, ghi ra chứ không giấu: gói kéo về
-        qua nút "Nhập gói" ở màn này vẫn ghi vào `db.packages`, và
-        `clearLocalData()` vẫn dọn sạch bảng ấy ở mỗi lần đổi phiên (xem
-        db/local.ts) — một gói kéo về lúc chưa đăng nhập vẫn bị xoá ở lần
-        đăng nhập kế. Task 12's brief chỉ định rõ ba route này bỏ
-        `<RequireAuth>`, không định rõ nhập gói tự nó; gói riêng nút ấy lại
-        theo phiên là việc của một task khác, có lý do riêng thay vì ăn theo
-        việc gỡ cổng ở đây.
+        Task 12's report ghi lại một điểm chưa vá ở ĐÚNG route này: gói kéo về
+        qua nút "Nhập gói" từng ghi vào `db.packages` mà không cần đăng nhập,
+        và `clearLocalData()` xoá bảng ấy ở lần đổi phiên kế — một gói kéo về
+        lúc chưa đăng nhập bị mất ngay sau đó. Task 13 đóng điểm ấy bằng cách
+        xoá chính thứ tạo ra nó: không còn nút "Nhập gói" nào ở màn này (hay ở
+        bất cứ đâu khác trong ứng dụng) để bấm, không còn `course/import.ts`
+        để gọi, và bảng `db.packages` bản thân nó đã bị gỡ khỏi lược đồ Dexie
+        (`db/local.ts`). Đóng bằng cách xoá đường ghi, không phải bằng cách
+        thêm một điều kiện chặn nó.
       */}
       <Route path="/courses" element={<Courses />} />
 
@@ -114,27 +123,23 @@ export function AppRoutes() {
       <Route path="/c/:courseId/:chapterId" element={<Reader />} />
 
       {/*
-        BA ROUTE CŨ — NAY LÀ CHUYỂN HƯỚNG, vì đích của chúng đã tồn tại thật.
+        BA ROUTE CŨ — VẪN LÀ CHUYỂN HƯỚNG, vì "mọi liên kết đã lưu đều dùng
+        đường cũ; xoá thẳng là làm hỏng thứ đang chạy" (đặc tả IA) không đổi
+        chỉ vì đích của chúng đã đổi hình dạng.
 
-        Điều kiện mà chú thích trước đây đặt ra ("chúng sẽ thành `<Navigate>`
-        trong CÙNG thay đổi dựng hai thứ ấy vào `/courses`") đã được thoả: cùng
-        commit này dựng tab "Kho cộng đồng" và nút "Nhập gói" trong
-        `pages/Courses.tsx`, và cùng commit này gỡ hai mục khỏi thanh bên.
+        Task 13 XOÁ những gì `?import=1`/`?tab=registry` từng mở — không còn
+        hộp thoại "Nhập gói", không còn tab "Kho cộng đồng" — nhưng KHÔNG xoá
+        ba route chuyển hướng này. Một dấu trang tới `/import` vẫn phân giải:
+        nó chỉ còn rơi xuống danh mục công khai trơn, đúng như một cú bấm
+        `/courses` bình thường, thay vì mở thêm gì. `?import=1`/`?tab=registry`
+        đi theo cho ĐỦ (không xoá đường cũ để giữ nguyên hành vi "phân giải
+        được" của nó), nhưng bản thân hai tham số ấy giờ không ai đọc.
 
-        **Mỗi đích giữ lại thứ đường cũ LÀM ĐƯỢC, không chỉ giữ chỗ nó trỏ tới.**
-        Đặc tả nói lý do phải có chuyển hướng: *"mọi liên kết đã lưu đều dùng
-        đường cũ; xoá thẳng là làm hỏng thứ đang chạy"*. Một dấu trang tới
-        `/import` mà rơi xuống một danh sách khoá học không có ô nhập nào thì
-        vẫn còn phân giải được, nhưng đã hỏng mất việc nó dùng để làm — nên nó
-        mang theo `?import=1` và hộp thoại mở ra ngay, đúng như `?tab=registry`
-        mà chính đặc tả viết cho `/catalog`.
-
-        KHÔNG bọc `<RequireAuth>` — và, kể từ Task 12, không phải vì `/courses`
-        đã ở sau nó rồi (không còn nữa: đọc là công khai, spec §2.4). Ba
-        chuyển hướng này đơn giản là không có gì để gác cổng: đích của chúng
-        (`/courses`, có hoặc không `?import=1`/`?tab=registry`) tự nó công
-        khai rồi. `replace` để nút Lùi không rơi trở lại vào đúng cái route
-        vừa chuyển hướng đi.
+        KHÔNG bọc `<RequireAuth>` — `/courses` đã công khai từ Task 12 (spec
+        §2.4), và không route nào trong ba route này còn việc gì để gác cổng
+        nữa: đích của chúng tự nó công khai, và không còn hành động ghi nào
+        (nhập gói) ẩn phía sau để cần một phiên mới cho phép. `replace` để nút
+        Lùi không rơi trở lại vào đúng cái route vừa chuyển hướng đi.
       */}
       <Route path="/library" element={<Navigate to="/courses" replace />} />
       <Route path="/import" element={<Navigate to="/courses?import=1" replace />} />

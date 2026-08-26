@@ -2,7 +2,6 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { db, type PackageRow } from '../db/local';
 import { __resetCourseKitForTests, useCourseKit } from './useCourseKit';
 
 const RUNTIME_TRIO = [
@@ -10,32 +9,6 @@ const RUNTIME_TRIO = [
   '/course-kit/vendor/auto-render.js',
   '/course-kit/runtime.js',
 ] as const;
-
-/** A cached `content`-tier package: prose and nothing else, which is what that tier means. */
-function contentPackage(courseId: string): PackageRow {
-  const manifest = {
-    id: courseId,
-    title: 'Gói chỉ có nội dung',
-    description: '',
-    lang: 'vi',
-    version: '1.0.0',
-    runtime: '^1',
-    tier: 'content',
-    parts: [{ title: 'Phần 1', chapters: [{ id: 'c1', num: '1.1', title: 'Một', short: 'Một', file: 'chapters/c1.html' }] }],
-  };
-  const encode = (text: string) => new TextEncoder().encode(text);
-  return {
-    key: `${courseId}@1.0.0`,
-    courseId,
-    version: '1.0.0',
-    manifest,
-    files: {
-      'manifest.json': encode(JSON.stringify(manifest)),
-      'chapters/c1.html': encode('<h1 class="ch-title">Một</h1>'),
-    },
-    pinnedAt: '2026-08-21T10:00:00.000Z',
-  };
-}
 
 /**
  * jsdom does not actually fetch `<script src>` resources or fire load/error
@@ -104,10 +77,6 @@ afterAll(() => server.close());
 describe('useCourseKit', () => {
   beforeEach(async () => {
     __resetCourseKitForTests();
-    // Which scripts a course needs is now answered by `course/loader.ts`'s
-    // two-source rule, so a cached package left behind by another test
-    // would change what this one requests.
-    await db.packages.clear();
   });
 
   /**
@@ -145,7 +114,6 @@ describe('useCourseKit', () => {
    * imported content course would have been unreadable.
    */
   it('loads only the shared trio for a cached package that ships no viz.js, and still reports ready', async () => {
-    await db.packages.put(contentPackage('demo'));
     const { requestedSrcs } = mockScriptLoading();
 
     const { result } = renderHook(() => useCourseKit('demo'));
@@ -156,7 +124,6 @@ describe('useCourseKit', () => {
   });
 
   it('still requires the shared trio for a package course — a failure there is a real failure, not an absent viz.js', async () => {
-    await db.packages.put(contentPackage('demo'));
     mockScriptLoading((src) => src.endsWith('runtime.js'));
 
     const { result } = renderHook(() => useCourseKit('demo'));

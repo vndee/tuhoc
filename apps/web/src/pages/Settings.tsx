@@ -514,25 +514,32 @@ function AppearanceSection() {
  * những gì của tôi, và khi nào thì mất?"* — và đó là chữ.
  */
 /**
- * Ba con số: gói, ghi chú, dung lượng.
+ * Hai con số: ghi chú, dung lượng.
  *
  * Chú thích trên nói mục này nợ người dùng câu trả lời cho *"máy này đang giữ
- * những gì của tôi"* — và cho tới nay nó trả lời bằng CHỮ. Ba con số trả lời
- * đúng câu ấy bằng thứ đọc trong một giây, và cả ba đều đọc từ chỗ đã có: hai
- * bảng Dexie, và `navigator.storage.estimate()`.
+ * những gì của tôi"* — và cho tới nay nó trả lời bằng CHỮ. Hai con số trả lời
+ * đúng câu ấy bằng thứ đọc trong một giây, và cả hai đều đọc từ chỗ đã có:
+ * một bảng Dexie, và `navigator.storage.estimate()`.
+ *
+ * Từng có MỘT con số thứ ba — số gói khoá học đã tải về máy, từ `db.packages`.
+ * Bảng ấy không còn tồn tại (Task 13, spec
+ * `2026-08-25-server-side-pivot.md` §1): course không còn được nhập vào máy
+ * người đọc, chỉ đọc thẳng từ server, nên không có "gói trên máy" nào để đếm
+ * nữa. Bỏ hẳn con số này thay vì để nó luôn hiện `0` hoặc `—`: một số 0 ở đây
+ * đọc như "máy bạn không giữ gói nào" — một câu vẫn đúng nghĩa đen nhưng bịa
+ * ra một khái niệm ("gói trên máy") mà sản phẩm không còn có nữa.
  *
  * `null` là "chưa biết", KHÁC với 0 — và khác biệt ấy quan trọng ở đây hơn ở
- * hầu hết chỗ khác: vẽ "0 gói" cho một người có ba gói, chỉ vì Dexie chưa trả
- * lời xong, là nói với họ rằng máy đã mất dữ liệu.
+ * hầu hết chỗ khác: vẽ "0 ghi chú" cho một người có ba ghi chú, chỉ vì Dexie
+ * chưa trả lời xong, là nói với họ rằng máy đã mất dữ liệu.
  *
  * `storage.estimate()` không có ở mọi trình duyệt và trả về ƯỚC LƯỢNG của cả
  * origin (không riêng bảng nào), nên nó được nói là "đang chiếm" chứ không
  * phải "dữ liệu của bạn nặng bằng này", và vắng mặt thì cột ấy biến mất chứ
  * không hiện 0.
  */
-function useLocalFootprint(): { packages: number | null; notes: number | null; bytes: number | null } {
-  const [state, setState] = useState<{ packages: number | null; notes: number | null; bytes: number | null }>({
-    packages: null,
+function useLocalFootprint(): { notes: number | null; bytes: number | null } {
+  const [state, setState] = useState<{ notes: number | null; bytes: number | null }>({
     notes: null,
     bytes: null,
   });
@@ -540,7 +547,7 @@ function useLocalFootprint(): { packages: number | null; notes: number | null; b
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const [packages, notes] = await Promise.all([db.packages.count(), db.annotations.count()]);
+      const notes = await db.annotations.count();
       let bytes: number | null = null;
       try {
         const estimate = await navigator.storage?.estimate?.();
@@ -548,7 +555,7 @@ function useLocalFootprint(): { packages: number | null; notes: number | null; b
       } catch {
         bytes = null;
       }
-      if (!cancelled) setState({ packages, notes, bytes });
+      if (!cancelled) setState({ notes, bytes });
     })();
     return () => {
       cancelled = true;
@@ -580,10 +587,6 @@ function LocalDataSection({ anchor }: { anchor: string }) {
       <div className="set-block-main">
 
       <dl className="set-stats" aria-label={t('settings.localData.statsAria')}>
-        <div className="set-stat">
-          <dt className="set-stat-v">{footprint.packages ?? '—'}</dt>
-          <dd className="set-stat-k">{t('settings.localData.statPackages')}</dd>
-        </div>
         <div className="set-stat">
           <dt className="set-stat-v">{footprint.notes ?? '—'}</dt>
           <dd className="set-stat-k">{t('settings.localData.statNotes')}</dd>
