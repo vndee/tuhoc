@@ -665,22 +665,27 @@ function renderRouteAt(path: string, pathnames: string[]) {
  * `/library` nay là một CHUYỂN HƯỚNG sang `/courses`, nơi thư viện là tab "Của
  * bạn" (`docs/superpowers/specs/2026-08-23-ia-redesign.md`).
  *
- * Cả hai ca dưới đây giữ nguyên câu hỏi của chúng — *đường cũ có còn đưa người
- * đọc tới thư viện của họ không, và có còn nằm sau `RequireAuth` không* — vì
- * đó là thứ mọi dấu trang cũ phụ thuộc vào. Cái đổi là NHAN ĐỀ người đọc gặp ở
- * đầu kia (`Khoá học`, `h1` của màn gộp) và pathname cuối cùng (`/courses`).
+ * Trước Task 12, cặp ca dưới đây canh CẢ HAI câu hỏi — đường cũ có còn đưa
+ * người đọc tới thư viện của họ không, VÀ có còn nằm sau `RequireAuth` không.
+ * Câu hỏi thứ hai không còn ý nghĩa: Task 12 gỡ `<RequireAuth>` khỏi
+ * `/courses` (đọc là công khai, spec §2.4), nên "người chưa đăng nhập bị đưa
+ * về /login" không còn là hành vi thật — case đó bị GỠ ở đây, không sửa
+ * thành yếu hơn, vì cái nó từng canh đã không còn tồn tại. Case còn lại
+ * (dưới) được ghép với một case mới canh đúng bất biến HIỆN TẠI: người chưa
+ * đăng nhập tới ĐÚNG cùng một nơi người đã đăng nhập tới, không phải "không
+ * còn /login" một cách mơ hồ.
  */
 describe('/library → /courses', () => {
-  it('người chưa đăng nhập bị đưa về /login, và KHÔNG thấy thư viện', async () => {
+  it('người CHƯA đăng nhập (GET /me → 401) vẫn tới được /courses, không bị đưa về /login', async () => {
     server.use(http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
+    server.use(http.get('/courses', () => HttpResponse.json([])));
     const pathnames: string[] = [];
 
     renderRouteAt('/library', pathnames);
 
-    await waitFor(() => expect(pathnames.at(-1)).toBe('/login'));
-    // Exact name: the empty state's own <h2> also contains "Thư viện", and a
-    // loose matcher here would be asking about two headings at once.
-    expect(screen.queryByRole('heading', { name: 'Thư viện' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Khoá học', level: 1 })).toBeInTheDocument();
+    expect(pathnames.at(-1)).toBe('/courses');
+    expect(pathnames).not.toContain('/login');
   });
 
   it('người đã đăng nhập thì vào được', async () => {

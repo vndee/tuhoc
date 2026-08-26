@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { Mock } from 'vitest';
 import type { Chapter, Part } from '../course/types';
 import { clearLocalData, db } from '../db/local';
+import { t } from '../i18n';
 import { ThemeProvider } from '../theme/ThemeContext';
 import { ChapterView } from './ChapterView';
 import { LanguageProvider } from '../i18n/LanguageProvider';
@@ -80,6 +81,13 @@ const CHAPTER_2_HTML = '<h1 class="ch-title">Chương hai</h1><p>nội dung khá
 const server = setupServer(
   http.get('/courses/demo/chapters/c1', () => HttpResponse.json({ html: FRAGMENT, widgets: WIDGETS })),
   http.get('/courses/demo/chapters/c2', () => HttpResponse.json({ html: CHAPTER_2_HTML, widgets: [] })),
+  // Task 12: `ChapterView` now calls `useMe()` itself, to decide whether to
+  // mount `AuthedReaderExtras`. Every test in this file predates that and
+  // was written assuming the reader's own annotations/progress/checkboxes —
+  // a signed-in `/me` here is what keeps all of them describing the same
+  // behaviour as before; the handful of tests that care about the OTHER
+  // shape (Task 12's own block, below) override this with `server.use`.
+  http.get('/me', () => HttpResponse.json({ id: 'u1', email: 'a@vi.vn', name: 'Người học' })),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
@@ -251,19 +259,35 @@ describe('ChapterView', () => {
   async function settleChapter({
     renderCalls = 1,
     rail = RAIL_ENTRIES,
-  }: { renderCalls?: number; rail?: readonly string[] } = {}): Promise<void> {
+    expectSession = true,
+  }: { renderCalls?: number; rail?: readonly string[]; expectSession?: boolean } = {}): Promise<void> {
     await waitFor(() => expect(renderKatex).toHaveBeenCalledTimes(renderCalls));
     await waitFor(() => expect(tocLinks().map((a) => a.textContent)).toEqual([...rail]));
     await act(async () => {});
+    // Task 12: `AuthedReaderExtras` only mounts once `useMe()` settles, which
+    // is a SEPARATE network round trip from the chapter fragment the two
+    // waits above witness — the two can (and, under MSW, typically do)
+    // resolve in different commits. Every test in this file but Task 12's own
+    // block expects a signed-in reader's full UI (annotations toolbar,
+    // `#rail-tab-notes`, wired `#mark-btn`, exercise checkboxes), so this
+    // waits for that extra commit too — `#rail-tab-notes` exists ONLY once
+    // `AuthedReaderExtras` has rendered its portal, and nothing else in this
+    // file creates that id. `expectSession: false` (Task 12's anonymous
+    // tests) skips it — that id must never appear there, so waiting for it
+    // would just be a timeout with extra steps.
+    if (expectSession) {
+      await waitFor(() => expect(document.getElementById('rail-tab-notes')).not.toBeNull());
+    }
   }
 
   /** `renderChapterView`, then `settleChapter`. What every test here wants. */
   async function renderChapterAndSettle(
     props: Partial<React.ComponentProps<typeof ChapterView>> = {},
-    options: { strict?: boolean; withProbe?: boolean } = {},
+    options: { strict?: boolean; withProbe?: boolean; expectSession?: boolean } = {},
   ): Promise<ReturnType<typeof renderChapterView>> {
-    const view = renderChapterView(props, options);
-    await settleChapter();
+    const { expectSession, ...renderOptions } = options;
+    const view = renderChapterView(props, renderOptions);
+    await settleChapter({ expectSession });
     return view;
   }
 
@@ -1104,6 +1128,81 @@ describe('ChapterView', () => {
 
       const checkboxes = document.querySelectorAll('.box.ex .box-h input[type="checkbox"]');
       expect(checkboxes).toHaveLength(2);
+    });
+  });
+
+  /**
+   * Task 12 — courses are free to read; signing in is what makes progress,
+   * notes and AI conversations follow a reader between devices (spec §2.4).
+   * Every OTHER test in this file renders with the default signed-in `/me`
+   * handler above and exercises the session-only UI directly; this block is
+   * the one place that exercises the opposite shape, and the one place that
+   * proves the two do not leak into each other.
+   *
+   * `expectSession: false` is `settleChapter`'s own opt-out (see its doc
+   * comment) — waiting for `#rail-tab-notes` would time out here on purpose,
+   * since it must never appear for an anonymous reader.
+   */
+  describe('Task 12 — đọc công khai, gate ẩn danh', () => {
+    it('an anonymous reader (GET /me → 401) sees the chapter and the nudge, and none of the session-only UI', async () => {
+      server.use(http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
+
+      await renderChapterAndSettle({}, { expectSession: false });
+
+      // The chapter itself is exactly as public as it always was.
+      expect(screen.getByText('Nội dung A')).toBeInTheDocument();
+      expect(renderKatex).toHaveBeenCalledTimes(1);
+
+      // The nudge — once, quietly, in the reader's own language.
+      expect(screen.getByText(t('vi', 'reader.anonNudge'))).toBeInTheDocument();
+
+      // Nothing that WRITES is on the page: annotations, progress, exercises.
+      expect(screen.queryByRole('toolbar')).not.toBeInTheDocument(); // <SelectionToolbar>
+      expect(document.getElementById('rail-tab-notes')).toBeNull(); // notes toggle + count
+      expect(document.querySelectorAll('.box.ex .box-h input[type="checkbox"]')).toHaveLength(0);
+      expect(document.getElementById('mark-btn')!.hidden).toBe(true);
+
+      // Selecting text — the one gesture that used to summon the toolbar —
+      // truly does nothing now, not just "nothing appeared yet".
+      selectInChapter('Nội dung A');
+      await act(async () => {});
+      expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
+
+      // And nothing was written anywhere on this device.
+      expect(await db.progress.count()).toBe(0);
+      expect(await db.annotations.count()).toBe(0);
+      expect(await db.outbox.count()).toBe(0);
+    });
+
+    it('a signed-in reader sees no nudge, alongside the full session UI', async () => {
+      await renderChapterAndSettle();
+
+      expect(screen.queryByText(t('vi', 'reader.anonNudge'))).not.toBeInTheDocument();
+      expect(document.getElementById('rail-tab-notes')).not.toBeNull();
+      expect(document.getElementById('mark-btn')!.hidden).toBe(false);
+      expect(document.querySelectorAll('.box.ex .box-h input[type="checkbox"]')).toHaveLength(2);
+    });
+
+    it('does not show the nudge while GET /me is still pending — a flash aimed at a signed-in reader is worse than a late nudge', async () => {
+      let resolveMe: (() => void) | undefined;
+      server.use(
+        http.get('/me', async () => {
+          await new Promise<void>((resolve) => {
+            resolveMe = resolve;
+          });
+          return HttpResponse.json({ id: 'u1', email: 'a@vi.vn', name: 'Người học' });
+        }),
+      );
+
+      renderChapterView();
+
+      // The chapter itself never waits on `/me` — it settles on its own.
+      await waitFor(() => expect(renderKatex).toHaveBeenCalledTimes(1));
+      expect(screen.queryByText(t('vi', 'reader.anonNudge'))).not.toBeInTheDocument();
+
+      resolveMe!();
+      await settleChapter();
+      expect(screen.queryByText(t('vi', 'reader.anonNudge'))).not.toBeInTheDocument();
     });
   });
 });

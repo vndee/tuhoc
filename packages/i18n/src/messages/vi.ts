@@ -555,6 +555,10 @@ export const vi = {
   'reader.notesTab': (count: string) => `Ghi chú (${count})`,
   'reader.exerciseCheckbox': (index: string) => `Đánh dấu đã làm bài tập ${index}`,
   'reader.exerciseDone': 'Đã làm',
+  /* Chỉ hiện cho người đọc chưa đăng nhập ĐÃ ĐƯỢC XÁC NHẬN (GET /me → 401) —
+     không phải mặc định trong lúc còn chờ /me trả lời, kẻo nó nháy lên cho cả
+     người đã đăng nhập rồi mới biến mất. Xem `reader/ChapterView.tsx`. */
+  'reader.anonNudge': 'Đăng nhập để lưu tiến độ, ghi chú và hỏi AI.',
 
   /* ── chế độ đọc: một cột chữ (`reader/TocDrawer.tsx`, hướng A) ──────────── */
 

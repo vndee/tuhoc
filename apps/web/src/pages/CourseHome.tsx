@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useMe } from '../api/useMe';
 import { flatChapters, nextChapter } from '../course/chapters';
 import { TierBadge } from './Library';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
@@ -13,13 +15,16 @@ import { useProgress } from '../progress/useProgress';
  * nav classes (`.nav-part`, `a.nav-item`, `.nav-num` via `CourseNav`) so it
  * reads like v1's sidebar.
  *
- * `doneChapterIds` (Ruling F4 / debt #1) comes from `useProgress`, this
- * task's own local-progress hook — not a prop, unlike the Task 10
- * placeholder this replaces. `useProgress` is called unconditionally
- * (Rules of Hooks) with `courseId ?? ''` — an empty-string courseId
- * simply never matches any local progress row, the same harmless-no-op
- * shape `manifestQuery`'s `enabled: courseId != null` already uses for
- * the "route param not resolved yet" case below.
+ * `doneChapterIds` (Ruling F4 / debt #1) is fed by `useProgress` — but, since
+ * Task 12, only through `CourseProgress` below, and only once a session is
+ * confirmed. This page itself never calls `useProgress`. Reading local
+ * progress unconditionally would mean a course this DEVICE has progress on
+ * (however it got there — a previous account, a session that has since ended)
+ * gets read back to whoever opens the browser next, signed in or not; the
+ * page has no way to tell that reader apart from the one the progress
+ * actually belongs to. See `reader/ChapterView.tsx`'s `AuthedReaderExtras`
+ * for the fuller version of the same reasoning, applied to a chapter instead
+ * of this course-level summary.
  */
 /**
  * "Phần I · Entropy" → `['Phần I', 'Entropy']`.
@@ -46,7 +51,10 @@ export function CourseHome() {
     queryFn: () => loadManifest(courseId as string),
     enabled: courseId != null,
   });
-  const { doneChapterIds } = useProgress(courseId ?? '');
+
+  const me = useMe();
+  const confirmedLoggedIn = me.isSuccess && me.data != null;
+  const [doneChapterIds, setDoneChapterIds] = useState<ReadonlySet<string>>(new Set());
 
   if (courseId == null) {
     return <p className="ch-lede">{t('course.notFound')}</p>;
@@ -69,6 +77,11 @@ export function CourseHome() {
 
   return (
     <div className="ch-page">
+      {/* Task 12: the one place `useProgress` runs for this page, and only
+          once a session is confirmed — see this component's own doc above.
+          Renders nothing; it only ever reports `doneChapterIds` upward. */}
+      {confirmedLoggedIn && <CourseProgress courseId={courseId} onChange={setDoneChapterIds} />}
+
       {/* HÀNG BADGE trước nhan đề — bản dựng đã duyệt.
 
           MỘT badge, rồi một dòng chữ. Bản trước vẽ cả ba thành viên bo tròn và
@@ -155,6 +168,35 @@ export function CourseHome() {
       </section>
     </div>
   );
+}
+
+/**
+ * The one place `/c/:courseId` calls `useProgress`, mounted by `CourseHome`
+ * only once `useMe()` has confirmed a signed-in reader (Task 12). A
+ * component rather than a plain conditional call because `useProgress` is
+ * itself a hook — React's rules of hooks forbid calling it from inside an
+ * `if`, so "only when signed in" has to mean "only when THIS component is
+ * mounted," the same shape `reader/ChapterView.tsx`'s `AuthedReaderExtras`
+ * uses for the same reason.
+ *
+ * Renders nothing. It exists purely to report `doneChapterIds` up to
+ * `CourseHome`'s own state, which is what the resume card and the per-part
+ * counts actually read — keeping the read-progress-locally concern in
+ * exactly one place rather than spreading a second `useProgress` call
+ * through the render below.
+ */
+function CourseProgress({
+  courseId,
+  onChange,
+}: {
+  courseId: string;
+  onChange: (ids: ReadonlySet<string>) => void;
+}) {
+  const { doneChapterIds } = useProgress(courseId);
+  useEffect(() => {
+    onChange(doneChapterIds);
+  }, [doneChapterIds, onChange]);
+  return null;
 }
 
 export default CourseHome;

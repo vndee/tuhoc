@@ -33,7 +33,14 @@ function buildManifest(chapterCount: number): Manifest {
   };
 }
 
-const server = setupServer();
+const server = setupServer(
+  // Task 12: `CourseHome` now calls `useMe()` itself, to decide whether to
+  // mount the child that reads local progress. Every test in this file
+  // predates that and asserts on progress as a signed-in reader would see
+  // it, so a default authenticated `/me` here keeps them describing the same
+  // behaviour as before; Task 12's own block overrides it per-test.
+  http.get('/me', () => HttpResponse.json({ id: 'u1', email: 'a@vi.vn', name: 'Người học' })),
+);
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 beforeEach(async () => {
@@ -170,5 +177,56 @@ describe('CourseHome', () => {
 
     expect((await screen.findAllByText(/không tải được|not found|lỗi/i)).length).toBeGreaterThan(0);
     expect(screen.queryAllByRole('link')).toHaveLength(0);
+  });
+});
+
+/**
+ * Task 12 — `/c/:courseId` is public now (spec §2.4), but the progress it
+ * shows (the "Bắt đầu"/"Đọc tiếp" resume card, each part's read count) is
+ * server-recorded, per-account state. This block proves the two do not mix:
+ * a device that happens to hold a local progress row must not have that row
+ * read back to whoever opens the browser next, signed in or not.
+ */
+describe('Task 12 — tiến độ chỉ hiện khi có phiên', () => {
+  it('người đọc CHƯA đăng nhập: một dòng tiến độ có sẵn trên máy KHÔNG được nhận là của mình', async () => {
+    server.use(http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(4))));
+    await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: new Date().toISOString() });
+
+    renderCourseHome();
+    await screen.findByRole('heading', { name: 'Khóa học demo' });
+
+    // As if nothing were ever marked read: the eyebrow reads "Bắt đầu đọc",
+    // not "Đang đọc", and every part shows `data-state="none"`.
+    //
+    // A short grace period, not an immediate read: this is the one place a
+    // WRONG implementation (calling `useProgress` unconditionally, the way
+    // `ChapterView` used to) would still pass on the very first tick, before
+    // its `liveQuery` subscription has resolved — the same race the "marks
+    // chapters read" test above deliberately waits out in the other
+    // direction. Here there is nothing to wait FOR (the anonymous branch
+    // never subscribes at all), so waiting proves the state never arrives
+    // rather than merely hasn't yet.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(document.querySelector('.ch-resume-eyebrow')?.textContent).toBe('Bắt đầu đọc');
+    const counts = Array.from(document.querySelectorAll('.ch-part-count'));
+    expect(counts.length).toBe(2);
+    for (const el of counts) {
+      expect(el.getAttribute('data-state')).toBe('none');
+    }
+  });
+
+  it('người đọc ĐÃ đăng nhập: cùng dòng tiến độ ấy hiện đúng trên trang', async () => {
+    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(4))));
+    await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: new Date().toISOString() });
+
+    renderCourseHome();
+    await screen.findByRole('heading', { name: 'Khóa học demo' });
+
+    await waitFor(() => expect(document.querySelector('.ch-resume-eyebrow')?.textContent).toBe('Đang đọc'));
+    const counts = Array.from(document.querySelectorAll('.ch-part-count'));
+    expect(counts[0]?.getAttribute('data-state')).toBe('partial'); // Phần A: 1/2 (ch-1)
+    expect(counts[1]?.getAttribute('data-state')).toBe('none'); // Phần B: 0/2
   });
 });

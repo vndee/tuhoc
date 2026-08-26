@@ -519,11 +519,32 @@
   background: var(--surface-1);
 }
 
+/* ============================================================
+   8. NUDGE ẨN DANH — một câu, một lần, không phải hộp thoại
+   ============================================================ */
+
+/* Task 12: người đọc chưa đăng nhập vẫn đọc trọn chương (spec §2.4) — câu
+   này chỉ nói ra CÁI ĐĂNG NHẬP MUA ĐƯỢC, không chặn gì và không phải lỗi.
+   Tông "mời", không phải tông cảnh báo: `--accent-soft` chứ không phải
+   `--warn`/`--crit` như `.lib-notice-*` (pages/Library.tsx) dùng. */
+#app.reading .reader-anon-nudge {
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 0 0 22px;
+}
+
 /* In ra giấy: mọi thứ ở trên là chrome màn hình. reader.css đã có một
    stylesheet in riêng; đây chỉ là những thứ tệp này thêm vào. */
 @media print {
   .rd-drawer-root,
-  .rd-slot {
+  .rd-slot,
+  .reader-anon-nudge {
     display: none;
   }
 }

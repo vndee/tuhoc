@@ -15,14 +15,22 @@ import { Settings } from './pages/Settings';
  * placeholder (Task 14 owns its real content) but resolves and renders
  * inside <Shell> — see App.tsx.
  *
- * Every route except `/login` is wrapped in `<RequireAuth>` (Task 12):
- * progress/annotations/stats are all per-user, so nothing behind them is
- * meant to be reachable while logged out — a logged-out visit to any of
- * these, including a direct chapter URL, is bounced to `/login` and
+ * Task 12 — `/c/:courseId`, `/c/:courseId/:chapterId` and `/courses` are the
+ * three routes NOT wrapped in `<RequireAuth>` any more, alongside `/login`.
+ * Spec §2.4: courses are free to read with no account; signing in is what
+ * makes progress, notes and AI conversations follow a reader between
+ * devices, not the price of opening a chapter. `ChapterView`'s
+ * `AuthedReaderExtras` (and `CourseHome`'s own equivalent) are where that
+ * distinction actually lives — every hook that WRITES anything is called
+ * only once a session is confirmed; see their doc comments.
+ *
+ * Every OTHER route below is still wrapped: `/`, `/progress`, `/settings`
+ * show a specific reader's own numbers/keys, not a course's public content,
+ * and a logged-out visit to any of them is still bounced to `/login` and
  * returned here afterwards (see RequireAuth.tsx / Login.tsx's
- * `redirectTarget`). `/login` itself is deliberately the one route NOT
- * wrapped — see RequireAuth.tsx's doc comment for why that separation is
- * what actually prevents a redirect loop.
+ * `redirectTarget`). `/login` itself is deliberately never wrapped — see
+ * RequireAuth.tsx's doc comment for why that separation is what actually
+ * prevents a redirect loop.
  */
 export function AppRoutes() {
   return (
@@ -50,20 +58,20 @@ export function AppRoutes() {
         nhập gói (một NÚT). Cả ba đều là "khoá học"; tách chúng ra ba mục thanh
         bên là bắt người dùng biết trước gói mình muốn đến từ đâu.
 
-        Sau `RequireAuth` vì lý do cụ thể chứ không phải thói quen: màn này dẫn
-        tới một lần ghi vào `db.packages`, mà `clearLocalData()` dọn sạch ở mỗi
-        lần đổi phiên (xem db/local.ts). Một gói kéo về lúc chưa đăng nhập sẽ bị
-        xoá ở lần đăng nhập kế — mời người ta chọn rồi lặng lẽ vứt là tệ hơn hỏi
-        họ đăng nhập trước.
+        KHÔNG còn `<RequireAuth>` (Task 12) — spec §2.4 làm đọc thành công
+        khai, và tab "Kho cộng đồng" của chính màn này phải dựng được cho
+        người chưa đăng nhập, vì nó không thuộc về ai cả.
+
+        Việc này ĐỂ LẠI một điểm chưa vá, ghi ra chứ không giấu: gói kéo về
+        qua nút "Nhập gói" ở màn này vẫn ghi vào `db.packages`, và
+        `clearLocalData()` vẫn dọn sạch bảng ấy ở mỗi lần đổi phiên (xem
+        db/local.ts) — một gói kéo về lúc chưa đăng nhập vẫn bị xoá ở lần
+        đăng nhập kế. Task 12's brief chỉ định rõ ba route này bỏ
+        `<RequireAuth>`, không định rõ nhập gói tự nó; gói riêng nút ấy lại
+        theo phiên là việc của một task khác, có lý do riêng thay vì ăn theo
+        việc gỡ cổng ở đây.
       */}
-      <Route
-        path="/courses"
-        element={
-          <RequireAuth>
-            <Courses />
-          </RequireAuth>
-        }
-      />
+      <Route path="/courses" element={<Courses />} />
 
       {/*
         `/progress` — nơi các con số THUỘC VỀ. Trước đây chúng nằm trên trang
@@ -94,22 +102,16 @@ export function AppRoutes() {
         }
       />
 
-      <Route
-        path="/c/:courseId"
-        element={
-          <RequireAuth>
-            <CourseHome />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/c/:courseId/:chapterId"
-        element={
-          <RequireAuth>
-            <Reader />
-          </RequireAuth>
-        }
-      />
+      {/*
+        Task 12 — the reader itself. No `<RequireAuth>`: a direct link to a
+        chapter must resolve cold, in a fresh browser with no session — that
+        is the entire point of making courses public (spec §2.4). What a
+        session actually buys here (annotations, progress, the study
+        heartbeat) is gated inside `CourseHome`/`ChapterView` themselves, not
+        at the route.
+      */}
+      <Route path="/c/:courseId" element={<CourseHome />} />
+      <Route path="/c/:courseId/:chapterId" element={<Reader />} />
 
       {/*
         BA ROUTE CŨ — NAY LÀ CHUYỂN HƯỚNG, vì đích của chúng đã tồn tại thật.
@@ -127,10 +129,12 @@ export function AppRoutes() {
         mang theo `?import=1` và hộp thoại mở ra ngay, đúng như `?tab=registry`
         mà chính đặc tả viết cho `/catalog`.
 
-        KHÔNG bọc `<RequireAuth>`: `/courses` đã ở sau nó rồi, nên người chưa
-        đăng nhập vẫn về `/login` — chỉ là qua đích mới thay vì qua một bản sao
-        thứ hai của cùng cái cổng. `replace` để nút Lùi không rơi trở lại vào
-        đúng cái route vừa chuyển hướng đi.
+        KHÔNG bọc `<RequireAuth>` — và, kể từ Task 12, không phải vì `/courses`
+        đã ở sau nó rồi (không còn nữa: đọc là công khai, spec §2.4). Ba
+        chuyển hướng này đơn giản là không có gì để gác cổng: đích của chúng
+        (`/courses`, có hoặc không `?import=1`/`?tab=registry`) tự nó công
+        khai rồi. `replace` để nút Lùi không rơi trở lại vào đúng cái route
+        vừa chuyển hướng đi.
       */}
       <Route path="/library" element={<Navigate to="/courses" replace />} />
       <Route path="/import" element={<Navigate to="/courses?import=1" replace />} />

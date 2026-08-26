@@ -421,6 +421,7 @@ export const en: Messages = {
   'reader.notesTab': (count: string) => `Notes (${count})`,
   'reader.exerciseCheckbox': (index: string) => `Mark exercise ${index} as done`,
   'reader.exerciseDone': 'Done',
+  'reader.anonNudge': 'Sign in to keep progress, notes, and ask the AI.',
 
   'reader.toc': 'Contents',
   'reader.tocOpen': 'Open the course contents',

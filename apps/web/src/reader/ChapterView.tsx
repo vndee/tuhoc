@@ -9,6 +9,7 @@ import { type ChapterContent, useAnnotations } from '../annotations/useAnnotatio
 import { AskPanel } from '../ai/AskPanel';
 import { DeepDive } from '../ai/DeepDive';
 import { type SelectionExcerpt, chapterSystemPrompt } from '../ai/prompts';
+import { useMe } from '../api/useMe';
 import { describeCourseError, loadChapter } from '../course/loader';
 import { useLanguage } from '../i18n/LanguageProvider';
 import type { Chapter, Part } from '../course/types';
@@ -113,12 +114,46 @@ export function ChapterView({
   const [widgetTargets, setWidgetTargets] = useState<WidgetTarget[]>([]);
   const navigate = useNavigate();
   const courseKit = useCourseKit(courseId);
-  const progress = useProgress(courseId);
   // Only `toggle` is needed here — the reader never displays the theme
   // icon itself, that's `#theme-btn`'s job (Topbar, via AppShell). Reading
   // this through the shared context (not a second `useTheme()` call) is
   // debt #2's whole point — see ThemeContext.tsx's doc comment.
   const { toggle: toggleTheme } = useThemeContext();
+
+  /**
+   * Task 12 — courses are free to read with no account; signing in is what
+   * makes progress, notes and AI conversations follow a reader between
+   * devices (spec §2.4). Everything that WRITES for this chapter —
+   * annotations, progress, the study heartbeat — lives in `AuthedReaderExtras`
+   * below, mounted only once `confirmedLoggedIn` is true. That component is
+   * the ONLY place those hooks are called; this component never calls
+   * `useAnnotations`/`useProgress` itself, and never branches a hook call on
+   * these booleans (React's rules of hooks forbid that) — it only ever
+   * branches whether the CHILD COMPONENT mounts.
+   *
+   * `confirmedLoggedIn`/`confirmedLoggedOut` are deliberately NOT each
+   * other's negation. `useMe()` is `undefined`-shaped while pending and
+   * `isError` on a 500 (see its own doc comment) — both cases where the
+   * server has NOT said "nobody is signed in" in so many words, so neither
+   * one is "logged out" and neither one is "logged in". Getting this wrong in
+   * either direction is a real, visible bug: mounting `AuthedReaderExtras`
+   * on a guess would let a still-unconfirmed visitor's clicks start writing
+   * before the server ever confirmed who they are; showing the nudge on a
+   * guess would flash "đăng nhập để…" at an already-signed-in reader for the
+   * one request `useMe()` takes to settle.
+   */
+  const me = useMe();
+  const confirmedLoggedIn = me.isSuccess && me.data != null;
+  const confirmedLoggedOut = me.isSuccess && me.data == null;
+
+  // The table-of-contents drawer's "done" marks (Ruling F4-adjacent) — public
+  // UI (every reader gets a TOC), fed by session-only data. Stays the empty
+  // set for as long as nobody is confirmed signed in, which is the honest
+  // reading: there is no server-recorded progress to show yet. Lifted up
+  // rather than read here directly for the same rules-of-hooks reason as
+  // above — `AuthedReaderExtras` is the one place `useProgress` runs, and it
+  // reports back through `onDoneChapterIdsChange`.
+  const [doneChapterIds, setDoneChapterIds] = useState<ReadonlySet<string>>(new Set());
 
   // P2 Task 4: the annotation store resolves this chapter's stored anchors
   // against the DOM below and paints the highlights in. It has to be told when
@@ -127,60 +162,17 @@ export function ChapterView({
   // counter bumped by that effect is the only honest signal that every
   // `<mark>` is gone and every anchor needs resolving again.
   //
-  // Task 5 consumes the result: `<SelectionToolbar>` below is what lets a
-  // reader CREATE an annotation, and it takes THIS one hook result as a prop.
-  // Calling `useAnnotations` again from inside the toolbar would give the
-  // chapter two live instances, each painting every annotation — the trap the
-  // hook's own doc names. The margin cards (T6) and the orphan panel (T7) join
-  // the same way, through `list`/`orphans` on this same object.
+  // This state stays HERE (not inside `AuthedReaderExtras`) even though only
+  // that component's `useAnnotations` reads it for creating/painting notes:
+  // `askAboutChapter` below (public — asking the AI about a chapter needs no
+  // account) reads `annotationContent.root` too, and it is the SAME container
+  // `AuthedReaderExtras`'s exercise-checkbox injection needs — see that
+  // component's own doc for why reusing this one revision-counted signal,
+  // rather than `chapterQuery.data`/`courseKit.ready` directly, is what keeps
+  // the checkbox injection correctly ordered after the innerHTML write below.
   const [annotationContent, setAnnotationContent] = useState<ChapterContent>({ root: null, revision: 0 });
-  const annotations = useAnnotations(courseId, chapter.id, annotationContent);
 
-  // P2 Task 6 built the rail as TWO TABS — "Trong chương" (the chapter's own
-  // h2/h3 outline) and "Ghi chú". Chế độ đọc hướng A takes the tabs apart, and
-  // the two halves go to opposite places rather than both staying in a column
-  // beside the text:
-  //
-  //   - the outline moves into `<TocDrawer>`, together with the COURSE outline
-  //     that used to be the app sidebar. Two lists that were on two different
-  //     edges of the screen, in one drawer, behind one button.
-  //   - the notes stay in `#rail`, but the rail stops being a tabbed column
-  //     and becomes what the cards always were underneath: a margin, holding
-  //     anchored notes at their own paragraphs and NOTHING where there is no
-  //     note. `notesOn` is the reader's own switch over that margin, not a tab
-  //     — there is no second thing behind it to switch to any more.
-  //
-  // Both are still built HERE, in this component's portals, for the reason
-  // ruling P2-F1 gives: their content is derived from the chapter's DOM, which
-  // `shell/Rail.tsx` and `shell/Topbar.tsx` cannot see, and building them
-  // there renders the rail twice (the P1 Task 11 bug route-awareness fixed).
-  //
-  // `notesOn` starts TRUE and is not persisted. Both halves of that are load-
-  // bearing: an orphaned note has to be on screen the moment a reader opens a
-  // chapter whose text moved under it — that is the whole promise of P2 §3 —
-  // and a remembered `false` would hide every note in the product across a
-  // reload, which is indistinguishable from the data loss this phase exists to
-  // prevent.
-  //
-  // `cardFocus` is which note card is open. It lives here rather than inside
-  // `<MarginCards>` because Task 5's toolbar is what opens one: "Ghi chú"
-  // creates the annotation and calls `onRequestNote(id)` — a callback that,
-  // until this task, nothing was listening to, so the button highlighted in
-  // yellow and offered no way to write anything.
-  const [notesOn, setNotesOn] = useState(true);
   const [tocOpen, setTocOpen] = useState(false);
-  const [cardFocus, setCardFocus] = useState<CardFocus | null>(null);
-
-  // P2 Task 7. Which orphaned note is waiting for the reader to select its new
-  // home, or null. It lives HERE, not inside `<OrphanPanel>`, because it is the
-  // one piece of state two siblings disagree about: while it is set, dragging
-  // across a paragraph means "put the note here", so Task 5's toolbar must not
-  // offer to create a NEW note from the same drag. Both components listen to
-  // `selectionchange` on the same document; without a shared owner they both
-  // answer, and the reader gets a colour picker on top of the paragraph they
-  // were trying to re-anchor. Reattach mode wins — see `OrphanPanel.tsx`'s doc,
-  // section 1.
-  const [reattaching, setReattaching] = useState<string | null>(null);
 
   /**
    * Hệ thống con 2, Task 7 + 8. Trợ lý AI có ĐÚNG HAI lối vào từ chương này —
@@ -226,51 +218,12 @@ export function ChapterView({
     setAi(null);
   }, [chapter.id]);
 
-  // A card being opened from the CHAPTER (a click on a highlight, or "Ghi
-  // chú" on the selection toolbar) has to bring the margin back with it. This
-  // used to read `setRailTab('notes')`; the switch it flips now is the
-  // reader's own "hiện/ẩn ghi chú ở lề", and the rule is the same one for the
-  // same reason: opening a card the reader cannot see is a click that appears
-  // to do nothing.
-  const focusCard = useCallback((next: CardFocus | null) => {
-    setCardFocus(next);
-    if (next) setNotesOn(true);
-  }, []);
-
-  const requestNote = useCallback((id: string) => focusCard({ id, edit: true }), [focusCard]);
-
   const closeToc = useCallback(() => setTocOpen(false), []);
 
   const chapterQuery = useQuery({
     queryKey: ['course-chapter', courseId, chapter.id],
     queryFn: () => loadChapter(courseId, chapter.id),
   });
-
-  // Kept current on every render (not inside an effect — a plain
-  // assignment during render is enough, since `startHeartbeat`'s tick
-  // only ever reads this ref asynchronously, well after React has
-  // committed) so the mount effect below can hand `startHeartbeat` a
-  // getter that always answers "whichever chapter is open right now,"
-  // never a value frozen at mount time.
-  const heartbeatCtxRef = useRef<{ courseId: string; chapterId: string } | null>(null);
-  heartbeatCtxRef.current = { courseId, chapterId: chapter.id };
-
-  // Task 15: the study heartbeat. Started ONCE per mount (`[]` deps), not
-  // re-started on every chapter change — `ChapterView` is reused across
-  // in-course navigation rather than remounted (see
-  // ChapterView.test.tsx's "navigating between chapters reuses the
-  // component instance" test, which proves this via `rerender`),
-  // so restarting the interval on every chapter would reset the 30s
-  // cadence and the 60s activity window on every navigation for no
-  // reason. `getCtx` reads `heartbeatCtxRef` above instead, so each tick
-  // still gets attributed to whatever chapter is open AT THAT TICK.
-  // Teardown on unmount is what stops heartbeats once the reader is left
-  // entirely (navigating to `/`, `/login`, ...) — without it, a stale
-  // heartbeat would keep attributing study time to a chapter nobody is
-  // reading anymore.
-  useEffect(() => {
-    return startHeartbeat(() => heartbeatCtxRef.current);
-  }, []);
 
   // `#rail` and `#crumb` are rendered by <Shell>/<Topbar> (Task 9), siblings
   // of the routed content this component lives in — not DOM nodes reachable
@@ -349,42 +302,6 @@ export function ChapterView({
     };
   }, []);
 
-  // The rail is a STICKY, self-scrolling box (`reader.css`: `position:sticky`,
-  // `max-height:calc(100vh - 100px)`, `overflow-y:auto`) — the right shape for
-  // a short table of contents and the wrong one for a column of cards pinned
-  // to document coordinates, which have to scroll WITH the chapter and must
-  // not be clipped at the viewport's height. `.rail-notes` (src/styles/
-  // index.css) turns those three properties off and widens the rail to fit a
-  // card.
-  //
-  // Applied from here, imperatively, for the same reason `#mark-btn` and
-  // `#prev-btn` are driven from here: `#rail` is chrome `<Shell>` renders,
-  // and teaching `shell/Rail.tsx` about chapter state is exactly what ruling
-  // P2-F1 forbids. The cleanup is what keeps a rail on `/` or `/c/:courseId`
-  // from inheriting a chapter's layout after the reader navigates away.
-  //
-  // It used to be keyed off which TAB was up. There is no second tab any more,
-  // so it is keyed off the reader's own notes switch — which is the same
-  // condition it always really was: "is `#rail` holding document-positioned
-  // cards right now".
-  useEffect(() => {
-    if (!railEl) return;
-    railEl.classList.toggle('rail-notes', notesOn);
-    return () => railEl.classList.remove('rail-notes');
-  }, [railEl, notesOn]);
-
-  // A new chapter has none of the previous chapter's notes, so an open card
-  // there refers to an annotation that is no longer on the page. The same goes
-  // for a rescue in progress: the paragraph the reader was about to select is
-  // gone, and leaving the mode on would keep the toolbar suspended in a
-  // chapter where nothing can be reattached. `notesOn` is deliberately NOT
-  // reset (it is a preference, and resetting it every chapter would fight the
-  // reader) — the same restraint the two-tab version applied to `railTab`.
-  useEffect(() => {
-    setCardFocus(null);
-    setReattaching(null);
-  }, [chapter.id]);
-
   // Prev/next chapter navigation: topbar `#prev-btn`/`#next-btn` (Task 9
   // left them inert — its own comment names this task as the owner) plus
   // v1's ArrowLeft/ArrowRight shortcuts. Both live here, together, since
@@ -457,63 +374,25 @@ export function ChapterView({
   // this task as its owner — Ruling F4/debt #5): same
   // portal-into-externally-owned-node recipe as `#prev-btn`/`#next-btn`
   // above, since `#mark-btn` is sibling chrome rendered by `<Topbar>`, not
-  // a node this component's own JSX ever produces. Visual state (`.on`
-  // class, ○/✓ icon, label) mirrors v1's `syncMark()` exactly
-  // (the v1 single-file source's own mark-btn wiring) and is re-applied
-  // whenever `isRead` for THIS chapter changes — including a change that
-  // did not originate from this button (e.g. a remote sync pull marking
-  // the chapter read from another device while it's open here).
-  const isChapterRead = progress.isRead(chapter.id);
+  // a node this component's own JSX ever produces.
+  //
+  // Task 12: the CLICK wiring (`.on` class, ○/✓ icon, label, the toggle
+  // itself) moved into `AuthedReaderExtras` along with `useProgress` — see
+  // that component's own doc. What stays HERE is the one thing that has to
+  // run whether or not that component is even mounted: `<Topbar>` renders
+  // `#mark-btn` UNCONDITIONALLY on every chapter route (`hidden={!isChapterRoute}`
+  // — a holdover from when reading a chapter always implied a session), so an
+  // anonymous visitor would otherwise see a "Đánh dấu đã học" button that is
+  // simply never wired to anything — the exact "a control that appears and
+  // does nothing" shape this task's brief calls out as worse than no control
+  // at all. Hiding it here, keyed on the same `confirmedLoggedIn` that gates
+  // `AuthedReaderExtras`, is the fix; no cleanup is needed; leaving a chapter
+  // route changes `<Topbar>`'s OWN `hidden` prop, which wins on the next
+  // render regardless of whatever this effect last set.
   useEffect(() => {
     const markBtn = document.getElementById('mark-btn');
-    if (!markBtn) return;
-
-    markBtn.classList.toggle('on', isChapterRead);
-    markBtn.title = t(isChapterRead ? 'reader.markUnread' : 'topbar.markRead');
-    // `<Topbar>` sets a static `aria-label` on this button, which — per
-    // the accessible-name computation rules — takes precedence over its
-    // visible text content. Updating only `.mk-lbl`'s text below without
-    // also updating `aria-label` here would leave a screen reader
-    // announcing "Đánh dấu đã học" (mark as read) forever, even once the
-    // chapter IS marked read and the button's real action has flipped to
-    // unmark it — so this mirrors `title`'s update exactly.
-    markBtn.setAttribute('aria-label', t(isChapterRead ? 'reader.markUnread' : 'topbar.markRead'));
-    const icon = markBtn.querySelector('.mk-ico');
-    if (icon) icon.textContent = isChapterRead ? '✓' : '○';
-    const label = markBtn.querySelector('.mk-lbl');
-    if (label) label.textContent = t(isChapterRead ? 'reader.read' : 'topbar.markRead');
-
-    const handleClick = () => progress.toggleRead(chapter.id);
-    markBtn.addEventListener('click', handleClick);
-    return () => {
-      markBtn.removeEventListener('click', handleClick);
-      // Reset to the neutral "off" default — same discipline as
-      // `#prev-btn`/`#next-btn`'s cleanup re-enabling themselves above.
-      // This cleanup also runs between chapters (not only on true
-      // unmount), but that is harmless: if a NEW chapter is mounting
-      // right after, its own effect run sets the correct state for that
-      // chapter in the same commit, before the browser paints. If nothing
-      // is mounting next (navigated away to `/` or `/login`, where this
-      // button isn't wired to anything), this is what stops the button
-      // from indefinitely showing a stale "✓ Đã học" from whatever
-      // chapter was last open.
-      markBtn.classList.remove('on');
-      markBtn.title = t('topbar.markRead');
-      markBtn.setAttribute('aria-label', t('topbar.markRead'));
-      const iconEl = markBtn.querySelector('.mk-ico');
-      if (iconEl) iconEl.textContent = '○';
-      const labelEl = markBtn.querySelector('.mk-lbl');
-      if (labelEl) labelEl.textContent = t('topbar.markRead');
-    };
-    // Deliberately depends on `isChapterRead` (the specific boolean this
-    // effect cares about) and `progress.toggleRead` (stable — see
-    // useProgress.ts) rather than the whole `progress` object: `progress`
-    // also carries `partStats`/`doneChapterIds`, which change on every
-    // EXERCISE toggle too — including the whole object here would re-run
-    // this effect (tearing down and re-attaching the click listener) on
-    // every exercise checkbox click in this chapter, not just on an actual
-    // change to whether THIS chapter is marked read.
-  }, [chapter.id, isChapterRead, progress.toggleRead, t]);
+    if (markBtn) markBtn.hidden = !confirmedLoggedIn;
+  }, [confirmedLoggedIn]);
 
   /**
    * `#progbar` — how far through the chapter the reader is, as ONE THIN LINE.
@@ -676,71 +555,6 @@ export function ChapterView({
     };
   }, [courseKit.ready, chapterQuery.data, courseId, chapter.id, chapter.num, chapter.title, courseTitle]);
 
-  // Exercise checkboxes (this task's own deliverable): inject into every
-  // `.box.ex .box-h` and keep their `checked` state in sync with progress
-  // — WITHOUT ever touching `innerHTML` here (that is the main content
-  // effect's job, above, and re-running it on every checkbox toggle would
-  // tear down and rebuild everything `renderKatex` already set up, plus
-  // every widget iframe's live state, completely unrelated to any
-  // exercise). This effect only ever mutates nodes inside `.box.ex
-  // .box-h`, the same restraint the widget-placeholder code above applies
-  // to `[data-widget]` nodes, so the two can never fight over the same
-  // element.
-  //
-  // Declared AFTER the main content effect above on purpose: React runs
-  // passive effects in declaration order within one commit, so by the
-  // time this one runs, `containerRef.current` already holds the fragment
-  // that effect just set — including on first mount and on every chapter
-  // change (`chapter.id` is in this effect's own deps too).
-  //
-  // `courseKit.ready` MUST be in this effect's own deps too (fix-round-1,
-  // Finding 1) — it is not enough that the main content effect above
-  // already depends on it. `useCourseKit` loads four scripts in sequence
-  // (see useCourseKit.ts's own doc comment) while the chapter's HTML
-  // fragment is one small fetch; it is entirely plausible for
-  // `chapterQuery.data` to resolve BEFORE `courseKit.ready` flips true.
-  // When that happens, this effect fires once (because `chapterQuery.data`
-  // changed) while `courseKit.ready` is still false — the component is
-  // still rendering "Đang tải chương…", so `containerRef.current` is
-  // null, and this effect is a no-op. Once `courseKit.ready` finally
-  // flips true, the main content effect re-runs (its own deps include
-  // `courseKit.ready`) and sets `innerHTML` for the first time — but
-  // WITHOUT `courseKit.ready` also listed here, NONE of this effect's
-  // OTHER deps would have changed on that render (same `chapter.id`,
-  // same already-resolved `chapterQuery.data`, unchanged progress), so
-  // React would never re-run it, and the exercise checkboxes would
-  // silently never appear for that chapter. No test in this file caught
-  // this before fix-round-1 because `useCourseKit` is mocked to return
-  // `ready: true` synchronously everywhere else in this suite — see the
-  // dedicated "ready flips true only after chapter data has resolved"
-  // test below, which mocks the two independently to reproduce the real
-  // ordering.
-  //
-  // `progress.partStats` changes identity on every underlying progress
-  // write (see useProgress.ts), which is what lets this effect re-sync
-  // `checked` after a remote change without re-injecting anything —
-  // `injectExerciseCheckboxes` only ever CREATES a checkbox that doesn't
-  // exist yet; every other call just refreshes `checked` on the same node.
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    injectExerciseCheckboxes(
-      container,
-      {
-        isDone: (n) => progress.exDone(chapter.id, n),
-        toggle: (n) => progress.toggleEx(chapter.id, n),
-      },
-      t,
-    );
-    // `progress.exDone`/`progress.toggleEx` (stable — see useProgress.ts)
-    // plus `progress.partStats` (the change SIGNAL — see the paragraph
-    // above) rather than the whole `progress` object: `progress` also
-    // carries `isRead`/`doneChapterIds`/`toggleRead`, and including it
-    // whole would re-run this effect (and re-walk every `.box.ex` in the
-    // chapter) on every chapter-level `isRead` change too, not just an
-    // exercise change.
-  }, [chapter.id, courseKit.ready, progress.partStats, progress.exDone, progress.toggleEx, chapterQuery.data, t]);
-
   // Error checks come before the pending check: `!courseKit.ready` is true
   // for the whole time scripts are loading, so if it were checked first, a
   // chapter fetch that fails *while* scripts are still loading would show
@@ -795,6 +609,11 @@ export function ChapterView({
           </>,
           crumbEl,
         )}
+      {/* Task 12 — once, quietly, at the top of the chapter: not a modal, not
+          an interstitial, and shown only once `useMe()` has SETTLED on "nobody
+          is signed in" (`confirmedLoggedOut`), never on a guess. See this
+          component's own doc for why that is not simply `!confirmedLoggedIn`. */}
+      {confirmedLoggedOut && <p className="reader-anon-nudge">{t('reader.anonNudge')}</p>}
       <div ref={containerRef} />
       {/* One `<WidgetFrame>` portalled into each placeholder `widgetTargets`
           found inside `containerRef`'s subtree — the innerHTML write put
@@ -805,26 +624,22 @@ export function ChapterView({
           same-named widget in a later chapter must never be treated as "the
           same" portal. */}
       {widgetTargets.map((w) => createPortal(<WidgetFrame name={w.name} html={w.html} />, w.node, w.key))}
-      {/* Last in the chapter pipeline (innerHTML → renderKatex → widgets →
-          injectExerciseCheckboxes → normalize/resolve/paint → toolbar): it
-          watches `selectionchange` and does nothing at all until the reader
-          selects something inside `annotationContent.root`, which is the same
-          element the store above resolves against and only exists once that
-          effect has run. It portals itself into `document.body`, so its
-          position in this JSX is about ownership, not layout. */}
-      <SelectionToolbar
-        content={annotationContent}
-        store={annotations}
-        onRequestNote={requestNote}
-        onDeepDive={
-          aiReady
-            ? (excerpt) => {
-                setAi({ kind: 'dive', excerpt });
-              }
-            : undefined
-        }
-        suspended={reattaching !== null}
-      />
+      {/* Everything that WRITES for this chapter — annotations (and the
+          toolbar that creates them), progress (and the exercise checkboxes,
+          and `#mark-btn`'s click handling), the study heartbeat — lives here,
+          mounted only once a session is confirmed. See `AuthedReaderExtras`'s
+          own doc for the full accounting of what is and is not inside it. */}
+      {confirmedLoggedIn && (
+        <AuthedReaderExtras
+          courseId={courseId}
+          chapter={chapter}
+          content={annotationContent}
+          railEl={railEl}
+          notesSlotEl={notesSlotEl}
+          onDeepDive={aiReady ? (excerpt) => setAi({ kind: 'dive', excerpt }) : undefined}
+          onDoneChapterIdsChange={setDoneChapterIds}
+        />
+      )}
       {aiReady && (
         <>
           {/*
@@ -933,17 +748,249 @@ export function ChapterView({
           navSlotEl,
         )}
 
-      {/* ── Thanh trên của chế độ đọc, nhóm PHẢI ────────────────────────────
-          The old "Ghi chú (N)" TAB, with its tablist taken away and its job
+      {/* ── Thanh trên của chế độ đọc, nhóm PHẢI: nút "Ghi chú (N)" ─────────
+          Task 12: this button — and the margin column it governs — only
+          exists at all once `AuthedReaderExtras` mounts (below). It, and not
+          `ChapterView`, now owns `notesOn`/the notes count, since creating and
+          reading back a note is exactly the kind of write an anonymous reader
+          must not be offered a control for. See that component's own doc. */}
+
+      {/* Mục lục — ngăn kéo, không phải cột. Renders into `document.body`
+          (its own portal), so its position in this JSX is about ownership.
+          Public UI (every reader gets a table of contents); `doneChapterIds`
+          is the one session-only ingredient, and stays the empty set — never
+          the WRONG reader's set — until `AuthedReaderExtras` reports one in. */}
+      <TocDrawer
+        open={tocOpen}
+        onClose={closeToc}
+        courseId={courseId}
+        courseTitle={courseTitle}
+        currentChapterId={chapter.id}
+        parts={parts}
+        doneChapterIds={doneChapterIds}
+        headings={headings}
+        currentHeadingId={currentHeadingId}
+      />
+    </>
+  );
+}
+
+/**
+ * Everything about this chapter that only makes sense for a reader the
+ * server has confirmed (Task 12, spec §2.4 — courses are free to read; an
+ * account is what makes progress, notes and AI conversations follow a reader
+ * between devices). `ChapterView` mounts this ONLY once `useMe()` has
+ * settled on a real user — never conditionally calls a hook itself. That is
+ * the whole reason this is a separate component and not an `if` inside
+ * `ChapterView`: `useAnnotations`, `useProgress` and the study heartbeat all
+ * have to run unconditionally *somewhere*, and "somewhere" has to be a
+ * component whose OWN mounting is the condition (React's rules of hooks
+ * forbid a hook call guarded by an `if`), not a branch around the calls.
+ *
+ * What lives here, and why:
+ *  - `useAnnotations` + `<SelectionToolbar>` (creates a highlight/note) +
+ *    `<MarginCards>`/`<OrphanPanel>` (reads them back) + the "Ghi chú (N)"
+ *    toggle button — creating and painting an annotation is writing to
+ *    `db.annotations`, which syncs to the server under THIS reader's
+ *    account; an anonymous highlight would have nowhere of its own to live.
+ *  - `useProgress` + the exercise checkboxes — same reasoning, for
+ *    `db.progress`. Nothing else in the tree can create a `.box.ex .box-h`
+ *    checkbox, so an anonymous chapter simply renders with none of them, not
+ *    with dead ones — a checkbox that appears and does nothing is worse than
+ *    one that is absent.
+ *  - The `#mark-btn` CLICK wiring (icon/label/class + the toggle itself).
+ *    `ChapterView` still hides the button itself whenever this component is
+ *    not mounted (its own effect, keyed on the same `confirmedLoggedIn`) —
+ *    the same "worse than absent" reasoning applies to it too.
+ *  - The study heartbeat (`startHeartbeat`) — it queues `db.outbox` rows
+ *    attributed to an account; there is no account to attribute them to for
+ *    an anonymous visit.
+ *
+ * What does NOT live here, deliberately — see `ChapterView`'s own doc for the
+ * full reasoning on each: the chapter's HTML/KaTeX/widget rendering, the
+ * table of contents, and the reading-progress bar (`#progbar`). None of them
+ * read or write anything about a specific reader; they are exactly as public
+ * as the chapter text itself.
+ */
+interface AuthedReaderExtrasProps {
+  courseId: string;
+  chapter: Chapter;
+  /** Same object `ChapterView` itself reads for `askAboutChapter` — passing
+   * anything else here would give the chapter TWO live `useAnnotations`
+   * instances, each painting every highlight (the trap that hook's own doc
+   * names). Doubles as the "chapter DOM is ready" signal for the exercise-
+   * checkbox effect below, for the same reason `useAnnotations` already
+   * keys its own resolve-and-paint pass off it. */
+  content: ChapterContent;
+  railEl: HTMLElement | null;
+  notesSlotEl: HTMLElement | null;
+  onDeepDive: ((excerpt: SelectionExcerpt) => void) | undefined;
+  /** Reports this course's local progress UP to `ChapterView`'s TocDrawer —
+   * see `ChapterView`'s own doc for why the flow runs this direction instead
+   * of `TocDrawer`/`ChapterView` calling `useProgress` themselves. */
+  onDoneChapterIdsChange: (ids: ReadonlySet<string>) => void;
+}
+
+function AuthedReaderExtras({
+  courseId,
+  chapter,
+  content,
+  railEl,
+  notesSlotEl,
+  onDeepDive,
+  onDoneChapterIdsChange,
+}: AuthedReaderExtrasProps) {
+  const { t } = useLanguage();
+  const annotations = useAnnotations(courseId, chapter.id, content);
+  const progress = useProgress(courseId);
+
+  // `notesOn`/`cardFocus`/`reattaching` — see `ChapterView`'s original P2
+  // Task 6/7 doc comments (git history) for the full reasoning; unchanged by
+  // this move except that they now live beside the hooks they gate.
+  const [notesOn, setNotesOn] = useState(true);
+  const [cardFocus, setCardFocus] = useState<CardFocus | null>(null);
+  const [reattaching, setReattaching] = useState<string | null>(null);
+
+  const focusCard = useCallback((next: CardFocus | null) => {
+    setCardFocus(next);
+    if (next) setNotesOn(true);
+  }, []);
+
+  const requestNote = useCallback((id: string) => focusCard({ id, edit: true }), [focusCard]);
+
+  useEffect(() => {
+    onDoneChapterIdsChange(progress.doneChapterIds);
+  }, [progress.doneChapterIds, onDoneChapterIdsChange]);
+
+  useEffect(() => {
+    if (!railEl) return;
+    railEl.classList.toggle('rail-notes', notesOn);
+    return () => railEl.classList.remove('rail-notes');
+  }, [railEl, notesOn]);
+
+  useEffect(() => {
+    setCardFocus(null);
+    setReattaching(null);
+  }, [chapter.id]);
+
+  // Kept current on every render (not inside an effect — a plain assignment
+  // during render is enough, since `startHeartbeat`'s tick only ever reads
+  // this ref asynchronously, well after React has committed) so the mount
+  // effect below can hand `startHeartbeat` a getter that always answers
+  // "whichever chapter is open right now," never a value frozen at mount
+  // time.
+  const heartbeatCtxRef = useRef<{ courseId: string; chapterId: string } | null>(null);
+  heartbeatCtxRef.current = { courseId, chapterId: chapter.id };
+
+  // Task 15: the study heartbeat. Started ONCE per mount (`[]` deps) — this
+  // component stays mounted across in-course chapter navigation exactly like
+  // `ChapterView` itself does (same instance, not remounted), so restarting
+  // the interval on every chapter would reset the 30s cadence/60s activity
+  // window for no reason. `getCtx` reads `heartbeatCtxRef` above instead, so
+  // each tick still gets attributed to whatever chapter is open AT THAT TICK.
+  useEffect(() => {
+    return startHeartbeat(() => heartbeatCtxRef.current);
+  }, []);
+
+  // `#mark-btn`'s click wiring. `ChapterView` owns showing/hiding the button
+  // itself (it must do that whether or not THIS component is even mounted);
+  // this is the rest of v1's `syncMark()` — icon/label/class, re-applied
+  // whenever `isRead` for THIS chapter changes, including a change that did
+  // not originate from this button (a remote sync pull, for instance).
+  const isChapterRead = progress.isRead(chapter.id);
+  useEffect(() => {
+    const markBtn = document.getElementById('mark-btn');
+    if (!markBtn) return;
+
+    markBtn.classList.toggle('on', isChapterRead);
+    markBtn.title = t(isChapterRead ? 'reader.markUnread' : 'topbar.markRead');
+    // `<Topbar>` sets a static `aria-label` on this button, which — per the
+    // accessible-name computation rules — takes precedence over its visible
+    // text content. Updating only `.mk-lbl`'s text below without also
+    // updating `aria-label` here would leave a screen reader announcing
+    // "Đánh dấu đã học" forever, even once the chapter IS marked read.
+    markBtn.setAttribute('aria-label', t(isChapterRead ? 'reader.markUnread' : 'topbar.markRead'));
+    const icon = markBtn.querySelector('.mk-ico');
+    if (icon) icon.textContent = isChapterRead ? '✓' : '○';
+    const label = markBtn.querySelector('.mk-lbl');
+    if (label) label.textContent = t(isChapterRead ? 'reader.read' : 'topbar.markRead');
+
+    const handleClick = () => progress.toggleRead(chapter.id);
+    markBtn.addEventListener('click', handleClick);
+    return () => {
+      markBtn.removeEventListener('click', handleClick);
+      // Reset to the neutral "off" default. This cleanup also runs between
+      // chapters (not only on true unmount or on sign-out), but that is
+      // harmless for the same reason `ChapterView`'s `#prev-btn`/`#next-btn`
+      // cleanup is: if a new chapter (or a still-signed-in re-render) is
+      // mounting right after, its own effect run sets the right state before
+      // the browser paints.
+      markBtn.classList.remove('on');
+      markBtn.title = t('topbar.markRead');
+      markBtn.setAttribute('aria-label', t('topbar.markRead'));
+      const iconEl = markBtn.querySelector('.mk-ico');
+      if (iconEl) iconEl.textContent = '○';
+      const labelEl = markBtn.querySelector('.mk-lbl');
+      if (labelEl) labelEl.textContent = t('topbar.markRead');
+    };
+    // Deliberately depends on `isChapterRead`/`progress.toggleRead` (stable —
+    // see useProgress.ts) rather than the whole `progress` object — see the
+    // ORIGINAL version of this effect (git history, pre-Task-12) for why
+    // that specifically matters (re-running on every exercise toggle).
+  }, [chapter.id, isChapterRead, progress.toggleRead, t]);
+
+  // Exercise checkboxes: inject into every `.box.ex .box-h` and keep their
+  // `checked` state in sync with progress — WITHOUT ever touching
+  // `innerHTML` (that is `ChapterView`'s main content effect's job).
+  //
+  // Keyed on `content` (i.e. `annotationContent`'s `root`+`revision`, the
+  // SAME signal `useAnnotations` itself resolves against) rather than
+  // directly on `chapterQuery.data`/`courseKit.ready`, which is what the
+  // pre-Task-12 version of this effect did and is what fix-round-1 (see git
+  // history) had to specifically special-case `courseKit.ready` for: this
+  // component is a CHILD of `ChapterView` now, and a child's effects run
+  // before its parent's in the same commit, so depending directly on
+  // `ChapterView`'s own query results could run this BEFORE the main content
+  // effect has written the fragment's HTML in a commit where both first
+  // become true together. `content` sidesteps that entirely — it is only
+  // ever updated by `ChapterView` calling `setAnnotationContent` AFTER that
+  // write, which means this component only ever sees the new `content` in a
+  // LATER commit, by which point the DOM mutation (from the earlier commit)
+  // has already happened.
+  useEffect(() => {
+    const container = content.root;
+    if (!container) return;
+    injectExerciseCheckboxes(
+      container,
+      {
+        isDone: (n) => progress.exDone(chapter.id, n),
+        toggle: (n) => progress.toggleEx(chapter.id, n),
+      },
+      t,
+    );
+  }, [chapter.id, content, progress.partStats, progress.exDone, progress.toggleEx, t]);
+
+  return (
+    <>
+      {/* Last in the chapter pipeline (innerHTML → renderKatex → widgets →
+          checkboxes → normalize/resolve/paint → toolbar): it watches
+          `selectionchange` and does nothing at all until the reader selects
+          something inside `content.root`. It portals itself into
+          `document.body`, so its position in this JSX is about ownership. */}
+      <SelectionToolbar
+        content={content}
+        store={annotations}
+        onRequestNote={requestNote}
+        onDeepDive={onDeepDive}
+        suspended={reattaching !== null}
+      />
+
+      {/* The old "Ghi chú (N)" TAB, with its tablist taken away and its job
           narrowed to the half that was always real: how much of the reader's
-          work is in this chapter, and a switch over whether it is on the page.
-          It keeps `id="rail-tab-notes"` and the exact `reader.notesTab` string
-          on purpose — `e2e/p2.spec.ts` (×4) and `e2e/s1.spec.ts` (×2) assert
-          both, on real data, and they are this feature's own gates. Renaming
-          the id would mean editing the two files whose whole job is to notice
-          when something about notes changes. The name is now inaccurate (it is
-          not in the rail, and it is not a tab); that is a debt worth carrying
-          in front of a gate worth keeping. */}
+          work is in this chapter, and a switch over whether it is on the
+          page. Keeps `id="rail-tab-notes"` and the exact `reader.notesTab`
+          string on purpose — `e2e/p2.spec.ts` (×4) and `e2e/s1.spec.ts` (×2)
+          assert both, on real data, and they are this feature's own gates. */}
       {notesSlotEl &&
         createPortal(
           <button
@@ -955,77 +1002,35 @@ export function ChapterView({
             title={t('reader.notesToggle')}
             onClick={() => setNotesOn((on) => !on)}
           >
-            {/* `list` PLUS `orphans`, and the plus is Task 7's, found by
-                looking at the real page rather than at a test. Counting only
-                what got painted has two bad consequences and no good one:
-
-                  - A chapter whose content was rebuilt shows a note count that
-                    has silently DROPPED — which looks exactly like the data
-                    loss this whole phase exists to prevent, while the notes
-                    are in fact all still there.
-                  - The orphan panel lives in the margin this button governs,
-                    so a reader whose only notes are orphaned would be told
-                    "Ghi chú (0)" with both of them on screen beside it.
-                    Measured on the real reader with two orphans seeded.
-
-                A note that could not be placed is still a note in this
-                chapter. The margin is where the difference between the two
-                kinds is explained; the count's job is to say how much of the
-                reader's work is in here. Notes still awaiting the deferred
-                fuzzy pass are in neither list and so are not counted yet —
-                that is the existing, deliberate behaviour (see
-                `useAnnotations`, section 2): reporting a note before it has
-                been looked for is what the store goes out of its way not to
-                do. */}
+            {/* `list` PLUS `orphans` — see the pre-Task-12 version of this
+                comment (git history) for why the orphan count is included. */}
             {t('reader.notesTab', String(annotations.list.length + annotations.orphans.length))}
           </button>,
           notesSlotEl,
         )}
 
-      {/* Mục lục — ngăn kéo, không phải cột. Renders into `document.body`
-          (its own portal), so its position in this JSX is about ownership. */}
-      <TocDrawer
-        open={tocOpen}
-        onClose={closeToc}
-        courseId={courseId}
-        courseTitle={courseTitle}
-        currentChapterId={chapter.id}
-        parts={parts}
-        doneChapterIds={progress.doneChapterIds}
-        headings={headings}
-        currentHeadingId={currentHeadingId}
-      />
-
-      {/* ── `#rail` là LỀ, không còn là cột có tab ──────────────────────────
-          Chỉ ghi chú, và chỉ ở nơi có ghi chú: `<MarginCards>` places every
-          card absolutely at its own highlight's document Y, so a chapter with
-          two notes paints two cards and nothing anywhere else.
-
+      {/* `#rail` is a MARGIN, not a tabbed column: `<MarginCards>` places
+          every card absolutely at its own highlight's document Y, so a
+          chapter with two notes paints two cards and nothing anywhere else.
           Still mounted while `notesOn` is false, and `hidden` rather than
-          unmounted, for the reason the two-tab version had: a click on a
-          highlight has to be able to open its card — and below 1241px, where
-          `#rail` does not exist at all, its bottom sheet — whatever the margin
-          is currently showing. `visible` decides whether the COLUMN is built;
-          the component has work to do either way. */}
+          unmounted, so a click on a highlight can still open its card (and,
+          below 1241px, its bottom sheet). */}
       {railEl &&
         createPortal(
           <div id="reader-notes-margin" hidden={!notesOn}>
             <MarginCards
-              content={annotationContent}
+              content={content}
               store={annotations}
               visible={notesOn}
               focus={cardFocus}
               onFocusChange={focusCard}
             />
-            {/* Last, under the card column, because that is what it is: the
-                notes this chapter could NOT place, after the ones it could.
-                Same one store instance — a second `useAnnotations` here would
-                paint every annotation twice. Mounted unconditionally, like
-                `<MarginCards>`: a rescue started here has a bar portalled into
-                `document.body`, and a reader who hides the margin mid-rescue
-                must not lose the only way out of the mode. */}
+            {/* Last, under the card column: notes this chapter could NOT
+                place, after the ones it could. Same one store instance — a
+                second `useAnnotations` here would paint every annotation
+                twice. */}
             <OrphanPanel
-              content={annotationContent}
+              content={content}
               store={annotations}
               reattaching={reattaching}
               onReattachingChange={setReattaching}

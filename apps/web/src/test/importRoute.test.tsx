@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { useEffect } from 'react';
@@ -11,36 +11,29 @@ import { LanguageProvider } from '../i18n/LanguageProvider';
 import { ThemeProvider } from '../theme/ThemeContext';
 
 /**
- * `/import` is not reachable while logged out — pinned, not merely written
- * down.
+ * `/import` → `/courses?import=1`, and — as of Task 12 — reachable whether
+ * or not anybody is signed in. This file used to pin the opposite: a
+ * logged-out visit bounced to `/login` before Task 12, because its
+ * destination, `/courses`, sat behind `<RequireAuth>` (an import writes into
+ * `db.packages`, and `clearLocalData()` empties that table on every auth
+ * transition — a package pulled while logged out was deleted at the next
+ * sign-in). Task 12's brief instructs removing `<RequireAuth>` from
+ * `/courses` outright, without an exception for the import dialog it can
+ * open — courses are free to read (spec §2.4), and `/courses` is the one
+ * screen every reader, signed in or not, needs to reach a public course
+ * catalog from. The import-write tension that gating used to paper over
+ * still exists (an anonymous import is still wiped at the next sign-in);
+ * it just no longer manifests as a login bounce, and closing it is out of
+ * this task's scope — see task-12-report.md.
  *
- * ## `/import` is now a redirect, and this file still measures the same thing
- *
- * The IA redesign folded the import screen into `/courses` as a dialog, so
- * `/import` is `<Navigate to="/courses?import=1" replace/>`
- * (`docs/superpowers/specs/2026-08-23-ia-redesign.md`). The guard did not move
- * and neither did the risk: the destination is behind the same `<RequireAuth>`,
- * so a logged-out visit still ends at `/login` having rendered no import UI,
- * and a logged-in visit still ends with the importer on screen.
- *
- * What changed is the FINAL PATHNAME, and only that — `/courses` instead of
- * `/import`. The assertion was re-pointed rather than dropped: it is what
- * proves the logged-in case actually arrived somewhere instead of being
- * bounced, and deleting it would leave the complement below asserting nothing
- * about where the reader ended up.
- *
- * `routes.tsx` spends seven lines explaining why this route MUST be guarded,
- * and the reason is not tidiness: an import writes into `db.packages`, and
- * `clearLocalData()` walks `db.tables` and empties every one of them on
- * every auth transition. A package imported while logged out is therefore
- * deleted by the next sign-in — the reader loses a course they watched
- * arrive. Independent mutation testing removed the `<RequireAuth>` wrapper
- * from this one route and all 632 tests stayed green, so the argument had
- * nothing holding it. It does now.
+ * So the "bounced to /login" case is gone (removing it, not weakening it: the
+ * behavior it pinned no longer exists), and its complement below is joined by
+ * a new one proving the CURRENT invariant instead — a logged-out visit reaches
+ * the SAME place a logged-in one does, not merely "no longer /login".
  *
  * Driven through `AppRoutes` rather than through `<RequireAuth>` directly:
- * the mutant deletes the wrapper at the ROUTE, which a test of the guard
- * component itself cannot see.
+ * a route-level regression (someone re-wrapping `/courses`) shows up here,
+ * where a test of the guard component itself cannot see it.
  */
 
 const server = setupServer();
@@ -73,21 +66,9 @@ function renderAt(path: string, pathnames: string[]) {
 
 const IMPORT_HEADING = /nhập khóa học/i;
 
-describe('/import nằm sau RequireAuth', () => {
-  it('người chưa đăng nhập bị đưa về /login, và KHÔNG thấy trang nhập', async () => {
+describe('/import — công khai kể từ Task 12', () => {
+  it('người CHƯA đăng nhập (GET /me → 401) vẫn tới được, không bị đưa về /login', async () => {
     server.use(http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
-    const pathnames: string[] = [];
-
-    renderAt('/import', pathnames);
-
-    await waitFor(() => expect(pathnames.at(-1)).toBe('/login'));
-    expect(screen.queryByRole('heading', { name: IMPORT_HEADING })).not.toBeInTheDocument();
-  });
-
-  it('người đã đăng nhập thì vào được — chốt này cấm đúng thứ cần cấm, không cấm tất', async () => {
-    // The complement, and it is not decoration: a rule that only ever
-    // forbids is satisfied by deleting the route altogether.
-    server.use(http.get('/me', () => HttpResponse.json({ id: 'u1', email: 'a@vi.vn', name: 'A' })));
     const pathnames: string[] = [];
 
     renderAt('/import', pathnames);
@@ -97,6 +78,17 @@ describe('/import nằm sau RequireAuth', () => {
     // `?import=1`, which is what makes the heading above appear at all. A bare
     // `/courses` would land on the course list with no importer anywhere, and
     // this test would be red for exactly the right reason.
+    expect(pathnames.at(-1)).toBe('/courses');
+    expect(pathnames).not.toContain('/login');
+  });
+
+  it('người ĐÃ đăng nhập tới đúng nơi ấy — cùng một đích cho cả hai, không phải hai đích khác nhau', async () => {
+    server.use(http.get('/me', () => HttpResponse.json({ id: 'u1', email: 'a@vi.vn', name: 'A' })));
+    const pathnames: string[] = [];
+
+    renderAt('/import', pathnames);
+
+    expect(await screen.findByRole('heading', { name: IMPORT_HEADING })).toBeInTheDocument();
     expect(pathnames.at(-1)).toBe('/courses');
   });
 });
