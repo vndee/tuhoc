@@ -20,6 +20,7 @@ import { useThemeContext } from '../theme/ThemeContext';
 import { setChapterContextSource } from './getContext';
 import { injectExerciseCheckboxes } from './injectExerciseCheckboxes';
 import { readingProgressWidth } from './readingProgress';
+import { rewriteAssetUrls } from './rewriteAssetUrls';
 import { TocDrawer } from './TocDrawer';
 import { useCourseKit } from './useCourseKit';
 import { WidgetFrame } from './WidgetFrame';
@@ -478,6 +479,15 @@ export function ChapterView({
     void container.offsetWidth;
     container.className = 'fade-in';
     container.innerHTML = data.html;
+
+    // Final whole-branch review, Important 2: a chapter's package-relative
+    // `<img src>`/`<source src>`/`<a href>` values are relative to the
+    // PACKAGE, not to this SPA's document URL — resolved here, right after
+    // the innerHTML write that produces the tree they live in, and before
+    // anything (KaTeX, widget wiring) reads that tree. See
+    // rewriteAssetUrls.ts's own doc comment for why this cannot be left to
+    // the browser.
+    rewriteAssetUrls(container, courseId);
 
     CourseKit.renderKatex(container);
 

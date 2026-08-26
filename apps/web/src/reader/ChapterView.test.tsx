@@ -1132,6 +1132,59 @@ describe('ChapterView', () => {
   });
 
   /**
+   * Final whole-branch review, Important 2: `container.innerHTML = data.html`
+   * (above) never rewrote a package-relative `src`/`href`, so
+   * `<img src="images/fig1.png">` resolved against the SPA's own document
+   * URL and silently hit the `/* -> /index.html` fallback instead of the
+   * real asset — invisible until now because none of the three shipping
+   * courses (`fixtures/courses/*`) contains an `<img>`. This is the fixture
+   * chapter that carries one, wired through the real fetch/render path
+   * (`rewriteAssetUrls.test.ts` covers the rewriting rules themselves —
+   * package-relative vs. absolute/protocol-relative/fragment/mailto/tel —
+   * in isolation).
+   */
+  describe('asset URLs (final whole-branch review, Important 2)', () => {
+    it('rewrites a package-relative <img src> to the real asset endpoint instead of leaving it to hit the SPA fallback', async () => {
+      server.use(
+        http.get('/courses/demo/chapters/c1', () =>
+          HttpResponse.json({
+            html: '<h1 class="ch-title">Chương một</h1><img src="images/fig1.png" alt="Hình 1">',
+            widgets: [],
+          }),
+        ),
+      );
+
+      // This fixture fragment has no h2/h3, same reasoning as CHAPTER_2_HTML
+      // above — the empty rail is the correct witness for it. Calling
+      // renderChapterView + settleChapter directly (not
+      // renderChapterAndSettle, which would wait for RAIL_ENTRIES and never
+      // settle against this fragment's empty rail).
+      renderChapterView();
+      await settleChapter({ rail: [] });
+
+      const img = document.querySelector<HTMLImageElement>('.fade-in img');
+      expect(img?.getAttribute('src')).toBe('/courses/demo/assets/images/fig1.png');
+    });
+
+    it('leaves an absolute-URL <img src> untouched — an external image is valid chapter content, not a package asset', async () => {
+      server.use(
+        http.get('/courses/demo/chapters/c1', () =>
+          HttpResponse.json({
+            html: '<h1 class="ch-title">Chương một</h1><img src="https://cdn.example.com/fig1.png" alt="Hình 1">',
+            widgets: [],
+          }),
+        ),
+      );
+
+      renderChapterView();
+      await settleChapter({ rail: [] });
+
+      const img = document.querySelector<HTMLImageElement>('.fade-in img');
+      expect(img?.getAttribute('src')).toBe('https://cdn.example.com/fig1.png');
+    });
+  });
+
+  /**
    * Task 12 — courses are free to read; signing in is what makes progress,
    * notes and AI conversations follow a reader between devices (spec §2.4).
    * Every OTHER test in this file renders with the default signed-in `/me`
