@@ -21,8 +21,18 @@
  * public and unauthenticated, so `api`'s cookie/401-redirect policy does not
  * apply, and `CourseFetchError` (below) predates `ApiError` as the name every
  * caller of `course/loader.ts` already imports.
+ *
+ * `getJson` below DOES reuse three of `client.ts`'s pure, auth-independent
+ * pieces — `NotJsonError`, `isJsonContainer`, `jsonBodyPreview` — same
+ * precedent as `admin/adminApi.ts`. Final whole-branch review, Important 3:
+ * a bare `getJson` calling `res.json()` directly throws an unhandled
+ * `SyntaxError` on the exact SPA-fallback body (`200 text/html`) that a
+ * `VITE_API_URL`-less local dev server answers `/courses` with (see
+ * `.env.example`'s own note on that three-way path collision) — this file
+ * had never guarded against it at all, unlike `client.ts`/`adminApi.ts`.
  */
 
+import { isJsonContainer, jsonBodyPreview, NotJsonError } from './client';
 import type { Manifest } from '../course/types';
 
 /** Same pattern as `api/client.ts`'s own `BASE_URL` — empty in dev/test, the API's own origin in production. */
@@ -97,16 +107,44 @@ function absoluteUrl(path: string): string {
   return new URL(path, window.location.origin).toString();
 }
 
-async function getJson<T>(path: string): Promise<T> {
+/**
+ * `allowArray`: `fetchCatalog` (below) is the one caller of this function
+ * whose success shape is genuinely an array (`CatalogCourse[]`) — every
+ * other caller (`fetchManifest`, `fetchChapter`) expects a single object,
+ * so the default requires one. See `client.ts`'s `isJsonContainer` for why
+ * this cannot be inferred from `T` at runtime.
+ */
+async function getJson<T>(path: string, options: { allowArray?: boolean } = {}): Promise<T> {
   const url = absoluteUrl(path);
   const res = await fetch(url);
   if (!res.ok) throw new CourseFetchError(url, res.status);
-  return (await res.json()) as T;
+
+  // Not a bare `res.json()`: that throws a raw, unhandled `SyntaxError` on
+  // a 200 whose body isn't JSON at all (the SPA-fallback `text/html` this
+  // file's own header now documents), and would silently accept `null`/a
+  // primitive/an unwanted array as `T` even when it IS valid JSON. Mirrors
+  // `client.ts`'s `parseBody` + `isJsonContainer` guard exactly, reusing
+  // both rather than a third copy of the same two checks.
+  const text = await res.text();
+  let parsed: unknown;
+  if (text === '') {
+    parsed = undefined;
+  } else {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = text;
+    }
+  }
+  if (!isJsonContainer(parsed, { allowArray: options.allowArray })) {
+    throw new NotJsonError(res.status, res.headers.get('content-type'), jsonBodyPreview(parsed));
+  }
+  return parsed as T;
 }
 
 /** The public catalog: every published course, free to read. */
 export function fetchCatalog(): Promise<CatalogCourse[]> {
-  return getJson<CatalogCourse[]>(apiUrl('/courses'));
+  return getJson<CatalogCourse[]>(apiUrl('/courses'), { allowArray: true });
 }
 
 /**

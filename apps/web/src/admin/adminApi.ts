@@ -60,7 +60,7 @@
 
 import type { Finding } from '@tuhoc/course-format';
 import type { Translate } from '../i18n';
-import { ApiError, NotJsonError, api } from '../api/client';
+import { ApiError, NotJsonError, api, isJsonContainer, jsonBodyPreview } from '../api/client';
 import { redirectToLogin } from '../api/navigation';
 
 /** Same pattern as `api/client.ts`'s own `BASE_URL` — empty in dev/test, the API's own origin in production. */
@@ -180,9 +180,20 @@ function coursePath(slug: string): string {
   return `/admin/courses/${encodeURIComponent(slug)}`;
 }
 
-/** Every currently-published course, with its full version history. */
+/**
+ * Every currently-published course, with its full version history.
+ *
+ * `allowArray: true`: `GET /admin/courses` answers a JSON ARRAY, not an
+ * object — `client.ts`'s `request<T>` requires an object by default
+ * since Important 3 of the final whole-branch review (a caller expecting
+ * one is the common case, and `T` is erased at runtime so nothing else
+ * could tell "array expected" from "server sent the wrong shape"); this
+ * is the one call in this app that genuinely does expect an array, and
+ * says so explicitly rather than the guard silently widening for
+ * everyone.
+ */
 export async function adminListCourses(): Promise<AdminCourseRow[]> {
-  return api.get<AdminCourseRow[]>('/admin/courses');
+  return api.get<AdminCourseRow[]>('/admin/courses', { allowArray: true });
 }
 
 /**
@@ -203,24 +214,29 @@ export async function adminListCourses(): Promise<AdminCourseRow[]> {
  * the one shape that is honestly identical in production and under test
  * rather than "works in the browser, trust the test environment less".
  *
- * The parsed body is checked for "is this actually JSON" before the cast to
- * `PublishResult` — the same guard `client.ts`'s `request<T>` applies to
- * every call through `api.get`/`api.post`, reused HERE via the same
- * `NotJsonError` class rather than a second one. Without it, a 200 whose
- * body is a string (a misconfigured `VITE_API_URL`, a CORS/DNS failure that
- * lands the PUT on a host answering `200 text/html`) parses to a JS string,
- * gets cast to `PublishResult` anyway, and `{slug: undefined, version:
- * undefined}` reads out of it — `AdminCourses.tsx` would render "Published
- * undefined, version undefined" as an apparent SUCCESS, and an operator
- * would believe a course went live when nothing did.
+ * The parsed body is checked for "is this actually a usable JSON object"
+ * before the cast to `PublishResult` — the same guard `client.ts`'s
+ * `request<T>` applies to every call through `api.get`/`api.post`, reused
+ * HERE via `isJsonContainer`/`jsonBodyPreview`/`NotJsonError` rather than a
+ * second copy of them. `PublishResult` is always a single object, never an
+ * array, so this call site does not (and must not) opt into
+ * `isJsonContainer`'s `allowArray`. Without this check, a 200 whose body is
+ * a string (a misconfigured `VITE_API_URL`, a CORS/DNS failure that lands
+ * the PUT on a host answering `200 text/html`) — or, per the final
+ * whole-branch review's Important 3, a 200 whose body is valid JSON but is
+ * `null`, a bare primitive, or an ARRAY — parses fine and gets cast to
+ * `PublishResult` anyway, and `{slug: undefined, version: undefined}` reads
+ * out of it — `AdminCourses.tsx` would render "Published undefined,
+ * version undefined" as an apparent SUCCESS, and an operator would believe
+ * a course went live when nothing did.
  */
 export async function adminPublish(slug: string, zip: File): Promise<PublishResult> {
   try {
     const bytes = await zip.arrayBuffer();
     const res = await adminRequest('PUT', coursePath(slug), bytes, 'application/zip');
     const parsed = await parseBody(res);
-    if (typeof parsed === 'string') {
-      throw new NotJsonError(res.status, res.headers.get('content-type'), parsed.slice(0, 120));
+    if (!isJsonContainer(parsed)) {
+      throw new NotJsonError(res.status, res.headers.get('content-type'), jsonBodyPreview(parsed));
     }
     return parsed as PublishResult;
   } catch (error) {

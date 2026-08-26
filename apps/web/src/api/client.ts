@@ -50,6 +50,17 @@ export interface RequestOptions {
    * 401 and redirect to /login again.
    */
   redirectOn401?: boolean;
+  /**
+   * Lets a 2xx body that parses as a JSON ARRAY pass `request<T>`'s
+   * shape guard (see {@link isJsonContainer}). Defaults to false: this
+   * client's endpoints are overwhelmingly object-shaped, and `T` is
+   * erased at runtime, so nothing here can otherwise tell "this caller
+   * really expects an array" from "the server answered with the wrong
+   * shape". The one caller that needs it today is `adminApi.ts`'s
+   * `adminListCourses` (`GET /admin/courses` → `AdminCourseRow[]`) — pass
+   * it explicitly there rather than widening the default.
+   */
+  allowArray?: boolean;
 }
 
 async function parseBody(res: Response): Promise<unknown> {
@@ -117,20 +128,30 @@ async function send(
 }
 
 /**
- * A 2xx response whose body is not JSON.
+ * A 2xx response whose body is not usable as `T`: not JSON at all, or JSON
+ * that parsed to something no caller here ever means by `T` — `null`, a
+ * bare primitive, or (unless the caller opted in) an array.
  *
- * Named, not generic, because the shape that produces it is specific and
- * recurring: an SPA host answers an unknown path with `200 text/html`
- * (index.html) instead of a 404, so a request for `/stats` succeeds and
- * carries a page. `parseBody` falls back to returning that text, and before
- * this check `request<Stats>` handed it back **typed as `Stats`** — a string
- * that every caller then treats as an object.
+ * The original, and still most common, case is specific and recurring: an
+ * SPA host answers an unknown path with `200 text/html` (index.html)
+ * instead of a 404, so a request for `/stats` succeeds and carries a page.
+ * `parseBody` falls back to returning that text, and before this check
+ * `request<Stats>` handed it back **typed as `Stats`** — a string that
+ * every caller then treats as an object.
  *
  * Measured 2026-08-22: that exact chain white-screened the whole app.
  * `statsQuery.data` was the HTML string, so `data?.courses` did NOT
  * short-circuit (a non-empty string is truthy), `.courses` was `undefined`,
  * and `.map` threw during render. With no error boundary the tree unmounted
  * to an empty `#root`. Three layers, and this is the deepest one.
+ *
+ * Final whole-branch review, Important 3: the guard that throws this was
+ * originally `typeof parsed === 'string'` only — a 2xx that parsed as
+ * valid JSON but was `null` or a bare number/boolean sailed through
+ * unchecked, and so did a JSON ARRAY handed to a caller that never asked
+ * for one (`adminApi.ts`'s `adminPublish` measured this exact shape:
+ * `{slug: undefined, version: undefined}` read off an array, rendered as
+ * an apparent publish SUCCESS). See {@link isJsonContainer}.
  */
 export class NotJsonError extends Error {
   // Khai tường minh, không dùng tham số-thuộc tính: `erasableSyntaxOnly` của
@@ -156,6 +177,41 @@ export class NotJsonError extends Error {
   }
 }
 
+/**
+ * True when `value` is a JSON shape safe to trust as `T`: a plain object,
+ * or — only when the caller has said it expects one via `allowArray` —
+ * an array. Rejects `undefined`, `null`, and every JSON primitive
+ * (string, number, boolean): none of those can stand in for an object's
+ * fields, and `parsed.slug`/`.version` on any of them is a silent
+ * `undefined`, never a thrown error — the exact "wrong shape read as
+ * right" chain {@link NotJsonError} exists to stop.
+ *
+ * Exported so `adminApi.ts`'s hand-rolled `adminPublish` parse — which
+ * duplicates `request`'s guard for the reason explained in that file's own
+ * header comment — shares this exact check instead of a second copy of it.
+ */
+export function isJsonContainer(value: unknown, options: { allowArray?: boolean } = {}): boolean {
+  if (value === null || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return options.allowArray === true;
+  return true;
+}
+
+/**
+ * A short, safe-to-log preview of a JSON value that failed
+ * {@link isJsonContainer}, for {@link NotJsonError}'s `bodyStart`. A raw
+ * string (the common SPA-fallback-HTML case) is sliced directly; anything
+ * else (`null`, a number, a boolean, a rejected array) is re-serialized
+ * first, since those never came through as text in the first place.
+ */
+export function jsonBodyPreview(value: unknown): string {
+  if (typeof value === 'string') return value.slice(0, 120);
+  try {
+    return JSON.stringify(value).slice(0, 120);
+  } catch {
+    return String(value).slice(0, 120);
+  }
+}
+
 async function request<T>(
   method: Method,
   path: string,
@@ -164,13 +220,14 @@ async function request<T>(
 ): Promise<T> {
   const res = await send(method, path, body, options);
   const parsed = await parseBody(res);
-  // `undefined` is a legitimate empty body (204, or a 200 with no content).
-  // A *string* is not: every caller of `api.get<T>`/`api.post<T>` names an
-  // object or array as `T`, and handing back text under that name is how a
-  // transport problem became a render crash. Fail here, where the caller's
-  // error path already exists, instead of three layers up where it doesn't.
-  if (typeof parsed === 'string') {
-    throw new NotJsonError(res.status, res.headers.get('content-type'), parsed.slice(0, 120));
+  // `undefined` is a legitimate empty body (204, or a 200 with no
+  // content) — the one shape `isJsonContainer` rejects that is still
+  // valid here, so it is special-cased rather than folded into that
+  // check (which every OTHER caller needs to reject `undefined` too —
+  // see `catalog.ts`'s `getJson`, where no endpoint ever legitimately
+  // answers empty).
+  if (parsed !== undefined && !isJsonContainer(parsed, { allowArray: options.allowArray })) {
+    throw new NotJsonError(res.status, res.headers.get('content-type'), jsonBodyPreview(parsed));
   }
   return parsed as T;
 }

@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { NotJsonError } from './client';
 import { assetUrl, CourseFetchError, fetchCatalog, fetchChapter, fetchManifest } from './catalog';
 import type { Manifest } from '../course/types';
 
@@ -35,6 +36,46 @@ describe('fetchCatalog', () => {
     await expect(fetchCatalog()).resolves.toEqual([
       { slug: 'demo', title: 'Khóa học demo', lang: 'vi', description: 'desc', version: 3 },
     ]);
+  });
+
+  /**
+   * Final whole-branch review, Important 3. Local dev with `VITE_API_URL`
+   * unset resolves `/courses` against `http://localhost:5173` itself — the
+   * SPA's OWN client-side `/courses` route — which answers `200 text/html`
+   * (index.html), never the catalog. Before this fix, `getJson` called
+   * `res.json()` directly, which throws a raw, unhandled `SyntaxError` on
+   * that body (`Unexpected token '<'...`) — `catalog.ts`'s own header
+   * comment names `CourseFetchError` as "the ONE place a course's bytes
+   * come from now", but a bare `SyntaxError` is neither that nor
+   * `NotJsonError`, so nothing in this app's error-handling ever caught it
+   * cleanly. This asserts the same `NotJsonError` guard `client.ts` has,
+   * given the exact SPA-fallback shape.
+   */
+  it('ném NotJsonError, không phải SyntaxError trần, khi /courses trả về 200 text/html (SPA fallback do VITE_API_URL chưa đặt)', async () => {
+    server.use(
+      http.get('/courses', () =>
+        HttpResponse.html('<!doctype html>\n<html lang="vi"><head><title>Tự học</title></head><body></body></html>'),
+      ),
+    );
+
+    await expect(fetchCatalog()).rejects.toBeInstanceOf(NotJsonError);
+  });
+
+  it('ném NotJsonError khi thân 2xx là JSON hợp lệ nhưng không phải MẢNG (null) — GET /courses luôn trả mảng', async () => {
+    server.use(http.get('/courses', () => HttpResponse.json(null)));
+    await expect(fetchCatalog()).rejects.toBeInstanceOf(NotJsonError);
+  });
+});
+
+describe('fetchManifest / fetchChapter — thân 2xx là JSON hợp lệ nhưng không phải object', () => {
+  it('fetchManifest ném NotJsonError khi thân là một MẢNG, không phải Manifest', async () => {
+    server.use(http.get('/courses/:slug', () => HttpResponse.json([manifest])));
+    await expect(fetchManifest('demo')).rejects.toBeInstanceOf(NotJsonError);
+  });
+
+  it('fetchChapter ném NotJsonError khi thân là null', async () => {
+    server.use(http.get('/courses/:slug/chapters/:chapterId', () => HttpResponse.json(null)));
+    await expect(fetchChapter('demo', 'c1')).rejects.toBeInstanceOf(NotJsonError);
   });
 });
 

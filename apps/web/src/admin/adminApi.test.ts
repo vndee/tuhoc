@@ -145,6 +145,30 @@ describe('adminPublish', () => {
     const failure = adminPublish('dai-so', zip());
     await expect(failure).rejects.toBeInstanceOf(NotJsonError);
   });
+
+  /**
+   * Final whole-branch review, Important 3 — the exact scenario the
+   * finding names: `parseBody`'s old guard here only ever checked
+   * `typeof parsed === 'string'`, so a 200 whose body is VALID JSON but is
+   * an array (or `null`, or a bare primitive) sailed through, got cast to
+   * `PublishResult` anyway, and `AdminCourses.tsx` would have rendered
+   * "Published undefined, version undefined" as an apparent SUCCESS — the
+   * array has no `.slug`/`.version` of its own. `isJsonContainer` (shared
+   * with `client.ts`'s `request<T>`) closes this without opting into its
+   * own `allowArray`, since a publish response is never legitimately an
+   * array.
+   */
+  it('a 200 whose body is valid JSON but an array (not {slug, version}) rejects — never a fake success read off array indices', async () => {
+    server.use(http.put('/admin/courses/:slug', () => HttpResponse.json([{ slug: 'dai-so', version: 4 }])));
+    const failure = adminPublish('dai-so', zip());
+    await expect(failure).rejects.toBeInstanceOf(NotJsonError);
+  });
+
+  it('a 200 whose body is valid JSON but null rejects', async () => {
+    server.use(http.put('/admin/courses/:slug', () => HttpResponse.json(null)));
+    const failure = adminPublish('dai-so', zip());
+    await expect(failure).rejects.toBeInstanceOf(NotJsonError);
+  });
 });
 
 describe('adminUnpublish', () => {
