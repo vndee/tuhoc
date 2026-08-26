@@ -10,7 +10,7 @@ const server = setupServer(
   // an authenticated GET /me is what lets App render the real page
   // instead of bouncing to /login, same as any signed-in reader.
   http.get('/me', () => HttpResponse.json({ id: 'test-user', email: 'test@example.com', name: 'Test User' })),
-  http.get('/courses/:courseId/manifest.json', () =>
+  http.get('/courses/:courseId', () =>
     HttpResponse.json({
       id: 'demo',
       title: 'Demo',

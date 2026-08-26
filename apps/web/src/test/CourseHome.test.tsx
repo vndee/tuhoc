@@ -74,7 +74,7 @@ function renderCourseHome(initialPath = '/c/demo') {
 
 describe('CourseHome', () => {
   it('renders the manifest title and description', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(buildManifest(4))));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(4))));
 
     renderCourseHome();
 
@@ -83,7 +83,7 @@ describe('CourseHome', () => {
   });
 
   it('renders one link per chapter across every part — 44 chapters, 44 links', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(buildManifest(44))));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(44))));
 
     renderCourseHome();
 
@@ -97,7 +97,7 @@ describe('CourseHome', () => {
   });
 
   it('every chapter link carries data-ch=<chapterId> and links to /c/:courseId/:chapterId', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(buildManifest(3))));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(3))));
 
     renderCourseHome();
 
@@ -115,7 +115,7 @@ describe('CourseHome', () => {
   });
 
   it('marks chapters read in LOCAL progress (Ruling F4 / debt #1 — real data, not a prop) with the "done" class', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(buildManifest(3))));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(3))));
     await db.progress.put({ courseId: 'demo', chapterId: 'ch-2', status: 'read', done: true, updatedAt: new Date().toISOString() });
 
     renderCourseHome();
@@ -129,7 +129,7 @@ describe('CourseHome', () => {
   });
 
   it('does NOT mark a chapter done from a DIFFERENT course\'s local progress row (courseId scoping)', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(buildManifest(3))));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(3))));
     await db.progress.put({ courseId: 'other-course', chapterId: 'ch-2', status: 'read', done: true, updatedAt: new Date().toISOString() });
 
     renderCourseHome();
@@ -139,7 +139,7 @@ describe('CourseHome', () => {
   });
 
   it('renders every part title as a .nav-part heading', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(buildManifest(4))));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(4))));
 
     renderCourseHome();
 
@@ -149,7 +149,7 @@ describe('CourseHome', () => {
   });
 
   it('shows a non-crashing message instead of chapters when the manifest 404s', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => new HttpResponse(null, { status: 404 })));
+    server.use(http.get('/courses/demo', () => new HttpResponse(null, { status: 404 })));
 
     renderCourseHome();
 
@@ -163,7 +163,7 @@ describe('CourseHome', () => {
 
   it('shows a non-crashing message when the manifest is a runtime the app does not support', async () => {
     server.use(
-      http.get('/courses/demo/manifest.json', () => HttpResponse.json({ ...buildManifest(2), runtime: '^2' })),
+      http.get('/courses/demo', () => HttpResponse.json({ ...buildManifest(2), runtime: '^2' })),
     );
 
     renderCourseHome();

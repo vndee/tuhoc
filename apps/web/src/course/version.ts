@@ -56,7 +56,34 @@ import { exactOf } from '../annotations/useAnnotations';
 import { fetchPackage, MANIFEST_FILE, UnsafePackageError } from '../api/courses';
 import { type AnnotationRow, db } from '../db/local';
 import { ensureCourseKitRuntime } from '../reader/useCourseKit';
-import { PackageAssetError } from './loader';
+
+/**
+ * Thrown when a version's own files (held on this device, or freshly
+ * downloaded via `fetchPackage`) do not contain a file its own manifest
+ * names.
+ *
+ * Used to live in `course/loader.ts`, back when the reader's own read path
+ * also resolved a cached package this way. That path is gone (spec §2.4 —
+ * the server is the only source a chapter/manifest comes from now, and a
+ * missing chapter there is a `CourseFetchError` 404, not this); this module
+ * is the one place left that reads a whole package's files directly, to
+ * compare two versions of it — so this error moved here with it, rather
+ * than being re-imported from a module that no longer has a reason to know
+ * it.
+ */
+export class PackageAssetError extends Error {
+  readonly courseId: string;
+  readonly version: string;
+  readonly asset: string;
+
+  constructor(courseId: string, version: string, asset: string) {
+    super(`Package ${courseId}@${version} does not contain "${asset}"`);
+    this.name = 'PackageAssetError';
+    this.courseId = courseId;
+    this.version = version;
+    this.asset = asset;
+  }
+}
 
 /**
  * One note the new content could not place.

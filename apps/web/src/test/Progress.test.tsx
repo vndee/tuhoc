@@ -239,7 +239,7 @@ describe('Tiến độ — lịch cả năm', () => {
 
 describe('Tiến độ — theo khoá học', () => {
   it('thanh + số chương từng phần, và số chương đến từ tiến độ CỤC BỘ (ruling F5)', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(4))));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(4))));
     // Máy chủ nói 1 chương; máy nói 3. Ruling F5: cái đúng là cái trên máy —
     // đánh dấu đã đọc là một phép ghi cục bộ, và một thanh chỉ nhích sau khi
     // outbox flush được là một thanh nói dối trong mọi phiên offline.
@@ -273,7 +273,7 @@ describe('Tiến độ — theo khoá học', () => {
     // thành. Một khoá vừa nhập, hay một khoá đọc offline chưa kịp đồng bộ, sẽ
     // biến mất khỏi trang tiến độ trong khi `/courses` vẫn liệt kê nó — đúng
     // "hai màn hình, hai công thức, một câu hỏi" mà S1-F31 chấm dứt.
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(2))));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(2))));
     stub(EMPTY_STATS, []);
     await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: '2026-08-20T00:00:00Z' });
 
@@ -288,7 +288,7 @@ describe('Tiến độ — theo khoá học', () => {
 
   it('manifest không về thì hàng vẫn hiện, với số chương đã đọc và KHÔNG có mẫu số đoán bừa', async () => {
     // `0/0` sẽ vẽ ra một thanh rỗng cho một người đã đọc mười chương.
-    server.use(http.get('/courses/demo/manifest.json', () => new HttpResponse(null, { status: 404 })));
+    server.use(http.get('/courses/demo', () => new HttpResponse(null, { status: 404 })));
     stub(EMPTY_STATS, []);
     await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: '2026-08-20T00:00:00Z' });
     await db.progress.put({ courseId: 'demo', chapterId: 'ch-2', status: 'read', done: true, updatedAt: '2026-08-20T00:00:00Z' });

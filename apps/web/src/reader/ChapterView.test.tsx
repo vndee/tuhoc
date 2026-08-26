@@ -70,8 +70,8 @@ const FRAGMENT = `
 const CHAPTER_2_HTML = '<h1 class="ch-title">Chương hai</h1><p>nội dung khác</p>';
 
 const server = setupServer(
-  http.get('/courses/demo/chapters/c1.html', () => HttpResponse.text(FRAGMENT)),
-  http.get('/courses/demo/chapters/c2.html', () => HttpResponse.text(CHAPTER_2_HTML)),
+  http.get('/courses/demo/chapters/c1', () => HttpResponse.json({ html: FRAGMENT, widgets: [] })),
+  http.get('/courses/demo/chapters/c2', () => HttpResponse.json({ html: CHAPTER_2_HTML, widgets: [] })),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
@@ -487,7 +487,7 @@ describe('ChapterView', () => {
   });
 
   it('shows a Vietnamese error message (not a hang) when the chapter fragment fails to fetch', async () => {
-    server.use(http.get('/courses/demo/chapters/c1.html', () => new HttpResponse(null, { status: 404 })));
+    server.use(http.get('/courses/demo/chapters/c1', () => new HttpResponse(null, { status: 404 })));
 
     renderChapterView();
 

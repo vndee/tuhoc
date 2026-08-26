@@ -50,9 +50,9 @@ const server = setupServer(
   // an authenticated GET /me is what lets App render the real page
   // instead of bouncing to /login, same as any signed-in reader.
   http.get('/me', () => HttpResponse.json({ id: 'test-user', email: 'test@example.com', name: 'Test User' })),
-  http.get('/courses/demo/manifest.json', () => HttpResponse.json(manifest)),
-  http.get('/courses/demo/chapters/c1.html', () => HttpResponse.text(CHAPTER_1_HTML)),
-  http.get('/courses/demo/chapters/c3.html', () => HttpResponse.text(CHAPTER_3_HTML)),
+  http.get('/courses/demo', () => HttpResponse.json(manifest)),
+  http.get('/courses/demo/chapters/c1', () => HttpResponse.json({ html: CHAPTER_1_HTML, widgets: [] })),
+  http.get('/courses/demo/chapters/c3', () => HttpResponse.json({ html: CHAPTER_3_HTML, widgets: [] })),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));

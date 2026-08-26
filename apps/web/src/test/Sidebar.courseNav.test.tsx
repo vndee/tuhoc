@@ -62,7 +62,7 @@ describe('Sidebar real course outline', () => {
   });
 
   it('renders the course outline in #nav on /c/:courseId', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(manifest)));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(manifest)));
     renderSidebar('/c/demo');
 
     const nav = document.getElementById('nav')!;
@@ -72,7 +72,7 @@ describe('Sidebar real course outline', () => {
   });
 
   it('also renders the course outline on a chapter sub-route /c/:courseId/:chapterId', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(manifest)));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(manifest)));
     renderSidebar('/c/demo/c1');
 
     const nav = document.getElementById('nav')!;
@@ -80,7 +80,7 @@ describe('Sidebar real course outline', () => {
   });
 
   it('every chapter link in #nav carries data-ch and the .nav-item class', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(manifest)));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(manifest)));
     renderSidebar('/c/demo');
 
     const nav = document.getElementById('nav')!;
@@ -92,7 +92,7 @@ describe('Sidebar real course outline', () => {
   });
 
   it('marks chapters read in local progress with the done class inside #nav (Ruling F4 / debt #1)', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(manifest)));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(manifest)));
     await db.progress.put({ courseId: 'demo', chapterId: 'c2', status: 'read', done: true, updatedAt: new Date().toISOString() });
     renderSidebar('/c/demo');
 
@@ -105,7 +105,7 @@ describe('Sidebar real course outline', () => {
   });
 
   it('shows a visible failure message in #nav — not silence — when the manifest 404s', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => new HttpResponse(null, { status: 404 })));
+    server.use(http.get('/courses/demo', () => new HttpResponse(null, { status: 404 })));
     renderSidebar('/c/demo');
 
     const nav = document.getElementById('nav')!;
@@ -120,7 +120,7 @@ describe('Sidebar real course outline', () => {
 
   it('shows a distinct loading message in #nav while the manifest is pending, before it resolves', async () => {
     server.use(
-      http.get('/courses/demo/manifest.json', async () => {
+      http.get('/courses/demo', async () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
         return HttpResponse.json(manifest);
       }),
@@ -156,7 +156,7 @@ describe('Sidebar real course outline', () => {
  */
 describe('Sidebar course name (.sb-title)', () => {
   it('names the open course on /c/:courseId, from that course’s own manifest', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(manifest)));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(manifest)));
     renderSidebar('/c/demo');
 
     await waitFor(() => expect(document.querySelector('.sb-title')?.textContent).toBe('Khóa học demo'));
@@ -169,7 +169,7 @@ describe('Sidebar course name (.sb-title)', () => {
 
   it('names no course while the manifest is still loading, rather than guessing one', async () => {
     server.use(
-      http.get('/courses/demo/manifest.json', async () => {
+      http.get('/courses/demo', async () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
         return HttpResponse.json(manifest);
       }),
@@ -181,7 +181,7 @@ describe('Sidebar course name (.sb-title)', () => {
   });
 
   it('names no course when the manifest fails to load', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => new HttpResponse(null, { status: 404 })));
+    server.use(http.get('/courses/demo', () => new HttpResponse(null, { status: 404 })));
     renderSidebar('/c/demo');
 
     await within(document.getElementById('nav')!).findByText(/không tải được/i);

@@ -63,7 +63,7 @@ import { useEffect, useState } from 'react';
 import { coursesQueryKey, type CourseSummary, listCourses } from '../api/courses';
 import { fetchStats, statsQueryKey } from '../api/stats';
 import { db } from '../db/local';
-import { loadManifest, manifestQueryKey, pickPinned } from './loader';
+import { loadManifest, manifestQueryKey } from './loader';
 
 /**
  * The fields a course list needs out of one row of `db.packages` — never the
@@ -141,6 +141,39 @@ export function manifestString(manifest: unknown, key: string): string | undefin
   if (typeof manifest !== 'object' || manifest === null) return undefined;
   const value = (manifest as Record<string, unknown>)[key];
   return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+/**
+ * The version of one course this device holds and would open, out of
+ * several rows `db.packages` may carry for it.
+ *
+ * A reader can hold several versions of one course at once, so "which one"
+ * is a real question, and `pinnedAt` is its answer: the moment a version
+ * became the one to open. The most recent pin wins; the version is the
+ * tiebreak for two pins in the same millisecond, compared numerically
+ * (1.10.0 after 1.9.0, which a plain string sort gets backwards).
+ *
+ * The timestamps are compared as parsed INSTANTS, never as raw strings, for
+ * the reason `db/local.ts`'s `mergeRow` sets out at length: an ISO instant
+ * that lands on a whole second may be written without its fractional part,
+ * and '.' sorts below 'Z', so a string comparison puts ...00.500Z BEFORE
+ * ...00Z.
+ *
+ * Used to live in `course/loader.ts` (this module's second reader), back
+ * when the reader's own read path also resolved a course from `db.packages`
+ * first. That path is gone (spec §2.4 — the server is the only source a
+ * chapter/manifest comes from now); this is the one place left that still
+ * asks "which version does this device hold," for the badge `pages/Library`
+ * paints beside a course.
+ */
+const VERSION_ORDER = new Intl.Collator('en', { numeric: true });
+
+function pickPinned<T extends { version: string; pinnedAt: string }>(rows: readonly T[]): T {
+  return rows.reduce((best, row) => {
+    const byPin = Date.parse(row.pinnedAt) - Date.parse(best.pinnedAt);
+    if (byPin !== 0) return byPin > 0 ? row : best;
+    return VERSION_ORDER.compare(row.version, best.version) > 0 ? row : best;
+  });
 }
 
 /**
@@ -240,8 +273,6 @@ export function unionOwnedCourses(
     out.push({
       courseId,
       catalog: catalog.find((entry) => entry.id === courseId),
-      // `pickPinned` and not a local rule that looks similar: the version this
-      // says the reader holds must be the version `course/loader.ts` will open.
       held: versions !== undefined && versions.length > 0 ? pickPinned(versions) : undefined,
       studied: studied.has(courseId),
     });

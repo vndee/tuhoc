@@ -158,7 +158,7 @@ function note(overrides: Partial<AnnotationRow> & Pick<AnnotationRow, 'id'>): An
 }
 
 beforeEach(() => {
-  server.use(http.get('/courses/so-dau-phay-dong/manifest.json', () => HttpResponse.json(catalogManifest())));
+  server.use(http.get('/courses/so-dau-phay-dong', () => HttpResponse.json(catalogManifest())));
   // The default catalog. Tests that care about the catalog itself
   // override this; the rest get a learner who holds one course.
   server.use(http.get('/courses', () => HttpResponse.json([catalogEntry('so-dau-phay-dong', 'Số dấu phẩy động')])));
@@ -194,7 +194,7 @@ function cta(): HTMLElement {
 
 describe('Học tiếp — MỘT hành động', () => {
   it('mở đúng chương đang dở, và biết được điều đó KHÔNG cần mạng (ruling F5)', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(4))));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(4))));
     // Ngoại tuyến: cả hai lời gọi mạng đều không bao giờ trả lời. Một trang chủ
     // học "mình có khoá nào" CHỈ từ máy chủ sẽ không có gì để mời đọc tiếp —
     // ruling F5 tồn tại đúng để chuyện ấy không xảy ra.
@@ -213,8 +213,8 @@ describe('Học tiếp — MỘT hành động', () => {
   }, OVERSUBSCRIBED_MS);
 
   it('MỘT thẻ, không phải một thẻ cho mỗi khoá — và thẻ ấy là khoá vừa đọc gần nhất', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(4))));
-    server.use(http.get('/courses/so-dau-phay-dong/manifest.json', () => HttpResponse.json(catalogManifest())));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(4))));
+    server.use(http.get('/courses/so-dau-phay-dong', () => HttpResponse.json(catalogManifest())));
     server.use(
       http.get('/stats', () =>
         HttpResponse.json({
@@ -239,7 +239,7 @@ describe('Học tiếp — MỘT hành động', () => {
   }, OVERSUBSCRIBED_MS);
 
   it('đọc hết khoá là một TRẠNG THÁI, không phải ngõ cụt — nút mở lại chương cuối', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(2))));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(2))));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
     await markRead('demo', 'ch-1');
     await markRead('demo', 'ch-2');
@@ -266,7 +266,7 @@ describe('Học tiếp — MỘT hành động', () => {
   it('một manifest hỏng vẫn cho ra một lối đi, không phải một câu lỗi cụt', async () => {
     // 404 trên manifest: gói không mở được. Câu giải thích là cần, nhưng một
     // câu giải thích không kèm lối đi tiếp thì vẫn là ngõ cụt.
-    server.use(http.get('/courses/demo/manifest.json', () => new HttpResponse(null, { status: 404 })));
+    server.use(http.get('/courses/demo', () => new HttpResponse(null, { status: 404 })));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
     await markRead('demo', 'ch-1');
 
@@ -281,7 +281,7 @@ describe('Học tiếp — MỘT hành động', () => {
     // Bài chống-đi-ngược. Trang này từng mở đầu bằng `streakDays` và
     // `totalMinutes` cỡ lớn; với một tài khoản mới đó là HAI SỐ 0 to đùng, và
     // đó là màn hình đầu tiên của cả sản phẩm. Con số nào quay lại đây sẽ đỏ.
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(4))));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(4))));
     server.use(
       http.get('/stats', () =>
         HttpResponse.json({
@@ -312,7 +312,7 @@ describe('Học tiếp — MỘT hành động', () => {
 
 describe('Học tiếp — ghi chú gần đây', () => {
   it('liệt kê ghi chú mới nhất trước, mỗi ghi chú mở đúng chương của nó', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(4))));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(4))));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
     await markRead('demo', 'ch-1');
     await db.annotations.put(
@@ -340,7 +340,7 @@ describe('Học tiếp — ghi chú gần đây', () => {
     // `deletedAt` khác null vẫn nằm trong bảng để lan sang thiết bị khác
     // (`db/local.ts`'s `AnnotationRow`). Vẽ nó ra là dựng lại thứ người dùng
     // vừa xoá, trên chính màn hình đầu tiên họ nhìn thấy.
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(demoManifest(4))));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(4))));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
     await markRead('demo', 'ch-1');
     await db.annotations.put(note({ id: 'a-song', note: 'còn sống', updatedAt: '2026-08-10T08:00:00Z' }));

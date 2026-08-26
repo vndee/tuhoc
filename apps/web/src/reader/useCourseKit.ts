@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { resolveVizScriptUrl } from '../course/loader';
 
 /**
  * The three course-kit runtime scripts every course shares, in the order
@@ -75,69 +74,28 @@ export function ensureCourseKitRuntime(): Promise<void> {
   return runtimeTrioPromise;
 }
 
-// Unlike the trio above, a course's viz.js is course-SPECIFIC — it calls
-// defineViz() 59 times for THIS course's simulations. Caching it in a
-// single bare variable (as an earlier version of this file did) meant
-// that once any course's viz.js had loaded, `useCourseKit('some-other-
-// course')` would resolve `ready: true` immediately without ever
-// requesting that course's own viz.js — silently wiring up the WRONG
-// visualizations (or none) with no error surfaced. The platform is
-// designed to host many courses (spec §1), so this isn't hypothetical.
-// Keyed by the script's own URL instead: each course's viz.js loads
-// exactly once, and loading is chained after the shared trio (not raced
-// against it) so viz.js — which references `Plot`/`defineViz`/etc. as
-// globals at its own top level — never starts executing before runtime.js
-// has defined them, even when two different courses' viz.js are first
-// requested concurrently.
-//
-// Keyed by URL rather than by courseId because the URL is now what varies:
-// `course/loader.ts` decides where (or whether) a given course's viz.js
-// lives, and two courses can no longer collide on one key without also
-// being one script.
-const vizPromisesBySrc = new Map<string, Promise<void>>();
-
-/**
- * The trio, plus `vizSrc` if there is one.
- *
- * `vizSrc === null` means this course HAS no viz.js — a `content`-tier
- * package, which is most of them — and the trio alone is then the whole
- * runtime. Not an error case and not a degraded one: KaTeX and the
- * chapter renderer are what a prose course needs.
- */
-function injectCourseKit(vizSrc: string | null): Promise<void> {
-  if (vizSrc === null) return ensureCourseKitRuntime();
-
-  const cached = vizPromisesBySrc.get(vizSrc);
-  if (cached) return cached;
-
-  // ensureCourseKitRuntime() must be called synchronously here (not inside the
-  // .then below) so a second synchronous call for the same script — the
-  // StrictMode double-invoke case — sees this Map entry already set
-  // before either promise has had a chance to settle.
-  const promise = ensureCourseKitRuntime().then(() => loadScript(vizSrc));
-
-  promise.catch(() => {
-    vizPromisesBySrc.delete(vizSrc);
-  });
-
-  vizPromisesBySrc.set(vizSrc, promise);
-  return promise;
-}
-
 /**
  * Khoá học nào đã nạp XONG runtime của nó, ở mức module — cùng hạng với
- * `runtimeTrioPromise` và `vizPromisesBySrc`, và vì cùng một lý do.
+ * `runtimeTrioPromise`, và vì cùng một lý do.
  *
- * Không có nó, `useCourseKit` vứt đi chính điều hai thứ trên tồn tại để giữ:
- * mỗi lần mount lại bắt đầu từ `ready: false` và ở đó cho tới khi
- * `resolveVizScriptUrl` đọc xong `db.packages` — một vòng IndexedDB — dù mọi
- * global đã gắn vào `window` từ lâu và không có gì để tải nữa. Đo trên bản
- * dựng thật: 30–400ms mỗi lần vào một chương, trong đó `<ChapterView>` in
+ * Không có nó, `useCourseKit` vứt đi chính điều đó tồn tại để giữ: mỗi lần
+ * mount lại bắt đầu từ `ready: false` và ở đó cho tới khi
+ * `ensureCourseKitRuntime()` settle lại — dù mọi global đã gắn vào `window`
+ * từ lâu (nó là một singleton đã resolve) và không có gì để tải nữa. Đo trên
+ * bản dựng thật: 30–400ms mỗi lần vào một chương, trong đó `<ChapterView>` in
  * "Đang tải chương…" đè lên một chương nó đã có sẵn.
  *
  * Một `Set` chỉ-thêm là đủ và đúng: script đã gắn global thì không gỡ ra được,
  * nên một courseId đã vào đây thì vĩnh viễn còn đúng. Đường thất bại không ghi
  * vào đây (xem nhánh lỗi trong effect), nên nó không bao giờ hứa nhầm.
+ *
+ * Vẫn khoá theo `courseId` dù `ensureCourseKitRuntime()` giờ là sự thật DÙNG
+ * CHUNG cho mọi khoá (không còn `viz.js` riêng của từng khoá — Task 10 của
+ * cú xoay trục server-side; xem `course/loader.ts`) — Task 11 mới dọn nốt
+ * phần còn lại (`initViz`, sổ REDRAWS) ở `ChapterView.tsx`. Giữ nguyên hình
+ * dạng theo courseId ở đây là chủ ý: nó vẫn cho đúng hành vi (mount lại một
+ * khoá đã sẵn sàng thì `ready` ngay, đổi khoá giữa một lần mount thì chờ lại)
+ * mà không cần viết lại cách hook này theo dõi trạng thái.
  */
 const readyCourseIds = new Set<string>();
 
@@ -150,23 +108,21 @@ export interface UseCourseKitResult {
 
 /**
  * Loads the course-kit runtime for `courseId`: the shared katex/auto-
- * render/runtime trio once per app lifetime, plus this course's own viz.js
- * — IF it has one — once per distinct script, and reports readiness.
+ * render/runtime trio, once per app lifetime, and reports readiness.
  * `ChapterView` must not touch `window.CourseKit` until `ready` is true.
  *
- * "If it has one" is the whole of ruling S1-F14. This hook used to request
- * `/courses/<id>/viz.js` unconditionally, which is correct for the courses
- * this repo ships and wrong for every `content`-tier package — the tier
- * that has no JavaScript by definition, and the one the registry
- * recommends. `resolveVizScriptUrl` answers the question properly, using
- * the same two-source rule the manifest and the chapters go through; see
- * `course/loader.ts`.
- *
- * That answer is asynchronous (it reads `db.packages`), so a mount now
- * begins with a local lookup rather than with a `<script>` tag. Nothing
- * downstream changes: the trio singleton and the per-script map are both
- * populated synchronously inside `injectCourseKit`, so concurrent mounts
- * still share one injection each.
+ * **Deliberately partial, per Task 10 of the server-side pivot.** Through
+ * ruling S1-F14 this hook also decided WHETHER a course had its own
+ * `viz.js` and, if so, injected it after the trio — a question that made
+ * sense when a course could be a cached package, a static directory, or a
+ * pull from the server (see `course/loader.ts`'s old header comment). Under
+ * the new architecture a chapter's interactive parts are widgets rendered
+ * in sandboxed iframes (spec §2.3), not a course-wide `<script src>`, so
+ * that whole question — and the per-script map that answered it — has
+ * nowhere left to apply. Task 11 removes `initViz`/`REDRAWS` from
+ * `ChapterView.tsx` and finishes wiring widgets through this hook; this
+ * task only drops the now-dead viz branch so the module keeps compiling and
+ * KaTeX keeps working in the meantime.
  */
 function initialFor(courseId: string): UseCourseKitResult {
   return { ready: readyCourseIds.has(courseId), error: null };
@@ -198,17 +154,15 @@ export function useCourseKit(courseId: string): UseCourseKitResult {
   useEffect(() => {
     let cancelled = false;
 
-    resolveVizScriptUrl(courseId)
-      .then((vizSrc) => injectCourseKit(vizSrc))
-      .then(
-        () => {
-          readyCourseIds.add(courseId);
-          if (!cancelled) setResult({ ready: true, error: null });
-        },
-        (err: unknown) => {
-          if (!cancelled) setResult({ ready: false, error: err instanceof Error ? err : new Error(String(err)) });
-        },
-      );
+    ensureCourseKitRuntime().then(
+      () => {
+        readyCourseIds.add(courseId);
+        if (!cancelled) setResult({ ready: true, error: null });
+      },
+      (err: unknown) => {
+        if (!cancelled) setResult({ ready: false, error: err instanceof Error ? err : new Error(String(err)) });
+      },
+    );
 
     return () => {
       cancelled = true;
@@ -218,9 +172,8 @@ export function useCourseKit(courseId: string): UseCourseKitResult {
   return result;
 }
 
-/** Test-only: reset the module-level singleton/map between test files/cases. Not exported for app code. */
+/** Test-only: reset the module-level singleton/set between test files/cases. Not exported for app code. */
 export function __resetCourseKitForTests(): void {
   runtimeTrioPromise = null;
-  vizPromisesBySrc.clear();
   readyCourseIds.clear();
 }

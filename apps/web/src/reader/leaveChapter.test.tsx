@@ -88,8 +88,8 @@ const server = setupServer(
   http.get('/me', () => HttpResponse.json({ id: 'u1', email: 'a@vi.vn', name: 'Người học' })),
   http.get('/courses', () => HttpResponse.json([])),
   http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })),
-  http.get('/courses/demo/manifest.json', () => HttpResponse.json(manifest)),
-  http.get('/courses/demo/chapters/c1.html', () => HttpResponse.text(CHAPTER_1_HTML)),
+  http.get('/courses/demo', () => HttpResponse.json(manifest)),
+  http.get('/courses/demo/chapters/c1', () => HttpResponse.json({ html: CHAPTER_1_HTML, widgets: [] })),
   // `App` khởi động vòng đồng bộ nền ngay khi `GET /me` trả về một người dùng
   // đã đăng nhập (App.tsx → `useSyncLifecycle`), nên `onUnhandledRequest:
   // 'error'` sẽ nổ ở đây nếu ba đầu này không có mặt. Chúng là NHIỄU với bài

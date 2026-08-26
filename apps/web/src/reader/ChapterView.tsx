@@ -221,8 +221,8 @@ export function ChapterView({
   const closeToc = useCallback(() => setTocOpen(false), []);
 
   const chapterQuery = useQuery({
-    queryKey: ['course-chapter', courseId, chapter.file],
-    queryFn: () => loadChapter(courseId, chapter.file),
+    queryKey: ['course-chapter', courseId, chapter.id],
+    queryFn: () => loadChapter(courseId, chapter.id),
   });
 
   // Kept current on every render (not inside an effect — a plain
@@ -564,7 +564,7 @@ export function ChapterView({
   // register this chapter with getContext().
   useEffect(() => {
     if (!courseKit.ready) return;
-    const html = chapterQuery.data;
+    const html = chapterQuery.data?.html;
     if (html == null) return;
     const container = containerRef.current;
     if (!container) return;
