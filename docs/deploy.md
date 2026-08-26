@@ -337,40 +337,20 @@ origin, lỗ đó đã là lỗ mất key.
 có Pages project nào**. Phép đo hai chiều của `frame-ancestors` (origin được phép nhúng được; origin
 khác rơi vào `chrome-error://`) chạy **trên máy**, không chạy trên hạ tầng thật.
 
-## 5c. Catalog registry (`VITE_REGISTRY_URL`) — **chưa có giá trị mặc định**
+## 5c. Catalog registry — **đã nghỉ hưu, không còn `VITE_REGISTRY_URL`**
 
-Nền tảng đọc catalog từ **một** tệp `index.json` phục vụ qua GitHub Pages của repo registry.
+**Cơ chế mục này từng mô tả không còn tồn tại.** Bản trước của §5c nói nền tảng đọc catalog từ một
+tệp `index.json` phục vụ qua GitHub Pages của repo registry, đọc trực tiếp từ trình duyệt bằng
+`VITE_REGISTRY_URL` và `apps/web/src/registry/index.ts`'s `PUBLIC_REGISTRY_BASE`. Module đó đã bị
+xoá (Task 13) khi pivot server-side dọn sạch: catalog giờ là `GET /courses` — phục vụ bởi chính
+`apps/api` từ Postgres (xem §0 và `apps/web/src/api/catalog.ts`) — không còn một `index.json` nào để
+trỏ tới, và không trình duyệt nào gọi thẳng ra GitHub Pages nữa. `VITE_REGISTRY_URL` không còn được
+đọc ở bất kỳ đâu trong mã; đừng đặt biến này ở host nào cả — final whole-branch review, M6 xoá nó
+khỏi `.env.example`/`apps/web/src/vite-env.d.ts` cùng lúc với đoạn này.
 
-**Hôm nay chưa có repo registry công khai** (`git remote -v` rỗng), nên `PUBLIC_REGISTRY_BASE` được
-đặt là `null` **có chủ ý**: một URL bịa ra sẽ hỏng bằng một `TypeError` trần, **không phân biệt được
-với mất mạng** — đúng lớp lỗi mà ruling S1-F25 đã ghi (lỗi CORS ở production trông y hệt "người dùng
-ngoại tuyến", và một cấu hình deploy sai vì thế trở nên vô hình).
-
-```
-VITE_REGISTRY_URL = https://<gh-user>.github.io/<registry-repo>
-```
-
-**KHÔNG kèm `/index.json`.** `indexUrl()` (`apps/web/src/registry/index.ts:173`) tự nối `/index.json`
-vào, nên một giá trị đã kèm sẵn cho `…/index.json/index.json` — một 404 mà thông báo lỗi của chính
-mã lại nói ngược. Đây là **địa chỉ GỐC**: cùng một biến phục vụ cả việc duyệt danh mục lẫn việc kéo
-gói về (`courses/<id>/<version>.zip` nằm cạnh `index.json`), nên nếu nó trỏ vào một tệp thì nửa kéo
-về cũng hỏng theo. `.env.example` đã ghi đúng điều này; §5c bản đầu thì không, và cổng e2e của hệ
-thống con 3 là thứ bắt được mâu thuẫn ấy.
-
-**Chưa từng được đo qua một trình duyệt thật.** Hai điều đang là **suy luận**, không phải phép đo:
-
-1. **JS không đọc được `ETag` liên origin.** Đã `curl` vào GitHub Pages thật: có `etag`, có
-   `access-control-allow-origin: *`, **không có `Access-Control-Expose-Headers`**. Nhưng `curl`
-   **không cưỡng chế CORS** — trình duyệt mới cưỡng chế. Hệ quả: lớp cache theo ETag mà kế hoạch đề
-   ra **sẽ trơ** trên chính mục tiêu của nó, nên nó đã được **bỏ**; trình duyệt tự làm đúng việc ấy
-   nhờ `cache-control: max-age=600`.
-2. **Một `fetch` không header vẫn là "simple request"** mà Pages phục vụ được. Điều này **nhị phân**:
-   nó quyết định catalog có tải được ở production hay không. Gửi `If-None-Match` thì **không** — nó
-   không nằm trong danh sách an toàn, nên buộc preflight mà Pages không trả lời.
-
-⇒ **Phép kiểm sau khi dựng repo registry:** mở `https://tuhoc.<domain>/catalog` trong trình duyệt
-thật, và trong DevTools → Network khẳng định request `index.json` là **200 và không có preflight
-`OPTIONS`** đứng trước. Nếu có preflight, có ai đó vừa thêm một header.
+`.github/workflows/registry.yml` vẫn còn (xem chú thích đầu tệp đó), nhưng vai trò của nó đã đổi:
+một cổng CI tiện lợi kiểm gói trước khi merge PR vào repo nguồn cộng đồng, không còn là nơi xuất bản
+catalog nào cả — cổng thật cho việc publish giờ nằm ở server (`PUT /admin/courses/:slug`, §4c).
 
 ## 6. Free-tier realities: cold starts, stacked
 
