@@ -563,9 +563,28 @@ describe('mặt tiền dòng lệnh', () => {
 // The real package. Deliberately does NOT hard-code a verdict: what must hold
 // is that the CLI's exit code is the RULE SET's verdict rather than a second
 // rule set of its own — that is the wire this task exists to connect, and it
-// has now stayed pinned across two changes of ngữ liệu (task 11 moved the
-// private textbook out of the repo, task 13 replaced it with the public sample
-// package `so-dau-phay-dong`).
+// has now stayed pinned across THREE changes of ngữ liệu (task 11 moved the
+// private textbook out of the repo, task 13 replaced it with the public
+// sample package `so-dau-phay-dong`, task 17 of the server-side pivot moved
+// it again — see below).
+//
+// Why it moved a third time: `so-dau-phay-dong` is `fixtures/README.md`'s
+// documented v1 `interactive` sample — 8 chapters, `viz.js`, kept ON PURPOSE
+// as real-content ngữ liệu for annotation/zip/e2e tests that need genuine
+// prose, not hand-typed fixtures. Format v2 abolished free-running JavaScript
+// in packages, so that same `viz.js` now trips `JS_FILE_IN_PACKAGE` — and it
+// will keep tripping it until someone does the real content work of rewriting
+// it as a widget (out of scope here; recorded in the server-side-pivot ledger,
+// not silenced). This test's own `expected, 'gói mẫu phải đi qua bộ luật
+// sạch'` assertion is exactly what caught that: a canary that stayed red for
+// the right reason. Closing it by weakening the assertion, or by rewriting
+// `so-dau-phay-dong` itself and risking the ~10 other files pinned to its
+// exact bytes (`fixtures/README.md`), were both worse than pointing the
+// canary at a package that does not carry this particular, deliberately
+// unfinished debt. `bat-bien-vong-lap` — `fixtures/courses/`'s OTHER real,
+// committed sample — is that package: `content`-tier, no JavaScript, already
+// the reference "small, real, valid" fixture for other subsystems' own e2e
+// (see `fixtures/README.md`). Reusing it here adds no new fixture.
 //
 // Reads `courses/`, the WORKING directory, not `fixtures/` — deliberately.
 // `courses/` holds what `make courses` unpacked from the zip, so this measures
@@ -574,9 +593,9 @@ describe('mặt tiền dòng lệnh', () => {
 // message, not skipped.
 // ---------------------------------------------------------------------------
 
-describe('gói thật courses/so-dau-phay-dong', () => {
+describe('gói thật courses/bat-bien-vong-lap', () => {
   it('mã thoát của CLI = phán quyết của validatePackage, không phải luật thứ hai', async () => {
-    const real = join(REPO_ROOT, 'courses', 'so-dau-phay-dong');
+    const real = join(REPO_ROOT, 'courses', 'bat-bien-vong-lap');
     if (!existsSync(real)) {
       throw new Error(
         `Chưa bung gói mẫu ra ${real}.\n` + 'Bung bằng `make courses` từ gốc repo — gói nằm trong repo tại fixtures/courses/.',

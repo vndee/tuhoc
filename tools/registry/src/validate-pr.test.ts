@@ -33,6 +33,14 @@ import { courseDirsUnder, EmptyRegistryError, NothingScannedError } from './tree
 
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const FIXTURE_COURSES = join(REPO_ROOT, 'fixtures', 'courses');
+/**
+ * The registry's OWN smoke-test root (task 17, server-side pivot) — NOT
+ * `fixtures/courses`. That directory now has real, load-bearing test data for
+ * a dozen unrelated files, including a v1 package permanently invalid under
+ * v2 until it becomes a widget (see `Makefile`'s `test-registry` comment).
+ * `fixtures/registry/` is small, valid, and owned by nothing else.
+ */
+const FIXTURE_REGISTRY_ROOT = join(REPO_ROOT, 'fixtures', 'registry');
 
 const cleanup: string[] = [];
 afterAll(() => {
@@ -237,6 +245,16 @@ describe('chốt chống cổng mù', () => {
   it('registry root thật (fixtures/courses) có đúng hai thư mục course, .zip không tính', async () => {
     const dirs = await courseDirsUnder(FIXTURE_COURSES);
     expect(dirs.map((d) => d.split('/').pop())).toEqual(['bat-bien-vong-lap', 'so-dau-phay-dong']);
+  });
+
+  // `make test-registry`'s CLI-level invocation (Makefile, `.github/workflows/
+  // registry.yml`) points `--root` at this directory, not `fixtures/courses`.
+  // If this goes red, so does that CLI run — this is the fast, in-process way
+  // to find out why before waiting on the slow one.
+  it('registry root riêng của cổng này (fixtures/registry) sạch bộ luật, một course', async () => {
+    const dirs = await courseDirsUnder(FIXTURE_REGISTRY_ROOT);
+    expect(dirs.map((d) => d.split('/').pop())).toEqual(['vi-du-hop-le']);
+    expect(await validateChangedCourses(dirs)).toEqual([]);
   });
 });
 
