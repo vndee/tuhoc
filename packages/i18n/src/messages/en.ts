@@ -64,9 +64,13 @@ export const en: Messages = {
   'settings.account.loading': 'Asking the server who is signed in…',
   'settings.account.unknown': 'Could not load your account details. This part needs the network.',
   'settings.account.signedInAs': (name: string, email: string) => `Signed in as ${name} · ${email}`,
-  /** "downloaded packages" dropped at fix-round-1 (task-14) — see vi.ts's comment. */
+  /**
+   * "downloaded packages" dropped at fix-round-1 (task-14) — see vi.ts's
+   * comment. Comma before "and" dropped at fix-round-2: leftover from when
+   * this was a three-item list; two items don't need it.
+   */
   'settings.account.signOutWarning':
-    'Signing out erases the study data of this session from this browser: notes, and the progress queue that has not been sent yet. That is the only way two people sharing one machine never see data belonging to the other.',
+    'Signing out erases the study data of this session from this browser: notes and the progress queue that has not been sent yet. That is the only way two people sharing one machine never see data belonging to the other.',
 
   'settings.appearance.blurb': 'Applies to the app frame. Course content keeps its own language.',
   'settings.appearance.language': 'Language',
@@ -300,7 +304,8 @@ export const en: Messages = {
   'progress.stat.streakSub': 'as of today',
   'progress.stat.notes': 'Notes written',
   'progress.stat.notesSub': 'kept on this device',
-  'progress.noCourses': 'Nothing to measure yet. Import a package under Courses.',
+  /** Rewritten at fix-round-2 (task-14) — see vi.ts's comment for why, and for why this stops right before "Courses" rather than repeating it. */
+  'progress.noCourses': 'Nothing to measure yet. Start reading under',
   'progress.chaptersDone': (n: string) => `${n} chapters read`,
   'progress.course.chapters': (read: string, total: string) => `${read}/${total} chapters`,
   'progress.course.aria': (percent: string) => `${percent}% complete`,

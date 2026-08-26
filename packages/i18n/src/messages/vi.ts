@@ -420,7 +420,20 @@ export const vi = {
   'progress.stat.streakSub': 'tính tới hôm nay',
   'progress.stat.notes': 'Ghi chú đã viết',
   'progress.stat.notesSub': 'còn giữ trên máy này',
-  'progress.noCourses': 'Chưa có khoá học nào để đo. Nhập một gói ở mục Khoá học.',
+  /**
+   * fix-round-2 (task-14) — bản cũ nói "Nhập một gói ở mục Khoá học", một
+   * hành động không còn tồn tại: `Courses.tsx` (đích của route `/courses`)
+   * không còn nút "Nhập gói" nào (spec `2026-08-25-server-side-pivot.md`
+   * §1). Tệ hơn một lời hứa sai — đây là một CHỈ DẪN sai, đưa người đọc tới
+   * một màn hình để làm một việc không làm được ở đó.
+   *
+   * `Progress.tsx:161` nối chuỗi này với `{' '}` rồi một `<Link>` mang chữ
+   * `nav.courses` ("Khoá học") ngay sau — nên câu ở đây CỐ Ý không lặp lại
+   * "Khoá học" và không có dấu chấm cuối: nó dừng ngay trước từ mà cái Link
+   * sẽ tự thêm vào, để cả hai đọc thành một câu liền mạch thay vì hai câu
+   * chồng lên nhau ("...Khoá học. Khoá học" — điều bản cũ mắc phải).
+   */
+  'progress.noCourses': 'Chưa có khoá học nào để đo. Bắt đầu đọc ở mục',
   'progress.chaptersDone': (n: string) => `${n} chương đã đọc`,
   'progress.course.chapters': (read: string, total: string) => `${read}/${total} chương`,
   'progress.course.aria': (percent: string) => `${percent}% hoàn thành`,
