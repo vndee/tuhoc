@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "validate-pr": "bun run src/validate-pr.ts",
-    "build-index": "bun run src/build-index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b"
