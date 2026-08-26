@@ -90,20 +90,33 @@ test.describe('Widget sandbox gate — spec §8', () => {
     // vào), và nó là một bằng chứng CHẶT hơn chuỗi rỗng: không phải "không có
     // cookie nào ở đây", mà là "không có cách nào hỏi câu đó ở đây". Bài này đo
     // đúng cái ném ấy thay vì giả định một chuỗi rỗng không bao giờ xảy ra thật.
+    //
+    // Bắt ĐÚNG loại ngoại lệ, không phải "có gì đó đã ném": try/catch quanh MỘT
+    // câu lệnh vẫn có thể bắt nhầm một lỗi khác (một thay đổi API tương lai, một
+    // lỗi runtime không liên quan) và vẫn coi là "đúng, origin mờ đã chặn" — nên
+    // ở TRONG khung, trước khi giá trị rời biên sang Playwright, kiểm luôn
+    // `e instanceof DOMException` và `e.name`, và so sánh CHẶT với `'SecurityError'`
+    // — đúng tên đo được từ Chromium thật (xem chú thích trên), không phải một
+    // hằng số đoán trước.
     const inside = await frame.locator('body').evaluate(() => {
-      let cookieThrew = false;
       let cookieValue: string | null = null;
+      let cookieError: { isDOMException: boolean; name: string } | null = null;
       try {
         cookieValue = document.cookie;
-      } catch {
-        cookieThrew = true;
+      } catch (e) {
+        cookieError = { isDOMException: e instanceof DOMException, name: e instanceof DOMException ? e.name : '(not a DOMException)' };
       }
-      return { origin: window.origin, cookieThrew, cookieValue };
+      return { origin: window.origin, cookieValue, cookieError };
     });
     expect(inside.origin, 'window.origin bên trong khung phải là chuỗi mờ "null"').toBe('null');
     expect(
-      inside,
-      `document.cookie bên trong khung phải ném SecurityError (origin mờ không có cookie jar) — thay vào đó đọc được: ${JSON.stringify(inside.cookieValue)}`,
-    ).toEqual({ origin: 'null', cookieThrew: true, cookieValue: null });
+      inside.cookieValue,
+      `document.cookie đọc được một chuỗi (${JSON.stringify(inside.cookieValue)}) thay vì ném lỗi — origin mờ phải làm getter đó ném, không trả về rỗng lặng lẽ`,
+    ).toBeNull();
+    expect(inside.cookieError, 'document.cookie không ném gì cả').not.toBeNull();
+    expect(
+      inside.cookieError,
+      `document.cookie ném, nhưng không phải DOMException("SecurityError") — có thể là một lỗi khác không liên quan tới origin mờ: ${JSON.stringify(inside.cookieError)}`,
+    ).toEqual({ isDOMException: true, name: 'SecurityError' });
   });
 });

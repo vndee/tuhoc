@@ -360,6 +360,14 @@ chọn `"mixed"`.
 
 ## 7. Gửi PR vào registry
 
+**Mục này mô tả một luồng chưa được xác nhận lại toàn bộ sau server-side
+pivot** — course lên tay người đọc hôm nay chủ yếu qua `tuhoc publish` (§4,
+`README.md`), và liệu luồng PR-vào-registry dưới đây còn tồn tại nguyên hình,
+đã đổi hình dạng, hay chỉ còn một phần, là một câu hỏi cần một lượt kiểm riêng
+chứ không phải thứ tài liệu này tự trả lời được. Hai khẳng định cụ thể bên
+dưới (bước 3, bước 4) **đã kiểm và sai** — sửa tại đây; phần còn lại của mục
+giữ nguyên như trước khi có server-side pivot và có thể cũng đã lỗi thời.
+
 Registry là một repo GitHub công khai. Mỗi course là một thư mục. Đóng góp là mở
 một PR thêm thư mục đó.
 
@@ -372,10 +380,18 @@ Quy trình:
 1. `tuhoc pack <thư-mục>` trên máy bạn cho tới khi **thoát 0**. CI chạy đúng bộ
    luật ấy, nên đây là cách biết trước kết quả thay vì chờ CI báo đỏ.
 2. Mở PR thêm thư mục course (thư mục nguồn, không phải tệp `.zip`).
-3. CI kiểm định, gán nhãn hạng, và sinh lại `index.json` — tệp metadata duy nhất
-   mà mọi bản nền tảng tải về.
-4. Hạng `content`: CI xanh thì merge gần như tự động. Hạng `interactive`: chờ
-   người đọc mã JS (§4).
+3. CI kiểm định theo `packages/course-format` (`tools/registry/src/validate-pr.ts`
+   chạy đúng bộ luật ấy). **Không còn đúng, sửa tại đây:** CI không còn sinh
+   `index.json` — `build-index.ts` bị xoá ở Task 17 của server-side pivot, và
+   không nơi nào trong nền tảng còn tải một `index.json` của registry để đọc
+   course từ đó (`validate-pr.ts`'s header ghi thẳng: không route nào còn đọc
+   một `index.json` do registry xuất bản, hay kéo một gói từ archive registry
+   host nữa).
+4. **Không còn đúng, sửa tại đây:** không còn "hạng" nào để CI gán hay để gác
+   cổng theo — §4 đã bỏ hẳn phân biệt `content`/`interactive`. Tiêu chí
+   merge/duyệt thật của luồng PR này sau pivot **chưa được xác nhận lại** —
+   đừng coi câu cũ ("hạng content merge tự động, hạng interactive chờ duyệt")
+   còn đúng cho tới khi có một lượt kiểm riêng.
 5. Sau khi merge, registry gán `registryId`. Đừng tự điền trường đó.
 
 Cập nhật course: tăng `version` theo semver rồi mở PR mới. Người học **ghim**

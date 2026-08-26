@@ -41,7 +41,7 @@ export const COURSE_TITLE = 'Biến đếm: từ vòng lặp đến sự kiện'
 /** `manifest.id` của gói mẫu — cũng là slug được publish lên server bởi bước seed trong `scripts/test-e2e.sh` (xem chú thích của COURSE_TITLE). */
 export const REAL_COURSE_ID = 'mau-hop-le';
 
-/** apps/web/e2e/ → gốc repo là ba tầng lên. Xuất ra vì `s2`/`s3`/`s4.spec.ts` cũng đọc theo đường dẫn tuyệt đối từ gốc repo, và hai bản sao của phép tính này thì trôi. */
+/** apps/web/e2e/ → gốc repo là ba tầng lên. Xuất ra vì `s2.spec.ts` cũng đọc theo đường dẫn tuyệt đối từ gốc repo, và hai bản sao của phép tính này thì trôi. (`s3`/`s4.spec.ts` từng đọc nó nữa — cả hai đã bị xoá ở Task 16 của server-side pivot, xem commit "Cổng e2e mới".) */
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
 /**
