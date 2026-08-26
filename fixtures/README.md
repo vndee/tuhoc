@@ -55,8 +55,8 @@ trình đọc phải xử lý đúng.
 
 ### Đóng gói lại
 
-`bat-bien-vong-lap.zip` được commit **có chủ ý**: Task 8 và Task 12 cần một tệp
-thật để thả vào màn hình import, và sinh nó trong lúc chạy test sẽ buộc cổng e2e
+`bat-bien-vong-lap.zip` được commit **có chủ ý**: `pack.test.ts`/`validate-pr.test.ts`
+(xem đoạn trên) cần một tệp thật, và sinh nó trong lúc chạy test sẽ buộc mỗi cổng
 phải chạy thêm CLI. Sửa nguồn thì đóng gói lại bằng đúng lệnh đã tạo ra nó:
 
 ```
@@ -94,9 +94,9 @@ Sửa chương này thì chạy lại `make test-e2e`, đừng sửa cổng.
 
 ## `courses/so-dau-phay-dong/`
 
-Course **8 chương** về số dấu phẩy động: hạng `interactive`, `lang: "vi"`,
-`license: "CC-BY-4.0"`, `generatedBy: "ai"` (đúng như nó là — do skill
-`course-authoring` sinh ra ở Task 13).
+Course **8 chương** về số dấu phẩy động: `lang: "vi"`, `license: "CC-BY-4.0"`,
+`generatedBy: "ai"` (đúng như nó là — do skill `course-authoring` sinh ra ở
+Task 13) — không "hạng" nào để ghi, xem ghi chú ở đầu tệp này.
 
 Nó ra đời để **thay giáo trình riêng tư làm ngữ liệu test**. Task 11 đưa
 giáo trình riêng tư ra ngoài cây git, và hệ quả là mười tệp test chỉ chạy được
