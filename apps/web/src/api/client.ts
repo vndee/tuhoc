@@ -76,16 +76,13 @@ async function parseBody(res: Response): Promise<unknown> {
 /**
  * Everything a request to this API has in common — the base URL, the
  * session cookie, the 401 policy, and turning a non-2xx into an `ApiError`
- * — up to but NOT including how the successful body is read.
- *
- * Split out from `request` so that `api.bytes` can share all of it: a
- * course package's files are opaque bytes (the server labels every one of
- * them `application/octet-stream`, deliberately — see apps/api's
- * course/handler.go), and running them through `parseBody`'s
- * text-then-JSON path would corrupt anything that is not UTF-8 text. The
- * alternative — a second `fetch` call site — is a second copy of the
- * base URL and the 401 rule, which is exactly what this module exists to
- * prevent.
+ * — up to but NOT including how the successful body is read. `request`
+ * (below) is the only caller: split out on its own so that a future
+ * caller needing the raw `Response` (bytes, a stream, anything
+ * `parseBody`'s text-then-JSON path would corrupt) can share this half
+ * without a second copy of the base URL and the 401 rule — see `git log`
+ * on this file for `api.bytes`, which used to be exactly that caller
+ * before it was removed as dead code (final whole-branch review, M5).
  */
 /**
  * The HTTP verbs this client speaks.
@@ -257,19 +254,6 @@ export const api = {
   put: async (path: string, body?: unknown, options: RequestOptions = {}): Promise<void> => {
     await request<unknown>('PUT', path, body, options);
   },
-  /**
-   * A GET whose response is BYTES. Same transport as `get` — base URL,
-   * cookie, 401 policy, `ApiError` — and no parsing.
-   *
-   * The one caller today is `api/courses.ts`, reading files out of a stored
-   * course package. Those files are chapter HTML, images and (for an
-   * `interactive` package) JavaScript; the server hands every one of them
-   * back as `application/octet-stream` with `nosniff`, and the reader is
-   * what decides what the bytes are. Anything that decoded them here would
-   * be guessing on the reader's behalf.
-   */
-  bytes: async (path: string, options: RequestOptions = {}): Promise<Uint8Array> =>
-    new Uint8Array(await (await send('GET', path, undefined, options)).arrayBuffer()),
 };
 
 /**
