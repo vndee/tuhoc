@@ -844,41 +844,22 @@ const HTML_SINKS_ALLOWED: readonly {
     times: 1,
     why: 'the chapter fragment — the one string in this app that IS markup, and the only one a course author is allowed to write',
   },
-  {
-    sink: 'innerHTML',
-    file: join('apps', 'web', 'src', 'course', 'version.ts'),
-    times: 1,
-    // Added by S1 Task 10, and deliberately NOT a reopening of ruling S1-F8.
-    // The ruling's condition is "no MANIFEST field ever reaches an HTML sink",
-    // and this sink is fed the same category of string ChapterView's is: a
-    // chapter fragment, read out of `PackageRow.files[...]`. The manifest
-    // supplies the KEY into that record (`chapter.file`), never the value —
-    // so every manifest string is still a React text node everywhere in this
-    // app, and the validator's decision not to scan manifests for markup is
-    // still free.
-    //
-    // Two further properties of THIS use, neither of which ChapterView's has:
-    // it parses into an INERT document (`document.implementation.
-    // createHTMLDocument`, see `parseChapterInert`), and it exists to measure
-    // notes against a chapter the reader has not taken yet, which has to
-    // project to the SAME string the reader's page projected (see
-    // `course/version.ts`'s `CourseKitUnavailableError` for the measurement).
-    //
-    // RULING S1-F30 — this entry used to say the container was "detached …
-    // so no handler on it can ever fire", and that was measured FALSE in
-    // Chromium: an image/media load is started by the `src` attribute, not by
-    // being in a rendered tree, and the package's own `onerror` runs on it. A
-    // false security claim inside the very test that guards the area is worse
-    // than no claim, because it tells the next reader not to look. What makes
-    // this use safe is the inert DOCUMENT, and nothing else.
-    //
-    // The scanner above still sees this sink, which is the point: the fix
-    // changed WHICH document is written to, not the fact that a string becomes
-    // markup, so `times: 1` still counts it. (The rejected alternative,
-    // `DOMParser`, WOULD hide the sink from this scanner — that, not inertness,
-    // is the reason not to use it.)
-    why: 'the chapter fragment again, parsed into an inert document (no browsing context) to resolve anchors against a version not yet taken',
-  },
+  // `course/version.ts`'s `innerHTML` entry ĐÃ XOÁ Ở ĐÂY — the file is gone
+  // (Task 13: the update-impact preview it belonged to has no course-package
+  // model left to compare versions of). Its entry carried RULING S1-F30, a
+  // real measurement worth restating rather than letting vanish with the
+  // file: an image/media element's `onerror` fires because the load is
+  // started by the `src` ATTRIBUTE, not because the element sits in a
+  // rendered tree — so parsing a chapter into a `document.implementation.
+  // createHTMLDocument()` INERT document does NOT, by itself, stop a
+  // package's own `onerror` from running there. An earlier version of this
+  // entry claimed the opposite ("detached, so no handler can ever fire") and
+  // that claim was measured false in Chromium. Nothing left in this app
+  // parses chapter HTML into a detached/inert document any more (verified:
+  // `grep -rn "createHTMLDocument" apps/web/src` now matches only this
+  // comment) — but if that pattern ever returns, "inert" is not itself a
+  // safety argument; only running it through the same rule set that gates
+  // ChapterView's own `innerHTML` (SCRIPT_TAG, EVENT_HANDLER_ATTR, …) is.
   {
     sink: 'innerHTML',
     file: join('packages', 'course-kit', 'runtime.js'),

@@ -42,18 +42,20 @@ let runtimeTrioPromise: Promise<void> | null = null;
 /**
  * The shared trio, loaded at most once per app lifetime, as a plain promise.
  *
- * Exported (Task 10) because `useCourseKit` is not the only thing that needs
- * `window.CourseKit`, and the second caller is not a component. `course/version.ts`
- * resolves a reader's anchors against a chapter of a version they have not taken
- * yet, and an anchor's stored quote describes the chapter AFTER
+ * Exported (Task 10) because `useCourseKit` was not the only thing that
+ * needed `window.CourseKit` — `course/version.ts` was a second, non-component
+ * caller, resolving a reader's anchors against a chapter of a version they
+ * had not taken yet (an anchor's stored quote describes the chapter AFTER
  * `CourseKit.renderKatex` has run — one `'￼'` per formula rather than the
- * literal `$…$` source. Measured on the real p1-5 with 30 notes: previewing
- * without the trio reported 26 orphans where 4 was the truth, and 17 of those
- * were paragraphs the update did not touch at all.
- *
- * A second injector living in that file would be a second copy of the
- * "these globals must be attached exactly once, in this order" rule — the
- * rule the module-level singleton below exists to enforce.
+ * literal `$…$` source; measured on the real p1-5 with 30 notes: previewing
+ * without the trio reported 26 orphans where 4 was the truth). That caller
+ * is gone (Task 13 — the update-preview flow it belonged to has no
+ * course-package model left to compare versions of), and nothing else
+ * outside this file calls it in production code today. Left exported rather
+ * than folded back to module-private: the reasoning below (one shared
+ * singleton, never a second copy of the "these globals attach exactly once"
+ * rule) is a property of the function itself, not of who happens to call it,
+ * and a future non-component caller should not have to re-earn the export.
  */
 export function ensureCourseKitRuntime(): Promise<void> {
   if (runtimeTrioPromise) return runtimeTrioPromise;
