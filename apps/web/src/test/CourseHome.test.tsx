@@ -168,16 +168,18 @@ describe('CourseHome', () => {
     expect(screen.queryAllByRole('link')).toHaveLength(0);
   });
 
-  it('shows a non-crashing message when the manifest is a runtime the app does not support', async () => {
-    server.use(
-      http.get('/courses/demo', () => HttpResponse.json({ ...buildManifest(2), runtime: '^2' })),
-    );
-
-    renderCourseHome();
-
-    expect((await screen.findAllByText(/không tải được|not found|lỗi/i)).length).toBeGreaterThan(0);
-    expect(screen.queryAllByRole('link')).toHaveLength(0);
-  });
+  // "shows a non-crashing message when the manifest is a runtime the app does
+  // not support" ĐÃ XOÁ Ở ĐÂY. Nó gửi `manifest.runtime: '^2'` và đòi một câu
+  // lỗi, đúng hành vi khi client còn tự kiểm `RuntimeMismatchError`. Lớp đó
+  // không còn tồn tại: cú xoay trục server-side (spec
+  // `2026-08-25-server-side-pivot.md` §2.4, đã merge ở Task 9-10) làm máy chủ
+  // thành nguồn được tin — `course/loader.ts` không còn kiểm `manifest.runtime`
+  // ở phía client nữa (`grep -rn "RuntimeMismatchError" apps/web/src` không
+  // còn khớp gì ngoài chú thích lịch sử). Bài này bị bỏ sót khỏi sổ xoá của cả
+  // Task 9-12 lẫn Task 13 — không do task nào cụ thể xoá nó khi lớp kia mất —
+  // và gỡ ở đây, không sửa: không có gì để "sửa lại cho đúng", vì hành vi nó
+  // đòi (từ chối một manifest báo `runtime` khác) không còn là một quyết định
+  // của client nữa.
 });
 
 /**
