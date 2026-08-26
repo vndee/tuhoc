@@ -1,5 +1,4 @@
 import { expect, test, type ConsoleMessage, type Locator, type Page } from '@playwright/test';
-import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,46 +23,20 @@ export const COURSE_TITLE = 'Số dấu phẩy động';
 /** `manifest.id` của gói mẫu — cũng là tên thư mục `make courses` bung ra. */
 export const REAL_COURSE_ID = 'so-dau-phay-dong';
 
-/** apps/web/e2e/ → gốc repo là ba tầng lên. Xuất ra vì `s1.spec.ts` cũng đọc `fixtures/courses/` từ đĩa, và hai bản sao của phép tính này thì trôi. */
+/** apps/web/e2e/ → gốc repo là ba tầng lên. Xuất ra vì `s2`/`s3`/`s4.spec.ts` cũng đọc theo đường dẫn tuyệt đối từ gốc repo, và hai bản sao của phép tính này thì trôi. */
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
 /**
- * Đường tới tệp `.zip` của gói course dùng làm ngữ liệu cho cả bốn tệp e2e.
- *
- * ## Nó ở TRONG repo, và đó là điểm đổi của task 13
- *
- * Task 11 đưa giáo trình riêng tư ra một kho ngoài cây git (spec §2B.1 — giáo
- * trình riêng trong một repo sắp publish, và xoá ở commit sau không cứu được).
- * Hệ quả là bốn tệp e2e này chỉ chạy được trên máy của tác giả.
- *
- * Task 13 thay ngữ liệu bằng `fixtures/courses/so-dau-phay-dong.zip` — một gói
- * mẫu **công khai**, do repo này soạn, `tuhoc pack` ghi ra, và commit. `p1`,
- * `p2` và `viz` đọc bản đã bung ở `courses/` (`make courses` bung hộ, và
- * `make test-e2e` gọi nó trước); `import.spec.ts` cần chính tệp `.zip`, vì thứ
- * nó kiểm là người dùng chọn tệp ở màn hình Import.
- *
- * Ném — không skip — khi tệp không có. Đó vẫn là hành vi đúng, chỉ khác là bây
- * giờ nó là một trạng thái sửa được trên mọi bản clone. Xem đầu
- * `import.spec.ts`.
+ * `realCoursePackageZip()` ĐÃ XOÁ Ở ĐÂY (Task 13, spec
+ * `2026-08-25-server-side-pivot.md` §1). Nó trả về đường tới chính tệp `.zip`
+ * của `fixtures/courses/so-dau-phay-dong`, dùng bởi hai tệp e2e — cả hai đã
+ * gỡ: `import.spec.ts` (kiểm màn hình Import chọn tệp) và phần §5 cũ của
+ * `s1.spec.ts` (dùng nó chỉ để đưa course công khai này vào máy trước khi mở
+ * — một bước chưa từng cần thiết, và `p1.spec.ts`'s bản kế thừa của §5 đã bỏ
+ * nó). `p1`/`p2`/`viz` không cần TỆP `.zip` — chúng đọc bản đã BUNG ở
+ * `courses/` (`make courses` bung hộ trước khi `make test-e2e` chạy), nên
+ * không còn lời gọi nào tới hàm này để giữ nó lại.
  */
-export function realCoursePackageZip(): string {
-  const zip = resolve(REPO_ROOT, 'fixtures', 'courses', `${REAL_COURSE_ID}.zip`);
-  if (!existsSync(zip)) {
-    throw new Error(
-      [
-        `Không tìm thấy gói mẫu: ${zip}`,
-        '',
-        'Cổng nghiệm thu này chạy trên GÓI THẬT do `tuhoc pack` ghi ra, không phải một',
-        'zip dựng trong lúc chạy test — xem đầu import.spec.ts.',
-        '',
-        'Tệp này ĐƯỢC COMMIT. Nếu nó biến mất, đóng gói lại từ nguồn cạnh nó:',
-        `    bun tools/tuhoc-cli/src/index.ts pack fixtures/courses/${REAL_COURSE_ID} \\`,
-        `      -o fixtures/courses/${REAL_COURSE_ID}.zip`,
-      ].join('\n'),
-    );
-  }
-  return zip;
-}
 
 /** A unique account per run (down to the millisecond) — this suite runs against a fresh, empty database each time (see compose.e2e.yml's no-volume policy), but uniqueness costs nothing and protects a developer running it twice against a stack they forgot to tear down. */
 export function freshEmail(): string {

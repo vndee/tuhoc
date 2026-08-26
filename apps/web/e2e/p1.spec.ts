@@ -211,3 +211,153 @@ test.describe('P1 definition-of-done gate', () => {
     await deviceB.close();
   });
 });
+
+/**
+ * §5 — MỤC LỤC: NGĂN KÉO Ở MÀN HẸP, CỘT CỐ ĐỊNH Ở MÀN RỘNG
+ *
+ * Chuyển từ `e2e/s1.spec.ts` (Task 13, spec
+ * `2026-08-25-server-side-pivot.md` §1). Tệp ấy bị xoá vì MỌI kịch bản khác
+ * trong nó — §2 gói xấu bị từ chối, §3 riêng tư là riêng tư, §4 cập nhật gói
+ * có báo cáo thiệt hại — đi qua `/import` và `pages/Library.tsx`, cả hai đã
+ * chết cùng luồng nhập gói của người đọc. Kịch bản NÀY thì khác hình dạng:
+ * nó không kiểm gì về import hay thư viện, nó kiểm mục lục khoá học ở
+ * `/c/:courseId` — một màn hình vẫn còn nguyên, đọc thẳng từ máy chủ.
+ *
+ * `enterCourse` dưới đây SỬA đúng một chỗ so với bản gốc: trước đây nó vẫn đi
+ * qua `/import` để đưa `REAL_COURSE_ID` (course công khai, đã ở sẵn trên máy
+ * chủ và đọc được thẳng — xem đầu tệp này) vào máy trước khi mở `/c/…`, dù
+ * bước ấy chưa từng cần thiết cho course công khai. Bỏ bước ấy đi là xoá một
+ * đường vòng, không phải đổi việc kịch bản này kiểm.
+ *
+ * ── TÍNH NĂNG THU GỌN ĐÃ BỊ GỠ, VÀ VÌ SAO ────────────────────────────────
+ * Mục này TỪNG canh câu "The left navigation sidebar should be collapsible".
+ * Tính năng ấy không còn, theo yêu cầu của chính người dùng ("bỏ nút đó ở
+ * trang này luôn"), và lý do đọc được từ sản phẩm: thu gọn mục lục tồn tại để
+ * lấy thêm bề ngang khi đang học — mà lúc đang học thì `#app.reading` đã gỡ
+ * hẳn thanh bên đi rồi. Chỗ duy nhất còn nút là TRANG KHOÁ HỌC, nơi nội dung
+ * là một bản tóm tắt ngắn và bề ngang thừa chứ không thiếu. Lập luận đầy đủ ở
+ * `src/shell/TopNav.tsx`.
+ *
+ * Nên hai bài dưới đây đổi việc chứ không biến mất, và việc mới của chúng là
+ * canh đúng ba câu còn lại:
+ *
+ *   · màn rộng: mục lục là một CỘT CỐ ĐỊNH, và KHÔNG có nút nào bật tắt nó —
+ *     đây là răng của bản dựng đã duyệt, thứ mà một lần "khôi phục" vô ý sẽ
+ *     bẻ gãy trong im lặng;
+ *   · ngoài một khoá: `#sidebar` phải VẮNG MẶT, chứ không hiện ra rỗng;
+ *   · màn hẹp: `#menu-btn` vẫn là ngăn kéo cũ — ở đó nó là cách DUY NHẤT gọi
+ *     mục lục ra, vì `reader.css` đẩy `#sidebar` ra ngoài khung nhìn.
+ *
+ * Đây vẫn là tầng duy nhất nói được ba câu ấy: luật ẩn/hiện là CSS treo dưới
+ * `@media`, mà jsdom không tính media query và không tính bố cục.
+ */
+test.describe('§5 — mục lục: ngăn kéo ở màn hẹp, cột cố định ở màn rộng', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  /**
+   * HAI CÁCH ẨN KHÁC NHAU, và phải đo bằng hai phép khác nhau.
+   *
+   * · `display:none` → Playwright gọi là `hidden`.
+   * · Ngăn kéo của màn hẹp ẩn bằng `transform: translateX(-100%)`
+   *   (reader.css) → phần tử BỊ ĐẨY RA NGOÀI màn hình nhưng Playwright vẫn
+   *   gọi nó là `visible`, vì `toBeHidden()` đo display/visibility/opacity/
+   *   kích thước, KHÔNG đo vị trí.
+   *
+   * Bản đầu của bài kiểm này dùng `toBeHidden()` cho cả hai và đỏ ở ca thứ
+   * hai — đúng, và đó là lý do hàm dưới đây tồn tại thay vì một lời khẳng định
+   * chung chung.
+   */
+  async function offScreenLeft(page: Page): Promise<boolean> {
+    const box = await page.locator('#sidebar').boundingBox();
+    return box === null || box.x + box.width <= 0;
+  }
+
+  /** Đăng ký, rồi đứng TRONG khoá công khai `REAL_COURSE_ID` — nơi duy nhất còn thanh bên. */
+  async function enterCourse(page: Page): Promise<void> {
+    await page.goto('/login');
+    await registerNewUser(page, freshEmail(), PASSWORD);
+
+    await page.goto(`/c/${REAL_COURSE_ID}`);
+    await expect(page.locator('#sidebar')).toBeVisible();
+  }
+
+  test('màn rộng: mục lục là cột cố định, không có nút bật tắt, và vắng mặt ngoài một khoá', async ({
+    page,
+  }) => {
+    await enterCourse(page);
+
+    // Cột có mặt và ĐỨNG YÊN: không nút nào trên trang thu nó lại.
+    await expect(page.locator('#sidebar')).toBeVisible();
+    await expect(
+      page.locator('#menu-btn'),
+      'màn rộng không được có nút bật tắt mục lục — bản dựng đã duyệt không có nút nào ở đó',
+    ).toBeHidden();
+
+    // Và sống qua tải lại: một cột cố định thì không có trạng thái để mất.
+    await page.reload();
+    await expect(page.locator('#sidebar')).toBeVisible();
+    await expect(page.locator('#menu-btn')).toBeHidden();
+
+    // NGOÀI một khoá thì không có cột nào cả. Không có chốt này, một bản bỏ sót
+    // `#app:not(.in-course)` vẫn xanh.
+    await page.goto('/courses');
+    await expect(page.locator('#sidebar')).toBeHidden();
+  });
+
+  test('màn hẹp: `#menu-btn` xuất hiện và là ngăn kéo cũ', async ({ page }) => {
+    await enterCourse(page);
+    await page.setViewportSize({ width: 375, height: 800 });
+
+    // Nút CHỈ tồn tại ở đây, và ở đây nó không tuỳ chọn: `reader.css` đẩy
+    // `#sidebar` ra ngoài khung nhìn dưới 981px, nên không có nút thì mục lục
+    // không có cửa nào để vào.
+    await expect(page.locator('#menu-btn')).toBeVisible();
+
+    // Dưới 981px thanh bên là ngăn kéo: nó Ở TRONG tài liệu và Playwright gọi
+    // là `visible`, chỉ nằm ngoài khung nhìn. Nên hỏi VỊ TRÍ, không hỏi hiện/ẩn.
+    await expect(page.locator('#sidebar')).toBeVisible();
+    // `poll`, không phải một phép đo một-lần: `reader.css` đặt
+    // `transition: transform .22s ease` trên `#sidebar`, và bài này vừa đổi khổ
+    // từ 1440 xuống 375 — tức thanh bên đang TRƯỢT từ vị trí cũ sang -100% ngay
+    // lúc câu khẳng định chạy. Bản đầu đo một lần và đỏ với `x` nằm giữa chừng.
+    await expect
+      .poll(async () => offScreenLeft(page), { message: 'ngăn kéo phải nằm ngoài màn hình khi đóng' })
+      .toBe(true);
+
+    await page.locator('#menu-btn').click();
+    await expect
+      .poll(async () => offScreenLeft(page), { message: 'ngăn kéo phải trượt vào' })
+      .toBe(false);
+
+    // Đổi route ĐÓNG ngăn kéo lại — hành vi cũ của `useMobileNav`, và là chỗ
+    // hai cơ chế khác nhau rõ nhất. Nếu bản thu gọn lỡ gộp vào đây thì đỏ.
+    //
+    // BẤM MỘT CHƯƠNG TRONG CHÍNH NGĂN KÉO, không bấm mục điều hướng trên thanh
+    // trên — và đây là điều e2e dạy lại tôi chứ không phải một lựa chọn phong
+    // cách. Khi ngăn kéo mở, `reader.css` phủ `body.nav-open::after` lên cả
+    // trang; mục điều hướng nằm ở thanh trên nên nó nằm DƯỚI lớp phủ ấy và
+    // Playwright chờ "visible, enabled and stable" 173 lần rồi hết giờ. Trước
+    // vòng thiết kế lại, mục điều hướng nằm TRONG ngăn kéo nên câu hỏi này
+    // không tồn tại.
+    //
+    // Đường của người dùng thật khi ngăn kéo đang mở cũng đúng là đường này:
+    // thứ duy nhất bấm được là một chương.
+    //
+    // ĐO BẰNG `body.nav-open`, KHÔNG bằng vị trí thanh bên: đích là một chương,
+    // mà chế độ đọc ẩn hẳn `#sidebar` vì một lý do KHÁC. Đo vị trí ở đó sẽ xanh
+    // dù `useMobileNav` ngừng hoạt động hoàn toàn — hai nguyên nhân cho cùng
+    // một phép đo. `body.nav-open` là trạng thái chính hook ấy sở hữu.
+    await page.locator('#nav a.nav-item').first().click();
+    await expect(page).toHaveURL(new RegExp(`/c/${REAL_COURSE_ID}/`));
+    await expect(page.locator('body')).not.toHaveClass(/nav-open/);
+
+    // Quay lại trang khoá học, nơi có cột để mà đo: ngăn kéo phải đang ĐÓNG, và
+    // thanh bên KHÔNG bị `display:none` — một luật ẩn nào đó rò xuống dưới
+    // ngưỡng sẽ làm ngăn kéo không mở được nữa.
+    await page.goto(`/c/${REAL_COURSE_ID}`);
+    await expect(page.locator('#sidebar')).toBeVisible();
+    await expect
+      .poll(async () => offScreenLeft(page), { message: 'ngăn kéo phải đang đóng' })
+      .toBe(true);
+  });
+});
