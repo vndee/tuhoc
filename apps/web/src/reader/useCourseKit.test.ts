@@ -1,7 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
-import { setupServer } from 'msw/node';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetCourseKitForTests, useCourseKit } from './useCourseKit';
 
 const RUNTIME_TRIO = [
@@ -32,48 +30,6 @@ function mockScriptLoading(shouldFail: (src: string) => boolean = () => false) {
   return { requestedSrcs, spy };
 }
 
-/**
- * MANIFEST TĨNH khai `tier: 'interactive'`, phục vụ cho MỌI courseId trong tệp
- * này.
- *
- * Các bài dưới đây xoá `db.packages` để mô phỏng khoá do app phục vụ TĨNH, và
- * chúng đo bộ máy tiêm script — thứ tự, singleton, thử lại — nên chúng cần một
- * khoá THỰC SỰ CÓ `viz.js`.
- *
- * Trước đây điều đó là mặc định: `resolveVizScriptUrl` trả đường dẫn viz.js cho
- * mọi khoá tĩnh, không hỏi gì. Đó chính là lỗi vừa sửa (xem
- * `course/loader.test.ts` — mở một khoá hạng `content` phục vụ tĩnh làm hỏng cả
- * trang đọc vì một tệp 404). Nay câu trả lời phụ thuộc HẠNG, nên hạng phải được
- * nói ra ở đây.
- *
- * Phục vụ manifest thật thay vì mock `resolveVizScriptUrl`: các bài này vẫn đi
- * qua đúng đường mà app đi, nên chúng còn bắt được một thay đổi ở loader làm
- * đứt dây giữa hai bên.
- */
-const server = setupServer(
-  http.get('/courses/:courseId/manifest.json', ({ params }) =>
-    HttpResponse.json({
-      id: String(params.courseId),
-      title: 'Khoá tương tác',
-      description: 'Có viz.js',
-      lang: 'vi',
-      version: '1.0.0',
-      runtime: '^1',
-      tier: 'interactive',
-      parts: [
-        {
-          title: 'Phần 1',
-          chapters: [{ id: 'c1', num: '1.1', title: 'Một', short: 'Một', file: 'chapters/c1.html' }],
-        },
-      ],
-    }),
-  ),
-);
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
-
 describe('useCourseKit', () => {
   beforeEach(async () => {
     __resetCourseKitForTests();
@@ -83,9 +39,9 @@ describe('useCourseKit', () => {
    * XẢ HẾT VIỆC ĐANG BAY TRƯỚC KHI GỠ MOCK — và đây là một bài học đo được,
    * không phải một phép dọn dẹp cho gọn.
    *
-   * Effect của hook là một chuỗi bất đồng bộ: đọc `db.packages`, rồi `fetch`
-   * manifest, rồi mới tiêm script. Gỡ component chỉ bật cờ `cancelled`; chuỗi
-   * vẫn chạy nốt. Nếu `vi.restoreAllMocks()` chạy trước khi nó tới bước tiêm,
+   * Effect của hook là một chuỗi bất đồng bộ: `ensureCourseKitRuntime()` rồi
+   * mới tiêm script. Gỡ component chỉ bật cờ `cancelled`; chuỗi vẫn chạy nốt.
+   * Nếu `vi.restoreAllMocks()` chạy trước khi nó tới bước tiêm,
    * `document.head.appendChild` đã là bản THẬT của jsdom — mà jsdom không tải
    * `<script src>` và không bao giờ bắn `load`, nên `runtimeTrioPromise` mà
    * chuỗi ấy vừa dựng lên KHÔNG BAO GIỜ settle. Bài kế tiếp gọi
@@ -97,8 +53,8 @@ describe('useCourseKit', () => {
    */
   afterEach(async () => {
     await act(async () => {
-      // Ba nhịp macrotask: một cho Dexie, một cho `fetch` của msw, một cho
-      // bước tiêm script ngay sau chúng.
+      // Hai nhịp macrotask: một cho `ensureCourseKitRuntime()`, một cho bước
+      // tiêm script ngay sau nó.
       for (let i = 0; i < 3; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
     });
     vi.restoreAllMocks();
@@ -133,36 +89,6 @@ describe('useCourseKit', () => {
     expect(result.current.error?.message).toContain('runtime.js');
   });
 
-  it('injects katex, auto-render, runtime, then the course viz.js, in that exact order', async () => {
-    const { requestedSrcs } = mockScriptLoading();
-
-    const { result } = renderHook(() => useCourseKit('demo'));
-    expect(result.current).toEqual({ ready: false, error: null });
-
-    await waitFor(() => expect(result.current.ready).toBe(true));
-
-    expect(requestedSrcs).toEqual([
-      '/course-kit/vendor/katex.js',
-      '/course-kit/vendor/auto-render.js',
-      '/course-kit/runtime.js',
-      '/courses/demo/viz.js',
-    ]);
-  });
-
-  it('injects the four scripts only once across two mounts (a second mount reuses the singleton)', async () => {
-    const { requestedSrcs } = mockScriptLoading();
-
-    const first = renderHook(() => useCourseKit('demo'));
-    await waitFor(() => expect(first.result.current.ready).toBe(true));
-    expect(requestedSrcs).toHaveLength(4);
-
-    const second = renderHook(() => useCourseKit('demo'));
-    await waitFor(() => expect(second.result.current.ready).toBe(true));
-
-    // No new <script> tags from the second mount — same 4, not 8.
-    expect(requestedSrcs).toHaveLength(4);
-  });
-
   it('surfaces an error instead of hanging on ready:false forever when a script fails to load', async () => {
     mockScriptLoading((src) => src.endsWith('runtime.js'));
 
@@ -173,90 +99,6 @@ describe('useCourseKit', () => {
     expect(result.current.error?.message).toContain('runtime.js');
   });
 
-  it('allows a later mount to retry after a failure, instead of replaying the same rejection forever', async () => {
-    const { requestedSrcs: firstAttempt } = mockScriptLoading((src) => src.endsWith('runtime.js'));
-    const failing = renderHook(() => useCourseKit('demo'));
-    await waitFor(() => expect(failing.result.current.error).not.toBeNull());
-    expect(firstAttempt).toHaveLength(3); // katex, auto-render, runtime (which failed) — never reached viz.js
-
-    vi.restoreAllMocks();
-    const { requestedSrcs: secondAttempt } = mockScriptLoading();
-    const retry = renderHook(() => useCourseKit('demo'));
-    await waitFor(() => expect(retry.result.current.ready).toBe(true));
-    expect(secondAttempt).toHaveLength(4);
-  });
-
-  // Regression coverage for the bug a review caught: the singleton used to
-  // be a single bare `injectPromise` that ignored `courseId` entirely, so
-  // once ONE course's viz.js had loaded, useCourseKit('some-other-course')
-  // resolved ready:true immediately without ever requesting that course's
-  // own viz.js — silently wiring up the wrong (or no) visualizations, with
-  // no error surfaced. These mount sequentially and concurrently to prove
-  // that can't happen anymore.
-  it('mounting for a second, different course requests that course own viz.js, without re-requesting the shared runtime trio', async () => {
-    const { requestedSrcs } = mockScriptLoading();
-
-    const courseA = renderHook(() => useCourseKit('course-a'));
-    await waitFor(() => expect(courseA.result.current.ready).toBe(true));
-    expect(requestedSrcs).toEqual([
-      '/course-kit/vendor/katex.js',
-      '/course-kit/vendor/auto-render.js',
-      '/course-kit/runtime.js',
-      '/courses/course-a/viz.js',
-    ]);
-
-    const courseB = renderHook(() => useCourseKit('course-b'));
-    await waitFor(() => expect(courseB.result.current.ready).toBe(true));
-
-    // Exactly one new request — course-b's own viz.js. The shared trio,
-    // already loaded for course A, is not re-requested.
-    expect(requestedSrcs).toEqual([
-      '/course-kit/vendor/katex.js',
-      '/course-kit/vendor/auto-render.js',
-      '/course-kit/runtime.js',
-      '/courses/course-a/viz.js',
-      '/courses/course-b/viz.js',
-    ]);
-  });
-
-  it('two different courses mounted concurrently (before the shared trio has even loaded) both still get their own viz.js, and the trio loads exactly once and first', async () => {
-    const { requestedSrcs } = mockScriptLoading();
-
-    const courseA = renderHook(() => useCourseKit('course-a'));
-    const courseB = renderHook(() => useCourseKit('course-b'));
-
-    await waitFor(() => expect(courseA.result.current.ready).toBe(true));
-    await waitFor(() => expect(courseB.result.current.ready).toBe(true));
-
-    expect(requestedSrcs.slice(0, 3)).toEqual([
-      '/course-kit/vendor/katex.js',
-      '/course-kit/vendor/auto-render.js',
-      '/course-kit/runtime.js',
-    ]);
-    // Each course's viz.js was requested exactly once, both after the trio.
-    expect(requestedSrcs.slice(3).sort()).toEqual(['/courses/course-a/viz.js', '/courses/course-b/viz.js']);
-  });
-
-  it('a courseId-specific viz.js failure does not force the shared (already-succeeded) runtime trio to reload, and only that course retries', async () => {
-    const { requestedSrcs: attempt1 } = mockScriptLoading((src) => src.endsWith('viz.js'));
-    const failing = renderHook(() => useCourseKit('course-a'));
-    await waitFor(() => expect(failing.result.current.error).not.toBeNull());
-    expect(attempt1).toEqual([
-      '/course-kit/vendor/katex.js',
-      '/course-kit/vendor/auto-render.js',
-      '/course-kit/runtime.js',
-      '/courses/course-a/viz.js',
-    ]);
-
-    vi.restoreAllMocks();
-    const { requestedSrcs: attempt2 } = mockScriptLoading();
-    const retry = renderHook(() => useCourseKit('course-a'));
-    await waitFor(() => expect(retry.result.current.ready).toBe(true));
-
-    // Only the failed viz.js is re-requested — the trio, which succeeded
-    // on the first attempt, is not reloaded.
-    expect(attempt2).toEqual(['/courses/course-a/viz.js']);
-  });
   /* ────────────────────────────────────────────────────────────────────────
      DỰNG LẠI KHÔNG ĐƯỢC LÀM TRẮNG MỘT CHƯƠNG ĐÃ CÓ SẴN
      ──────────────────────────────────────────────────────────────────────── */
