@@ -53,6 +53,12 @@ vi.mock('./useCourseKit', () => ({
   },
 }));
 
+// `dao-ham`'s placeholder replaces what used to be a `[data-viz="aep"]` node
+// (Task 11: viz canvases are gone, widgets in sandboxed iframes are what
+// replaced them — see WidgetFrame.tsx). `WIDGETS` is this chapter's payload
+// entry for it; `renderChapterAndSettle` renders it on every test in this
+// file that doesn't override the `c1` handler, the same way `RAIL_ENTRIES`
+// below is produced on every one of them.
 const FRAGMENT = `
 <h1 class="ch-title">Chương một</h1>
 <p class="ch-lede">Xem $x$ ở đây.</p>
@@ -60,17 +66,19 @@ const FRAGMENT = `
 <p>Nội dung A</p>
 <h3>Tiểu mục</h3>
 <p>Chi tiết</p>
-<div class="fig-body"><div data-viz="aep"></div></div>
+<div class="fig-body"><div data-widget="dao-ham"></div></div>
 <h2>Phần B</h2>
 <p>Nội dung B</p>
 <div class="box ex"><div class="box-h">Bài 1</div><p>Đề 1</p></div>
 <div class="box ex"><div class="box-h">Bài 2</div><p>Đề 2</p></div>
 `;
 
+const WIDGETS = [{ name: 'dao-ham', html: '<p>widget đạo hàm</p>' }];
+
 const CHAPTER_2_HTML = '<h1 class="ch-title">Chương hai</h1><p>nội dung khác</p>';
 
 const server = setupServer(
-  http.get('/courses/demo/chapters/c1', () => HttpResponse.json({ html: FRAGMENT, widgets: [] })),
+  http.get('/courses/demo/chapters/c1', () => HttpResponse.json({ html: FRAGMENT, widgets: WIDGETS })),
   http.get('/courses/demo/chapters/c2', () => HttpResponse.json({ html: CHAPTER_2_HTML, widgets: [] })),
 );
 
@@ -128,22 +136,17 @@ function renderChapterView(
 
 describe('ChapterView', () => {
   let renderKatex: Mock<(root: ParentNode) => void>;
-  let initViz: Mock<(root: ParentNode) => void>;
-  let callOrder: string[];
 
   beforeEach(() => {
-    callOrder = [];
-    renderKatex = vi.fn<(root: ParentNode) => void>(() => {
-      callOrder.push('renderKatex');
-    });
-    initViz = vi.fn<(root: ParentNode) => void>(() => {
-      callOrder.push('initViz');
-      // Real runtime.js's initViz constructs a Plot per [data-viz] node,
-      // which pushes a redraw callback onto REDRAWS. Emulate that so the
-      // teardown tests below exercise the real splice-delta mechanism.
-      window.CourseKit?.REDRAWS.push(() => {});
-    });
-    window.CourseKit = { renderKatex, initViz, REDRAWS: [], VIZ: {} };
+    renderKatex = vi.fn<(root: ParentNode) => void>();
+    // `initViz`/`REDRAWS`/`VIZ` are still part of `window.CourseKit`'s type
+    // (packages/course-kit/runtime.js still attaches them — see
+    // theme/useTheme.ts's redraw-on-toggle code, untouched by this task) but
+    // Task 11 removed every call ChapterView itself made into them. Provided
+    // here only so this object satisfies that type; no test in this file may
+    // assert anything through `initViz`/`REDRAWS` again — a chapter that
+    // called them would be a regression back to the pre-widget model.
+    window.CourseKit = { renderKatex, initViz: vi.fn(), REDRAWS: [], VIZ: {} };
     // The chrome `<Shell>`/`<Topbar>` render around a chapter, reproduced by
     // hand because these tests mount `<ChapterView>` on its own. `#reader-nav`,
     // `#reader-notes` and `#progbar` joined the list with chế độ đọc: the
@@ -170,16 +173,16 @@ describe('ChapterView', () => {
   // Waiting for a chapter — read this before writing a test in this file
   // =========================================================================
   //
-  // `await waitFor(() => expect(initViz).toHaveBeenCalledTimes(1))` is NOT a
-  // signal that the chapter is on the page. It is the signal that the chapter
-  // effect's BODY reached its middle. Everything the body writes imperatively
-  // (`container.innerHTML`, `#crumb`, `#prev-btn`/`#next-btn`, `#mark-btn`,
-  // `document.title`) is there when it resumes; everything the body puts in
-  // React STATE is not:
+  // `await waitFor(() => expect(renderKatex).toHaveBeenCalledTimes(1))` is
+  // NOT a signal that the chapter is on the page. It is the signal that the
+  // chapter effect's BODY reached its middle. Everything the body writes
+  // imperatively (`container.innerHTML`, `#crumb`, `#prev-btn`/`#next-btn`,
+  // `#mark-btn`, `document.title`) is there when it resumes; everything the
+  // body puts in React STATE is not:
   //
-  //     ChapterView.tsx:279  CourseKit.initViz(container)        ← the signal
-  //     ChapterView.tsx:288  setHeadings(...)                    ← #rail
-  //     ChapterView.tsx:315  setAnnotationContent(...)           ← <SelectionToolbar>
+  //     ChapterView.tsx:603  CourseKit.renderKatex(container)     ← the signal
+  //     ChapterView.tsx:642  setHeadings(...)                     ← #rail
+  //     ChapterView.tsx:669  setAnnotationContent(...)            ← <SelectionToolbar>
   //
   // Those two `setState` calls need a React render + commit of their own, and
   // that commit is scheduled through React's Scheduler (a host task) while
@@ -201,10 +204,15 @@ describe('ChapterView', () => {
   // Measured for this round with React's Scheduler forced to yield after one
   // unit of work (the no-load stand-in for an oversubscribed machine; see the
   // fix report): the old wait lost **10 runs out of 20**, and the toolbar test
-  // at :436 was the one that lost. Waiting on `initViz` is therefore not
-  // "usually enough" — it is the wrong signal, and it wins by luck.
+  // at :436 was the one that lost. Waiting on a single early imperative call
+  // is therefore not "usually enough" — it is the wrong signal, and it wins
+  // by luck. Task 11 replaced `initViz` with `renderKatex` as that early
+  // signal (the last real call ChapterView still makes on `window.CourseKit`
+  // before the state writes), but the underlying trap is identical — the
+  // fix has never been "pick a different single call," it's the second wait
+  // below.
   //
-  // So: never wait on `initViz` directly. Use `renderChapterAndSettle()` (or
+  // So: never wait on `renderKatex` alone. Use `renderChapterAndSettle()` (or
   // `settleChapter()` when the render is hand-rolled). It waits for the
   // COMMIT, and the claims a test then makes need no `waitFor` of their own.
 
@@ -224,8 +232,9 @@ describe('ChapterView', () => {
    * React batches them into ONE render, and those links appearing is the same
    * commit that gives `<SelectionToolbar>` a `content.root` to watch. The
    * de-flake round measured this directly — a DOM snapshot taken at the
-   * instant `initViz` runs holds ZERO of them, and under StrictMode it is
-   * still empty two macrotasks later.
+   * instant the early imperative call (`initViz` then, `renderKatex` now)
+   * runs holds ZERO of them, and under StrictMode it is still empty two
+   * macrotasks later.
    *
    * Chế độ đọc moved those links from `#rail` into `<TocDrawer>`, and the
    * witness moved with them rather than being replaced by something
@@ -240,10 +249,10 @@ describe('ChapterView', () => {
    * into a listener that does not exist yet gets no second chance.
    */
   async function settleChapter({
-    initVizCalls = 1,
+    renderCalls = 1,
     rail = RAIL_ENTRIES,
-  }: { initVizCalls?: number; rail?: readonly string[] } = {}): Promise<void> {
-    await waitFor(() => expect(initViz).toHaveBeenCalledTimes(initVizCalls));
+  }: { renderCalls?: number; rail?: readonly string[] } = {}): Promise<void> {
+    await waitFor(() => expect(renderKatex).toHaveBeenCalledTimes(renderCalls));
     await waitFor(() => expect(tocLinks().map((a) => a.textContent)).toEqual([...rail]));
     await act(async () => {});
   }
@@ -318,24 +327,19 @@ describe('ChapterView', () => {
     return container;
   }
 
-  it('calls renderKatex then initViz exactly once, with the element containing the fragment', async () => {
+  it('calls renderKatex exactly once, with the element containing the fragment', async () => {
     await renderChapterAndSettle();
 
-    expect(initViz).toHaveBeenCalledTimes(1);
     expect(renderKatex).toHaveBeenCalledTimes(1);
-    expect(callOrder).toEqual(['renderKatex', 'initViz']);
 
     const renderKatexArg = renderKatex.mock.calls[0][0] as HTMLElement;
     expect(renderKatexArg.textContent).toContain('Nội dung A');
-    expect(renderKatexArg.querySelector('[data-viz="aep"]')).not.toBeNull();
-    // Same element, and KaTeX ran on it before viz measured it.
-    expect(initViz.mock.calls[0][0]).toBe(renderKatexArg);
+    expect(renderKatexArg.querySelector('[data-widget="dao-ham"]')).not.toBeNull();
   });
 
-  it('is idempotent under React StrictMode double-invoke — still exactly one call each, and one TOC entry set', async () => {
+  it('is idempotent under React StrictMode double-invoke — still exactly one renderKatex call, one TOC entry set, one widget iframe', async () => {
     await renderChapterAndSettle({}, { strict: true });
 
-    expect(initViz).toHaveBeenCalledTimes(1);
     expect(renderKatex).toHaveBeenCalledTimes(1);
 
     // Read synchronously, because `renderChapterAndSettle` has already waited
@@ -344,9 +348,10 @@ describe('ChapterView', () => {
     // `expected 0 to have length 3`) is closed by the wait, not by luck. Still
     // exactly 3, never "at least one".
     expect(tocLinks()).toHaveLength(3);
-    // REDRAWS holds exactly the current (single, live) chapter's entry —
-    // not a leftover from the StrictMode-discarded first pass.
-    expect(window.CourseKit?.REDRAWS).toHaveLength(1);
+    // The widget placeholder's portal is equally exposed to a StrictMode
+    // double-mount (`createPortal` into a DOM node React did not create) —
+    // one iframe, not two from a discarded first pass left behind.
+    expect(document.querySelectorAll('[data-widget="dao-ham"] iframe')).toHaveLength(1);
   });
 
   it('builds a TOC entry for every h2/h3, in the drawer, exactly once', async () => {
@@ -355,8 +360,9 @@ describe('ChapterView', () => {
     // Synchronous again, for the same reason: the TOC is the very thing
     // `settleChapter` waits on, so by here the commit has landed. The de-flake
     // round had to wrap this array in `waitFor` because the wait above it was
-    // `initViz`; with the right wait the claim goes back to being a plain
-    // assertion — same three headings, same order, never "at least one".
+    // on the early imperative call; with the right wait the claim goes back
+    // to being a plain assertion — same three headings, same order, never
+    // "at least one".
     const links = tocLinks();
     expect(links.map((a) => a.textContent)).toEqual(['Phần A', 'Tiểu mục', 'Phần B']);
     expect(links[1].className).toContain('lvl3');
@@ -413,17 +419,15 @@ describe('ChapterView', () => {
     document.body.removeChild(input);
   });
 
-  it('cleans up on unmount: splices out the REDRAWS entries this chapter added, re-enables prev/next buttons', async () => {
+  it('cleans up on unmount: re-enables topbar prev/next buttons', async () => {
     const { unmount } = await renderChapterAndSettle();
-    expect(window.CourseKit?.REDRAWS).toHaveLength(1);
 
     unmount();
 
-    expect(window.CourseKit?.REDRAWS).toHaveLength(0);
     expect((document.getElementById('next-btn') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('navigating between chapters does not accumulate REDRAWS entries (no leak across chapters), and the crumb updates', async () => {
+  it('navigating between chapters reuses the component instance (rerender, not remount), does not leak the previous chapter\'s widget iframe, and the crumb updates', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { rerender } = render(
       <QueryClientProvider client={queryClient}>
@@ -443,7 +447,8 @@ describe('ChapterView', () => {
       </QueryClientProvider>,
     );
     await settleChapter();
-    expect(window.CourseKit?.REDRAWS).toHaveLength(1);
+    // Chapter 1's own widget iframe is on the page (WIDGETS' one entry).
+    expect(document.querySelectorAll('[data-widget="dao-ham"] iframe')).toHaveLength(1);
     expect(document.getElementById('crumb')!.textContent).toBe(
       'Phần 1' + '\u00A0\u203a\u00A0' + '1.1 Chương một',
     );
@@ -468,12 +473,15 @@ describe('ChapterView', () => {
 
     // Chapter 2 has no h2/h3 at all, so its commit is the one that EMPTIES the
     // TOC — which makes `[]` as good a witness for it as three links are for
-    // chapter 1, and a strictly better one than `initViz` (whose second call
-    // happens before chapter 1's entries have been taken down).
-    await settleChapter({ initVizCalls: 2, rail: [] });
-    // Still exactly 1 — chapter 1's entry was spliced out when chapter 2's
-    // effect ran, not left behind to redraw a detached canvas forever.
-    expect(window.CourseKit?.REDRAWS).toHaveLength(1);
+    // chapter 1, and a strictly better one than `renderKatex`'s second call
+    // (which happens before chapter 1's entries have been taken down).
+    await settleChapter({ renderCalls: 2, rail: [] });
+    // Chapter 2's payload carries no widgets, so chapter 1's iframe must be
+    // GONE — not orphaned in a detached placeholder still holding a live
+    // iframe (the exact leak REDRAWS-splicing used to guard against for
+    // canvases; a portal target belonging to a replaced `innerHTML` subtree
+    // is this task's version of the same hazard).
+    expect(document.querySelectorAll('iframe')).toHaveLength(0);
     // Crumb reflects the new chapter's part, not a leftover from chapter 1.
     expect(document.getElementById('crumb')!.textContent).toBe(
       'Phần 2' + '\u00A0\u203a\u00A0' + '1.2 Chương hai',
@@ -492,7 +500,49 @@ describe('ChapterView', () => {
     renderChapterView();
 
     expect(await screen.findByText(/không tải được|not found|lỗi/i)).toBeInTheDocument();
-    expect(initViz).not.toHaveBeenCalled();
+    expect(renderKatex).not.toHaveBeenCalled();
+  });
+
+  // Task 11 — the whole reason this task exists. `<WidgetFrame>` itself
+  // (its `sandbox` attribute, `srcDoc`, `title`) has its own dedicated suite
+  // in WidgetFrame.test.tsx; what belongs HERE is the wiring only ChapterView
+  // does: finding a chapter's `<div data-widget>` placeholders after
+  // `innerHTML` + KaTeX have run, and portalling the right widget into each.
+  describe('widgets (Task 11 — sandboxed iframes)', () => {
+    it('renders a WidgetFrame for a placeholder whose name matches a payload widget, inside that placeholder', async () => {
+      await renderChapterAndSettle();
+
+      const placeholder = document.querySelector('[data-widget="dao-ham"]')!;
+      const frame = placeholder.querySelector('iframe')!;
+      expect(frame).toBeInTheDocument();
+      // Exactly `allow-scripts` — see WidgetFrame.test.tsx for the assertion
+      // that actually guards the regression; this is just proof ChapterView
+      // hands WidgetFrame's own props through unchanged, not a second copy
+      // of that guard.
+      expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
+      expect(frame).toHaveAttribute('title', 'dao-ham');
+      expect((frame as HTMLIFrameElement).srcdoc).toBe('<p>widget đạo hàm</p>');
+    });
+
+    it('leaves a placeholder empty when its data-widget name has no match in the payload (a stale cache, per the server\'s own validation)', async () => {
+      server.use(
+        http.get('/courses/demo/chapters/c1', () =>
+          HttpResponse.json({
+            html: '<h1 class="ch-title">Chương một</h1><div data-widget="khong-con-nua"></div>',
+            widgets: [],
+          }),
+        ),
+      );
+
+      renderChapterView();
+      await waitFor(() => expect(renderKatex).toHaveBeenCalledTimes(1));
+      await act(async () => {});
+
+      const placeholder = document.querySelector('[data-widget="khong-con-nua"]');
+      expect(placeholder).not.toBeNull();
+      expect(placeholder!.querySelector('iframe')).toBeNull();
+      expect(placeholder!.innerHTML).toBe('');
+    });
   });
 
   describe('#mark-btn (debt #5 — Ruling F4, wired to real progress)', () => {
@@ -1046,7 +1096,7 @@ describe('ChapterView', () => {
       // racing it.
       await waitFor(() => expect(screen.getByText('Đang tải chương…')).toBeInTheDocument());
       await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(initViz).not.toHaveBeenCalled();
+      expect(renderKatex).not.toHaveBeenCalled();
 
       releaseCourseKitReady!();
 

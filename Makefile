@@ -1,4 +1,4 @@
-.PHONY: dev-api dev-web dev-vault test-api test-web test-vault test-format test-cli test-registry registry-index pack courses test-e2e test-viz setup-extract test-extract extract check-publish
+.PHONY: dev-api dev-web dev-vault test-api test-web test-vault test-format test-cli test-registry registry-index pack courses test-e2e setup-extract test-extract extract check-publish
 dev-api:  ; cd apps/api && go run ./cmd/api
 dev-web:  courses ; cd apps/web && bun run dev
 # apps/vault — KHO KHOÁ, chạy ở CỔNG 5174 trong khi dev-web chạy ở 5173.
@@ -232,15 +232,19 @@ check-publish: courses ; python3 scripts/check_publishable.py
 # avoids a real Docker Hub resolution hang this task hit under its own
 # sandbox).
 #
-# test-e2e runs BOTH specs. `make test-viz` runs only the exhaustive
-# visualization sweep against a stack you already have up — minutes, not
-# seconds; see apps/web/e2e/viz.spec.ts.
+# `test-viz` and the exhaustive visualization sweep it ran
+# (`apps/web/e2e/viz.spec.ts`) are GONE as of Task 11 of the server-side
+# pivot, together, in the same commit: course-wide `viz.js` execution is
+# retired — a chapter's interactive parts are now widgets running each in
+# their own `sandbox="allow-scripts"` iframe (reader/WidgetFrame.tsx) — so
+# there is no more per-course visualization set for that target to sweep.
+# Task 16 writes its replacement, a real browser driving a real widget and
+# asserting it cannot reach the session.
 #
 # `courses` first, for the same reason test-web has it: all four e2e files open
 # the real course over HTTP, and the production bundle only carries it if it is
 # on disk when `vite build` runs.
 test-e2e: courses ; ./scripts/test-e2e.sh
-test-viz: courses ; cd apps/web && bunx playwright test viz.spec.ts
 # One-time setup for a fresh machine: test-extract depends on pytest, which
 # is not part of this repo's own dependency graph (tools/ has no
 # venv/lockfile of its own) and is not guaranteed to be installed by

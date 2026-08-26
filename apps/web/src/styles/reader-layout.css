@@ -495,6 +495,30 @@
   }
 }
 
+/* ============================================================
+   7. WIDGET — KHUNG SANDBOX, KHÔNG ĐO ĐƯỢC BÊN TRONG
+   ============================================================ */
+
+/* `<WidgetFrame>` (reader/WidgetFrame.tsx): `sandbox="allow-scripts"`, cố ý
+   KHÔNG kèm `allow-same-origin`, đặt khung ở một origin MỜ — không cookie,
+   không storage, không đường vào phiên của người đọc. Cái giá đo được của
+   quyết định ấy nằm ở ĐÂY: trang cha không có cách nào hỏi khung "nội dung
+   của mày cao bao nhiêu" (không origin chung để gọi qua), và cũng không đọc
+   được DOM bên trong để tự đo — nên `.widget-frame` không thể "vừa khít nội
+   dung" như một `<img>` hay một canvas tự đo được nữa. MỘT chiều cao cố định
+   là lựa chọn được CHẤP NHẬN ở đây; nó không phải chỗ để nới sandbox ra
+   `allow-same-origin` rồi tự đo bên trong — làm vậy là xoá luôn hàng rào mà
+   toàn bộ Task 11 dựng lên. */
+#app.reading .widget-frame {
+  display: block;
+  width: 100%;
+  height: 420px;
+  margin: 26px 0 30px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--surface-1);
+}
+
 /* In ra giấy: mọi thứ ở trên là chrome màn hình. reader.css đã có một
    stylesheet in riêng; đây chỉ là những thứ tệp này thêm vào. */
 @media print {

@@ -21,6 +21,7 @@ import { injectExerciseCheckboxes } from './injectExerciseCheckboxes';
 import { readingProgressWidth } from './readingProgress';
 import { TocDrawer } from './TocDrawer';
 import { useCourseKit } from './useCourseKit';
+import { WidgetFrame } from './WidgetFrame';
 
 export interface ChapterViewProps {
   courseId: string;
@@ -55,21 +56,40 @@ interface HeadingEntry {
 }
 
 /**
- * Renders one chapter: fetches its HTML fragment, injects it into a DOM
- * node React never diffs (see the module doc below), then runs
- * `CourseKit.renderKatex` → `CourseKit.initViz` in that order, builds the
- * right-rail TOC and the in-content pager, and wires the pager keyboard
- * shortcuts + topbar prev/next buttons. `getContext()` (src/reader/getContext.ts)
- * reads whatever chapter this component most recently registered.
+ * One `<div data-widget>` placeholder found in the chapter's `innerHTML`,
+ * paired with the widget it resolved to — `node` is what `createPortal`
+ * mounts a `<WidgetFrame>` into, in the render below. Built fresh by the
+ * main content effect every time it runs (own `key` per placeholder so a
+ * later chapter's placeholders are never confused with an earlier one's —
+ * see that effect's comment).
+ */
+interface WidgetTarget {
+  key: string;
+  node: HTMLElement;
+  name: string;
+  html: string;
+}
+
+/**
+ * Renders one chapter: fetches its HTML fragment (plus its widgets), injects
+ * the HTML into a DOM node React never diffs (see the module doc below),
+ * runs `CourseKit.renderKatex` over it, mounts each `<div data-widget>`
+ * placeholder's `<WidgetFrame>` via a portal, builds the right-rail TOC and
+ * the in-content pager, and wires the pager keyboard shortcuts + topbar
+ * prev/next buttons. `getContext()` (src/reader/getContext.ts) reads
+ * whatever chapter this component most recently registered.
  *
- * DOM ownership: `containerRef`'s `<div>` is never given React children —
- * its content is set imperatively via `innerHTML` and mutated in place by
- * `initViz` (canvases, sliders, ...). This is deliberate: React only ever
- * sees an empty `<div ref={containerRef} />` in its own vdom, so it never
- * has anything to reconcile there and won't blow away `initViz`'s DOM on a
- * later re-render — the trap called out in the task brief (dangerouslySetInnerHTML
- * would fight both the re-render replacement and script tags not
- * executing; a plain ref'd node sidesteps both).
+ * DOM ownership: `containerRef`'s `<div>` is never given React children as
+ * markup — its content is set imperatively via `innerHTML`. This is
+ * deliberate: React only ever sees an empty `<div ref={containerRef} />` in
+ * its own vdom, so it never has anything to reconcile there and won't fight
+ * the imperative write on a later re-render (the trap called out in the
+ * task brief: `dangerouslySetInnerHTML` would fight both the re-render
+ * replacement and script tags not executing; a plain ref'd node sidesteps
+ * both). React DOES reach back into that subtree, but only through
+ * `createPortal` — see `widgetTargets` below — which is how a widget's
+ * `<iframe>` gets to be a real React-owned component even though its parent
+ * node was never in React's own tree.
  */
 export function ChapterView({
   courseId,
@@ -90,6 +110,7 @@ export function ChapterView({
   const [notesSlotEl, setNotesSlotEl] = useState<HTMLElement | null>(null);
   const [headings, setHeadings] = useState<HeadingEntry[]>([]);
   const [currentHeadingId, setCurrentHeadingId] = useState<string | null>(null);
+  const [widgetTargets, setWidgetTargets] = useState<WidgetTarget[]>([]);
   const navigate = useNavigate();
   const courseKit = useCourseKit(courseId);
   const progress = useProgress(courseId);
@@ -237,8 +258,8 @@ export function ChapterView({
   // Task 15: the study heartbeat. Started ONCE per mount (`[]` deps), not
   // re-started on every chapter change — `ChapterView` is reused across
   // in-course navigation rather than remounted (see
-  // ChapterView.test.tsx's "navigating between chapters does not
-  // accumulate REDRAWS entries" test, which proves this via `rerender`),
+  // ChapterView.test.tsx's "navigating between chapters reuses the
+  // component instance" test, which proves this via `rerender`),
   // so restarting the interval on every chapter would reset the 30s
   // cadence and the 60s activity window on every navigation for no
   // reason. `getCtx` reads `heartbeatCtxRef` above instead, so each tick
@@ -513,11 +534,10 @@ export function ChapterView({
    *
    * Three triggers, and the third is the one that is easy to miss: scroll,
    * resize, and the DOCUMENT GETTING TALLER. A chapter's height is not final
-   * when its HTML lands — KaTeX relays out every formula, `initViz` builds
-   * canvases, images arrive — so a bar measured once at load reports a
-   * position against a document that no longer exists. `ResizeObserver` on
-   * `<html>` is the honest signal for that and is guarded because jsdom has
-   * none.
+   * when its HTML lands — KaTeX relays out every formula, images arrive —
+   * so a bar measured once at load reports a position against a document
+   * that no longer exists. `ResizeObserver` on `<html>` is the honest signal
+   * for that and is guarded because jsdom has none.
    */
   useEffect(() => {
     const bar = document.getElementById('progbar');
@@ -558,14 +578,14 @@ export function ChapterView({
     };
   }, []);
 
-  // The main render pipeline: set the fragment's HTML, then
-  // renderKatex -> initViz IN THAT ORDER (KaTeX must lay out its DOM
-  // before a viz measures container width), then derive the rail TOC and
+  // The main render pipeline: set the fragment's HTML, then renderKatex
+  // (KaTeX must lay out its DOM before anything else reads the container's
+  // layout), then resolve widget placeholders, then derive the rail TOC and
   // register this chapter with getContext().
   useEffect(() => {
     if (!courseKit.ready) return;
-    const html = chapterQuery.data?.html;
-    if (html == null) return;
+    const data = chapterQuery.data;
+    if (data == null) return;
     const container = containerRef.current;
     if (!container) return;
     const CourseKit = window.CourseKit;
@@ -578,23 +598,34 @@ export function ChapterView({
     container.className = '';
     void container.offsetWidth;
     container.className = 'fade-in';
-    container.innerHTML = html;
+    container.innerHTML = data.html;
 
-    // REDRAWS is a plain array runtime.js only ever pushes onto (once per
-    // Plot instance, from its constructor) — it has no teardown of its
-    // own. Snapshotting its length before/after initViz lets cleanup
-    // below splice out exactly the entries THIS chapter added: without
-    // that, navigating between chapters would leave every previous
-    // chapter's Plot instances registered forever, each one redrawing a
-    // detached canvas on every future theme toggle.
-    const redraws = CourseKit.REDRAWS;
-    const redrawsBefore = redraws.length;
     CourseKit.renderKatex(container);
-    CourseKit.initViz(container, {
-      vizMissing: (name) => t('courseKit.vizMissing', name),
-      vizFailed: t('courseKit.vizFailed'),
-    });
-    const redrawsAfter = redraws.length;
+
+    // Widgets: a chapter marks a widget's place with `<div data-widget=
+    // "name">`, dropped in by the SAME innerHTML write above — so this has
+    // to run after it, on the fragment that write just produced. Matched by
+    // name against `data.widgets` (the payload's own list, see
+    // `ChapterPayload` in `api/catalog.ts`); a name with no match leaves the
+    // placeholder empty rather than throwing, since the server already
+    // rejects any chapter whose widget refs don't resolve (WIDGET_* rules,
+    // Tasks 2/7) — the only way to hit that here is a stale client cache of
+    // an old, already-superseded chapter payload.
+    //
+    // `key` carries `chapter.id` so a widget of the same name in a
+    // DIFFERENT chapter is never mistaken for the same portal target by
+    // React's reconciler — the placeholder `node` for each is itself a
+    // fresh element from the innerHTML write above, never reused across
+    // chapters.
+    const widgetsByName = new Map(data.widgets.map((w) => [w.name, w] as const));
+    const placeholders = Array.from(container.querySelectorAll<HTMLElement>('div[data-widget]'));
+    setWidgetTargets(
+      placeholders.flatMap((node, i) => {
+        const widget = widgetsByName.get(node.dataset.widget ?? '');
+        if (!widget) return [];
+        return [{ key: `${chapter.id}-${i}`, node, name: widget.name, html: widget.html }];
+      }),
+    );
 
     // The chapter's own outline, ported from v1's buildRail(): one entry per
     // h2/h3, keeping any id the fragment already carries (cross-references
@@ -630,31 +661,31 @@ export function ChapterView({
     }
 
     setChapterContextSource({ courseId, chapterId: chapter.id, chapterTitle: chapter.title, contentEl: container });
-    // Last, and only after KaTeX/viz/TOC have finished with the container:
+    // Last, and only after KaTeX/TOC have finished with the container:
     // annotation anchors are resolved against the DOM as the reader sees it,
-    // and `normalize.ts` is built to ignore exactly what `initViz` generates.
-    // Resolving before that ran would anchor against text that is about to
-    // change shape.
+    // and `normalize.ts` is built to ignore exactly what a widget
+    // placeholder's own subtree looks like. Resolving before that ran would
+    // anchor against text that is about to change shape.
     setAnnotationContent((prev) => ({ root: container, revision: prev.revision + 1 }));
     document.title = `${chapter.num ? `${chapter.num} ` : ''}${chapter.title} — ${courseTitle}`;
     window.scrollTo({ top: 0, behavior: 'auto' });
 
     return () => {
-      redraws.splice(redrawsBefore, redrawsAfter - redrawsBefore);
       observer?.disconnect();
       setChapterContextSource(null);
     };
-  }, [courseKit.ready, chapterQuery.data, courseId, chapter.id, chapter.num, chapter.title, courseTitle, t]);
+  }, [courseKit.ready, chapterQuery.data, courseId, chapter.id, chapter.num, chapter.title, courseTitle]);
 
   // Exercise checkboxes (this task's own deliverable): inject into every
   // `.box.ex .box-h` and keep their `checked` state in sync with progress
   // — WITHOUT ever touching `innerHTML` here (that is the main content
   // effect's job, above, and re-running it on every checkbox toggle would
-  // tear down and rebuild everything `initViz`/`renderKatex` already set
-  // up, including live canvas/slider state completely unrelated to any
+  // tear down and rebuild everything `renderKatex` already set up, plus
+  // every widget iframe's live state, completely unrelated to any
   // exercise). This effect only ever mutates nodes inside `.box.ex
-  // .box-h`, the same restraint `initViz` applies to `[data-viz]` nodes,
-  // so the two can never fight over the same element.
+  // .box-h`, the same restraint the widget-placeholder code above applies
+  // to `[data-widget]` nodes, so the two can never fight over the same
+  // element.
   //
   // Declared AFTER the main content effect above on purpose: React runs
   // passive effects in declaration order within one commit, so by the
@@ -741,9 +772,9 @@ export function ChapterView({
     // A plain element, NOT a nested `<ChapterBody/>` component. A component
     // declared inside this function gets a new identity on every render, and
     // React remounts the whole subtree when a type changes — which would blow
-    // away `containerRef`'s `<div>`, and with it every canvas and slider
-    // `initViz` built inside it, on every keystroke anywhere in the chapter.
-    // That is this file's opening trap, reached from a different direction.
+    // away `containerRef`'s `<div>`, and with it every widget iframe portalled
+    // inside it, on every keystroke anywhere in the chapter. That is this
+    // file's opening trap, reached from a different direction.
     body = (
       <>
         {crumbEl &&
@@ -765,7 +796,16 @@ export function ChapterView({
           crumbEl,
         )}
       <div ref={containerRef} />
-      {/* Last in the chapter pipeline (innerHTML → renderKatex → initViz →
+      {/* One `<WidgetFrame>` portalled into each placeholder `widgetTargets`
+          found inside `containerRef`'s subtree — the innerHTML write put
+          those placeholder `<div>`s there, so this is the one legitimate way
+          for React to own a component whose parent node it never rendered.
+          `key` is `widgetTargets`' own per-placeholder key (chapter id +
+          index), not `w.name`: see that state's own doc comment for why a
+          same-named widget in a later chapter must never be treated as "the
+          same" portal. */}
+      {widgetTargets.map((w) => createPortal(<WidgetFrame name={w.name} html={w.html} />, w.node, w.key))}
+      {/* Last in the chapter pipeline (innerHTML → renderKatex → widgets →
           injectExerciseCheckboxes → normalize/resolve/paint → toolbar): it
           watches `selectionchange` and does nothing at all until the reader
           selects something inside `annotationContent.root`, which is the same
