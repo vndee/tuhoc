@@ -60,17 +60,28 @@ function knownFindingMessage(lang: Lang, code: string): string | null {
  * ("never draw the raw server text — an unfamiliar code gets one generic,
  * translated sentence instead"). That rule fits a closed, four-value
  * vocabulary read by every anonymous visitor of a public page. A course
- * package's findings are the opposite: an open-ended, growing set — real
- * codes exist today that this build's `finding.*` catalog has no entry
- * for (`DUPLICATE_ENTRY` is one: an archive-layer code the Go side
- * produces that `packages/course-format/src/validate.ts`'s `FindingCode`
- * union never lists, so a new one can arrive from the Go side on its own
- * schedule) — read by the one person who can actually act on the SPECIFIC
- * text: the author who just uploaded the rejected package. A generic
- * "unknown problem" would be strictly less useful to them than the
- * compiler-error-shaped sentence the server already wrote, in the one
- * place on this screen where the reader is assumed to be technical enough
- * to run `tuhoc pack` at a terminal in the first place.
+ * package's findings are not that: `FindingCode`
+ * (`packages/course-format/src/validate.ts`) and "codes this catalog has a
+ * `finding.*` entry for" are two DIFFERENT sets, not one — `DUPLICATE_ENTRY`
+ * is proof either can hold something the other does not: it is an
+ * archive-layer code (`zip.ts`'s `UnsafeArchiveCode`, not `FindingCode`) yet
+ * DOES have a key in both catalogs today (`finding.DUPLICATE_ENTRY`, added
+ * long before this task by the since-removed local-import feature's own
+ * `IMPORT_FINDING_CODES` table) — so `knownFindingMessage` succeeds for it,
+ * not falls through. As of this writing every code the current server can
+ * actually emit has a matching key; the fallback below exists for the gap
+ * that fact does not close — a code the Go side adds AFTER this build
+ * shipped, which is a "when", not an "if", given `pkgcheck.go`'s own rule
+ * set keeps growing. `AdminCourses.test.tsx` exercises it with a fabricated
+ * code (`SOME_FUTURE_CODE`) for exactly that reason: no REAL code was known
+ * to be missing at the time this was written, so a real one could not be
+ * used as the test's positive case. When the fallback DOES fire on a real
+ * package, it is read by the one person who can act on the specific text —
+ * the author who just uploaded the rejected package — for whom a generic
+ * "unknown problem" would be strictly less useful than the compiler-error-
+ * shaped sentence the server already wrote, in the one place on this screen
+ * where the reader is assumed to be technical enough to run `tuhoc pack` at
+ * a terminal in the first place.
  */
 function findingDetail(lang: Lang, finding: Finding): string {
   return knownFindingMessage(lang, finding.code) ?? finding.detail;
@@ -212,6 +223,23 @@ function CourseRow({
             {t('admin.rollback.button')}
           </button>
         </p>
+        {/*
+          Review round 1, finding 3: `admin.rollback.success` existed in
+          both catalogs but nothing read it, unlike publish's own success
+          line — the asymmetry was the tell. `rollback.data` (not
+          `pickedVersion`, which `onSuccess` above resets to `''` so the
+          `<select>` returns to its placeholder) is what still holds the
+          version that just landed; it persists across the list refetch
+          `onChanged` triggers because that invalidation re-renders this
+          row with fresh `row` props, it does not remount `CourseRow`
+          (keyed on `row.slug`, not on `row.version`) or reset this
+          mutation's own state.
+        */}
+        {rollback.isSuccess && (
+          <p className="admin-note" role="status">
+            {t('admin.rollback.success', rollback.data.version)}
+          </p>
+        )}
         {rollback.isError && rollback.error instanceof FindingsError && (
           <FindingsTable findings={rollback.error.findings} lang={lang} t={t} />
         )}

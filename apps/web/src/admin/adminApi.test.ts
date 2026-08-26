@@ -11,7 +11,7 @@ vi.mock('../api/navigation', () => ({
 
 import { t as lookup, type Translate } from '../i18n';
 import { redirectToLogin } from '../api/navigation';
-import { ApiError } from '../api/client';
+import { ApiError, NotJsonError } from '../api/client';
 import {
   FindingsError,
   adminListCourses,
@@ -124,6 +124,26 @@ describe('adminPublish', () => {
     server.use(http.put('/admin/courses/:slug', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
     await expect(adminPublish('dai-so', zip())).rejects.toBeInstanceOf(ApiError);
     expect(redirectToLogin).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Review round 1, finding 2. `client.ts`'s `request<T>` guards exactly
+   * this — a 2xx whose body is not JSON (the SPA-fallback shape measured
+   * 2026-08-22, `client.ts`'s own `NotJsonError` doc comment) — and
+   * `adminListCourses`/`adminRollback` inherit it for free by going through
+   * `api.get`/`api.post`. `adminPublish` hand-rolls its own request/parse
+   * for the raw-bytes PUT and had silently dropped the same guard: before
+   * the fix this resolved `{slug: undefined, version: undefined}` from an
+   * HTML body — rendered by `AdminCourses.tsx` as an apparent SUCCESS
+   * ("Published undefined, version undefined"). This asserts a REJECTION,
+   * not merely "the resolved value is wrong", so a future regression back
+   * to the silent-success shape cannot slip past by returning the right
+   * type with the wrong values.
+   */
+  it('a 200 whose body is not JSON (e.g. an SPA index.html fallback) rejects — never a fake {slug, version} success', async () => {
+    server.use(http.put('/admin/courses/:slug', () => HttpResponse.html('<!doctype html><p>not found</p>')));
+    const failure = adminPublish('dai-so', zip());
+    await expect(failure).rejects.toBeInstanceOf(NotJsonError);
   });
 });
 

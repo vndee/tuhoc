@@ -31,6 +31,22 @@
  * `List` and `Rollback`, which ARE plain JSON, still go through the shared
  * `api.get`/`api.post` and only Publish/Unpublish pay for the local copy.
  *
+ * **This duplication has already bitten once** (review round 1, finding
+ * 2): `client.ts`'s `request<T>` additionally guards against a 2xx whose
+ * body is not JSON — the SPA-fallback shape `NotJsonError`'s own doc
+ * comment documents from a measured 2026-08-22 incident, where such a
+ * response was silently typed as real data and white-screened the app.
+ * `adminListCourses`/`adminRollback` inherit that guard for free through
+ * `api.get`/`api.post`; `adminPublish`'s hand-rolled parse had quietly
+ * dropped it, and would have rendered a non-JSON 200 as a fake publish
+ * success. Fixed below by reusing `NotJsonError` itself rather than a
+ * second copy of it — but the NEXT defense `client.ts` grows will not
+ * propagate here automatically either. Anyone changing `send`/`request` in
+ * `client.ts` should check whether `adminRequest`/`adminPublish` below need
+ * the identical change, and anyone touching this file should diff its
+ * request/parse logic against `client.ts`'s current `send`/`request` while
+ * they are here.
+ *
  * ## `FindingsError` is the reason this file exists at all
  *
  * A 400 from Publish or Rollback carries EVERY finding pkgcheck produced,
@@ -44,7 +60,7 @@
 
 import type { Finding } from '@tuhoc/course-format';
 import type { Translate } from '../i18n';
-import { ApiError, api } from '../api/client';
+import { ApiError, NotJsonError, api } from '../api/client';
 import { redirectToLogin } from '../api/navigation';
 
 /** Same pattern as `api/client.ts`'s own `BASE_URL` — empty in dev/test, the API's own origin in production. */
@@ -186,12 +202,27 @@ export async function adminListCourses(): Promise<AdminCourseRow[]> {
  * `ArrayBuffer` body round-trips correctly in both environments, so this is
  * the one shape that is honestly identical in production and under test
  * rather than "works in the browser, trust the test environment less".
+ *
+ * The parsed body is checked for "is this actually JSON" before the cast to
+ * `PublishResult` — the same guard `client.ts`'s `request<T>` applies to
+ * every call through `api.get`/`api.post`, reused HERE via the same
+ * `NotJsonError` class rather than a second one. Without it, a 200 whose
+ * body is a string (a misconfigured `VITE_API_URL`, a CORS/DNS failure that
+ * lands the PUT on a host answering `200 text/html`) parses to a JS string,
+ * gets cast to `PublishResult` anyway, and `{slug: undefined, version:
+ * undefined}` reads out of it — `AdminCourses.tsx` would render "Published
+ * undefined, version undefined" as an apparent SUCCESS, and an operator
+ * would believe a course went live when nothing did.
  */
 export async function adminPublish(slug: string, zip: File): Promise<PublishResult> {
   try {
     const bytes = await zip.arrayBuffer();
     const res = await adminRequest('PUT', coursePath(slug), bytes, 'application/zip');
-    return (await parseBody(res)) as PublishResult;
+    const parsed = await parseBody(res);
+    if (typeof parsed === 'string') {
+      throw new NotJsonError(res.status, res.headers.get('content-type'), parsed.slice(0, 120));
+    }
+    return parsed as PublishResult;
   } catch (error) {
     throw toAdminError(error);
   }

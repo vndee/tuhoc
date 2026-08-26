@@ -216,5 +216,9 @@ describe('AdminCourses — gỡ và lùi phiên bản', () => {
     await user.click(within(table).getByRole('button', { name: t('admin.rollback.button') }));
 
     await waitFor(() => expect(rolledBackTo).toEqual({ version: 1 }));
+    // Review round 1, finding 3: a successful rollback showed no
+    // confirmation at all, unlike a successful publish — the asymmetry
+    // was the tell. `admin.rollback.success` must actually render.
+    expect(await screen.findByText(t('admin.rollback.success', 1))).toBeInTheDocument();
   });
 });
