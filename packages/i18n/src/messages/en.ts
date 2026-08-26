@@ -307,21 +307,21 @@ export const en: Messages = {
   'progress.course.aria': (percent: string) => `${percent}% complete`,
   'progress.course.minutes': (minutes: string) => `${minutes} minutes studied`,
 
-  'login.pitch.headline': 'A course is a package. You keep it, not us.',
+  'login.pitch.headline': 'Courses are open to everyone.',
   'login.pitch.lede':
-    'Download a course, read it with the network off, annotate straight onto the page. Your progress syncs between your own machines.',
+    'Open a course and start reading right away — nothing to install, nothing to download. Highlight a passage to take a note right on the page, or ask the AI assistant using your own key.',
   /* Tên riêng "Tự học" KHÔNG đi vào đây: bài "en còn tiếng Việt" ở
      `i18n.test.ts` cho phép đúng hai khoá (`app.name`, `lang.name.vi`), và một
      nhãn trợ năng không đáng làm danh sách ấy dài thêm. */
   'login.pitch.aria': 'What this platform does',
-  'login.point.offline': 'Read offline — the package sits on your machine',
+  'login.point.free': 'Read every course free — no account needed',
   'login.point.ownKey': 'An AI assistant on your own key, and the key never passes through our servers',
-  'login.point.private': 'A private course stays private — nobody else sees it',
+  'login.point.sync': 'Sign in and your progress and notes follow you across devices',
 
   'login.title': 'Sign in',
   'login.heading.login': 'Welcome back',
   'login.heading.register': 'Create an account',
-  'login.lede': 'Your reading progress follows you between machines. The course package stays on this one.',
+  'login.lede': 'Your reading progress follows you between machines.',
   'login.tablist.aria': 'Sign in or register',
   'login.tab.login': 'Sign in',
   'login.tab.register': 'Register',
@@ -330,7 +330,8 @@ export const en: Messages = {
   'login.field.emailPlaceholder': 'you@example.com',
   'login.password.show': 'Show password',
   'login.password.hide': 'Hide password',
-  'login.reassure': 'You can read without an account. Signing in only carries your progress to another machine.',
+  /** Trimmed to one clause at task-14 — see vi.ts's comment for why. */
+  'login.reassure': 'Signing in only carries your progress and notes to another machine.',
   'login.switch.noAccount': 'No account yet?',
   'login.switch.hasAccount': 'Already have an account?',
   'login.switch.toRegister': 'Create an account',

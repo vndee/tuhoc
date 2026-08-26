@@ -426,21 +426,34 @@ export const vi = {
    * một thẻ trôi giữa màn hình trống: người chưa có tài khoản đọc xong vẫn
    * không biết mình sắp đăng ký cái gì. Ba gạch đầu dòng dưới đây không phải
    * khẩu hiệu — mỗi câu tương ứng một tính chất mà mã trong repo này thật sự
-   * giữ: gói nằm trên máy (`db/local.ts`), key nằm ở origin kho khoá
-   * (`apps/vault`), course riêng tư không lộ ra registry (`registry/`).
+   * giữ: khoá học đọc được ngay, miễn phí, không cần tài khoản (máy chủ phục
+   * vụ mọi khoá học công khai — không còn gói nào để tải), key nằm ở origin
+   * kho khoá (`apps/vault`), tiến độ và ghi chú đồng bộ qua tài khoản
+   * (`sync/engine.ts`).
+   *
+   * GẠCH ĐẦU DÒNG THỨ NHẤT VÀ THỨ BA ĐỔI Ở TASK NÀY (task-14, spec
+   * `2026-08-25-server-side-pivot.md` §0.2) — khoá cũng đổi tên
+   * (`login.point.offline` → `login.point.free`, `login.point.private` →
+   * `login.point.sync`) để chỗ nào còn trỏ khoá cũ nổ compile thay vì lặng lẽ
+   * trống. Bản cũ hứa "gói nằm trên máy bạn, đọc ngoại tuyến" — đúng khi
+   * course còn là một gói tải về cất trong `db/local.ts`; sai từ khi course
+   * chuyển hẳn lên máy chủ, vì đọc mà mất mạng giờ là hỏng chứ không phải một
+   * tính năng. Bullet thứ ba từng là "course riêng tư không lộ ra registry" —
+   * khái niệm ấy cũng rời đi cùng registry riêng tư (`courses.lede` đã tự
+   * khai "mọi khoá học đều công khai"), nên chỗ của nó nay là lời hứa đồng bộ.
    */
-  'login.pitch.headline': 'Giáo trình là một gói. Bạn giữ nó, không phải chúng tôi.',
+  'login.pitch.headline': 'Khoá học mở cho mọi người.',
   'login.pitch.lede':
-    'Tải một khoá học về, đọc được cả khi mất mạng, ghi chú thẳng lên trang. Tiến độ thì đồng bộ giữa các máy của bạn.',
+    'Mở một khoá học và đọc ngay — không cần cài đặt, không cần chờ tải. Bôi đen một đoạn để ghi chú thẳng lên trang, hoặc hỏi trợ lý AI bằng key của chính bạn.',
   'login.pitch.aria': 'Tự học làm được gì',
-  'login.point.offline': 'Đọc ngoại tuyến — gói nằm trên máy bạn',
+  'login.point.free': 'Đọc toàn bộ giáo trình miễn phí — không cần tài khoản',
   'login.point.ownKey': 'Trợ lý AI chạy bằng key của chính bạn, và key không đi qua máy chủ của chúng tôi',
-  'login.point.private': 'Khoá học riêng tư là riêng tư — không ai khác thấy',
+  'login.point.sync': 'Đăng nhập để tiến độ và ghi chú theo bạn trên mọi thiết bị',
 
   'login.title': 'Đăng nhập',
   'login.heading.login': 'Chào mừng trở lại',
   'login.heading.register': 'Tạo tài khoản',
-  'login.lede': 'Tiến độ học đồng bộ giữa các máy của bạn. Gói khoá học thì vẫn nằm trên máy.',
+  'login.lede': 'Tiến độ học đồng bộ giữa các máy của bạn.',
   'login.tablist.aria': 'Đăng nhập hoặc đăng ký',
   'login.tab.login': 'Đăng nhập',
   'login.tab.register': 'Đăng ký',
@@ -449,7 +462,15 @@ export const vi = {
   'login.field.emailPlaceholder': 'ban@vi-du.com',
   'login.password.show': 'Hiện mật khẩu',
   'login.password.hide': 'Ẩn mật khẩu',
-  'login.reassure': 'Không có tài khoản vẫn đọc được. Đăng nhập chỉ để tiến độ theo bạn sang máy khác.',
+  /**
+   * ĐÃ RÚT còn MỘT vế ở task-14: bản trước có hai câu ("không cần tài khoản
+   * vẫn đọc được" + "đăng nhập chỉ để đồng bộ"), và cả hai giờ đã được nói
+   * trước đó rồi — vế thứ nhất ở `login.pitch.headline` lẫn `login.point.free`,
+   * vế thứ hai ở `login.point.sync`. Giữ nguyên cả hai câu ở đây sẽ là nói lại
+   * đúng một lời hứa hai lần ngay trên cùng một màn hình. Câu còn lại đứng
+   * ngay dưới nút gửi, cho người chỉ đọc cột form mà bỏ qua panel bên trái.
+   */
+  'login.reassure': 'Đăng nhập chỉ để tiến độ và ghi chú theo bạn sang máy khác.',
   'login.switch.noAccount': 'Chưa có tài khoản?',
   'login.switch.hasAccount': 'Đã có tài khoản?',
   'login.switch.toRegister': 'Tạo tài khoản',

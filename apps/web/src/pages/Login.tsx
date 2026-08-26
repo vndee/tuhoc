@@ -272,7 +272,7 @@ export function Login() {
           <h1 className="auth-pitch-h">{t('login.pitch.headline')}</h1>
           <p className="auth-pitch-lede">{t('login.pitch.lede')}</p>
           <ul className="auth-points" aria-label={t('login.pitch.aria')}>
-            {(['login.point.offline', 'login.point.ownKey', 'login.point.private'] as const).map((key) => (
+            {(['login.point.free', 'login.point.ownKey', 'login.point.sync'] as const).map((key) => (
               <li key={key}>
                 <svg
                   className="auth-tick"
@@ -337,9 +337,12 @@ export function Login() {
 
           {/*
             CÂU TRẢ LỜI CHO "TÔI CÓ PHẢI ĐĂNG KÝ KHÔNG" — và nó là KHÔNG.
-            Gói khoá học đọc được mà không cần tài khoản; đăng nhập chỉ mua thêm
-            việc tiến độ theo bạn sang máy khác. Nói ra ngay dưới nút là chỗ duy
-            nhất nó còn kịp có ích.
+            Khoá học đọc được ngay, miễn phí, không cần tài khoản; đăng nhập chỉ
+            mua thêm việc tiến độ và ghi chú theo bạn sang máy khác. Panel bên
+            trái đã nói cả hai điều này bằng nhan đề và ba gạch đầu dòng, nên câu
+            ở đây được rút còn một vế (task-14) — không lặp lại "đọc được mà
+            không cần tài khoản", chỉ giữ phần lý do để bấm nút đăng nhập, cho
+            người chỉ đọc cột form mà bỏ qua panel bên trái.
           */}
           <p className="auth-reassure">
             <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">

@@ -113,10 +113,27 @@ describe('Login — hai cột: sản phẩm tự giới thiệu bên trái, form
 
     const points = screen.getByRole('list', { name: t('vi', 'login.pitch.aria') });
     expect(Array.from(points.querySelectorAll('li')).map((li) => li.textContent)).toEqual([
-      t('vi', 'login.point.offline'),
+      t('vi', 'login.point.free'),
       t('vi', 'login.point.ownKey'),
-      t('vi', 'login.point.private'),
+      t('vi', 'login.point.sync'),
     ]);
+  });
+
+  /**
+   * BẢO VỆ CHỐNG TÁI PHẠM (spec `2026-08-25-server-side-pivot.md` §0.2).
+   *
+   * `/login` từng hứa "gói nằm trên máy bạn, đọc ngoại tuyến" — đúng dưới kiến
+   * trúc course-là-gói-tải-về, sai từ khi course chuyển hẳn lên máy chủ
+   * (task-14). Bài này không so khớp một khoá cụ thể — nó quét NGUYÊN VĂN chữ
+   * render ra, nên nó vẫn đỏ nếu lời hứa cũ quay lại qua bất kỳ khoá nào khác,
+   * kể cả một khoá mới không ai đặt tên trước.
+   */
+  it('không còn hứa đọc ngoại tuyến hay giữ gói trên máy bạn — kiến trúc đã đổi ở pha này (spec §0.2)', async () => {
+    await renderLoginForm();
+
+    const rendered = document.body.textContent ?? '';
+    expect(rendered).not.toContain('ngoại tuyến');
+    expect(rendered).not.toContain('trên máy bạn');
   });
 
   it('hai nửa là hai con của cùng MỘT trang, không phải hai trang xếp chồng', async () => {
