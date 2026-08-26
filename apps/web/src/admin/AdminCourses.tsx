@@ -60,12 +60,14 @@ function knownFindingMessage(lang: Lang, code: string): string | null {
  * ("never draw the raw server text — an unfamiliar code gets one generic,
  * translated sentence instead"). That rule fits a closed, four-value
  * vocabulary read by every anonymous visitor of a public page. A course
- * package's findings are the opposite: an open-ended, growing set (Task
- * 4's own CLI note: "DUPLICATE_ENTRY is a Go-side archive-layer code with
- * no TypeScript rule-layer counterpart" — new ones arrive from the Go side
- * on its own schedule), read by the one person who can actually act on the
- * SPECIFIC text — the author who just uploaded the rejected package. A
- * generic "unknown problem" would be strictly less useful to them than the
+ * package's findings are the opposite: an open-ended, growing set — real
+ * codes exist today that this build's `finding.*` catalog has no entry
+ * for (`DUPLICATE_ENTRY` is one: an archive-layer code the Go side
+ * produces that `packages/course-format/src/validate.ts`'s `FindingCode`
+ * union never lists, so a new one can arrive from the Go side on its own
+ * schedule) — read by the one person who can actually act on the SPECIFIC
+ * text: the author who just uploaded the rejected package. A generic
+ * "unknown problem" would be strictly less useful to them than the
  * compiler-error-shaped sentence the server already wrote, in the one
  * place on this screen where the reader is assumed to be technical enough
  * to run `tuhoc pack` at a terminal in the first place.
