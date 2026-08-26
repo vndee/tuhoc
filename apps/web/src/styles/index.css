@@ -515,41 +515,18 @@ html[data-theme='dark'] {
  * lớp nào ở tệp này. Giữ lại thì đây là CSS không ai gọi — thứ mà lần đọc
  * sau sẽ tưởng là còn sống. */
 
-/* S1 Task 9 — /library. Same placement and token rules as the .dash- and
-   .import- blocks above: reader.css stays the ported v1 stylesheet,
-   everything this app adds lives here and borrows v1's tokens.
+/* S1 Task 9 — /library ĐÃ XOÁ Ở ĐÂY. `pages/Library.tsx` (và
+   `registry/Catalog.tsx`, thứ dùng chung một số lớp `.lib-*` của nó) gỡ ở
+   Task 13 (spec `2026-08-25-server-side-pivot.md` §1) cùng luồng import —
+   không còn "thư viện riêng" hay "kho cộng đồng" để vẽ. `.lib-meta` và
+   `.lib-notice`/`.lib-notice-server` SỐNG SÓT dưới đây: `registry/Rating.tsx`
+   và `registry/Discussion.tsx` — server-side, KHÔNG đụng tới việc này — vẫn
+   dùng chúng. Mọi lớp `.lib-*` khác của trang thư viện (`.lib-page`,
+   `.lib-item*`, `.lib-tier*`, `.lib-empty*`, `.lib-update*`, `.lib-source*`…)
+   đã rời đi cùng tệp — giữ lại thì đây là CSS không ai gọi. */
 
-   No media query in this block, deliberately, and the same reasoning the
-   .import-* block already wrote down applies: the narrow case here is not a
-   phone, it is the shell's own 1240px breakpoint leaving the content column
-   about 620px wide with the sidebar open. Every row that can run out of
-   space wraps on content width instead — .lib-header, .lib-item-head and
-   .lib-meta are all `flex-wrap: wrap`. Driven in a real browser at 390px and
-   at 1440px; at 390px the tier badge drops onto its own line under the
-   title, which is the behaviour this wants: the badge must never be the
-   thing that gets clipped. */
-.lib-page {
-  max-width: 46rem;
-}
-
-.lib-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.lib-note {
-  font-family: var(--sans);
-  font-size: 13px;
-  color: var(--ink-3);
-  margin: 6px 0 18px;
-}
-
-/* The transport notices. Both are `role="status"` paragraphs, both sit
-   directly under the header, and they differ in colour because they differ
-   in meaning — see TransportNotice's doc comment (ruling S1-F25). */
+/* Dùng chung bởi `registry/Discussion.tsx` (câu lỗi tải bình luận) và
+   `registry/Rating.tsx` (câu lỗi vote, qua `.lib-notice-server` bên dưới). */
 .lib-notice {
   font-family: var(--sans);
   font-size: 12.5px;
@@ -559,69 +536,14 @@ html[data-theme='dark'] {
   margin: 10px 0 20px;
 }
 
-.lib-notice-offline {
-  color: var(--ink-2);
-  background: color-mix(in srgb, var(--warn) 12%, var(--surface-1));
-  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
-}
-
 .lib-notice-server {
   color: var(--ink-2);
   background: color-mix(in srgb, var(--crit) 10%, var(--surface-1));
   border: 1px solid color-mix(in srgb, var(--crit) 40%, transparent);
 }
 
-.lib-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.lib-item {
-  border: 1px solid var(--rule);
-  border-radius: 12px;
-  background: var(--surface-1);
-  padding: 13px 16px;
-}
-
-/* A private course reads as its own thing at a glance, not only in words:
-   spec §2.4's boundary is worth being able to see down a list of twenty. */
-.lib-item-private {
-  border-left: 3px solid var(--s7);
-}
-
-.lib-item-head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.lib-item-title {
-  font-family: var(--sans);
-  font-size: 15px;
-  font-weight: 660;
-  color: var(--ink);
-  text-decoration: none;
-  letter-spacing: -0.01em;
-  /* reader.css styles every `a` with a 1px accent border-bottom — right for
-     a link inside prose, wrong for a card title in a list, where at 390px it
-     read as a row of underlined sentences (seen in Chromium, not in the
-     jsdom suite, which has no layout at all). `.dash-card-title` already
-     avoids it by being a <span> inside the link; this is the same decision
-     said out loud, with the affordance moved onto hover/focus. */
-  border-bottom: 1px solid transparent;
-}
-
-.lib-item-title:hover,
-.lib-item-title:focus-visible {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-}
-
+/* Dùng chung bởi `registry/Rating.tsx` (dòng tóm tắt điểm) và
+   `registry/Discussion.tsx` (dòng tác giả · ngày của một bình luận). */
 .lib-meta {
   font-family: var(--sans);
   font-size: 12px;
@@ -632,215 +554,6 @@ html[data-theme='dark'] {
   gap: 6px;
   flex-wrap: wrap;
   font-variant-numeric: tabular-nums;
-}
-
-.lib-source {
-  font-weight: 620;
-  color: var(--ink-2);
-}
-
-.lib-source-private {
-  color: var(--s7);
-}
-
-/* Thang badge của Untitled UI: 12px/500, chữ thường, viên tròn.
-   Bản cũ là 10.5px ĐẬM VIẾT HOA giãn chữ — thang của một nhãn thể loại, và ở
-   cỡ ấy nó vừa khó đọc vừa hét to hơn tiêu đề ngay dưới nó. */
-.lib-tier {
-  font-family: var(--sans);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.45;
-  letter-spacing: 0;
-  text-transform: none;
-  border-radius: 999px;
-  padding: 2px 9px;
-  white-space: nowrap;
-}
-
-.lib-tier-content {
-  color: var(--ink-3);
-  background: var(--panel);
-  border: 1px solid var(--rule);
-}
-
-/* Loud on purpose. This badge is a security statement — the tier decides
-   whether a package may ship JavaScript that runs in the reader's own
-   browser (§1.2) — so it is styled like a warning and not like a genre tag.
-   `white-space: normal` because its text is a sentence fragment, not a
-   word, and clipping it would remove exactly the half that carries the
-   meaning. */
-.lib-tier-code {
-  /* HỔ PHÁCH, không phải đỏ — và đây là một phân biệt về nghĩa, không phải về
-     gu. Đỏ trong hệ này là LỖI: một việc đã hỏng. Gói `interactive` không hỏng,
-     nó chỉ mang một điều người đọc phải biết trước khi mở. `tokens.css` giao
-     đúng việc ấy cho thang `warning`, và câu chữ vẫn nguyên vẹn.
-
-     Đo lại tương phản trên chính cặp màu mới, vì bản đỏ cũ được đo và bản mới
-     không thừa hưởng phép đo ấy: #b54708 trên #fffaeb cho 5,20:1, qua ngưỡng
-     AA 4,5:1 cho cỡ chữ này. Bản tối lấy warning-200 trên nền hổ phách 14%,
-     11,8:1. Một cảnh báo không đọc được thì không phải một cảnh báo. */
-  color: var(--color-warning-700);
-  background: var(--color-warning-50);
-  border: 1px solid var(--color-warning-200);
-  white-space: normal;
-  /* `inline-flex`, và đây là cái làm viên badge phình lên gấp rưỡi: bên trong
-     có một `<svg class="lib-tier-mark">` mà `courses.css` đặt `display: block`.
-     Trong một hộp `block` thì khối ấy XUỐNG DÒNG RIÊNG, nên viên badge cao hai
-     dòng trong khi hai badge cạnh nó cao một dòng. Cho nó thành một hàng ngang
-     thì dấu tam giác đứng đúng chỗ nó phải đứng: ngay trước câu chữ. */
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* Thang `warning` chỉ có một bản; trên nền gần đen thì nền sáng #fffaeb sẽ là
-   một mảng chói giữa trang. Lật lại: chữ sáng trên một lớp hổ phách mỏng. */
-html[data-theme='dark'] .lib-tier-code {
-  color: var(--color-warning-200);
-  background: color-mix(in srgb, var(--color-warning-500) 14%, transparent);
-  border-color: color-mix(in srgb, var(--color-warning-500) 35%, transparent);
-}
-
-/* A course the reader is provably studying, that no source can name (ruling
-   S1-F31: `loader.ts`'s static SOURCE 2 lands here). Marked like the private
-   lane so it does not read as a defect — it is a real course, just one whose
-   provenance nothing on this device recorded. */
-.lib-source-unknown {
-  color: var(--ink-3);
-}
-
-/* Why a row could not be named. One line, quiet: the row above it still
-   links to the course, so this is context rather than an error state. */
-.lib-row-note {
-  font-family: var(--sans);
-  font-size: 12px;
-  color: var(--ink-3);
-  margin: 6px 0 0;
-}
-
-/* The update offer (ruling S1-F29 — the door into UpdateDialog). Sits below
-   the metadata line rather than in the head: it appears on a minority of rows
-   and a head that reflows for it would make the whole list feel unstable. */
-.lib-item-update {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin: 10px 0 0;
-  padding: 8px 0 0;
-  border-top: 1px dashed var(--rule);
-}
-
-.lib-update-note {
-  font-family: var(--sans);
-  font-size: 12px;
-  font-weight: 620;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
-}
-
-.lib-update-btn {
-  font-size: 12px;
-  padding: 4px 11px;
-}
-
-/* The front door (ruling S1-F17). Sized and spaced like a landing block
-   rather than like an error line, because it is the ordinary state of a new
-   account and not a failure. */
-/* ── TRẠNG THÁI RỖNG — hướng A ────────────────────────────────────────────
-   Một lối ra, không phải một danh sách. Ba gạch đầu dòng "ba cách nhập" đã
-   rời khỏi markup (xem `pages/Library.tsx`); còn lại là icon, một câu, và
-   nút. Căn giữa vì không có gì để căn trái theo — đây là một trạng thái,
-   không phải một khối nội dung. */
-.lib-empty {
-  border: 1px solid var(--color-gray-200);
-  border-radius: var(--radius-xl);
-  background: var(--surface-1);
-  box-shadow: var(--shadow-xs);
-  padding: 34px 28px;
-  margin: 8px 0 0;
-  text-align: center;
-}
-
-.lib-empty-h {
-  font-family: var(--font-sans);
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 0 0 6px;
-}
-
-.lib-empty-lede {
-  font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.55;
-  color: var(--color-gray-500);
-  margin: 0 auto 20px;
-  max-width: 42ch;
-}
-
-.lib-empty-cta {
-  display: inline-flex;
-}
-
-/* Ba cách nhập: nội dung ở lại (ruling S1-F17), hình thức thì đổi.
-   `list-style: none` + hàng ngang + chữ nhỏ hơn một bậc = một câu tóm tắt.
-   Dấu chấm đầu dòng xếp dọc là thứ làm nó đọc như tài liệu, không phải ba
-   mẩu chữ ấy. */
-.lib-empty-ways {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px 14px;
-  margin: 20px auto 0;
-  padding: 0;
-  max-width: 52ch;
-  font-family: var(--font-sans);
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--color-gray-500);
-}
-
-/* DẤU NGĂN giữa ba mục — không có nó, ba mẩu chỉ cách nhau bằng khoảng trắng
-   và khi hàng xuống dòng thì hai mục còn lại đứng cạnh nhau đọc thành MỘT câu
-   chắp vá. Đúng thứ người dùng chỉ vào.
-
-   `<li>` KHÔNG được thành flex container: `tNode` trả về nhiều nút con (chữ,
-   `<code>.zip</code>`, chữ), nên một `display: inline-flex` biến từng mẩu chữ
-   trong CÙNG một mục thành một flex item và `gap` xé "một tệp .zip trên máy
-   bạn" ra làm ba. Dấu ngăn là `::before` của mục sau, tự mang lề của nó. */
-.lib-empty-ways li {
-  margin: 0;
-}
-
-.lib-empty-ways li + li::before {
-  content: '·';
-  margin-right: 14px;
-  /* gray-400, không phải gray-300: ở 13px một dấu chấm giữa gray-300 trên nền
-     trắng gần như không thấy, tức là ba mục lại dính vào nhau đúng như cũ khi
-     hàng phải xuống dòng. */
-  color: var(--color-gray-400);
-}
-
-.lib-empty-ways code {
-  font-size: 12px;
-  background: var(--panel);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-xs);
-  padding: 1px 4px;
-}
-
-.lib-empty-registry {
-  font-family: var(--font-sans);
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--color-gray-400);
-  margin: 22px auto 0;
-  padding-top: 18px;
-  border-top: 1px solid var(--color-gray-200);
-  max-width: 46ch;
 }
 
 /* P2 Task 3 — highlight painter (src/annotations/painter.ts).
