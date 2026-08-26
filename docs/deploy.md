@@ -8,15 +8,19 @@ A from-scratch runbook for the three pieces of this platform:
 | `apps/api` | Go binary, `scratch`-based container | One container on Render (recommended) or Fly.io |
 | Schema + user data | Postgres | Neon (free tier) |
 
-**`courses/*` is normally EMPTY, and a deploy is expected to ship it empty.**
-Since task 11 no course lives in this repo: a course is a package a reader
-imports from a `.zip` on `/import`, stored in their browser, not a directory the
-build copies. `courseAssets.ts` still copies `courses/` into `dist/` when
-something is there — that path exists so `make test-e2e` can serve the real
-course over HTTP — but on a build machine that has not run `make courses` (which
-is every CI runner and every fresh clone), `dist/courses/` comes out empty and
-that is correct, not a missing step. Deploying content this way would publish it;
-if what you are about to deploy is private, read `docs/publishing.md` first.
+**A deploy ships NO course content at all, and `dist/courses/` is never
+created.** Since task 11 no course lives in this repo, and since the server-side
+pivot (`docs/superpowers/specs/2026-08-25-server-side-pivot.md`) a reader gets a
+course from Postgres through `apps/api` — not from a `.zip` they import, and not
+from a directory the build copies. `courseAssets.ts` used to copy `courses/` into
+`dist/courses/` (filtered to this repo's own public sample packages); commit
+61bdb22 removed that copy outright rather than narrowing it further, because any
+course content sitting next to the SPA bundle is a second, unsynced source of
+truth on the origin that holds the session cookie. What the build still copies is
+`course-kit/` — KaTeX and the reader runtime, which every chapter's rendering
+loads as classic `<script src>` includes regardless of where the chapter HTML
+came from. `make courses` is unaffected and still needed locally, for the handful
+of unit/dev/e2e paths that read a package straight off disk.
 
 Config files this doc walks through:
 
@@ -260,12 +264,13 @@ dist/index.html                   2.22 kB
 dist/assets/index-*.css         387.84 kB
 dist/assets/index-*.js          337.38 kB
 ```
-`dist/` contains `_redirects`, `courses/`, `course-kit/`, `index.html`, `favicon.svg`, `assets/` — confirmed with `ls dist` and `cat dist/_redirects` (see §7 for why the redirects rule's exact contents matter).
+`dist/` contains `_redirects`, `course-kit/`, `index.html`, `favicon.svg`, `assets/` — confirmed with `ls dist` and `cat dist/_redirects` (see §7 for why the redirects rule's exact contents matter). There is no `dist/courses/`: commit 61bdb22 removed the copy that used to create it.
 
-`dist/courses/` is **empty** unless someone ran `make courses` first; see the
-note under the table at the top of this file. Re-verified at task 11 with the
-source directory both present and entirely absent: `bun run build` exits 0 in
-both cases, and produces an empty `dist/courses/` in the second.
+`dist/courses/` is **never created**, whether or not someone ran `make courses`
+first; see the note at the top of this file. This changed at commit 61bdb22 —
+before it, the build copied public sample packages there and task 11 verified
+that `bun run build` exits 0 with the source directory both present and absent.
+The copy is gone now, so the outcome no longer depends on `courses/` at all.
 
 ### 5a. Git integration (recommended for ongoing deploys)
 
@@ -391,7 +396,9 @@ Both are already fixed in the repo; this section is what to never undo.
 ```
 /* /index.html 200
 ```
-No `!` on the `200`. A forced rewrite (`200!`) would shadow the real static files this app depends on at runtime — `apps/web/vite-plugins/courseAssets.ts` serves `courses/*` and `course-kit/*` as plain files (they're classic `<script src>` includes, not ES modules, so they can't go through the SPA's JS bundle), and a forced catch-all would intercept every `runtime.js`/`viz.js`/`manifest.json` request meant for those paths and hand back `index.html` instead, breaking every chapter's rendering and every visualization. `apps/web/index.html` already carries a comment recording this trap; this file is the config that has to actually match it. Verified: `bun run build` → `dist/_redirects` byte-for-byte `/* /index.html 200`, sitting next to `dist/courses/` and `dist/course-kit/`.
+No `!` on the `200`. A forced rewrite (`200!`) would shadow the real static files this app depends on at runtime — the build ships `course-kit/` (KaTeX and `runtime.js`, classic `<script src>` includes rather than ES modules, so they cannot go through the SPA's JS bundle), and a forced catch-all would intercept every one of those requests and hand back `index.html` instead, breaking every chapter's rendering. `apps/web/index.html` already carries a comment recording this trap; this file is the config that has to actually match it. Verified: `bun run build` → `dist/_redirects` byte-for-byte `/* /index.html 200`, sitting next to `dist/course-kit/`.
+
+Note that `/courses` is now an SPA route (the public catalog) rather than a static directory, and course content is served by `apps/api`, so the unforced `200` is what makes both work: a real file under `course-kit/` wins, and everything else falls through to the SPA. `courseAssets.ts` still serves `courses/*` from disk in **dev and preview** — that is `serveDir`, not the build output — which is why `make dev-web` can still open a package unpacked by `make courses`.
 
 **Production Docker builds need `--platform linux/amd64`.** The Dockerfile's `FROM --platform=$BUILDPLATFORM ... AS build` + `ARG TARGETARCH` pattern cross-compiles: the build stage runs natively on whatever machine is building (fast, no emulation), and `GOARCH=$TARGETARCH` targets whatever `--platform` you asked `docker build` for. Leave `--platform` off entirely and `TARGETARCH` silently defaults to the build host's own architecture. Verified on this (arm64 Apple Silicon) machine:
 

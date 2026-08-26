@@ -363,19 +363,38 @@ Chạy xong §2, dọn sạch lịch sử, `git push` — và ba thứ dưới �
 | # | Đường rò | `--path courses/` có bóc? | Đóng bằng |
 |---|---|---|---|
 | 1 | `main` theo dõi 46 tệp giáo trình như **tệp sống** | có (nó nằm dưới `courses/`) | gộp nhánh đã xoá, rồi chạy §2 |
-| 2 | `apps/web/dist/courses/<id>/` — thứ `wrangler pages deploy dist` đẩy lên | **KHÔNG** — `dist/` không được git theo dõi | bộ lọc trong `apps/web/vite-plugins/courseAssets.ts` |
+| 2 | `apps/web/dist/courses/<id>/` — thứ `wrangler pages deploy dist` đẩy lên | **KHÔNG** — `dist/` không được git theo dõi | không còn bản chép nào (xem dưới) |
 | 3 | Văn xuôi + số chương chép nguyên văn vào một tệp **ngoài** `courses/` | **KHÔNG** | phép đo xuất xứ, xem dưới |
 | 4 | `INSERT INTO courses …` trong migration đã áp | **KHÔNG** | `0003_drop_seed_course` |
 
-**Đường 2 giờ có chốt máy, không còn là một câu cảnh báo.**
-`closeBundle()` chép `courses/` vào `dist/` **từng gói một**, và chỉ chép gói có
-`id` nằm trong `fixtures/courses/` — tức gói mẫu công khai do chính repo này
-phát hành. Gói riêng bị **loại khỏi bundle** (in ra một dòng nói rõ), chứ không
-làm build đỏ: luồng dev bình thường của tác giả luôn có gói riêng trong
-`courses/`, và một cờ thoát dùng hằng ngày thì luôn bật. Ngay sau đó là một phép
-khẳng định đọc `dist/courses/` thật: có gì lạ ở đó thì nó **xoá đi rồi ném lỗi**
-— xoá trước, vì `wrangler pages deploy dist` không hỏi lần build gần nhất xanh
-hay đỏ, nó chỉ đọc thư mục.
+**Đường 2 nay đóng bằng cách mạnh hơn cái chốt từng canh nó: không còn gì để
+lọc.**
+
+Chốt cũ — và nó có thật, đây là phần thuật sự chứ không phải kế hoạch —
+`closeBundle()` chép `courses/` vào `dist/` **từng gói một**, chỉ chép gói có
+`id` nằm trong `fixtures/courses/`, tức gói mẫu công khai do chính repo này phát
+hành. Gói riêng bị loại khỏi bundle (in ra một dòng nói rõ) chứ không làm build
+đỏ, vì luồng dev bình thường của tác giả luôn có gói riêng trong `courses/` và
+một cờ thoát dùng hằng ngày thì luôn bật. Ngay sau đó là một phép khẳng định đọc
+`dist/courses/` thật: có gì lạ thì xoá đi rồi ném lỗi — xoá trước, vì `wrangler
+pages deploy dist` không hỏi lần build gần nhất xanh hay đỏ, nó chỉ đọc thư mục.
+
+Commit `61bdb22` gỡ **cả bản chép**, không siết chốt thêm. Lý do không phải là
+chốt ấy hỏng — nó chạy đúng — mà là cú chuyển trục sang máy chủ
+(`docs/superpowers/specs/2026-08-25-server-side-pivot.md`) khiến câu hỏi "gói nào
+được phép đi cạnh bundle" hết nghĩa: course nay do `apps/api` phục vụ từ
+Postgres, nên **không gói nào**, công khai hay riêng tư, còn lý do nằm trong
+`dist/`. Một bản chép đã lọc vẫn là một nguồn sự thật thứ hai, không đồng bộ, cho
+đúng cái định dạng mà pha ấy khai tử — nên thứ thay thế cái chốt là sự vắng mặt.
+`closeBundle()` giờ chỉ còn chép `course-kit/` (KaTeX và `runtime.js`, những
+`<script src>` cổ điển mà mọi chương vẫn cần khi dựng hình).
+
+Hệ quả cho tài liệu này: `dist/courses/` không bao giờ được tạo ra nữa, nên
+Đường 2 không còn cần một bộ lọc đúng để đóng. Phép đo 3 của
+`scripts/check_publishable.py` vẫn chạy, nhưng nay hỏi một câu khác — **có gì
+dưới `dist/courses/` không**, bất kể công khai hay riêng tư — vì mọi thứ ở đó
+chỉ có thể là tàn dư của một bản build từ TRƯỚC `61bdb22`, trên một máy chưa
+build lại. Đó là lý do nó vẫn không phải một no-op.
 
 **Đường 3 là đường khó nhất, vì nó không mang tên course.**
 `.claude/skills/course-authoring/SKILL.md` từng chép 714 ký tự văn xuôi kèm số
@@ -486,9 +505,13 @@ Một repo không mang course nào **cho người dùng**. Đó là hình dạng
 tảng không đi kèm nội dung, nội dung là gói rời. Cái nó mang là **dữ liệu test**
 — hai gói mẫu công khai trong `fixtures/courses/`, do chính repo này soạn.
 
-- `make dev-web` chạy được; thư viện rỗng cho tới khi họ import gói của họ.
+- `make dev-web` chạy được; danh mục rỗng cho tới khi một `apps/api` có course
+  được trỏ tới (từ cú chuyển trục sang máy chủ, người đọc không còn tự nhập gói
+  — xem `docs/superpowers/specs/2026-08-25-server-side-pivot.md`).
 - `bun run build` chạy được với `courses/` rỗng **và** với `courses/` không tồn
-  tại (`apps/web/vite-plugins/courseAssets.ts`, `copyDirIfPresent`).
+  tại — nay vì một lý do đơn giản hơn hẳn: từ commit `61bdb22` bản build **không
+  đọc `courses/` nữa** (`apps/web/vite-plugins/courseAssets.ts`, `closeBundle`
+  chỉ còn chép `course-kit/`).
 - `make test-web`, `make test-format`, `make test-cli`, `make test-e2e`:
   **xanh trọn vẹn**. Đo ở task 13 bằng cách xoá `courses/` và trỏ
   `TUHOC_COURSE_STORE` vào một thư mục không tồn tại — 739 + 164 + 43 test đơn
