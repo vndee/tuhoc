@@ -326,10 +326,12 @@ export function isBenignAuthCheck401(msg: ConsoleMessage): boolean {
  * from the chapter), and in the new layout the common case is that nothing
  * had to be clicked at all.
  *
- * The id is deliberately still `#rail-tab-notes`: `p2.spec.ts` (×4) and
- * `s1.spec.ts` (×2) read it directly, and those are the gates that exist to
- * notice when something about notes changes. See the comment on the button
- * itself in `src/reader/ChapterView.tsx`.
+ * The id is deliberately still `#rail-tab-notes`: `p2.spec.ts` read it
+ * directly (×4), and so did `s1.spec.ts` (×2) before Task 13 deleted it. Note
+ * that `p2.spec.ts` is currently quarantined in `playwright.config.ts` — so as
+ * things stand NO running gate reads this id, and a change to it would go
+ * unnoticed until p2 is repaired. See the comment on the button itself in
+ * `src/reader/ChapterView.tsx`.
  */
 export async function openNotesTab(page: Page): Promise<void> {
   const toggle = page.locator('#rail-tab-notes');
@@ -378,10 +380,13 @@ export async function openNotesTab(page: Page): Promise<void> {
  *
  * The return value is what `getSelection()` actually holds afterwards, not
  * what was asked for — callers assert against THAT, so an off-by-one at
- * either end of the drag can never make an assertion vacuous. `s1.spec.ts`
- * leans on that property harder than `p2.spec.ts` does: it builds the NEXT
- * version of the chapter by doing string surgery on exactly the text this
- * returned, so an edit it intends to land inside a reader's quote cannot miss.
+ * either end of the drag can never make an assertion vacuous. The caller that
+ * leaned on that property hardest was `s1.spec.ts`'s update scenario — it built
+ * the NEXT version of a chapter by doing string surgery on exactly the text this
+ * returned, so an edit meant to land inside a reader's quote could not miss.
+ * That scenario went with the version-pinning update dialog (Task 13); the
+ * property is kept because it is the right contract for any future caller, not
+ * because one still depends on it.
  */
 export async function selectParagraphByDrag(page: Page, startsWith: string, chars: number): Promise<string> {
   const prep = await page.evaluate(

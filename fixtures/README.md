@@ -66,31 +66,51 @@ bun tools/tuhoc-cli/src/index.ts pack fixtures/courses/bat-bien-vong-lap \
 
 Lệnh phải thoát `0`. Nếu không, sửa **course**, đừng sửa luật.
 
-### Gói xấu và gói v1.1 — dựng trong lúc chạy test, không commit
+### Hai kịch bản từng dựng ở đây — đã đi cùng tính năng chúng kiểm
 
-Task 12 cần thêm hai biến thể, và cả hai **được dựng trong `apps/web/e2e/s1.spec.ts`**
-chứ không nằm trong kho. Đó là quyết định chứ không phải tiết kiệm chỗ: thứ đang
-được kiểm là **phản ứng của hệ thống trước một gói có tính chất X**, còn một tệp
-`.zip` trong kho là một khẳng định về tính chất X mà không cổng nào kiểm lại.
+**Không còn gì kiểm hai kịch bản này, và đó là kết luận chứ không phải một việc
+chưa làm.** Mục này giữ lại vì hai lý do: để không ai đi tìm một tệp không tồn
+tại, và để người sửa `chapters/c1.html` biết ràng buộc từng có ở đó nay đã hết
+hiệu lực — thay vì gặp một ràng buộc không ghi ở đâu cả và không dám động vào.
 
-- **Gói xấu (kịch bản 2).** Đọc thư mục này, đổi `id`/`title` (để một phép ghi
-  lọt qua trở thành một hàng MỚI nhìn thấy được trong thư viện, thay vì âm thầm
-  đè lên hàng đang có), chèn `<script>alert(1)</script>` vào
-  `chapters/c2.html`, rồi đóng bằng `fflate` trực tiếp — `tuhoc pack` sẽ **từ
-  chối** gói này, và đó chính là điểm của nó, nên gói xấu phải đi vòng qua CLI.
-  Đã đối chứng ngoài trình duyệt: `validatePackage` trả đúng một finding,
-  `SCRIPT_TAG` tại `chapters/c2.html`.
-- **Bản v1.1 (kịch bản 4).** Đổi `version` thành `1.1.0` rồi sửa **đúng những
-  chuỗi mà trình duyệt vừa bôi chọn** trong `chapters/c1.html`: hai đoạn đổi một
-  từ (ghi chú tụt xuống "dịch nhẹ"), một đoạn viết lại hẳn (ghi chú "mất neo"),
-  ba đoạn không đụng tới. Neo lấy từ `getSelection()` của chính lượt chạy đó, vì
-  một phép sửa mù trên tệp nguồn có thể rơi ra ngoài trích dẫn của người đọc —
-  và khi ấy hộp thoại báo một con số khác mà cổng vẫn xanh.
+Task 12 từng dựng hai biến thể của gói này **trong lúc chạy** `apps/web/e2e/s1.spec.ts`
+chứ không commit vào kho:
 
-Chương `chapters/c1.html` vì thế **là ngữ liệu của kịch bản 4**: sáu đoạn văn nó
-bôi chọn được chọn theo ba tính chất đo trên tệp (nút văn bản đầu tiên dài hơn 40
-ký tự, không có `$…$` trong 40 ký tự đầu, không nằm trong `<details>` gập lại).
-Sửa chương này thì chạy lại `make test-e2e`, đừng sửa cổng.
+- **Gói xấu (kịch bản 2)** — chèn `<script>alert(1)</script>` vào một chương rồi
+  đóng bằng `fflate` để đi vòng qua `tuhoc pack`, kiểm màn hình Nhập gói **từ
+  chối** nó.
+- **Bản v1.1 (kịch bản 4)** — sửa đúng những chuỗi vừa được bôi chọn trong
+  `chapters/c1.html`, kiểm hộp thoại cập nhật báo trước **ghi chú nào sẽ mất neo**.
+
+Cả hai đi qua hai màn hình mà cú chuyển trục sang máy chủ đã gỡ: màn hình Nhập gói
+(`pages/ImportCourse.tsx`, `course/import.ts`) và hộp thoại cập nhật theo phiên
+bản ghim (`course/UpdateDialog.tsx`, `course/version.ts`), gỡ ở commit `f541a9c`.
+Người đọc không còn kéo gói về máy mình nữa — course do `apps/api` phục vụ từ
+Postgres.
+
+`s1.spec.ts` bị xoá ngay sau đó (`0d20668`). Kịch bản 2 và 4 **bỏ hẳn**, không
+chuyển đi đâu; chỉ §5 của tệp ấy (mục lục: ngăn kéo màn hẹp, cột cố định màn rộng)
+còn ý nghĩa vì nó kiểm `/c/:courseId` — một màn hình còn nguyên — nên nó **chuyển
+sang `apps/web/e2e/p1.spec.ts`**. Đó là toàn bộ phần sống sót.
+
+**Chương `chapters/c1.html` không có gì để dọn**, và điều này đáng nói rõ vì dễ
+hiểu ngược. Nó không được *định hình cho* kịch bản 4 — nó là văn xuôi course thật
+(~20 KB, chương "Vì sao chạy thử không kết luận được"). Kịch bản 4 *chọn từ* nó:
+lúc chạy, nó đo ba tính chất trên tệp (nút văn bản đầu tiên dài hơn 40 ký tự,
+không có `$…$` trong 40 ký tự đầu, không nằm trong `<details>` gập lại) rồi lấy ra
+sáu đoạn bôi chọn được. Phép chọn ấy nằm trong test, không nằm trong chương.
+
+Nên khi kịch bản 4 mất đi, chương không thừa ra một dòng nào — thứ biến mất là
+phép chọn. Ràng buộc kia cũng **không còn cổng nào canh**: không test nào đọc hình
+dạng ấy nữa, và bài kiểm neo bôi chọn còn sống
+(`apps/web/src/annotations/anchor.test.ts`) dùng `so-dau-phay-dong` chứ không dùng
+course này.
+
+Nên **sửa chương này không cần chạy lại `make test-e2e`**. Thứ vẫn phải giữ là gói
+còn hợp lệ: `bun tools/tuhoc-cli/src/index.ts pack …` phải thoát `0` (xem "Đóng gói
+lại" ở trên), vì `tools/registry/src/validate-pr.test.ts` kiểm gói này qua bộ luật,
+và `apps/web/fixtures/nested-archive.py` chép `manifest.json` cùng ba chương của nó
+làm ruột cho một archive tổng hợp.
 
 ## `courses/so-dau-phay-dong/`
 
