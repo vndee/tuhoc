@@ -143,6 +143,60 @@ func TestCourseToolStripsStyleBodyToo(t *testing.T) {
 	}
 }
 
+// TestCourseToolStripsAllRawTextTagBodies canh đúng điều review Task 5 buộc:
+// stripRawTextTags phải kín cho cả MƯỜI thẻ mà golang.org/x/net/html.Tokenizer
+// bật chế độ raw-text (xem chú thích tại stripRawTextTags trong
+// tool_course.go), đo RIÊNG từng thẻ — không suy ra bất biến từ một thẻ đại
+// diện (như <script> ở TestCourseToolStripsMarkupBeforeSendingToModel) rồi
+// coi các thẻ còn lại là "chắc cũng vậy". Trước vòng sửa này, bảng
+// stripRawTextTags chỉ có "script"/"style": tám thẻ dưới đây từng lọt nguyên
+// văn `<payload>` (kèm dấu "<"/">" thật) ra đầu ra.
+//
+// Mỗi ca dựng một chương "trước<TAG>...payload đóng vai kẻ tấn công,
+// trông giống một thẻ khác...</TAG>sau" và đòi CẢ BA:
+//   - không còn dấu "<" trong đầu ra (bất biến chính, xem
+//     TestCourseToolStripsMarkupBeforeSendingToModel);
+//   - "payload" (chuỗi đặc trưng của thân bị lọc) không lọt ra — chọn (a)
+//     là xoá cả thân, không phải chỉ vô hiệu hoá mà vẫn giữ chữ;
+//   - "trước"/"sau" (văn bản hai bên thẻ, KHÔNG bị lọc) vẫn còn nguyên —
+//     xác nhận việc lọc đúng phạm vi thân thẻ, không ăn lan ra ngoài.
+func TestCourseToolStripsAllRawTextTagBodies(t *testing.T) {
+	tags := []string{
+		"script", "style", // đã canh ở hai test riêng phía trên; đo lại ở đây cho đủ bộ mười, không phá vỡ điều "một test cho mỗi thẻ".
+		"iframe", "noembed", "noframes", "noscript", "plaintext", "textarea", "title", "xmp",
+	}
+
+	for _, tag := range tags {
+		t.Run(tag, func(t *testing.T) {
+			// plaintext không có thẻ đóng thật theo đặc tả HTML5 (mọi byte
+			// sau <plaintext> tới hết tài liệu đều là raw text) — chèn
+			// "trước" TRƯỚC thẻ mở, không có "sau" sau thẻ đóng (không có
+			// thẻ đóng để "sau" nằm sau nó một cách có ý nghĩa).
+			var chapter string
+			if tag == "plaintext" {
+				chapter = "truoc <plaintext>payload <fake-tag>bad</fake-tag></plaintext>"
+			} else {
+				chapter = "truoc <" + tag + ">payload <fake-tag>bad</fake-tag></" + tag + "> sau"
+			}
+
+			out := runTool(t, `{"slug":"c","chapter_id":"c1"}`, withChapter(chapter))
+
+			if strings.Contains(out, "<") {
+				t.Errorf("<%s>: còn dấu \"<\" trong đầu ra: %q", tag, out)
+			}
+			if strings.Contains(out, "payload") {
+				t.Errorf("<%s>: thân thẻ lọt vào context: %q", tag, out)
+			}
+			if !strings.Contains(out, "truoc") {
+				t.Errorf("<%s>: mất văn bản đứng TRƯỚC thẻ: %q", tag, out)
+			}
+			if tag != "plaintext" && !strings.Contains(out, "sau") {
+				t.Errorf("<%s>: mất văn bản đứng SAU thẻ: %q", tag, out)
+			}
+		})
+	}
+}
+
 // TestCourseToolReturnsTextErrorWhenCourseNotFound — Bước 3: slug không tồn
 // tại phải trả một CHUỖI mà model đọc được để nói lại với người học, không
 // phải một error Go làm hỏng lượt (runTool ở trên đã tự đòi err == nil).
@@ -171,10 +225,31 @@ func TestCourseToolReturnsTextErrorWhenChapterNotFound(t *testing.T) {
 // TestCourseToolRejectsMalformedArgsAsText: argsJSON không parse được cũng
 // không được panic hay trả error Go — cùng nguyên tắc Bước 3, áp cho một
 // nguồn lỗi khác (đầu vào của chính model, không phải store).
+//
+// Vòng review Task 5 chỉ ra out == "" quá yếu: gần như bất kỳ chuỗi nào —
+// kể cả một câu sai hoàn toàn — cũng qua được kiểm tra đó. Test này thay
+// bằng ba khẳng định cụ thể: câu lỗi phải bắt đầu bằng "Error:" (model cần
+// nhận diện được đây là một lượt gọi công cụ thất bại, không phải nội dung
+// course); câu lỗi phải nhắc "could not parse arguments" (đúng vấn đề thật
+// — JSON hỏng — không phải một câu lỗi chung chung không nói lên gì); và
+// store (fakeQuerier) không được gọi tới — args hỏng nghĩa là không có
+// slug/chapter_id hợp lệ để gọi xuống store, giống hệt nguyên tắc
+// TestCourseToolRequiresSlug áp cho trường hợp slug rỗng.
 func TestCourseToolRejectsMalformedArgsAsText(t *testing.T) {
-	out := runTool(t, `{not json`)
-	if out == "" {
-		t.Fatal("đầu ra rỗng trên args hỏng")
+	f := &fakeQuerier{}
+	tool := NewCourseTool(f)
+	out, err := tool.Run(context.Background(), `{not json`)
+	if err != nil {
+		t.Fatalf("Run trả error Go thay vì văn bản: %v", err)
+	}
+	if !strings.HasPrefix(out, "Error:") {
+		t.Errorf("câu lỗi không bắt đầu bằng \"Error:\", model khó nhận diện lượt gọi công cụ thất bại: %q", out)
+	}
+	if !strings.Contains(out, "could not parse arguments") {
+		t.Errorf("câu lỗi không nói rõ vấn đề thật (JSON hỏng): %q", out)
+	}
+	if f.gotSlug != "" || f.gotChapterID != "" {
+		t.Errorf("Run gọi store dù args không parse được — store thấy slug=%q chapter_id=%q", f.gotSlug, f.gotChapterID)
 	}
 }
 
@@ -192,6 +267,51 @@ func TestCourseToolRequiresSlug(t *testing.T) {
 	}
 	if f.gotSlug != "" {
 		t.Errorf("Run gọi store dù slug rỗng — store thấy slug = %q", f.gotSlug)
+	}
+}
+
+// TestCourseToolWarnsOnEmptyManifest canh lớp phòng vệ "thành công nhưng
+// rỗng": nếu CourseQuerier.Manifest trả ("", nil) — không lỗi, nhưng cũng
+// không có manifest — Run KHÔNG được trả một chuỗi rỗng im lặng cho model.
+// Một chuỗi rỗng trong Message{Role: "tool"}.Content không có dấu hiệu gì
+// để model biết đây là "course tồn tại nhưng manifest rỗng" khác với "lỗi
+// lắp ráp Request ở tầng khác" hay bất kỳ lý do nào khác khiến model không
+// nhận được gì.
+func TestCourseToolWarnsOnEmptyManifest(t *testing.T) {
+	out := runTool(t, `{"slug":"c"}`, withManifest(""))
+	if out == "" {
+		t.Fatal("Run trả chuỗi rỗng im lặng khi manifest rỗng nhưng không lỗi")
+	}
+	if !strings.Contains(out, "c") {
+		t.Errorf("đầu ra không nhắc tới slug đã hỏi: %q", out)
+	}
+}
+
+// TestCourseToolWarnsOnEmptyChapter: cùng lớp phòng vệ, cho nhánh chapter —
+// ChapterHTML trả ("", nil) trực tiếp.
+func TestCourseToolWarnsOnEmptyChapter(t *testing.T) {
+	out := runTool(t, `{"slug":"c","chapter_id":"c1"}`, withChapter(""))
+	if out == "" {
+		t.Fatal("Run trả chuỗi rỗng im lặng khi ChapterHTML rỗng nhưng không lỗi")
+	}
+	if !strings.Contains(out, "c1") {
+		t.Errorf("đầu ra không nhắc tới chapter_id đã hỏi: %q", out)
+	}
+}
+
+// TestCourseToolWarnsOnChapterThatStripsToEmpty: một biến thể khác của
+// "thành công nhưng rỗng" — ChapterHTML trả HTML KHÔNG rỗng (nên nhánh trên
+// không bắt được), nhưng toàn bộ nội dung đó nằm trong các thẻ
+// stripRawTextTags nên stripTags xoá sạch, để lại chuỗi rỗng sau khi lọc.
+// Guard phải kiểm SAU stripTags, không chỉ kiểm ChapterHTML trả về có rỗng
+// hay không.
+func TestCourseToolWarnsOnChapterThatStripsToEmpty(t *testing.T) {
+	out := runTool(t, `{"slug":"c","chapter_id":"c1"}`, withChapter(`<script>x()</script>`))
+	if out == "" {
+		t.Fatal("Run trả chuỗi rỗng im lặng khi HTML thô strip ra rỗng")
+	}
+	if !strings.Contains(out, "c1") {
+		t.Errorf("đầu ra không nhắc tới chapter_id đã hỏi: %q", out)
 	}
 }
 
