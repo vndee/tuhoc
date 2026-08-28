@@ -130,8 +130,21 @@ func TestRegisterGrantsSignupCreditFromDBSettingNotAConstant(t *testing.T) {
 // fact) — a SURVIVING user row paired with a MISSING credit row. A test
 // that only asserted zero ai_credits rows would stay green even if
 // registration rolled back the credit half alone and left the user half
-// committed; both counts together are what proves the two inserts share
-// one atomic outcome.
+// committed.
+//
+// Round 1 review, Minor 1: the creditCount==0 assertion below can never
+// be the one that fails, on its own — ai_credits.user_id is a foreign
+// key to users(id) (see repo.go's own comment on
+// CreateUserWithSignupCredit), so a literal orphan (a credit row naming
+// a user id nothing in `users` points to) is impossible in this schema
+// regardless of whether this test's fix exists. userCount==0 is the
+// assertion doing all the real work: it is the one a broken
+// implementation (the credit half alone rolled back, or the two halves
+// split across separate statements) could actually violate. creditCount
+// is kept anyway as an EXECUTABLE PIN of that architectural fact, not as
+// a second bug-catching check: if a future migration ever drops that
+// foreign key, this line is what would need a human to notice and
+// reconsider, rather than the invariant silently stopping being true.
 func TestRegisterFailingAtGrantLeavesNoOrphanedCreditOrUser(t *testing.T) {
 	pool := store.TestPool(t)
 	app := newTestApp(pool, false, nil)
@@ -145,6 +158,28 @@ func TestRegisterFailingAtGrantLeavesNoOrphanedCreditOrUser(t *testing.T) {
 		map[string]string{"email": email, "password": "correct-horse-battery-staple", "name": "Orphan Test"}, nil)
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("register with no ai_settings row: want 500, got %d (body=%+v raw=%s)", resp.StatusCode, body, raw)
+	}
+
+	// Round 1 review, mutation 3: removing repo.go's `defer tx.Rollback`
+	// makes every assertion in THIS test's body still pass — the
+	// abandoned transaction's row changes stay invisible to every OTHER
+	// connection either way (Postgres never shows uncommitted work
+	// across connections), so userCount and creditCount below are both
+	// blind to it. The only observable symptom was store.TestPool's own
+	// `t.Cleanup(pool.Close)` hanging forever at teardown, waiting for a
+	// connection that tx never released — surfacing in CI as a bare
+	// `panic: test timed out`, indistinguishable from a slow Docker host.
+	// pool.Stat().AcquiredConns() is a synchronous, non-blocking read of
+	// the pool's own bookkeeping — no query, no wait — so it catches the
+	// leak here, attributed to this exact line, well before that hang.
+	// It does not remove the hang risk itself (t.Cleanup(pool.Close) is
+	// unconditional in the shared store.TestPool helper, out of scope to
+	// change for this test alone); it only makes the failure look like a
+	// failure instead of a timeout, if it ever recurs.
+	if got := pool.Stat().AcquiredConns(); got != 0 {
+		t.Fatalf("connection pool has %d acquired connection(s) immediately after a failed "+
+			"registration returned — a transaction that never Commits or Rollbacks leaks its "+
+			"connection forever", got)
 	}
 
 	var userCount int
