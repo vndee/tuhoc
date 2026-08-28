@@ -39,3 +39,13 @@ apps/api/bin/
 # gỡ theo dõi bằng tay. .gitignore gốc thì được theo dõi, nên nó đi theo mọi
 # worktree.
 .superpowers/
+.playwright-mcp/
+
+# `go.work.sum` — a Go workspace has exactly one module here (`go.work`'s
+# `use ./apps/api`), and that module's own `apps/api/go.sum` already pins
+# every dependency checksum. `go.work.sum` is a workspace-level cache Go
+# writes for cross-module builds (`go mod tidy`, `go build ./...` from the
+# repo root); with a single module it carries nothing `go.sum` does not,
+# and it is machine-generated, not authored — nothing here to review or
+# commit to.
+go.work.sum

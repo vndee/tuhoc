@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -319,5 +319,131 @@ describe('AskPanel — hỏi, chảy chữ, huỷ', () => {
 
     expect(h.post).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('ai-needs-setup')).toBeInTheDocument();
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════ *
+ * KÉO ĐỔI CỠ
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Bài này canh MỘT lỗi cụ thể, và nó là lỗi người dùng bắt được sau khi tôi báo
+ * xong: kéo một lần rồi buông chuột, sau đó chỉ cần rê chuột ngang tay kéo là
+ * panel lại chạy theo chuột.
+ *
+ * Nguyên nhân không nằm ở logic đổi cỡ mà ở một tính chất của React:
+ * `e.currentTarget` chỉ có giá trị TRONG lúc React phát sự kiện, rồi về `null`.
+ * Lệnh gỡ listener nằm trong `onUp` — chạy sau đó rất lâu — nên nó nổ vào `null`
+ * và `pointermove` ở lại trên phần tử vĩnh viễn.
+ *
+ * Không có bài này thì lần refactor sau viết lại đúng như thế mà vẫn xanh: mọi
+ * bài khác chỉ đo lúc ĐANG kéo, còn lỗi thì chỉ hiện ra SAU khi buông.
+ */
+describe('AskPanel — kéo đổi cỡ', () => {
+  function panelBox(): HTMLElement {
+    return screen.getByRole('dialog');
+  }
+
+  function grip(): HTMLElement {
+    return screen.getByLabelText('Kéo để đổi cỡ khung');
+  }
+
+  /**
+   * jsdom trả `getBoundingClientRect()` toàn số 0 cho MỌI phần tử, và điều đó
+   * âm thầm làm hỏng một bài kiểm đổi cỡ: bề rộng mới tính từ `rect.width`, nên
+   * với `rect.width === 0` mọi phép kéo đều rơi xuống dưới chặn dưới 320px và
+   * bị kẹp về đúng 320. Hai lần kéo khác nhau ra cùng một con số, và bài kiểm
+   * không phân biệt được "listener đã gỡ" với "chưa gỡ".
+   *
+   * Tôi đã viết bài kiểm ấy và nó XANH cả khi lỗi còn nguyên; phép thử đột biến
+   * là thứ chỉ ra. Cho panel một cỡ thật thì số học lại có nghĩa.
+   */
+  function stubPanelSize(el: HTMLElement, width: number, height: number) {
+    el.getBoundingClientRect = () =>
+      ({ width, height, top: 0, left: 0, right: width, bottom: height, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+  }
+
+  /** jsdom không cài Pointer Capture API; panel chỉ cần nó không ném. */
+  function stubPointerCapture(el: HTMLElement) {
+    const captured = new Set<number>();
+    Object.assign(el, {
+      setPointerCapture: (id: number) => captured.add(id),
+      releasePointerCapture: (id: number) => captured.delete(id),
+      hasPointerCapture: (id: number) => captured.has(id),
+    });
+  }
+
+  it('buông chuột xong thì rê chuột KHÔNG còn đổi cỡ nữa', () => {
+    const h = harness();
+    render(h.wrap(<AskPanel heading="Hỏi" system="ngữ cảnh" onClose={() => undefined} />));
+
+    const g = grip();
+    stubPointerCapture(g);
+    stubPanelSize(panelBox(), 480, 400);
+
+    // Panel chưa có cỡ inline nào: CSS đang quyết định.
+    expect(panelBox().style.width).toBe('');
+
+    fireEvent.pointerDown(g, { pointerId: 1, clientX: 500, clientY: 500 });
+    // Kéo lên–trái là rộng ra và cao lên: 480 + 100 = 580px.
+    act(() => {
+      g.dispatchEvent(new MouseEvent('pointermove', { clientX: 400, clientY: 400, bubbles: true }));
+    });
+    const afterDrag = panelBox().style.width;
+    expect(afterDrag, 'kéo mà cỡ không đổi — bài này đang đo nhầm thứ').toBe('580px');
+
+    fireEvent.pointerUp(g, { pointerId: 1 });
+
+    // ĐÂY là lời khẳng định thật: rê chuột sau khi đã buông. Toạ độ chọn sao
+    // cho nếu listener CÒN sống thì con số ra khác hẳn (480 + 300 = 780px), chứ
+    // không rơi vào cùng một mức bị kẹp.
+    act(() => {
+      g.dispatchEvent(new MouseEvent('pointermove', { clientX: 200, clientY: 200, bubbles: true }));
+    });
+    expect(panelBox().style.width, 'panel vẫn chạy theo chuột sau khi đã buông').toBe(afterDrag);
+  });
+
+  it('thao tác bị cắt ngang (pointercancel) cũng gỡ được listener', () => {
+    const h = harness();
+    render(h.wrap(<AskPanel heading="Hỏi" system="ngữ cảnh" onClose={() => undefined} />));
+
+    const g = grip();
+    stubPointerCapture(g);
+    stubPanelSize(panelBox(), 480, 400);
+
+    fireEvent.pointerDown(g, { pointerId: 1, clientX: 500, clientY: 500 });
+    act(() => {
+      g.dispatchEvent(new MouseEvent('pointermove', { clientX: 420, clientY: 420, bubbles: true }));
+    });
+    const afterDrag = panelBox().style.width;
+    expect(afterDrag).toBe('560px');
+
+    fireEvent.pointerCancel(g, { pointerId: 1 });
+    act(() => {
+      g.dispatchEvent(new MouseEvent('pointermove', { clientX: 100, clientY: 100, bubbles: true }));
+    });
+    expect(panelBox().style.width).toBe(afterDrag);
+  });
+
+  /**
+   * Một cỡ inline thắng mọi luật CSS, nên sau một lần kéo thì nút "mở rộng" im
+   * lặng không làm gì — lỗi thứ hai người dùng bắt được trong cùng một vòng.
+   */
+  it('bấm mở rộng trả quyền quyết định cỡ lại cho CSS', () => {
+    const h = harness();
+    render(h.wrap(<AskPanel heading="Hỏi" system="ngữ cảnh" onClose={() => undefined} />));
+
+    const g = grip();
+    stubPointerCapture(g);
+    stubPanelSize(panelBox(), 480, 400);
+    fireEvent.pointerDown(g, { pointerId: 1, clientX: 500, clientY: 500 });
+    act(() => {
+      g.dispatchEvent(new MouseEvent('pointermove', { clientX: 400, clientY: 400, bubbles: true }));
+    });
+    fireEvent.pointerUp(g, { pointerId: 1 });
+    expect(panelBox().style.width).not.toBe('');
+
+    fireEvent.click(screen.getByLabelText('Mở rộng khung hỏi–đáp'));
+    expect(panelBox().style.width).toBe('');
   });
 });

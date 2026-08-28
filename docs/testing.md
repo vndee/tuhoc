@@ -9,20 +9,27 @@ doc is only about the one that's different in kind:
 Brings up the real API + Postgres, serves the real **production build**
 of the web app, and drives both with a real browser (Playwright) to prove
 the whole stack works together — see `apps/web/e2e/p1.spec.ts`,
-`apps/web/e2e/viz.spec.ts` and
+`apps/web/e2e/widget.spec.ts` and
 `.superpowers/sdd/2026-08-19-p1-platform-core/task-17-report.md` for what
 it actually checks and why.
 
-Five spec files run under it, and they are gates for different phases, not
-one suite that grew: `p1.spec.ts` (the reader), `p2.spec.ts` (annotations),
-`viz.spec.ts` (every registered visualization), and — for subsystem 1's
-course packages — `import.spec.ts` (a real `.zip` through the real Import
-screen) plus `s1.spec.ts` (a bad package refused without dirtying the
-library · one reader's course invisible to another · an update previewed,
-declined, then taken, with the damage report the reader was shown).
-`.superpowers/sdd/2026-08-21-s1-course-packages/task-12-report.md` records
-what the last one is blind to, and the nine product mutants that prove the
-rest of it bites.
+**Two spec files actually run**, and they are gates for different things:
+`p1.spec.ts` (the reader — including the course table of contents, inherited
+from the deleted `s1.spec.ts`) and `widget.spec.ts` (the phase-1 security
+gate: a course widget runs inside `sandbox="allow-scripts"`, its origin is
+opaque, and `document.cookie` throws rather than returning the session).
+
+Two more sit in the directory but are **quarantined** in
+`apps/web/playwright.config.ts`'s `testIgnore`, each with its reason recorded
+at the top of the file itself: `p2.spec.ts` (annotations — its fixture
+expectations predate the server-side pivot) and `s2.spec.ts` (the AI/BYOK key
+vault — phase 2's own gate, over a subsystem phase 1 never touched).
+
+Gone with the features they covered: `import.spec.ts` and `s1.spec.ts` (the
+Import screen and the version-pinning update dialog, removed in `e58ef41`;
+see `fixtures/README.md` for what the two package-variant scenarios were),
+`s3.spec.ts`/`s4.spec.ts` (the registry catalog UI), and `viz.spec.ts` (the
+course-wide `viz.js` runtime, replaced by sandboxed widgets).
 
 Two properties of this gate are deliberate and easy to lose:
 

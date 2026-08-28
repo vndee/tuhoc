@@ -20,10 +20,9 @@
  *
  * Everything this tool knows about what makes a package valid comes through
  * here. If you find yourself about to answer a validity question in
- * `validate-pr.ts` or `build-index.ts` without calling `validatePackage`, that
- * is the fourth copy.
+ * `validate-pr.ts` without calling `validatePackage`, that is the fourth copy.
  */
 
-export { MANIFEST_PATH, packZip, parseManifest, validatePackage } from '../../../packages/course-format/src/index.ts';
+export { MANIFEST_PATH, parseManifest, validatePackage } from '../../../packages/course-format/src/index.ts';
 
-export type { Author, Finding, GeneratedBy, Manifest, Tier } from '../../../packages/course-format/src/index.ts';
+export type { Author, Finding, GeneratedBy, Manifest } from '../../../packages/course-format/src/index.ts';

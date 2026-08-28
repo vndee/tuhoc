@@ -28,7 +28,7 @@
  *    and {@link assertDiscussion} still checks — because the guarantee is
  *    made by a different process, in a different repository half, on a
  *    different deploy cycle, and `.map` on a `null` is exactly the crash that
- *    white-screened this app once already (`815a472`).
+ *    white-screened this app once already (`4f2bf1f`).
  *
  * ## Today, `reason` is always `"disabled"`
  *

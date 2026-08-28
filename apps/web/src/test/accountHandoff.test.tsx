@@ -47,6 +47,7 @@ import { useLogout } from '../auth/useLogout';
 import { type AnnotationRow, clearLocalData, db } from '../db/local';
 import { Login } from '../pages/Login';
 import { LanguageProvider } from '../i18n/LanguageProvider';
+import { ThemeProvider } from '../theme/ThemeContext';
 
 /**
  * The theme key, written out rather than imported from the registry in
@@ -179,7 +180,7 @@ function Browser({ at = '/', onArriveAtLogin = () => {} }: { at?: string; onArri
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
     <QueryClientProvider client={queryClient}>
-      <LanguageProvider><MemoryRouter initialEntries={[at]}>
+      <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={[at]}>
         <Routes>
           <Route
             path="/"
@@ -192,7 +193,7 @@ function Browser({ at = '/', onArriveAtLogin = () => {} }: { at?: string; onArri
           />
           <Route path="/login" element={<LoginRoute onArrive={onArriveAtLogin} />} />
         </Routes>
-      </MemoryRouter></LanguageProvider>
+      </MemoryRouter></LanguageProvider></ThemeProvider>
     </QueryClientProvider>
   );
 }
@@ -213,7 +214,7 @@ function GuardedBrowser({ at = '/' }: { at?: string }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
     <QueryClientProvider client={queryClient}>
-      <LanguageProvider><MemoryRouter initialEntries={[at]}>
+      <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={[at]}>
         <Routes>
           <Route
             path="/"
@@ -226,7 +227,7 @@ function GuardedBrowser({ at = '/' }: { at?: string }) {
           />
           <Route path="/login" element={<Login />} />
         </Routes>
-      </MemoryRouter></LanguageProvider>
+      </MemoryRouter></LanguageProvider></ThemeProvider>
     </QueryClientProvider>
   );
 }
@@ -308,7 +309,7 @@ async function bSignsIn(): Promise<void> {
   const user = userEvent.setup();
   await screen.findByLabelText(/email/i);
   await user.type(screen.getByLabelText(/email/i), 'b@example.com');
-  await user.type(screen.getByLabelText(/mật khẩu/i), 'secret123');
+  await user.type(screen.getByLabelText(/^mật khẩu$/i), 'secret123');
   await user.click(screen.getByRole('button', { name: /đăng nhập/i }));
 }
 

@@ -1,0 +1,143 @@
+/* ============================================================
+   TOKEN — HỆ THIẾT KẾ UNTITLED UI
+   ============================================================
+
+   Hình đã duyệt: khung "Token & component" và "Logo" trên canvas thiết kế
+   (trang Nền tảng). Tệp này là NỬA MÃ của khung ấy: mọi giá trị dưới đây đọc
+   thẳng ra từ đó, và hai bên phải đi cùng nhau.
+
+   ── VÌ SAO KHÔNG CÓ PREFLIGHT ────────────────────────────────────────────
+   `@import "tailwindcss"` gọn hơn ba dòng import bên dưới, nhưng nó kéo theo
+   `preflight.css` — bản reset của Tailwind. Reset ấy xoá margin mặc định, đổi
+   `border-style` toàn cục, và hạ mọi thẻ heading về `font-size: inherit`.
+
+   Trong repo này đó không phải một cú dọn dẹp, đó là một cú phá:
+   `packages/course-kit/reader.css` là bản port TỪNG BYTE của giáo trình v1 và
+   có cổng riêng canh nó; 4.100 dòng CSS viết tay còn lại đều giả định margin
+   mặc định của trình duyệt vẫn ở đó. Preflight sẽ đổi diện mạo mọi màn hình
+   ngay trong bước đặt nền, tức là trộn "thêm công cụ" với "đổi giao diện" —
+   hai việc phải tách ra thì mới biết cái nào làm hỏng cái gì.
+
+   Nên ở đây chỉ nạp `theme` (biến) và `utilities` (class), bỏ `preflight`.
+   Khi từng màn chuyển xong và CSS cũ của nó bị xoá, preflight quay lại được —
+   nhưng đó là quyết định của bước cuối, không phải bước này.
+
+   ── THỨ TỰ CASCADE, VÀ ĐIỀU NÓ KÉO THEO ─────────────────────────────────
+   Utility của Tailwind nằm trong `@layer utilities`. CSS viết tay của app thì
+   KHÔNG nằm trong layer nào. Theo luật cascade, CSS không-layer luôn thắng
+   mọi layer — nên hôm nay `class="p-4"` sẽ THUA `.dash-header { padding: … }`.
+
+   Đó đúng là điều bước này cần: thêm Tailwind vào mà không xê dịch một pixel.
+   Nhưng khi chuyển từng màn thì phải XOÁ CSS cũ của màn ấy, chứ không phải
+   chồng utility lên trên và mong nó thắng — nó sẽ không thắng, và triệu chứng
+   là "class Tailwind không ăn" chứ không phải một lỗi nào đọc ra được.
+   ============================================================ */
+
+@import '@fontsource-variable/inter/index.css';
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/* ── BIẾN THỂ `dark:` PHẢI ĐƯỢC DẠY LẠI ─────────────────────────────────────
+   Mặc định `dark:` của Tailwind v4 nghe `prefers-color-scheme`. App này KHÔNG
+   nghe tín hiệu ấy: chủ đề là một công tắc tường minh, `html[data-theme]`, và
+   `reader.css` cùng `theme/ThemeContext.tsx` đều đứng trên nó.
+
+   Không dạy lại thì hỏng IM LẶNG, và tôi đã đo đúng cái im lặng ấy: thanh
+   trên viết bằng utility (`text-gray-900`, `bg-brand-50`) giữ nguyên màu sáng
+   khi bấm sang giao diện tối — nhãn hiệu "Tự học" thành chữ đen trên nền đen.
+   Bài kiểm đơn vị không thấy được: jsdom không tính màu. */
+@custom-variant dark (&:where(html[data-theme='dark'], html[data-theme='dark'] *));
+
+/* `static` chứ không phải `@theme` trần, và đây là một phép đo chứ không phải
+   một thói quen: mặc định Tailwind v4 CHỈ sinh ra biến CSS cho những token
+   thực sự có utility dùng tới. Đo trên chính bản build này — `@theme` trần cho
+   `getComputedStyle(:root).getPropertyValue('--color-brand-600')` trả về chuỗi
+   RỖNG, dù Tailwind vẫn chạy (`@property` và `--tw-*` đều có trong bundle).
+
+   Ở đây điều đó là hỏng, vì token phải dùng được từ CẢ HAI phía: utility của
+   Tailwind, và CSS viết tay còn lại trong lúc chuyển dần từng màn. Bên thứ hai
+   không phải thứ Tailwind quét được, nên nó sẽ lặng lẽ nhận giá trị rỗng. */
+@theme static {
+  /* ── CHỮ ────────────────────────────────────────────────────────────────
+     Inter cho KHUNG ứng dụng. Nội dung chương KHÔNG dùng nó: trang đọc giữ
+     serif của `course-kit/reader.css` (`--serif`) với khổ `--measure: 43rem`.
+     Ranh giới ấy là ràng buộc lớn nhất của hướng A — hai họ chữ trong một màn
+     chỉ hoạt động khi mỗi họ có địa phận rõ ràng. */
+  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+
+  /* ── BRAND ──────────────────────────────────────────────────────────────
+     Tím là mặc định của Untitled UI. Nó là MỘT thang, không phải một quyết
+     định rải khắp mã: đổi sang xanh #2a78d6 mà app đang dùng là sửa đúng khối
+     này, không màn nào phải sửa theo. */
+  --color-brand-25: #fcfaff;
+  --color-brand-50: #f9f5ff;
+  --color-brand-100: #f4ebff;
+  --color-brand-200: #e9d7fe;
+  --color-brand-300: #d6bbfb;
+  --color-brand-400: #b692f6;
+  --color-brand-500: #9e77ed;
+  --color-brand-600: #7f56d9;
+  --color-brand-700: #6941c6;
+  --color-brand-800: #53389e;
+  --color-brand-900: #42307d;
+
+  /* ── GRAY ───────────────────────────────────────────────────────────────
+     Nền, chữ, viền — gần như mọi thứ còn lại. */
+  --color-gray-25: #fcfcfd;
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f2f4f7;
+  --color-gray-200: #eaecf0;
+  --color-gray-300: #d0d5dd;
+  --color-gray-400: #98a2b3;
+  --color-gray-500: #667085;
+  --color-gray-600: #475467;
+  --color-gray-700: #344054;
+  --color-gray-800: #1d2939;
+  --color-gray-900: #101828;
+  --color-gray-950: #0c111d;
+
+  /* ── NGỮ NGHĨA ──────────────────────────────────────────────────────────
+     `warning` mang một việc CỤ THỂ: hạng gói `interactive` — gói chạy
+     JavaScript. Đó là điều người đọc phải biết TRƯỚC khi nhập một gói lạ, nên
+     nó không bao giờ được vẽ bằng xám. */
+  --color-success-50: #ecfdf3;
+  --color-success-200: #abefc6;
+  --color-success-500: #12b76a;
+  --color-success-700: #027a48;
+  --color-warning-50: #fffaeb;
+  --color-warning-200: #fedf89;
+  --color-warning-500: #f79009;
+  --color-warning-700: #b54708;
+  --color-error-50: #fef3f2;
+  --color-error-200: #fee4e2;
+  --color-error-300: #fda29b;
+  --color-error-500: #f04438;
+  --color-error-600: #d92d20;
+  --color-error-700: #b42318;
+
+  /* ── BO GÓC ─────────────────────────────────────────────────────────────
+     Bốn giá trị, không hơn: nút và ô nhập 8px, hàng trong danh sách 10px,
+     thẻ 12px, badge/avatar tròn. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+
+  /* ── BÓNG ───────────────────────────────────────────────────────────────
+     Độ cao là THÔNG TIN, không phải trang trí: `xs` cho nút và ô nhập, `sm`
+     cho thẻ, `lg` cho hộp thoại và popover. Không có bóng nào khác. */
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.1), 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 8px -2px rgba(16, 24, 40, 0.1), 0 2px 4px -2px rgba(16, 24, 40, 0.06);
+  --shadow-lg: 0 12px 16px -4px rgba(16, 24, 40, 0.08), 0 4px 6px -2px rgba(16, 24, 40, 0.03);
+  --shadow-xl: 0 20px 24px -4px rgba(16, 24, 40, 0.08), 0 8px 8px -4px rgba(16, 24, 40, 0.03);
+
+  /* ── VÒNG FOCUS ─────────────────────────────────────────────────────────
+     4px, trên MỌI thứ bấm được. Đây là thứ bản đang chạy không có, và là khác
+     biệt lớn nhất với người dùng bàn phím. */
+  --shadow-ring-brand: 0 0 0 4px #f4ebff;
+  --shadow-ring-gray: 0 0 0 4px #f2f4f7;
+  --shadow-ring-error: 0 0 0 4px #fee4e2;
+}

@@ -1,0 +1,60 @@
+<div class="ch-eyebrow">Phần I · Biến đếm — Chương 1.1</div>
+<h1 class="ch-title">Vì sao đếm cần một biến</h1>
+<p class="ch-lede">Đếm nghe như việc dễ nhất trên đời — trẻ con làm được. Nhưng một chương trình không "nhìn" được cả dãy số cùng lúc như con người; nó chỉ đọc được từng phần tử một, mỗi lần một cái. Chương này hỏi: giữa hai lần đọc đó, con số đã đếm được nằm ở đâu?</p>
+
+<h2 id="bien-trang-thai">Biến trạng thái</h2>
+
+<p>Xét bài toán: đếm xem trong một danh sách có bao nhiêu số chẵn. Con người liếc mắt một cái là xong. Máy thì phải duyệt từng phần tử, và sau khi duyệt xong phần tử thứ $k$, nó phải <b>còn nhớ</b> đã gặp bao nhiêu số chẵn tính đến lúc đó — nếu không, phần tử thứ $k+1$ chẳng có gì để cộng vào.</p>
+
+<div class="box def"><div class="box-h">Định nghĩa · Biến đếm</div>
+<p>Một <b>biến đếm</b> (counter) là một ô nhớ giữ một số nguyên, khởi tạo về $0$, và được cập nhật bằng chính giá trị cũ cộng thêm $1$ mỗi khi một sự kiện cần đếm xảy ra. Nó là dạng đơn giản nhất của một khái niệm rộng hơn: <b>biến trạng thái</b> — một ô nhớ sống lâu hơn một bước tính toán, mang theo "chuyện đã xảy ra tới giờ".</p></div>
+
+<pre><code>let dem = 0;
+for (const x of danhSach) {
+  if (x % 2 === 0) {
+    dem = dem + 1;
+  }
+}
+// dem bây giờ là số lượng số chẵn</code></pre>
+
+<div class="box intu"><div class="box-h">Đọc dòng <code>dem = dem + 1</code> cho đúng</div>
+<p>Đây <b>không</b> phải một phương trình toán học — không có số nào thoả $x = x+1$. Đó là một <b>lệnh gán</b>: tính vế phải bằng giá trị <i>hiện tại</i> của <code>dem</code>, rồi ghi đè lên ô nhớ <code>dem</code>. Trước lệnh, <code>dem</code> mang "số đã đếm tới phần tử trước"; ngay sau lệnh, cùng ô nhớ ấy mang "số đã đếm tới phần tử này". Biến đếm không phải một dãy số — nó là <b>một ô nhớ duy nhất</b>, bị ghi đè liên tục.</p></div>
+
+<h2 id="khoi-tao">Khởi tạo sai là lỗi hay gặp nhất</h2>
+
+<p>Vì <code>dem = dem + 1</code> đọc <code>dem</code> trước khi ghi, dòng đó chạy được chỉ vì có một dòng <i>trước vòng lặp</i> đã đặt <code>dem = 0</code>. Bỏ dòng đó thì lệnh gán vẫn có <b>ngữ pháp</b> hợp lệ — nó chỉ đọc phải một ô nhớ trống hoặc mang giá trị sót lại từ lần chạy trước.</p>
+
+<div class="box pitfall"><div class="box-h">Quên khởi tạo, hoặc khởi tạo bên trong vòng lặp</div>
+<p>Đặt <code>let dem = 0;</code> <b>bên trong</b> thân vòng lặp thì mỗi lần lặp lại đặt nó về $0$ trước khi cộng $1$ — kết quả cuối luôn là $1$ hoặc $0$, không bao giờ lớn hơn. Đây không phải lỗi cú pháp, trình biên dịch không báo gì cả; chỉ có kết quả sai. Quy tắc: biến đếm khởi tạo <b>một lần</b>, ở <b>ngoài</b> vòng lặp nó được cập nhật.</p></div>
+
+<h2 id="bai-tap">Bài tập</h2>
+
+<div class="box ex"><div class="box-h">Bài 1 · Tìm chỗ sai · ★</div>
+<p>Đoạn mã sau định đếm số phần tử âm trong <code>danhSach</code>, nhưng luôn in ra <code>0</code> hoặc <code>1</code>:</p>
+<pre><code>for (const x of danhSach) {
+  let dem = 0;
+  if (x &lt; 0) {
+    dem = dem + 1;
+  }
+}
+console.log(dem);</code></pre>
+<p>Chỉ ra dòng sai và sửa lại cho đúng.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p>Có hai lỗi. Thứ nhất, <code>let dem = 0;</code> nằm <b>trong</b> thân vòng lặp nên bị đặt lại về $0$ ở mỗi lần lặp — đúng cái bẫy nêu ở hộp cảnh báo phía trên. Thứ hai, <code>console.log(dem)</code> nằm ngoài phạm vi khai báo <code>dem</code>, nên ở nhiều ngôn ngữ dòng này thậm chí không đọc được biến đó. Sửa: chuyển khai báo ra trước vòng lặp.</p>
+<pre><code>let dem = 0;
+for (const x of danhSach) {
+  if (x &lt; 0) {
+    dem = dem + 1;
+  }
+}
+console.log(dem);</code></pre>
+</div></details>
+</div>
+
+<div class="keyfacts"><div class="box-h">Chốt chương</div>
+<ul>
+<li>Một biến đếm là một ô nhớ, không phải một dãy số — nó bị <b>ghi đè</b>, không được thêm vào.</li>
+<li><code>dem = dem + 1</code> là lệnh gán: đọc giá trị cũ trước, ghi giá trị mới sau.</li>
+<li>Khởi tạo phải chạy đúng <b>một lần</b>, trước vòng lặp — đặt nó bên trong vòng lặp là lỗi hay gặp nhất, và không lỗi cú pháp nào bắt được nó.</li>
+<li>Chương 1.2 đổi nguồn sự kiện: thay vì duyệt một danh sách có sẵn, biến đếm sẽ cộng dồn theo <b>một cú bấm chuột</b> mỗi lần.</li>
+</ul></div>

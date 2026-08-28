@@ -1,0 +1,32 @@
+{
+  "id": "vi-du-hop-le",
+  "title": "Ví dụ hợp lệ: hai chương ngắn",
+  "description": "Gói mẫu tối thiểu, không mang JavaScript, dùng để chứng minh bộ luật course-format chấp nhận một gói v2 thật — không phải ngữ liệu bài học.",
+  "lang": "vi",
+  "version": "1.0.0",
+  "runtime": "^1",
+  "license": "CC-BY-4.0",
+  "authors": [{ "name": "tuhoc" }],
+  "generatedBy": "human",
+  "parts": [
+    {
+      "title": "Phần I · Số nguyên tố",
+      "chapters": [
+        {
+          "id": "c1",
+          "num": "1.1",
+          "title": "Số nguyên tố là gì",
+          "short": "Định nghĩa",
+          "file": "chapters/c1.html"
+        },
+        {
+          "id": "c2",
+          "num": "1.2",
+          "title": "Sàng Eratosthenes",
+          "short": "Cách tìm",
+          "file": "chapters/c2.html"
+        }
+      ]
+    }
+  ]
+}

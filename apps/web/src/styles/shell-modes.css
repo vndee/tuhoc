@@ -20,26 +20,10 @@
   grid-template-columns: 1fr;
 }
 
-/* Tài khoản ở ĐÁY thanh bên, tách khỏi ba nơi chốn.
- *
- * Không có quy tắc này thì "Cài đặt" đọc như MỤC THỨ TƯ ngang hàng với Học
- * tiếp · Khoá học · Tiến độ — đúng thứ bậc phẳng mà cả cuộc thiết kế lại này
- * tồn tại để gỡ. Nó là một loại khác, nên nó phải trông khác. */
-.sb-account {
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid var(--rule);
-}
-
-.sb-account .sb-account-link {
-  color: var(--ink-3);
-  font-size: 13px;
-}
-
-.sb-account .sb-account-link:hover,
-.sb-account .sb-account-link[aria-current='page'] {
-  color: var(--ink);
-}
+/* `.sb-account` ĐÃ RỜI KHỎI ĐÂY cùng với điều hướng chung — tài khoản nay là
+   `AccountChip` ở mép phải thanh trên (`shell/TopNav.tsx`). Điều kiện mà chú
+   thích cũ đặt ra vẫn được giữ: `/settings` tới được bằng ĐÚNG MỘT cú bấm, và
+   nó vẫn không đứng ngang hàng với ba nơi chốn. */
 
 /* Ba nút của chương: thuộc tính `hidden` KHÔNG đủ.
  *
@@ -57,31 +41,138 @@
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   THU GỌN THANH ĐIỀU HƯỚNG — chỉ trên màn rộng
+   THANH BÊN CÓ MỘT NGHĨA: BẠN ĐANG Ở TRONG MỘT KHOÁ
    ════════════════════════════════════════════════════════════════════════════
 
-   Dưới 981px `#sidebar` đã là một ngăn kéo trượt (`reader.css`:
-   `@media (max-width:980px)` đặt `position:fixed` + `translateX(-100%)`, và
-   `body.nav-open` kéo nó ra). Thu gọn ở đó là thu gọn một thứ vốn đã ẩn — tệ
-   hơn, `display:none` sẽ làm ngăn kéo không mở được nữa. Nên MỌI luật ở đây
-   treo dưới `min-width: 981px`, khít với ngưỡng của reader.css.
+   Người dùng yêu cầu: "navigation không nên nằm cùng sidebar với mục lục, chỗ
+   đó nên cho mục lục thôi." Điều hướng đã lên thanh trên (`shell/TopNav.tsx`),
+   nên ngoài một khoá thanh bên KHÔNG CÒN GÌ ĐỂ MANG.
 
-   Ngưỡng này cũng là ngưỡng mà `useSidebarCollapse.WIDE_QUERY` hỏi lúc bấm
-   nút. Hai con số phải bằng nhau; lệch một luật là có một dải bề rộng mà nút
-   bấm không làm gì cả. */
-@media (min-width: 981px) {
-  #app.nav-collapsed #sidebar {
+   `<Sidebar>` trả `null` ở đó, nhưng chỉ thế thì `<aside id="sidebar">` vẫn là
+   một flex item rộng `--sidebar-w` (306px) — reader.css đặt `flex:0 0` lên nó.
+   Luật này mới là thứ thu cột về 0, và nó phải ở đây chứ không ở reader.css:
+   tệp kia là bản port từng byte của v1 và có cổng riêng canh. */
+#app:not(.in-course) #sidebar {
+  display: none;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   THANH TRÊN — nay mang nhãn hiệu và điều hướng
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* 50px là chiều cao của một thanh chỉ chứa nút 30px. Nó nay chứa cả nhãn hiệu
+   28px lẫn ba mục điều hướng cao 36px, nên 50px sẽ bóp chúng dính vào hai mép.
+   64px là con số trên bản dựng đã duyệt.
+
+   Lề ngang là một BIẾN chứ không phải một con số viết thẳng: nút mục lục của
+   chế độ đọc nổi ở máng trái và phải xếp thẳng cột với `Thoát` trên thanh này
+   (`reader-layout.css`). Hai chỗ chép tay cùng một con số là hai chỗ sẽ lệch
+   nhau ở lần sửa sau. */
+#app {
+  --topbar-pad-x: 16px;
+}
+
+#topbar {
+  height: 64px;
+  padding: 0 var(--topbar-pad-x);
+  gap: 10px;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   ĐẦU THANH BÊN — mục lục tự khai nó là mục lục
+   ════════════════════════════════════════════════════════════════════════════ */
+
+.sb-eyebrow {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* `.sb-title` đổi VAI: nó từng là tên app đứng cạnh mark, nay là tên KHOÁ.
+   Bỏ `display:flex` của reader.css vì không còn mark nào để xếp cạnh, và cho
+   nó xuống dòng được — tên khoá dài hơn một từ "Tự học" rất nhiều. */
+#sidebar .sb-title {
+  display: block;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.sb-prog-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.sb-prog-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--grid);
+  overflow: hidden;
+}
+
+.sb-prog-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-brand-600);
+  transition: width 0.2s ease;
+}
+
+.sb-prog-count {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── MÀN HẸP: điều hướng xuống hàng riêng ────────────────────────────────────
+   Đo được ở 375px: logo 28 + ba mục ~270 + nhóm điều khiển bên phải ~200 ≈
+   520px trên một thanh 375px. Trước vòng này màn hẹp không có bài toán ấy —
+   điều hướng nằm trong ngăn kéo, và ngăn kéo thì cao bao nhiêu cũng được.
+
+   `e2e/s1.spec.ts` §5 bắt được: bài đối chứng màn hẹp bấm "Khoá học" ở 375px
+   và HẾT GIỜ, vì liên kết bị đẩy ra ngoài thanh.
+
+   Cho `#topbar` xuống dòng và cho `.tn-nav` chiếm trọn hàng dưới. Chiều cao
+   thành `auto` — thanh trên ở màn hẹp cao hai hàng, và đó là đánh đổi đúng:
+   ba đích luôn thấy được, thay vì một cái thứ tư phải bấm mới ra. */
+@media (max-width: 980px) {
+  #topbar {
+    height: auto;
+    min-height: 56px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    row-gap: 6px;
+  }
+
+  #app:not(.reading) .tn-nav {
+    order: 10;
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  /* Chữ "Tự học" nhường chỗ cho mark: ở hàng trên, mark + nhóm điều khiển bên
+     phải đã kín. Mark một mình vẫn là nhãn hiệu; hai chữ bị cắt ngang thì
+     không. */
+  .tn-wordmark {
     display: none;
   }
+}
 
-  /* `#menu-btn` là `display:none` ở reader.css ngoài màn hẹp. Nó nay là điều
-     khiển thu gọn nên phải thấy được ở màn rộng — trừ chế độ đọc, nơi thanh
-     bên không tồn tại và nút mục lục ngay bên cạnh mới là thứ mở ra một mục
-     lục (luật `#app.reading #menu-btn` ở trên vẫn thắng nhờ `!important`).
-
-     Hai id ở bộ chọn này (`#app` + `#menu-btn`) thắng một id của reader.css,
-     nên không cần `!important` ở đây. */
-  #app:not(.reading) #menu-btn {
-    display: inline-flex;
-  }
+/* `#menu-btn` NGOÀI một khoá, ở mọi khổ màn.
+   `reader.css` cho nó hiện dưới 981px vì ở đó nó mở ngăn kéo. Ngăn kéo ấy là
+   `#sidebar`, và ngoài một khoá `#sidebar` không tồn tại — nên nút mở ra một
+   thứ rỗng. Từ 981px trở lên `reader.css` đã tự ẩn nó, và nay KHÔNG còn luật
+   nào bật lại: thu gọn-bền đã bị gỡ, xem `shell/TopNav.tsx`. */
+#app:not(.in-course) #menu-btn {
+  display: none !important;
 }

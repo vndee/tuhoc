@@ -67,7 +67,7 @@ function renderAt(path: string) {
 
 describe('Reader', () => {
   beforeEach(() => {
-    server.use(http.get('/courses/demo/manifest.json', () => HttpResponse.json(manifest())));
+    server.use(http.get('/courses/demo', () => HttpResponse.json(manifest())));
   });
 
   it('resolves the middle chapter with prev/next from adjacent parts respected as manifest order', async () => {
@@ -105,7 +105,7 @@ describe('Reader', () => {
   });
 
   it('shows a Vietnamese message when the manifest fails to load', async () => {
-    server.use(http.get('/courses/demo/manifest.json', () => new HttpResponse(null, { status: 500 })));
+    server.use(http.get('/courses/demo', () => new HttpResponse(null, { status: 500 })));
     renderAt('/c/demo/c1');
 
     expect(await screen.findByText(/không tải được/i)).toBeInTheDocument();

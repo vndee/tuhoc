@@ -12,9 +12,12 @@
  *
  * No hint may restate the rule ("bỏ thẻ script vì thẻ script bị cấm"). Each one
  * has to name the next action, and where a rule has a legitimate way out —
- * `tier: "interactive"` for the five JavaScript rules — the hint says so,
- * because a contributor who does not know that exists will assume the platform
- * simply cannot host their course.
+ * a widget, `widgets/<name>/index.html`, for the six JavaScript-related rules —
+ * the hint says so, because a contributor who does not know that exists will
+ * assume the platform simply cannot host their course. `tier: "interactive"`
+ * was that escape hatch under format v1; format v2 refuses the field outright
+ * (`TIER_REMOVED`, below) and a widget is the only door left, so no hint may
+ * name `tier` as something to set.
  */
 
 import type { Finding, FindingCode } from './course-format.ts';
@@ -41,18 +44,24 @@ export const FIX_HINTS: Record<FindingCode, string> = {
   MANIFEST_PARSE:
     'manifest.json không phải JSON hợp lệ. Thường là dấu phẩy thừa ở cuối danh sách hoặc thiếu dấu ngoặc kép.',
   // Longest hint in the table on purpose: this is the code a v1 manifest hits,
-  // it hits it four times at once, and "sửa trường mà pointer chỉ tới" alone
-  // would leave a contributor staring at four identical paragraphs. The four
+  // it hits it three times at once, and "sửa trường mà pointer chỉ tới" alone
+  // would leave a contributor staring at three identical paragraphs. The three
   // fields named here are exactly the ones v2 added — measured against a real
-  // v1 package, which fails on all four and nothing else.
+  // v1 package, which fails on all three and nothing else. `tier` is NOT one
+  // of them: v2 does not require it, v2 REFUSES it outright (`TIER_REMOVED`,
+  // below), so it has no place in a list of values to fill in here.
   MANIFEST_FIELD:
     'Sửa đúng trường mà JSON pointer ở dòng "vị trí" chỉ tới.\n' +
-    'Bốn trường v2 hay thiếu nhất, kèm ví dụ giá trị hợp lệ:\n' +
-    '  "tier": "content"            (hoặc "interactive" nếu course cần JavaScript)\n' +
+    'Ba trường v2 hay thiếu nhất, kèm ví dụ giá trị hợp lệ:\n' +
     '  "license": "CC-BY-4.0"       (giấy phép bạn phát hành course)\n' +
     '  "generatedBy": "human"       (hoặc "ai", "mixed" — phải trung thực)\n' +
     '  "authors": [{ "name": "Tên bạn" }]\n' +
     'Mô tả đầy đủ từng trường: docs/course-format.md.',
+  // format v2 xoá hẳn khái niệm "hạng" — không còn "content" lẫn "interactive"
+  // để chọn. Hint này CHỈ nói xoá trường, không nói đổi giá trị: xem
+  // WIDGET_* bên dưới cho đường thay thế của phần tương tác.
+  TIER_REMOVED:
+    'Xoá hẳn trường "tier" khỏi manifest.json, dù nó đang mang giá trị gì. Định dạng mới không còn khái niệm "hạng" — mọi course đều là nội dung tĩnh; phần cần chạy mã (đếm điểm, vẽ biểu đồ tương tác…) tách ra thành widget riêng dưới widgets/<tên>/index.html. Xem docs/course-format.md §4.',
   SEMVER: 'Trường "version" phải là semver ba số, ví dụ "1.0.0" hoặc "0.2.1-beta.1".',
   RUNTIME_RANGE:
     'Trường "runtime" chỉ nhận dải caret 1–3 số, ví dụ "^1", "^1.2", "^1.2.3". Không dùng ">=", "||" hay "x".',
@@ -61,19 +70,38 @@ export const FIX_HINTS: Record<FindingCode, string> = {
   CHAPTER_FILE_MISSING:
     'manifest.json trỏ tới một tệp không có trong thư mục. Kiểm tra chính tả và nhớ rằng đường dẫn tính từ gốc gói (ví dụ "chapters/c1.html"), phân biệt hoa thường.',
   SCRIPT_TAG:
-    'Bỏ thẻ script khỏi tệp này. Nếu course thật sự cần JavaScript, đổi "tier" trong manifest.json thành "interactive" — đổi lại, gói hạng interactive phải chờ người duyệt tay ở registry thay vì merge gần như tự động.',
+    'Bỏ thẻ script khỏi tệp này. Nếu course thật sự cần JavaScript, chuyển đoạn mã đó vào widgets/<tên>/index.html — widget là nơi DUY NHẤT một gói được phép mang mã chạy được, và nó vẫn phải chờ người duyệt tay ở registry thay vì merge gần như tự động.',
   EVENT_HANDLER_ATTR:
-    'Bỏ thuộc tính on... (onclick, onerror, ...) khỏi thẻ này — đây là luật DUY NHẤT thật sự ngăn mã chạy khi trình đọc nạp chương bằng innerHTML. Cần tương tác thì chuyển sang "tier": "interactive".',
+    'Bỏ thuộc tính on... (onclick, onerror, ...) khỏi thẻ này — đây là luật DUY NHẤT thật sự ngăn mã chạy khi trình đọc nạp chương bằng innerHTML. Cần tương tác thì chuyển mã đó vào widgets/<tên>/index.html.',
   JAVASCRIPT_URL:
-    'Thay URL "javascript:" bằng một liên kết thật, hoặc bỏ hẳn liên kết đó. Cần chạy mã thì chuyển sang "tier": "interactive".',
+    'Thay URL "javascript:" bằng một liên kết thật, hoặc bỏ hẳn liên kết đó. Cần chạy mã thì chuyển đoạn đó vào widgets/<tên>/index.html.',
   EMBEDDED_FRAME:
-    'Bỏ iframe/object/embed/frame — nội dung nhúng từ nơi khác không kiểm định được nên hạng "content" không nhận. Nhúng ảnh, hoặc chuyển sang "tier": "interactive".',
+    'Bỏ iframe/object/embed/frame — nội dung nhúng từ nơi khác không kiểm định được nên không chương nào được mang nó. Nhúng ảnh thay vào đó, hoặc nếu cần thứ chạy được, viết nó thành widgets/<tên>/index.html.',
   FORM_TAG:
-    'Bỏ thẻ form. Hạng "content" là tài liệu đọc, không gửi dữ liệu đi đâu. Cần thu thập câu trả lời thì chuyển sang "tier": "interactive".',
+    'Bỏ thẻ form. Một chương là tài liệu đọc, không gửi dữ liệu đi đâu. Cần thu thập câu trả lời thì viết một widgets/<tên>/index.html — widget được phép mang cả script lẫn form.',
   JS_FILE_IN_PACKAGE:
-    'Xoá tệp JavaScript này khỏi gói, hoặc đổi "tier" trong manifest.json thành "interactive" nếu course thật sự cần nó.',
+    'Xoá tệp JavaScript rời này khỏi gói. Nếu course thật sự cần nó, chuyển nội dung vào widgets/<tên>/index.html — một tệp JS đứng riêng ngoài widgets/ không còn đường chạy nào trong định dạng v2.',
   TAG_ATTR_FLOOD:
     'Một thẻ đơn lẻ trong tệp này mang quá 1024 thuộc tính. Gần như chắc chắn đây không phải HTML thật — hay gặp nhất là JavaScript đã minify bị đặt nhầm đuôi .html.',
+  // Tám hint dưới đây là của Task 2 (luật widget). KHÔNG nhắc "tier" — hạng đã
+  // bị xoá (xem TIER_REMOVED ở trên); phần tương tác nay LUÔN là widget, không
+  // còn hai đường để chọn.
+  WIDGET_TOO_LARGE:
+    'widgets/<tên>/index.html của widget này nặng hơn mức cho phép. Cắt bớt nội dung, viết CSS/JS gọn hơn (không minify — xem WIDGET_LINE_TOO_LONG), hoặc bỏ hẳn phần nặng (ảnh, dữ liệu lớn): widget không tải được gì từ mạng nên không có chỗ nào để "chuyển ra ngoài" mà vẫn dùng được.',
+  WIDGET_LINE_TOO_LONG:
+    'Một dòng trong widgets/<tên>/index.html dài hơn mức cho phép — dấu hiệu quen thuộc của mã đã bị minify hoặc dồn hết vào một dòng. Viết lại thành nhiều dòng bình thường, thụt lề rõ ràng: người duyệt phải đọc được mã này bằng mắt, không chỉ máy chạy được.',
+  WIDGET_BAD_NAME:
+    'Tên thư mục widget không hợp lệ. Chỉ dùng chữ thường a-z, số 0-9 và dấu gạch ngang, bắt đầu bằng chữ hoặc số, tối đa 64 ký tự — ví dụ "widgets/dem-so/index.html", không phải "widgets/Dem_So/index.html" hay "widgets/_demo/index.html".',
+  WIDGET_FORBIDDEN_API:
+    'widgets/<tên>/index.html gọi document.cookie, localStorage, sessionStorage hoặc indexedDB. Widget chạy trong iframe sandbox không có cookie hay bộ nhớ trình duyệt — gọi những API này chỉ ném lỗi lúc chạy, không phải lúc "vị trí" chỉ ra. Bỏ hẳn đoạn mã đó; cần nhớ trạng thái thì giữ nó trong một biến JavaScript sống trong phiên đọc.',
+  WIDGET_EXTERNAL_URL:
+    'widgets/<tên>/index.html có một địa chỉ http:// hoặc https:// — kể cả khi nó chỉ nằm trong chú thích. Widget phải tự chứa hoàn toàn, không tải gì từ mạng. Xoá đường dẫn đó; nhúng trực tiếp nội dung cần thiết vào widget nếu bản quyền cho phép, hoặc bỏ tính năng đó.',
+  WIDGET_EXTRA_FILE:
+    'Một widget chỉ được có đúng một tệp: widgets/<tên>/index.html. Gộp nội dung của tệp thừa ("vị trí" ở trên) — CSS, JS, ảnh nhỏ — trực tiếp vào index.html (inline <style>/<script>, hoặc data: URL cho ảnh), rồi xoá tệp đó đi.',
+  WIDGET_MISSING:
+    'Một chương dùng <div data-widget="…"> trỏ tới một widget mà gói không có (hoặc thư mục widget đó không có index.html). Kiểm tra tên trong data-widget khớp đúng tên thư mục widgets/<tên>/, hoặc thêm widgets/<tên>/index.html còn thiếu vào gói.',
+  WIDGET_ORPHAN:
+    'Gói mang một widgets/<tên>/index.html mà không chương nào tham chiếu qua data-widget. Xoá cả thư mục widget này nếu không còn dùng, hoặc thêm <div data-widget="<tên>"></div> vào chương cần nó.',
 };
 
 /** Label for a finding's `path`, which may be a file, a JSON pointer, or `.` for the package as a whole. */
@@ -83,7 +111,25 @@ function locationLabel(path: string): string {
 }
 
 /**
- * The full report, as lines.
+ * The finding-by-finding body of a validation report, as lines — every
+ * numbered item, nothing before the first one and nothing after the last.
+ *
+ * Two callers share this: `pack` (a directory checked locally against
+ * `validatePackage`) and `publish` (a server's 400 response, produced by the
+ * SAME rule set re-run on the far end — see `publish.ts`). Both hand this
+ * function the identical `Finding[]` shape and get the identical rendering,
+ * which is the whole point of sharing it: an author should not have to learn
+ * two report formats for the same information depending on which command
+ * caught the problem.
+ *
+ * What is deliberately NOT here is the header ("N vấn đề trong …") and the
+ * footer ("Không có tệp .zip nào được ghi…" / "Chưa gói nào được lưu…") —
+ * those differ between the two callers because they are stating two different
+ * true things ("nothing was written to disk" vs. "nothing was stored on the
+ * server"), and a shared function that guessed at one wrong sentence would not
+ * be reuse, it would be a borrowed sentence that happens to compile. Each
+ * caller writes its own two lines around this function's output; see
+ * `pack.ts` and `publish.ts` for the two shapes.
  *
  * Every finding is printed — `validatePackage` returns all of them precisely so
  * a contributor can fix the package in one pass instead of one rebuild at a
@@ -93,19 +139,15 @@ function locationLabel(path: string): string {
  * (so they know WHAT about it) — plus the hint, which says what to do next.
  *
  * The hint, and ONLY the hint, is printed once per code rather than once per
- * finding. Measured on a real v1 package: it produces exactly four
- * `MANIFEST_FIELD` findings, and repeating the seven-line hint four times
- * made the report worse than the bare codes it replaced — the reader stops
- * reading a wall that repeats itself, which is the exact failure this whole
- * command exists to avoid. `vị trí` and `vấn đề` are still printed in full for
- * every finding, because those are what differ.
+ * finding. Measured on a real v1 package: it produces exactly three
+ * `MANIFEST_FIELD` findings, and repeating a multi-line hint three times made
+ * the report worse than the bare codes it replaced — the reader stops reading
+ * a wall that repeats itself, which is the exact failure this whole command
+ * exists to avoid. `vị trí` and `vấn đề` are still printed in full for every
+ * finding, because those are what differ.
  */
-export function renderFindings(dir: string, findings: readonly Finding[], self: string): string[] {
+export function renderFindings(findings: readonly Finding[], self: string): string[] {
   const lines: string[] = [];
-  const n = findings.length;
-  lines.push('');
-  lines.push(`tuhoc pack: gói KHÔNG hợp lệ — ${n} vấn đề trong ${dir}`);
-  lines.push('');
 
   /** code → the 1-based number of the finding whose entry carries the full hint. */
   const hintShownAt = new Map<string, number>();
@@ -138,6 +180,5 @@ export function renderFindings(dir: string, findings: readonly Finding[], self: 
     lines.push('');
   });
 
-  lines.push('Không có tệp .zip nào được ghi. Giải thích từng mã lỗi: docs/course-format.md');
   return lines;
 }

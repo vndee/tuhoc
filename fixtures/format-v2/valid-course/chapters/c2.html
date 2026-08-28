@@ -1,0 +1,52 @@
+<div class="ch-eyebrow">Phần I · Biến đếm — Chương 1.2</div>
+<h1 class="ch-title">Bộ đếm phản ứng với một sự kiện</h1>
+<p class="ch-lede">Chương 1.1 đếm bằng cách duyệt một danh sách đã có sẵn — mọi phần tử đều ở đó ngay từ đầu. Nhưng phần lớn các bộ đếm trong đời thực đếm những thứ <b>chưa xảy ra khi chương trình bắt đầu chạy</b>: số lượt bấm, số tin nhắn đến, số lần một cảm biến kêu. Chương này viết lại đúng biến đếm ấy, chỉ đổi nguồn sự kiện.</p>
+
+<h2 id="tu-vong-lap-den-su-kien">Từ vòng lặp đến sự kiện</h2>
+
+<p>Không có <code>for</code> nào duyệt được "các cú bấm chuột trong tương lai" — chúng chưa tồn tại. Thay vào đó, ta đăng ký một hàm sẽ được gọi <b>mỗi khi</b> sự kiện xảy ra, và để hàm đó tự cập nhật biến đếm. Cấu trúc dữ liệu thay đổi hoàn toàn, nhưng lệnh gán ở tâm điểm thì y hệt chương trước.</p>
+
+<div class="box thm"><div class="box-h">Cùng một biến đếm, hai nguồn sự kiện</div>
+<p>Gọi $n$ là biến đếm. Ở Chương 1.1, $n$ được cập nhật bởi thân vòng lặp, chạy đúng một lần cho mỗi phần tử của một danh sách <i>đã biết trước độ dài</i>. Ở đây, $n$ được cập nhật bởi một <b>hàm lắng nghe</b> (event handler), chạy đúng một lần cho mỗi sự kiện, trên một dãy sự kiện <i>không biết trước độ dài</i> — có thể là $0$, có thể chạy mãi. Cả hai đều thoả đúng ba nghĩa vụ của một biến đếm: khởi tạo một lần, đọc-rồi-ghi mỗi lần cập nhật, và không bao giờ tự đặt lại giữa chừng.</p></div>
+
+<pre><code>let n = 0;
+nut.addEventListener('click', () =&gt; {
+  n = n + 1;
+  nhan.textContent = String(n);
+});</code></pre>
+
+<div class="box intu"><div class="box-h">Vì sao <code>n</code> phải khai báo BÊN NGOÀI hàm lắng nghe</div>
+<p>Hàm truyền cho <code>addEventListener</code> được gọi lại nhiều lần — mỗi lần một lệnh gọi hàm <b>mới</b>, với các biến cục bộ <b>mới</b>. Nếu <code>let n = 0;</code> nằm bên trong hàm đó, mỗi cú bấm lại tạo một <code>n</code> mới toanh, cộng $1$ vào nó, rồi vứt đi — đúng cái bẫy "khởi tạo trong vòng lặp" của Chương 1.1, chỉ đổi tên "vòng lặp" thành "hàm lắng nghe". Biến đếm phải sống <b>ngoài</b> và <b>lâu hơn</b> từng lần gọi riêng lẻ.</p></div>
+
+<h2 id="widget">Xem nó chạy</h2>
+
+<p>Khối dưới đây là đúng ba dòng mã ở trên, chạy thật trong khung cách ly riêng của nó. Bấm nút vài lần và quan sát: con số hiển thị chính là biến <code>n</code>, và nó chỉ tăng khi có một sự kiện <code>click</code> thật xảy ra — không có vòng lặp nào đang chạy nền để đếm hộ nó.</p>
+
+<div data-widget="dem-so"></div>
+
+<div class="box warn"><div class="box-h">Widget này không "nhìn thấy" phần còn lại của trang</div>
+<p>Widget chạy trong một khung cô lập, không chia sẻ bộ nhớ hay phiên đăng nhập với trang chứa nó — cùng lý do một gói course không được phép tự mang thẻ script chạy thẳng trong trang. Đổi lại, nó được phép làm đúng một việc trang không cho phép: chạy JavaScript thật, để minh hoạ chính xác đoạn mã phía trên chứ không phải một hình vẽ giả lập nó.</p></div>
+
+<h2 id="bai-tap">Bài tập</h2>
+
+<div class="box ex"><div class="box-h">Bài 1 · Đếm ngược · ★★</div>
+<p>Viết lại hàm lắng nghe ở trên thành một bộ đếm chỉ giảm, dừng lại ở $0$ và không xuống âm — bấm khi <code>n</code> đã bằng $0$ thì không có gì xảy ra.</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<pre><code>let n = 10;
+nhan.textContent = String(n);
+nut.addEventListener('click', () =&gt; {
+  if (n &gt; 0) {
+    n = n - 1;
+    nhan.textContent = String(n);
+  }
+});</code></pre>
+<p>Điểm khác duy nhất so với bộ đếm tăng: một điều kiện bảo vệ <code>n &gt; 0</code> trước khi ghi. Không có nó, <code>n</code> vẫn giảm đều đặn xuống âm — về mặt kỹ thuật đó vẫn là "đọc-rồi-ghi" hợp lệ, chỉ là không còn khớp với đề bài "không xuống âm".</p>
+</div></details>
+</div>
+
+<div class="keyfacts"><div class="box-h">Chốt chương</div>
+<ul>
+<li>Một hàm lắng nghe sự kiện thay thế thân vòng lặp; biến đếm và lệnh <code>n = n + 1</code> không đổi.</li>
+<li><code>n</code> phải khai báo NGOÀI hàm lắng nghe — bên trong thì mỗi lần gọi lại tạo một biến mới, y hệt bẫy khởi tạo-trong-vòng-lặp của Chương 1.1.</li>
+<li>Widget minh hoạ chạy JavaScript thật trong một khung cô lập — đây là cách duy nhất định dạng gói cho phép mã chạy được nhìn thấy chuyển động.</li>
+</ul></div>

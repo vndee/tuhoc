@@ -1,0 +1,25 @@
+{
+  "id": "widget-external-url",
+  "title": "Case hostile: WIDGET_EXTERNAL_URL",
+  "description": "Gói tối thiểu mang đúng một vi phạm: widget chứa một URL http(s) ra mạng ngoài.",
+  "lang": "vi",
+  "version": "1.0.0",
+  "runtime": "^1",
+  "license": "CC0-1.0",
+  "authors": [{ "name": "tuhoc course-format fixtures" }],
+  "generatedBy": "ai",
+  "parts": [
+    {
+      "title": "Phần kiểm thử",
+      "chapters": [
+        {
+          "id": "c1",
+          "num": "1",
+          "title": "Chương kiểm thử",
+          "short": "Chương kiểm thử",
+          "file": "chapters/c1.html"
+        }
+      ]
+    }
+  ]
+}

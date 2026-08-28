@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { OwnedCourse } from '../course/owned';
 import type { AnnotationRow, ProgressRow } from '../db/local';
 import { pickFocusCourse, pickLastStudiedCourseId, pickRecentNotes } from './recent';
 
@@ -17,25 +16,6 @@ function annotation(id: string, updatedAt: string, deletedAt: string | null = nu
     createdAt: updatedAt,
     updatedAt,
     deletedAt,
-  };
-}
-
-function owned(courseId: string, held: boolean): OwnedCourse {
-  return {
-    courseId,
-    catalog: undefined,
-    held: held
-      ? {
-          courseId,
-          version: '1.0.0',
-          pinnedAt: '2026-08-01T00:00:00Z',
-          title: courseId,
-          lang: 'vi',
-          tier: 'content',
-          registryId: undefined,
-        }
-      : undefined,
-    studied: false,
   };
 }
 
@@ -76,19 +56,20 @@ describe('pickLastStudiedCourseId', () => {
 });
 
 describe('pickFocusCourse', () => {
-  it('khoá vừa đọc gần nhất thắng mọi thứ khác — kể cả khi bốn nguồn kia chưa trả lời', () => {
-    // Một hàng progress TỰ NÓ đã là quyền sở hữu (S1-F31, nguồn 3), nên chờ
-    // `GET /courses` chỉ làm chậm màn hình đầu tiên mà không đổi câu trả lời.
+  it('khoá vừa đọc gần nhất thắng mọi thứ khác — kể cả khi courseIds rỗng', () => {
+    // Một hàng progress TỰ NÓ đã là quyền sở hữu, nên chờ một danh sách
+    // course khác chỉ làm chậm màn hình đầu tiên mà không đổi câu trả lời.
     expect(pickFocusCourse([], 'dang-doc')).toBe('dang-doc');
-    expect(pickFocusCourse([owned('khac', true)], 'dang-doc')).toBe('dang-doc');
+    expect(pickFocusCourse(['khac'], 'dang-doc')).toBe('dang-doc');
   });
 
-  it('chưa đọc gì thì ưu tiên khoá thiết bị này ĐANG GIỮ — nó mở được cả khi mất mạng', () => {
-    expect(pickFocusCourse([owned('a-khong-giu', false), owned('z-dang-giu', true)], null)).toBe('z-dang-giu');
-  });
+  // Bậc "khoá thiết bị này ĐANG GIỮ" đã rời đi cùng luồng import (Task 13):
+  // không còn "giữ" course nào theo nghĩa `db.packages` nữa, nên bài kiểm cũ
+  // canh bậc ấy (ưu tiên một course "held" giữa hai course "không held") đã
+  // xoá — không phải nới ra, mà là khái niệm nó canh không còn tồn tại.
 
-  it('không giữ khoá nào thì lấy khoá đầu tiên theo thứ tự đã sắp của unionOwnedCourses', () => {
-    expect(pickFocusCourse([owned('a', false), owned('b', false)], null)).toBe('a');
+  it('chưa đọc gì thì lấy khoá ĐẦU TIÊN của courseIds, theo thứ tự chỗ gọi đã sắp', () => {
+    expect(pickFocusCourse(['a', 'b'], null)).toBe('a');
   });
 
   it('không có gì để tiếp tục ⇒ undefined (chỗ gọi phân biệt với "chưa biết" bằng settled)', () => {

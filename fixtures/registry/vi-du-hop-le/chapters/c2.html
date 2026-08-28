@@ -1,0 +1,21 @@
+<div class="ch-eyebrow">Phần I · Số nguyên tố — Chương 1.2</div>
+<h1 class="ch-title">Sàng Eratosthenes</h1>
+<p class="ch-lede">Muốn liệt kê mọi số nguyên tố không vượt quá $N$, cách chậm là kiểm tra từng số một. Sàng Eratosthenes làm nhanh hơn bằng cách loại bỏ theo bội số, một lượt cho mỗi số nguyên tố.</p>
+
+<h2 id="cach-lam">Cách làm</h2>
+<ol>
+<li>Viết ra mọi số từ 2 đến $N$.</li>
+<li>Lấy số nhỏ nhất chưa bị gạch — đó là số nguyên tố. Gạch mọi bội của nó (không gạch chính nó).</li>
+<li>Lặp lại bước 2 với số nhỏ nhất chưa bị gạch tiếp theo, cho tới khi vượt quá $\sqrt{N}$.</li>
+<li>Mọi số còn lại chưa bị gạch là số nguyên tố.</li>
+</ol>
+
+<p>Với $N = 30$: gạch bội của 2 (4, 6, 8, …), rồi bội của 3 (9, 15, 21, …), rồi bội của 5 (25). Vì $\sqrt{30} < 6$, không cần xét số nào từ 6 trở lên làm mốc gạch. Số còn lại: 2, 3, 5, 7, 11, 13, 17, 19, 23, 29.</p>
+
+<h2 id="bai-tap">Bài tập</h2>
+<div class="box ex"><div class="box-h">Bài 1 · ★★</div>
+<p>Vì sao bước 3 chỉ cần lặp tới $\sqrt{N}$ chứ không phải tới $N$?</p>
+<details class="deriv"><summary>Lời giải</summary><div class="deriv-body">
+<p>Nếu $n \le N$ là hợp số, nó có một ước $d$ với $d \le \sqrt{n}$ — vì nếu cả hai ước trong một cặp thừa số đều lớn hơn $\sqrt{n}$ thì tích của chúng đã lớn hơn $n$. Vậy $n$ chắc chắn đã bị gạch khi sàng xử lý ước $d \le \sqrt{n} \le \sqrt{N}$ đó, không cần đợi tới lượt của chính $n$.</p>
+</div></details>
+</div>

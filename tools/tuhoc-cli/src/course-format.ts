@@ -20,12 +20,26 @@
  */
 
 /**
- * Only what the CLI actually calls. `MANIFEST_PATH`, `MAX_UNCOMPRESSED_BYTES`,
- * `Manifest` and `ValidationResult` were re-exported here and used nowhere —
- * and `MAX_UNCOMPRESSED_BYTES` in particular is the constant a size check in
- * this CLI would need, sitting ready for someone to write the second copy of a
- * rule with. Re-export it on the day something here calls it.
+ * Only what the CLI actually calls. `MAX_UNCOMPRESSED_BYTES` and
+ * `ValidationResult` are re-exported here and used nowhere — `MAX_UNCOMPRESSED_BYTES`
+ * in particular is the constant a size check in this CLI would need, sitting
+ * ready for someone to write the second copy of a rule with. Re-export it on
+ * the day something here calls it.
+ *
+ * `MANIFEST_PATH`, `parseManifest` and `unpackZip` joined this list for
+ * `publish.ts`: reading the manifest's `id` out of an already-built zip (to
+ * use as the URL slug) is the identical question `pack.ts` and `zip.test.ts`
+ * already ask through these same functions, and a second reader for the same
+ * bytes is the second-copy risk this file's whole existence is meant to
+ * avoid.
  */
-export { FINDING_CODES, packZip, validatePackage } from '../../../packages/course-format/src/index.ts';
+export {
+  FINDING_CODES,
+  MANIFEST_PATH,
+  packZip,
+  parseManifest,
+  unpackZip,
+  validatePackage,
+} from '../../../packages/course-format/src/index.ts';
 
-export type { Finding, FindingCode } from '../../../packages/course-format/src/index.ts';
+export type { Finding, FindingCode, Manifest } from '../../../packages/course-format/src/index.ts';

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -216,11 +217,33 @@ type courseStat struct {
 	ChaptersDone int64   `json:"chaptersDone"`
 }
 
+// courseYearStat is one course's share of ONE calendar year, for the year
+// view of `/progress`. Separate from courseStat rather than a widened version
+// of it, and that is deliberate: courseStat.Minutes is a LIFETIME sum and
+// three tests plus the dashboard depend on it staying that way. Two numbers
+// with two different windows must not share one field name.
+type courseYearStat struct {
+	CourseID string  `json:"courseId"`
+	Minutes  float64 `json:"minutes"`
+	// Share is this course's fraction of the year's total minutes, 0..1.
+	// Computed here rather than in the browser so every client draws the same
+	// bar from the same rounding — and because the denominator (the year's
+	// total) is a number the client would otherwise have to re-derive.
+	Share float64 `json:"share"`
+}
+
 type statsResponse struct {
 	TotalMinutes float64      `json:"totalMinutes"`
 	StreakDays   int          `json:"streakDays"`
 	Days         []dayStat    `json:"days"`
 	Courses      []courseStat `json:"courses"`
+	// Years is every calendar year with at least one heartbeat, newest first,
+	// plus the current year even when it is empty — a year picker with nothing
+	// in it is worse than one showing "this year, nothing yet".
+	Years []int `json:"years"`
+	// YearCourses is populated ONLY when ?year= was given. Empty otherwise, so
+	// a caller that does not ask for a year pays nothing for this field.
+	YearCourses []courseYearStat `json:"yearCourses"`
 }
 
 // Stats handles GET /stats. It is mounted behind auth.Require, so
@@ -272,6 +295,11 @@ func (h *Handler) Stats(c *fiber.Ctx) error {
 		apilog.Internal(c, "stats.Stats/HeartbeatCourseCounts", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "stats failed"})
 	}
+	courseYearCounts, err := h.repo.HeartbeatCourseYearCounts(ctx, userID, icTZOffset)
+	if err != nil {
+		apilog.Internal(c, "stats.Stats/HeartbeatCourseYearCounts", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "stats failed"})
+	}
 	chaptersDone, err := h.repo.CompletedChaptersByCourse(ctx, userID)
 	if err != nil {
 		apilog.Internal(c, "stats.Stats/CompletedChaptersByCourse", err)
@@ -287,12 +315,12 @@ func (h *Handler) Stats(c *fiber.Ctx) error {
 
 	today := todayICT()
 
-	days := make([]dayStat, statsWindowDays)
-	for i := 0; i < statsWindowDays; i++ {
-		d := today.AddDate(0, 0, -(statsWindowDays - 1 - i))
-		key := d.Format(dateLayout)
-		days[i] = dayStat{Date: key, Minutes: minutesFromHeartbeats(byDay[key])}
-	}
+	// `?year=` is ADDITIVE: without it this endpoint answers exactly as it
+	// always has — 30 zero-filled days ending today — and stats_test.go's
+	// "days[] always has exactly 30 entries" case is what holds that line.
+	// With it, days[] covers that whole calendar year, which is what a
+	// GitHub-style year calendar needs and what 30 entries can never give.
+	days := buildDays(c.Query("year"), today, byDay)
 
 	streak := 0
 	if anchor, ok := streakAnchor(today, byDay); ok {
@@ -306,7 +334,113 @@ func (h *Handler) Stats(c *fiber.Ctx) error {
 		StreakDays:   streak,
 		Days:         days,
 		Courses:      buildCourseStats(courseCounts, chaptersDone),
+		Years:        buildYears(courseYearCounts, today.Year()),
+		YearCourses:  buildYearCourses(courseYearCounts, c.Query("year")),
 	})
+}
+
+// parseYear reads the `?year=` query parameter. It returns ok=false for an
+// absent, unparseable, or absurd value rather than an error: a bad year in a
+// URL is a caller mistake with an obvious safe answer (fall back to the
+// 30-day window), not something worth a 400 that would blank the page.
+//
+// The 2000..2100 fence is not decoration. Without it `?year=999999` builds a
+// days[] slice with 365 million entries before anything else gets a chance to
+// object.
+func parseYear(raw string) (int, bool) {
+	if raw == "" {
+		return 0, false
+	}
+	year, err := strconv.Atoi(raw)
+	if err != nil || year < 2000 || year > 2100 {
+		return 0, false
+	}
+	return year, true
+}
+
+// buildDays returns the days[] array: the whole of `year` when one was asked
+// for, else the trailing statsWindowDays ending today.
+//
+// A past year runs Jan 1 to Dec 31. The CURRENT year stops at today — a
+// calendar that paints the rest of December as "no activity" is reporting the
+// future as a failure.
+func buildDays(rawYear string, today time.Time, byDay map[string]int64) []dayStat {
+	year, ok := parseYear(rawYear)
+	if !ok {
+		days := make([]dayStat, statsWindowDays)
+		for i := 0; i < statsWindowDays; i++ {
+			d := today.AddDate(0, 0, -(statsWindowDays - 1 - i))
+			key := d.Format(dateLayout)
+			days[i] = dayStat{Date: key, Minutes: minutesFromHeartbeats(byDay[key])}
+		}
+		return days
+	}
+
+	start := time.Date(year, time.January, 1, 0, 0, 0, 0, icTZ)
+	end := time.Date(year, time.December, 31, 0, 0, 0, 0, icTZ)
+	if end.After(today) {
+		end = today
+	}
+
+	days := []dayStat{}
+	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+		key := d.Format(dateLayout)
+		days = append(days, dayStat{Date: key, Minutes: minutesFromHeartbeats(byDay[key])})
+	}
+	return days
+}
+
+// buildYears lists every year with activity, newest first, with the current
+// year always present even when empty — the picker must have something to
+// stand on for a brand-new account.
+func buildYears(counts []CourseYearCount, currentYear int) []int {
+	seen := map[int]bool{currentYear: true}
+	for _, row := range counts {
+		seen[row.Year] = true
+	}
+	years := make([]int, 0, len(seen))
+	for year := range seen {
+		years = append(years, year)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(years)))
+	return years
+}
+
+// buildYearCourses returns the courses studied in `rawYear` with each one's
+// share of that year's minutes. Empty (not nil-with-meaning) when no year was
+// asked for, so the JSON field is always an array and no client has to guard
+// against null.
+func buildYearCourses(counts []CourseYearCount, rawYear string) []courseYearStat {
+	out := []courseYearStat{}
+	year, ok := parseYear(rawYear)
+	if !ok {
+		return out
+	}
+
+	var total int64
+	for _, row := range counts {
+		if row.Year == year {
+			total += row.Count
+		}
+	}
+	if total == 0 {
+		return out
+	}
+
+	for _, row := range counts {
+		if row.Year != year {
+			continue
+		}
+		out = append(out, courseYearStat{
+			CourseID: row.CourseID,
+			Minutes:  minutesFromHeartbeats(row.Count),
+			Share:    float64(row.Count) / float64(total),
+		})
+	}
+	// Nhiều phút nhất lên đầu: danh sách này được đọc như một bảng xếp hạng,
+	// không phải một chỉ mục.
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Minutes > out[j].Minutes })
+	return out
 }
 
 // minutesFromHeartbeats converts a heartbeat count into minutes at the

@@ -1,0 +1,15 @@
+-- The per-user package store this table (0002_course_packages) backed is
+-- gone: courses are now published once, server-side, into
+-- published_courses and its siblings (0005_published_catalog), and read
+-- back by anyone with no account at all. There is no reader left who
+-- imports a private copy, so there is nothing left for this table to
+-- protect. See apps/api/internal/catalog (Task 9) for what replaced it,
+-- and that task's own commit message for the full reasoning (spec §0.3: a
+-- gate removed because it went red is a bug; a gate removed because the
+-- thing it guarded no longer exists is recorded here, once, deliberately).
+--
+-- No separate DROP INDEX first: DROP TABLE already drops every index
+-- defined on it (idx_course_packages_owner included), the same way it
+-- would drop a CHECK constraint or a PRIMARY KEY — an index is not a
+-- second object with a lifetime of its own once its table is gone.
+DROP TABLE course_packages;

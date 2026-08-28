@@ -18,7 +18,7 @@ import { announceSessionUser } from './sessionIdentity';
  *
  * Both call sites happened to be correct. That is not the point.
  * *"Two truth points, remember to call both"* is the exact SHAPE of the
- * cross-account leak fixed in `b708620`, one level up: there, a second store
+ * cross-account leak fixed in `97a6e02`, one level up: there, a second store
  * of user content (the note draft in `localStorage`) was opened that the
  * truth point had never heard of, and one reader's private words survived
  * into the next reader's session on a shared browser. `docs/carried-forward.md`

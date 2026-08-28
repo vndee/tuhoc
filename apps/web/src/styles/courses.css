@@ -1,34 +1,22 @@
 /* ══════════════════════════════════════════════════════════════════════════
  * MÀN KHOÁ HỌC — `/courses`
  *
- * Đặc tả: `docs/superpowers/specs/2026-08-23-ia-redesign.md`, khung "2 · Khoá
- * học". Tệp riêng chứ không viết chen vào `styles/index.css` vì ba màn hình
- * khác đang được dựng song song trong cùng nhánh; `index.css` chỉ nhận đúng
- * MỘT dòng `@import` trỏ về đây.
+ * Đặc tả: `docs/superpowers/specs/2026-08-25-server-side-pivot.md` §1, §2.4.
+ * MỘT danh mục công khai — tiêu đề, câu dẫn, rồi một danh sách. Không tab,
+ * không nút, không hộp thoại: mọi thứ hai tab và một hộp thoại từng cần ở đây
+ * (`.courses-tabs`/`.courses-tab`/`.ci-*`/`.lib-tier*`) đi cùng luồng nhập gói
+ * đã chết, và đã rời tệp này cùng lúc — xem `task-13-report.md` về lý do.
  *
- * Hai luật của hướng A mà tệp này phải theo:
+ * Hai luật của hướng A mà tệp này vẫn theo:
  *   - **không hộp bảy màu** — phân cấp bằng cỡ chữ, nét kẻ và khoảng trắng;
  *   - chữ giao diện là `var(--sans)` sẵn có, KHÔNG `system-ui`.
- *
- * VỀ ĐỘ ĐẶC HIỆU: `@import` nằm ở đầu `index.css` (luật CSS bắt `@import`
- * phải đứng trước mọi quy tắc), nên mọi thứ ở đây được nạp TRƯỚC các khối của
- * `index.css`. Chỗ nào tệp này cần ghi đè một quy tắc có sẵn thì nó thắng bằng
- * ĐỘ ĐẶC HIỆU (`.courses-page .lib-tier-code`), không bằng thứ tự — cách kia
- * sẽ im lặng thua ngay khi ai đó thêm một dòng vào `index.css`.
  * ══════════════════════════════════════════════════════════════════════════ */
 
 .courses-page {
   max-width: 780px;
 }
 
-/* Nhan đề + câu dẫn bên trái, nút "Nhập gói" bên phải, và chúng rơi xuống hai
-   hàng khi hết chỗ thay vì bóp nhau. */
 .courses-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
   margin-bottom: 18px;
 }
 
@@ -37,180 +25,55 @@
   max-width: 46ch;
 }
 
-.courses-import-btn {
-  flex: none;
-  /* Thẳng hàng với đường cơ sở của nhan đề chứ không với đỉnh khối chữ. */
-  margin-top: 3px;
+.courses-note {
+  color: var(--ink-3);
+  font-size: 14px;
 }
 
-/* ── Hai tab ─────────────────────────────────────────────────────────────
- *
- * Một đường kẻ dưới, và tab đang mở là chỗ đường kẻ ấy dày lên. Không viên,
- * không hộp, không màu nền — "không hộp bảy màu" áp cho chính bộ chuyển tab.
- * Trạng thái đang mở đọc được KHÔNG CHỈ bằng màu: nét kẻ 2px và chữ đậm hơn
- * vẫn nói ra nó trên màn hình đơn sắc hoặc với mắt không phân biệt màu. */
-.courses-tabs {
+/* Một hàng: tên khoá (đường liên kết duy nhất của hàng) rồi câu mô tả. Không
+   bìa, không chữ tắt monogram — đó là trang trí của trang chủ ("Đang đọc dở"
+   cần một mỏ neo thị giác); một danh mục dài thì mật độ chữ quan trọng hơn. */
+.courses-list {
   display: flex;
-  gap: 22px;
-  margin: 0 0 20px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.courses-item {
   border-bottom: 1px solid var(--rule);
 }
 
-.courses-tab {
-  font-family: var(--sans);
-  font-size: 13.5px;
-  font-weight: 560;
-  color: var(--ink-3);
-  text-decoration: none;
-  padding: 0 1px 9px;
-  margin-bottom: -1px;
-  border-bottom: 2px solid transparent;
-  white-space: nowrap;
-}
-
-.courses-tab:hover {
-  color: var(--ink-2);
-}
-
-.courses-tab[aria-current='page'] {
-  color: var(--ink);
-  font-weight: 700;
-  border-bottom-color: var(--accent);
-}
-
-.courses-tab:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-  border-radius: 3px;
-}
-
-/* Nhan đề của tab "Kho cộng đồng" là `h2` (h1 thuộc về trang). Nó phải ĐỌC ra
-   là một mục bên trong, không phải một trang thứ hai chồng lên trang này. */
-.courses-page .lib-header .ch-title {
-  font-size: 17px;
-}
-
-.courses-page .lib-header {
-  margin-bottom: 14px;
-}
-
-/* ── Nhãn hạng: một DÒNG CHỮ kèm biểu tượng, không phải một viên màu ──────
- *
- * Đây là phần đặc tả gọi tên đích danh. Viên màu đỏ cũ bắt người đọc học nghĩa
- * của một màu; dòng chữ thì tự nói ra nghĩa. Thứ KHÔNG đổi — và có hàng rào
- * canh ở `pages/Library.test.tsx` với `registry/Catalog.test.tsx` — là chính
- * câu chữ, và việc nó hiện TRƯỚC khi người đọc kéo gói về.
- *
- * Màu vẫn giữ `--crit` đã được đo tương phản (5,78:1 ở bản sáng), nhưng nay nó
- * là màu CHỮ trên nền trang thay vì chữ trên nền tô — nền tô là thứ làm nó
- * thành một viên. */
-.courses-page .lib-tier {
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: none;
-}
-
-.courses-page .lib-tier-content {
-  color: var(--ink-3);
-  background: none;
-  border: 0;
-}
-
-.courses-page .lib-tier-code {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: none;
-  color: color-mix(in srgb, var(--crit) 78%, #000);
-  font-size: 11.5px;
-  font-weight: 640;
-  letter-spacing: 0;
-  text-transform: none;
-  white-space: normal;
-}
-
-/* Cùng phép hiệu chỉnh mà `index.css` làm cho bản gốc, ở đúng độ đặc hiệu cần
-   để thắng cả bản gốc lẫn quy tắc sáng ngay bên trên. */
-html[data-theme='dark'] .courses-page .lib-tier-code {
-  color: color-mix(in srgb, var(--crit) 62%, #fff);
-}
-
-/* Không co lại khi dòng chữ xuống hàng, và không kéo dòng cao thêm. */
-.lib-tier-mark {
-  flex: none;
+.courses-item-link {
   display: block;
+  padding: 14px 2px;
+  text-decoration: none;
+  color: inherit;
+  border-radius: var(--radius-xs);
 }
 
-/* ── Hộp thoại "Nhập gói" ────────────────────────────────────────────────
- *
- * Cùng hình dạng với `.cu-scrim`/`.cu-dialog` của `course/UpdateDialog.tsx`, cố
- * ý: hai hộp thoại trong cùng một ứng dụng mà mở ra theo hai kiểu thì đọc như
- * hai sản phẩm. Khác một chỗ và có lý do — rộng hơn, vì ruột nó là ba mục nhập
- * kèm nhãn chứ không phải một câu tóm tắt. */
-.ci-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  background: rgba(0, 0, 0, 0.4);
+.courses-item-link:hover .courses-item-title {
+  color: var(--color-brand-600);
 }
 
-.ci-dialog {
-  position: fixed;
-  z-index: 91;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: min(620px, calc(100vw - 32px));
-  max-height: min(86vh, 760px);
-  overflow-y: auto;
-  padding: 20px 22px 22px;
-  border: 1px solid var(--rule);
-  border-radius: 12px;
-  background: var(--surface-1);
-  box-shadow: var(--shadow);
-  font-family: var(--sans);
-  color: var(--ink-2);
-}
-
-/* Nhận tiêu điểm lúc mở để Escape chạy được ngay; nó là vật chứa chứ không
-   phải một điều khiển, nên vòng tiêu điểm ở đây chỉ là nhiễu. Cùng lập luận
-   `.cu-dialog:focus` đã viết. */
-.ci-dialog:focus {
+.courses-item-link:focus-visible {
   outline: none;
+  box-shadow: var(--shadow-ring-brand);
 }
 
-/* Nút Đóng ở góc, và nó BỊ VÔ HIỆU trong lúc một lần nhập đang chạy — tháo
-   `ImportCourse` khỏi cây giữa chừng là mất cả gói lẫn lời giải thích. Trạng
-   thái vô hiệu phải nhìn ra được, nếu không nó chỉ là một nút bấm không ăn. */
-.ci-close {
-  float: right;
-  margin: -4px -6px 0 12px;
-  padding: 4px 8px;
-  border: 0;
-  border-radius: 6px;
-  background: none;
+.courses-item-title {
+  margin: 0;
   font-family: var(--sans);
-  font-size: 12.5px;
-  color: var(--ink-3);
-  cursor: pointer;
-}
-
-.ci-close:hover:not(:disabled) {
-  background: var(--panel);
+  font-size: 16px;
+  font-weight: 600;
   color: var(--ink);
 }
 
-.ci-close:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* Trong hộp thoại, `.import-page` không cần lề trang của riêng nó nữa. */
-.ci-dialog .import-page {
-  max-width: none;
-  margin: 0;
+.courses-item-desc {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  color: var(--ink-3);
+  max-width: 62ch;
 }

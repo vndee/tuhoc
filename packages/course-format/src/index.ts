@@ -8,7 +8,7 @@
  * implementation detail.
  */
 
-export type { Author, Chapter, GeneratedBy, Manifest, Part, Tier } from './types';
+export type { Author, Chapter, GeneratedBy, Manifest, Part } from './types';
 
 export {
   FINDING_CODES,
@@ -18,6 +18,16 @@ export {
   validatePackage,
 } from './validate';
 export type { Finding, FindingCode, ValidationResult } from './validate';
+
+export {
+  WIDGET_FORBIDDEN_APIS,
+  WIDGET_MAX_BYTES,
+  WIDGET_MAX_LINE_BYTES,
+  WIDGET_NAME_MAX,
+  WIDGET_NAME_RE,
+  checkWidgets,
+  extractWidgetRefs,
+} from './widgets';
 
 export { LOCAL_NAME_NOT_INDEXED, UnsafeArchiveError, packZip, unpackZip } from './zip';
 export type { UnsafeArchiveCode } from './zip';

@@ -9,10 +9,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gofiber/fiber/v2"
+
 	"github.com/vndee/tuhoc-api/internal/config"
-	"github.com/vndee/tuhoc-api/internal/course"
+	"github.com/vndee/tuhoc-api/internal/pkgcheck"
 	"github.com/vndee/tuhoc-api/internal/stats"
-	"github.com/vndee/tuhoc-api/internal/store"
 	appsync "github.com/vndee/tuhoc-api/internal/sync"
 )
 
@@ -71,8 +72,19 @@ func TestCORSHeaders_DefaultOriginFallback(t *testing.T) {
 	}
 }
 
-// TestRouteScopedBodyLimits pins the arrangement that keeps POST /courses's
-// 21 MiB ceiling from being every route's ceiling.
+// TestRouteScopedBodyLimits pins the arrangement that keeps
+// PUT /admin/courses/:slug's ~20 MiB ceiling from being every route's
+// ceiling.
+//
+// This test used to name POST /courses as the wide-ceiling route; Task 9
+// deleted that route along with the rest of internal/course (the per-user
+// package store it is no longer needed for). The property under test —
+// one route legitimately needs a course-package-sized body, and every
+// other route must not inherit that ceiling by accident — did not go away
+// with it: PUT /admin/courses/:slug (Task 8's publish endpoint) is now the
+// route that needs the wide ceiling, and pkgcheck.MaxUploadBytes (not
+// course.MaxUploadBytes, which no longer exists) is the number both this
+// test and server.go's own fiber.Config read.
 //
 // fiber v2's BodyLimit is an APP setting. Raising it so a legitimate
 // course package can be uploaded raised it for /sync and /events/batch
@@ -89,8 +101,11 @@ func TestCORSHeaders_DefaultOriginFallback(t *testing.T) {
 //
 //   - over its own limit  -> 413, from the middleware;
 //   - under its own limit -> 401, from auth (i.e. it got past the limit);
-//   - the same body on POST /courses -> 401 as well, which is what proves
-//     the 4 MiB cut is this route's and not the app's.
+//   - the same body on PUT /admin/courses/:slug -> 401 as well (no
+//     Bearer token is sent, so adminOrToken falls through to
+//     auth.Require, which answers before RequireAdmin or the handler run),
+//     which is what proves the 4 MiB cut is this route's and not the
+//     app's.
 func TestRouteScopedBodyLimits(t *testing.T) {
 	// Pool is deliberately nil: every request here is unauthenticated, and
 	// auth.Require answers 401 on a missing cookie before it touches the
@@ -106,8 +121,13 @@ func TestRouteScopedBodyLimits(t *testing.T) {
 		return []byte(body)
 	}
 
-	try := func(target string, body []byte) (*http.Response, error) {
-		req := httptest.NewRequest(http.MethodPost, target, bytes.NewReader(body))
+	// try takes an explicit method: /sync and /events/batch are POST, but
+	// the admin publish route this test also exercises is PUT — sending
+	// the wrong method wouldn't 401 at auth, it would 405 at the router
+	// before auth ever ran, which is a real trap this test fell into once
+	// already while being adapted off POST /courses (deleted by this task).
+	try := func(method, target string, body []byte) (*http.Response, error) {
+		req := httptest.NewRequest(method, target, bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := app.Test(req, 30000)
 		if resp != nil {
@@ -117,11 +137,11 @@ func TestRouteScopedBodyLimits(t *testing.T) {
 		return resp, err
 	}
 
-	post := func(t *testing.T, target string, body []byte) *http.Response {
+	do := func(t *testing.T, method, target string, body []byte) *http.Response {
 		t.Helper()
-		resp, err := try(target, body)
+		resp, err := try(method, target, body)
 		if err != nil {
-			t.Fatalf("POST %s (%d bytes): %v", target, len(body), err)
+			t.Fatalf("%s %s (%d bytes): %v", method, target, len(body), err)
 		}
 		return resp
 	}
@@ -139,116 +159,90 @@ func TestRouteScopedBodyLimits(t *testing.T) {
 		if int64(len(over)) <= r.limit {
 			t.Fatalf("%s: the fixture is not over the limit (%d bytes vs %d)", r.target, len(over), r.limit)
 		}
-		if got := post(t, r.target, over).StatusCode; got != http.StatusRequestEntityTooLarge {
+		if got := do(t, http.MethodPost, r.target, over).StatusCode; got != http.StatusRequestEntityTooLarge {
 			t.Errorf("POST %s with %d bytes (limit %d): want 413 got %d", r.target, len(over), r.limit, got)
 		}
 
 		// Anti-vacuity: a body inside the limit is NOT stopped here. 401
 		// is auth's answer, which means the limit let it through.
 		under := padded(1024)
-		if got := post(t, r.target, under).StatusCode; got != http.StatusUnauthorized {
+		if got := do(t, http.MethodPost, r.target, under).StatusCode; got != http.StatusUnauthorized {
 			t.Errorf("POST %s with %d bytes (limit %d): want 401 got %d", r.target, len(under), r.limit, got)
 		}
 	}
 
-	// The same oversized body on POST /courses is NOT refused by a body
-	// limit: that route is the reason the app-wide ceiling is high, and it
-	// keeps it. Without this case, dropping the app ceiling to 4 MiB would
-	// pass every assertion above while breaking package upload.
+	// The same oversized body on PUT /admin/courses/:slug is NOT refused by
+	// a body limit: that route is the reason the app-wide ceiling is high,
+	// and it keeps it. Without this case, dropping the app ceiling to
+	// 4 MiB would pass every assertion above while breaking course
+	// publishing.
+	const adminTarget = "/admin/courses/route-scoped-body-limit-check"
 	big := padded(int(appsync.MaxPushBytes) + 1)
-	if got := post(t, "/courses", big).StatusCode; got != http.StatusUnauthorized {
-		t.Errorf("POST /courses with %d bytes: want 401 (no route body limit) got %d", len(big), got)
+	if got := do(t, http.MethodPut, adminTarget, big).StatusCode; got != http.StatusUnauthorized {
+		t.Errorf("PUT %s with %d bytes: want 401 (no route body limit) got %d", adminTarget, len(big), got)
 	}
 
-	// And the app ceiling still exists above it: past course.MaxUploadBytes
+	// And the app ceiling still exists above it: past pkgcheck.MaxUploadBytes
 	// fasthttp refuses the body outright, before any handler or middleware
 	// of ours is reached — which is why this one is asserted on the
 	// transport error rather than on a status code.
-	huge := padded(int(course.MaxUploadBytes) + 1)
-	resp, err := try("/courses", huge)
+	huge := padded(int(pkgcheck.MaxUploadBytes) + 1)
+	resp, err := try(http.MethodPut, adminTarget, huge)
 	if err == nil {
-		t.Errorf("POST /courses with %d bytes (app limit %d): want the transport to refuse it, got %d",
-			len(huge), course.MaxUploadBytes, resp.StatusCode)
+		t.Errorf("PUT %s with %d bytes (app limit %d): want the transport to refuse it, got %d",
+			adminTarget, len(huge), pkgcheck.MaxUploadBytes, resp.StatusCode)
 	} else if !strings.Contains(err.Error(), "body size exceeds") {
-		t.Errorf("POST /courses with %d bytes: refused for an unexpected reason: %v", len(huge), err)
+		t.Errorf("PUT %s with %d bytes: refused for an unexpected reason: %v", adminTarget, len(huge), err)
 	}
 }
 
-// TestCourseUploadRateLimit pins the second half of the answer to "an
-// authenticated account can upload without limit".
+// rawRequest issues method against target with no body and no auth,
+// draining and closing the response so the connection is freed. Used where
+// a case needs a plain, unauthenticated request without going through
+// doTestRequest's JSON marshaling (observability_test.go).
+func rawRequest(t *testing.T, app *fiber.App, method, target string) *http.Response {
+	t.Helper()
+	req := httptest.NewRequest(method, target, nil)
+	resp, err := app.Test(req, 30000)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, target, err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	return resp
+}
+
+// TestOldPerUserCourseRoutesAreGone is the direct regression pin for this
+// task's own removal: internal/course, course_packages, and every route
+// that used to serve them are deleted TOGETHER in this commit (see the
+// commit message for why — readers no longer import a private copy, so
+// there is nothing left for any of it to protect). A request to any of
+// them must not silently keep working; it must land on NO route at all.
 //
-// The per-owner storage quota (course.MaxOwnerBytes) is what actually
-// bounds the disk; it is enforced in internal/course and pinned there.
-// This is the other resource an upload spends: CPU and memory expanding
-// an archive, which is spent whether or not the row is ever stored — a
-// full library re-posting 20 MiB packages still costs the server every
-// one of those expansions. So POST /courses gets the same treatment P1
-// gave /auth, with one difference that matters: the key is the SESSION's
-// user id, not the client IP, because the thing being rationed here is
-// per-account work and an IP is neither necessary nor sufficient to
-// identify an account.
-//
-// The budget is deliberately generous (see courseUploadRateLimitMax): it
-// is not the storage defense, and a human importing course packages will
-// never come near it.
-func TestCourseUploadRateLimit(t *testing.T) {
-	pool := store.TestPool(t)
-	app := New(config.Config{CookieSecure: false}, Deps{Pool: pool, LogOutput: io.Discard})
+// POST /courses is asserted as "404 or 405" rather than one fixed code:
+// fiber's router answers 404 for a path with no registered route, and 405
+// for a path that IS registered under a different method — GET /courses
+// (the new public listing) now owns this exact path, so which of the two
+// fiber returns for a POST here is an implementation detail of its router,
+// not a property this task's contract depends on either way.
+func TestOldPerUserCourseRoutesAreGone(t *testing.T) {
+	app := New(config.Config{}, Deps{LogOutput: io.Discard})
 
-	regResp, regBody := doTestRequest(t, app, http.MethodPost, "/auth/register",
-		map[string]string{"email": "uploadlimit@example.test", "password": "uploadlimit-password-1", "name": "UL"}, nil)
-	if regResp.StatusCode != http.StatusOK {
-		t.Fatalf("register: want 200 got %d body=%s", regResp.StatusCode, regBody)
-	}
-	var cookie *http.Cookie
-	for _, c := range regResp.Cookies() {
-		if c.Name == "tuhoc_session" {
-			cookie = c
-		}
-	}
-	if cookie == nil {
-		t.Fatalf("register: no session cookie")
+	postResp := rawRequest(t, app, http.MethodPost, "/courses")
+	if postResp.StatusCode != http.StatusNotFound && postResp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("POST /courses: want 404 or 405 (no route left to accept an upload) got %d", postResp.StatusCode)
 	}
 
-	// A body with no multipart "package" field: every one of these is a
-	// 400 from the handler, which is the point — the budget counts
-	// REQUESTS, not successful imports. Skipping the failures would leave
-	// the cheapest flood (a bomb that is rejected only after being
-	// expanded) entirely unrationed.
-	for i := 0; i < courseUploadRateLimitMax; i++ {
-		resp, body := doTestRequest(t, app, http.MethodPost, "/courses", map[string]any{}, cookie)
-		if resp.StatusCode == http.StatusTooManyRequests {
-			t.Fatalf("request %d of %d was already rate limited: %s", i+1, courseUploadRateLimitMax, body)
+	// The old per-user manifest/asset routes required a literal "@" at the
+	// start of the third path segment (":id/@:version/..."); nothing about
+	// the new public routes registered at this path shape ever produces
+	// that, so both must now be flat, ordinary 404s.
+	for _, target := range []string{
+		"/courses/some-course/@1.0.0/manifest.json",
+		"/courses/some-course/@1.0.0/chapters/c1.html",
+	} {
+		if resp := rawRequest(t, app, http.MethodGet, target); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("GET %s: want 404 got %d", target, resp.StatusCode)
 		}
-		if resp.StatusCode != http.StatusBadRequest {
-			t.Fatalf("request %d: want 400 (no package field) got %d body=%s", i+1, resp.StatusCode, body)
-		}
-	}
-
-	resp, body := doTestRequest(t, app, http.MethodPost, "/courses", map[string]any{}, cookie)
-	if resp.StatusCode != http.StatusTooManyRequests {
-		t.Fatalf("request %d: want 429 got %d body=%s", courseUploadRateLimitMax+1, resp.StatusCode, body)
-	}
-	if !strings.Contains(body, "too many") {
-		t.Errorf("the 429 body says nothing useful: %s", body)
-	}
-
-	// Anti-vacuity: the budget is per session, so another account is
-	// unaffected by this one's spending. Without this, a limiter keyed on
-	// something global would pass everything above.
-	otherResp, otherBody := doTestRequest(t, app, http.MethodPost, "/auth/register",
-		map[string]string{"email": "uploadlimit2@example.test", "password": "uploadlimit-password-2", "name": "UL2"}, nil)
-	if otherResp.StatusCode != http.StatusOK {
-		t.Fatalf("register other: want 200 got %d body=%s", otherResp.StatusCode, otherBody)
-	}
-	var otherCookie *http.Cookie
-	for _, c := range otherResp.Cookies() {
-		if c.Name == "tuhoc_session" {
-			otherCookie = c
-		}
-	}
-	freshResp, freshBody := doTestRequest(t, app, http.MethodPost, "/courses", map[string]any{}, otherCookie)
-	if freshResp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("a second account's first upload: want 400 got %d body=%s", freshResp.StatusCode, freshBody)
 	}
 }

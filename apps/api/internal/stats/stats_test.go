@@ -21,6 +21,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -206,11 +207,19 @@ type courseOut struct {
 	ChaptersDone int64   `json:"chaptersDone"`
 }
 
+type courseYearOut struct {
+	CourseID string  `json:"courseId"`
+	Minutes  float64 `json:"minutes"`
+	Share    float64 `json:"share"`
+}
+
 type statsOut struct {
-	TotalMinutes float64     `json:"totalMinutes"`
-	StreakDays   int         `json:"streakDays"`
-	Days         []dayOut    `json:"days"`
-	Courses      []courseOut `json:"courses"`
+	TotalMinutes float64         `json:"totalMinutes"`
+	StreakDays   int             `json:"streakDays"`
+	Days         []dayOut        `json:"days"`
+	Courses      []courseOut     `json:"courses"`
+	Years        []int           `json:"years"`
+	YearCourses  []courseYearOut `json:"yearCourses"`
 }
 
 type eventsBatchOut struct {
@@ -232,6 +241,21 @@ func getStats(t *testing.T, app *fiber.App, cookie *http.Cookie) statsOut {
 	resp, raw := doRequest(t, app, http.MethodGet, "/stats", nil, cookie)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /stats: want 200 got %d body=%s", resp.StatusCode, raw)
+	}
+	var out statsOut
+	mustUnmarshal(t, raw, &out)
+	return out
+}
+
+// getStatsYear is getStats with `?year=`. A separate helper rather than a
+// variadic on getStats: every existing call site asks the DEFAULT question
+// (30 days ending today), and that default is a documented contract — making
+// it one branch of a shared helper is how a default quietly changes.
+func getStatsYear(t *testing.T, app *fiber.App, cookie *http.Cookie, year string) statsOut {
+	t.Helper()
+	resp, raw := doRequest(t, app, http.MethodGet, "/stats?year="+year, nil, cookie)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /stats?year=%s: want 200 got %d body=%s", year, resp.StatusCode, raw)
 	}
 	var out statsOut
 	mustUnmarshal(t, raw, &out)
@@ -752,6 +776,149 @@ func TestStatsFlows(t *testing.T) {
 		gotA := getStats(t, app, cookieA)
 		if gotA.TotalMinutes != 1.0 {
 			t.Fatalf("user A's own stats must be unaffected: want totalMinutes=1.0 got %v", gotA.TotalMinutes)
+		}
+	})
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// GET /stats?year= — lịch cả năm kiểu GitHub
+// ══════════════════════════════════════════════════════════════════════════
+//
+// Người dùng yêu cầu: hiện lịch học như GitHub — cả năm, kèm danh sách năm và
+// danh sách khoá học trong năm với trọng số.
+//
+// Điều kiện đi kèm, và nó là điều kiện đắt nhất: `?year=` phải THÊM VÀO chứ
+// không đổi câu trả lời mặc định. Bài "days[] always has exactly 30 entries"
+// ở trên là hợp đồng của Bảng điều khiển, và nó phải xanh y nguyên.
+func TestStatsYearView(t *testing.T) {
+	pool := store.TestPool(t)
+
+	t.Run("không có ?year= thì câu trả lời không đổi: vẫn đúng 30 ngày", func(t *testing.T) {
+		app := newTestApp(pool)
+		cookie, _ := registerUser(t, app, "year-default")
+
+		got := getStats(t, app, cookie)
+		if len(got.Days) != 30 {
+			t.Fatalf("mặc định phải giữ nguyên 30 ngày, got %d", len(got.Days))
+		}
+		// Và `yearCourses` rỗng chứ không phải null: một client không hỏi năm
+		// nào thì không phải phòng thủ trước `null`.
+		if got.YearCourses == nil {
+			t.Fatalf("yearCourses phải là mảng rỗng, không phải null")
+		}
+		if len(got.YearCourses) != 0 {
+			t.Fatalf("không hỏi năm thì yearCourses phải rỗng, got %+v", got.YearCourses)
+		}
+	})
+
+	t.Run("?year= trả cả năm, và năm HIỆN TẠI dừng ở hôm nay chứ không vẽ tương lai", func(t *testing.T) {
+		app := newTestApp(pool)
+		cookie, _ := registerUser(t, app, "year-current")
+
+		today := todayICT()
+		year := today.Year()
+
+		got := getStatsYear(t, app, cookie, strconv.Itoa(year))
+
+		wantLen := today.YearDay()
+		if len(got.Days) != wantLen {
+			t.Fatalf("năm hiện tại phải dừng ở hôm nay: want %d ngày (YearDay), got %d", wantLen, len(got.Days))
+		}
+		if got.Days[0].Date != time.Date(year, time.January, 1, 0, 0, 0, 0, ict).Format(dateLayout) {
+			t.Fatalf("ngày đầu phải là 1 tháng 1, got %s", got.Days[0].Date)
+		}
+		if last := got.Days[len(got.Days)-1].Date; last != today.Format(dateLayout) {
+			t.Fatalf("ngày cuối phải là hôm nay (%s), got %s", today.Format(dateLayout), last)
+		}
+	})
+
+	t.Run("một năm đã qua chạy trọn 1/1 tới 31/12", func(t *testing.T) {
+		app := newTestApp(pool)
+		cookie, _ := registerUser(t, app, "year-past")
+
+		past := todayICT().Year() - 1
+		got := getStatsYear(t, app, cookie, strconv.Itoa(past))
+
+		wantLen := 365
+		if past%4 == 0 && (past%100 != 0 || past%400 == 0) {
+			wantLen = 366
+		}
+		if len(got.Days) != wantLen {
+			t.Fatalf("năm %d phải có %d ngày, got %d", past, wantLen, len(got.Days))
+		}
+	})
+
+	t.Run("năm rác không làm sập và không dựng một mảng khổng lồ — nó lùi về mặc định", func(t *testing.T) {
+		app := newTestApp(pool)
+		cookie, _ := registerUser(t, app, "year-garbage")
+
+		// `999999` là ca đáng sợ: không có hàng rào, vòng lặp dựng ~365 triệu
+		// phần tử trước khi có ai kịp phản đối.
+		for _, raw := range []string{"999999", "abc", "-5", "1899"} {
+			got := getStatsYear(t, app, cookie, raw)
+			if len(got.Days) != 30 {
+				t.Fatalf("year=%q phải lùi về 30 ngày, got %d", raw, len(got.Days))
+			}
+		}
+	})
+
+	t.Run("years[] luôn có năm hiện tại, kể cả tài khoản mới tinh", func(t *testing.T) {
+		app := newTestApp(pool)
+		cookie, _ := registerUser(t, app, "year-list-empty")
+
+		got := getStats(t, app, cookie)
+		if len(got.Years) != 1 || got.Years[0] != todayICT().Year() {
+			t.Fatalf("tài khoản rỗng vẫn phải có đúng năm hiện tại trong years[], got %+v", got.Years)
+		}
+	})
+
+	t.Run("yearCourses: đúng khoá của năm ấy, trọng số cộng lại bằng 1, nhiều phút nhất đứng đầu", func(t *testing.T) {
+		app := newTestApp(pool)
+		cookie, _ := registerUser(t, app, "year-courses")
+
+		today := todayICT()
+		year := today.Year()
+
+		// c1: 3 nhịp, c2: 1 nhịp — cùng năm nay.
+		batch := []map[string]any{
+			heartbeatItem("c1", "ch1", today.Add(9*time.Hour)),
+			heartbeatItem("c1", "ch1", today.Add(9*time.Hour+30*time.Second)),
+			heartbeatItem("c1", "ch2", today.Add(10*time.Hour)),
+			heartbeatItem("c2", "ch1", today.Add(11*time.Hour)),
+		}
+		if resp, _ := postEvents(t, app, cookie, batch); resp.StatusCode != http.StatusOK {
+			t.Fatalf("post events: want 200 got %d", resp.StatusCode)
+		}
+
+		got := getStatsYear(t, app, cookie, strconv.Itoa(year))
+		if len(got.YearCourses) != 2 {
+			t.Fatalf("want 2 khoá trong năm, got %+v", got.YearCourses)
+		}
+		if got.YearCourses[0].CourseID != "c1" {
+			t.Fatalf("khoá nhiều phút nhất phải đứng đầu, got %+v", got.YearCourses)
+		}
+
+		var sum float64
+		for _, c := range got.YearCourses {
+			sum += c.Share
+		}
+		if sum < 0.999 || sum > 1.001 {
+			t.Fatalf("trọng số phải cộng lại bằng 1, got %v (%+v)", sum, got.YearCourses)
+		}
+		if got.YearCourses[0].Share <= got.YearCourses[1].Share {
+			t.Fatalf("c1 có 3/4 số nhịp nên trọng số phải lớn hơn c2, got %+v", got.YearCourses)
+		}
+
+		// ĐỐI CHỨNG: hỏi một năm KHÔNG có hoạt động thì danh sách rỗng — nếu
+		// bộ lọc theo năm hỏng, cả bốn nhịp trên sẽ rơi vào mọi năm.
+		empty := getStatsYear(t, app, cookie, strconv.Itoa(year-1))
+		if len(empty.YearCourses) != 0 {
+			t.Fatalf("năm không có hoạt động phải cho danh sách rỗng, got %+v", empty.YearCourses)
+		}
+
+		// Và `courses[]` (LIFETIME) không bị đụng tới — hai cửa sổ, hai con số.
+		if len(got.Courses) != 2 {
+			t.Fatalf("courses[] lifetime phải vẫn có 2 khoá, got %+v", got.Courses)
 		}
 	})
 }

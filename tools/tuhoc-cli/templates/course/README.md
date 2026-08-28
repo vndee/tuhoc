@@ -8,6 +8,7 @@ Một course cho nền tảng tuhoc. Mã course: `{{id}}`.
 |---|---|
 | `manifest.json` | Khai báo course: tên, giấy phép, tác giả, và danh sách chương theo đúng thứ tự đọc. |
 | `chapters/` | Mỗi chương là một mảnh HTML. Không phải trang hoàn chỉnh — trình đọc lo phần khung. |
+| `widgets/` | Phần tương tác, nếu có — mỗi widget là đúng một tệp index.html, tự chứa hoàn toàn. |
 | `README.md` | Tệp này. Nó cũng nằm trong gói, nên đừng dán mã HTML vào đây (xem phần cuối). |
 
 ## Quy trình
@@ -30,20 +31,24 @@ ra, nhưng dọn trước thì hơn.
 
 Pack chạy được không có nghĩa là course hay. Nó chỉ có nghĩa là course hợp lệ.
 
-## Hai hạng
+## Nội dung tĩnh, và một cửa riêng cho mã chạy được
 
-Gói này đang ở hạng `content`, hạng mặc định và cũng là hạng an toàn:
+Mọi chương trong `chapters/` là nội dung tĩnh: HTML và CSS, không JavaScript
+dưới bất kỳ dạng nào — không thẻ script, không thuộc tính `on...`, không URL
+`javascript:`, không khung nhúng, không biểu mẫu, không tệp `.js` rời. Bộ luật
+kiểm điều đó bằng máy, trên mọi tệp trong gói, nên gần như merge tự động.
 
-- **`content`** — chỉ HTML, CSS, hình ảnh. Không JavaScript dưới bất kỳ dạng
-  nào: không thẻ script, không thuộc tính `on...`, không URL `javascript:`,
-  không khung nhúng, không biểu mẫu, không tệp `.js`. Đổi lại, gói kiểm được
-  hoàn toàn bằng máy nên gần như merge tự động.
-- **`interactive`** — được mang JavaScript. Việc kiểm định **không** cố gắng
-  làm sạch mã đó, nên bảo đảm ở hạng này đến từ người duyệt tay tại registry,
-  không đến từ máy. Chọn hạng này khi khái niệm chỉ hiểu được nếu nhìn thấy nó
-  chuyển động — không phải để trang trí.
+Course cần minh hoạ chạy được thì viết một **widget**: đúng một tệp
+`widgets/ten-widget/index.html` (thay `ten-widget` bằng tên bạn chọn — chỉ
+chữ thường a-z, số 0-9 và dấu gạch ngang), tự chứa hoàn toàn — CSS và JS viết
+thẳng trong tệp đó, không tải gì từ mạng — rồi đặt một thẻ mang thuộc tính
+`data-widget` bằng đúng tên ấy ở chương cần nó. Trình đọc chạy widget trong
+một khung cách ly riêng (iframe sandbox). Khung mẫu này có sẵn một widget như
+vậy ở `widgets/vi-du/index.html`, đã được Chương 1 tham chiếu.
 
-Sửa `"tier"` trong `manifest.json` nếu cần đổi.
+Một widget không được chương nào tham chiếu sẽ bị từ chối, và một tham chiếu
+trỏ tới widget không có thật cũng vậy. Widget vẫn phải qua người duyệt tay ở
+registry trước khi merge, như hạng `interactive` cũ.
 
 ## Hai trường phải trung thực
 

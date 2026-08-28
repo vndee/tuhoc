@@ -3,6 +3,11 @@
    different from runtime.js / vendor/*.js / viz.js, which are classic
    scripts that attach globals and must be loaded by URL instead — see
    vite-plugins/courseAssets.ts and the task report for why. */
+/* ĐẦU TIÊN, và có lý do: `tokens.css` khai `@layer theme, utilities` của
+   Tailwind. Layer phải được khai trước khi có luật nào dùng tới, còn CSS viết
+   tay bên dưới thì KHÔNG nằm trong layer nào nên nó vẫn thắng utility —
+   xem phần "THỨ TỰ CASCADE" trong chính tệp ấy. */
+@import './tokens.css';
 @import '@fontsource-variable/ibm-plex-sans/index.css';
 @import '@course-kit/vendor/katex.css';
 @import '@course-kit/reader.css';
@@ -11,6 +16,89 @@
 @import './settings-auth.css';
 @import './reader-layout.css';
 @import './shell-modes.css';
+/* Task 15 — `/admin`. Own file rather than a block inside `app-screens.css`:
+   see `admin.css`'s own header for why (that file carries the user's own
+   unrelated uncommitted work at the time this task landed). Imported in the
+   same group as the other screen stylesheets above, before the shared
+   `app-screens.css` layer that intentionally wins any later conflict. */
+@import './admin.css';
+/* CUỐI CÙNG, và thứ tự ấy là cơ chế: `app-screens.css` là thang chung cho mọi
+   màn ngoài chế độ đọc, và nó phải thắng những thang riêng mà sáu tệp trên
+   viết trước vòng thiết kế lại. Cùng độ đặc hiệu thì cái sau thắng. */
+@import './app-screens.css';
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TOKEN GỐC, ĐỔI Ở NGUỒN THAY VÌ Ở 175 CHỖ GỌI
+   ══════════════════════════════════════════════════════════════════════════
+
+   `--accent`, `--sans`, `--ink*`, `--rule*`, `--surface-1`, `--page`,
+   `--panel` do `packages/course-kit/reader.css` khai, và chúng được gọi ở
+   hàng trăm chỗ trên khắp app — kể cả bên trong chính reader.css. Sửa từng
+   chỗ gọi sang thang Untitled UI là hàng trăm lần sửa, và trong lúc sửa dở
+   thì app mang HAI bảng: màn đã chuyển và màn chưa chuyển đứng cạnh nhau.
+
+   Đổi ở NGUỒN. Một khối, và mọi thứ đang trỏ vào chúng — nút, liên kết, viền
+   tiêu điểm, thẻ, nền trang, cả chữ trong trang đọc — về cùng một bảng.
+
+   PHẢI ĐỨNG SAU MỌI `@import`: luật CSS bắt `@import` nằm trước mọi quy tắc,
+   nên khối này tự nhiên ở sau, và `:root` cùng độ đặc hiệu thì cái sau thắng.
+   Đó chính là cơ chế nó dựa vào — không `!important`, không leo độ đặc hiệu.
+
+   `reader.css` KHÔNG bị sửa một byte: nó vẫn là bản port từng byte của v1 và
+   cổng riêng canh nó vẫn xanh. Ở đây chỉ đổi GIÁ TRỊ mà nó đọc.
+
+   GIẤY ẤM → TRẮNG LẠNH, và đó là một quyết định chứ không phải hệ quả. Bảng
+   cũ (#fcfcfb / #f7f6f3 / #f2f1ec) ngả vàng; hướng A đứng trên trắng thuần và
+   thang xám hơi lạnh. Trộn hai thứ ấy thì thẻ trắng nổi lên như một mảnh vá
+   trên nền ngà. */
+:root {
+  --sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --surface-1: #ffffff;
+  --page: var(--color-gray-50);
+  --panel: var(--color-gray-50);
+
+  --ink: var(--color-gray-900);
+  --ink-2: var(--color-gray-600);
+  --ink-3: var(--color-gray-500);
+
+  --rule: var(--color-gray-200);
+  --rule-strong: var(--color-gray-300);
+  --grid: var(--color-gray-200);
+
+  --accent: var(--color-brand-600);
+  --accent-soft: var(--color-brand-100);
+
+  --shadow: var(--shadow-sm);
+}
+
+/* CHỈ `html[data-theme='dark']`, KHÔNG `@media (prefers-color-scheme)`.
+   Bản đầu của khối này có thêm một nhánh `prefers-color-scheme` — sai, và sai
+   im lặng: `reader.css` chỉ đổi màu theo công tắc tường minh, nên nhánh ấy sẽ
+   cho một máy đặt hệ điều hành ở chế độ tối nhận màu nhấn tối TRÊN NỀN SÁNG.
+   Hai nửa của cùng một bảng, mỗi nửa nghe một tín hiệu khác nhau.
+
+   `brand-400` chứ không phải `brand-600`: trên nền gray-950 màu ấy tụt dưới
+   ngưỡng tương phản đọc được. Đó cũng đúng thói quen reader.css vốn có — nó
+   tự nâng `--accent` lên một bậc trong khối tối. */
+html[data-theme='dark'] {
+  --surface-1: var(--color-gray-900);
+  --page: var(--color-gray-950);
+  --panel: var(--color-gray-900);
+
+  --ink: var(--color-gray-50);
+  --ink-2: var(--color-gray-300);
+  --ink-3: var(--color-gray-400);
+
+  --rule: var(--color-gray-800);
+  --rule-strong: var(--color-gray-700);
+  --grid: var(--color-gray-800);
+
+  --accent: var(--color-brand-400);
+  --accent-soft: rgba(126, 86, 217, 0.22);
+
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+}
 
 /* Task 14 — dashboard. Not part of the ported v1 stylesheet (v1 had no
    dashboard, it opened straight into the reader), so it lives here rather
@@ -225,217 +313,29 @@
   fill: var(--ink-2);
 }
 
-/* S1 Task 8 — /import. Same placement and token rules as the .dash-* block
-   above: reader.css stays the ported v1 stylesheet, and anything the app
-   adds on top lives here and borrows v1's tokens.
+/* S1 Task 8 — /import ĐÃ XOÁ Ở ĐÂY. `pages/ImportCourse.tsx` gỡ ở Task 13
+   (spec `2026-08-25-server-side-pivot.md` §1): course lên máy chủ qua
+   `tuhoc publish`, không còn qua một màn hình `/import` nào để người đọc
+   thả tệp `.zip` vào. Không lớp `.import-*` nào ở khối này còn được vẽ tới
+   — giữ lại thì đây là CSS không ai gọi. */
 
-   Every row is a `flex-wrap: wrap` with a `min-width` on the text input
-   rather than a media query. The narrow case here is not a phone-sized
-   viewport, it is the reader sidebar being open on a laptop — the shell's
-   own breakpoint is 1240px (see the bottom of this file), so the content
-   column gets narrow long before any `max-width: 640px` rule would fire.
-   Wrapping on content width covers both without a second number to keep in
-   step with the shell's. */
-.import-page {
-  max-width: 44rem;
-}
+/* `.sb-nav*` ĐÃ XOÁ Ở ĐÂY. Điều hướng chung rời thanh bên sang thanh trên
+ * (`shell/TopNav.tsx`), và mã của nó dùng utility Tailwind chứ không dùng
+ * lớp nào ở tệp này. Giữ lại thì đây là CSS không ai gọi — thứ mà lần đọc
+ * sau sẽ tưởng là còn sống. */
 
-.import-way {
-  margin: 0 0 26px;
-}
+/* S1 Task 9 — /library ĐÃ XOÁ Ở ĐÂY. `pages/Library.tsx` (và
+   `registry/Catalog.tsx`, thứ dùng chung một số lớp `.lib-*` của nó) gỡ ở
+   Task 13 (spec `2026-08-25-server-side-pivot.md` §1) cùng luồng import —
+   không còn "thư viện riêng" hay "kho cộng đồng" để vẽ. `.lib-meta` và
+   `.lib-notice`/`.lib-notice-server` SỐNG SÓT dưới đây: `registry/Rating.tsx`
+   và `registry/Discussion.tsx` — server-side, KHÔNG đụng tới việc này — vẫn
+   dùng chúng. Mọi lớp `.lib-*` khác của trang thư viện (`.lib-page`,
+   `.lib-item*`, `.lib-tier*`, `.lib-empty*`, `.lib-update*`, `.lib-source*`…)
+   đã rời đi cùng tệp — giữ lại thì đây là CSS không ai gọi. */
 
-.import-way-h {
-  font-family: var(--sans);
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--ink);
-  margin: 0 0 8px;
-}
-
-.import-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.import-label {
-  font-family: var(--sans);
-  font-size: 12.5px;
-  color: var(--ink-2);
-  flex: 0 0 auto;
-}
-
-.import-input {
-  font-family: var(--sans);
-  font-size: 13px;
-  padding: 7px 10px;
-  border: 1px solid var(--rule-strong);
-  border-radius: 6px;
-  background: var(--surface-1);
-  color: var(--ink);
-  /* Grow to fill the row, but never force the row wider than its column:
-     without `min-width: 0` a flex item refuses to shrink below its content
-     width and a long pasted URL pushes the button off screen. */
-  flex: 1 1 16rem;
-  min-width: 0;
-}
-
-.import-input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.import-file {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--sans);
-  font-size: 13px;
-}
-
-.import-file input[type='file'] {
-  font-family: var(--sans);
-  font-size: 12.5px;
-  color: var(--ink-2);
-  max-width: 100%;
-}
-
-.import-note {
-  font-family: var(--sans);
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--ink-3);
-  background: var(--panel);
-  border: 1px solid var(--rule);
-  border-radius: 10px;
-  padding: 10px 14px;
-  margin: 10px 0 0;
-}
-
-.import-status:empty {
-  display: none;
-}
-
-.import-busy,
-.import-ok {
-  font-family: var(--sans);
-  font-size: 13px;
-  margin: 4px 0 0;
-}
-
-.import-busy {
-  color: var(--ink-2);
-}
-
-.import-ok {
-  color: var(--good);
-}
-
-.import-findings {
-  margin: 22px 0 0;
-  border-top: 1px solid var(--rule);
-  padding-top: 18px;
-}
-
-.import-finding-list {
-  font-family: var(--sans);
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--ink-2);
-  margin: 10px 0 0;
-  padding-left: 20px;
-}
-
-.import-finding-list li {
-  margin: 0 0 8px;
-  /* A finding's detail can carry a path or a URL with no spaces in it;
-     without this it widens the whole page instead of wrapping. */
-  overflow-wrap: anywhere;
-}
-
-/* The app's only global navigation (shell/Sidebar.tsx's `GlobalNav`).
-
-   Sits between .sb-head and .sb-prog, both of which reader.css owns, so this
-   borrows their padding rather than inventing its own rhythm: at 18px it lines
-   up with the title above it and the progress line below. reader.css itself is
-   left alone — it is the byte-for-byte v1 port, and this is not v1. */
-.sb-nav {
-  display: flex;
-  flex-direction: column;
-  padding: 10px 18px;
-  gap: 2px;
-  border-bottom: 1px solid var(--rule);
-}
-
-.sb-nav-link {
-  font-family: var(--sans);
-  font-size: 12.5px;
-  color: var(--ink-2);
-  text-decoration: none;
-  padding: 5px 8px;
-  margin: 0 -8px;
-  border-radius: 7px;
-  /* reader.css gives every `a` a 1px accent border-bottom — right inside
-     prose, wrong for a list of nav rows, where it reads as three underlined
-     sentences. Same decision `.lib-item-title` already made, for the same
-     reason, with the affordance moved onto hover/focus. */
-  border-bottom: 1px solid transparent;
-}
-
-.sb-nav-link:hover,
-.sb-nav-link:focus-visible {
-  color: var(--ink);
-  background: var(--panel);
-  border-bottom-color: transparent;
-}
-
-/* `NavLink` sets aria-current="page" on the route you are already on, so the
-   marker is driven by the accessible state rather than by a second class —
-   one source for "where am I", visible and announced alike. */
-.sb-nav-link[aria-current='page'] {
-  color: var(--accent);
-  font-weight: 640;
-  background: var(--accent-soft);
-}
-
-/* S1 Task 9 — /library. Same placement and token rules as the .dash- and
-   .import- blocks above: reader.css stays the ported v1 stylesheet,
-   everything this app adds lives here and borrows v1's tokens.
-
-   No media query in this block, deliberately, and the same reasoning the
-   .import-* block already wrote down applies: the narrow case here is not a
-   phone, it is the shell's own 1240px breakpoint leaving the content column
-   about 620px wide with the sidebar open. Every row that can run out of
-   space wraps on content width instead — .lib-header, .lib-item-head and
-   .lib-meta are all `flex-wrap: wrap`. Driven in a real browser at 390px and
-   at 1440px; at 390px the tier badge drops onto its own line under the
-   title, which is the behaviour this wants: the badge must never be the
-   thing that gets clipped. */
-.lib-page {
-  max-width: 46rem;
-}
-
-.lib-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.lib-note {
-  font-family: var(--sans);
-  font-size: 13px;
-  color: var(--ink-3);
-  margin: 6px 0 18px;
-}
-
-/* The transport notices. Both are `role="status"` paragraphs, both sit
-   directly under the header, and they differ in colour because they differ
-   in meaning — see TransportNotice's doc comment (ruling S1-F25). */
+/* Dùng chung bởi `registry/Discussion.tsx` (câu lỗi tải bình luận) và
+   `registry/Rating.tsx` (câu lỗi vote, qua `.lib-notice-server` bên dưới). */
 .lib-notice {
   font-family: var(--sans);
   font-size: 12.5px;
@@ -445,69 +345,14 @@
   margin: 10px 0 20px;
 }
 
-.lib-notice-offline {
-  color: var(--ink-2);
-  background: color-mix(in srgb, var(--warn) 12%, var(--surface-1));
-  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
-}
-
 .lib-notice-server {
   color: var(--ink-2);
   background: color-mix(in srgb, var(--crit) 10%, var(--surface-1));
   border: 1px solid color-mix(in srgb, var(--crit) 40%, transparent);
 }
 
-.lib-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.lib-item {
-  border: 1px solid var(--rule);
-  border-radius: 12px;
-  background: var(--surface-1);
-  padding: 13px 16px;
-}
-
-/* A private course reads as its own thing at a glance, not only in words:
-   spec §2.4's boundary is worth being able to see down a list of twenty. */
-.lib-item-private {
-  border-left: 3px solid var(--s7);
-}
-
-.lib-item-head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.lib-item-title {
-  font-family: var(--sans);
-  font-size: 15px;
-  font-weight: 660;
-  color: var(--ink);
-  text-decoration: none;
-  letter-spacing: -0.01em;
-  /* reader.css styles every `a` with a 1px accent border-bottom — right for
-     a link inside prose, wrong for a card title in a list, where at 390px it
-     read as a row of underlined sentences (seen in Chromium, not in the
-     jsdom suite, which has no layout at all). `.dash-card-title` already
-     avoids it by being a <span> inside the link; this is the same decision
-     said out loud, with the affordance moved onto hover/focus. */
-  border-bottom: 1px solid transparent;
-}
-
-.lib-item-title:hover,
-.lib-item-title:focus-visible {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-}
-
+/* Dùng chung bởi `registry/Rating.tsx` (dòng tóm tắt điểm) và
+   `registry/Discussion.tsx` (dòng tác giả · ngày của một bình luận). */
 .lib-meta {
   font-family: var(--sans);
   font-size: 12px;
@@ -518,157 +363,6 @@
   gap: 6px;
   flex-wrap: wrap;
   font-variant-numeric: tabular-nums;
-}
-
-.lib-source {
-  font-weight: 620;
-  color: var(--ink-2);
-}
-
-.lib-source-private {
-  color: var(--s7);
-}
-
-.lib-tier {
-  font-family: var(--sans);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  border-radius: 999px;
-  padding: 2.5px 8px;
-  white-space: nowrap;
-}
-
-.lib-tier-content {
-  color: var(--ink-3);
-  background: var(--panel);
-  border: 1px solid var(--rule);
-}
-
-/* Loud on purpose. This badge is a security statement — the tier decides
-   whether a package may ship JavaScript that runs in the reader's own
-   browser (§1.2) — so it is styled like a warning and not like a genre tag.
-   `white-space: normal` because its text is a sentence fragment, not a
-   word, and clipping it would remove exactly the half that carries the
-   meaning. */
-.lib-tier-code {
-  /* Not a bare `var(--crit)`. Measured in Chromium against this badge's own
-     background: #d03b3b on the 12% tint gives 3.97:1, which is under WCAG
-     AA's 4.5:1 for text this size (11px bold is not "large text"). Darkening
-     to 78% takes it to 5.78:1. An unreadable warning is not a warning, and
-     this is the one label on the page that has to be read. */
-  color: color-mix(in srgb, var(--crit) 78%, #000);
-  background: color-mix(in srgb, var(--crit) 12%, var(--surface-1));
-  border: 1px solid color-mix(in srgb, var(--crit) 45%, transparent);
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 11px;
-  white-space: normal;
-}
-
-/* The same fix in the other direction: `--crit` is not redefined for the dark
-   palette, so on a near-black surface the light-mode darkening would be worse
-   than useless. Lightened instead, and measured the same way. */
-html[data-theme='dark'] .lib-tier-code {
-  color: color-mix(in srgb, var(--crit) 62%, #fff);
-}
-
-/* A course the reader is provably studying, that no source can name (ruling
-   S1-F31: `loader.ts`'s static SOURCE 2 lands here). Marked like the private
-   lane so it does not read as a defect — it is a real course, just one whose
-   provenance nothing on this device recorded. */
-.lib-source-unknown {
-  color: var(--ink-3);
-}
-
-/* Why a row could not be named. One line, quiet: the row above it still
-   links to the course, so this is context rather than an error state. */
-.lib-row-note {
-  font-family: var(--sans);
-  font-size: 12px;
-  color: var(--ink-3);
-  margin: 6px 0 0;
-}
-
-/* The update offer (ruling S1-F29 — the door into UpdateDialog). Sits below
-   the metadata line rather than in the head: it appears on a minority of rows
-   and a head that reflows for it would make the whole list feel unstable. */
-.lib-item-update {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin: 10px 0 0;
-  padding: 8px 0 0;
-  border-top: 1px dashed var(--rule);
-}
-
-.lib-update-note {
-  font-family: var(--sans);
-  font-size: 12px;
-  font-weight: 620;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
-}
-
-.lib-update-btn {
-  font-size: 12px;
-  padding: 4px 11px;
-}
-
-/* The front door (ruling S1-F17). Sized and spaced like a landing block
-   rather than like an error line, because it is the ordinary state of a new
-   account and not a failure. */
-.lib-empty {
-  border: 1px solid var(--rule);
-  border-radius: 14px;
-  background: var(--surface-1);
-  padding: 22px 24px;
-  margin: 8px 0 0;
-}
-
-.lib-empty-h {
-  font-family: var(--sans);
-  font-size: 16px;
-  font-weight: 680;
-  color: var(--ink);
-  margin: 0 0 8px;
-  letter-spacing: -0.01em;
-}
-
-.lib-empty-lede {
-  font-family: var(--sans);
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--ink-2);
-  margin: 0 0 16px;
-  max-width: 34rem;
-}
-
-.lib-empty-cta {
-  display: inline-block;
-}
-
-.lib-empty-ways {
-  font-family: var(--sans);
-  font-size: 12.5px;
-  color: var(--ink-2);
-  margin: 16px 0 0;
-  padding-left: 20px;
-}
-
-.lib-empty-ways li {
-  margin: 0 0 5px;
-}
-
-.lib-empty-registry {
-  font-family: var(--sans);
-  font-size: 12px;
-  color: var(--ink-3);
-  border-top: 1px solid var(--rule);
-  margin: 16px 0 0;
-  padding-top: 12px;
 }
 
 /* P2 Task 3 — highlight painter (src/annotations/painter.ts).

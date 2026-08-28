@@ -17,7 +17,12 @@ import { useLanguage } from './LanguageProvider';
  * `DEVICE_PREFERENCE_KEYS` ở `db/local.ts`) — nên chúng thuộc về cùng một chỗ.
  *
  * `<select>` chứ không phải hai nút: danh sách ngôn ngữ đọc từ `LANGS`, nên
- * thêm ngôn ngữ thứ ba là sửa một mảng, không phải sửa bố cục. Nhãn đi qua
+ * thêm ngôn ngữ thứ ba là sửa một mảng, không phải sửa bố cục. Nó VẪN là
+ * `<select>` sau vòng thiết kế lại — bỏ nó đi để lấy một menu tự vẽ là đổi một
+ * điều khiển gốc có sẵn bàn phím, trình đọc màn hình và cử chỉ của từng hệ
+ * điều hành lấy một bản mô phỏng thiếu cả ba. Thứ đổi là DA: `appearance:none`
+ * cộng một mũi chevron tự vẽ trong `app-screens.css`, nên nó thôi mang bo góc
+ * và phông chữ của macOS giữa một giao diện không phải của macOS. Nhãn đi qua
  * `aria-label` vì thanh công cụ không có chỗ cho nhãn nhìn thấy được — và đó
  * cũng là tên mà `getByLabelText` trong bài kiểm đọc, nên nhãn không thể mục
  * ruỗng mà không ai biết.
@@ -43,9 +48,26 @@ export function LanguageSwitcher() {
         if (next !== null) setLang(next);
       }}
     >
+      {/*
+        MÃ NGÔN NGỮ ("VI" / "EN"), không phải tên đầy đủ — bản dựng đã duyệt.
+
+        Đánh đổi, nói ra chứ không giấu: "Tiếng Việt" tự nó đã là một nhãn đọc
+        được, còn "VI" thì không. Bù lại bằng tên có thể truy cập của chính điều
+        khiển: `aria-label` mang "Ngôn ngữ giao diện", nên trình đọc màn hình
+        đọc ra "Ngôn ngữ giao diện, VI" — cụm ấy đủ nghĩa, còn một ô rộng bằng
+        chữ "Tiếng Việt" thì chiếm gần gấp ba chỗ của mọi nút khác trên thanh và
+        kéo lệch cả nhóm bên phải.
+
+        `title` giữ tên đầy đủ cho con trỏ chuột. Danh sách MỞ RA vẫn là tên đầy
+        đủ ở trang Cài đặt, nơi có chỗ cho nó (`pages/Settings.tsx` dựng một bộ
+        chọn riêng, cố ý KHÔNG mang `id="lang-select"` — xem Settings.test.tsx).
+
+        `selectOptions(select, 'en')` trong `LanguageProvider.test.tsx` chọn
+        theo VALUE nên nó không đọc chữ này; đổi chữ ở đây không làm nó mù.
+      */}
       {LANGS.map((option) => (
-        <option key={option} value={option}>
-          {t(option === 'vi' ? 'lang.name.vi' : 'lang.name.en')}
+        <option key={option} value={option} title={t(option === 'vi' ? 'lang.name.vi' : 'lang.name.en')}>
+          {option.toUpperCase()}
         </option>
       ))}
     </select>

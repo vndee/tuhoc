@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildHeatCalendar, dayIndexOf, heatLevel, isoOfDayIndex, todayIctIso, weekdayMondayFirst } from './heat';
+import {
+  buildHeatCalendar,
+  buildYearCalendar,
+  dayIndexOf,
+  heatLevel,
+  isoOfDayIndex,
+  todayIctIso,
+  weekdayMondayFirst,
+} from './heat';
 
 /**
  * Lịch nhiệt của `/progress`, đo bằng những ngày CỤ THỂ.
@@ -180,5 +188,78 @@ describe('heatLevel', () => {
     // Cùng bậc, thang khác hẳn.
     expect(heatLevel(180, 180)).toBe(4);
     expect(heatLevel(1, 4)).toBe(1);
+  });
+});
+
+describe('buildYearCalendar', () => {
+  const day = (date: string, minutes: number) => ({ date, minutes });
+
+  it('phủ trọn năm: cột đầu chứa 1/1, cột cuối chứa 31/12', () => {
+    // 2025 bắt đầu vào thứ Tư và kết thúc vào thứ Tư.
+    const cal = buildYearCalendar([], 2025, '2026-08-24');
+
+    const flat = cal.weeks.flat();
+    expect(flat.some((c) => c.date === '2025-01-01')).toBe(true);
+    expect(flat.some((c) => c.date === '2025-12-31')).toBe(true);
+
+    // Mọi cột đủ 7 ô — một lịch cụt nửa tuần đọc như lỗi vẽ.
+    for (const column of cal.weeks) expect(column).toHaveLength(7);
+  });
+
+  it('ô của tuần đầu/cuối mà KHÔNG thuộc năm thì `inRange: false` — không phải "ngày không học"', () => {
+    const cal = buildYearCalendar([], 2025, '2026-08-24');
+
+    // 2025-01-01 là thứ Tư, nên hai ô đầu lưới là 30 và 31 tháng 12 năm 2024.
+    const first = cal.weeks[0]![0]!;
+    expect(first.date).toBe('2024-12-30');
+    expect(first.inRange).toBe(false);
+
+    const jan1 = cal.weeks[0]!.find((c) => c.date === '2025-01-01')!;
+    expect(jan1.inRange).toBe(true);
+  });
+
+  it('năm HIỆN TẠI dừng ở hôm nay: ngày mai thuộc năm nhưng chưa có dữ liệu', () => {
+    // Máy chủ trả tới hôm nay; phần còn lại của năm không được vẽ như "0 phút".
+    const cal = buildYearCalendar([day('2026-08-24', 12)], 2026, '2026-08-24');
+
+    const flat = cal.weeks.flat();
+    const today = flat.find((c) => c.date === '2026-08-24')!;
+    const tomorrow = flat.find((c) => c.date === '2026-08-25')!;
+
+    expect(today.known).toBe(true);
+    expect(today.minutes).toBe(12);
+    // Ngày mai VẪN thuộc năm 2026 — nó chỉ chưa có gì để nói.
+    expect(tomorrow.inRange).toBe(true);
+    expect(tomorrow.known).toBe(false);
+  });
+
+  it('nhãn tháng: đúng 12 nhãn, tăng dần, mỗi tháng một lần', () => {
+    const cal = buildYearCalendar([], 2025, '2026-08-24');
+
+    expect(cal.months.map((m) => m.month)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    for (let i = 1; i < cal.months.length; i += 1) {
+      expect(cal.months[i]!.column).toBeGreaterThan(cal.months[i - 1]!.column);
+    }
+  });
+
+  it('tổng và số ngày có học chỉ đếm ngày CÓ dữ liệu, không đếm ô ngoài năm', () => {
+    const cal = buildYearCalendar(
+      [day('2025-01-01', 10), day('2025-06-15', 0), day('2025-12-31', 5), day('2024-12-30', 99)],
+      2025,
+      '2026-08-24',
+    );
+
+    // 2024-12-30 nằm trong LƯỚI nhưng ngoài NĂM — nó không được cộng vào.
+    expect(cal.totalMinutes).toBe(15);
+    // Ngày 0 phút là ngày có dữ liệu nhưng KHÔNG phải ngày có học.
+    expect(cal.activeDays).toBe(2);
+    expect(cal.maxMinutes).toBe(10);
+  });
+
+  it('một năm rỗng vẫn vẽ đủ 12 tháng — lịch năm neo vào 1/1, không neo vào dữ liệu', () => {
+    const cal = buildYearCalendar([], 2023, '2026-08-24');
+    expect(cal.months).toHaveLength(12);
+    expect(cal.weeks.length).toBeGreaterThanOrEqual(52);
+    expect(cal.totalMinutes).toBe(0);
   });
 });

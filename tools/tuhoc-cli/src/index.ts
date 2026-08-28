@@ -1,25 +1,33 @@
 #!/usr/bin/env bun
 /**
- * `tuhoc` — the packaging CLI. The command a contributor runs before opening a
- * PR against the course registry.
+ * `tuhoc` — the packaging CLI. Once the command a contributor ran before
+ * opening a PR against a community course registry; now the author's road
+ * onto our own server.
  *
- * Two commands, one job each: `init` puts a valid skeleton on disk, `pack`
+ * Three commands, one job each: `init` puts a valid skeleton on disk, `pack`
  * checks a directory against `packages/course-format` and writes a zip if it
- * passes. Everything about WHAT is valid lives in that package; this binary is
- * a front door, not a second opinion.
+ * passes, `publish` sends that zip to a server which re-runs the identical
+ * rule set before it stores anything. Everything about WHAT is valid lives in
+ * that shared package; this binary is a front door, not a second opinion —
+ * `publish` no more re-validates locally than `pack` re-decides what a valid
+ * package is.
  *
  * Exit codes are the contract, and they are deliberately just two:
  *   0 — it worked
- *   1 — it did not (invalid package, bad arguments, unreadable directory)
+ *   1 — it did not (invalid package, bad arguments, unreadable directory, a
+ *       server that refused or could not be reached)
  * A third code for "usage error" was considered and dropped: nothing in this
  * repo would branch on it, and `tuhoc pack x && git commit` has to behave the
- * same way whichever kind of failure happened.
+ * same way whichever kind of failure happened — and neither should
+ * `tuhoc publish x.zip --server … && …` care whether it was rejected for bad
+ * arguments or rejected by the server.
  */
 
 import { init } from './init.ts';
 import { selfCommand } from './invocation.ts';
 import type { Io } from './io.ts';
 import { pack } from './pack.ts';
+import { publish } from './publish.ts';
 
 /**
  * `self` is how this program was actually started — see `invocation.ts`. Every
@@ -31,13 +39,19 @@ function usage(self: string): string[] {
     'tuhoc — đóng gói course cho nền tảng tuhoc',
     '',
     'Cách dùng:',
-    `  ${self} init <thư-mục>              dựng khung một course mới (hạng "content")`,
-    `  ${self} pack <thư-mục> [-o out.zip] kiểm theo bộ luật rồi đóng gói thành .zip`,
+    `  ${self} init <thư-mục>                    dựng khung một course mới`,
+    `  ${self} pack <thư-mục> [-o out.zip]       kiểm theo bộ luật rồi đóng gói thành .zip`,
+    `  ${self} publish <tệp.zip> --server <url>  đẩy gói đã đóng lên máy chủ`,
     '',
     'Tuỳ chọn của pack:',
     '  -o, --out <tệp>   nơi ghi zip. Mặc định: <tên-thư-mục>.zip trong thư mục hiện tại.',
     '',
+    'Tuỳ chọn của publish:',
+    '  --server <url>    địa chỉ máy chủ, ví dụ https://tuhoc.example.com',
+    '  Token đọc từ biến môi trường TUHOC_ADMIN_TOKEN — không truyền qua tham số dòng lệnh.',
+    '',
     'pack thoát 0 khi gói hợp lệ và đã ghi zip, thoát 1 kèm danh sách mọi vấn đề khi không.',
+    'publish thoát 0 khi máy chủ nhận gói, thoát 1 khi máy chủ từ chối hoặc có lỗi.',
     'Mục ẩn (tên bắt đầu bằng ".") không được đóng gói; symlink bị từ chối.',
     '',
     'Định dạng gói và giải thích từng mã lỗi: docs/course-format.md',
@@ -63,6 +77,7 @@ async function main(argv: string[]): Promise<number> {
   }
   if (command === 'init') return init(rest, io, self);
   if (command === 'pack') return pack(rest, io, self);
+  if (command === 'publish') return publish(rest, io, self);
 
   io.err(`tuhoc: không có lệnh "${command}".`);
   io.err('');

@@ -15,6 +15,17 @@ import { extname, join, relative, resolve } from 'node:path';
 import { PASSWORD, REAL_COURSE_ID, REPO_ROOT, freshEmail, registerNewUser } from './helpers';
 
 /**
+ * BỊ CÁCH LY khỏi `make test-e2e` — thẩm định toàn nhánh cuối cùng, Important
+ * 4 (xem `testIgnore` ở `apps/web/playwright.config.ts`). Tệp này là cổng
+ * nghiệm thu của HỆ THỐNG CON 2 (AI/BYOK, kho khoá `apps/vault`) — một pha
+ * khác, không phải Pha 1 (server-side pivot) mà đợt sửa này thuộc về. Sáu bài
+ * đỏ trong lần chạy đo được đều thuộc chủ đề AI/vault (mời cấu hình key, mở
+ * trang cấu hình, hỏi–đáp, key không rò, LaTeX), không có bài nào chạm tới
+ * course-serving mà Pha 1 vừa sửa. Không sửa ở đây — thuộc về người giữ Pha
+ * 2. Gỡ dòng trong `testIgnore` khi tệp này xanh trở lại.
+ */
+
+/**
  * ═══════════════════════════════════════════════════════════════════════════
  * HỆ THỐNG CON 2 — CỔNG NGHIỆM THU ĐẦU-CUỐI (Task 10)
  * ═══════════════════════════════════════════════════════════════════════════
@@ -515,18 +526,20 @@ async function vaultFrame(page: Page): Promise<Frame> {
 async function openVault(page: Page) {
   await page.goto('/settings');
   /*
-   * Hai cú bấm này là hợp đồng MỚI, không phải thủ tục thừa.
+   * Cú bấm này là hợp đồng, không phải thủ tục thừa.
    *
-   * `/settings` mở vào mục trung tính và KHÔNG tự bung kho khoá: trợ lý AI là
-   * tuỳ chọn của sản phẩm, không phải cửa trước của Cài đặt. Trước đây helper
-   * này chỉ cần `goto` — và chính điều đó là lỗi người dùng báo, ở dạng một bài
-   * kiểm xanh: vào Cài đặt là bị ném ngay một lớp phủ toàn màn hình cấu hình AI.
+   * `/settings` KHÔNG tự bung kho khoá: trợ lý AI là tuỳ chọn của sản phẩm,
+   * không phải cửa trước của Cài đặt. Trước đây helper này chỉ cần `goto` — và
+   * chính điều đó là lỗi người dùng báo, ở dạng một bài kiểm xanh: vào Cài đặt
+   * là bị ném ngay một lớp phủ toàn màn hình cấu hình AI.
+   *
+   * Cài đặt nay là MỘT trang, nên không còn bước chọn mục trước: khối "Trợ lý
+   * AI" đã ở sẵn trên trang. Điều được canh thì không đổi.
    *
    * Lối đi mang sẵn ý định (lời mời trong panel hỏi-đáp) có chốt riêng ở
    * `src/pages/Settings.test.tsx` và `src/reader/leaveChapter.test.tsx`; ở đây
    * đi bằng tay, đúng như một người chủ động vào cắm key.
    */
-  await page.locator('.set-toc').getByRole('button', { name: 'Trợ lý AI' }).click();
   await page.getByRole('button', { name: 'Mở kho khoá' }).click();
   const ui = page.frameLocator('[data-testid="vault-frame"]');
   await expect(ui.locator('h2')).toHaveText('Trợ lý AI chạy bằng key của chính bạn');

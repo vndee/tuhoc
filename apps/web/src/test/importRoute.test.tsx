@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { useEffect } from 'react';
@@ -8,38 +8,32 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { AppRoutes } from '../routes';
 import { clearLocalData } from '../db/local';
 import { LanguageProvider } from '../i18n/LanguageProvider';
+import { ThemeProvider } from '../theme/ThemeContext';
 
 /**
- * `/import` is not reachable while logged out — pinned, not merely written
- * down.
+ * `/import` → `/courses?import=1`, reachable whether or not anybody is
+ * signed in (Task 12) — and, as of Task 13, `?import=1` no longer opens
+ * anything. `pages/ImportCourse.tsx` is what it used to open, and the
+ * import flow it belonged to is dead (spec
+ * `2026-08-25-server-side-pivot.md` §1: the server is the only place a
+ * course lives now, via `tuhoc publish`, not `/import`). `pages/Courses.tsx`
+ * dropped the tab/dialog affordance entirely, so the query parameter is
+ * inert — the old redirect is kept alive (a saved link must still resolve),
+ * but what it lands on is the plain public catalog, same as a bare
+ * `/courses` visit.
  *
- * ## `/import` is now a redirect, and this file still measures the same thing
- *
- * The IA redesign folded the import screen into `/courses` as a dialog, so
- * `/import` is `<Navigate to="/courses?import=1" replace/>`
- * (`docs/superpowers/specs/2026-08-23-ia-redesign.md`). The guard did not move
- * and neither did the risk: the destination is behind the same `<RequireAuth>`,
- * so a logged-out visit still ends at `/login` having rendered no import UI,
- * and a logged-in visit still ends with the importer on screen.
- *
- * What changed is the FINAL PATHNAME, and only that — `/courses` instead of
- * `/import`. The assertion was re-pointed rather than dropped: it is what
- * proves the logged-in case actually arrived somewhere instead of being
- * bounced, and deleting it would leave the complement below asserting nothing
- * about where the reader ended up.
- *
- * `routes.tsx` spends seven lines explaining why this route MUST be guarded,
- * and the reason is not tidiness: an import writes into `db.packages`, and
- * `clearLocalData()` walks `db.tables` and empties every one of them on
- * every auth transition. A package imported while logged out is therefore
- * deleted by the next sign-in — the reader loses a course they watched
- * arrive. Independent mutation testing removed the `<RequireAuth>` wrapper
- * from this one route and all 632 tests stayed green, so the argument had
- * nothing holding it. It does now.
+ * So this file's job narrows to what is still true: the OLD `/import` link
+ * still resolves, still without a login wall, and a logged-out visit reaches
+ * the SAME place a logged-in one does. What it resolves TO changed from "the
+ * import dialog" to "the catalog" — this file used to assert the former and
+ * now asserts the latter, which is why the heading it looks for changed
+ * rather than the file being deleted outright: a route that stops resolving
+ * silently is the S1-F29 shape this file exists to catch, and `/import`
+ * still needs that catch even though nothing opens inside it any more.
  *
  * Driven through `AppRoutes` rather than through `<RequireAuth>` directly:
- * the mutant deletes the wrapper at the ROUTE, which a test of the guard
- * component itself cannot see.
+ * a route-level regression (someone re-wrapping `/courses`) shows up here,
+ * where a test of the guard component itself cannot see it.
  */
 
 const server = setupServer();
@@ -62,40 +56,40 @@ function renderAt(path: string, pathnames: string[]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <LanguageProvider><MemoryRouter initialEntries={[path]}>
+      <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={[path]}>
         <Recorder onChange={(p) => pathnames.push(p)} />
         <AppRoutes />
-      </MemoryRouter></LanguageProvider>
+      </MemoryRouter></LanguageProvider></ThemeProvider>
     </QueryClientProvider>,
   );
 }
 
-const IMPORT_HEADING = /nhập khóa học/i;
+const CATALOG_HEADING = /khoá học/i;
 
-describe('/import nằm sau RequireAuth', () => {
-  it('người chưa đăng nhập bị đưa về /login, và KHÔNG thấy trang nhập', async () => {
+describe('/import — vẫn phân giải, nay xuống danh mục công khai (Task 13)', () => {
+  it('người CHƯA đăng nhập (GET /me → 401) vẫn tới được, không bị đưa về /login', async () => {
     server.use(http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
+    server.use(http.get('/courses', () => HttpResponse.json([])));
     const pathnames: string[] = [];
 
     renderAt('/import', pathnames);
 
-    await waitFor(() => expect(pathnames.at(-1)).toBe('/login'));
-    expect(screen.queryByRole('heading', { name: IMPORT_HEADING })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: CATALOG_HEADING, level: 1 })).toBeInTheDocument();
+    // `/courses`, vì `/import` chuyển hướng về đó — nhưng KHÔNG còn hộp thoại
+    // nào mở ra kèm theo: `?import=1` nay là một tham số không ai đọc.
+    expect(pathnames.at(-1)).toBe('/courses');
+    expect(pathnames).not.toContain('/login');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('người đã đăng nhập thì vào được — chốt này cấm đúng thứ cần cấm, không cấm tất', async () => {
-    // The complement, and it is not decoration: a rule that only ever
-    // forbids is satisfied by deleting the route altogether.
+  it('người ĐÃ đăng nhập tới đúng nơi ấy — cùng một đích cho cả hai, không phải hai đích khác nhau', async () => {
     server.use(http.get('/me', () => HttpResponse.json({ id: 'u1', email: 'a@vi.vn', name: 'A' })));
+    server.use(http.get('/courses', () => HttpResponse.json([])));
     const pathnames: string[] = [];
 
     renderAt('/import', pathnames);
 
-    expect(await screen.findByRole('heading', { name: IMPORT_HEADING })).toBeInTheDocument();
-    // `/courses`, because `/import` redirects there — and the redirect carries
-    // `?import=1`, which is what makes the heading above appear at all. A bare
-    // `/courses` would land on the course list with no importer anywhere, and
-    // this test would be red for exactly the right reason.
+    expect(await screen.findByRole('heading', { name: CATALOG_HEADING, level: 1 })).toBeInTheDocument();
     expect(pathnames.at(-1)).toBe('/courses');
   });
 });

@@ -6,24 +6,8 @@ import {
   parseManifest,
   validatePackage,
 } from './validate';
-
-const enc = (s: string) => new TextEncoder().encode(s);
-const MANIFEST = (over: Record<string, unknown> = {}) => enc(JSON.stringify({
-  id: 'demo', title: 'Demo', description: 'd', lang: 'vi', version: '1.0.0',
-  runtime: '^1', tier: 'content', license: 'CC-BY-4.0',
-  authors: [{ name: 'A' }], generatedBy: 'human',
-  parts: [{ title: 'P', chapters: [{ id: 'c1', num: '1', title: 'T', short: 'T', file: 'chapters/c1.html' }] }],
-  ...over,
-}));
-
-/** A content package that is valid except for whatever `chapter` says. */
-const withChapter = (chapter: string, over: Record<string, unknown> = {}) =>
-  new Map([
-    ['manifest.json', MANIFEST(over)],
-    ['chapters/c1.html', enc(chapter)],
-  ]);
-
-const codesOf = (files: ReadonlyMap<string, Uint8Array>) => validatePackage(files).findings.map((f) => f.code);
+import { WIDGET_MAX_BYTES, WIDGET_MAX_LINE_BYTES } from './widgets';
+import { MANIFEST, codesOf, enc, withChapter } from './test-fixtures';
 
 /**
  * `<img a0=1 a1=1 … >` — n attributes with DISTINCT names on exactly one start
@@ -48,7 +32,7 @@ it('gói content hợp lệ thì ok', () => {
   expect(r).toEqual({ ok: true, findings: [] });
 });
 
-it('hạng content KHÔNG được chứa <script>', () => {
+it('gói KHÔNG được chứa <script>', () => {
   const r = validatePackage(new Map([
     ['manifest.json', MANIFEST()],
     ['chapters/c1.html', enc('<p>a</p><script>alert(1)</script>')],
@@ -57,14 +41,10 @@ it('hạng content KHÔNG được chứa <script>', () => {
   expect(r.findings.map(f => f.code)).toContain('SCRIPT_TAG');
 });
 
-it('hạng interactive ĐƯỢC chứa JS — đây là điểm khác biệt của hai hạng', () => {
-  const r = validatePackage(new Map([
-    ['manifest.json', MANIFEST({ tier: 'interactive' })],
-    ['chapters/c1.html', enc('<p>a</p>')],
-    ['viz.js', enc('export function draw() {}')],
-  ]));
-  expect(r.ok).toBe(true);
-});
+// Bài test cũ ở đây khẳng định `tier: 'interactive'` cho phép JS rời — đúng
+// điểm khác biệt của hai hạng mà format v2 xoá. Xoá thẳng thay vì sửa: hành
+// vi nó ghim không còn tồn tại, và bản thay thế ("gói KHÔNG có tier: luật
+// content vẫn chạy") đã có trong khối 'format v2 — tier đã chết' phía trên.
 
 it('đường dẫn thoát ra ngoài gói bị chặn', () => {
   const r = validatePackage(new Map([
@@ -78,6 +58,70 @@ it('đường dẫn thoát ra ngoài gói bị chặn', () => {
 it('manifest trỏ tới chương không tồn tại', () => {
   const r = validatePackage(new Map([['manifest.json', MANIFEST()]]));
   expect(r.findings.map(f => f.code)).toContain('CHAPTER_FILE_MISSING');
+});
+
+// ---------------------------------------------------------------------------
+// Format v2: tier đã chết. Luật content (bảy luật) chạy vô điều kiện trên MỌI
+// gói; phần tương tác chỉ còn sống trong widgets/<tên>/index.html, khỏi được
+// Task 2 quét bằng luật riêng. Ghi ở đây bốn hành vi task 1 chịu trách nhiệm
+// (xem RULING D1 của task brief: KHÔNG có mã JS_OUTSIDE_WIDGETS — tái dùng
+// JS_FILE_IN_PACKAGE, chỉ đổi phạm vi và detail).
+// ---------------------------------------------------------------------------
+
+describe('format v2 — tier đã chết', () => {
+  it('manifest còn "tier" → TIER_REMOVED', () => {
+    // Gói hợp lệ tối thiểu, nhưng manifest vẫn mang trường "tier" cũ.
+    const r = validatePackage(withChapter('<p>Xin chào</p>', { tier: 'content' }));
+    const f = r.findings.find((finding) => finding.code === 'TIER_REMOVED');
+    expect(f?.path).toBe('manifest.json');
+  });
+
+  it('gói KHÔNG có tier: luật content vẫn chạy — <script> trong chương bị bắt', () => {
+    // `tier: undefined` khiến JSON.stringify bỏ hẳn khoá "tier" — đúng hình
+    // dạng manifest v2.
+    const r = validatePackage(withChapter('<p>a</p><script>alert(1)</script>', { tier: undefined }));
+    expect(r.findings.map((f) => f.code)).toContain('SCRIPT_TAG');
+  });
+
+  it('tệp viz.js ở gốc gói → JS_FILE_IN_PACKAGE', () => {
+    // Brief gốc đặt tên JS_OUTSIDE_WIDGETS cho luật này; RULING D1 bác bỏ mã
+    // đó — JS_FILE_IN_PACKAGE đã tồn tại và mang đúng nghĩa, chỉ cần bỏ cổng
+    // tier và thêm miễn trừ widgets/.
+    const files = withChapter('<p>a</p>', { tier: undefined }).set('viz.js', enc('defineViz()'));
+    const r = validatePackage(files);
+    const f = r.findings.find((finding) => finding.code === 'JS_FILE_IN_PACKAGE');
+    expect(f?.path).toBe('viz.js');
+  });
+
+  it('widgets/demo/index.html KHÔNG bị luật content quét — <script> trong đó không phải SCRIPT_TAG', () => {
+    // WIDGET_* của Task 2 chưa tồn tại — ở đây chỉ ghim rằng luật content
+    // (SCRIPT_TAG…) THÔI đọc widgets/<tên>/index.html, không hơn.
+    const files = withChapter('<div data-widget="demo"></div>')
+      .set('widgets/demo/index.html', enc('<script>1</script>'));
+    const r = validatePackage(files);
+    expect(r.findings.map((f) => f.code)).not.toContain('SCRIPT_TAG');
+  });
+
+  it('widgets/demo/chart.js KHÔNG bị JS_FILE_IN_PACKAGE bắt — miễn trừ theo CẢ THƯ MỤC widget, không chỉ index.html', () => {
+    // Ca này khác ca trên: đây là miễn trừ của JS_FILE_IN_PACKAGE
+    // (WIDGET_DIR_RE, mọi tệp dưới widgets/<tên>/), còn ca trên là miễn trừ
+    // của luật quét HTML (WIDGET_INDEX_RE, chỉ đúng index.html). Một widget
+    // thật thường tách JS ra một tệp riêng cạnh index.html
+    // (widgets/<tên>/index.html + widgets/<tên>/chart.js), nên nếu chỉ
+    // index.html được miễn mà chart.js thì không, mọi widget thật đều bị
+    // JS_FILE_IN_PACKAGE chặn — miễn trừ khi đó vô dụng trên thực tế.
+    const files = withChapter('<div data-widget="demo"></div>')
+      .set('widgets/demo/index.html', enc('<script src="chart.js"></script>'))
+      .set('widgets/demo/chart.js', enc('export function draw() {}'));
+    const r = validatePackage(files);
+    expect(r.findings.map((f) => f.code)).not.toContain('JS_FILE_IN_PACKAGE');
+
+    // ĐỐI CHỨNG: cùng nội dung .js đó, đặt NGOÀI widgets/, vẫn phải bị bắt —
+    // nếu không, ca "không JS_FILE_IN_PACKAGE" ở trên có thể xanh vì luật đã
+    // hỏng hẳn (không còn bắt gì) chứ không phải vì miễn trừ đúng chỗ.
+    const outside = withChapter('<p>a</p>').set('chart.js', enc('export function draw() {}'));
+    expect(codesOf(outside)).toContain('JS_FILE_IN_PACKAGE');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -252,15 +296,44 @@ describe('luật chung', () => {
     expect(codesOf(new Map([['manifest.json', enc('[1, 2, 3]')]]))).toContain('MANIFEST_PARSE');
   });
 
+  /**
+   * Pins the accept side of the final whole-branch review's Minor 1 — the
+   * one author-hostile divergence its differential fuzzer found between
+   * this module and `apps/api/internal/pkgcheck`'s Go port. `decoder`
+   * (`new TextDecoder('utf-8')`, above) strips a leading UTF-8 byte-order
+   * mark by default before `JSON.parse` ever sees the bytes, so a
+   * manifest.json saved as UTF-8-with-BOM — a real, non-adversarial shape:
+   * Windows PowerShell 5.1's default redirection encoding, several
+   * editors' "UTF-8 with BOM" preset — has always packed clean here. The
+   * Go side did not extend that courtesy (`json.Unmarshal` does not skip a
+   * BOM), so the same bytes failed publish with MANIFEST_PARSE — see
+   * `pkgcheck_test.go`'s `TestManifestParseWithUTF8BOM`, which pins the
+   * Go-side fix. This test exists so a future change to `decoder` here
+   * cannot silently re-open that gap from this side instead.
+   */
+  it('BOM UTF-8 ở đầu manifest.json KHÔNG gây MANIFEST_PARSE — TextDecoder tự lột nó trước JSON.parse', () => {
+    const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf]);
+    const withBOM = new Uint8Array([...UTF8_BOM, ...MANIFEST()]);
+    const result = validatePackage(new Map([
+      ['manifest.json', withBOM],
+      ['chapters/c1.html', enc('<p>Nội dung</p>')],
+    ]));
+    expect(result.findings.map((f) => f.code)).not.toContain('MANIFEST_PARSE');
+    expect(result).toEqual({ ok: true, findings: [] });
+  });
+
   it('MANIFEST_FIELD: thiếu trường bắt buộc, kèm con trỏ tới đúng trường', () => {
-    const noTier = JSON.parse(new TextDecoder().decode(MANIFEST())) as Record<string, unknown>;
-    delete noTier['tier'];
+    // Trước đây ca này xoá "tier" — trường đó giờ không còn được VALIDATE
+    // (thiếu nó không sai nữa, xem describe 'format v2 — tier đã chết' phía
+    // trên), nên đổi sang một trường vẫn bắt buộc thật sự: "license".
+    const noLicense = JSON.parse(new TextDecoder().decode(MANIFEST())) as Record<string, unknown>;
+    delete noLicense['license'];
     const findings = validatePackage(new Map([
-      ['manifest.json', enc(JSON.stringify(noTier))],
+      ['manifest.json', enc(JSON.stringify(noLicense))],
       ['chapters/c1.html', enc('<p>a</p>')],
     ])).findings;
     expect(findings.map((f) => f.code)).toContain('MANIFEST_FIELD');
-    expect(findings.find((f) => f.code === 'MANIFEST_FIELD')?.path).toBe('manifest.json#/tier');
+    expect(findings.find((f) => f.code === 'MANIFEST_FIELD')?.path).toBe('manifest.json#/license');
   });
 
   it('MANIFEST_FIELD: sai KIỂU cũng bị bắt, không chỉ thiếu', () => {
@@ -268,9 +341,11 @@ describe('luật chung', () => {
     expect(codesOf(withChapter('<p>a</p>', { authors: [] }))).toContain('MANIFEST_FIELD');
     expect(codesOf(withChapter('<p>a</p>', { authors: [{ name: 'A', url: 3 }] }))).toContain('MANIFEST_FIELD');
     expect(codesOf(withChapter('<p>a</p>', { generatedBy: 'robot' }))).toContain('MANIFEST_FIELD');
-    expect(codesOf(withChapter('<p>a</p>', { tier: 'CONTENT' }))).toContain('MANIFEST_FIELD');
     expect(codesOf(withChapter('<p>a</p>', { translationOf: 7 }))).toContain('MANIFEST_FIELD');
     expect(codesOf(withChapter('<p>a</p>', { parts: [] }))).toContain('MANIFEST_FIELD');
+    // "tier" is no longer a MANIFEST_FIELD case at all — any value at all now
+    // produces TIER_REMOVED instead (see 'format v2 — tier đã chết' above).
+    expect(codesOf(withChapter('<p>a</p>', { tier: 'CONTENT' }))).toEqual(['TIER_REMOVED']);
   });
 
   it('chapter.num RỖNG là hợp lệ — chương không đánh số (phụ lục) là ca được hỗ trợ', () => {
@@ -356,10 +431,11 @@ describe('luật chung', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Nhóm chỉ áp cho tier: 'content'
+// Luật content — trước đây chỉ áp cho tier: 'content', nay áp cho MỌI gói
+// (format v2, task 1 — xem describe 'format v2 — tier đã chết' phía trên).
 // ---------------------------------------------------------------------------
 
-describe("luật riêng của hạng 'content'", () => {
+describe('luật content', () => {
   it('EVENT_HANDLER_ATTR: on*= trong thẻ bị bắt, kể cả khi thẻ xuống dòng', () => {
     expect(codesOf(withChapter('<div onclick="x()">a</div>'))).toContain('EVENT_HANDLER_ATTR');
     expect(codesOf(withChapter('<div\n  onmouseover = "x()">a</div>'))).toContain('EVENT_HANDLER_ATTR');
@@ -428,7 +504,11 @@ describe("luật riêng của hạng 'content'", () => {
     expect(codesOf(files)).toContain('SCRIPT_TAG');
   });
 
-  it("hạng 'interactive' bỏ qua TOÀN BỘ nhóm luật này", () => {
+  it('một manifest còn ghi "tier": \'interactive\' KHÔNG còn miễn trừ gì — luật content vẫn chạy, cộng thêm TIER_REMOVED', () => {
+    // Đối chứng trực tiếp với bài test cũ ở đây, đã xoá: nó khẳng định
+    // `tier: 'interactive'` tắt hẳn nhóm luật này — đúng điều format v2 huỷ.
+    // Nay giữ nguyên GIÁ TRỊ cũ trong manifest (tình huống thật: một tác giả
+    // chưa cập nhật package) để chứng minh nó không mở lại lối thoát nào.
     const files = new Map([
       ['manifest.json', MANIFEST({ tier: 'interactive' })],
       ['chapters/c1.html', enc(
@@ -437,7 +517,11 @@ describe("luật riêng của hạng 'content'", () => {
       )],
       ['viz.js', enc('export const a = 1;')],
     ]);
-    expect(validatePackage(files)).toEqual({ ok: true, findings: [] });
+    const codes = codesOf(files);
+    expect(new Set(codes)).toEqual(new Set([
+      'TIER_REMOVED', 'SCRIPT_TAG', 'EVENT_HANDLER_ATTR', 'JAVASCRIPT_URL',
+      'EMBEDDED_FRAME', 'FORM_TAG', 'JS_FILE_IN_PACKAGE',
+    ]));
   });
 
   it('LỖ HỔNG ĐÃ BIẾT: không luật nào phủ meta-refresh, ảnh ngoài, hay data: URL', () => {
@@ -452,9 +536,12 @@ describe("luật riêng của hạng 'content'", () => {
     expect(validatePackage(withChapter('<a href="data:text/html;base64,PHA+eDwvcD4=">x</a>')).ok).toBe(true);
   });
 
-  it('manifest không đọc được ⇒ không đoán hạng ⇒ không chạy luật riêng hạng', () => {
-    // Documented behaviour, not an oversight: the package already fails, and a
-    // guessed tier would only add noise to the report.
+  it('manifest không đọc được ⇒ trả sớm ⇒ không quét nội dung', () => {
+    // Documented behaviour, not an oversight — and not about tier any more:
+    // `validatePackage` returns right after `MANIFEST_PARSE` because there is
+    // no parsed manifest to locate chapters or run content rules against, the
+    // same early return `MANIFEST_MISSING` and a non-object top level take.
+    // Nothing here is gated on a tier field — there is none any more.
     const codes = codesOf(new Map([
       ['manifest.json', enc('{ hong')],
       ['chapters/c1.html', enc('<script>alert(1)</script>')],
@@ -550,7 +637,7 @@ describe('C3 — the scan may not be keyed on a file extension', () => {
   });
 });
 
-describe('B — a chapter that TEACHES HTML must be publishable at tier content', () => {
+describe('B — a chapter that TEACHES HTML must be publishable at all', () => {
   // The documented escape hatch ("escape it and it is not flagged") did not
   // work: escaping only `<`/`>` — what every HTML generator does, and the only
   // form used by the 44 chapters that ship today — still left ` onclick="` in
@@ -597,7 +684,7 @@ describe('B — a chapter that TEACHES HTML must be publishable at tier content'
 //
 // parse5 drops duplicate attributes by scanning the attribute list it has built
 // so far, once per attribute (`tokenizer/index.js:336`, `getTokenAttr`). That is
-// O(n²) in the number of attributes on ONE start tag. Measured on HEAD 64c6459,
+// O(n²) in the number of attributes on ONE start tag. Measured on HEAD 1f8201d,
 // before this block existed: 64,000 attributes = 552 KiB = 2.6% of the 20 MiB
 // budget took 19,228 ms in Bun and 6,030 ms on the Chromium main thread, while
 // the SAME byte count spread over many small tags took 38 ms / 28 ms. Size is
@@ -755,8 +842,8 @@ describe('N1 — một thẻ mở nhồi thuộc tính không được làm treo
     // ceiling the attributes are neither stored nor inspected, so an `onerror=`
     // hidden behind 1024 filler attributes is NOT reported as
     // EVENT_HANDLER_ATTR. It does not need to be: TAG_ATTR_FLOOD is itself a
-    // finding, so `ok` is false and the package is refused. The tier's promise
-    // is kept by rejecting the file, not by understanding it.
+    // finding, so `ok` is false and the package is refused. This module's
+    // promise is kept by rejecting the file, not by understanding it.
     const r = validatePackage(withChapter(tagWithAttrs(MAX_ATTRS_PER_TAG + 1, ' onerror=alert(1)')));
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.code)).toEqual(['TAG_ATTR_FLOOD']);
@@ -792,17 +879,21 @@ describe('N1 — một thẻ mở nhồi thuộc tính không được làm treo
     expect(ms, `mất ${ms.toFixed(0)} ms`).toBeLessThan(1000);
   });
 
-  it("hạng 'interactive' không tokenize gì cả, nên không có đường DoS này", { timeout: 120_000 }, () => {
-    // Where the fence is NOT needed, and why: `validatePackage` only tokenizes
-    // for tier "content". Pinned so that a future task moving the scan out of
-    // that branch has to look at this line first.
+  it('một manifest còn ghi "tier": \'interactive\' KHÔNG mở lại lối tắt khỏi tokenizer', { timeout: 120_000 }, () => {
+    // Đối chứng trực tiếp với bài test cũ ở đây, đã xoá: nó khẳng định
+    // `validatePackage` chỉ tokenize khi `tier === 'content'`, nên
+    // `tier: 'interactive'` là một lối THOÁT khỏi chính cái ngân sách thời
+    // gian mà cả khối N1 này tồn tại để bắt. Format v2 xoá lối thoát đó bằng
+    // cách xoá luôn cái điều kiện — ghim ở đây rằng một manifest còn mang GIÁ
+    // TRỊ cũ đó (tác giả chưa cập nhật package) vẫn bị tokenize, và vẫn bị bắt
+    // trong đúng ngân sách thời gian như mọi gói khác.
     const files = new Map([
       ['manifest.json', MANIFEST({ tier: 'interactive' })],
       ['chapters/c1.html', enc(tagWithAttrs(64_000))],
     ]);
     const t0 = Date.now();
-    const r = validatePackage(files);
-    expect(r).toEqual({ ok: true, findings: [] });
+    const codes = codesOf(files);
+    expect(codes, 'phải vẫn bị tokenize và bắt được TAG_ATTR_FLOOD').toContain('TAG_ATTR_FLOOD');
     expect(Date.now() - t0).toBeLessThan(1000);
   });
 });
@@ -976,11 +1067,19 @@ describe('parseManifest', () => {
 // ---------------------------------------------------------------------------
 
 describe('manifest v1 hiện có', () => {
-  it('chỉ hụt đúng bốn trường mới của v2 — không hỏng ở trường nào của v1', () => {
+  it('chỉ hụt đúng ba trường mới của v2 — không hỏng ở trường nào của v1', () => {
     // The exact shape of a v1 manifest as `tools/extract.py` writes one —
     // what the first real package of this project carried before task 11.
     // This encodes the v1→v2 gap as a test so task 11 knows precisely what it
     // has to add, and so a future edit that breaks a v1 field is visible here.
+    //
+    // Was FOUR new fields (license, tier, generatedBy, authors) — now THREE.
+    // Format v2 killed `tier` (task 1 of the server-side pivot): a v1
+    // manifest never had it either, so omitting it is no longer a gap at
+    // all, and this fixture needs no change to prove that — only the
+    // expectation below does. `tier` being absent here does NOT trip
+    // TIER_REMOVED: that finding is for a manifest that still CARRIES the
+    // key, and this one never did.
     const v1 = enc(JSON.stringify({
       id: 'giao-trinh-v1', title: 'Giáo trình v1', description: 'x',
       lang: 'vi', version: '1.0.0', runtime: '^1',
@@ -998,7 +1097,6 @@ describe('manifest v1 hiện có', () => {
     ])).findings;
     expect(findings.map((f) => f.path)).toEqual([
       'manifest.json#/license',
-      'manifest.json#/tier',
       'manifest.json#/generatedBy',
       'manifest.json#/authors',
     ]);
@@ -1044,7 +1142,14 @@ it('mọi code trong FINDING_CODES đều được ít nhất một fixture sinh
   feed(new Map());
   feed(new Map([['chapters/c1.html', enc('<p>a</p>')]]));
   feed(new Map([['manifest.json', enc('{ hong')]]));
-  feed(new Map([['manifest.json', MANIFEST({ tier: undefined, version: '1.0', runtime: 'latest' })]]));
+  // Trước đây fixture này dùng `tier: undefined` để đồng thời sinh
+  // MANIFEST_FIELD (thiếu "tier", khi đó còn bắt buộc) cùng SEMVER và
+  // RUNTIME_RANGE. "tier" không còn là đường sinh MANIFEST_FIELD nữa — đổi
+  // sang thiếu "license" để giữ nguyên vai trò của fixture.
+  feed(new Map([['manifest.json', MANIFEST({ license: undefined, version: '1.0', runtime: 'latest' })]]));
+  // TIER_REMOVED cần fixture riêng — không có đường sinh nào khác trong file
+  // này còn giữ trường "tier".
+  feed(withChapter('<p>a</p>', { tier: 'content' }));
   feed(withChapter('<p>a</p>').set('../x.txt', enc('x')).set('big.bin', new Uint8Array(MAX_UNCOMPRESSED_BYTES + 1)));
   feed(withChapter(
     '<script>a</script><div onclick="b()"></div><a href="javascript:c">l</a><iframe src="d"></iframe><form></form>',
@@ -1059,6 +1164,23 @@ it('mọi code trong FINDING_CODES đều được ít nhất một fixture sinh
     })],
     ['chapters/c1.html', enc('<p>a</p>')],
   ]));
+  // Task 2's tám luật widget. Năm widget dưới đây (Bad_Name, big, long,
+  // cookie, net) đều KHÔNG được chương nào tham chiếu, nên mỗi cái cũng kéo
+  // theo WIDGET_ORPHAN — không cần fixture riêng cho mã đó. Widget "w" ngay
+  // dưới thì CÓ được tham chiếu, để không lẫn với WIDGET_MISSING/ORPHAN của
+  // chính nó. `widgets.test.ts` là nơi mỗi luật này có test riêng, đích thân;
+  // ở đây chỉ cần MỖI mã xuất hiện ít nhất một lần qua `validatePackage`.
+  feed(withChapter('<p>a</p>').set('widgets/Bad_Name/index.html', enc('<p>x</p>'))); // WIDGET_BAD_NAME (+ WIDGET_ORPHAN)
+  feed(
+    withChapter('<div data-widget="w"></div>')
+      .set('widgets/w/index.html', enc('<p>ok</p>'))
+      .set('widgets/w/extra.js', enc('x')),
+  ); // WIDGET_EXTRA_FILE
+  feed(withChapter('<p>a</p>').set('widgets/big/index.html', new Uint8Array(WIDGET_MAX_BYTES + 1))); // WIDGET_TOO_LARGE
+  feed(withChapter('<p>a</p>').set('widgets/long/index.html', enc('a'.repeat(WIDGET_MAX_LINE_BYTES + 1)))); // WIDGET_LINE_TOO_LONG
+  feed(withChapter('<p>a</p>').set('widgets/cookie/index.html', enc('document.cookie'))); // WIDGET_FORBIDDEN_API
+  feed(withChapter('<p>a</p>').set('widgets/net/index.html', enc('http://example.com'))); // WIDGET_EXTERNAL_URL
+  feed(withChapter('<div data-widget="khong-co"></div>')); // WIDGET_MISSING
 
   expect([...produced].sort()).toEqual([...FINDING_CODES].sort());
 });

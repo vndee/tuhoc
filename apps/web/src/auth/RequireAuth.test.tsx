@@ -6,9 +6,11 @@ import { useEffect } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { clearLocalData, readSessionVerifiedAt, rememberSessionVerified } from '../db/local';
+import { t } from '../i18n';
 import { Login } from '../pages/Login';
 import { RequireAuth } from './RequireAuth';
 import { LanguageProvider } from '../i18n/LanguageProvider';
+import { ThemeProvider } from '../theme/ThemeContext';
 
 const server = setupServer();
 
@@ -39,7 +41,7 @@ function renderApp(initialPath: string, pathnames: string[]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <LanguageProvider><MemoryRouter initialEntries={[initialPath]}>
+      <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={[initialPath]}>
         <LocationRecorder onChange={(p) => pathnames.push(p)} />
         <Routes>
           <Route path="/login" element={<Login />} />
@@ -52,7 +54,7 @@ function renderApp(initialPath: string, pathnames: string[]) {
             }
           />
         </Routes>
-      </MemoryRouter></LanguageProvider>
+      </MemoryRouter></LanguageProvider></ThemeProvider>
     </QueryClientProvider>,
   );
 }
@@ -69,7 +71,7 @@ describe('RequireAuth', () => {
     renderApp('/', pathnames);
 
     expect(screen.queryByText('Protected content')).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /đăng nhập/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: t('vi', 'login.heading.login') })).not.toBeInTheDocument();
 
     await waitFor(() => expect(screen.getByText('Protected content')).toBeInTheDocument());
   });
@@ -116,7 +118,7 @@ describe('RequireAuth', () => {
 
     // Settle on /login.
     await waitFor(() => expect(pathnames.at(-1)).toBe('/login'));
-    expect(await screen.findByRole('heading', { name: /đăng nhập/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: t('vi', 'login.heading.login') })).toBeInTheDocument();
 
     // Give the app plenty of time to loop if it were going to.
     await new Promise((r) => setTimeout(r, 100));
@@ -125,7 +127,7 @@ describe('RequireAuth', () => {
     // Login itself never calls GET /me, so the only call is RequireAuth's
     // original check — this is the concrete guarantee against a loop.
     expect(meCallCount).toBe(1);
-    expect(screen.getByRole('heading', { name: /đăng nhập/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: t('vi', 'login.heading.login') })).toBeInTheDocument();
   });
 });
 
@@ -234,10 +236,106 @@ describe('RequireAuth — reading offline after a cold page load', () => {
     const pathnames: string[] = [];
     renderApp('/', pathnames);
 
-    expect(screen.queryByRole('heading', { name: /đăng nhập/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: t('vi', 'login.heading.login') })).not.toBeInTheDocument();
     expect(screen.queryByText(/kết nối/i)).not.toBeInTheDocument();
 
     await screen.findByText('Protected content');
     expect(pathnames).toEqual(['/']);
+  });
+});
+
+/* ====================================================================== *
+ * MỘT LẦN `GET /me` HỎNG THOÁNG QUA KHÔNG ĐƯỢC PHÁ TRANG ĐANG MỞ
+ * ====================================================================== */
+
+/**
+ * Đây là nửa NGUYÊN NHÂN của một bài e2e chập chờn, và nó là một lỗi thật chứ
+ * không phải một phép đo quá nghiêm.
+ *
+ * Triệu chứng đo được: `e2e/s3.spec.ts` mở một chương, khẳng định TIÊU ĐỀ của
+ * chương đã hiện, rồi đọc `#content` ngay sau đó và thỉnh thoảng nhận đúng 16
+ * ký tự. Trong toàn bộ catalog tiếng Việt chỉ có một chuỗi 16 ký tự lọt được
+ * vào `#content`: `reader.chapterLoading` — "Đang tải chương…". Tức trang đọc
+ * đã dựng xong rồi TỤT LẠI về trạng thái đang tải.
+ *
+ * Đường duy nhất tụt lại được là `<ChapterView>` bị GỠ rồi DỰNG LẠI:
+ * `useCourseKit` giữ `ready` trong state của component, nên một lần dựng lại
+ * đưa nó về `false` (nửa kia của bản sửa này — xem `reader/useCourseKit.ts`).
+ * Và trên route ấy chỉ có MỘT chỗ gỡ được cả cây: `RequireAuth` trả `null`.
+ *
+ * Kịch bản dưới đây dựng lại đúng chuỗi ấy: phiên đã được xác nhận, trang đã
+ * vẽ, rồi một lần `GET /me` làm mới KHÔNG NHẬN ĐƯỢC PHẢN HỒI NÀO (mạng chớp,
+ * một request bị huỷ, server bận). `useMe` đặt `retry: false` nên nó thành
+ * `isError` ngay, `noResponseArrived` thành true, và truy vấn ngoại tuyến bắt
+ * đầu — trong lúc nó `isPending`, guard trả `null`.
+ *
+ * ĐẾM SỐ LẦN DỰNG chứ không chỉ hỏi "chữ còn trên màn hình không": chớp một
+ * cái rồi hiện lại thì ảnh chụp cuối cùng vẫn xanh, mà chính CÁI CHỚP mới là
+ * lỗi — nó ném đi mọi state của cây bên dưới (ở trang đọc: canvas, mô phỏng đã
+ * dựng, vị trí cuộn).
+ */
+describe('RequireAuth — một lần /me hỏng thoáng qua', () => {
+  function MountCounter({ log }: { log: string[] }) {
+    useEffect(() => {
+      log.push('mount');
+      return () => {
+        log.push('unmount');
+      };
+    }, [log]);
+    return <div>Protected content</div>;
+  }
+
+  it('không gỡ trang đã được cấp phép khi một lần làm mới /me không nhận được phản hồi', async () => {
+    let calls = 0;
+    server.use(
+      http.get('/me', () => {
+        calls += 1;
+        // Lần đầu: phiên thật. Lần sau: mạng im lặng — KHÔNG phải 401, không
+        // phải 500. Đây là ca mà `serverAnswered()` trả false.
+        return calls === 1
+          ? HttpResponse.json({ id: 'u1', email: 'a@example.com', name: 'A' })
+          : HttpResponse.error();
+      }),
+    );
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const log: string[] = [];
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider><LanguageProvider>
+          <MemoryRouter initialEntries={['/']}>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route
+                path="/"
+                element={
+                  <RequireAuth>
+                    <MountCounter log={log} />
+                  </RequireAuth>
+                }
+              />
+            </Routes>
+          </MemoryRouter>
+        </LanguageProvider></ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('Protected content')).toBeInTheDocument();
+    // Cái mốc ngoại tuyến do chính guard ghi ra sau khi phiên được xác nhận;
+    // đợi nó, vì nhánh lạc quan bên dưới đọc đúng nó.
+    await waitFor(async () => expect(await readSessionVerifiedAt()).not.toBeNull());
+    expect(log).toEqual(['mount']);
+
+    // Một lần làm mới thất bại, đúng như `refetchOnWindowFocus` sẽ gây ra.
+    await queryClient.invalidateQueries({ queryKey: ['me'] });
+
+    await waitFor(() => expect(calls).toBeGreaterThan(1));
+    // Đợi thêm một nhịp để mọi commit sau đó kịp chạy.
+    await waitFor(() => expect(screen.getByText('Protected content')).toBeInTheDocument());
+
+    expect(
+      log,
+      'trang đã được cấp phép bị gỡ rồi dựng lại vì một lần /me hỏng — mọi state bên dưới mất theo',
+    ).toEqual(['mount']);
   });
 });

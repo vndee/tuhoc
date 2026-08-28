@@ -11,7 +11,7 @@ Ghi lại lúc kết thúc P1 (nhánh `p1-platform-core`, 37 commit, hợp nhấ
 | # | Nội dung | Nơi xử lý | Vì sao |
 |---|---|---|---|
 | ~~C-1~~ | ~~**Rò rỉ chéo tài khoản qua nhiều tab.**~~ **ĐÃ ĐÓNG** ở hệ thống con 4, Task 1 — xem mục "C-1 — ĐÃ ĐÓNG" bên dưới để biết **cách kiểm lại**. | ~~P4~~ | — |
-| C-2 | **`GET /courses` chưa tồn tại.** Spec §4 có liệt kê nhưng không task nào của P1 được giao xây. Dashboard hiện dùng `KNOWN_COURSE_IDS` hardcode trong `apps/web/src/pages/Dashboard.tsx`. Bảng `courses` đã được seed trong migration 0001 nhưng **không dòng Go nào đọc nó**. | **P4-T3** (plan đã sửa thành "TẠO MỚI") | Ba nguồn danh sách khóa học, không nguồn nào là chuẩn. |
+| ~~C-2~~ | ~~**`GET /courses` chưa tồn tại.**~~ **ĐÃ ĐÓNG.** Route công khai nay ở `apps/api/internal/server/server.go` (`app.Get("/courses", catalogHandler.PublicList)`), và `KNOWN_COURSE_IDS` đã bị xoá khỏi `Dashboard.tsx` — chỉ còn được nhắc trong hai chú thích kể lại chuyện cũ. Kiểm lại: `cd apps/api && go test ./internal/catalog/ -run TestPublicList -count=1` (cần Docker). | ~~P4~~ | — |
 | ~~C-3~~ | ~~**Escape hatch `SameSite=None` thiếu yêu cầu CSRF.**~~ **ĐÃ ĐÓNG** ở hệ thống con 4, Task 2 — xem mục "C-3 — ĐÃ ĐÓNG" bên dưới. | ~~P4~~ | — |
 
 ## C-3 — escape hatch `SameSite=None` — ĐÃ ĐÓNG (hệ thống con 4, Task 2)
@@ -264,9 +264,25 @@ nhánh ấy **không đọc keystore**. Hai phép đo canh chuyện đó thay v�
 được: `?lang=` rời khỏi `src` của `<iframe>` kho khoá, nên khung **không còn remount**, nên đổi ngôn
 ngữ không còn xoá key người dùng đang gõ dở (Task 7 §4 đo lỗi ấy; `s3.spec.ts` kịch bản 5b canh).
 
-## `registryId` KHÔNG BAO GIỜ ĐƯỢC ĐẶT — nhãn nguồn `registry` của thư viện là mã không tới được
+## `registryId` KHÔNG BAO GIỜ ĐƯỢC ĐẶT — nhãn nguồn `registry` của thư viện là mã không tới được — **HẾT Ý NGHĨA (server-side pivot, Task 16 của `2026-08-25-pha1-course-len-may-chu.md`)**
 
-**Đo ngày 2026-08-23, cả hai chiều.** Không một đường nào trong repo đặt `manifest.registryId`:
+**Mọi thứ mục này bàn đều đã bị xoá; ghi lại vì lý do lịch sử, không phải vì
+còn phải làm gì.** `pack-site.ts` (nơi mục dưới đây từng cân nhắc — rồi bác
+bỏ — việc đóng dấu `registryId`) đã bị xoá ở Task 17 của server-side pivot,
+cùng `build-index.ts`. `Catalog.tsx`, `pages/Library.tsx`,
+`registry/pull.ts`, `registry/ratingFence.test.tsx`, và bảng `db.packages` —
+toàn bộ những gì mục này trích dẫn làm bằng chứng — đều đã bị xoá ở Task 13.
+Không còn "gói kéo về từ registry" nào để gán nhãn nguồn cho, vì không còn
+đường kéo-về-thư-viện nào cả (spec `2026-08-25-server-side-pivot.md` §2.4:
+course công khai, đọc thẳng từ server, không import). `tools/registry` vẫn
+tồn tại (registry PR gate — xem `tools/registry/src/validate-pr.ts`), nhưng
+nó không còn là đường course tới tay người đọc; đường ấy giờ là
+`tuhoc publish` → `PUT /admin/courses/:slug` (xem `docs/course-format.md`,
+`README.md`). Nếu một khái niệm "`registryId`" còn ý nghĩa gì trong mô hình
+mới, nó là việc của một task khác quyết định lại từ đầu, không phải nối tiếp
+phán quyết dưới đây — phán quyết ấy nói về một hàng Dexie không còn tồn tại.
+
+**Đo ngày 2026-08-23, cả hai chiều** (trước server-side pivot). Không một đường nào trong repo đặt `manifest.registryId`:
 `tools/registry` zip byte lấy thẳng từ đĩa và **không viết lại `manifest.json` bao giờ**;
 `apps/web/src/registry/pull.ts` không ghi Dexie (nó uỷ cho `import.ts`); cả ba chỗ ghi
 `db.packages` chép manifest nguyên vẹn. Trường ấy chỉ tồn tại như một ô kiểu tuỳ chọn và trong
@@ -421,7 +437,10 @@ Cần `git-filter-repo` (chưa cài trên máy). Công thức ở `docs/publishi
 - Truy vấn GraphQL của Discussions **chưa từng gọi GitHub thật một lần nào**. Máy chủ giả trả về đúng
   thứ bộ giải mã mong đợi — một vòng khép kín. **Ba cổng độc lập đã cùng nêu điều này** (S4 Task 5-Go
   §8, Task 4+5-web §7b, Task 6 §8): nó cần **một lần chạy thật với một token thật**.
-- `pack-site.ts` **chưa từng chạy trên GitHub Actions**; toàn bộ job `publish` (Pages) chưa chạy.
+- ~~`pack-site.ts` **chưa từng chạy trên GitHub Actions**; toàn bộ job `publish` (Pages) chưa chạy.~~
+  **KHÔNG CÒN LÀ RỦI RO ĐỂ THEO DÕI:** `pack-site.ts` và `build-index.ts` đã bị xoá ở Task 17 của
+  server-side pivot — courses không còn xuất bản lên GitHub Pages, catalog là `/courses` trên server
+  (xem mục "`registryId` KHÔNG BAO GIỜ ĐƯỢC ĐẶT" ở trên, đã đánh dấu HẾT Ý NGHĨA cùng lý do).
 - **Chưa ai gọi một nhà cung cấp AI thật.** OpenAI đã đo được là **bị CORS chặn ở đường lỗi**; đường
   200 chưa đo. Chủ dự án chọn **giữ kèm cảnh báo**.
 - Quy ước *"tiêu đề Discussion = id course"* **không tồn tại ở đâu** trong `tools/registry` hay tài liệu.

@@ -23,10 +23,18 @@ import (
 // User is the subset of the users row auth exposes to its own usecase and
 // handler layers. PwHash is included because Login needs it to verify a
 // password — handler.go must never put it in a response.
+//
+// Role is included for the same reason meResponse now carries it (Task 8):
+// the web admin CMS (a later task) needs to know whether the signed-in
+// account can reach the admin routes at all before it tries, and
+// RequireAdmin needs the same column to enforce it server-side. It is one
+// of "user"/"admin" (users.role's own CHECK constraint), never read as
+// anything more privileged than what the database says.
 type User struct {
 	ID     uuid.UUID
 	Email  string
 	Name   string
+	Role   string
 	PwHash string
 }
 
@@ -69,9 +77,9 @@ func (r *Repo) CreateUser(ctx context.Context, email, name, pwHash string) (User
 	var u User
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO users (email, name, pw_hash) VALUES ($1, $2, $3)
-		 RETURNING id, email, name, pw_hash`,
+		 RETURNING id, email, name, role, pw_hash`,
 		email, name, pwHash,
-	).Scan(&u.ID, &u.Email, &u.Name, &u.PwHash)
+	).Scan(&u.ID, &u.Email, &u.Name, &u.Role, &u.PwHash)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
@@ -87,9 +95,9 @@ func (r *Repo) CreateUser(ctx context.Context, email, name, pwHash string) (User
 func (r *Repo) FindUserByEmail(ctx context.Context, email string) (User, error) {
 	var u User
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, email, name, pw_hash FROM users WHERE email = $1`,
+		`SELECT id, email, name, role, pw_hash FROM users WHERE email = $1`,
 		email,
-	).Scan(&u.ID, &u.Email, &u.Name, &u.PwHash)
+	).Scan(&u.ID, &u.Email, &u.Name, &u.Role, &u.PwHash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrNotFound
@@ -105,9 +113,9 @@ func (r *Repo) FindUserByEmail(ctx context.Context, email string) (User, error) 
 func (r *Repo) FindUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 	var u User
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, email, name, pw_hash FROM users WHERE id = $1`,
+		`SELECT id, email, name, role, pw_hash FROM users WHERE id = $1`,
 		id,
-	).Scan(&u.ID, &u.Email, &u.Name, &u.PwHash)
+	).Scan(&u.ID, &u.Email, &u.Name, &u.Role, &u.PwHash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrNotFound
@@ -115,6 +123,23 @@ func (r *Repo) FindUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		return User{}, fmt.Errorf("auth: find user by id: %w", err)
 	}
 	return u, nil
+}
+
+// FindRole returns just users.role for id, without paying for pw_hash or
+// name — the one column RequireAdmin actually needs on every gated
+// request. ErrNotFound covers a session whose user row was deleted between
+// Require validating the session and this call (the same edge case
+// FindUserByID's own doc comment names for GET /me).
+func (r *Repo) FindRole(ctx context.Context, id uuid.UUID) (string, error) {
+	var role string
+	err := r.pool.QueryRow(ctx, `SELECT role FROM users WHERE id = $1`, id).Scan(&role)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrNotFound
+		}
+		return "", fmt.Errorf("auth: find role: %w", err)
+	}
+	return role, nil
 }
 
 // CreateSession inserts a new session row. expiresAt is computed by the

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 const OPEN_CLASS = 'nav-open';
@@ -9,10 +9,6 @@ function isOpen(): boolean {
 
 function close(): void {
   document.body.classList.remove(OPEN_CLASS);
-}
-
-function toggle(): void {
-  document.body.classList.toggle(OPEN_CLASS);
 }
 
 /**
@@ -35,18 +31,33 @@ function toggle(): void {
  * superset that covers chapter selection, and any other in-app navigation,
  * without this hook needing to know what a chapter link looks like.
  */
-export function useMobileNav(): { toggle: () => void } {
+export function useMobileNav(): { open: boolean; toggle: () => void } {
   const location = useLocation();
+  /*
+   * Trạng thái ngăn kéo TỪNG chỉ sống trong `body.nav-open`, và điều đó đủ khi
+   * chỉ có CSS đọc nó. Nay `#menu-btn` phải nói ra `aria-expanded`, mà một lớp
+   * trên `<body>` thì React không nhìn thấy — nút sẽ khai "đóng" trong khi ngăn
+   * kéo đang mở, và với một người dùng trình đọc màn hình đó là một lời nói dối
+   * chứ không phải một chi tiết.
+   *
+   * Lớp trên `<body>` VẪN LÀ hợp đồng với CSS (`reader.css` bám vào nó), chỉ có
+   * điều nay nó là ẢNH của state chứ không phải nguồn.
+   */
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    document.body.classList.toggle(OPEN_CLASS, open);
+  }, [open]);
 
   useEffect(() => {
     function onKeydown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && isOpen()) close();
+      if (e.key === 'Escape' && isOpen()) setOpen(false);
     }
     function onDocumentClick(e: MouseEvent) {
       if (!isOpen()) return;
       const target = e.target as Element | null;
       if (target?.closest('#sidebar') || target?.closest('#menu-btn')) return;
-      close();
+      setOpen(false);
     }
 
     document.addEventListener('keydown', onKeydown);
@@ -62,8 +73,12 @@ export function useMobileNav(): { toggle: () => void } {
   // navigation closes it", since a chapter link is just one of the things
   // that changes the route.
   useEffect(() => {
-    close();
+    setOpen(false);
   }, [location.pathname]);
 
-  return { toggle };
+  const toggle = useCallback(() => {
+    setOpen((value) => !value);
+  }, []);
+
+  return { open, toggle };
 }

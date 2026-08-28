@@ -47,6 +47,44 @@
 }
 
 /*
+ * TRẠNG THÁI RỖNG — sau khi luồng import chết (spec
+ * `2026-08-25-server-side-pivot.md` §1). Bản trước dựng ba cách NHẬP một gói
+ * (`<EmptyLibrary>`, `pages/Library.tsx`); nay không ai nhập gì — hành động
+ * duy nhất còn lại là mở danh mục, nên khối này nhỏ hơn hẳn bản nó thay thế.
+ * Cùng khung `.home-card` mượn được (nền phẳng, một đường kẻ) để trạng thái
+ * rỗng không đọc như một trang khác của ứng dụng.
+ */
+.home-empty {
+  padding: 22px 24px 24px;
+  background: var(--surface-1);
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  margin: 0 0 38px;
+}
+
+.home-empty-h {
+  font-family: var(--sans);
+  font-size: 17px;
+  font-weight: 660;
+  color: var(--ink);
+  margin: 0 0 8px;
+}
+
+.home-empty-lede {
+  font-family: var(--sans);
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  margin: 0 0 16px;
+  max-width: 46ch;
+}
+
+.home-empty-cta.btn {
+  display: inline-block;
+  text-decoration: none;
+}
+
+/*
  * THẺ HÀNH ĐỘNG DUY NHẤT của trang.
  *
  * Nó là thứ duy nhất trên màn hình có nền riêng, và đó là toàn bộ cách nó được

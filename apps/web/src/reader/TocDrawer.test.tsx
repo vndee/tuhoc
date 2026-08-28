@@ -74,7 +74,7 @@ function Harness({ initialOpen = false }: { initialOpen?: boolean } = {}) {
           open={open}
           onClose={() => setOpen(false)}
           courseId="demo"
-          courseTitle="***REMOVED***"
+          courseTitle="Khoá demo"
           currentChapterId="c1"
           parts={PARTS}
           headings={HEADINGS}

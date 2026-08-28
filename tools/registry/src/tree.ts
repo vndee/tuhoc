@@ -20,12 +20,24 @@
  *   - `<root>/<id>/manifest.json …`             — one version, or
  *   - `<root>/<id>/<version>/manifest.json …`   — several.
  *
- * The second is what `RegistryEntry.versions` needs to exist at all. The first
- * is what the two committed sample packages under `fixtures/courses/` actually
- * are, so the tools here run against real bytes rather than against a shape
- * invented for them. Which one a directory is, is decided by whether it holds
- * a `manifest.json`; the two cannot be confused, because a version directory
- * name has to be a semver string and `manifest.json` is not one.
+ * The second layout was added for `build-index.ts`'s `RegistryEntry.versions`,
+ * which needed every past version enumerable from the filesystem — the old
+ * community registry had no database, so a version's only record was its own
+ * directory. `build-index.ts` is gone (Task 17 of the 2026-08-25 server-side
+ * pivot: the catalog is `/courses`, in Postgres, which tracks versions in
+ * `course_versions` instead). Nothing in this file's remaining caller,
+ * `validate-pr.ts`, requires the second layout — but a registry root laid out
+ * that way is not invalid, only unnecessary now, and `REGISTRY_VERSION_DIR_MISMATCH`
+ * is still a real question to ask of a root that happens to use it. Removing
+ * the branch outright would be a behavior change with no test pinning it
+ * either way; left as a layout the PR gate still tolerates, not one it expects.
+ *
+ * The first layout is what the two committed sample packages under
+ * `fixtures/courses/` actually are, so the tools here run against real bytes
+ * rather than against a shape invented for them. Which one a directory is, is
+ * decided by whether it holds a `manifest.json`; the two cannot be confused,
+ * because a version directory name has to be a semver string and
+ * `manifest.json` is not one.
  */
 
 import { readdir, stat } from 'node:fs/promises';
