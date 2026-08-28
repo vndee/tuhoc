@@ -467,7 +467,7 @@ test.describe.serial('P2 definition-of-done gate — annotations', () => {
 
     /* ---- the case the plan did not have: rescue onto a FORMULA ---------- *
      *
-     * This is the Critical fixed in `5211e40`, at the top level, because it
+     * This is the Critical fixed in `8a27b63`, at the top level, because it
      * is the one path where the RESCUE destroys the thing it is rescuing.
      * `normalize.ts` stands a whole `.katex` subtree in for a single '￼', so
      * a reader who drags across the equation their note is about — the first

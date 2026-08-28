@@ -149,7 +149,7 @@ describe('fetchRatings', () => {
     expect(seen).toBe('so-dau-phay-dong');
   });
 
-  it('một 200 mang HTML (SPA fallback) không đi tiếp được — đúng lớp lỗi 815a472', async () => {
+  it('một 200 mang HTML (SPA fallback) không đi tiếp được — đúng lớp lỗi 4f2bf1f', async () => {
     server.use(http.get('/ratings', () => HttpResponse.html('<!doctype html><p>404</p>')));
     await expect(fetchRatings(['x'])).rejects.toThrow();
   });

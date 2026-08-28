@@ -5,7 +5,7 @@
 //
 // GitHub is a third party. It will be slow, it will rate-limit, it will
 // return 500s, and — the case that actually cost this project a blank page
-// once (commit 815a472) — it will one day return a 200 whose body is not
+// once (commit 4f2bf1f) — it will one day return a 200 whose body is not
 // the shape anybody expected. Every one of those must degrade into "the
 // discussion could not be loaded" and must never take the course page with
 // it. That is why the decode in client.go checks the shape at the BOUNDARY

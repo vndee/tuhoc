@@ -18,5 +18,5 @@
 # Thêm dòng khi có course riêng thứ hai. Đừng dùng mẫu quá rộng: một mẫu khớp
 # mọi thứ biến cổng này thành tiếng ồn, và tiếng ồn thì bị bỏ qua.
 
-***REMOVED***
-***REMOVED***
+ly-thuyet-thong-tin
+Lý thuyết Thông tin

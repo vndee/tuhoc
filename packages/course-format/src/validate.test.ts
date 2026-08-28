@@ -684,7 +684,7 @@ describe('B — a chapter that TEACHES HTML must be publishable at all', () => {
 //
 // parse5 drops duplicate attributes by scanning the attribute list it has built
 // so far, once per attribute (`tokenizer/index.js:336`, `getTokenAttr`). That is
-// O(n²) in the number of attributes on ONE start tag. Measured on HEAD 64c6459,
+// O(n²) in the number of attributes on ONE start tag. Measured on HEAD 1f8201d,
 // before this block existed: 64,000 attributes = 552 KiB = 2.6% of the 20 MiB
 // budget took 19,228 ms in Bun and 6,030 ms on the Chromium main thread, while
 // the SAME byte count spread over many small tags took 38 ms / 28 ms. Size is

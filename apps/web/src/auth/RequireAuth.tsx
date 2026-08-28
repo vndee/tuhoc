@@ -26,7 +26,7 @@ export interface RequireAuthProps {
  * Not exported: nothing outside this file seeds or invalidates it, and
  * `resetSessionScopedQueries` drops it by predicate rather than by key.
  * Exporting a non-component from a component module also costs a react
- * fast-refresh lint warning — the same call `0a733cb` made for
+ * fast-refresh lint warning — the same call `e859459` made for
  * `coursesQueryKey`.
  */
 const offlineSessionQueryKey = ['offline-session'] as const;
