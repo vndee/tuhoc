@@ -149,6 +149,6 @@ type Settings struct {
 	CreditsPerWebSearch   int64  // ai_settings.credits_per_web_search
 	CostMicroPerWebSearch int64  // ai_settings.cost_micro_per_web_search
 	SignupGrantMicro      int64  // ai_settings.signup_grant_micro
-	MaxTokensPerTurn      int    // ai_settings.max_tokens_per_turn
+	MaxTokensPerTurn      int    // ai_settings.max_tokens_per_turn — Agent.Run (agent.go, Task 6) áp trường này MỖI VÒNG gọi Complete, không phải một ngân sách chung cho cả lượt; đọc doc comment của Run trước khi đổi giá trị này, tên cột dễ hiểu nhầm
 	MaxToolRoundsPerTurn  int    // ai_settings.max_tool_rounds_per_turn
 }
