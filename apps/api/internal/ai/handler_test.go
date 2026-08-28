@@ -17,7 +17,6 @@
 package ai_test
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -25,6 +24,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -117,6 +117,12 @@ const (
 	balanceOtherUserB  = 67000
 	balanceRateLimited = 31000
 )
+
+// sessionCookieName is auth.CookieName, redeclared rather than imported so
+// this file asserts against the cookie NAME the API promises on the wire, not
+// against whatever constant the implementation currently holds — the same
+// discipline internal/stats's test keeps.
+const sessionCookieName = "tuhoc_session"
 
 // --- fakes -----------------------------------------------------------------
 
@@ -321,30 +327,71 @@ type sseEvent struct {
 	Code string
 }
 
-func parseSSE(t *testing.T, raw []byte) []sseEvent {
+// parseSSE is deliberately STRICT — stricter than a line scanner, as strict
+// as the browser this response is actually for.
+//
+// The first round's version was a lenient line scanner: it looked for lines
+// starting with "event: " or "data: " and ignored everything else. Three
+// separate mutations that break /ai/chat in a real browser sailed straight
+// through it — dropping the Content-Type header, dropping the flush, and
+// ending events with one newline instead of two. A parser more forgiving
+// than every real client is not a test, it is a blind spot.
+//
+// So this one takes the whole *http.Response, checks the headers EventSource
+// checks before it looks at any body, and then requires the exact framing:
+// frames separated by a blank line, each frame exactly one "event:" line and
+// one "data:" line, and the body ending with a blank line so the last event
+// is dispatched rather than left accumulating.
+func parseSSE(t *testing.T, resp *http.Response, raw []byte) []sseEvent {
 	t.Helper()
-	var out []sseEvent
-	var kind string
-	sc := bufio.NewScanner(strings.NewReader(string(raw)))
-	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-	for sc.Scan() {
-		line := sc.Text()
-		switch {
-		case strings.HasPrefix(line, "event: "):
-			kind = strings.TrimPrefix(line, "event: ")
-		case strings.HasPrefix(line, "data: "):
-			var payload struct {
-				Text string `json:"text"`
-				Code string `json:"code"`
-			}
-			if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &payload); err != nil {
-				t.Fatalf("SSE data line is not JSON (%q): %v", line, err)
-			}
-			out = append(out, sseEvent{Kind: kind, Text: payload.Text, Code: payload.Code})
-		}
+
+	// EventSource refuses a response whose Content-Type is not
+	// text/event-stream, before it examines a single byte of the body. A
+	// handler that streams perfect frames under the wrong type is a dead
+	// route, and no assertion about the body can see that.
+	if ct := resp.Header.Get(fiber.HeaderContentType); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("Content-Type is %q, not text/event-stream — a browser's EventSource "+
+			"rejects this response outright, however well-formed the body is", ct)
 	}
-	if err := sc.Err(); err != nil {
-		t.Fatalf("scan SSE: %v", err)
+	if cc := resp.Header.Get(fiber.HeaderCacheControl); !strings.Contains(cc, "no-cache") {
+		t.Fatalf("Cache-Control is %q; a cached event stream is replayed instead of "+
+			"streamed", cc)
+	}
+
+	body := string(raw)
+	if body == "" {
+		return nil
+	}
+	if !strings.HasSuffix(body, "\n\n") {
+		t.Fatalf("the stream does not end with a blank line, so its last event is never "+
+			"dispatched — a client keeps accumulating fields and fires nothing: %q", body)
+	}
+
+	var out []sseEvent
+	for _, frame := range strings.Split(strings.TrimSuffix(body, "\n\n"), "\n\n") {
+		lines := strings.Split(frame, "\n")
+		if len(lines) != 2 {
+			t.Fatalf("an SSE frame must be exactly one event line and one data line, "+
+				"got %d line(s): %q (whole body %q)", len(lines), frame, body)
+		}
+		if !strings.HasPrefix(lines[0], "event: ") {
+			t.Fatalf("frame does not start with an event line: %q", frame)
+		}
+		if !strings.HasPrefix(lines[1], "data: ") {
+			t.Fatalf("frame has no data line: %q", frame)
+		}
+		var payload struct {
+			Text string `json:"text"`
+			Code string `json:"code"`
+		}
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(lines[1], "data: ")), &payload); err != nil {
+			t.Fatalf("SSE data line is not JSON (%q): %v", lines[1], err)
+		}
+		out = append(out, sseEvent{
+			Kind: strings.TrimPrefix(lines[0], "event: "),
+			Text: payload.Text,
+			Code: payload.Code,
+		})
 	}
 	return out
 }
@@ -488,10 +535,21 @@ func round2Usage() ai.Usage {
 // ============================================================================
 
 // TestAIRoutesRejectRequestsWithoutASession runs against the REAL route
-// table (internal/server), not the bare app the other tests build. That is
-// the point: it proves both halves at once — the routes are actually
-// MOUNTED (a missing route answers 404, not 401) and every one of them sits
-// behind the session gate.
+// table (internal/server), not the bare app the other tests build, and it
+// proves exactly one thing: an anonymous request to any of the four routes
+// is refused, and refused with 401 rather than the 404 of a route nobody
+// mounted.
+//
+// WHAT IT DOES NOT PROVE, stated because the first round's comment claimed
+// it did: that each route sits behind auth.Require. It cannot. The
+// uuid.Nil guard in the handler's own caller() returns 401 by itself, so
+// deleting auth.Require from all four routes leaves this test green — the
+// failure mode is fail-closed (everyone gets 401), which is why that is a
+// weakness in the assertion rather than a hole in the server. The half this
+// test cannot reach is covered from the other direction, by
+// "the real route table lets a VALID session through" below: with the
+// middleware gone, a good session stops populating locals and that test
+// goes red.
 //
 // It needs no Postgres: auth.Require answers 401 on a missing cookie before
 // it ever touches the pool, so a nil pool is enough and this case stays
@@ -614,6 +672,66 @@ func TestAIHandlerFlows(t *testing.T) {
 	pool := store.TestPool(t)
 	seedFixtureRates(t, pool)
 	credits := ai.NewService(pool)
+
+	// ------------------------------------------------------------------
+	// The other half of Step 1: a request that DOES carry a valid session
+	// must reach the handler, through the real route table.
+	//
+	// This is what actually pins auth.Require onto these four routes.
+	// Removing the middleware makes every route answer 401 to everyone —
+	// fail-closed, so the anonymous test above stays green — and only a
+	// request with a real session cookie can tell the difference, because
+	// only the middleware puts the learner's id into the request locals
+	// that the handler's UserID hook reads back.
+	// ------------------------------------------------------------------
+	t.Run("the real route table lets a VALID session through to the handler", func(t *testing.T) {
+		app := server.New(config.Config{CookieSecure: false},
+			server.Deps{Pool: pool, LogOutput: io.Discard})
+
+		resp, raw := doJSON(t, app, http.MethodPost, "/auth/register", map[string]any{
+			"email":    fmt.Sprintf("ai-session-%s@example.test", uuid.NewString()),
+			"password": "a-long-enough-password",
+			"name":     "session gate",
+		})
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("register: want 200 got %d body=%s", resp.StatusCode, raw)
+		}
+		var session *http.Cookie
+		for _, ck := range resp.Cookies() {
+			if ck.Name == sessionCookieName {
+				session = ck
+			}
+		}
+		if session == nil {
+			t.Fatalf("register returned no %s cookie: %v", sessionCookieName, resp.Cookies())
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/ai/config", nil)
+		req.AddCookie(session)
+		got, err := app.Test(req, 30000)
+		if err != nil {
+			t.Fatalf("GET /ai/config with a session: %v", err)
+		}
+		body, _ := io.ReadAll(got.Body)
+		if got.StatusCode != http.StatusOK {
+			t.Fatalf("a request carrying a valid session must reach the handler. Got %d "+
+				"body=%s. A 401 here means the session gate never populated the "+
+				"request locals the handler reads the learner's id from — which is "+
+				"what happens when auth.Require is not actually mounted on this route.",
+				got.StatusCode, body)
+		}
+		// And it is THAT learner's configuration, not a blank one for
+		// uuid.Nil: a freshly registered account gets the column defaults.
+		var out struct {
+			ToolsEnabled []string `json:"tools_enabled"`
+		}
+		if err := json.Unmarshal(body, &out); err != nil {
+			t.Fatalf("decode: %v (%s)", err, body)
+		}
+		if len(out.ToolsEnabled) != 1 || out.ToolsEnabled[0] != ai.ToolNameReadCourse {
+			t.Fatalf("want the column default {read_course} for a new account, got %v", out.ToolsEnabled)
+		}
+	})
 
 	// ------------------------------------------------------------------
 	// Step 2 — PUT /ai/config caps system_prompt length, AT THE BOUNDARY.
@@ -798,8 +916,12 @@ func TestAIHandlerFlows(t *testing.T) {
 		if len(got.ToolsEnabled) != 1 || got.ToolsEnabled[0] != ai.ToolNameReadCourse {
 			t.Fatalf("default tools_enabled must match the column default {read_course}, got %v", got.ToolsEnabled)
 		}
-		if len(got.AvailableTools) != len(ai.KnownToolNames()) {
-			t.Fatalf("available_tools must advertise every real tool, got %v", got.AvailableTools)
+		// Compared by CONTENT and ORDER, not merely by length: a length
+		// check passes for a list of the right size holding the wrong names,
+		// and this list is what Task 14 renders one toggle per.
+		if want := ai.KnownToolNames(); !slices.Equal(got.AvailableTools, want) {
+			t.Fatalf("available_tools must be exactly the real tool names: want %v got %v",
+				want, got.AvailableTools)
 		}
 		// Task 14 checks the length limit client-side; it must read the
 		// server's number rather than duplicate a literal that can drift.
@@ -881,7 +1003,7 @@ func TestAIHandlerFlows(t *testing.T) {
 			t.Fatalf("a failure that happens mid-stream is still a 200 SSE response: got %d body=%s",
 				resp.StatusCode, raw)
 		}
-		events := parseSSE(t, raw)
+		events := parseSSE(t, resp, raw)
 		if sseText(events, "delta") != "half an ans" {
 			t.Fatalf("the text that DID stream before the failure must reach the learner: %v", events)
 		}
@@ -895,6 +1017,23 @@ func TestAIHandlerFlows(t *testing.T) {
 						"'the provider broke' (a retry). want code %q got %q",
 						ai.CodeProviderFailed, e.Code)
 				}
+				// The learner gets a fixed sentence, never the wrapped Go
+				// error. RunStream builds its own error text from
+				// err.Error(), which names the provider, the endpoint, and
+				// on a 402 the state of the PLATFORM'S account with that
+				// provider. The handler's own `internal` helper already
+				// applies exactly this rule to every 500; an error event is
+				// a response body that merely arrives late.
+				for _, leaked := range []string{"provider exploded", "ai:", "round ", "stream"} {
+					if strings.Contains(strings.ToLower(e.Text), strings.ToLower(leaked)) {
+						t.Fatalf("the raw Go error reached the learner's browser (%q "+
+							"contains %q). The cause belongs in the log, not in the "+
+							"response.", e.Text, leaked)
+					}
+				}
+				if e.Text == "" {
+					t.Fatal("an error event must still say something a person can read")
+				}
 			}
 			if e.Kind == "done" {
 				t.Fatalf("a failed turn must not emit done: %v", sseKinds(events))
@@ -902,6 +1041,12 @@ func TestAIHandlerFlows(t *testing.T) {
 		}
 		if !sawError {
 			t.Fatalf("want an error event, got %v", sseKinds(events))
+		}
+		// Exactly one — RunStream emits its own error event and the handler
+		// swallows it precisely so the learner does not receive two, one
+		// leaky and one clean.
+		if n := strings.Count(string(raw), "event: error"); n != 1 {
+			t.Fatalf("want exactly one error event on the wire, got %d: %s", n, raw)
 		}
 
 		if got := balanceOf(t, pool, uid); got != balanceChatUser-wantCreditsFailedTurn {
@@ -950,7 +1095,7 @@ func TestAIHandlerFlows(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("want 200 got %d body=%s", resp.StatusCode, raw)
 		}
-		events := parseSSE(t, raw)
+		events := parseSSE(t, resp, raw)
 		if got := sseText(events, "delta"); got != "itisfast" && got != "it isfast" {
 			t.Fatalf("deltas must arrive verbatim and in order, got %q (%v)", got, events)
 		}
@@ -1028,6 +1173,80 @@ func TestAIHandlerFlows(t *testing.T) {
 			if r.webSearches != 1 {
 				t.Fatalf("DEBT 9: ledger row %d has web_searches=%d, want 1", i+1, r.webSearches)
 			}
+		}
+	})
+
+	// ------------------------------------------------------------------
+	// The SSE wire contract, end to end. parseSSE polices the framing and
+	// the headers for every case above; this one adds the payload shape
+	// that a line-oriented protocol makes fragile — a real newline inside
+	// the model's own text.
+	// ------------------------------------------------------------------
+	t.Run("POST /ai/chat keeps one event on one line even when the answer has newlines", func(t *testing.T) {
+		uid := newUser(t, pool, "sse-newline", 33000)
+		const answer = "Step one.\nStep two.\n\nDone."
+		fs := &fakeStream{script: []streamStep{
+			// answerStep splits on "|", so this arrives as three deltas, one
+			// of which is nothing but newlines.
+			answerStep("Step one.\n|Step two.\n\n|Done.", round2Usage()),
+		}}
+		app := newAIApp(t, uid, ai.HandlerDeps{Client: fs, Credits: credits, Courses: fakeCourses{}})
+
+		resp, raw := doJSON(t, app, http.MethodPost, "/ai/chat", map[string]any{"question": "steps?"})
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("want 200 got %d body=%s", resp.StatusCode, raw)
+		}
+		// parseSSE would already have failed if a raw newline had split a
+		// frame; this asserts the text survives the round trip intact.
+		events := parseSSE(t, resp, raw)
+		if got := sseText(events, "delta"); got != answer {
+			t.Fatalf("model text must arrive byte for byte.\n got: %q\nwant: %q", got, answer)
+		}
+		if strings.Contains(string(raw), "Step one.\nStep two.") {
+			t.Fatalf("a raw newline reached the wire un-escaped, which splits one event "+
+				"into malformed fragments: %s", raw)
+		}
+		if events[len(events)-1].Kind != "done" {
+			t.Fatalf("want done last, got %v", sseKinds(events))
+		}
+	})
+
+	// An exhausted tool budget is not a broken provider. Reporting it as one
+	// tells Task 13 to offer a retry for a condition where retrying the same
+	// question spends credit on the same dead end.
+	t.Run("POST /ai/chat reports an exhausted tool budget as its own condition", func(t *testing.T) {
+		uid := newUser(t, pool, "budget-out", 22000)
+		// max_tool_rounds_per_turn is seeded at 2 for this suite; a model
+		// that asks for a tool on BOTH rounds and never writes text is
+		// exactly ErrToolBudgetExhausted's shape.
+		fs := &fakeStream{script: []streamStep{
+			toolStep(ai.ToolNameReadCourse, `{"slug":"go-basics"}`, round1Usage()),
+			toolStep(ai.ToolNameReadCourse, `{"slug":"go-basics"}`, round2Usage()),
+		}}
+		app := newAIApp(t, uid, ai.HandlerDeps{Client: fs, Credits: credits, Courses: fakeCourses{}})
+
+		resp, raw := doJSON(t, app, http.MethodPost, "/ai/chat", map[string]any{"question": "q"})
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("want 200 got %d body=%s", resp.StatusCode, raw)
+		}
+		events := parseSSE(t, resp, raw)
+
+		var code string
+		for _, e := range events {
+			if e.Kind == "error" {
+				code = e.Code
+			}
+		}
+		if code != ai.CodeToolBudgetExhausted {
+			t.Fatalf("a turn that ran out of tool rounds must not be reported as a "+
+				"provider failure — retrying the same question changes nothing, so a "+
+				"client shown 'try again' would spend the learner's credit on the same "+
+				"dead end. want code %q got %q (events %v)",
+				ai.CodeToolBudgetExhausted, code, sseKinds(events))
+		}
+		// And it is still a charged turn: both rounds burned real tokens.
+		if n := len(usageRowsOf(t, pool, uid)); n != 1 {
+			t.Fatalf("want one ledger row for the exhausted turn, got %d", n)
 		}
 	})
 

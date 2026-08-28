@@ -250,6 +250,39 @@ const (
 	CodeRateLimited     = "RateLimited"
 	CodeProviderFailed  = "ProviderFailed"
 	CodeInternal        = "Internal"
+
+	// CodeToolBudgetExhausted is NOT a provider failure and must not be
+	// reported as one. It means the model kept asking for tools until
+	// ai_settings.max_tool_rounds_per_turn ran out and never wrote an
+	// answer (ErrToolBudgetExhausted, agent.go). Nothing is broken and
+	// retrying the identical question changes nothing — a client that
+	// showed "try again shortly" here would be inviting the learner to
+	// spend credit on the same dead end. Rewording the question, or
+	// enabling fewer tools, is what actually helps.
+	CodeToolBudgetExhausted = "ToolBudgetExhausted"
+)
+
+// providerFailureDetail and toolBudgetDetail are the ONLY two sentences an
+// "error" event ever carries.
+//
+// They are fixed strings, and the raw Go error is deliberately thrown away
+// before it reaches the wire. RunStream builds its error event text from
+// err.Error(), which by then has been wrapped several layers deep and reads
+// like `ai: agent stream round 2: ai: call DeepSeek stream: Post
+// "https://api.deepseek.com/...": dial tcp ...` or `ai: DeepSeek stream
+// returned HTTP 402: <provider message>`. Sending that to a browser hands a
+// learner the provider's name, the endpoint, and — with a 402 — the state of
+// the PLATFORM'S account with that provider. No key leaks, but none of it is
+// theirs to see.
+//
+// This is the same rule the internal method at the bottom of this file
+// already applies to every 500: the log gets the wrapped cause, the response
+// gets a sentence that names no schema, no SQL, no hostname. An error event
+// is a response body that happens to arrive late, so it follows the response
+// rule, not the log rule. The cause is not lost — streamTurn logs it.
+const (
+	providerFailureDetail = "the AI provider could not complete this turn"
+	toolBudgetDetail      = "this turn used its whole tool budget without producing an answer"
 )
 
 // NewProviderClient builds the DeepSeek client the AI routes run on.
@@ -587,8 +620,32 @@ func streamTurn(w *bufio.Writer, agent *Agent, turn Turn, credits *Service,
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	// sinkBroken records that a write to the learner's connection has
+	// already failed. It is read once, at the bottom: there is no point
+	// pushing a final error event down a pipe that is known to be gone.
+	sinkBroken := false
+
 	result, runErr := agent.RunStream(ctx, turn, func(ev Event) error {
-		return writeSSE(w, ev)
+		if ev.Kind == EventKindError {
+			// SWALLOWED ON PURPOSE, and this is the only place it can be
+			// done. RunStream builds this event's text from err.Error() —
+			// several layers of wrapping naming the provider, the endpoint,
+			// and sometimes the platform's account status (see
+			// providerFailureDetail). It also cannot tell "the provider
+			// broke" from "the tool budget ran out", because both reach
+			// this callback as one opaque string.
+			//
+			// Dropping it here loses nothing: RunStream emits this
+			// best-effort and ignores the return value, then returns the
+			// SAME error to us as runErr — where errors.Is can classify it
+			// properly. The definitive error event is written below.
+			return nil
+		}
+		if err := writeSSE(w, ev.Kind, sseEnvelope{Text: ev.Text}); err != nil {
+			sinkBroken = true
+			return err
+		}
+		return nil
 	})
 
 	// ────────────────────────────────────────────────────────────────────
@@ -624,11 +681,30 @@ func streamTurn(w *bufio.Writer, agent *Agent, turn Turn, credits *Service,
 	}
 
 	if runErr != nil {
-		// RunStream already emitted the "error" event; this is the server's
-		// own record. Metadata only, for the same reason.
+		// The server's own record keeps the FULL wrapped cause — this is
+		// the log half of the split the error event's redaction makes.
+		// Metadata and the error only: never the question, never the
+		// answer (spec §0.1, and Task 12's gate).
 		slog.Error("ai turn failed",
 			"op", "ai.Chat/turn", "user", uid.String(), "model", model, "err", runErr.Error())
+
+		if !sinkBroken {
+			// Best effort by definition: the turn has already failed and
+			// this is the last thing written. If it too fails, the learner
+			// is gone and there is nobody left to tell.
+			_ = writeSSE(w, EventKindError, errorEnvelope(runErr))
+		}
 	}
+}
+
+// errorEnvelope turns the error RunStream returned into the two things a
+// client is allowed to see: which KIND of failure it was, and a fixed
+// sentence. Never the error text itself — see providerFailureDetail.
+func errorEnvelope(err error) sseEnvelope {
+	if errors.Is(err, ErrToolBudgetExhausted) {
+		return sseEnvelope{Code: CodeToolBudgetExhausted, Text: toolBudgetDetail}
+	}
+	return sseEnvelope{Code: CodeProviderFailed, Text: providerFailureDetail}
 }
 
 // sseEnvelope is the JSON object every SSE data line carries.
@@ -643,29 +719,56 @@ func streamTurn(w *bufio.Writer, agent *Agent, turn Turn, credits *Service,
 // broke" must not collapse into one message. Out of credit is refused BEFORE
 // the stream starts, as a 402 with CodeNoCredit; anything that goes wrong
 // once the stream is running can only be reported inside it, and this is
-// where it says which kind of wrong it was.
+// where it says which kind of wrong it was — CodeProviderFailed (retrying
+// may work) or CodeToolBudgetExhausted (retrying the same question will
+// not). Text is a fixed sentence, never the underlying Go error; see
+// providerFailureDetail.
 type sseEnvelope struct {
 	Text string `json:"text"`
 	Code string `json:"code,omitempty"`
 }
 
-// writeSSE emits one Event and flushes it.
+// writeSSE emits one event and flushes it.
 //
-// The flush is not optional and not an optimization: without it bufio holds
-// the bytes until its buffer fills, which for a tutor's answer means the
-// learner sees nothing and then everything — streaming that does not stream.
-// The flush error is also the only signal this code gets that the learner
-// hung up, and returning it is what makes RunStream stop.
-func writeSSE(w *bufio.Writer, ev Event) error {
-	env := sseEnvelope{Text: ev.Text}
-	if ev.Kind == EventKindError {
-		env.Code = CodeProviderFailed
-	}
+// THE WIRE FORMAT IS A CONTRACT WITH A PARSER NOBODY HERE WROTE. Every byte
+// of the Fprintf below is load-bearing against the browser's own EventSource
+// implementation, and none of it degrades gracefully:
+//
+//   - "event: " names the event type the client listens for.
+//   - "data: " carries exactly one line. The payload is JSON rather than raw
+//     text for a mechanical reason: a data line cannot contain a newline, and
+//     model output is full of them. Encoding escapes them, so one event is
+//     always exactly one line and a client never has to reassemble a
+//     multi-line data field.
+//   - The TRAILING BLANK LINE is what DISPATCHES the event. One newline ends
+//     the field; it takes a second one to end the event. Send only the first
+//     and a client accumulates fields forever and fires nothing — no error,
+//     no partial output, just silence.
+//
+// The Content-Type all of this has to arrive under is set in Chat, not here:
+// EventSource rejects a response that is not text/event-stream before it
+// examines a single byte of body.
+//
+// The FLUSH is not an optimization either, and it does two separate jobs:
+//
+//  1. Without it bufio holds the bytes until its 4 KiB buffer fills, so the
+//     learner sees nothing and then everything — streaming that does not
+//     stream.
+//  2. It is the ONLY way this code learns the learner hung up. streamTurn's
+//     context is not derived from the request (fasthttp has recycled it by
+//     then), so a write failure surfacing through this return value is what
+//     actually stops RunStream. Drop the flush and a closed connection
+//     becomes invisible: the turn runs to completion against nobody, on a
+//     budget the learner still gets charged for.
+//
+// TestWriteSSEFramesAndFlushesEveryEvent and TestWriteSSEReportsABrokenSink
+// (handler_internal_test.go) pin all of it, byte for byte.
+func writeSSE(w *bufio.Writer, kind string, env sseEnvelope) error {
 	payload, err := json.Marshal(env)
 	if err != nil {
 		return fmt.Errorf("ai: encode SSE payload: %w", err)
 	}
-	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Kind, payload); err != nil {
+	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", kind, payload); err != nil {
 		return err
 	}
 	return w.Flush()
