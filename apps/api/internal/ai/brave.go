@@ -81,11 +81,46 @@ type Brave struct {
 // client.go's defaultTimeout, not a second constant), the same "one knob, one job" reasoning
 // New's doc comment lays out for DeepSeek. baseURL is normally DefaultBraveSearchEndpoint in
 // production and an httptest.Server URL in tests.
+//
+// The client actually stored on Brave (b.http) is a SHALLOW COPY of hc with CheckRedirect
+// forced to braveRefusesRedirects — see that function's doc comment for why. Copying rather
+// than mutating hc in place matters: hc is the CALLER's *http.Client, quite possibly shared
+// with other callers (a connection-pooled client reused across this whole process, the way
+// client.go's own doc comment on New discusses sharing for DeepSeek) — reaching into it and
+// overwriting CheckRedirect would silently change redirect behavior for every OTHER caller
+// of that same client too, action-at-a-distance this file has no business causing. The copy
+// keeps Transport/Jar/Timeout (whatever hc already set) while touching only the one field
+// this file has an opinion about.
 func NewBrave(baseURL, apiKey string, hc *http.Client) *Brave {
 	if hc == nil {
 		hc = &http.Client{}
 	}
-	return &Brave{baseURL: baseURL, apiKey: apiKey, http: hc}
+	safe := *hc
+	safe.CheckRedirect = braveRefusesRedirects
+	return &Brave{baseURL: baseURL, apiKey: apiKey, http: &safe}
+}
+
+// braveRefusesRedirects makes b.http stop at the FIRST redirect response instead of
+// following it, by returning http.ErrUseLastResponse — net/http's documented sentinel for
+// "give the caller this response as-is, do not follow Location". Round-1 review, M1
+// (task-8-report.md): Go's http.Client, left at its DEFAULT CheckRedirect, follows a 3xx and
+// carries custom request headers along to the redirect target — net/http only strips a small
+// hardcoded set of SENSITIVE headers on a cross-host redirect (Authorization, Cookie,
+// WWW-Authenticate), and X-Subscription-Token is not one of them, because net/http has no way
+// to know it is sensitive. A Brave response that redirected (a misconfigured baseURL, or
+// Brave's own infrastructure doing something unexpected) would silently carry this file's API
+// key to WHATEVER HOST the Location header names.
+//
+// This is not a "compare the redirect target's host to the original host" check — that has
+// its own edge cases (subdomains, IP-vs-hostname, a same-name-but-different-owner DNS entry)
+// and Brave's Web Search endpoint has no documented legitimate reason to redirect AT ALL, so
+// refusing every redirect outright is both simpler and strictly safer than trying to allow
+// "safe" ones. The refused response still reaches Search below as an ordinary non-200 status
+// (resp.StatusCode in the 3xx range) — already-existing error handling reports it safely
+// (status code + provider message, never the key), so this adds no new error path, only
+// removes the one where a redirect gets FOLLOWED.
+func braveRefusesRedirects(req *http.Request, via []*http.Request) error {
+	return http.ErrUseLastResponse
 }
 
 // braveWireResponse is the JSON shape of a successful Brave Web Search reply, reduced to

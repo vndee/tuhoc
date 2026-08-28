@@ -227,3 +227,70 @@ func TestBraveSearchErrorIncludesStatusAndProviderMessage(t *testing.T) {
 		t.Errorf("lỗi thiếu error.message của nhà cung cấp: %v", err)
 	}
 }
+
+// TestBraveTruncatesLongProviderErrorMessage is round-1 review's M4: mirrors client_test.go's
+// TestCompleteTruncatesLongProviderErrorMessage exactly, for the same reason that test exists
+// — error.message is third-party text with no length guarantee, and Search already calls
+// truncateProviderMessage (client.go) on the non-200 path, but nothing had EXERCISED that call
+// with a message actually long enough for the cut to matter. Round-1 review's own sixth
+// mutation (delete the truncateProviderMessage call at brave.go's non-200 branch) passed the
+// whole internal/ai suite before this test existed — both existing error-path tests
+// (TestBraveSearchErrorNeverContainsKey, TestBraveSearchErrorIncludesStatusAndProviderMessage)
+// only ever send short messages (29 runes), so a cut that silently stopped happening left
+// every assertion in both tests satisfied anyway.
+func TestBraveTruncatesLongProviderErrorMessage(t *testing.T) {
+	longMsg := strings.Repeat("x", 5000)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		io.WriteString(w, `{"error":{"message":"`+longMsg+`"}}`)
+	}))
+	defer srv.Close()
+
+	_, err := NewBrave(srv.URL, "k", srv.Client()).Search(context.Background(), "q", 5)
+	if err == nil {
+		t.Fatal("muốn lỗi")
+	}
+	if len(err.Error()) > 400 {
+		t.Errorf("lỗi dài %d byte — error.message của nhà cung cấp (5000 ký tự) phải bị cắt, "+
+			"không chảy nguyên vào lỗi/log", len(err.Error()))
+	}
+	if !strings.Contains(err.Error(), "truncated") {
+		t.Errorf("lỗi không có dấu hiệu đã cắt: %v", err)
+	}
+}
+
+// TestBraveDoesNotFollowRedirects is round-1 review's M1: Go's http.Client, at its default
+// CheckRedirect, follows a 3xx and copies custom headers — X-Subscription-Token included — to
+// the redirect target, because net/http only strips a small hardcoded set of headers it KNOWS
+// are sensitive (Authorization/Cookie/WWW-Authenticate) on a cross-host hop, and has no way to
+// know this file's own header is one too.
+//
+// The redirect target below is a host under the ".invalid" TLD — RFC 2606 reserves it to
+// NEVER resolve — so if NewBrave's client ever DID follow the redirect, that attempt would
+// fail with a DNS/dial error, a visibly DIFFERENT failure shape than the clean "302" status
+// error this test actually asserts on. requestCount independently confirms the same thing:
+// exactly one request must reach this test's own server; a client that followed the redirect
+// would need a SECOND request (to resolve/dial the .invalid host, which would fail before
+// ever reaching a server — but the request COUNT here specifically proves this server was
+// asked exactly once, not zero or more than once).
+func TestBraveDoesNotFollowRedirects(t *testing.T) {
+	var requestCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		http.Redirect(w, r, "https://this-host-must-not-be-dialed.invalid/somewhere", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	_, err := NewBrave(srv.URL, "k", srv.Client()).Search(context.Background(), "q", 5)
+	if err == nil {
+		t.Fatal("muốn lỗi (302 không phải 200)")
+	}
+	if !strings.Contains(err.Error(), "302") {
+		t.Errorf("lỗi = %v, muốn nhắc tới 302 — nếu client ĐI THEO redirect thay vì dừng lại, "+
+			"lỗi sẽ có hình dạng KHÁC (lỗi mạng/DNS khi cố kết nối tới host .invalid không tồn "+
+			"tại), không phải một lỗi status 302 sạch như thế này", err)
+	}
+	if requestCount != 1 {
+		t.Errorf("server này nhận %d request, muốn đúng 1 — client không được ĐI THEO redirect", requestCount)
+	}
+}

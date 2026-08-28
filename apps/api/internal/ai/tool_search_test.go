@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -11,7 +13,15 @@ import (
 // agent_test.go's fakeCompleter/fakeTool: this file's own tests care about searchTool's
 // CALL-COUNTING and error-vs-string decisions, not about any one provider's wire format
 // (brave_test.go already owns that).
+//
+// calls is guarded by mu — round-1 review's M4 added TestSearchToolCapIsRaceSafeUnderConcurrentCalls,
+// which calls Run concurrently on ONE searchTool instance; every call that gets past
+// searchTool's own budget check reaches THIS Search concurrently with the others, so this
+// fake needs its own lock to avoid being a second, unrelated data race sitting on top of the
+// one that test exists to catch in searchTool itself. Every other (sequential) test in this
+// file is unaffected — a mutex uncontended by concurrent callers costs nothing worth avoiding.
 type fakeSearchProvider struct {
+	mu     sync.Mutex
 	calls  int
 	hits   []SearchHit
 	err    error
@@ -19,9 +29,12 @@ type fakeSearchProvider struct {
 }
 
 func (f *fakeSearchProvider) Search(ctx context.Context, query string, limit int) ([]SearchHit, error) {
+	f.mu.Lock()
 	f.calls++
+	call := f.calls
+	f.mu.Unlock()
 	if f.onCall != nil {
-		return f.onCall(f.calls, query, limit)
+		return f.onCall(call, query, limit)
 	}
 	if f.err != nil {
 		return nil, f.err
@@ -58,6 +71,83 @@ func TestSearchToolReturnsResultsAsReadableText(t *testing.T) {
 	}
 	if p.calls != 1 {
 		t.Errorf("provider.calls = %d, muốn 1", p.calls)
+	}
+}
+
+// TestSearchToolStripsHTMLFromResults is round-1 review's I1, top of the reviewer's list:
+// Brave's `description` field ROUTINELY contains HTML (`<strong>` around matched query
+// terms, to bold them on a results page meant for human eyes) — this is not an adversarial
+// input, it happens on the ORDINARY success path. Before this test/fix, Title/URL/Snippet
+// went into model-facing content byte-for-byte; a raw `<strong>` tag (or worse, something
+// deliberately crafted to look like a system/tool delimiter) reached the model's context
+// unfiltered. formatHit (tool_search.go) now runs stripTags (tool_course.go, reused as-is —
+// same job, same package) over Title/Snippet before they reach content.
+func TestSearchToolStripsHTMLFromResults(t *testing.T) {
+	p := &fakeSearchProvider{hits: []SearchHit{{
+		Title:   "Golang <strong>concurrency</strong> guide",
+		URL:     "https://e.com/1",
+		Snippet: "Use <strong>goroutines</strong> and channels <script>alert(1)</script> safely.",
+	}}}
+	tool := NewSearchTool(p, 3)
+	out, err := tool.Run(context.Background(), `{"query":"golang concurrency"}`)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if strings.Contains(out, "<") || strings.Contains(out, ">") {
+		t.Errorf("out vẫn còn thẻ HTML chưa lọc: %q", out)
+	}
+	if !strings.Contains(out, "Golang concurrency guide") {
+		t.Errorf("out thiếu title đã lọc thẻ (chữ phải còn nguyên, chỉ thẻ bị xoá): %q", out)
+	}
+	if strings.Contains(out, "alert(1)") {
+		t.Errorf("out mang theo nội dung BÊN TRONG <script> — stripTags phải xoá cả thân, không "+
+			"chỉ cặp thẻ mở/đóng (tool_course.go's stripRawTextTags): %q", out)
+	}
+}
+
+// TestSearchToolTruncatesLongHitFields is round-1 review's I1, second half: the only length
+// guard before this fix was maxBraveResponseBytes (brave.go) — a cap on the WHOLE response
+// body — which does nothing to stop ONE field from eating a disproportionate share of that
+// budget. This pins maxHitFieldRunes actually gets applied per field.
+func TestSearchToolTruncatesLongHitFields(t *testing.T) {
+	longSnippet := strings.Repeat("x", 5000)
+	p := &fakeSearchProvider{hits: []SearchHit{{Title: "T", URL: "https://e.com", Snippet: longSnippet}}}
+	tool := NewSearchTool(p, 3)
+	out, err := tool.Run(context.Background(), `{"query":"q"}`)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(out) > 1000 {
+		t.Errorf("out dài %d byte — một snippet 5000 ký tự phải bị cắt về maxHitFieldRunes, "+
+			"không chảy nguyên vào content: %.80s...", len(out), out)
+	}
+}
+
+// TestSearchToolRequestsSearchResultLimitFromProvider is round-1 review's M4: the reviewer's
+// own words — "không test nào đọc `limit` mà tool truyền xuống provider — đây là lỗ phủ lớn
+// nhất". searchResultLimit (5) silently becoming 20 (or anything else) controls exactly how
+// many external-website snippets enter the model's context per call, and nothing failed
+// before this test if it drifted.
+//
+// Asserts against the LITERAL 5, not against the searchResultLimit constant itself — the
+// first version of this test compared gotLimit to searchResultLimit and, when self-mutated
+// (searchResultLimit: 5 -> 20) to check this test's own teeth, PASSED anyway: both sides of
+// the comparison moved together, so the test could never observe the constant changing under
+// it. A literal is what actually pins the value; if 5 is ever a deliberate change, update
+// this literal too — that is the point, not an accident to route around.
+func TestSearchToolRequestsSearchResultLimitFromProvider(t *testing.T) {
+	var gotLimit int
+	p := &fakeSearchProvider{onCall: func(call int, query string, limit int) ([]SearchHit, error) {
+		gotLimit = limit
+		return nil, nil
+	}}
+	tool := NewSearchTool(p, 3)
+	if _, err := tool.Run(context.Background(), `{"query":"q"}`); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	const wantLimit = 5
+	if gotLimit != wantLimit {
+		t.Errorf("limit truyền xuống provider = %d, muốn đúng %d", gotLimit, wantLimit)
 	}
 }
 
@@ -131,6 +221,100 @@ func TestSearchToolCapsCallsPerTurn(t *testing.T) {
 	}
 	if p.calls != 2 {
 		t.Errorf("provider.calls = %d, muốn đúng 2 — lần gọi vượt trần không được chạm provider", p.calls)
+	}
+}
+
+// TestNewSearchToolClampsNonPositiveMaxPerTurnToOne is round-1 review's M5: an
+// ai_settings.max_tool_rounds_per_turn-shaped bug — a Go zero value nobody set yet — must not
+// turn into a permanently, silently refusing tool. Same fix agent.go already applies to
+// Settings.MaxToolRoundsPerTurn <= 0 (clamp to 1), same reasoning: "not clamping is a silent
+// failure, much harder to debug than just running exactly one round".
+func TestNewSearchToolClampsNonPositiveMaxPerTurnToOne(t *testing.T) {
+	p := &fakeSearchProvider{hits: []SearchHit{{Title: "T", URL: "https://e.com", Snippet: "S"}}}
+	tool := NewSearchTool(p, 0)
+	if _, err := tool.Run(context.Background(), `{"query":"q"}`); err != nil {
+		t.Fatalf("maxPerTurn=0 muốn kẹp về 1 (còn chạy được ít nhất một lượt), được lỗi %v", err)
+	}
+	if _, err := tool.Run(context.Background(), `{"query":"q"}`); !errors.Is(err, ErrSearchBudgetExhausted) {
+		t.Errorf("lượt thứ 2 (sau khi kẹp về 1) muốn ErrSearchBudgetExhausted, được %v", err)
+	}
+
+	p2 := &fakeSearchProvider{hits: []SearchHit{{Title: "T", URL: "https://e.com", Snippet: "S"}}}
+	tool2 := NewSearchTool(p2, -5)
+	if _, err := tool2.Run(context.Background(), `{"query":"q"}`); err != nil {
+		t.Fatalf("maxPerTurn=-5 muốn kẹp về 1 y hệt maxPerTurn=0, được lỗi %v", err)
+	}
+}
+
+// TestNewSearchToolBudgetIsPerInstanceNotSharedGlobally is round-1 review's I2: NewSearchTool's
+// doc comment WARNS that the cap only means "per Turn" if callers construct a fresh instance
+// per Turn — but that warning lived only in prose. This makes it a runnable assertion, both
+// directions at once: two INDEPENDENT instances backed by the SAME provider each get their
+// own full budget (proving the counter is not hiding on the provider or anywhere shared), and
+// — in the same test — reusing ONE instance for what should have been a second Turn (calling
+// Run again after its own budget is already spent) is the EXACT misuse shape the doc comment
+// names: it fails closed with ErrSearchBudgetExhausted, not silently succeeding and quietly
+// spending a second Turn's worth of budget that was never allocated. This does not stop a
+// future caller from making that mistake (nothing at the type level can, given ToolRunner has
+// no "a Turn started" hook) — it pins what happens WHEN they do, and gives this exact contract
+// something that breaks loudly if it regresses, instead of only a comment nobody re-reads.
+func TestNewSearchToolBudgetIsPerInstanceNotSharedGlobally(t *testing.T) {
+	p := &fakeSearchProvider{hits: []SearchHit{{Title: "T", URL: "https://e.com", Snippet: "S"}}}
+
+	toolA := NewSearchTool(p, 1)
+	if _, err := toolA.Run(context.Background(), `{"query":"a"}`); err != nil {
+		t.Fatalf("toolA lượt 1: muốn thành công, được %v", err)
+	}
+
+	// Một instance MỚI, cùng provider — đúng điều Task 11 PHẢI làm mỗi Turn.
+	toolB := NewSearchTool(p, 1)
+	if _, err := toolB.Run(context.Background(), `{"query":"b"}`); err != nil {
+		t.Fatalf("toolB (instance MỚI, cùng provider): muốn thành công (budget riêng, không "+
+			"bị toolA rút cạn), được %v", err)
+	}
+
+	// Hình dạng LẠM DỤNG: dùng LẠI toolA cho một "Turn" thứ hai, thay vì dựng instance mới.
+	if _, err := toolA.Run(context.Background(), `{"query":"a-again"}`); !errors.Is(err, ErrSearchBudgetExhausted) {
+		t.Errorf("dùng lại toolA cho lượt thứ 2: muốn ErrSearchBudgetExhausted (đúng lỗi "+
+			"NewSearchTool's doc comment cảnh báo khi một instance bị dùng chung qua nhiều Turn), được %v", err)
+	}
+}
+
+// TestSearchToolCapIsRaceSafeUnderConcurrentCalls is round-1 review's M4, third item: no test
+// before this one ever called Run concurrently on ONE instance, so a broken/missing lock
+// around the budget counter would not fail any test by itself — a data race does not always
+// produce a visibly wrong COUNT on a given run, only under `-race` or an unlucky scheduling —
+// even though a shared instance IS exactly the misuse shape this file's own doc comments name.
+// task-8-brief.md's own verification command runs `-race` for internal/ai, which is what makes
+// this test load-bearing: without `-race`, this test can pass even with the mutex deleted, by
+// luck of scheduling — the assertion on succeeded/p.calls below is the belt, `-race` is the
+// suspenders that actually catches the missing lock.
+func TestSearchToolCapIsRaceSafeUnderConcurrentCalls(t *testing.T) {
+	const maxPerTurn = 5
+	const attempts = 50
+
+	p := &fakeSearchProvider{hits: []SearchHit{{Title: "T", URL: "https://e.com", Snippet: "S"}}}
+	tool := NewSearchTool(p, maxPerTurn)
+
+	var wg sync.WaitGroup
+	var succeeded int64
+	for i := 0; i < attempts; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := tool.Run(context.Background(), `{"query":"q"}`); err == nil {
+				atomic.AddInt64(&succeeded, 1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if succeeded != maxPerTurn {
+		t.Errorf("số lượt THÀNH CÔNG = %d, muốn ĐÚNG %d (maxPerTurn) — lệch (kể cả lệch nhẹ) "+
+			"nghĩa là bộ đếm bị race, học viên có thể bị tính phụ thu sai", succeeded, maxPerTurn)
+	}
+	if p.calls != maxPerTurn {
+		t.Errorf("provider.calls = %d, muốn đúng %d", p.calls, maxPerTurn)
 	}
 }
 
