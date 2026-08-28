@@ -253,6 +253,19 @@ func (a *Agent) RunStream(ctx context.Context, t Turn, emit func(Event) error) (
 		// adding it is a harmless no-op — this ordering change is purely
 		// additive, never double-counts, and never subtracts anything that
 		// was correct before.
+		//
+		// ROUND 4 REVIEW — Run (agent.go) now uses this SAME ordering. It
+		// did not until round 4: it checked err first and returned before
+		// accumulating, which stayed harmless only for as long as every one
+		// of Complete's error paths returned an empty Completion{}. Round 3
+		// mirrored the finish_reason=="length" guard into Complete
+		// (client.go) and thereby created Complete's first error path
+		// carrying a non-empty Usage — from that commit on, the same
+		// DeepSeek reply was billed differently depending on which path the
+		// learner's request took. TestRunAndRunStreamAgreeOnUsageWhenALengthCappedRoundFails
+		// (stream_test.go) now drives both paths through a real *Client over
+		// that exact reply and compares the two Results, so a future
+		// re-divergence fails a test instead of quietly undercharging.
 		result.Usage.PromptTokens += completion.Usage.PromptTokens
 		result.Usage.CompletionTokens += completion.Usage.CompletionTokens
 		result.Usage.CacheHitTokens += completion.Usage.CacheHitTokens
