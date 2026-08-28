@@ -3,8 +3,9 @@
 // (Task 4b, client.go) là nơi duy nhất mở kết nối HTTP tới nhà cung cấp.
 //
 // cost.go trong gói này cố tình chỉ đọc các trường Go của Usage/Pricing/
-// Settings, không phụ thuộc tên thẻ JSON nào — xem chú thích trên Usage bên
-// dưới để biết vì sao hai thẻ JSON của Usage vẫn còn là GIẢ ĐỊNH chưa đo.
+// Settings, không phụ thuộc tên thẻ JSON nào — độc lập với việc hai thẻ JSON
+// của Usage đúng hay sai. Hai thẻ đó ĐÃ ĐƯỢC ĐO trên API DeepSeek thật, xem
+// chú thích trên Usage bên dưới và docs/deepseek-measured.md §1.
 package ai
 
 // Message là một lượt trong hội thoại gửi tới/nhận từ DeepSeek, theo đúng
@@ -44,30 +45,23 @@ type ToolFunction struct {
 // Usage là số đo token của một lượt hoàn tất, đọc từ trường "usage" trong
 // response của DeepSeek.
 //
-// TODO(Task 4b): CacheHitTokens/CacheMissTokens (thẻ JSON
-// "prompt_cache_hit_tokens"/"prompt_cache_miss_tokens") là GIẢ ĐỊNH của
-// Task 4 — tài liệu DeepSeek không nói rõ tên chính xác hai trường cache
-// trong đối tượng "usage". Task 0 đo trên API DeepSeek thật, chốt tên đúng
-// (hoặc xác nhận giả định này) tại docs/deepseek-measured.md, và Task 4b áp
-// dụng kết quả đó vào client.go + hai thẻ JSON dưới đây. Nếu tên thật khác
-// giả định: mã KHÔNG lỗi rõ ràng khi sai — client.go vẫn decode được JSON,
-// cost.go (đọc trường Go, không đọc thẻ JSON) vẫn cộng ra một con số, và sổ
-// ai_usage vẫn đầy hàng. Hình dạng cụ thể của cái hỏng phụ thuộc cách 4b
-// điền hai trường này: nếu client.go decode thẳng qua hai thẻ JSON sai tên,
-// CẢ HAI trường cache lặng lẽ ở lại 0 (JSON không có khoá khớp); nếu thay
-// vào đó client.go suy ra CacheMissTokens = PromptTokens − CacheHitTokens
-// (một cách hợp lý khác để lấp trường này khi không chắc tên thẻ), toàn bộ
-// input đổ hết vào CacheMissTokens (giá đắt hơn cache-hit 30-60 lần) trong
-// khi CacheHitTokens ở lại 0. Cả hai khả năng đều sai âm thầm theo cách
-// khác nhau — không đoán trước cách 4b chọn, chỉ ghi lại rằng dù chọn cách
-// nào, một tên thẻ sai không tự lộ ra ở đầu ra. Đây chính là kiểu hỏng ÂM
-// THẦM Task 0 được viết ra để chặn, và Pha 4 sẽ chốt giá bán trên đúng những
-// con số này.
+// CacheHitTokens/CacheMissTokens (thẻ JSON "prompt_cache_hit_tokens"/
+// "prompt_cache_miss_tokens") ĐÃ ĐƯỢC ĐO trên API DeepSeek thật ngày
+// 2026-08-28, không còn là giả định — xem docs/deepseek-measured.md §1: hai
+// tên thẻ đúng như plan giả định ban đầu, xác nhận độc lập hai lượt (đo thô
+// của điều phối viên, rồi Task 0 đo lại từng mục một lần nữa). Tài liệu đo
+// còn ghi hai điều đáng biết thêm về "usage" không nằm trong hai trường này
+// — completion_tokens_details.reasoning_tokens (đã NẰM TRONG
+// CompletionTokens, không cộng thêm ra ngoài — nên cost.go's Charge tính
+// toàn bộ CompletionTokens theo giá đầu ra là đúng) và
+// prompt_tokens_details.cached_tokens (trùng lặp với CacheHitTokens, không
+// mang thông tin mới) — cả hai đều KHÔNG có trường Go tương ứng ở struct
+// này, xem client.go's wireResponse cho lý do.
 type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
-	CacheHitTokens   int `json:"prompt_cache_hit_tokens"`  // TODO(Task 4b): tên GIẢ ĐỊNH, xem chú thích Usage ở trên
-	CacheMissTokens  int `json:"prompt_cache_miss_tokens"` // TODO(Task 4b): tên GIẢ ĐỊNH, xem chú thích Usage ở trên
+	CacheHitTokens   int `json:"prompt_cache_hit_tokens"`
+	CacheMissTokens  int `json:"prompt_cache_miss_tokens"`
 }
 
 // Completion là kết quả một lượt gọi DeepSeek đã hoàn tất, sau khi client
