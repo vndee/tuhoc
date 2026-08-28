@@ -439,26 +439,39 @@ type streamToolCallAcc struct {
 // canceled any OTHER way (context.Canceled) means cancelRead fired it,
 // i.e. streamIdleTimeout's watchdog.
 //
-// KNOWN GAP THIS DOES NOT CLOSE, documented rather than silently left
-// (round 2 review, I1's second half): New (client.go) falls back to
-// &http.Client{Timeout: defaultTimeout} when its hc argument is nil — and
-// http.Client.Timeout is Go's OWN total-request timeout, covering response
-// BODY reads, not just headers. A Client built via New(url, key, nil) will
-// have that 90s http.Client.Timeout silently re-impose a WALL-CLOCK cut on
-// this method's reads regardless of streamIdleTimeout/streamTotalTimeout —
-// reported as a plain "ai: read DeepSeek stream: ..." network error, not
-// the "idle timeout"/"total time budget" messages below, because it
-// surfaces as c.http.Do's own error path, indistinguishable from any other
-// network failure at this layer. No stream_test.go test catches this: every
-// test here builds its Client with srv.Client(), which carries no Timeout.
-// Not fixed in this file because doing so means either changing New's
-// fallback (client.go, a file this task's decisions have deliberately left
-// alone — see StreamCompleter's decision #1 above) or requiring RunStream's
-// caller to always supply a Timeout-less http.Client, which is a wiring
-// decision for whoever constructs the production *Client (Task 11, or
-// wherever cmd/api assembles ai.New's arguments) — see New's and
-// defaultTimeout's doc comments in client.go for the matching note on that
-// side.
+// PER-ROUND, NOT PER-TURN — READ THIS BEFORE SETTING A HANDLER DEADLINE
+// (round-3 review correction): this 20 minutes bounds ONE call to
+// CompleteStream, i.e. ONE round of RunStream's loop (stream.go's own
+// per-round-not-per-turn scoping decision, unchanged since round 1 — see
+// RunStream's doc comment). RunStream can call CompleteStream up to
+// Settings.MaxToolRoundsPerTurn times in a single turn. With the seeded
+// default of 6 (migration 0007), the worst-case wall-clock budget for ONE
+// TURN is streamTotalTimeout × MaxToolRoundsPerTurn = 20min × 6 = **2
+// HOURS**, not 20 minutes. Task 11 (or whoever sets a deadline on the
+// learner-facing HTTP handler/SSE connection wrapping a RunStream call)
+// needs the per-TURN number, not the per-round one, to size that deadline
+// correctly — 20 minutes there would cut a legitimate multi-round turn off
+// mid-stream for no reason tied to any one round actually hanging, exactly
+// the failure mode this file's redesign exists to avoid.
+//
+// GAP CLOSED FOR THE DEFAULT CASE, STILL OPEN FOR AN EXPLICIT hc (round 3
+// review, item 3 — round 2's version of this paragraph found New's hc==nil
+// fallback silently re-imposing a flat 90s http.Client.Timeout underneath
+// these two watchdogs; round 3 removed that Timeout from the fallback
+// itself, see New's doc comment in client.go for the full reasoning and
+// the measurements behind it). New(url, key, nil) now hands back an
+// &http.Client{} with no Timeout of its own — nothing left to fight
+// streamIdleTimeout/streamTotalTimeout for the default construction path.
+//
+// What is NOT closed, and cannot be from inside this file: a caller that
+// builds its OWN http.Client with a Timeout set — New(url, key,
+// &http.Client{Timeout: 90 * time.Second}), say — and hands it to New
+// explicitly still gets that same flat cutoff underneath these watchdogs;
+// New has no way to see or reject a caller-supplied hc's settings. Whoever
+// wires up the real *Client for streaming (Task 11, or wherever cmd/api
+// assembles ai.New's arguments) needs to know this: pass an hc with
+// Timeout == 0 (or don't pass one at all) for a Client that will be used
+// for CompleteStream, and rely on ctx deadlines instead.
 //
 // streamIdleTimeout and streamTotalTimeout are `var`s, not `const`s, so
 // stream_test.go can shrink them for

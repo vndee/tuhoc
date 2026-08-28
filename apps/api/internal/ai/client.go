@@ -58,45 +58,28 @@ func truncateProviderMessage(s string) string {
 
 // defaultTimeout bounds one call to DeepSeek when neither layer that could
 // supply a deadline actually supplies one (round-1 review, Important #3).
-// Applied at BOTH layers client_test.go's sibling internal/discuss/
-// client.go uses (its RequestTimeout, same pattern): as the http.Client's
-// own Timeout (New's fallback below, used only when the caller passes
-// hc == nil) and as a context.WithTimeout wrapped around ctx on every
-// Complete call regardless of hc. The second layer is what actually closes
-// the gap a Timeout-less caller-supplied hc combined with a deadline-less
-// caller ctx left open: without it, New(url, key, &http.Client{}) (no
-// Timeout field set) plus context.Background() hangs forever against a
-// provider that accepts the connection and never answers. 90s is generous
-// headroom over anything measured in docs/deepseek-measured.md (a
-// reasoning completion with several parallel tool_calls) while still being
-// a bound instead of none.
+// Applied as a context.WithTimeout wrapped around ctx on every Complete
+// call (client.go) and, separately, as the basis for stream.go's
+// streamIdleTimeout/streamTotalTimeout on every CompleteStream call —
+// client_test.go's sibling internal/discuss/client.go uses the same
+// pattern (its RequestTimeout). 90s is generous headroom over anything
+// measured in docs/deepseek-measured.md (a reasoning completion with
+// several parallel tool_calls) while still being a bound instead of none.
 //
-// KNOWN INTERACTION WITH stream.go's CompleteStream (Task 7, round-2
-// review, I1): New's hc==nil fallback below sets http.Client.Timeout to
-// this same 90s — and Go's http.Client.Timeout is a TOTAL-REQUEST bound
-// that covers reading the response BODY, not just headers. CompleteStream
-// deliberately replaced its own flat 90s wall-clock with an idle-based
-// timeout (streamIdleTimeout, stream.go) specifically so a long-but-healthy
-// streamed answer is not cut off — but a *Client built via
-// New(url, key, nil) still carries an http.Client with Timeout: 90s at the
-// TRANSPORT layer underneath it, which silently re-imposes the exact flat
-// cutoff CompleteStream's redesign exists to avoid. The failure would
-// surface as CompleteStream's generic "ai: read DeepSeek stream: ..."
-// path (client.Do's own Timeout firing looks like an ordinary network
-// error at that layer), not as the distinguishable "idle timeout"/"total
-// time budget" messages stream.go's own watchdogs produce — because it
-// never reaches stream.go's watchdog logic at all; net/http's Transport
-// aborts the read before CompleteStream's code gets a say. No test in this
-// package catches this: every stream_test.go test builds its Client with
-// srv.Client() (httptest's own client, no Timeout set). NOT fixed here —
-// fixing it means either changing this fallback (which Complete, the
-// non-streaming caller, has no reason to want changed: a total 90s bound
-// is exactly right for a single non-streaming round-trip) or requiring
-// whoever wires up the real *Client for streaming (Task 11, or wherever
-// cmd/api assembles ai.New's arguments) to always pass an hc with
-// Timeout: 0 and rely on context deadlines instead — a decision for that
-// call site, not this one. See stream.go's CompleteStream doc comment for
-// the matching note from the other side of this gap.
+// ROUND 3 REVIEW (Task 7) — this is NO LONGER also set as New's hc==nil
+// fallback http.Client.Timeout; see New's doc comment below for why that
+// second layer was removed rather than kept "for extra safety". The short
+// version: it was never load-bearing for Complete (Complete's own
+// context.WithTimeout below already bounds the ENTIRE call — DNS, TLS
+// handshake, and body read all fall under that same ctx, measured directly
+// against this repo's go 1.25.5 toolchain, not assumed), and it was
+// actively harmful for stream.go's CompleteStream (a TOTAL-request
+// http.Client.Timeout silently re-imposing a flat 90s cutoff underneath
+// CompleteStream's own idle/total-time watchdogs, defeating the entire
+// point of their redesign — round-2 review, I1's second half). One knob,
+// one job: ctx carries every deadline now: Complete's own per-call
+// WithTimeout(ctx, defaultTimeout), and stream.go's own
+// WithTimeout(ctx, streamTotalTimeout) + idle watchdog.
 const defaultTimeout = 90 * time.Second
 
 // Client talks to DeepSeek's OpenAI-compatible chat-completions endpoint
@@ -124,20 +107,57 @@ type Client struct {
 // destination this file can reach is visible right here at the call site,
 // same discipline internal/discuss/client.go's APIURL comment describes.
 //
-// A nil hc falls back to &http.Client{Timeout: defaultTimeout} — NOT
-// http.DefaultClient. Round-1 review (Important #3) caught the earlier
-// version of this comment claiming a caller that "does not care" still
-// gets "a working Client": what they actually got was a Client with no
-// Timeout at all, which hangs forever against a provider that accepts the
-// connection and never answers, with nothing to end the wait except a
-// deadline the caller's own ctx may not carry either. See defaultTimeout's
-// comment for the second half of this fix (Complete's own
-// context.WithTimeout, needed for the hc-supplied-but-Timeout-less case
-// this fallback alone cannot cover) — and, for a caller that intends to use
-// (*Client).CompleteStream (stream.go, Task 7), for a KNOWN GAP this same
-// fallback opens: passing hc == nil silently caps a stream's total read
-// time at this 90s, defeating stream.go's own idle/total-time watchdogs
-// with an earlier, less legible cutoff.
+// A nil hc falls back to &http.Client{} — carrying no Timeout of its own —
+// NOT http.DefaultClient (still a distinct value, so a caller can tell the
+// two apart, and so a future change to DefaultClient's own settings can't
+// silently change this package's behavior). This is a REVISED fallback
+// (round-3 review, Task 7, item 3 — previously &http.Client{Timeout:
+// defaultTimeout}); see the history below for why the Timeout field was
+// deliberately removed rather than kept as a second layer of safety:
+//
+//   - It was NEVER load-bearing for Complete in the first place. Complete
+//     (below) already wraps ctx in its own context.WithTimeout(ctx,
+//     defaultTimeout) on EVERY call, hc == nil or not — and a Go context
+//     deadline bounds the WHOLE request lifecycle through net/http: DNS
+//     resolution, the TCP dial, the TLS handshake, AND reading the
+//     response body, not merely "waiting for Do() to return". Measured
+//     directly against this repo's go 1.25.5 toolchain (round-3 review):
+//     a body that hangs after headers already arrived, and a bare TCP
+//     accept that never completes a TLS handshake, BOTH abort at the
+//     ctx's own deadline — not a millisecond later waiting on some other
+//     layer. http.Client.Timeout duplicating that bound added nothing
+//     Complete didn't already have.
+//   - It was ACTIVELY HARMFUL for stream.go's CompleteStream. Go's
+//     http.Client.Timeout is a TOTAL-request bound covering body reads —
+//     exactly the flat wall-clock cutoff CompleteStream's
+//     streamIdleTimeout/streamTotalTimeout redesign exists to replace
+//     with something that tells "stuck" apart from "long but healthy"
+//     (round-2 review, I1). A Client built via New(url, key, nil) used to
+//     silently reintroduce that flat cutoff underneath CompleteStream's
+//     own watchdogs, surfacing as a generic network error instead of
+//     CompleteStream's distinguishable "idle timeout"/"total time budget"
+//     messages — because net/http's Transport enforced it BEFORE
+//     CompleteStream's own code ever got a say.
+//
+// Round-1 review (Important #3, now superseded by the above) is the reason
+// this fallback exists at all — it caught an EARLIER version of this
+// comment claiming a caller that "does not care" still gets "a working
+// Client", when what they actually got was http.DefaultClient (no bound of
+// any kind). &http.Client{} (this fallback) is still a DISTINCT client
+// value from http.DefaultClient, so New's own identity check
+// (TestNewNilHCHasNoClientTimeoutButStillBounded, client_test.go) still has
+// something to assert on — the bounding itself now comes entirely from
+// Complete's and CompleteStream's own per-call context.WithTimeout, not
+// from this http.Client's Timeout field.
+//
+// GAP THIS DOES NOT CLOSE: this only removes the DEFAULT trap. A caller
+// that constructs its own hc and passes &http.Client{Timeout: 90 * time.Second}
+// (or any other Timeout) explicitly to New still hands CompleteStream the
+// exact same total-request cutoff underneath its watchdogs — New has no
+// way to see or reject that choice. Whoever wires up the real *Client for
+// streaming (Task 11, or wherever cmd/api assembles ai.New's arguments)
+// needs to know: an hc with Timeout != 0 defeats streaming's idle/total
+// watchdogs regardless of what New's OWN default does.
 //
 // baseURL has any trailing "/" trimmed — config.Load does not normalize
 // DEEPSEEK_BASE_URL, and chatCompletionsPath below already starts with
@@ -145,7 +165,7 @@ type Client struct {
 func New(baseURL, apiKey string, hc *http.Client) *Client {
 	baseURL = strings.TrimSuffix(baseURL, "/")
 	if hc == nil {
-		hc = &http.Client{Timeout: defaultTimeout}
+		hc = &http.Client{}
 	}
 	return &Client{baseURL: baseURL, apiKey: apiKey, http: hc}
 }
@@ -314,6 +334,28 @@ func (c *Client) Complete(ctx context.Context, req Request) (Completion, error) 
 	}
 	if len(wire.Choices) == 0 {
 		return Completion{}, fmt.Errorf("ai: DeepSeek response has no choices")
+	}
+
+	// ROUND 3 REVIEW (Task 7) — mirrors stream.go's CompleteStream guard on
+	// finish_reason=="length" with a pending tool call, added there for
+	// round-2 review's I3. That guard's underlying concern is NOT
+	// streaming-specific: DeepSeek's non-streaming endpoint can equally
+	// return finish_reason "length" (MaxTokensPerTurn's own budget, see
+	// agent.go's doc comment on that field) alongside a tool_calls entry
+	// whose Function.Arguments string was cut off mid-generation — the
+	// SAME malformed artifact CompleteStream guards against, delivered in
+	// one response instead of assembled across chunks. Without this
+	// mirror, the identical DeepSeek reply would fail through
+	// CompleteStream but succeed through Complete, handing Run (agent.go)
+	// a truncated arguments string to pass straight to a ToolRunner.Run —
+	// see stream.go's matching guard for why it is scoped to "a tool_calls
+	// entry is present", not every "length" finish (a plain truncated text
+	// answer is MaxTokensPerTurn doing its documented job, not a corrupted
+	// structured artifact).
+	if wire.Choices[0].FinishReason == "length" && len(wire.Choices[0].Message.ToolCalls) > 0 {
+		return Completion{Usage: wire.Usage, FinishReason: wire.Choices[0].FinishReason},
+			fmt.Errorf("ai: DeepSeek response ended with finish_reason %q while it included a tool call — its arguments JSON is likely truncated",
+				truncateProviderMessage(wire.Choices[0].FinishReason))
 	}
 
 	return Completion{

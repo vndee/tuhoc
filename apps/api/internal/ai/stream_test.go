@@ -877,51 +877,43 @@ func TestRunStreamSendsToolChoiceAutoThenNoneOnLastRound(t *testing.T) {
 // ── Vòng sửa 1 review: I3 — Run và RunStream không được rẽ nhánh khác nhau ─
 
 // TestRunAndRunStreamProduceSameResultForSameScenario chạy CÙNG một kịch
-// bản (3 vòng: hai vòng tool rồi vòng trả lời bằng chữ, y hệt
-// TestUsageAccumulatesAcrossRounds/TestRunStreamUsageAccumulatesAcrossRounds)
-// qua CẢ Run (fakeCompleter, agent_test.go) lẫn RunStream
-// (fakeStreamCompleter, tệp này), rồi khẳng định hai Result BẰNG NHAU.
+// bản qua CẢ Run (fakeCompleter, agent_test.go) lẫn RunStream
+// (fakeStreamCompleter, tệp này), rồi khẳng định hai Result BẰNG NHAU VÀ
+// hai chuỗi Request đã gửi (`fc.calls`/`fsc.calls`) BẰNG NHAU.
 //
-// stream.go's vòng lặp là bản sao verbatim của agent.go's Run, khác đúng
-// vài chỗ liên quan tới emit — không có lưới nào buộc một sửa ở Run (ví dụ
-// nợ Task 8: Brave hỏng phải trả error Go thật, nếu không WebSearches++
-// tính tiền cho một lượt tìm thất bại) phải được mang sang RunStream cùng
-// lúc. Test này không xoá được rủi ro "sửa một chỗ quên chỗ kia", nhưng nó
-// biến "hai bản sao im lặng" thành "hai bản sao có một test so kết quả" —
-// một sửa làm lệch KẾT QUẢ (không chỉ lệch cách viết) giữa hai đường sẽ làm
-// test này đỏ. Xem chú thích tương ứng ở agent.go's Run.
-// TestRunAndRunStreamProduceSameResultForSameScenario — VÒNG SỬA 2, mục 4:
-// bản trước chỉ so `Result`, và cả hai fake (fakeCompleter/fakeStreamCompleter)
-// bỏ qua `req` hoàn toàn khi quyết định trả gì — nên MỌI phân kỳ ở phía GỬI
-// ĐI (Request.Messages/Tools/ToolChoice) vô hình với một so sánh chỉ nhìn
-// `Result`. Re-review tự thử ba đột biến và cả ba đều lọt qua bản cũ:
+// stream.go's vòng lặp là bản sao gần verbatim của agent.go's Run, khác
+// đúng vài chỗ liên quan tới emit — không có gì Ở TẦNG KIỂU buộc một sửa ở
+// Run phải mang sang RunStream cùng lúc (round-1 review, I3). Test này
+// không xoá được rủi ro "sửa một chỗ quên chỗ kia", nhưng biến "hai bản
+// sao im lặng" thành "hai bản sao có một test so kết quả".
 //
-//  1. Dời `WebSearches++` ra khỏi nhánh THÀNH CÔNG ở một bản — fixture cũ
-//     không hề gọi "web_search" nên WebSearches luôn 0 cả hai bên, không
-//     phân biệt được. FIX: fixture giờ gọi "web_search" THẬT (chạy thành
-//     công) — assert WebSearches != 0 ở CẢ HAI trước khi so sánh, để chính
-//     assertion "so sánh có ý nghĩa" cũng bị khoá lại.
-//  2. Đổi `allowed := known && enabledSet[...]` thành `allowed := known` ở
-//     CHỈ MỘT bản (đúng bất biến I1 của vòng review Task 6) — fixture cũ
-//     luôn bật hết tool nó gọi, nên `enabledSet[...]` luôn true, không bao
-//     giờ phân biệt được hai công thức. FIX: fixture giờ có tool thứ ba
-//     ("translate") ĐĂNG KÝ ở Agent.Tools của CẢ HAI agent nhưng KHÔNG có
-//     trong ToolsEnabled — model vẫn "gọi" nó (đúng hình dạng
-//     TestToolsEnabledGatesExecutionNotJustOutgoingRequest/
-//     TestRunStreamToolsEnabledGatesExecutionNotJustOutgoingRequest).
-//  3. Xoá dòng `msgs = append(msgs, Message{Role:"tool", ...})` ở một bản —
-//     fake bỏ qua Messages khi quyết định phản hồi, nên Result không đổi.
-//     FIX: so trực tiếp `fc.calls` với `fsc.calls` (Request THẬT đã gửi,
-//     đúng thứ tự, đúng từng vòng) — một message bị thiếu là một khác biệt
-//     CẤU TRÚC ngay trong `.Messages`, DeepEqual bắt được ngay cả khi
-//     Result không hề đổi.
+// VÒNG SỬA 2, mục 4 — bản trước chỉ so `Result`, và cả hai fake bỏ qua
+// `req` hoàn toàn khi quyết định trả gì, nên mọi phân kỳ Ở PHÍA GỬI ĐI vô
+// hình. Sửa: thêm `reflect.DeepEqual(fc.calls, fsc.calls)`, thêm tool thứ
+// ba ("translate") đăng ký nhưng KHÔNG bật, để lộ đúng bất biến I1 (Task
+// 6). Báo cáo vòng 2 khẳng định cả BA đột biến review nêu tên đều bị bắt —
+// SAI, và đây chính là mục cần đọc tiếp:
 //
-// Tự chứng minh (task-7-report.md ghi lại đầy đủ): áp đột biến #2 vào MỘT
-// mình agent.go's Run, chạy lại — đỏ; khôi phục — xanh.
+// VÒNG SỬA 3, mục 1 — re-reviewer THỰC CHẠY cả ba đột biến, không chỉ tin
+// lời khẳng định: #2 (đổi `allowed := known && enabledSet[...]` thành
+// `allowed := known` ở MỘT bản) và #3 (xoá message `role:"tool"` ở MỘT
+// bản) đều ĐỎ — có răng thật. #1 (dời `WebSearches++` ra khỏi nhánh THÀNH
+// CÔNG ở MỘT bản) SỐNG SÓT — XANH — vì "dời ra khỏi nhánh THÀNH CÔNG" chỉ
+// tạo ra khác biệt QUAN SÁT ĐƯỢC khi có ít nhất một lần gọi web_search
+// THẤT BẠI: vòng sửa 2's fixture cho web_search LUÔN thành công, nên "đếm
+// ở nhánh thành công" và "đếm bất kể thành/bại" cho ra CÙNG một con số (1)
+// — vị trí đặt bộ đếm không quan sát được từ Result.
+//
+// FIX (vòng sửa 3): fixture giờ có HAI tool_call "web_search" — một
+// THÀNH CÔNG (call_search_ok), một THẤT BẠI (call_search_fail, argsJSON
+// chứa "fail" để fakeTool.run trả lỗi). Đúng code: WebSearches == 1 (chỉ
+// đếm lần thành công). Đột biến #1 (đếm bất kể thành/bại): WebSearches ==
+// 2 — hai con số giờ KHÁC NHAU, quan sát được qua Result.
 func TestRunAndRunStreamProduceSameResultForSameScenario(t *testing.T) {
 	calls := []ToolCall{
 		mkToolCall("call_read", "read_course", `{"slug":"x"}`),
-		mkToolCall("call_search", "web_search", `{"query":"q"}`),
+		mkToolCall("call_search_ok", "web_search", `{"query":"q"}`),
+		mkToolCall("call_search_fail", "web_search", `{"query":"fail"}`),
 		mkToolCall("call_disabled", "translate", `{"text":"x"}`), // KHÔNG nằm trong ToolsEnabled bên dưới
 	}
 	responses := []Completion{
@@ -939,7 +931,12 @@ func TestRunAndRunStreamProduceSameResultForSameScenario(t *testing.T) {
 	newTools := func(ranDisabled *bool) map[string]ToolRunner {
 		return map[string]ToolRunner{
 			"read_course": &fakeTool{name: "read_course"},
-			"web_search":  &fakeTool{name: "web_search"},
+			"web_search": &fakeTool{name: "web_search", run: func(ctx context.Context, argsJSON string) (string, error) {
+				if strings.Contains(argsJSON, "fail") {
+					return "", errors.New("search backend down")
+				}
+				return "ok", nil
+			}},
 			"translate": &fakeTool{name: "translate", run: func(ctx context.Context, argsJSON string) (string, error) {
 				*ranDisabled = true
 				return "should not run", nil
@@ -975,9 +972,10 @@ func TestRunAndRunStreamProduceSameResultForSameScenario(t *testing.T) {
 	if ranDisabledViaRunStream {
 		t.Error(`RunStream chạy tool "translate" dù nó không nằm trong ToolsEnabled của lượt này`)
 	}
-	if runResult.WebSearches == 0 || streamResult.WebSearches == 0 {
-		t.Fatalf("kịch bản lỗi: WebSearches = %d / %d, muốn khác 0 cả hai — fixture phải tự chạy web_search "+
-			"THÀNH CÔNG để so sánh WebSearches có ý nghĩa (đột biến #1 ở chú thích trên)",
+	if runResult.WebSearches != 1 || streamResult.WebSearches != 1 {
+		t.Fatalf("kịch bản lỗi: WebSearches = %d / %d, muốn đúng 1 cả hai (chỉ đếm lần web_search THÀNH CÔNG "+
+			"trong hai lần gọi — một thành công, một thất bại) — nếu khác 1, so sánh WebSearches ở dưới không "+
+			"còn phân biệt được đột biến #1 (dời WebSearches++ ra khỏi nhánh thành công, xem chú thích trên)",
 			runResult.WebSearches, streamResult.WebSearches)
 	}
 

@@ -406,20 +406,63 @@ func TestCompleteTruncatesLongProviderErrorMessage(t *testing.T) {
 	}
 }
 
-// TestNewFallsBackToATimeoutClientWhenHCIsNil là việc #3 round-1 review:
-// bản trước rơi về http.DefaultClient khi hc == nil — một client KHÔNG
-// Timeout, treo vô hạn trước một nhà cung cấp nhận kết nối rồi im lặng.
-// Test đọc thẳng trường không xuất khẩu c.http vì client_test.go cùng gói
-// `ai` với client.go (kiểm nội bộ, không qua hành vi mạng — dựng một
-// server thật treo 90s+ chỉ để đo Timeout là đắt và không cần thiết khi
-// trường có thể đọc trực tiếp).
-func TestNewFallsBackToATimeoutClientWhenHCIsNil(t *testing.T) {
+// TestNewNilHCHasNoClientTimeoutButStillBounded — ROUND 3 REVIEW: bất biến
+// gốc của test này (round-1 review, Important #3 — tên hàm cũ
+// TestNewFallsBackToATimeoutClientWhenHCIsNil) từng khẳng định
+// c.http.Timeout > 0. Round 3 tự đo được trên toolchain go 1.25.5 của repo
+// này rằng http.Client.Timeout CHƯA BAO GIỜ là lớp chặn thật cho Complete —
+// context.WithTimeout(ctx, defaultTimeout) (Complete, dưới đây) đã bọc TOÀN
+// BỘ vòng đời một lời gọi (DNS, bắt tay TLS, đọc thân response) mỗi lần
+// gọi rồi, hc == nil hay không — và http.Client.Timeout LÀ lớp gây hại
+// thật cho CompleteStream (stream.go): nó là một trần TỔNG tính cả việc
+// đọc body, tái áp đặt đúng cái wall-clock streamIdleTimeout/
+// streamTotalTimeout tồn tại để thay thế. New's fallback đổi thành
+// &http.Client{} (không Timeout) — xem doc comment New (client.go).
+//
+// Bất biến MỚI, thay cho bất biến cũ: "Client dựng qua hc == nil không
+// treo vô hạn, vì CẢ Complete LẪN CompleteStream đều tự áp deadline qua
+// ctx — không cần http.Client.Timeout làm lớp thứ hai."
+func TestNewNilHCHasNoClientTimeoutButStillBounded(t *testing.T) {
 	c := New("https://deepseek.invalid", "sk-test", nil)
 	if c.http == http.DefaultClient {
-		t.Fatal("New(..., nil) dùng http.DefaultClient — không có Timeout, một nhà cung cấp đứng hình sẽ treo mãi")
+		t.Fatal("New(..., nil) dùng http.DefaultClient — nên dùng &http.Client{} riêng để giữ được một giá trị phân biệt được (xem doc comment New)")
 	}
-	if c.http.Timeout <= 0 {
-		t.Errorf("http.Client rơi về không có Timeout (%v) khi hc == nil", c.http.Timeout)
+	if c.http.Timeout != 0 {
+		t.Errorf("c.http.Timeout = %v, muốn 0 — Complete/CompleteStream tự áp deadline qua ctx (context.WithTimeout mỗi lời gọi), "+
+			"một http.Client.Timeout ở đây không còn cần và CHỈ có hại cho CompleteStream (một trần TỔNG tái áp đặt sai chỗ, "+
+			"vô hiệu hoá streamIdleTimeout/streamTotalTimeout của stream.go)", c.http.Timeout)
+	}
+
+	// Bằng chứng HÀNH VI cho bất biến mới: một server chấp nhận kết nối,
+	// gửi header 200 OK, rồi TREO THÂN RESPONSE MÃI MÃI (không đóng, không
+	// lỗi) — đúng hình dạng "nhà cung cấp đứng hình sau khi đã bắt tay
+	// xong", ca mà round-1 review lo ngại. http.Client.Timeout == 0 rồi,
+	// nên nếu Complete còn bị chặn đúng hạn, lớp chặn DUY NHẤT còn lại
+	// PHẢI là context.WithTimeout(ctx, defaultTimeout) bên trong Complete —
+	// canh bằng một ctx caller NGẮN HƠN NHIỀU defaultTimeout (90s) để test
+	// không phải chờ đủ 90s thật.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		<-r.Context().Done() // treo thân response mãi mãi — không tự đóng, không tự lỗi
+	}))
+	defer srv.Close()
+
+	bounded := New(srv.URL, "sk-test", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := bounded.Complete(ctx, Request{Model: "m", Messages: []Message{{Role: "user", Content: "hi"}}})
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("Complete trả nil error dù thân response treo mãi mãi — http.Client.Timeout == 0 rồi, context.WithTimeout(ctx, defaultTimeout) của Complete phải chặn đường này")
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("mất %s để bỏ cuộc, muốn gần 200ms (deadline của ctx caller, sớm hơn defaultTimeout 90s) — không phải treo tới khi ai đó ngắt bằng tay", elapsed)
 	}
 }
 
@@ -475,5 +518,61 @@ func TestCompleteRespectsContextCancellation(t *testing.T) {
 	}
 	if err == nil {
 		t.Error("muốn lỗi khi context đã huỷ trước khi gọi")
+	}
+}
+
+// ── round 3 review (Task 7): mirror of stream.go's finish_reason "length" ──
+// ── + pending tool_call guard ───────────────────────────────────────────────
+
+// TestCompleteLengthFinishWithPendingToolCallReturnsError: the non-streaming
+// endpoint can return the SAME malformed shape CompleteStream (stream.go)
+// guards against — finish_reason "length" (MaxTokensPerTurn's budget hit
+// mid-generation) alongside a tool_calls entry whose Function.Arguments was
+// cut off. Before this guard, Complete would hand that straight to Run
+// (agent.go), which would pass a truncated JSON string to a ToolRunner.Run
+// as if it were whole.
+func TestCompleteLengthFinishWithPendingToolCallReturnsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"choices":[{"finish_reason":"length","message":{"role":"assistant","content":"",
+		  "tool_calls":[{"id":"call_x","type":"function","function":{"name":"read_course","arguments":"{\"slug\""}}]}}],
+		  "usage":{"prompt_tokens":10,"completion_tokens":8192,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":10}}`)
+	}))
+	defer srv.Close()
+
+	out, err := New(srv.URL, "sk-test", srv.Client()).Complete(context.Background(), Request{
+		Model: "m", Messages: []Message{{Role: "user", Content: "hi"}},
+	})
+	if err == nil {
+		t.Fatal(`Complete trả nil error dù finish_reason == "length" với một tool_call còn dở dang`)
+	}
+	if !strings.Contains(err.Error(), "length") {
+		t.Errorf(`err = %v, muốn nói rõ finish_reason "length"`, err)
+	}
+	if out.Usage.CompletionTokens != 8192 {
+		t.Errorf("Usage.CompletionTokens trên đường lỗi = %d, muốn 8192 (giữ nguyên usage đã đọc)", out.Usage.CompletionTokens)
+	}
+}
+
+// TestCompleteLengthFinishWithoutToolCallSucceeds: finish_reason "length"
+// KHÔNG kèm tool_call (một câu trả lời chữ bị cắt vì hết ngân sách token)
+// KHÔNG phải lỗi — MaxTokensPerTurn làm đúng việc nó được đặc tả làm, một
+// câu trả lời ngắn hơn dự kiến nhưng hợp lệ về cấu trúc.
+func TestCompleteLengthFinishWithoutToolCallSucceeds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"choices":[{"finish_reason":"length","message":{"role":"assistant","content":"câu trả lời cụt"}}],
+		  "usage":{"prompt_tokens":10,"completion_tokens":8192,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":10}}`)
+	}))
+	defer srv.Close()
+
+	out, err := New(srv.URL, "sk-test", srv.Client()).Complete(context.Background(), Request{
+		Model: "m", Messages: []Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf(`Complete: %v — finish_reason "length" KHÔNG kèm tool_call không được là lỗi`, err)
+	}
+	if out.Message.Content != "câu trả lời cụt" {
+		t.Errorf("Message.Content = %q", out.Message.Content)
 	}
 }
