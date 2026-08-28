@@ -1,6 +1,6 @@
 # Pha 1 — bàn giao: quyết định, nợ treo, và thứ Pha 2/3 thừa kế
 
-Thi công xong 26/08/2026. 17 task, 56 commit (`217edbd..ddbefb7`), mỗi task một
+Thi công xong 26/08/2026. 17 task, 56 commit (`7c4586b..1df95ef`), mỗi task một
 vòng review độc lập, cộng một review tổng nhánh và một đợt sửa cuối.
 
 Spec: `2026-08-25-server-side-pivot.md`. Plan: `2026-08-25-pha1-course-len-may-chu.md`.

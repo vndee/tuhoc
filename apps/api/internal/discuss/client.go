@@ -286,7 +286,7 @@ type graphQLReply struct {
 // It is the same discipline as assertStats in apps/web/src/api/stats.ts,
 // and it is here for the same reason that one exists: a source returned
 // something nobody expected, nobody checked it where it entered, and the
-// consequence was a blank page (commit 815a472). assertStats's own comment
+// consequence was a blank page (commit 4f2bf1f). assertStats's own comment
 // records the follow-up lesson — guarding the call sites you thought of
 // fixes the call sites you thought of, and the very next test found the one
 // you did not. So this is ONE check, at the one place the data crosses in,

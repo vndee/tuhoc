@@ -27,7 +27,7 @@ người đọc gật đầu rồi bỏ qua. Nên nó ở đây, dưới dạng 
    một host CÔNG KHAI, KHÔNG auth. Nó không được git theo dõi, nên hai phép đo
    trên không nhìn thấy nó, và lúc phép đo này được viết thì nó đang chứa sẵn
    46 tệp / 1,20 MB giáo trình riêng. **Tiêu chí đã siết lại** kể từ commit
-   61bdb22: bản chép `courses/` → `dist/courses/` bị gỡ hẳn (course nay do
+   dafd4eb: bản chép `courses/` → `dist/courses/` bị gỡ hẳn (course nay do
    `apps/api` phục vụ từ Postgres), nên phép này không còn hỏi "gói nào ở đây
    không phải gói mẫu công khai" mà hỏi "có gì ở đây không" — bất kỳ thứ gì
    cũng là rác của một bản build cũ. Xem chú thích của `check_bundle` để biết vì
@@ -136,7 +136,7 @@ def public_course_ids(repo: pathlib.Path) -> set[str]:
     Nguồn duy nhất: `fixtures/courses/<dir>/manifest.json`.
 
     Từng là nguồn dùng chung với chốt lúc build trong
-    `apps/web/vite-plugins/courseAssets.ts` — chốt ấy không còn (commit 61bdb22
+    `apps/web/vite-plugins/courseAssets.ts` — chốt ấy không còn (commit dafd4eb
     gỡ hẳn bản chép `courses/` → `dist/courses/`), nên danh sách này nay chỉ còn
     MỘT người dùng: phép 5, để biết gói nào dưới `courses/` là gói riêng cần đem
     ra đối chiếu văn xuôi. Phép 3 thôi cần nó — xem `check_bundle`.
@@ -246,7 +246,7 @@ def check_bundle(repo: pathlib.Path, report: Report) -> None:
 
     **Phép này đổi nghĩa, không đổi lý do tồn tại.** Nó từng canh việc BỘ LỌC
     trong `courseAssets.ts` có sót gói riêng khi chép `courses/` vào
-    `dist/courses/`. Bộ lọc ấy — và cả bản chép — bị gỡ hẳn ở commit 61bdb22:
+    `dist/courses/`. Bộ lọc ấy — và cả bản chép — bị gỡ hẳn ở commit dafd4eb:
     course nay được `apps/api` phục vụ từ Postgres, nên không gói nào, công khai
     hay riêng tư, còn lý do đi cạnh bundle SPA nữa.
 
@@ -258,7 +258,7 @@ def check_bundle(repo: pathlib.Path, report: Report) -> None:
     Và nó KHÔNG phải một no-op vĩnh viễn, dù không còn gì tạo ra thư mục ấy:
     `emptyOutDir` của Vite mặc định true cho một `outDir` nằm trong root, nên
     `dist` được dọn ở mỗi lần build — nhưng chỉ ở LẦN BUILD KẾ TIẾP. Một máy đã
-    build TRƯỚC 61bdb22 và chưa build lại vẫn còn nguyên `dist/courses/` cũ,
+    build TRƯỚC dafd4eb và chưa build lại vẫn còn nguyên `dist/courses/` cũ,
     mang đúng những gì `courses/` chứa lúc ấy, gói riêng bao gồm. `make
     check-publish` là cổng TIỀN-publish — đúng khoảnh khắc một `dist` cũ còn có
     thể nằm trên đĩa.
@@ -277,7 +277,7 @@ def check_bundle(repo: pathlib.Path, report: Report) -> None:
     report.add(
         "3. Bundle apps/web/dist/ (thứ `wrangler pages deploy dist` đẩy lên)",
         findings,
-        "Xoá apps/web/dist rồi `bun run build` lại. Từ commit 61bdb22 không gì\n"
+        "Xoá apps/web/dist rồi `bun run build` lại. Từ commit dafd4eb không gì\n"
         "chép course vào dist nữa (apps/web/vite-plugins/courseAssets.ts,\n"
         "closeBundle) — nên mọi thứ ở đây là tàn dư của một bản build TRƯỚC\n"
         "thay đổi ấy, và một bản build mới là đủ để dọn.",

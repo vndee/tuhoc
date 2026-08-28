@@ -45,7 +45,7 @@ describe('assertDiscussion', () => {
    * báo cáo Task 5-Go giết bản không bảo đảm). Bài này KHÔNG lặp lại cổng ấy
    * — nó canh chuyện khác: một `null` len tới đây từ BẤT KỲ đâu (proxy, bản
    * máy chủ cũ, một tương lai nào đó) phải thành một thông báo, không thành
-   * `.map of null` giữa lúc vẽ. Đúng lớp lỗi đã làm trắng trang ở `815a472`.
+   * `.map of null` giữa lúc vẽ. Đúng lớp lỗi đã làm trắng trang ở `4f2bf1f`.
    */
   it('`comments: null` → lỗi có tên, KHÔNG phải một crash lúc render', () => {
     expect(() => assertDiscussion(thread({ comments: null }))).toThrow(MalformedDiscussionError);

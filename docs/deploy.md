@@ -14,7 +14,7 @@ pivot (`docs/superpowers/specs/2026-08-25-server-side-pivot.md`) a reader gets a
 course from Postgres through `apps/api` — not from a `.zip` they import, and not
 from a directory the build copies. `courseAssets.ts` used to copy `courses/` into
 `dist/courses/` (filtered to this repo's own public sample packages); commit
-61bdb22 removed that copy outright rather than narrowing it further, because any
+dafd4eb removed that copy outright rather than narrowing it further, because any
 course content sitting next to the SPA bundle is a second, unsynced source of
 truth on the origin that holds the session cookie. What the build still copies is
 `course-kit/` — KaTeX and the reader runtime, which every chapter's rendering
@@ -264,10 +264,10 @@ dist/index.html                   2.22 kB
 dist/assets/index-*.css         387.84 kB
 dist/assets/index-*.js          337.38 kB
 ```
-`dist/` contains `_redirects`, `course-kit/`, `index.html`, `favicon.svg`, `assets/` — confirmed with `ls dist` and `cat dist/_redirects` (see §7 for why the redirects rule's exact contents matter). There is no `dist/courses/`: commit 61bdb22 removed the copy that used to create it.
+`dist/` contains `_redirects`, `course-kit/`, `index.html`, `favicon.svg`, `assets/` — confirmed with `ls dist` and `cat dist/_redirects` (see §7 for why the redirects rule's exact contents matter). There is no `dist/courses/`: commit dafd4eb removed the copy that used to create it.
 
 `dist/courses/` is **never created**, whether or not someone ran `make courses`
-first; see the note at the top of this file. This changed at commit 61bdb22 —
+first; see the note at the top of this file. This changed at commit dafd4eb —
 before it, the build copied public sample packages there and task 11 verified
 that `bun run build` exits 0 with the source directory both present and absent.
 The copy is gone now, so the outcome no longer depends on `courses/` at all.

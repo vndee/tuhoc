@@ -26,7 +26,7 @@ expectations predate the server-side pivot) and `s2.spec.ts` (the AI/BYOK key
 vault — phase 2's own gate, over a subsystem phase 1 never touched).
 
 Gone with the features they covered: `import.spec.ts` and `s1.spec.ts` (the
-Import screen and the version-pinning update dialog, removed in `f541a9c`;
+Import screen and the version-pinning update dialog, removed in `e58ef41`;
 see `fixtures/README.md` for what the two package-variant scenarios were),
 `s3.spec.ts`/`s4.spec.ts` (the registry catalog UI), and `viz.spec.ts` (the
 course-wide `viz.js` runtime, replaced by sandboxed widgets).

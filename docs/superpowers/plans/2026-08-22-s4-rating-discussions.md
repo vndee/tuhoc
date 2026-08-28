@@ -186,7 +186,7 @@ CREATE TABLE course_ratings (
 
 GitHub là bên thứ ba: nó sẽ chậm, sẽ giới hạn tần suất, sẽ 500. **Hỏng phải suy giảm thành "chưa tải
 được thảo luận", không được làm hỏng trang course.** Đây đúng lớp lỗi đã làm trắng trang một lần
-(commit `815a472`): một nguồn dữ liệu trả thứ không mong đợi, không ai chặn ở ranh giới.
+(commit `4f2bf1f`): một nguồn dữ liệu trả thứ không mong đợi, không ai chặn ở ranh giới.
 ⇒ Kiểm hình dạng **ở ranh giới**, cùng khuôn `assertStats` ở `apps/web/src/api/stats.ts`.
 
 - [ ] **Step 3–4:** client + cache TTL + handler; giao diện chỉ đọc, nút đăng **dẫn sang GitHub**.

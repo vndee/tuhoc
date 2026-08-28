@@ -118,7 +118,7 @@ export function Discussion({ registryId }: { registryId: string }) {
             a catalog row; letting it reach `<ErrorBoundary>` would replace
             the whole screen — every other course, and the pull button the
             reader actually came for — because a third party's API was slow.
-            That is the `815a472` shape re-created one layer up, and the
+            That is the `4f2bf1f` shape re-created one layer up, and the
             reason `internal/discuss` answers 200 even when it failed.
           */}
           {query.isError && <p className="lib-notice">{t('discuss.error')}</p>}
@@ -165,7 +165,7 @@ function CommentRow({ comment, lang }: { comment: DiscussionComment; lang: strin
           deleted account that way, and the comment itself is still a real
           comment somebody wrote. The placeholder is ours and translated —
           the API refuses to put a Vietnamese sentence on the wire precisely
-          so this choice lands here (see `apps/api`'s commit 42feca8).
+          so this choice lands here (see `apps/api`'s commit a67e13a).
         */}
         <span className="discussion-author">
           {comment.author === '' ? t('discuss.deletedAuthor') : comment.author}

@@ -38,7 +38,7 @@ phát hiện.
 **Không còn đúng, sửa tại đây:** đoạn này từng nói nó ở lại vì "Task 8 (import
 từ tệp/URL/git)" cần một tệp thật để thả vào màn hình Import — màn hình đó
 (`pages/ImportCourse.tsx`, `course/import.ts`) đã bị xoá cùng toàn bộ mô hình
-"kéo một gói vào máy mình" (commit `f541a9c`, server-side pivot): đọc chương
+"kéo một gói vào máy mình" (commit `e58ef41`, server-side pivot): đọc chương
 giờ luôn tới từ `/courses/:slug` của máy chủ. Nó ở lại hôm nay vì
 `packages/course-format`/`tools/tuhoc-cli` (`pack.test.ts`) và
 `tools/registry` (`validate-pr.test.ts`) vẫn cần **một gói hợp lệ, đủ nhỏ để
@@ -84,11 +84,11 @@ chứ không commit vào kho:
 
 Cả hai đi qua hai màn hình mà cú chuyển trục sang máy chủ đã gỡ: màn hình Nhập gói
 (`pages/ImportCourse.tsx`, `course/import.ts`) và hộp thoại cập nhật theo phiên
-bản ghim (`course/UpdateDialog.tsx`, `course/version.ts`), gỡ ở commit `f541a9c`.
+bản ghim (`course/UpdateDialog.tsx`, `course/version.ts`), gỡ ở commit `e58ef41`.
 Người đọc không còn kéo gói về máy mình nữa — course do `apps/api` phục vụ từ
 Postgres.
 
-`s1.spec.ts` bị xoá ngay sau đó (`0d20668`). Kịch bản 2 và 4 **bỏ hẳn**, không
+`s1.spec.ts` bị xoá ngay sau đó (`6fd1cf7`). Kịch bản 2 và 4 **bỏ hẳn**, không
 chuyển đi đâu; chỉ §5 của tệp ấy (mục lục: ngăn kéo màn hẹp, cột cố định màn rộng)
 còn ý nghĩa vì nó kiểm `/c/:courseId` — một màn hình còn nguyên — nên nó **chuyển
 sang `apps/web/e2e/p1.spec.ts`**. Đó là toàn bộ phần sống sót.

@@ -544,7 +544,7 @@ describe('flatToDom / domToFlat round-trip', () => {
 
 // ===========================================================================
 // Fix round 1. Every test below was written RED-first against the reviewed
-// implementation (3e420c9) and names the review finding it pins. Several of
+// implementation (7158919) and names the review finding it pins. Several of
 // them exist specifically because a mutation of normalize.ts SURVIVED the
 // original suite — the mutation each one kills is named in its describe
 // block, and re-running that mutation is how the test was verified to have

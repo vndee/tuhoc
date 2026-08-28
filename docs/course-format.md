@@ -395,7 +395,7 @@ Quy trình:
 5. Sau khi merge, registry gán `registryId`. Đừng tự điền trường đó.
 
 **Không còn đúng, sửa tại đây:** đoạn dưới đây từng mô tả `UpdateDialog.tsx`
-kèm `version.ts`'s `pickPinned` — cả hai đã bị xoá (commit `f541a9c`) cùng lúc
+kèm `version.ts`'s `pickPinned` — cả hai đã bị xoá (commit `e58ef41`) cùng lúc
 với toàn bộ mô hình "gói đã pull về máy, ghim một bản cũ": máy chủ giờ luôn
 phục vụ đúng bản hiện hành qua `GET /courses/:slug` (Task 9-11), không có
 "bản đã ghim" nào ở phía người đọc để so hay để hỏi có muốn cập nhật không.
