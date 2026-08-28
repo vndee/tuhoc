@@ -452,3 +452,58 @@ nếu người dùng bấm "cho phép" mọi lần thì **toàn bộ 40 lời nh
 7 cú bấm thay vì 1. Cải thiện thật trước một course độc **âm thầm**; **không cải thiện gì** trước một
 course đủ kiên nhẫn chờ người dùng bấm. Đường ra thật (course chạy trong iframe sandbox riêng origin)
 đã bị spec §1.2 **bác bỏ có ý thức** vì nó phá P2.
+
+## Nợ Pha 2 (AI máy chủ) — `RateLimiter` (Task 10, `apps/api/internal/ai/ratelimit.go`)
+
+Hai mục dưới đây do vòng review 1 của Task 10 tìm ra: tự chạy đột biến, thấy chú thích của mã khẳng
+định một tính chất mà mã **không thật sự có** (I2), và thấy một nợ chỉ được ghi trong báo cáo Task
+10 chứ không nằm ở đâu người đọc mã sẽ thấy (I3). Cả hai đã được sửa **ngay trong chú thích của
+`ratelimit.go`** — mục này là bản lưu bền, cùng vai trò với các mục P2-C1/P2-C2 ở trên (dù đó là P2
+của giai đoạn annotation, không phải "Pha 2: AI máy chủ" đang nói ở đây — hai chữ "P2" trùng tên,
+khác giai đoạn).
+
+### 1 — `RateLimiter` khoá theo user id: chặn được một tài khoản đốt nhanh, KHÔNG chặn được farm credit tặng qua nhiều tài khoản
+
+Spec §3.4 nêu hai hình dạng lạm dụng. `Allow` chặn đúng hình dạng thứ nhất (một tài khoản gọi quá
+nhanh, kể cả khi tài khoản đó còn đầy credit — xem `TestAllowBlocksAWellFundedAccountIndependently
+OfCredit`). Nó **không** chặn hình dạng thứ hai: vì khoá theo `uuid.UUID` của user, mỗi tài khoản
+mới đăng ký nhận một `hits[newUserID]` rỗng — tức một hạn mức mới tinh — nên K tài khoản mua được
+K×max lượt mỗi cửa sổ, không phải max. Bản đầu của `ratelimit.go` (trước vòng review 1) khẳng định
+sai rằng limiter tồn tại cho **cả hai** hình dạng; đã sửa lại đúng phạm vi thật.
+
+Tiền của hình dạng #2 không nằm ở tốc độ đốt token — nó nằm ở chính `signup_grant_micro`
+(`ai_settings`, migration 0007): mỗi tài khoản mới là tiền cho không, và `apps/api` **không có xác
+thực email** (`grep -rn 'email_verified\|verification_token\|VerifyEmail' apps/api` → 0 kết quả).
+Rào duy nhất hiện có là limiter theo IP ở `apps/api/internal/server/server.go` (10 req/phút/IP cho
+`/auth/*`) = 14.400 lượt đăng ký/ngày/IP — không phải một rào thật cho một script kiên nhẫn.
+
+**Nơi xử lý:** không phải `ratelimit.go` — việc thật là xác thực email trước khi cấp credit, hoặc
+hoãn/giảm mức cấp cho tới khi email được xác nhận. Chưa task nào được giao việc này.
+
+### 2 — `rl.hits` không bao giờ dọn, và giả định "một process" buộc vào `render.yaml` chứ không phải một tính chất thiết kế
+
+`map[uuid.UUID][]time.Time` giữ một entry vĩnh viễn cho **mọi** user id từng gọi `Allow`, không TTL,
+không sweep. Ở quy mô hiện tại là một rò chậm, có giới hạn (một slice nhỏ/người học, không phải/mỗi
+request) — restart process (vốn đã reset toàn bộ hạn mức, một chi phí được chấp nhận có ghi trong
+`ratelimit.go`) cũng giải phóng luôn bộ nhớ này. Không sweep nền nào được xây ở Task 10.
+
+Ràng buộc "chỉ cần đúng trong MỘT process" cũng vậy: `RateLimiter` không chia sẻ trạng thái qua
+nhiều process, nên chạy hai instance sẽ âm thầm biến "max/user" thành "max×số-instance/user". Điều
+này vô hại **hôm nay** chỉ vì `render.yaml`'s service `tuhoc-api` là `plan: free`, không có block
+scaling/`numInstances` — gói free của Render không cho chạy nhiều hơn một instance — **không phải
+vì bản thân thiết kế đảm bảo điều đó**. Đổi plan là hạn mức thật lặng lẽ nhân lên.
+
+**Vì sao không dùng `github.com/gofiber/fiber/v2/middleware/limiter` có sẵn** (đã vendor, đang dùng
+ở `/auth/*` trong `server.go`, có `SlidingWindow`, và storage mặc định của nó **tự hết hạn** — không
+rò map): đã đọc mã nguồn gói đó (`limiter.go`, `config.go`, `manager.go` ở
+`github.com/gofiber/fiber/v2@v2.52.15/middleware/limiter/`) — điểm vào **duy nhất** nó xuất ra là
+`limiter.New(cfg) fiber.Handler`, khoá cứng vào `*fiber.Ctx`. Không có một API kiểu
+`Allow(key string) error` đứng độc lập với HTTP. Dùng nó nghĩa là logic rate-limit phải sống như
+middleware Fiber ở `internal/server`, không thể gọi trực tiếp cùng dòng mã với `credits.go`'s
+`EnsureCredit` bên trong thân handler `/ai/chat` — và `internal/ai` (nơi brief Task 10 yêu cầu đặt
+`ratelimit.go`) hiện **không import gofiber ở bất kỳ đâu**, một ranh giới kiến trúc có chủ đích
+(cùng lý do `internal/auth`, `internal/rating` tách "usecase" framework-agnostic khỏi "handler"
+Fiber-specific). Đánh đổi: tự viết một map trong bộ nhớ (nợ #2 ở trên) để đổi lấy một hàm domain-layer
+test được trực tiếp bằng `go test`, gọi được cùng chỗ với `EnsureCredit`, không cần dựng `*fiber.Ctx`.
+**Đây LÀ một quyết định đã cân nhắc, không phải bỏ sót** — nhưng việc cân nhắc này chỉ xảy ra ở vòng
+review 1, sau khi được hỏi; bản đầu của `ratelimit.go` không hề nhắc gói đã vendor sẵn này.

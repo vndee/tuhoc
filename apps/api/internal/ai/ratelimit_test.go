@@ -147,3 +147,146 @@ func TestAllowRecoversAfterWindowElapses(t *testing.T) {
 		t.Fatalf("call after window elapsed: want allowed, got %v", err)
 	}
 }
+
+// Round 1 review found two mutants the four tests above never caught,
+// both at instants and interleavings TestAllowRecoversAfterWindowElapses
+// never exercised (it only ever moves the clock to t=0 or comfortably
+// past the whole window — never to the exact boundary, and never with a
+// blocked poll in between). The three tests below close those gaps:
+// TestAllowRecoversExactlyAtWindowBoundary pins the exact edge, PLUS a
+// SECOND mutant found alongside it (`h.After(cutoff)` -> `!h.Before
+// (cutoff)`, one instant off in the OTHER direction, run and confirmed
+// dead against this test before it was kept); TestAllowSlidesPartially
+// NotAllAtOnce pins that expiry is evaluated per-hit; TestBlockedAttempts
+// DoNotExtendTheWindow pins that a REFUSED call never counts as a hit.
+
+// TestAllowRecoversExactlyAtWindowBoundary pins the exact instant this
+// type's sliding window recovers: a hit at t0 stops counting the moment
+// now-t0 == window, not one instant later. Round 1 review's mutant
+// (`h.After(cutoff)` -> `!h.Before(cutoff)`, i.e. keep a hit exactly AT
+// the cutoff instead of dropping it) changes behavior at EXACTLY this
+// instant and nowhere else — a test that only ever checks window+1s
+// (TestAllowRecoversAfterWindowElapses, above) cannot see it, because
+// both the mutant and the original agree by window+1s.
+func TestAllowRecoversExactlyAtWindowBoundary(t *testing.T) {
+	const maxCalls = 2 // distinct from windowSeconds
+	const windowSeconds = 40
+	rl := NewRateLimiter(maxCalls, windowSeconds*time.Second)
+	userID := uuid.New()
+
+	base := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	rl.now = func() time.Time { return base }
+
+	for i := 1; i <= maxCalls; i++ {
+		if err := rl.Allow(userID); err != nil {
+			t.Fatalf("call %d of %d at t=0: want allowed, got %v", i, maxCalls, err)
+		}
+	}
+	if err := rl.Allow(userID); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("call at t=0 past budget: want ErrRateLimited, got %v", err)
+	}
+
+	// Exactly `window` later, to the instant — not window+1s.
+	rl.now = func() time.Time { return base.Add(windowSeconds * time.Second) }
+	if err := rl.Allow(userID); err != nil {
+		t.Fatalf("call at t=window exactly: want allowed — this type's window is the half-open "+
+			"interval (t0, t0+window], so t0+window itself is already outside it — got %v", err)
+	}
+}
+
+// TestAllowSlidesPartiallyNotAllAtOnce proves expiry is evaluated PER
+// HIT, not "clear the whole budget once the single oldest hit ages out"
+// — an implementation that only checked the oldest entry (e.g. a plain
+// FIFO queue popped from the front until the front is fresh) could pass
+// every other test in this file yet free ALL slots the instant ANY one
+// hit expires, which is a materially looser budget than the one this
+// type promises.
+func TestAllowSlidesPartiallyNotAllAtOnce(t *testing.T) {
+	const maxCalls = 2 // distinct from windowSeconds and gapSeconds
+	const windowSeconds = 30
+	const gapSeconds = 12 // distinct from maxCalls and windowSeconds
+	rl := NewRateLimiter(maxCalls, windowSeconds*time.Second)
+	userID := uuid.New()
+
+	base := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+
+	rl.now = func() time.Time { return base }
+	if err := rl.Allow(userID); err != nil {
+		t.Fatalf("first call at t=0: want allowed, got %v", err)
+	}
+
+	rl.now = func() time.Time { return base.Add(gapSeconds * time.Second) }
+	if err := rl.Allow(userID); err != nil {
+		t.Fatalf("second call at t=%ds: want allowed, got %v", gapSeconds, err)
+	}
+
+	// Budget is now full: one hit at t=0, one at t=gapSeconds. Move to a
+	// moment where ONLY the first hit (t=0) has aged out of the window —
+	// the second (t=gapSeconds) has not.
+	thirdCallSeconds := windowSeconds + 1 // > window since t=0; still < window since t=gapSeconds
+	rl.now = func() time.Time { return base.Add(time.Duration(thirdCallSeconds) * time.Second) }
+	if err := rl.Allow(userID); err != nil {
+		t.Fatalf("third call at t=%ds (only the t=0 hit should have aged out): want allowed, got %v",
+			thirdCallSeconds, err)
+	}
+
+	// That third call re-filled the one freed slot. The t=gapSeconds hit
+	// is still within its own window (it will not age out until
+	// t=gapSeconds+windowSeconds, later than thirdCallSeconds), so a
+	// fourth call right now must still be blocked — proving the
+	// allowance above was a partial slide (exactly one slot), not a full
+	// reset of the budget.
+	if err := rl.Allow(userID); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("fourth call at t=%ds: want ErrRateLimited (the t=%ds hit is still within its own "+
+			"window), got %v", thirdCallSeconds, gapSeconds, err)
+	}
+}
+
+// TestBlockedAttemptsDoNotExtendTheWindow pins that Allow only ever
+// records a call it ALLOWS — a call it refuses with ErrRateLimited must
+// never be added to rl.hits. Round 1 review's mutant (on the refusal
+// branch: `rl.hits[userID] = kept` -> `rl.hits[userID] = append(kept,
+// now)`) makes every blocked ATTEMPT count as if it were an allowed
+// call, which — as this test's own numbers show — means a client that
+// keeps polling while blocked never recovers, even though it never got a
+// single extra call through: exactly the failure mode a caller retrying
+// on a timer (Task 11's frontend, most plausibly) would hit in
+// production.
+func TestBlockedAttemptsDoNotExtendTheWindow(t *testing.T) {
+	const maxCalls = 2 // distinct from every *Seconds constant below
+	const windowSeconds = 30
+	const poll1Seconds = 10
+	const poll2Seconds = 20
+	// retrySeconds is > windowSeconds after the last ALLOWED call (t=0),
+	// but only 15s after poll2Seconds — well within windowSeconds of it.
+	// If a blocked poll counted as a hit, the poll2Seconds hit alone
+	// would still be "fresh" here and this call would stay blocked.
+	const retrySeconds = 35
+	rl := NewRateLimiter(maxCalls, windowSeconds*time.Second)
+	userID := uuid.New()
+
+	base := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+
+	rl.now = func() time.Time { return base }
+	for i := 1; i <= maxCalls; i++ {
+		if err := rl.Allow(userID); err != nil {
+			t.Fatalf("call %d of %d at t=0: want allowed, got %v", i, maxCalls, err)
+		}
+	}
+
+	rl.now = func() time.Time { return base.Add(poll1Seconds * time.Second) }
+	if err := rl.Allow(userID); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("poll at t=%ds: want ErrRateLimited, got %v", poll1Seconds, err)
+	}
+	rl.now = func() time.Time { return base.Add(poll2Seconds * time.Second) }
+	if err := rl.Allow(userID); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("poll at t=%ds: want ErrRateLimited, got %v", poll2Seconds, err)
+	}
+
+	rl.now = func() time.Time { return base.Add(retrySeconds * time.Second) }
+	if err := rl.Allow(userID); err != nil {
+		t.Fatalf("retry at t=%ds (%ds after the last ALLOWED call, well past the %ds window): "+
+			"want allowed, got %v — a blocked attempt must not extend the window",
+			retrySeconds, retrySeconds, windowSeconds, err)
+	}
+}
