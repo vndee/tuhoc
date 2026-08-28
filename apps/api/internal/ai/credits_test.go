@@ -135,12 +135,25 @@ func seedTestPricing(t *testing.T, pool *pgxpool.Pool, model string) {
 // differ; every other test keeps using seedTestPricing on purpose (their
 // own arithmetic — e.g. Step 2's balance 10, charge 500, land on -490 —
 // stays easy to verify by hand when cost and credits agree).
+//
+// Round 3 review's pairwise-distinguishability scan: all SIX columns here
+// (1000/100/500/2000/200/700) are pairwise DISTINCT on purpose. An earlier
+// version used 1000 for both cost_micro_per_1k_in and credits_per_1k_out —
+// equal by coincidence — which made a transposition mutation in
+// pricing()'s Scan() call (CostMicroPer1kIn <-> CreditsPer1kOut) invisible
+// to THIS test specifically (verified by injecting exactly that mutation
+// and re-running: TestChargeTurnWritesExactLedgerRow alone stayed green).
+// The whole SUITE still caught it, via seedTestPricing's tests (where
+// cost_in=1000 and credits_out=500 legitimately differ) — but this test
+// claims to guard the pricing field mapping on its own, so it should not
+// depend on some OTHER test's fixture to close the loop. credits_per_1k_out
+// changed from 1000 to 700 to remove the coincidence.
 func seedAsymmetricTestPricing(t *testing.T, pool *pgxpool.Pool, model string) {
 	t.Helper()
 	_, err := pool.Exec(context.Background(), `
 		INSERT INTO ai_pricing (model, cost_micro_per_1k_in, cost_micro_per_1k_cached_in,
 			cost_micro_per_1k_out, credits_per_1k_in, credits_per_1k_cached_in, credits_per_1k_out)
-		VALUES ($1, 1000, 100, 500, 2000, 200, 1000)`, model)
+		VALUES ($1, 1000, 100, 500, 2000, 200, 700)`, model)
 	if err != nil {
 		t.Fatalf("seed ai_pricing: %v", err)
 	}
@@ -277,22 +290,35 @@ func TestChargeTurnGoesNegativeMidTurnAndFinishes(t *testing.T) {
 }
 
 // TestChargeTurnWritesExactLedgerRow guards the field mapping between
-// Result/Usage and ai_usage's columns. A mapping bug — CacheHitTokens fed
-// into in_tokens where CacheMissTokens belongs, say — would still pass
-// every other test in this file: both cache columns carry the identical
-// CHECK (>= 0), and the other tests only assert the TOTAL credits charged,
-// which a swap of two distinct fields does not change when both are
-// nonzero-but-untested. This test reads the row back and checks every
-// column, using seedAsymmetricTestPricing (credits at DOUBLE cost's rate —
-// see that helper's comment, round 1 review I2) so cost_micro and
-// credits_charged land on two DIFFERENT numbers: a test that could pass
-// with the two swapped, or with ChargeTurn returning the wrong one as
-// `charged`, was not actually guarding either.
+// Result/Usage and ai_usage's columns, AND the ai_credits deduction. A
+// mapping bug — CacheHitTokens fed into in_tokens where CacheMissTokens
+// belongs, say — would still pass every other test in this file: both
+// cache columns carry the identical CHECK (>= 0), and the other tests only
+// assert the TOTAL credits charged, which a swap of two distinct fields
+// does not change when both are nonzero-but-untested. This test reads the
+// row back and checks every column, using seedAsymmetricTestPricing
+// (credits at DOUBLE cost's rate — see that helper's comment, round 1
+// review I2) so cost_micro and credits_charged land on two DIFFERENT
+// numbers: a test that could pass with the two swapped, or with ChargeTurn
+// returning the wrong one as `charged`, was not actually guarding either.
 //
 //	cost_micro     = divUp(4000,100)  + divUp(3000,1000) + divUp(1000,500)
 //	               =      400         +      3000         +      500       = 3900
-//	credits_charged = divUp(4000,200) + divUp(3000,2000) + divUp(1000,1000)
-//	               =      800         +      6000         +      1000      = 7800
+//	credits_charged = divUp(4000,200) + divUp(3000,2000) + divUp(1000,700)
+//	               =      800         +      6000         +      700       = 7500
+//
+// Round 3 review: this was the ONE test with cost_micro != credits_charged,
+// but before this round it never called balanceOf() to check what the
+// UPDATE actually deducted from ai_credits — it checked `charged` (the
+// return value) and the ai_usage columns, and stopped there. credits.go's
+// UPDATE call used `credits` correctly, but nothing here would have
+// noticed if it had used `costMicro` instead: every OTHER test in this
+// file seeds symmetric pricing (cost_micro_per_1k_* == credits_per_1k_*),
+// so deducting the wrong one of the pair still landed on the same number.
+// The balanceOf() assertion below closes that: it is the fourth and last
+// place `credits` (as opposed to `costMicro`) needs to show up correctly —
+// return value, ai_usage.credits_charged, ai_usage.cost_micro (which must
+// NOT equal credits), and now ai_credits.balance_micro.
 func TestChargeTurnWritesExactLedgerRow(t *testing.T) {
 	pool := store.TestPool(t)
 	ctx := context.Background()
@@ -301,7 +327,8 @@ func TestChargeTurnWritesExactLedgerRow(t *testing.T) {
 	const model = "ledger-row-test-model"
 	seedAsymmetricTestPricing(t, pool, model)
 
-	userID := newCreditsUser(t, pool, "ledger-row", 100000)
+	const startBalance = 100000
+	userID := newCreditsUser(t, pool, "ledger-row", startBalance)
 
 	result := Result{
 		Usage: Usage{
@@ -314,7 +341,7 @@ func TestChargeTurnWritesExactLedgerRow(t *testing.T) {
 	}
 
 	const wantCostMicro = 400 + 3000 + 500 // 3900
-	const wantCredits = 800 + 6000 + 1000  // 7800
+	const wantCredits = 800 + 6000 + 700   // 7500
 
 	charged, err := svc.ChargeTurn(ctx, userID, result, model)
 	if err != nil {
@@ -322,6 +349,14 @@ func TestChargeTurnWritesExactLedgerRow(t *testing.T) {
 	}
 	if charged != wantCredits {
 		t.Errorf("ChargeTurn returned charged=%d, want %d (credits_charged, the price sold to the learner — NOT cost_micro, the platform's own cost) — round 1 review I2: this is the assertion that would catch ChargeTurn returning costMicro instead of credits", charged, wantCredits)
+	}
+
+	// Round 3 review: the UPDATE inside ChargeTurn is a SEPARATE write site
+	// from the INSERT checked below — a mutation that has the UPDATE
+	// deduct costMicro (3900) instead of credits (7500) leaves `charged`
+	// and every ai_usage column correct, and only shows up HERE.
+	if got := balanceOf(t, pool, userID); got != startBalance-wantCredits {
+		t.Errorf("balance: want %d (%d - %d credits), got %d — the ai_credits UPDATE deducted the wrong one of cost_micro/credits", startBalance-wantCredits, startBalance, wantCredits, got)
 	}
 
 	var gotModel string
