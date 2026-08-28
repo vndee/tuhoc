@@ -51,11 +51,18 @@ type ToolFunction struct {
 // (hoặc xác nhận giả định này) tại docs/deepseek-measured.md, và Task 4b áp
 // dụng kết quả đó vào client.go + hai thẻ JSON dưới đây. Nếu tên thật khác
 // giả định: mã KHÔNG lỗi rõ ràng khi sai — client.go vẫn decode được JSON,
-// hai trường cache chỉ lặng lẽ ở lại 0, cost.go (đọc trường Go, không đọc
-// thẻ JSON) vẫn cộng ra một con số, và sổ ai_usage vẫn đầy hàng — chỉ là
-// toàn bộ chi phí đổ hết vào CacheMissTokens (giá đắt hơn cache-hit 30-60
-// lần) thay vì tách đúng theo Pricing. Đây chính là kiểu hỏng ÂM THẦM Task 0
-// được viết ra để chặn, và Pha 4 sẽ chốt giá bán trên đúng những con số này.
+// cost.go (đọc trường Go, không đọc thẻ JSON) vẫn cộng ra một con số, và sổ
+// ai_usage vẫn đầy hàng. Hình dạng cụ thể của cái hỏng phụ thuộc cách 4b
+// điền hai trường này: nếu client.go decode thẳng qua hai thẻ JSON sai tên,
+// CẢ HAI trường cache lặng lẽ ở lại 0 (JSON không có khoá khớp); nếu thay
+// vào đó client.go suy ra CacheMissTokens = PromptTokens − CacheHitTokens
+// (một cách hợp lý khác để lấp trường này khi không chắc tên thẻ), toàn bộ
+// input đổ hết vào CacheMissTokens (giá đắt hơn cache-hit 30-60 lần) trong
+// khi CacheHitTokens ở lại 0. Cả hai khả năng đều sai âm thầm theo cách
+// khác nhau — không đoán trước cách 4b chọn, chỉ ghi lại rằng dù chọn cách
+// nào, một tên thẻ sai không tự lộ ra ở đầu ra. Đây chính là kiểu hỏng ÂM
+// THẦM Task 0 được viết ra để chặn, và Pha 4 sẽ chốt giá bán trên đúng những
+// con số này.
 type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`

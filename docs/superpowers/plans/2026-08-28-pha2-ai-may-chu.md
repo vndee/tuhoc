@@ -646,11 +646,40 @@ func TestCostSplitsCachedAndUncachedInput(t *testing.T) {
 }
 
 // Một lượt ngắn không được thành MIỄN PHÍ vì phép chia nguyên làm tròn xuống.
+//
+// SỬA Ở VÒNG REVIEW 1 CỦA TASK 4A (đừng chép lại bản trước dòng này): dùng
+// giá CACHE-HIT (44/1k), KHÔNG dùng giá cache-miss/output (1320/3960) như
+// một bản trước đã làm. Lý do là bản per1k=1320 với 1 token là VACUOUS —
+// ngay cả phép chia làm tròn XUỐNG (floor, bỏ +999) cũng cho 1*1320/1000 = 1,
+// KHÁC 0, nên test đó xanh dù divUp hay floor. Với per1k=44 và 1 token:
+// floor(1*44/1000) = 0 còn divUp = (44+999)/1000 = 1 — chỉ làm tròn LÊN mới
+// giữ lượt này khỏi bị tính giá vốn 0, nên đây mới là khoảng dữ liệu THẬT SỰ
+// phân biệt được divUp với floor. Tự kiểm bằng đột biến trước khi tin: tạm
+// bỏ `+ 999` khỏi divUp, test này phải ĐỎ; khôi phục, phải XANH.
 func TestCostRoundsUpSoTinyTurnsAreNotFree(t *testing.T) {
-	p := Pricing{CostMicroPer1kIn: 1320, CostMicroPer1kOut: 3960, CreditsPer1kIn: 1320, CreditsPer1kOut: 3960}
-	cost, _ := Charge(Usage{CacheMissTokens: 1, CompletionTokens: 1}, p, 0, Settings{})
+	p := Pricing{CostMicroPer1kCachedIn: 44, CreditsPer1kCachedIn: 44}
+	cost, credits := Charge(Usage{CacheHitTokens: 1}, p, 0, Settings{})
 	if cost == 0 {
 		t.Error("một lượt có token thật mà tính giá vốn 0 — làm tròn xuống đã ăn mất nó")
+	}
+	if credits == 0 {
+		t.Error("một lượt có token thật mà tính giá bán 0 — làm tròn xuống đã ăn mất nó")
+	}
+}
+
+// Nhánh tìm kiếm web của Charge — hai test trên không chạm tới, vì cả hai
+// gọi Charge(..., 0, ...). Hai đơn giá CỐ Ý khác nhau (500 và 300): một lỗi
+// hoán vị s.CostMicroPerWebSearch với s.CreditsPerWebSearch chỉ bị bắt khi
+// hai đơn giá khác nhau — bằng nhau thì cost/credits tráo giá trị cho nhau
+// mà test vẫn xanh.
+func TestChargeAddsWebSearchSurchargeAtDistinctPrices(t *testing.T) {
+	s := Settings{CostMicroPerWebSearch: 500, CreditsPerWebSearch: 300}
+	cost, credits := Charge(Usage{}, Pricing{}, 4, s)
+	if cost != 2000 {
+		t.Errorf("cost = %d, muốn 2000 (4 lượt tìm x 500)", cost)
+	}
+	if credits != 1200 {
+		t.Errorf("credits = %d, muốn 1200 (4 lượt tìm x 300)", credits)
 	}
 }
 ```
