@@ -99,6 +99,17 @@ func (s *Service) Balance(ctx context.Context, userID uuid.UUID) (int64, error) 
 func (s *Service) EnsureCredit(ctx context.Context, userID uuid.UUID) error {
 	balance, err := s.Balance(ctx, userID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// A user with no ai_credits row yet has spent nothing AND has
+			// nothing — round 1 review, I(minor): without this branch,
+			// Balance's wrapped pgx.ErrNoRows would propagate as a generic
+			// lookup failure instead of ErrInsufficientCredit, and a caller
+			// that does errors.Is(err, ErrInsufficientCredit) to decide
+			// between a 402 and a 500 would send this learner a 500 for a
+			// condition that is really "nothing to spend" — the same
+			// externally-visible situation as a balance of exactly 0.
+			return ErrInsufficientCredit
+		}
 		return err
 	}
 	if balance <= 0 {
@@ -109,9 +120,18 @@ func (s *Service) EnsureCredit(ctx context.Context, userID uuid.UUID) error {
 
 // pricing loads the ai_pricing row for model. A model with no row (a typo,
 // or a model retired from ai_pricing but still reachable through stale
-// client state) fails closed: ChargeTurn returns the wrapped pgx.ErrNoRows
-// instead of charging nothing, which would be an undercharge, not a
-// warning.
+// client state) makes ChargeTurn return the wrapped pgx.ErrNoRows before
+// touching ai_credits or ai_usage at all.
+//
+// Round 1 review (I5) flagged the previous version of this comment for
+// calling that "failing closed" — it is NOT a safety property. By the time
+// ChargeTurn runs, the turn already happened and DeepSeek already got paid
+// for real tokens; returning an error here does not undo that spend, it
+// just means THIS turn's cost never reaches either table — an actual loss
+// of money and of the record of where it went, same failure shape as a
+// missing ai_credits row or a failed Commit below. There is no retry and
+// no dead-letter queue for this path in this file; a caller that needs one
+// has to build it.
 func (s *Service) pricing(ctx context.Context, model string) (Pricing, error) {
 	var p Pricing
 	err := s.pool.QueryRow(ctx, `
@@ -170,6 +190,18 @@ func (s *Service) ChargeTurn(ctx context.Context, userID uuid.UUID, r Result, mo
 		return 0, err
 	}
 
+	// r.WebSearches feeds Charge (cost.go) here, which multiplies it by
+	// BOTH settings.CostMicroPerWebSearch (Brave's real cost) and
+	// settings.CreditsPerWebSearch (the price this learner pays) — the
+	// counter carries both jobs at once. It is correct for what this row
+	// charges the learner (r.WebSearches only ever counts a tool_call that
+	// actually ran — see agent.go's doc comment on Result.WebSearches, "CHỈ
+	// tăng sau khi ToolRunner.Run trả về không lỗi"), but it means a FAILED
+	// search costMicro never appears anywhere in ai_usage: this ledger's
+	// cost_micro therefore undercounts Brave's real spend by however many
+	// searches errored. Fine today (nothing downstream reads cost_micro as
+	// a cost ledger yet), but a debt Phase 4 needs to know about if it ever
+	// wants an accurate cost_micro rather than an accurate credits_charged.
 	costMicro, credits := Charge(r.Usage, pricing, r.WebSearches, settings)
 
 	tx, err := s.pool.Begin(ctx)
