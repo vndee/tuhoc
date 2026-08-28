@@ -16,6 +16,8 @@ package ai
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -288,5 +290,64 @@ func TestBlockedAttemptsDoNotExtendTheWindow(t *testing.T) {
 		t.Fatalf("retry at t=%ds (%ds after the last ALLOWED call, well past the %ds window): "+
 			"want allowed, got %v — a blocked attempt must not extend the window",
 			retrySeconds, retrySeconds, windowSeconds, err)
+	}
+}
+
+// TestAllowIsRaceSafeUnderConcurrentCalls follows the exact shape of
+// tool_search_test.go's TestSearchToolCapIsRaceSafeUnderConcurrentCalls
+// (this same package, born from round-1 review of Task 8 finding the
+// identical gap: a shared-instance budget counter with no test that ever
+// called it from more than one goroutine at once). Round 2 review of THIS
+// task found the same gap here: deleting rl.mu.Lock()/rl.mu.Unlock() from
+// Allow leaves all seven other tests in this file green, because none of
+// them calls Allow from more than one goroutine on the same *RateLimiter.
+// A RateLimiter is explicitly NOT meant to be used that way — this file's
+// own package comment says Task 11 wires ONE instance into every
+// /ai/chat request, so concurrent HTTP handlers calling Allow(sameUserID)
+// at once is the normal case, not a misuse — which is exactly the shape
+// only a concurrent test can exercise.
+//
+// Assertion beyond "no race" (this task's round 2 review asked for one
+// explicitly): with maxCalls < attempts concurrent callers on the SAME
+// user id, EXACTLY maxCalls of them must succeed — not "at most", not "a
+// number near it". This is NOT a brittle ordering assertion: WHICH
+// goroutines win is unspecified by design and does not matter to this
+// test; HOW MANY win is fully determined by the mutex correctly
+// serializing access to rl.hits, the same invariant
+// TestSearchToolCapIsRaceSafeUnderConcurrentCalls pins for its own budget
+// counter. Run under `-race` (this task's own verification command
+// includes it for internal/ai — see task-10-report.md), a missing or
+// broken lock is reported as a DATA RACE even on a scheduling that
+// happens to still land on the right count — the count assertion is the
+// belt, `-race` is the suspenders that actually catches the missing lock.
+func TestAllowIsRaceSafeUnderConcurrentCalls(t *testing.T) {
+	const maxCalls = 5 // distinct from attempts and windowMinutes below
+	const attempts = 50
+	// windowMinutes is long enough that none of the `attempts`
+	// near-simultaneous timestamps (real time.Now(), not the injectable
+	// clock the other tests in this file use) could age out of the
+	// window during this test's brief run — keeping this a pure test of
+	// the LOCK, not of window arithmetic racing against wall-clock time.
+	const windowMinutes = 10
+	rl := NewRateLimiter(maxCalls, windowMinutes*time.Minute)
+	userID := uuid.New()
+
+	var wg sync.WaitGroup
+	var succeeded int64
+	for i := 0; i < attempts; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := rl.Allow(userID); err == nil {
+				atomic.AddInt64(&succeeded, 1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if succeeded != maxCalls {
+		t.Errorf("succeeded = %d, want EXACTLY %d (maxCalls) — any deviation means rl.hits is "+
+			"being raced, and under a broken lock a caller could burn more turns than the "+
+			"configured budget allows, or fewer than it should", succeeded, maxCalls)
 	}
 }
