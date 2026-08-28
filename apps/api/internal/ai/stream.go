@@ -32,6 +32,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // Event is one piece of a streaming turn, forwarded to the caller's emit
@@ -138,6 +139,19 @@ var _ StreamCompleter = (*Client)(nil)
 //     pins this the same way agent_test.go's TestRunErrorStillCarriesUsageFromCompletedRounds
 //     pins it for Run.
 //
+// The loop body below is a near-verbatim copy of Run's (agent.go) — same
+// round structure, same tool-execution block, differing only in the emit
+// calls and the two early returns when emit itself fails. That duplication
+// has no test-enforced lattice keeping the two in lockstep as either one
+// changes (round-1 review, I3) — TestRunAndRunStreamProduceSameResultForSameScenario
+// (stream_test.go) is the cheap net cast over that gap: same fixture driven
+// through both Run and RunStream, asserting equal Result. It cannot catch
+// every possible divergence, but it turns "two silent copies" into "two
+// copies one test compares" — a fix applied to Run's tool-execution block
+// (e.g. the debt noted at Result.WebSearches's doc comment in agent.go)
+// that is not mirrored here will show up as this test going red, not as a
+// silent divergence nobody notices until Task 9 charges the wrong amount.
+//
 // SELF-DECIDED — Event semantics (task-7-brief.md defines the Kind enum but
 // not what triggers each one; Task 9/11/13 need this settled, not guessed
 // at three separate call sites later):
@@ -145,6 +159,7 @@ var _ StreamCompleter = (*Client)(nil)
 //   - "delta": one per non-empty content fragment CompleteStream reports via
 //     onDelta, forwarded verbatim and in order. Emitted DURING a round, as
 //     text is generated — this is the whole point of streaming.
+//
 //   - "tool": one per tool_call, emitted right after a round finishes and
 //     BEFORE that tool actually runs — Text is the tool's function name, so
 //     a frontend can show e.g. "looking up chapter 1...". Not emitted for
@@ -152,22 +167,43 @@ var _ StreamCompleter = (*Client)(nil)
 //     — the learner doesn't need to know a tool_call was rejected before
 //     the loop hands the model an "Error: ... not available" tool message
 //     and moves on.
+//
 //   - "done": exactly one, after the LAST successful round, once
 //     result.Answer is set and no error path is taken — never emitted on
 //     any error exit. Text is empty: every character of the final answer
 //     already went out as "delta" events during the last round: sending it
 //     again in "done" would just duplicate everything the caller already
 //     reconstructed.
-//   - "error": emitted exactly once, on every error return path (a
-//     CompleteStream failure, or ErrToolBudgetExhausted at the final
-//     round), Text set to err.Error(). The emit call's own error (the
-//     learner's connection is probably already gone at that point) is
-//     deliberately ignored here — RunStream is already returning the
-//     primary error regardless, and a broken pipe on the courtesy
-//     error-event write must not shadow the real failure.
+//
+//   - "error": Text set to err.Error(), attempted (best-effort) on every
+//     error that arises ONCE THE TURN HAS BEGUN — a CompleteStream failure
+//     inside a round, or ErrToolBudgetExhausted at the final round. The
+//     emit call's own error (the learner's connection is probably already
+//     gone at that point) is deliberately NOT retried as another "error"
+//     event — RunStream is already returning the primary error regardless,
+//     and the sink is already known broken, so a second attempt through
+//     the same broken sink would just be more of the same failure. This
+//     covers the two `emitErr` return paths below (a failed "tool"/"done"
+//     emit): no redundant "error" event follows either, on purpose.
+//
+//     EXCEPTION, not a bug (round-1 review, I2 — a prior version of this
+//     comment claimed "every error return path" without carving this out,
+//     which read as a promise the code below does not keep): the
+//     StreamCompleter type-assertion failure right below returns BEFORE
+//     any round starts — the turn never began, so there is nothing to
+//     announce "an error mid-turn" about, and emit is guaranteed to never
+//     be called on this path (TestRunStreamRequiresStreamCompleter pins
+//     this as the intended contract, not an oversight). This is a wiring
+//     error (Agent built with the wrong Client type), not a per-request
+//     runtime failure — callers (Task 11's handler) must check RunStream's
+//     returned error directly regardless of Event, exactly as they already
+//     have to for every other Go function that returns (T, error); Event
+//     is a progress feed for a turn that's under way, not a replacement
+//     for checking the return value.
 func (a *Agent) RunStream(ctx context.Context, t Turn, emit func(Event) error) (Result, error) {
 	sc, ok := a.Client.(StreamCompleter)
 	if !ok {
+		// No Event is emitted here — see the EXCEPTION paragraph above.
 		return Result{}, fmt.Errorf("ai: RunStream requires a Client that also implements StreamCompleter, got %T", a.Client)
 	}
 
@@ -329,36 +365,56 @@ type streamToolCallAcc struct {
 // method never gets back a non-streaming call it didn't ask for, because
 // there is no non-streaming behavior this method can fall back to.
 //
-// TIMEOUT — SELF-DECIDED (task-7-brief.md: "Complete wraps its own 90s
-// context.WithTimeout per call; consider the equivalent for stream, and
-// remember a multi-round turn can run long"). This method wraps its OWN
-// context.WithTimeout(ctx, defaultTimeout) around exactly one round's
-// network call — the same defaultTimeout Complete uses, at the same
-// granularity (per network call, not per turn). Deliberately NOT wrapped
-// around the whole of RunStream's loop: a turn that takes 3 tool rounds
-// before the model answers already legitimately needs more than 90s total,
-// and a single flat timeout around the entire multi-round loop would cut
-// that off mid-turn for no reason tied to any one call actually hanging.
-// Scoping it here, symmetric with Complete's own placement, means the
-// budget is "90s of no progress on THIS network call", not "90s total for
-// however many rounds this turn needs" — matching defaultTimeout's own
-// stated purpose (a bound instead of none), not a proxy for total turn
-// cost (Result.Usage × Settings.MaxToolRoundsPerTurn already is that
-// bound, same as it is for Run).
+// TIMEOUT — SELF-DECIDED, REVISED (task-7-brief.md: "Complete wraps its own
+// 90s context.WithTimeout per call; consider the equivalent for stream, and
+// remember a multi-round turn can run long").
 //
-// KNOWN LIMITATION, not fixed here: this is a flat wall-clock timeout, not
-// an idle-timeout that resets on every chunk received. A very long but
-// STEADILY PROGRESSING answer (chunks keep arriving, just slowly) can still
-// hit 90s and abort even though the stream was never actually stuck — an
-// idle-timeout would need a per-Read deadline reset, more machinery than
-// any measurement here calls for. If DeepSeek's real generation speed ever
-// makes this bite, a caller can already work around it today by handing
-// RunStream a ctx with a longer deadline of its own — this method's
-// WithTimeout only TIGHTENS whatever the caller's ctx already allows, it
-// never loosens it.
+// ROUND 1 REVIEW, I4 — the first version of this method wrapped a flat
+// context.WithTimeout(ctx, defaultTimeout) around the WHOLE call, same
+// granularity as Complete. Review did the arithmetic that version's comment
+// waved away as "not measurable": ai_settings' seeded max_tokens_per_turn
+// is 8192 (migration 0007), and §1's measurement shows reasoning_tokens
+// live INSIDE completion_tokens for the Thinking-mode model this project
+// uses — so a single round generating close to that budget, at ordinary
+// generation speeds, needs far more than 90s wall-clock:
+//
+//	20 tok/s → 410s (6.8 min)
+//	40 tok/s → 205s (3.4 min)
+//	60 tok/s → 137s (2.3 min)
+//
+// all several times past a flat 90s bound. A wall-clock timeout would abort
+// a completely healthy, steadily-progressing long answer — exactly the
+// case streaming exists to serve well. That is not a hypothetical edge
+// case this project can defer; it is the ordinary case for any answer of
+// real length.
+//
+// FIX: streamIdleTimeout (below) bounds IDLENESS, not total duration. A
+// cancellable context (readCtx) is derived from the caller's ctx with NO
+// deadline of its own; a single time.AfterFunc timer cancels readCtx if
+// streamIdleTimeout passes with no progress, and is reset — pushed back out
+// — on every unit of progress: right after headers arrive (resp obtained)
+// and again on every single scanner.Scan() success (every SSE line read,
+// data or blank). A stream that keeps producing SOMETHING at least once
+// every streamIdleTimeout can run indefinitely; one that goes silent for
+// that long — genuinely stuck, not just slow — gets cut, with an error
+// message that says "idle timeout" so it reads distinctly from a network
+// failure or a caller-initiated cancellation (see the two ctx.Err() /
+// readCtx.Err() checks below). No goroutine is left running either way:
+// the timer's callback (cancelRead) only ever runs to fire-and-return, and
+// `defer idleTimer.Stop()` disarms it on every return path before that can
+// happen at all when the call finishes normally.
+//
+// streamIdleTimeout is a `var`, not a `const`, so stream_test.go can shrink
+// it for TestCompleteStreamIdleTimeoutFiresOnNoProgress /
+// TestCompleteStreamIdleTimeoutResetsOnEachChunk without a real 90s wait.
+var streamIdleTimeout = defaultTimeout
+
 func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(text string) error) (Completion, error) {
-	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
-	defer cancel()
+	readCtx, cancelRead := context.WithCancel(ctx)
+	defer cancelRead()
+
+	idleTimer := time.AfterFunc(streamIdleTimeout, cancelRead)
+	defer idleTimer.Stop()
 
 	body, err := json.Marshal(wireRequest{
 		Model:      req.Model,
@@ -372,7 +428,7 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 		return Completion{}, fmt.Errorf("ai: encode DeepSeek stream request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+chatCompletionsPath, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(readCtx, http.MethodPost, c.baseURL+chatCompletionsPath, bytes.NewReader(body))
 	if err != nil {
 		return Completion{}, fmt.Errorf("ai: build DeepSeek stream request: %w", err)
 	}
@@ -381,9 +437,21 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
+		// Order matters: check the CALLER's ctx first (a real disconnect
+		// takes priority in the message over our own idle watchdog, in the
+		// unlikely case both ended around the same moment), then readCtx
+		// (streamIdleTimeout fired with no response ever arriving), then
+		// fall back to a plain network error.
+		if ctx.Err() != nil {
+			return Completion{}, fmt.Errorf("ai: DeepSeek stream interrupted: %w", ctx.Err())
+		}
+		if readCtx.Err() != nil {
+			return Completion{}, fmt.Errorf("ai: DeepSeek stream idle timeout: no response within %s", streamIdleTimeout)
+		}
 		return Completion{}, fmt.Errorf("ai: call DeepSeek stream: %w", err)
 	}
 	defer resp.Body.Close()
+	idleTimer.Reset(streamIdleTimeout) // got headers — progress, push the idle deadline back out
 
 	if resp.StatusCode != http.StatusOK {
 		// Same non-2xx handling as Complete (client.go) — DeepSeek can
@@ -405,22 +473,29 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 		usage          Usage
 		toolOrder      []int
 		toolByIndex    = map[int]*streamToolCallAcc{}
+		sawDone        bool // round-1 review I1 — see the truncation guard after this loop
 	)
 
 	// io.LimitReader bounds total stream bytes read the same way Complete
 	// bounds one response (client.go's maxResponseBytes comment) — a
 	// runaway or malicious response dies here with "one turn fails", not
-	// "this process's memory grows without bound".
+	// "this process's memory grows without bound". It also, deliberately,
+	// makes hitting that cap look IDENTICAL to a connection closing early —
+	// both end the loop with scanner.Err() == nil and sawDone still false,
+	// so both are caught by the very same truncation guard below.
 	scanner := bufio.NewScanner(io.LimitReader(resp.Body, maxResponseBytes))
 	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
 
 	for scanner.Scan() {
+		idleTimer.Reset(streamIdleTimeout) // any successful read is progress, data or blank line alike
+
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || !strings.HasPrefix(line, "data:") {
 			continue // SSE blank-line separators and any non-"data:" field
 		}
 		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 		if data == sseDoneMarker {
+			sawDone = true
 			break // never unmarshal "[DONE]", never treat it as a chunk
 		}
 
@@ -471,16 +546,43 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 	}
 	if err := scanner.Err(); err != nil {
 		if ctx.Err() != nil {
-			// The caller's ctx ended this read (either the WithTimeout
-			// above, or a cancellation the caller's own ctx carried in —
-			// Task 11's handler ties this to the learner's HTTP request
-			// context, so this is the "closed the tab mid-answer" path,
-			// task-7-brief.md Step 2). Report ctx.Err(), not the raw
-			// scanner error, so the caller can tell this apart from an
-			// actual DeepSeek-side failure.
+			// The caller's ctx ended this read — a cancellation the
+			// caller's own ctx carried in (Task 11's handler ties this to
+			// the learner's HTTP request context, so this is the "closed
+			// the tab mid-answer" path, task-7-brief.md Step 2). Report
+			// ctx.Err(), not the raw scanner error, so the caller can tell
+			// this apart from an actual DeepSeek-side failure.
 			return Completion{}, fmt.Errorf("ai: DeepSeek stream interrupted: %w", ctx.Err())
 		}
+		if readCtx.Err() != nil {
+			// ctx (the caller's) is still fine — readCtx is only ever
+			// canceled independently of it by idleTimer firing. Say so
+			// explicitly: this is DeepSeek going quiet mid-stream, not the
+			// learner disconnecting and not a generic network error.
+			return Completion{}, fmt.Errorf("ai: DeepSeek stream idle timeout: no data received for %s", streamIdleTimeout)
+		}
 		return Completion{}, fmt.Errorf("ai: read DeepSeek stream: %w", err)
+	}
+
+	// ROUND 1 REVIEW, I1 — Complete (client.go) refuses a 200 response with
+	// zero choices ("ai: DeepSeek response has no choices") rather than
+	// treat a superficially-OK reply as a real completion. This method had
+	// no equivalent: a body that closes CLEANLY (scanner.Err() == nil, an
+	// ordinary EOF — a load balancer cutting the connection early, DeepSeek
+	// dying mid-generation, or the maxResponseBytes cap above being hit)
+	// but never carries "[DONE]" used to fall straight through to a
+	// successful-looking Completion{}, nil — the model's own choice to end
+	// the turn (a "[DONE]" line) and a THIRD PARTY silently cutting the
+	// wire looked identical. That is dangerous in three ways at once: the
+	// learner sees a truncated answer rendered as if it were complete, Task
+	// 9 charges 0 credit for tokens DeepSeek already billed for, and — if
+	// the cut lands mid-tool_call — a truncated arguments JSON fragment
+	// would reach runner.Run as if it were whole. sawDone is the guard:
+	// only a line that was ACTUALLY "[DONE]" sets it, so a truncated body
+	// is now indistinguishable from any other read failure — an error, not
+	// a quiet success (TestCompleteStreamTruncatedResponseReturnsError).
+	if !sawDone {
+		return Completion{}, fmt.Errorf("ai: DeepSeek stream ended without a terminating %q marker (finish_reason=%q) — the response may have been truncated", sseDoneMarker, finishReason)
 	}
 
 	var toolCalls []ToolCall

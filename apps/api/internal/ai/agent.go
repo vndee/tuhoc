@@ -382,6 +382,13 @@ var ErrToolBudgetExhausted = errors.New("ai: model still requested tools at the 
 // vì token đã trả tiền cho DeepSeek dù lượt không hoàn tất theo nghĩa
 // "có Answer". TestRunErrorStillCarriesUsageFromCompletedRounds
 // (agent_test.go) khoá đúng hợp đồng này.
+//
+// Task 7's RunStream (stream.go) sao chép gần nguyên văn vòng lặp bên dưới
+// (khác chỗ gọi emit) — không có gì Ở TẦNG KIỂU buộc một sửa ở đây phải
+// mang sang stream.go cùng lúc (round 1 review Task 7, I3).
+// TestRunAndRunStreamProduceSameResultForSameScenario (stream_test.go) là
+// lưới rẻ nhất bắt được phân kỳ KẾT QUẢ giữa hai bản — sửa vòng lặp dưới
+// đây mà quên mang sang stream.go, chạy lại test đó trước khi coi là xong.
 func (a *Agent) Run(ctx context.Context, t Turn) (Result, error) {
 	msgs := buildMessages(t)
 	tools := a.enabledTools(t.ToolsEnabled)
