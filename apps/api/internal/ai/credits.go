@@ -1,8 +1,15 @@
 // credits.go is the only file in this package that speaks SQL — same split
-// as internal/rating/repo.go and internal/auth/repo.go. It owns the four
+// as internal/rating/repo.go and internal/auth/repo.go. It owns all five
 // tables migration 0007_ai_credits created (ai_credits, ai_usage,
-// ai_pricing, ai_settings) and is the ONE place a credit is deducted,
-// granted, or a usage row is written.
+// ai_pricing, ai_settings, user_agent_config) and is the ONE place a credit
+// is deducted, granted, or a usage row is written.
+//
+// Task 11 added the last of those five, user_agent_config, plus the two
+// read-only accessors GET /ai/credits and GET/PUT /ai/config need
+// (Settings, AgentConfig, SaveAgentConfig, RecentUsage). They live here
+// rather than in handler.go for the reason stated in the first sentence:
+// the split this package keeps is "one file speaks SQL", and a second file
+// growing its own queries is how that stops being true.
 //
 // Task 10 adds GrantSignupCredit (bottom of this file) alongside Task 9's
 // ChargeTurn/EnsureCredit/Balance: the same table (ai_credits) getting its
@@ -53,6 +60,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -286,4 +294,171 @@ func (s *Service) GrantSignupCredit(ctx context.Context, tx pgx.Tx, userID uuid.
 	}
 
 	return grantMicro, nil
+}
+
+// Settings exposes the one ai_settings row to callers outside this package
+// (Task 11's /ai/chat handler needs BaseSystemPrompt, MaxTokensPerTurn and
+// MaxToolRoundsPerTurn to build an Agent and a Turn). It is a thin export
+// of the unexported settings above rather than a second query: one SELECT,
+// one place to change it.
+//
+// Every call reads the row afresh. That is the point of putting these
+// numbers in a table at all — the project owner changes them from Task 17's
+// CMS and expects the next turn to use the new values, with no deploy and
+// no process restart. Any caching added here has to be a deliberate,
+// documented trade against that expectation.
+func (s *Service) Settings(ctx context.Context) (Settings, error) {
+	return s.settings(ctx)
+}
+
+// AgentConfig is one learner's row of user_agent_config: the personal
+// system prompt that gets APPENDED AFTER (never substituted for) the
+// platform's base prompt, and the set of tools they have switched on.
+//
+// It is deliberately not the same type as Settings: Settings is the
+// platform's configuration for everyone, this is one learner's, and the
+// single most important rule about the pair (spec §3.3) is that the second
+// never overrides the first. Two types make that hard to blur by accident;
+// see buildMessages (agent.go) for where the rule is actually enforced.
+type AgentConfig struct {
+	SystemPrompt string
+	ToolsEnabled []string
+}
+
+// defaultAgentConfig is what a learner who has never opened the settings
+// screen gets. It mirrors user_agent_config's own column DEFAULTs
+// (system_prompt ”, tools_enabled '{read_course}') by hand, because a
+// SELECT that finds no row does not apply column defaults — they only fire
+// on INSERT. A learner with no row and a learner who saved the defaults
+// must behave identically.
+func defaultAgentConfig() AgentConfig {
+	return AgentConfig{ToolsEnabled: []string{ToolNameReadCourse}}
+}
+
+// AgentConfig reads userID's row, or the defaults above when there is none.
+//
+// The returned ToolsEnabled is DEDUPLICATED. text[] has no uniqueness
+// constraint, and enabledTools (agent.go) appends one entry to
+// Request.Tools per name it walks — so a duplicated name would send DeepSeek
+// the same function twice in one request. SaveAgentConfig below already
+// refuses to write a duplicate; this second pass covers rows written by
+// anything else (a hand-edited row, a future admin tool, a restore).
+func (s *Service) AgentConfig(ctx context.Context, userID uuid.UUID) (AgentConfig, error) {
+	var cfg AgentConfig
+	err := s.pool.QueryRow(ctx,
+		`SELECT system_prompt, tools_enabled FROM user_agent_config WHERE user_id = $1`,
+		userID).Scan(&cfg.SystemPrompt, &cfg.ToolsEnabled)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return defaultAgentConfig(), nil
+		}
+		return AgentConfig{}, fmt.Errorf("ai: agent config for user %s: %w", userID, err)
+	}
+	cfg.ToolsEnabled = dedupeStrings(cfg.ToolsEnabled)
+	return cfg, nil
+}
+
+// SaveAgentConfig writes userID's row, creating it if this is the learner's
+// first save. It validates NOTHING about the prompt's length or the tool
+// names: that is the HTTP boundary's job (handler.go), where a rejection can
+// carry a machine-readable code and a status the client can act on. What it
+// does guarantee is the deduplication AgentConfig's doc comment explains,
+// so the wire-shape invariant holds no matter which caller writes.
+func (s *Service) SaveAgentConfig(ctx context.Context, userID uuid.UUID, cfg AgentConfig) error {
+	tools := dedupeStrings(cfg.ToolsEnabled)
+	if tools == nil {
+		// A nil slice would be written as SQL NULL, and the column is NOT
+		// NULL. An empty list is a legitimate choice — every tool off — so
+		// it has to reach the database as '{}', not as an error.
+		tools = []string{}
+	}
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO user_agent_config (user_id, system_prompt, tools_enabled)
+		VALUES ($1,$2,$3)
+		ON CONFLICT (user_id) DO UPDATE
+		SET system_prompt = EXCLUDED.system_prompt,
+		    tools_enabled = EXCLUDED.tools_enabled,
+		    updated_at = now()`, userID, cfg.SystemPrompt, tools)
+	if err != nil {
+		return fmt.Errorf("ai: save agent config for user %s: %w", userID, err)
+	}
+	return nil
+}
+
+// UsageEntry is one ai_usage row as GET /ai/credits reports it.
+//
+// cost_micro is deliberately ABSENT. That column is what the platform paid
+// DeepSeek and Brave; credits_charged is what the learner paid the platform.
+// The gap between them is the margin, and Pha 4 is where it gets set (spec
+// §10.1). Publishing it on a learner-facing endpoint would put the
+// platform's cost basis in every browser that opens the settings screen.
+type UsageEntry struct {
+	At             time.Time
+	Model          string
+	InTokens       int
+	CachedInTokens int
+	OutTokens      int
+	ToolCalls      int
+	WebSearches    int
+	CreditsCharged int64
+}
+
+// RecentUsage returns userID's most recent ledger rows, newest first, at
+// most limit of them.
+//
+// The WHERE clause is the whole security property of this method, and the
+// index ai_usage_user_at (migration 0007) is (user_id, at DESC) precisely
+// so that filter is the cheap path rather than a temptation to drop.
+// TestGetCreditsShowsOnlyTheCallersBalanceAndLedger (handler_test.go) seeds
+// a second learner's row specifically so a missing WHERE stops being
+// invisible.
+func (s *Service) RecentUsage(ctx context.Context, userID uuid.UUID, limit int) ([]UsageEntry, error) {
+	if limit <= 0 {
+		limit = 1
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT at, model, in_tokens, cached_in_tokens, out_tokens, tool_calls,
+		       web_searches, credits_charged
+		FROM ai_usage WHERE user_id = $1 ORDER BY at DESC, id DESC LIMIT $2`, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("ai: recent usage for user %s: %w", userID, err)
+	}
+	defer rows.Close()
+
+	// Never nil: an empty ledger must serialize as [] rather than null, the
+	// same rule internal/catalog's handler already keeps for its arrays.
+	out := make([]UsageEntry, 0, limit)
+	for rows.Next() {
+		var e UsageEntry
+		if err := rows.Scan(&e.At, &e.Model, &e.InTokens, &e.CachedInTokens, &e.OutTokens,
+			&e.ToolCalls, &e.WebSearches, &e.CreditsCharged); err != nil {
+			return nil, fmt.Errorf("ai: recent usage scan for user %s: %w", userID, err)
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ai: recent usage rows for user %s: %w", userID, err)
+	}
+	return out, nil
+}
+
+// dedupeStrings keeps the FIRST occurrence of each value and preserves
+// order. Order matters and is not cosmetic: enabledTools (agent.go) walks
+// this list to build Request.Tools, and DeepSeek's prompt cache matches by
+// PREFIX — a set that reshuffles between turns costs cache hits that are
+// 30-60x cheaper than misses (docs/deepseek-measured.md §1/§5).
+func dedupeStrings(in []string) []string {
+	if len(in) == 0 {
+		return in
+	}
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
 }

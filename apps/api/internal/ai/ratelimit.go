@@ -81,10 +81,20 @@ var ErrRateLimited = errors.New("ai: rate limited")
 // github.com/gofiber/fiber/v2/middleware/limiter instead (already
 // vendored, already used for /auth/* in server.go, and its default
 // storage DOES expire entries on its own) — the short version: that
-// package's only export is `limiter.New(cfg) fiber.Handler`, coupled to
-// *fiber.Ctx, and has no standalone "check a plain key" API a domain
-// package like this one could call directly, in the same code path as
-// credits.go's EnsureCredit, without importing gofiber into internal/ai.
+// package's only export is a constructor returning a fiber.Handler,
+// coupled to *fiber.Ctx, and has no standalone "check a plain key" API a
+// domain package like this one could call directly, in the same code path
+// as credits.go's EnsureCredit.
+//
+// That last sentence USED to end "...without importing gofiber into
+// internal/ai", and Task 11 made that clause false: handler.go now lives
+// in this package and imports fiber. The clause is removed rather than
+// left standing, because a comment whose premise has quietly stopped
+// holding is worse than no comment. The substantive reason survives
+// unchanged and is what actually decided this: fiber's limiter is
+// middleware. It can refuse a request before a handler runs; it cannot be
+// asked "is this user id over budget" at the point in Chat where that
+// question has to be answered together with EnsureCredit.
 //
 // The zero value is not usable — build one with NewRateLimiter.
 type RateLimiter struct {

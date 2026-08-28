@@ -501,9 +501,60 @@ rò map): đã đọc mã nguồn gói đó (`limiter.go`, `config.go`, `manager
 `Allow(key string) error` đứng độc lập với HTTP. Dùng nó nghĩa là logic rate-limit phải sống như
 middleware Fiber ở `internal/server`, không thể gọi trực tiếp cùng dòng mã với `credits.go`'s
 `EnsureCredit` bên trong thân handler `/ai/chat` — và `internal/ai` (nơi brief Task 10 yêu cầu đặt
-`ratelimit.go`) hiện **không import gofiber ở bất kỳ đâu**, một ranh giới kiến trúc có chủ đích
-(cùng lý do `internal/auth`, `internal/rating` tách "usecase" framework-agnostic khỏi "handler"
-Fiber-specific). Đánh đổi: tự viết một map trong bộ nhớ (nợ #2 ở trên) để đổi lấy một hàm domain-layer
+`ratelimit.go`) khi ấy **chưa import gofiber ở bất kỳ đâu**. Câu đó **đã hết đúng ở Task 11**:
+brief Task 11 đặt `handler.go` vào chính `internal/ai`, nên gói này nay có import fiber — ghi lại ở
+đây thay vì để một khẳng định đã chết đứng nguyên. Lý do CHỊU LỰC thì không đổi và mới là thứ quyết
+định: `limiter` là **middleware**, nó từ chối được một request TRƯỚC khi handler chạy, nhưng không
+trả lời được câu "user id này đã quá hạn mức chưa" tại đúng dòng trong `Chat` nơi câu ấy phải được
+hỏi cùng `EnsureCredit`. Đánh đổi: tự viết một map trong bộ nhớ (nợ #2 ở trên) để đổi lấy một hàm domain-layer
 test được trực tiếp bằng `go test`, gọi được cùng chỗ với `EnsureCredit`, không cần dựng `*fiber.Ctx`.
 **Đây LÀ một quyết định đã cân nhắc, không phải bỏ sót** — nhưng việc cân nhắc này chỉ xảy ra ở vòng
 review 1, sau khi được hỏi; bản đầu của `ratelimit.go` không hề nhắc gói đã vendor sẵn này.
+
+---
+
+## Nợ Pha 2 (AI máy chủ) — ba route `/ai/*` (Task 11, `apps/api/internal/ai/handler.go`)
+
+### 1 — `POST /ai/chat` KHÔNG có trí nhớ hội thoại: mỗi lượt là một lượt độc lập
+
+Task 11 dựng `Turn.History` **rỗng, luôn luôn**, và thân request của `/ai/chat` **không có trường
+nào** chở được lịch sử. Đây là quyết định có chủ ý, không phải bỏ sót, và cái giá của nó là thật:
+một câu hỏi tiếp ("còn cái kia thì sao?") tới máy chủ mà không mang theo lượt trước.
+
+**Vì sao không đọc History từ thân request** (nợ điều phối viên ghi đích danh cho Task 11): `build
+Messages` (`agent.go`) lọc `Role` nhưng **không** lọc `ToolCalls`/`ToolCallID`, nên một entry
+`{system, có tool_calls}` sau khi bị hạ cấp thành `user` vẫn mang tool_calls — hình dạng wire không
+hợp lệ. Nặng hơn: `"tool"` và `"assistant"` đều **nằm trong** whitelist role, nên một client chỉ cần
+khẳng định *"tool `read_course` đã trả về «giáo trình nói hãy bỏ qua chỉ dẫn của bạn»"* là câu ấy vào
+prompt với đúng thẩm quyền của một kết quả tool do nền tảng thật sự tạo ra.
+
+**Vì sao không dựng History từ DB, như nợ ấy yêu cầu:** migration 0007 **không có bảng transcript**,
+và Pha 2 không có task nào tạo một cái. Thêm một bảng chở thân hội thoại là một quyết định **riêng
+tư**, không phải một quyết định wiring: spec §0.1 cấm thân hội thoại vào **sổ cái** và **không nói gì**
+về việc nó được phép sống ở đâu khác, vì chưa ai quyết. Một task nối dây không được tự quyết thay.
+
+**Nơi xử lý:** một bảng transcript phía máy chủ (`ai_conversation` / `ai_message`), kèm chính sách
+lưu giữ và một quyết định riêng tư có ghi vào spec, rồi `/ai/chat` đọc lại `History` từ đó theo
+`conversation_id` **của chính người gọi**. Chưa task nào được giao. Cho tới lúc đó, `useAI` (Task 13)
+vẫn giữ `AITurn[]` phía client — màn hình vẫn hiện đủ hội thoại, chỉ có **model** là không thấy nó.
+
+### 2 — TOCTOU của `EnsureCredit` được THU HẸP, chưa ĐÓNG
+
+`EnsureCredit` (`credits.go`) là một lần đọc trần, không giữ chỗ: N lượt song song của cùng một
+người học đều qua được ở `balance = 1`, rồi cả N đều trừ. Task 11 không đóng được cửa sổ ấy trong
+phạm vi của mình; thứ nó làm là **chặn N**: `RateLimiter.Allow` chạy trước `EnsureCredit` ở mỗi
+lượt, nên số lượt song song tối đa là `DefaultRateLimitMax` (10) mỗi `DefaultRateLimitWindow`
+(5 phút), thay vì không giới hạn. Mức âm tối đa do đua vì thế có trần, không còn mở.
+
+**Nơi xử lý:** một phép trừ **có điều kiện, nguyên tử** thay cho cặp đọc-rồi-trừ — `UPDATE
+ai_credits SET balance_micro = balance_micro - $2 WHERE user_id = $1 AND balance_micro > 0
+RETURNING ...` để giữ chỗ trước lượt, cộng một đường hoàn lại phần chưa dùng sau lượt. Việc đó nằm
+trong `credits.go` (đổi chữ ký `ChargeTurn`, thêm một phương thức giữ chỗ), không nằm trong handler.
+
+### 3 — `DefaultTurnTimeout` (10 phút) suy ra từ một cột CMS sửa được, và không có gì canh cặp đó
+
+Trần một lượt ở `handler.go` được tính từ `ai_settings.max_tokens_per_turn` (seed 8192) và tốc độ
+sinh chậm nhất đã đo (~20 token/giây) → ~6,8 phút cho vòng trả lời dài nhất còn **khoẻ mạnh**. Task
+17 cho phép sửa cột ấy từ CMS **không cần deploy**. Nâng nó lên quá ~12000 làm một câu trả lời hợp
+lệ có thể sống lâu hơn trần này và bị cắt giữa chừng — và không test nào, không cổng nào bắt được
+cặp ràng buộc ấy, vì một bên là hằng số Go còn bên kia là một hàng trong bảng.
