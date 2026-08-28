@@ -890,44 +890,102 @@ func TestRunStreamSendsToolChoiceAutoThenNoneOnLastRound(t *testing.T) {
 // biến "hai bản sao im lặng" thành "hai bản sao có một test so kết quả" —
 // một sửa làm lệch KẾT QUẢ (không chỉ lệch cách viết) giữa hai đường sẽ làm
 // test này đỏ. Xem chú thích tương ứng ở agent.go's Run.
+// TestRunAndRunStreamProduceSameResultForSameScenario — VÒNG SỬA 2, mục 4:
+// bản trước chỉ so `Result`, và cả hai fake (fakeCompleter/fakeStreamCompleter)
+// bỏ qua `req` hoàn toàn khi quyết định trả gì — nên MỌI phân kỳ ở phía GỬI
+// ĐI (Request.Messages/Tools/ToolChoice) vô hình với một so sánh chỉ nhìn
+// `Result`. Re-review tự thử ba đột biến và cả ba đều lọt qua bản cũ:
+//
+//  1. Dời `WebSearches++` ra khỏi nhánh THÀNH CÔNG ở một bản — fixture cũ
+//     không hề gọi "web_search" nên WebSearches luôn 0 cả hai bên, không
+//     phân biệt được. FIX: fixture giờ gọi "web_search" THẬT (chạy thành
+//     công) — assert WebSearches != 0 ở CẢ HAI trước khi so sánh, để chính
+//     assertion "so sánh có ý nghĩa" cũng bị khoá lại.
+//  2. Đổi `allowed := known && enabledSet[...]` thành `allowed := known` ở
+//     CHỈ MỘT bản (đúng bất biến I1 của vòng review Task 6) — fixture cũ
+//     luôn bật hết tool nó gọi, nên `enabledSet[...]` luôn true, không bao
+//     giờ phân biệt được hai công thức. FIX: fixture giờ có tool thứ ba
+//     ("translate") ĐĂNG KÝ ở Agent.Tools của CẢ HAI agent nhưng KHÔNG có
+//     trong ToolsEnabled — model vẫn "gọi" nó (đúng hình dạng
+//     TestToolsEnabledGatesExecutionNotJustOutgoingRequest/
+//     TestRunStreamToolsEnabledGatesExecutionNotJustOutgoingRequest).
+//  3. Xoá dòng `msgs = append(msgs, Message{Role:"tool", ...})` ở một bản —
+//     fake bỏ qua Messages khi quyết định phản hồi, nên Result không đổi.
+//     FIX: so trực tiếp `fc.calls` với `fsc.calls` (Request THẬT đã gửi,
+//     đúng thứ tự, đúng từng vòng) — một message bị thiếu là một khác biệt
+//     CẤU TRÚC ngay trong `.Messages`, DeepEqual bắt được ngay cả khi
+//     Result không hề đổi.
+//
+// Tự chứng minh (task-7-report.md ghi lại đầy đủ): áp đột biến #2 vào MỘT
+// mình agent.go's Run, chạy lại — đỏ; khôi phục — xanh.
 func TestRunAndRunStreamProduceSameResultForSameScenario(t *testing.T) {
-	toolCall := mkToolCall("call_0", "read_course", `{"slug":"x"}`)
+	calls := []ToolCall{
+		mkToolCall("call_read", "read_course", `{"slug":"x"}`),
+		mkToolCall("call_search", "web_search", `{"query":"q"}`),
+		mkToolCall("call_disabled", "translate", `{"text":"x"}`), // KHÔNG nằm trong ToolsEnabled bên dưới
+	}
 	responses := []Completion{
 		{FinishReason: "tool_calls", Usage: Usage{PromptTokens: 100, CompletionTokens: 10, CacheHitTokens: 20, CacheMissTokens: 80},
-			Message: Message{Role: "assistant", ToolCalls: []ToolCall{toolCall}}},
-		{FinishReason: "tool_calls", Usage: Usage{PromptTokens: 100, CompletionTokens: 10, CacheHitTokens: 60, CacheMissTokens: 40},
-			Message: Message{Role: "assistant", ToolCalls: []ToolCall{toolCall}}},
+			Message: Message{Role: "assistant", ToolCalls: calls}},
 		{FinishReason: "stop", Usage: Usage{PromptTokens: 100, CompletionTokens: 10, CacheHitTokens: 90, CacheMissTokens: 10},
 			Message: Message{Role: "assistant", Content: "final answer"}},
 	}
 	turn := Turn{
 		Model: "deepseek-v4-pro", BasePrompt: "base", Question: "q",
-		ToolsEnabled: []string{"read_course"},
+		ToolsEnabled: []string{"read_course", "web_search"}, // "translate" cố tình vắng mặt
 	}
-	settings := Settings{MaxToolRoundsPerTurn: 6, MaxTokensPerTurn: 100}
+	settings := Settings{MaxToolRoundsPerTurn: 4, MaxTokensPerTurn: 100}
 
+	newTools := func(ranDisabled *bool) map[string]ToolRunner {
+		return map[string]ToolRunner{
+			"read_course": &fakeTool{name: "read_course"},
+			"web_search":  &fakeTool{name: "web_search"},
+			"translate": &fakeTool{name: "translate", run: func(ctx context.Context, argsJSON string) (string, error) {
+				*ranDisabled = true
+				return "should not run", nil
+			}},
+		}
+	}
+
+	ranDisabledViaRun := false
 	fc := &fakeCompleter{responses: responses}
 	runResult, err := (&Agent{
 		Client:   fc,
-		Tools:    map[string]ToolRunner{"read_course": &fakeTool{name: "read_course"}},
+		Tools:    newTools(&ranDisabledViaRun),
 		Settings: settings,
 	}).Run(context.Background(), turn)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
+	ranDisabledViaRunStream := false
 	fsc := &fakeStreamCompleter{responses: responses}
 	streamResult, err := (&Agent{
 		Client:   fsc,
-		Tools:    map[string]ToolRunner{"read_course": &fakeTool{name: "read_course"}},
+		Tools:    newTools(&ranDisabledViaRunStream),
 		Settings: settings,
 	}).RunStream(context.Background(), turn, func(Event) error { return nil })
 	if err != nil {
 		t.Fatalf("RunStream: %v", err)
 	}
 
+	if ranDisabledViaRun {
+		t.Error(`Run chạy tool "translate" dù nó không nằm trong ToolsEnabled của lượt này`)
+	}
+	if ranDisabledViaRunStream {
+		t.Error(`RunStream chạy tool "translate" dù nó không nằm trong ToolsEnabled của lượt này`)
+	}
+	if runResult.WebSearches == 0 || streamResult.WebSearches == 0 {
+		t.Fatalf("kịch bản lỗi: WebSearches = %d / %d, muốn khác 0 cả hai — fixture phải tự chạy web_search "+
+			"THÀNH CÔNG để so sánh WebSearches có ý nghĩa (đột biến #1 ở chú thích trên)",
+			runResult.WebSearches, streamResult.WebSearches)
+	}
+
 	if !reflect.DeepEqual(runResult, streamResult) {
 		t.Errorf("Run và RunStream trả Result KHÁC NHAU cho cùng một kịch bản:\nRun:       %+v\nRunStream: %+v", runResult, streamResult)
+	}
+	if !reflect.DeepEqual(fc.calls, fsc.calls) {
+		t.Errorf("Run và RunStream gửi Request KHÁC NHAU cho cùng một kịch bản:\nRun calls:       %+v\nRunStream calls: %+v", fc.calls, fsc.calls)
 	}
 }
 
@@ -974,6 +1032,160 @@ func TestCompleteStreamTruncatedResponseReturnsError(t *testing.T) {
 	}
 	if len(deltas) != 1 || deltas[0] != "xin " {
 		t.Errorf("deltas = %v, muốn [\"xin \"] — chunk hợp lệ nhận được TRƯỚC khi đứt vẫn phải tới tay onDelta dù completion cuối cùng không bao giờ trả về", deltas)
+	}
+}
+
+// ── Vòng sửa 2 review: I2 — guard I1 phải GIỮ usage đã parse, không vứt ───
+
+// TestCompleteStreamTruncatedResponseStillReturnsUsage: đo thật
+// (docs/deepseek-measured.md §4) cho thấy chunk mang "usage" và dòng
+// "[DONE]" nằm LIỀN KỀ nhau — nên cửa sổ "đứt sau chunk usage nhưng trước
+// [DONE]" là CÓ THẬT, không phải một ca biên tưởng tượng. Guard sawDone
+// (I1) trước bài sửa vòng 2 trả `Completion{}, err` — vứt luôn `usage` đã
+// parse được ở chunk trước đó — nên thiệt hại #2 của I1 (Task 9 trừ 0
+// credit cho token DeepSeek ĐÃ tính tiền) mới đóng được MỘT NỬA: người học
+// không còn thấy câu cụt như câu hoàn chỉnh, nhưng credit thật sự vẫn mất.
+//
+// Kịch bản: chunk mang usage (kèm finish_reason "tool_calls", đúng hình
+// dạng đo được) rồi đứt kết nối — KHÔNG có "[DONE]".
+func TestCompleteStreamTruncatedResponseStillReturnsUsage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher := w.(http.Flusher)
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, `data: {"choices":[{"index":0,"delta":{"content":"","reasoning_content":null},"finish_reason":"tool_calls"}],`+
+			`"usage":{"prompt_tokens":386,"completion_tokens":66,"prompt_cache_hit_tokens":256,"prompt_cache_miss_tokens":130}}`+"\n\n")
+		flusher.Flush()
+		// Đứt NGAY SAU chunk usage — không có "[DONE]".
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "sk-test", srv.Client())
+	out, err := c.CompleteStream(context.Background(), Request{
+		Model: "m", Messages: []Message{{Role: "user", Content: "hi"}},
+	}, func(string) error { return nil })
+	if err == nil {
+		t.Fatal("CompleteStream trả nil error dù thiếu \"[DONE]\"")
+	}
+	if out.Usage.PromptTokens != 386 || out.Usage.CompletionTokens != 66 ||
+		out.Usage.CacheHitTokens != 256 || out.Usage.CacheMissTokens != 130 {
+		t.Errorf("Usage trên đường lỗi = %+v, muốn giữ NGUYÊN token đã parse trước khi đứt (386/66, hit=256/miss=130) — "+
+			"vứt usage ở đây là DeepSeek đã tính tiền cho token này nhưng Task 9 sẽ trừ 0 credit", out.Usage)
+	}
+	if out.FinishReason != "tool_calls" {
+		t.Errorf("FinishReason trên đường lỗi = %q, muốn giữ nguyên tool_calls đã parse trước khi đứt", out.FinishReason)
+	}
+}
+
+// TestRunStreamAccumulatesUsageFromATruncatedRound chứng minh nửa còn lại:
+// CompleteStream giữ được usage trên đường lỗi (test trên) không tự nó đủ —
+// RunStream phải THẬT SỰ cộng usage đó vào Result TRƯỚC khi return, không
+// chỉ đơn thuần trả nguyên completion rồi bỏ qua vì err != nil. Vòng 1 (giả
+// lỗi mạng thường, usage rỗng) thành công trước, rồi vòng 2 mô phỏng đúng
+// hình dạng CompleteStream trả về sau bài sửa I2: usage khác 0 KÈM err
+// khác nil (giả lập một round bị cắt giữa chừng).
+func TestRunStreamAccumulatesUsageFromATruncatedRound(t *testing.T) {
+	wantErr := errors.New("stream ended without a terminating \"[DONE]\" marker")
+	fsc := &fakeStreamCompleter{
+		onCall: func(round int, req Request) (Completion, error) {
+			if round == 1 {
+				return Completion{
+					FinishReason: "tool_calls",
+					Usage:        Usage{PromptTokens: 100, CompletionTokens: 10, CacheHitTokens: 20, CacheMissTokens: 80},
+					Message:      Message{Role: "assistant", ToolCalls: []ToolCall{mkToolCall("call_0", "read_course", `{"slug":"x"}`)}},
+				}, nil
+			}
+			// Round 2: đúng hình dạng CompleteStream trả về sau khi bị cắt
+			// giữa chừng — usage KHÁC RỖNG (đã parse được trước khi đứt)
+			// ĐI KÈM một error khác nil, không phải Completion{} rỗng.
+			return Completion{
+				FinishReason: "tool_calls",
+				Usage:        Usage{PromptTokens: 50, CompletionTokens: 5, CacheHitTokens: 10, CacheMissTokens: 40},
+			}, wantErr
+		},
+	}
+	a := &Agent{
+		Client:   fsc,
+		Tools:    map[string]ToolRunner{"read_course": &fakeTool{name: "read_course"}},
+		Settings: Settings{MaxToolRoundsPerTurn: 5, MaxTokensPerTurn: 100},
+	}
+
+	result, err := a.RunStream(context.Background(), Turn{
+		Model: "m", BasePrompt: "base", Question: "q", ToolsEnabled: []string{"read_course"},
+	}, func(Event) error { return nil })
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("err = %v, muốn bọc (errors.Is) %v", err, wantErr)
+	}
+	if result.Usage.PromptTokens != 150 || result.Usage.CompletionTokens != 15 ||
+		result.Usage.CacheHitTokens != 30 || result.Usage.CacheMissTokens != 120 {
+		t.Errorf("Usage = %+v, muốn cộng dồn CẢ vòng 1 (thành công) LẪN phần vòng 2 (bị cắt giữa chừng nhưng vẫn có usage): "+
+			"prompt=150 completion=15 hit=30 miss=120", result.Usage)
+	}
+}
+
+// ── Vòng sửa 2 review: I3 — finish_reason "length" + tool_call dở dang ────
+
+// TestCompleteStreamLengthFinishWithPendingToolCallReturnsError: một stream
+// ĐẦY ĐỦ, có "[DONE]" (sawDone == true, guard I1 không chạm tới) nhưng
+// finish_reason == "length" — model chạm trần MaxTokensPerTurn (chính con
+// số 8192 dùng để lập luận I4) NGAY GIỮA lúc đang phát các mảnh arguments
+// của một tool_call. Guard I1 cũ CHO QUA ca này (chỉ nhìn sawDone), một
+// ToolCall với arguments JSON cụt sẽ đi thẳng vào runner.Run.
+func TestCompleteStreamLengthFinishWithPendingToolCallReturnsError(t *testing.T) {
+	lines := []string{
+		`data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_x","type":"function","function":{"name":"read_course","arguments":""}}]},"finish_reason":null}]}`,
+		`data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"slug\""}}]},"finish_reason":null}]}`,
+		// Cắt ngay giữa arguments — chưa từng có dấu đóng "}" hợp lệ.
+		`data: {"choices":[{"index":0,"delta":{"content":""},"finish_reason":"length"}],"usage":{"prompt_tokens":10,"completion_tokens":8192,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":10}}`,
+		`data: [DONE]`,
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeSSELines(t, w, lines)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "sk-test", srv.Client())
+	out, err := c.CompleteStream(context.Background(), Request{
+		Model: "m", Messages: []Message{{Role: "user", Content: "hi"}},
+	}, func(string) error { return nil })
+	if err == nil {
+		t.Fatal(`CompleteStream trả nil error dù finish_reason == "length" với một tool_call còn dở dang`)
+	}
+	if !strings.Contains(err.Error(), "length") {
+		t.Errorf(`err = %v, muốn nói rõ finish_reason "length"`, err)
+	}
+	// Usage vẫn phải được giữ (I2) dù đây là một lỗi KHÁC (I3, không phải
+	// I1's sawDone) — cùng bất biến, một guard khác.
+	if out.Usage.CompletionTokens != 8192 {
+		t.Errorf("Usage.CompletionTokens trên đường lỗi = %d, muốn 8192 (giữ nguyên usage đã parse)", out.Usage.CompletionTokens)
+	}
+}
+
+// TestCompleteStreamLengthFinishWithoutToolCallSucceeds: finish_reason
+// "length" KHÔNG kèm tool_call dở dang (một câu trả lời CHỮ bị cắt vì hết
+// ngân sách token) KHÔNG phải lỗi — đây là MaxTokensPerTurn làm đúng việc
+// nó được đặc tả làm (agent.go's doc comment trên MaxTokensPerTurn), một
+// câu trả lời ngắn hơn dự kiến nhưng hợp lệ về mặt cấu trúc, không phải
+// một artefact hỏng đang đi vào runner.Run.
+func TestCompleteStreamLengthFinishWithoutToolCallSucceeds(t *testing.T) {
+	lines := []string{
+		`data: {"choices":[{"index":0,"delta":{"content":"câu trả lời"},"finish_reason":null}]}`,
+		`data: {"choices":[{"index":0,"delta":{"content":""},"finish_reason":"length"}],"usage":{"prompt_tokens":10,"completion_tokens":8192,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":10}}`,
+		`data: [DONE]`,
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeSSELines(t, w, lines)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "sk-test", srv.Client())
+	out, err := c.CompleteStream(context.Background(), Request{
+		Model: "m", Messages: []Message{{Role: "user", Content: "hi"}},
+	}, func(string) error { return nil })
+	if err != nil {
+		t.Fatalf(`CompleteStream: %v — finish_reason "length" KHÔNG kèm tool_call dở dang không được là lỗi`, err)
+	}
+	if out.Message.Content != "câu trả lời" {
+		t.Errorf("Message.Content = %q", out.Message.Content)
 	}
 }
 
@@ -1061,5 +1273,60 @@ func TestCompleteStreamIdleTimeoutResetsOnEachChunk(t *testing.T) {
 	}
 	if out.Message.Content != "aaaaaa" {
 		t.Errorf("Message.Content = %q, muốn đủ 6 chunk", out.Message.Content)
+	}
+}
+
+// ── Vòng sửa 2 review: I1 (nặng nhất) — idle timeout gỡ trần TỔNG mà không ─
+// ── thay bằng gì; thêm streamTotalTimeout làm lưới thứ hai ─────────────────
+
+// TestCompleteStreamTotalTimeoutFiresDespiteSteadyProgress: một chuỗi chunk
+// đến ĐỀU ĐẶN — mỗi khoảng cách NGẮN HƠN streamIdleTimeout (nên idle
+// watchdog không bao giờ nổ) — nhưng TỔNG thời gian VƯỢT streamTotalTimeout.
+// Đây chính là phép thử phân biệt hai trần: idle-timeout không cắt ca này
+// (vẫn "tiến triển"), streamTotalTimeout PHẢI cắt, vì review chỉ ra idle
+// một mình không có trần TRÊN nào — "một token mỗi 89s" hợp lệ với idle=90s
+// nhưng chạy 8,4 ngày một vòng theo đúng logic cũ.
+func TestCompleteStreamTotalTimeoutFiresDespiteSteadyProgress(t *testing.T) {
+	origIdle, origTotal := streamIdleTimeout, streamTotalTimeout
+	streamIdleTimeout = 500 * time.Millisecond // đủ lớn để KHÔNG BAO GIỜ nổ ở đây
+	streamTotalTimeout = 100 * time.Millisecond
+	defer func() { streamIdleTimeout, streamTotalTimeout = origIdle, origTotal }()
+
+	blockForever := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher := w.(http.Flusher)
+		w.Header().Set("Content-Type", "text/event-stream")
+		for i := 0; i < 20; i++ {
+			select {
+			case <-r.Context().Done(): // readCtx phía client đã huỷ — dừng ghi
+				return
+			case <-time.After(20 * time.Millisecond): // < streamIdleTimeout, nhưng ×20 > streamTotalTimeout
+			}
+			io.WriteString(w, `data: {"choices":[{"index":0,"delta":{"content":"a"},"finish_reason":null}]}`+"\n\n")
+			flusher.Flush()
+		}
+		<-blockForever // lưới an toàn: chỉ chạm tới nếu streamTotalTimeout KHÔNG nổ như kỳ vọng
+	}))
+	defer srv.Close() // LIFO: chạy SAU close(blockForever)
+	defer close(blockForever)
+
+	c := New(srv.URL, "sk-test", srv.Client())
+	start := time.Now()
+	_, err := c.CompleteStream(context.Background(), Request{
+		Model: "m", Messages: []Message{{Role: "user", Content: "hi"}},
+	}, func(string) error { return nil })
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("CompleteStream trả nil error dù vượt streamTotalTimeout — idle một mình không có trần trên, đúng lỗ review chỉ ra")
+	}
+	if strings.Contains(err.Error(), "idle") {
+		t.Errorf("err = %v, đây phải là lỗi TRẦN TỔNG, không phải idle — tiến triển vẫn đều tay, không hề im lặng quá streamIdleTimeout", err)
+	}
+	if !strings.Contains(err.Error(), "total") {
+		t.Errorf("err = %v, muốn thông điệp phân biệt được đây là trần TỔNG (streamTotalTimeout)", err)
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("mất %s để timeout, muốn gần streamTotalTimeout (%s) — không phải một trần lớn hơn nhiều", elapsed, streamTotalTimeout)
 	}
 }

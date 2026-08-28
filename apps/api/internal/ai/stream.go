@@ -28,6 +28,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -240,16 +241,28 @@ func (a *Agent) RunStream(ctx context.Context, t Turn, emit func(Event) error) (
 		}, func(delta string) error {
 			return emit(Event{Kind: EventKindDelta, Text: delta})
 		})
+
+		// ROUND 2 REVIEW, I2 — accumulate BEFORE checking err, not after.
+		// CompleteStream (below) now hands back Usage/FinishReason on
+		// several of its OWN error paths (a truncated stream that still
+		// billed real tokens before it was cut) — the old ordering here
+		// (accumulate only on the nil-err path) threw that away a second
+		// time, on top of CompleteStream throwing it away a first time.
+		// For every OTHER error shape (network failure before any chunk
+		// parsed, etc.) completion.Usage is still the zero value here, so
+		// adding it is a harmless no-op — this ordering change is purely
+		// additive, never double-counts, and never subtracts anything that
+		// was correct before.
+		result.Usage.PromptTokens += completion.Usage.PromptTokens
+		result.Usage.CompletionTokens += completion.Usage.CompletionTokens
+		result.Usage.CacheHitTokens += completion.Usage.CacheHitTokens
+		result.Usage.CacheMissTokens += completion.Usage.CacheMissTokens
+
 		if err != nil {
 			streamErr := fmt.Errorf("ai: agent stream round %d: %w", round, err)
 			_ = emit(Event{Kind: EventKindError, Text: streamErr.Error()})
 			return result, streamErr
 		}
-
-		result.Usage.PromptTokens += completion.Usage.PromptTokens
-		result.Usage.CompletionTokens += completion.Usage.CompletionTokens
-		result.Usage.CacheHitTokens += completion.Usage.CacheHitTokens
-		result.Usage.CacheMissTokens += completion.Usage.CacheMissTokens
 
 		if isLastRound || len(completion.Message.ToolCalls) == 0 {
 			result.Answer = completion.Message.Content
@@ -389,28 +402,90 @@ type streamToolCallAcc struct {
 // real length.
 //
 // FIX: streamIdleTimeout (below) bounds IDLENESS, not total duration. A
-// cancellable context (readCtx) is derived from the caller's ctx with NO
-// deadline of its own; a single time.AfterFunc timer cancels readCtx if
-// streamIdleTimeout passes with no progress, and is reset — pushed back out
-// — on every unit of progress: right after headers arrive (resp obtained)
-// and again on every single scanner.Scan() success (every SSE line read,
-// data or blank). A stream that keeps producing SOMETHING at least once
-// every streamIdleTimeout can run indefinitely; one that goes silent for
-// that long — genuinely stuck, not just slow — gets cut, with an error
-// message that says "idle timeout" so it reads distinctly from a network
-// failure or a caller-initiated cancellation (see the two ctx.Err() /
-// readCtx.Err() checks below). No goroutine is left running either way:
-// the timer's callback (cancelRead) only ever runs to fire-and-return, and
-// `defer idleTimer.Stop()` disarms it on every return path before that can
-// happen at all when the call finishes normally.
+// timer (time.AfterFunc) cancels readCtx if streamIdleTimeout passes with
+// no progress, and is reset — pushed back out — on every unit of progress:
+// right after headers arrive (resp obtained) and again on every single
+// scanner.Scan() success (every SSE line read, data or blank). A stream
+// that keeps producing SOMETHING at least once every streamIdleTimeout
+// no longer gets cut on a flat clock. No goroutine is left running either
+// way: the timer's callback (cancelRead) only ever runs to fire-and-return,
+// and `defer idleTimer.Stop()` disarms it on every return path before that
+// can happen at all when the call finishes normally.
 //
-// streamIdleTimeout is a `var`, not a `const`, so stream_test.go can shrink
-// it for TestCompleteStreamIdleTimeoutFiresOnNoProgress /
-// TestCompleteStreamIdleTimeoutResetsOnEachChunk without a real 90s wait.
-var streamIdleTimeout = defaultTimeout
+// ROUND 2 REVIEW, I1 (of round 2 — numbering restarts per review round) —
+// idle-only has NO upper bound at all, and that is not a theoretical gap.
+// Review's arithmetic: MaxTokensPerTurn caps TOKENS, not TIME. A stream
+// producing one token every 89 seconds — comfortably under a 90s idle
+// timeout — runs legitimately, by this method's own logic, for
+// 8192 tokens × 89s ≈ 8.4 DAYS for a single round, ×MaxToolRoundsPerTurn
+// for a full turn. For that entire span: one goroutine, one TCP connection
+// to DeepSeek, one SSE connection held open to the learner, and (once
+// Task 9 wires up billing) a credit hold nobody is charging or releasing.
+// Idle-timeout and a total-time cap answer two DIFFERENT questions —
+// "is it stuck" vs. "has it gone on absurdly long regardless" — and this
+// method needs both, not one instead of the other.
+//
+// FIX: streamTotalTimeout is a SECOND, independent bound — readCtx is
+// derived via context.WithTimeout(ctx, streamTotalTimeout), not a bare
+// WithCancel, so it self-cancels once total elapsed time (progress or not)
+// crosses streamTotalTimeout, on top of cancelRead's idle-triggered
+// cancellation. Set generously (20 minutes — several times I4's own
+// worst-legitimate-case measurement of 6.8 minutes at the slowest
+// plausible token rate) so it never fires on any real answer, only on the
+// pathological "technically progressing, never actually finishing" case
+// idle-only cannot catch. streamReadCtxError (below) tells the two apart
+// in the error message via errors.Is(readCtx.Err(), context.DeadlineExceeded)
+// — a deadline means streamTotalTimeout elapsed on its own; readCtx being
+// canceled any OTHER way (context.Canceled) means cancelRead fired it,
+// i.e. streamIdleTimeout's watchdog.
+//
+// KNOWN GAP THIS DOES NOT CLOSE, documented rather than silently left
+// (round 2 review, I1's second half): New (client.go) falls back to
+// &http.Client{Timeout: defaultTimeout} when its hc argument is nil — and
+// http.Client.Timeout is Go's OWN total-request timeout, covering response
+// BODY reads, not just headers. A Client built via New(url, key, nil) will
+// have that 90s http.Client.Timeout silently re-impose a WALL-CLOCK cut on
+// this method's reads regardless of streamIdleTimeout/streamTotalTimeout —
+// reported as a plain "ai: read DeepSeek stream: ..." network error, not
+// the "idle timeout"/"total time budget" messages below, because it
+// surfaces as c.http.Do's own error path, indistinguishable from any other
+// network failure at this layer. No stream_test.go test catches this: every
+// test here builds its Client with srv.Client(), which carries no Timeout.
+// Not fixed in this file because doing so means either changing New's
+// fallback (client.go, a file this task's decisions have deliberately left
+// alone — see StreamCompleter's decision #1 above) or requiring RunStream's
+// caller to always supply a Timeout-less http.Client, which is a wiring
+// decision for whoever constructs the production *Client (Task 11, or
+// wherever cmd/api assembles ai.New's arguments) — see New's and
+// defaultTimeout's doc comments in client.go for the matching note on that
+// side.
+//
+// streamIdleTimeout and streamTotalTimeout are `var`s, not `const`s, so
+// stream_test.go can shrink them for
+// TestCompleteStreamIdleTimeoutFiresOnNoProgress /
+// TestCompleteStreamIdleTimeoutResetsOnEachChunk /
+// TestCompleteStreamTotalTimeoutFiresDespiteSteadyProgress without a real
+// wait of minutes.
+var (
+	streamIdleTimeout  = defaultTimeout
+	streamTotalTimeout = 20 * time.Minute
+)
+
+// streamReadCtxError reports why readCtx ended, for the two call sites
+// below that both reach a point where ctx (the caller's own context) is
+// confirmed still fine but readCtx is not — the only two ways THAT happens
+// are streamTotalTimeout's own deadline elapsing (context.DeadlineExceeded)
+// or cancelRead being invoked directly by the idle watchdog
+// (context.Canceled, since that path never sets a deadline of its own).
+func streamReadCtxError(readCtx context.Context) error {
+	if errors.Is(readCtx.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf("ai: DeepSeek stream exceeded total time budget of %s", streamTotalTimeout)
+	}
+	return fmt.Errorf("ai: DeepSeek stream idle timeout: no data received for %s", streamIdleTimeout)
+}
 
 func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(text string) error) (Completion, error) {
-	readCtx, cancelRead := context.WithCancel(ctx)
+	readCtx, cancelRead := context.WithTimeout(ctx, streamTotalTimeout)
 	defer cancelRead()
 
 	idleTimer := time.AfterFunc(streamIdleTimeout, cancelRead)
@@ -438,15 +513,16 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
 		// Order matters: check the CALLER's ctx first (a real disconnect
-		// takes priority in the message over our own idle watchdog, in the
-		// unlikely case both ended around the same moment), then readCtx
-		// (streamIdleTimeout fired with no response ever arriving), then
+		// takes priority in the message over our own watchdogs, in the
+		// unlikely case more than one ended around the same moment), then
+		// readCtx (streamIdleTimeout or streamTotalTimeout fired with no
+		// response ever arriving — streamReadCtxError tells which), then
 		// fall back to a plain network error.
 		if ctx.Err() != nil {
 			return Completion{}, fmt.Errorf("ai: DeepSeek stream interrupted: %w", ctx.Err())
 		}
 		if readCtx.Err() != nil {
-			return Completion{}, fmt.Errorf("ai: DeepSeek stream idle timeout: no response within %s", streamIdleTimeout)
+			return Completion{}, streamReadCtxError(readCtx)
 		}
 		return Completion{}, fmt.Errorf("ai: call DeepSeek stream: %w", err)
 	}
@@ -501,7 +577,12 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 
 		var chunk wireStreamChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			return Completion{}, fmt.Errorf("ai: decode DeepSeek stream chunk: %w", err)
+			// ROUND 2 REVIEW, I2 — carry whatever usage/finishReason a
+			// PRIOR chunk in this same stream already contributed, rather
+			// than discarding it just because THIS chunk failed to parse.
+			// See the longer note on this pattern at the truncation guard
+			// below (sawDone) — it applies identically here.
+			return Completion{Usage: usage, FinishReason: finishReason}, fmt.Errorf("ai: decode DeepSeek stream chunk: %w", err)
 		}
 		if chunk.Usage != nil {
 			usage = *chunk.Usage
@@ -521,7 +602,9 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 					// connection dropped and Task 11's SSE write errored)
 					// — stop reading from DeepSeek immediately rather than
 					// keep paying for tokens nobody can receive anymore.
-					return Completion{}, err
+					// Usage/FinishReason preserved for the same reason as
+					// the decode-error branch just above.
+					return Completion{Usage: usage, FinishReason: finishReason}, err
 				}
 			}
 		}
@@ -545,6 +628,18 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 		}
 	}
 	if err := scanner.Err(); err != nil {
+		// ROUND 2 REVIEW, I2 — every return in this function from here on
+		// carries Usage/FinishReason forward instead of a bare Completion{}
+		// — a truncation can land AFTER the chunk carrying real usage but
+		// BEFORE the loop notices (docs/deepseek-measured.md §4 shows the
+		// usage chunk and "[DONE]" as adjacent lines, so that window is
+		// real, not theoretical). Discarding usage here would undo half of
+		// I1's own fix: agent.go's Run established (I7, Task 6 round 1)
+		// that an error return must still carry whatever token spend
+		// already happened — RunStream (stream.go) only honors that
+		// contract if THIS method hands the tokens back in the first
+		// place. See TestRunStreamAccumulatesUsageFromATruncatedRound
+		// (stream_test.go) for the round-trip proof through RunStream.
 		if ctx.Err() != nil {
 			// The caller's ctx ended this read — a cancellation the
 			// caller's own ctx carried in (Task 11's handler ties this to
@@ -552,16 +647,14 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 			// the tab mid-answer" path, task-7-brief.md Step 2). Report
 			// ctx.Err(), not the raw scanner error, so the caller can tell
 			// this apart from an actual DeepSeek-side failure.
-			return Completion{}, fmt.Errorf("ai: DeepSeek stream interrupted: %w", ctx.Err())
+			return Completion{Usage: usage, FinishReason: finishReason}, fmt.Errorf("ai: DeepSeek stream interrupted: %w", ctx.Err())
 		}
 		if readCtx.Err() != nil {
-			// ctx (the caller's) is still fine — readCtx is only ever
-			// canceled independently of it by idleTimer firing. Say so
-			// explicitly: this is DeepSeek going quiet mid-stream, not the
-			// learner disconnecting and not a generic network error.
-			return Completion{}, fmt.Errorf("ai: DeepSeek stream idle timeout: no data received for %s", streamIdleTimeout)
+			// ctx (the caller's) is still fine — readCtx only ends on its
+			// own via streamIdleTimeout or streamTotalTimeout; say which.
+			return Completion{Usage: usage, FinishReason: finishReason}, streamReadCtxError(readCtx)
 		}
-		return Completion{}, fmt.Errorf("ai: read DeepSeek stream: %w", err)
+		return Completion{Usage: usage, FinishReason: finishReason}, fmt.Errorf("ai: read DeepSeek stream: %w", err)
 	}
 
 	// ROUND 1 REVIEW, I1 — Complete (client.go) refuses a 200 response with
@@ -573,16 +666,52 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 	// but never carries "[DONE]" used to fall straight through to a
 	// successful-looking Completion{}, nil — the model's own choice to end
 	// the turn (a "[DONE]" line) and a THIRD PARTY silently cutting the
-	// wire looked identical. That is dangerous in three ways at once: the
-	// learner sees a truncated answer rendered as if it were complete, Task
-	// 9 charges 0 credit for tokens DeepSeek already billed for, and — if
-	// the cut lands mid-tool_call — a truncated arguments JSON fragment
-	// would reach runner.Run as if it were whole. sawDone is the guard:
-	// only a line that was ACTUALLY "[DONE]" sets it, so a truncated body
-	// is now indistinguishable from any other read failure — an error, not
-	// a quiet success (TestCompleteStreamTruncatedResponseReturnsError).
+	// wire looked identical. sawDone is the guard: only a line that was
+	// ACTUALLY "[DONE]" sets it, so a truncated body is now
+	// indistinguishable from any other read failure — an error, not a
+	// quiet success (TestCompleteStreamTruncatedResponseReturnsError).
+	//
+	// ROUND 2 REVIEW, I3 — this guard closes ONE of the two ways a
+	// tool_call's arguments JSON can arrive truncated at runner.Run, not
+	// both, and an earlier version of this comment overclaimed it did
+	// ("if the cut lands mid-tool_call — a truncated arguments JSON
+	// fragment would reach runner.Run" was written as fully closed by
+	// sawDone alone). What sawDone actually catches is the WIRE getting
+	// cut — the connection dies before "[DONE]" ever arrives. It does
+	// NOT catch the model itself running out of room: DeepSeek can send
+	// "[DONE]" perfectly normally, sawDone becomes true, and the stream
+	// still ends with finish_reason "length" (MaxTokensPerTurn's own
+	// budget — the same 8192-token figure I4's math is built on — hit
+	// mid-generation) while a tool_call was still being assembled. That
+	// second guard is immediately below, separate from this one because
+	// it fires on a DIFFERENT signal (finishReason, not sawDone) — see
+	// its own comment for why it is scoped to "a tool call was pending"
+	// and not every "length" finish.
 	if !sawDone {
-		return Completion{}, fmt.Errorf("ai: DeepSeek stream ended without a terminating %q marker (finish_reason=%q) — the response may have been truncated", sseDoneMarker, finishReason)
+		return Completion{Usage: usage, FinishReason: finishReason}, fmt.Errorf("ai: DeepSeek stream ended without a terminating %q marker (finish_reason=%q) — the response may have been truncated", sseDoneMarker, truncateProviderMessage(finishReason))
+	}
+
+	// ROUND 2 REVIEW, I3 (second half) — finish_reason "length" while
+	// toolOrder is non-empty means the model was cut off by MaxTokensPerTurn
+	// WHILE still emitting a tool_call's arguments — a well-formed,
+	// "[DONE]"-terminated stream (sawDone above is true) whose LAST
+	// tool_call is nonetheless a truncated JSON fragment, not the model's
+	// own choice to stop. Scoped to toolOrder non-empty specifically: a
+	// plain text answer hit by the same length cap is NOT an error here —
+	// that is MaxTokensPerTurn doing exactly its documented job (agent.go's
+	// Run doc comment on MaxTokensPerTurn), a shorter-than-hoped-for but
+	// perfectly well-formed answer, not a corrupted structured artifact
+	// about to be handed to a tool runner. Existing mitigation this guard
+	// is IN ADDITION to, not instead of: tool_course.go's courseTool.Run
+	// already returns a string error ("Error: could not parse arguments")
+	// on malformed JSON rather than panicking — so even before this guard
+	// existed, the blast radius of a truncated tool call was "the model
+	// reads an error message," not a crashed turn. This guard's value is
+	// catching the truncation BEFORE that point, so Task 9 also sees a
+	// distinguishable error instead of a completion that silently spent a
+	// tool round on JSON nobody could have used.
+	if finishReason == "length" && len(toolOrder) > 0 {
+		return Completion{Usage: usage, FinishReason: finishReason}, fmt.Errorf("ai: DeepSeek stream ended with finish_reason %q while a tool call was still being assembled — its arguments JSON is likely truncated", truncateProviderMessage(finishReason))
 	}
 
 	var toolCalls []ToolCall
