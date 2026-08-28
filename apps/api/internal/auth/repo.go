@@ -18,6 +18,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/vndee/tuhoc-api/internal/ai"
 )
 
 // User is the subset of the users row auth exposes to its own usecase and
@@ -46,9 +48,9 @@ type Session struct {
 	ExpiresAt time.Time
 }
 
-// ErrEmailTaken is returned by CreateUser when the email already exists.
-// users.email is citext (case-insensitive) and UNIQUE, so this also
-// covers a collision that only differs by case.
+// ErrEmailTaken is returned by CreateUserWithSignupCredit when the email
+// already exists. users.email is citext (case-insensitive) and UNIQUE, so
+// this also covers a collision that only differs by case.
 var ErrEmailTaken = errors.New("auth: email already registered")
 
 // ErrNotFound is returned by lookups that find no matching row — used for
@@ -70,12 +72,54 @@ func NewRepo(pool *pgxpool.Pool) *Repo {
 	return &Repo{pool: pool}
 }
 
-// CreateUser inserts a new user row with an already-hashed password.
-// Hashing is the usecase's job, not the repo's — this method only ever
-// sees pwHash, never a plaintext password.
-func (r *Repo) CreateUser(ctx context.Context, email, name, pwHash string) (User, error) {
+// CreateUserWithSignupCredit inserts a new user row with an
+// already-hashed password AND grants the signup credit (ai.Service.
+// GrantSignupCredit, spec §3.4) in ONE transaction. Hashing is the
+// usecase's job, not the repo's — this method only ever sees pwHash,
+// never a plaintext password.
+//
+// Before this method existed (task 9), the user row and the credit grant
+// would have been two separate statements — exactly the failure shape
+// internal/ai/credits.go's own package comment warns ChargeTurn's
+// deduct-plus-ledger pair against: a process death, or a later statement
+// failing, between the two lands only one side. Here the two directions
+// that split could go wrong:
+//
+//   - the user row commits but the grant fails afterward: a real,
+//     permanent account that can log in and use every other route, but
+//     whose ai_credits row never lands and never will — nothing retries a
+//     signup grant after the fact, so EnsureCredit (credits.go) would
+//     treat this account as insufficient forever, not "new".
+//   - a credit row surviving a rolled-back user insert cannot happen even
+//     without this fix — ai_credits.user_id is a foreign key to
+//     users(id), so Postgres refuses that INSERT on its own — but the
+//     FIRST direction above is exactly the "credit mồ côi" this method
+//     exists to close, and wrapping both inserts in one transaction is
+//     what closes it: if the grant fails, Postgres rolls the user row
+//     back too, and the failed registration leaves nothing behind for
+//     that email to retry against.
+//
+// It builds its own ai.Service over r.pool rather than taking one as a
+// parameter: GrantSignupCredit never reads that Service's pool field (it
+// runs entirely against the tx passed to it), so threading an *ai.Service
+// through NewUsecase/Require/RequireAdmin — none of which have any other
+// use for one — would only add a parameter nothing else in this package
+// needs.
+func (r *Repo) CreateUserWithSignupCredit(ctx context.Context, email, name, pwHash string) (User, int64, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return User{}, 0, fmt.Errorf("auth: create user: begin tx: %w", err)
+	}
+	// Rollback after a successful Commit is a documented pgx no-op
+	// (mirrors internal/ai/credits.go's ChargeTurn) — this defer is the
+	// safety net for every OTHER return path below, including a panic
+	// unwinding through this function.
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
 	var u User
-	err := r.pool.QueryRow(ctx,
+	err = tx.QueryRow(ctx,
 		`INSERT INTO users (email, name, pw_hash) VALUES ($1, $2, $3)
 		 RETURNING id, email, name, role, pw_hash`,
 		email, name, pwHash,
@@ -83,11 +127,20 @@ func (r *Repo) CreateUser(ctx context.Context, email, name, pwHash string) (User
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
-			return User{}, ErrEmailTaken
+			return User{}, 0, ErrEmailTaken
 		}
-		return User{}, fmt.Errorf("auth: create user: %w", err)
+		return User{}, 0, fmt.Errorf("auth: create user: %w", err)
 	}
-	return u, nil
+
+	grantMicro, err := ai.NewService(r.pool).GrantSignupCredit(ctx, tx, u.ID)
+	if err != nil {
+		return User{}, 0, fmt.Errorf("auth: create user: grant signup credit: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return User{}, 0, fmt.Errorf("auth: create user: commit: %w", err)
+	}
+	return u, grantMicro, nil
 }
 
 // FindUserByEmail looks up a user by email (case-insensitive, via

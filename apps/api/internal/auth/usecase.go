@@ -58,15 +58,25 @@ func NewUsecase(repo *Repo) *Usecase {
 }
 
 // Register hashes password with argon2id (library defaults), creates the
-// user row, and immediately issues a session for it (register implies
+// user row and its signup credit grant (spec §3.4 — task 10) in one
+// transaction, and immediately issues a session for it (register implies
 // being logged in — the brief's contract is 200 + set-cookie).
+//
+// The granted amount (repo.CreateUserWithSignupCredit's second return) is
+// deliberately discarded here: nothing in the register response exposes
+// it today (meResponse, handler.go, carries id/email/name/role only), and
+// GET /ai/credits — Task 11 — is the one place a client reads a balance
+// from, by re-querying ai_credits rather than trusting a number handed
+// back at signup time. Adding a field here that no client reads would be
+// exactly the kind of untested surface this codebase's own i18n gate
+// warns against for a different kind of drift.
 func (uc *Usecase) Register(ctx context.Context, email, password, name string) (User, Session, error) {
 	hash, err := argon2id.CreateHash(password, argon2id.DefaultParams)
 	if err != nil {
 		return User{}, Session{}, fmt.Errorf("auth: hash password: %w", err)
 	}
 
-	user, err := uc.repo.CreateUser(ctx, email, name, hash)
+	user, _, err := uc.repo.CreateUserWithSignupCredit(ctx, email, name, hash)
 	if err != nil {
 		// ErrEmailTaken is returned as-is (not wrapped further) so
 		// handler.go can errors.Is against it directly; any other repo
