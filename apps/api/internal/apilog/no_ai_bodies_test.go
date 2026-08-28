@@ -26,35 +26,85 @@
 // property against what the server actually emits, not against what the
 // source looks like it should emit.
 //
-// It only sees the TWO call sites in internal/ai/handler.go's streamTurn
-// that could plausibly carry conversation text — the ones this task's own
-// brief points at (point 3): the "ai turn failed" line (runErr.Error(),
-// built from whatever RunStream returned) and the "ai charge failed after
-// turn" line (ChargeTurn's error). It does NOT reach into internal/rating,
-// internal/auth, internal/catalog, internal/sync, internal/discuss, or
-// internal/stats's own apilog.Internal call sites — those handle ratings,
-// credentials, catalog metadata, sync payloads, and stats events, none of
-// which share any code path with an AI turn's Question/Answer, so a
-// behavioral probe through THEIR routes would prove nothing about THIS
-// property. That is what the structural half is for.
+// It sees THREE call-site families in internal/ai/handler.go, not two —
+// round-1 review corrected this comment after finding the two named below
+// were an undercount:
+//
+//  1. streamTurn's own two direct slog.Error calls — the "ai turn failed"
+//     line (runErr.Error(), built from whatever RunStream returned) and
+//     the "ai charge failed after turn" line (ChargeTurn's error). These
+//     are the two task-12-brief.md's own point 3 names.
+//  2. Handler.internal (handler.go, near the bottom) — a HAND-COPIED TWIN
+//     of apilog.Internal (same "request failed" message, same fields),
+//     which handler.go's own comment explains exists because no
+//     *fiber.Ctx survives to streamTurn for the real apilog.Internal to
+//     use. It is called from eight sites across Chat/Credits/GetConfig/
+//     PutConfig; THREE of them — the EnsureCredit/Settings/AgentConfig
+//     failure branches inside Chat itself — run with `question` (the
+//     trimmed request body) already parsed and live in scope. Round-1
+//     review proved this path live: mutating the Settings call site to
+//     `fmt.Errorf("settings lookup while answering %q: %w", question,
+//     err)` put the learner's literal question into slog, and this file's
+//     ORIGINAL structural half (which only matched literal "apilog."
+//     prefixes, and Handler.internal never contains that substring) never
+//     saw it. apilogCallRe below now matches this shape too — see its own
+//     doc comment for exactly how.
+//
+// It does NOT reach into internal/rating, internal/auth, internal/catalog,
+// internal/sync, internal/discuss, or internal/stats's own apilog.Internal
+// call sites — those handle ratings, credentials, catalog metadata, sync
+// payloads, and stats events, none of which share any code path with an AI
+// turn's Question/Answer, so a behavioral probe through THEIR routes would
+// prove nothing about THIS property. That is what the structural half is
+// for.
+//
+// One shape is DELIBERATELY left untested here, not overlooked: an error
+// that ALREADY carries conversation-shaped text before streamTurn ever
+// touches it — concretely, stream.go's CompleteStream wraps DeepSeek's own
+// non-2xx error body verbatim (truncated) via truncateProviderMessage into
+// runErr (see stream.go:567, client.go:326), and that text is provider-
+// authored diagnostic content, not learner/model conversation text, so
+// logging it is the log doing its documented job (apilog.go's own doc
+// comment: "the SERVER must keep the cause"), not a leak of the two things
+// spec §0.1 names. It is ALSO a real, narrower residual risk this file
+// does not close: if DeepSeek's error API ever echoes a fragment of the
+// rejected request back in its error message (a content-policy rejection
+// quoting the flagged text is the plausible shape), that fragment would
+// reach apilog unfiltered, because nothing between client.go's
+// truncateProviderMessage and streamTurn's slog.Error call inspects what
+// the provider's own text contains. Closing that would mean deciding what
+// (if anything) to redact from a THIRD PARTY's error text before wrapping
+// it — a design question for stream.go/client.go, not a test-coverage gap
+// this gate's two fixtures (answerStep, failStep — both of which use
+// FIXED, hand-written error strings specifically so a red result can only
+// mean streamTurn's own code reached into conversation content, never that
+// the fake provider handed it some) can settle by adding a case. Recorded
+// as an open, out-of-scope-for-this-task item in task-12-report.md rather
+// than guessed at here.
 //
 // STRUCTURE (TestAPILogCallSitesNeverNameConversationBodyArgs) scans every
-// non-test .go file under apps/api for a call into the apilog package
-// carrying, on the same source line, a bare identifier named body, content,
-// question, answer, messages, or prompt — task-12-brief.md's own checklist,
-// read literally. It does not care whether any test ever exercises the
-// call site: a future `apilog.Internal(c, "ai.Chat/turn", fmt.Errorf("...:
-// %s", question))` added to ANY package, including ones that don't exist
-// yet, is caught the moment it is compiled into a file this scan reads —
-// exactly the gap provider_key_never_leaks_test.go's own doc comment
-// documents for its analogous two-half design ("a route that doesn't exist
-// yet, that a behavioral probe can never reach").
+// non-test .go file under apps/api for a call into the log destination
+// this whole file is about, carrying, on the same source line, a bare
+// identifier named body, content, question, answer, messages, or prompt —
+// task-12-brief.md's own checklist, widened past its literal wording after
+// round-1 review (see apilogCallRe's own doc comment for why "just
+// apilog.*" undercounted). It does not care whether any test ever
+// exercises the call site: a future violation added to ANY package,
+// including ones that don't exist yet, is caught the moment it is
+// compiled into a file this scan reads — exactly the gap
+// provider_key_never_leaks_test.go's own doc comment documents for its
+// analogous two-half design ("a route that doesn't exist yet, that a
+// behavioral probe can never reach").
 //
 // ── ITS OWN NARROW SHAPE — READ BEFORE TRUSTING IT WIDER THAN THIS ───────
 //
 // Following provider_key_never_leaks_test.go's own discipline (task-12's
 // brief names it directly, "Khuôn 2"): a scan narrower than its own
-// comment claims is a trap, not a gate. Two real limits, not hypothetical:
+// comment claims is a trap, not a gate. Three real limits, not
+// hypothetical — the third one added by round-1 review, which found the
+// first version of this comment silently narrowing "the log destination"
+// (this file's own opening paragraph's framing) down to "callers spelled
+// apilog.*" without ever saying so:
 //
 //  1. SAME LINE ONLY. A call site gofmt has wrapped across lines —
 //     `apilog.Internal(c, "op",\n\t\tfmt.Errorf("...: %s", question))` —
@@ -79,10 +129,26 @@
 //     names for cfg.DeepSeekAPIKey crossing into internal/discuss's
 //     `token string` parameter — full taint tracking is out of reach for a
 //     hand-written scan and was out of scope for that gate too.
+//  3. THREE KNOWN SHAPES, NOT "THE DESTINATION." apilogCallRe matches
+//     `apilog.*(`, `.internal(`, and direct `slog.(Error|Warn|Info|
+//     Debug)(` — three MEASURED, NAMED shapes this repo's source actually
+//     uses to reach the log destination today (round-1 review widened
+//     this from one shape to three after the Critical above). It is still
+//     not equivalent to "any code path that ends up writing to
+//     slog.Default()": a hypothetical fourth wrapper under a different
+//     name — `mylog.Emit(...)`, a package-level `func logFailure(...)`
+//     that itself calls slog with no ".internal(" or "apilog." in its own
+//     call sites, or a write straight to os.Stderr bypassing slog
+//     entirely — is exactly as invisible to this needle-based scan as
+//     Handler.internal was before this round. Widening a needle list after
+//     finding a live miss is not the same as closing the class of "a new
+//     name for the same sink" misses; the BEHAVIOR half is what actually
+//     observes the real destination, independent of what the source is
+//     named.
 //
 // A narrow gate documented as narrow is usable; a narrow gate whose comment
-// claims it is wider is the trap. Both limits above are measured against
-// this run's actual source, not assumed.
+// claims it is wider is the trap. All three limits above are measured
+// against this run's actual source, not assumed.
 package apilog_test
 
 import (
@@ -193,6 +259,13 @@ func answerStep(text string, u ai.Usage) streamStep {
 // mean streamTurn's OWN logging code reached into the turn's content on
 // its own initiative — not that the fake provider handed it content to
 // begin with.
+//
+// The `partial == ""` branch (skip onDelta entirely — "the round died
+// before producing any text") is not exercised by either call site below
+// as of this writing (round-1 review, Minor); kept rather than deleted
+// because it is the correct shape for a round that fails immediately, and
+// removing it would only shrink what a future caller could script for no
+// benefit to the two scenarios that exist today.
 func failStep(partial string, u ai.Usage) streamStep {
 	return func(onDelta func(string) error) (ai.Completion, error) {
 		if partial != "" {
@@ -416,6 +489,82 @@ func TestAIConversationBodyNeverReachesAPILog(t *testing.T) {
 				"Logged:\n%s", logged)
 		}
 	})
+
+	// Round-1 review, Critical: the two subtests above only ever reach
+	// streamTurn's own two slog.Error call sites. handler.go's Chat has a
+	// THIRD family — Handler.internal, called from the EnsureCredit/
+	// Settings/AgentConfig failure branches BEFORE the stream ever starts,
+	// with `question` already parsed and live in scope at every one of
+	// those call sites. This subtest forces the simplest of the three
+	// (Settings) to fail deterministically and checks the exact call site
+	// the reviewer's own mutation (handler.go:565,
+	// `fmt.Errorf("settings lookup while answering %q: %w", question,
+	// err)`) proved live.
+	t.Run("h.internal logs a pre-flight failure with the question already in scope", func(t *testing.T) {
+		uid := newUser(t, pool, "presettings", 50000)
+
+		// ai_settings is a SINGLETON row (migration 0007's `id boolean
+		// PRIMARY KEY DEFAULT true CHECK (id)`), so deleting it makes
+		// Service.Settings fail with a plain wrapped pgx.ErrNoRows — no
+		// timing race to win, same reasoning as the ai_pricing deletion
+		// above. Read back and restored via t.Cleanup rather than
+		// hand-copied, for the same reason.
+		var basePrompt string
+		var creditsPerSearch, costPerSearch, signupGrant int64
+		var maxTokens, maxRounds int
+		if err := pool.QueryRow(context.Background(), `
+			SELECT base_system_prompt, credits_per_web_search, cost_micro_per_web_search,
+			       signup_grant_micro, max_tokens_per_turn, max_tool_rounds_per_turn
+			FROM ai_settings LIMIT 1`).
+			Scan(&basePrompt, &creditsPerSearch, &costPerSearch, &signupGrant, &maxTokens, &maxRounds); err != nil {
+			t.Fatalf("read ai_settings before deleting it: %v", err)
+		}
+		if _, err := pool.Exec(context.Background(), `DELETE FROM ai_settings`); err != nil {
+			t.Fatalf("delete ai_settings row: %v", err)
+		}
+		t.Cleanup(func() {
+			if _, err := pool.Exec(context.Background(), `
+				INSERT INTO ai_settings (id, base_system_prompt, credits_per_web_search,
+				    cost_micro_per_web_search, signup_grant_micro, max_tokens_per_turn,
+				    max_tool_rounds_per_turn)
+				VALUES (true,$1,$2,$3,$4,$5,$6)`,
+				basePrompt, creditsPerSearch, costPerSearch, signupGrant, maxTokens, maxRounds); err != nil {
+				t.Fatalf("restore ai_settings row: %v", err)
+			}
+		})
+
+		// The turn never reaches RunStream on this path (Settings fails
+		// before Chat builds a Turn at all), so the fake client's script is
+		// never consulted — an empty one is enough, and correct: a
+		// non-empty one would silently hide a regression that made Chat
+		// start streaming despite the missing settings row.
+		app := newAIApp(t, uid, ai.HandlerDeps{
+			Client:  &fakeStream{},
+			Credits: ai.NewService(pool),
+		})
+
+		logs := captureSlog(t)
+		question := "please help me understand " + questionSentinel
+		resp, body := doChat(t, app, question)
+		if resp.StatusCode != http.StatusInternalServerError {
+			t.Fatalf("POST /ai/chat with ai_settings deleted: want 500 (h.internal's "+
+				"fixed response) got %d body=%s", resp.StatusCode, body)
+		}
+
+		logged := logs.take()
+		if !strings.Contains(logged, "request failed") || !strings.Contains(logged, "ai.Chat/settings") {
+			t.Fatalf("this scenario is built to force h.internal's \"request failed\" "+
+				"line (op=ai.Chat/settings) to fire — it did not, so the sentinel "+
+				"check below would be examining an empty/irrelevant buffer and "+
+				"proving nothing. Logged:\n%s", logged)
+		}
+		if strings.Contains(logged, questionSentinel) {
+			t.Errorf("apilog's destination carries the learner's QUESTION via "+
+				"Handler.internal — handler.go's own hand-copied twin of "+
+				"apilog.Internal, the exact call site round-1 review's mutation "+
+				"proved live. Logged:\n%s", logged)
+		}
+	})
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -450,31 +599,80 @@ var forbiddenAPILogArgRe = func() map[string]*regexp.Regexp {
 	return out
 }()
 
-// apilogCallRe matches a call into the apilog package on a source line —
-// `apilog.` followed by an identifier and an opening paren. Deliberately
-// NOT hardcoded to just "Internal"/"Panic" (today's only two exports):
-// matching the package prefix generically means a future third apilog
-// function is covered by this gate the moment it is added, with no edit
-// here required.
-var apilogCallRe = regexp.MustCompile(`\bapilog\.[A-Za-z_][A-Za-z0-9_]*\(`)
+// apilogCallRe matches a call into the log destination this gate is about,
+// on a single source line — THREE independent shapes, not one.
+//
+// ROUND 1 REVIEW, CRITICAL: the first version of this pattern only matched
+// `apilog\.\w+\(` — a literal package-qualified call. That is exactly what
+// let a real leak through: internal/ai/handler.go's `Handler.internal`
+// (handler.go, near the bottom) is a HAND-COPIED TWIN of apilog.Internal —
+// same "request failed" message, same method/path/op/err fields, written
+// straight to slog.Default() (apilog.go's own doc comment explains why it
+// isn't literally apilog.Internal: no *fiber.Ctx survives to streamTurn) —
+// and it never once contains the substring "apilog." itself, so the old
+// pattern was BLIND to all eight of its call sites, three of which run
+// inside Chat with `question` already parsed and in scope (handler.go's
+// EnsureCredit/Settings/AgentConfig failure branches). Reviewer proved it
+// live: `fmt.Errorf("settings lookup while answering %q: %w", question,
+// err)` at the AgentConfig-adjacent call site reached slog with the
+// learner's literal question text, and this gate stayed green throughout
+// (go test ./internal/apilog/ was 5/5 passing on that mutation).
+//
+// The three alternatives below, matched against the SAME lowercased line:
+//
+//  1. `apilog\.\w+\(` — an actual call into the apilog package. Not
+//     hardcoded to "Internal"/"Panic" (today's only two exports): a future
+//     third apilog function is covered the moment it exists.
+//  2. `\.internal\(` — the hand-copied-twin shape the Critical above is
+//     about. Deliberately not scoped to `h.internal(` specifically: ANY
+//     receiver's `.internal(` method is a plausible second hand-copy of
+//     the same pattern in some future package, and this repo has exactly
+//     one such method today (checked by hand:
+//     `grep -rn '\.internal(' --include='*.go' . | grep -v _test.go`
+//     resolves to Handler.internal's eight call sites and nothing else) —
+//     so widening past `h\.internal\(` costs nothing today and closes the
+//     door on the next hand-copy landing in a different package under a
+//     different receiver name.
+//  3. `\bslog\.(?:error|warn|info|debug)\(` — a direct call into log/slog,
+//     bypassing BOTH of the above. This is the shape neither #1 nor #2
+//     catches: a log line written with no wrapper function at all.
+//     streamTurn's own two call sites (handler.go, the ones task-12-brief
+//     originally asked this gate to watch) are exactly this shape, and so
+//     is apilog.go's own Internal/Panic — matching this needle means the
+//     scan now also re-derives its own two ORIGINAL targets without
+//     needing the apilog-prefix needle for them at all. Restricted to the
+//     four named levels (not `slog\.` bare) so it does not also match
+//     `slog.Default(` (apilog.go:22, a logger constructor, not a sink).
+//
+// Checked by hand before enabling (see task-12-report.md's round-1 section
+// for the exact counts): on today's source, widening from 25 matched
+// lines to 38 introduces ZERO new false positives — none of the 13 newly
+// matched lines (8 `.internal(`, 5 raw `slog.*(`) carries any of the six
+// forbidden words on the same line.
+var apilogCallRe = regexp.MustCompile(
+	`\bapilog\.[a-z_][a-z0-9_]*\(` +
+		`|\.internal\(` +
+		`|\bslog\.(?:error|warn|info|debug)\(`)
 
 // minProductGoFilesForAPILogArgScan and apilogArgScanSentinels are the
 // fail-closed floor task-12-brief.md's own "Khuôn 1" names (task 9's
 // silent-empty-loop) applied to THIS scan: a broken path or an
 // over-eager directory filter that makes the walk below read zero files
 // must turn this gate RED, not leave it vacuously green forever. Measured
-// 2026-08-29: apps/api has 36 non-test .go files (`find apps/api -name
-// '*.go' ! -name '*_test.go' | wc -l`) and 25 apilog.Internal/apilog.Panic
-// call site lines (`grep -rn 'apilog\.\(Internal\|Panic\)(' --include=
-// '*.go' . | grep -v _test.go | wc -l`, run from apps/api). Both floors
-// below sit well under the measured numbers so one legitimate file
-// deletion or one call site's removal never trips them on its own; the
-// REAL check for "still finding real call sites" is the sentinel list,
-// same split provider_key_never_leaks_test.go's own floor/sentinel pair
-// keeps.
+// 2026-08-29 (after the round-1 widening of apilogCallRe above): apps/api
+// has 37 non-test .go files (`find apps/api -name '*.go' ! -name
+// '*_test.go' | wc -l`) and 38 lines matching apilogCallRe's three-shape
+// union (`grep -rnE '(apilog\.[A-Za-z_][A-Za-z0-9_]*\(|\.internal\(|slog\.
+// (Error|Warn|Info|Debug)\()' --include='*.go' . | grep -v _test.go | wc
+// -l`, run from apps/api — up from 25 before the widening, since that
+// count only ever saw the `apilog\.` shape). Both floors below sit well
+// under the measured numbers so one legitimate file deletion or one call
+// site's removal never trips them on its own; the REAL check for "still
+// finding real call sites" is the sentinel list, same split
+// provider_key_never_leaks_test.go's own floor/sentinel pair keeps.
 const (
 	minProductGoFilesForAPILogArgScan = 20
-	minAPILogCallSitesFound           = 15
+	minAPILogCallSitesFound           = 25
 )
 
 // apilogArgScanSentinels names files a violation would land in if it
@@ -483,6 +681,19 @@ const (
 // OTHER packages with real, unrelated apilog.Internal call sites — proof
 // the walk below is reading packages that have nothing to do with AI at
 // all, not just the ai package this task was written to worry about.
+//
+// internal/ai/handler.go and internal/apilog/apilog.go are anchors for the
+// WALK (proof these files are actually read), not a claim that a
+// violation sits in them today — round-1 review caught an earlier version
+// of this comment overclaiming the opposite for handler.go specifically:
+// under the ORIGINAL apilogCallRe (apilog-prefix only), handler.go
+// contained ZERO matched lines (that was the whole Critical finding — see
+// apilogCallRe's doc comment), so calling it "where a violation would
+// land" was false at the time it was written. After the round-1 widening
+// both files genuinely do carry matched lines (handler.go: eight
+// `.internal(` sites plus two `slog.Error(`; apilog.go: its own two
+// `slog.Error(` definitions), so the claim is now actually true — recorded
+// here so the fix and the reason it was needed both stay legible.
 var apilogArgScanSentinels = []string{
 	"internal/ai/handler.go",
 	"internal/apilog/apilog.go",
@@ -672,6 +883,61 @@ func recoverHandler(answer string) {
 			"apilog.Panic specifically")
 	}
 
+	// Round-1 review, Critical: a hand-copied twin of apilog.Internal that
+	// never contains the literal substring "apilog." at all — the EXACT
+	// shape that let Handler.internal (handler.go) slip past the original
+	// version of this scan. Proves the `.internal(` alternative in
+	// apilogCallRe is alive on its own, independent of the apilog-prefix
+	// alternative above.
+	violatingHandCopiedTwin := map[string]string{
+		"internal/ai/handler.go": strings.ToLower(`package ai
+func (h *Handler) internal(c *fiber.Ctx, op string, err error) error {
+	return h.internal(c, op, fmt.Errorf("settings lookup while answering %q: %w", question, err))
+}`),
+	}
+	if got := apilogArgScan(violatingHandCopiedTwin); len(got) == 0 {
+		t.Error("apilogArgScan did not catch a synthetic `.internal(` call " +
+			"carrying a bare `question` identifier, with no \"apilog.\" prefix " +
+			"anywhere on the line — this is the exact shape round-1 review's " +
+			"Critical finding used to slip past the pre-fix version of this scan " +
+			"(Handler.internal, handler.go); the `.internal(` alternative in " +
+			"apilogCallRe is dead")
+	}
+
+	// A direct, unwrapped slog call — no "apilog." prefix and no ".internal("
+	// wrapper at all — must also be caught. This is the shape streamTurn's
+	// own two call sites use, and the shape apilog.go's Internal/Panic use
+	// internally.
+	violatingRawSlog := map[string]string{
+		"internal/ai/handler.go": strings.ToLower(`package ai
+func f(content string) {
+	slog.Error("ai turn failed", "op", "ai.Chat/turn", "content", content)
+}`),
+	}
+	if got := apilogArgScan(violatingRawSlog); len(got) == 0 {
+		t.Error("apilogArgScan did not catch a synthetic raw slog.Error call " +
+			"carrying a bare `content` identifier — the direct-slog alternative " +
+			"in apilogCallRe is dead")
+	}
+
+	// slog.Default( (a logger constructor, not a sink — apilog.go:22 calls
+	// it once, legitimately) must NOT be treated as a call this scan cares
+	// about, even with a forbidden word coincidentally on the same line.
+	benignSlogDefault := map[string]string{
+		"internal/apilog/apilog.go": strings.ToLower(`package apilog
+func f(prompt string) {
+	l := slog.Default()
+	_ = prompt
+	_ = l
+}`),
+	}
+	if got := apilogArgScan(benignSlogDefault); len(got) != 0 {
+		t.Errorf("apilogArgScan flagged a slog.Default( line (a logger "+
+			"constructor, not a sink) just because a forbidden word appeared "+
+			"on the same line — the direct-slog alternative in apilogCallRe "+
+			"must be scoped to Error/Warn/Info/Debug specifically: %v", got)
+	}
+
 	// A word appearing on an apilog-call line but NOT as a whole word (a
 	// substring of a longer identifier) must NOT trip this — the same
 	// whole-word discipline providerKeyCfgWord keeps for `cfg`.
@@ -704,17 +970,19 @@ func f(question string, err error) {
 			"if it now spans lines, the doc comment above needs rewriting too: %v", got)
 	}
 
-	// And apilogCallSiteCount must actually count something on real source
-	// — same "the floor itself has to be reachable" check
-	// TestProviderKeyStructuralScanIsNotVacuous closes with a real-repo read.
-	realSites := apilogCallSiteCount(apilogGoSources(t))
-	if realSites < minAPILogCallSitesFound {
-		t.Errorf("apilogCallSiteCount found only %d real apilog call sites "+
-			"(floor %d) — either the call-detection regex broke or apilog call "+
-			"sites were genuinely removed; if the latter, lower the floor "+
-			"consciously and say why in the commit", realSites, minAPILogCallSitesFound)
-	}
-	t.Logf("apilogCallSiteCount found %d real apilog call sites under apps/api", realSites)
+	// apilogCallSiteCount must actually count something on real source —
+	// same "the floor itself has to be reachable" check
+	// TestProviderKeyStructuralScanIsNotVacuous closes with a real-repo
+	// read. The floor ITSELF is enforced only once, as a t.Fatalf inside
+	// TestAPILogCallSitesNeverNameConversationBodyArgs below (the actual
+	// gate) — asserting the identical threshold a second time here, on the
+	// same real-repo read, would be checking the same fact twice under two
+	// different names rather than checking something new (round-1 review,
+	// Minor). This call stays only to prove apilogGoSources/
+	// apilogCallSiteCount don't panic or silently return zero when driven
+	// end-to-end on the real tree, logged for visibility.
+	t.Logf("apilogCallSiteCount found %d real apilog call sites under apps/api",
+		apilogCallSiteCount(apilogGoSources(t)))
 }
 
 // TestAPILogCallSitesNeverNameConversationBodyArgs is the structure half —
