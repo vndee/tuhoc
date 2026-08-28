@@ -490,19 +490,34 @@ export const en: Messages = {
   'ai.panel.collapse': 'Collapse the ask panel',
   'ai.panel.newThread': 'New conversation',
   'ai.panel.thinking': 'Thinking…',
-  'ai.panel.needsSetup':
-    'The AI assistant runs on your own key, and this device has none yet. The key is kept in the key vault — a separate page at a separate address, so a course cannot read it.',
+  // `ai.panel.noCredit` is Phase 2's replacement for the Phase 1 pair
+  // `needsSetup`/`unavailable` (removed — see `git log` on this file):
+  // there is no per-device key to plug in anymore and no build variant
+  // without the AI routes, so neither of those two states can occur. The
+  // one blocking state left is running out of platform-issued credit.
+  'ai.panel.noCredit':
+    'You are out of AI credit on this account. Top up in settings to keep asking.',
   'ai.panel.openSettings': 'Open the settings page',
-  'ai.panel.unavailable':
-    'This build has no key vault, so the AI assistant is unavailable. That is a deployment configuration gap, not a problem with your account — reading the course still works normally.',
-  'ai.panel.probeFailed': 'Could not ask the key vault whether a key is plugged in. You can still try asking.',
   'ai.panel.questionLabel': 'Your question',
   'ai.panel.questionPlaceholder': 'Ask about the chapter you are reading…',
   'ai.panel.stop': 'Stop',
   'ai.panel.ask': 'Ask',
   'ai.deepDive.heading': 'Go deeper',
-  'ai.error.unavailable': 'This build has no key vault, so AI is unavailable.',
-  'ai.error.notConfigured': 'No key is plugged into the key vault on this device.',
+  // Mười khoá dưới đây ứng với mười `ServerAIErrorCode` (`ai/serverClient.
+  // ts`) — xem `useAI.ts`'s `describeFailure` cho quy tắc "mã nào dịch ra
+  // câu nào", và VÌ SAO không câu nào ở đây là chuỗi thô server gửi.
+  'ai.error.noCredit': 'You are out of AI credit. Top up to keep asking.',
+  'ai.error.rateLimited': 'You are asking a bit fast — wait a moment and try again.',
+  'ai.error.providerFailed': 'The AI provider could not complete this turn. Try again in a moment.',
+  'ai.error.toolBudgetExhausted':
+    'This question needed more lookup steps than this turn allows. Try asking something more specific, or turn off a tool.',
+  'ai.error.unauthenticated': 'Your session has expired. Sign in again to keep asking.',
+  'ai.error.network': 'Could not reach the server. Check your connection and try again.',
+  'ai.error.aborted': 'Cancelled.',
+  // Chung cho `InvalidBody`/`FieldRequired`/`FieldTooLong`/`UnknownTool`/
+  // `Internal` — năm mã báo lỗi ở chính trang chính hoặc máy chủ, không
+  // phải điều người học gây ra hay có một hành động cụ thể để sửa.
+  'ai.error.requestRejected': 'The request was rejected. Try again in a moment.',
 
   'ai.vault.originShape': (received: string) =>
     `VITE_VAULT_ORIGIN must be a proper origin (scheme://host[:port]) — no trailing "/", no path, no "*". Received ${received}.`,
