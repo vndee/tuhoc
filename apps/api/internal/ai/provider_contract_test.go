@@ -84,20 +84,50 @@ func TestMeasuredProviderFactsAreRecorded(t *testing.T) {
 	}
 	doc := string(b)
 
-	// Bốn cụm từ khoá dưới đây là TÊN THẬT đo được ở Task 0 (Step 1-4 của
-	// task-0-brief.md), không phải chuỗi giữ chỗ của brief gốc — brief dùng
-	// đúng "prompt_cache_hit_tokens" làm ví dụ tình cờ trùng với tên thật đo
-	// được, nên không cần sửa mục đó; ba mục còn lại được viết lại thành cụm
-	// mô tả (không phải tên trường JSON) vì "tool_choice" một mình chỉ xác
-	// nhận tài liệu CÓ NHẮC tới khái niệm này, còn nội dung đúng/sai của kết
-	// luận (chỉ "auto"/"none" chạy được) được kiểm bởi chính lượt đo Task 0
-	// ghi trong task-0-report.md, một test cấu trúc không gọi mạng không thể
-	// tự phúc tra một sự kiện API bên ngoài.
+	// Bốn cụm từ khoá dưới đây là TÊN THẬT/CỤM MÔ TẢ đo được ở Task 0
+	// (Step 1-4 của task-0-brief.md), không phải chuỗi giữ chỗ của brief gốc
+	// — brief dùng đúng "prompt_cache_hit_tokens" làm ví dụ tình cờ trùng với
+	// tên thật đo được, nên không cần sửa mục đó.
+	//
+	// VÒNG SỬA 1 (round 2 review): bản trước dùng "song song" cho §3 và
+	// "streaming" cho §4 — cả hai chỉ xác nhận CỤM CHỮ có mặt ở ĐÂU ĐÓ trong
+	// tài liệu, không phải trong ĐÚNG mục nó canh. Đo được: "song song" xuất
+	// hiện 6 lần, nhưng 1 lần nằm ở mục 1 với nghĩa khác hẳn ("DeepSeek giữ
+	// lại cùng lúc" — mô tả bề mặt tương thích OpenAI, không liên quan gọi
+	// tool đồng thời); "streaming" xuất hiện 2 lần, 1 lần nằm ở đoạn mở đầu
+	// tệp, chỉ 1 lần thật sự trong mục 4. Hệ quả đo được: xoá sạch mục 4
+	// (toàn bộ bằng chứng chunk stream) nhưng giữ đoạn mở đầu → test vẫn
+	// XANH, vì needle "streaming" vẫn khớp ở một câu không liên quan gì tới
+	// bằng chứng đã mất. Cùng lỗi với "song song" nếu xoá mục 3.
+	//
+	// Sửa: đổi sang hai cụm MÔ TẢ CƠ CHẾ THẬT, đo bằng thực nghiệm là chỉ
+	// xuất hiện ĐÚNG MỘT LẦN trong toàn tệp và đúng trong mục nó canh (xem
+	// task-0-report.md, mục "grep -c xác nhận needle chỉ neo vào mục của
+	// nó" cho phép đếm). Không dùng tên trường JSON cho §3/§4 (như đã làm
+	// với §1/§2) vì DeepSeek không có một TÊN TRƯỜNG duy nhất cho "gọi tool
+	// đồng thời" hay "usage ở chunk cuối" — đây là các KẾT LUẬN Task 0 rút
+	// ra từ hành vi quan sát được, không phải một khoá JSON để trích dẫn
+	// nguyên văn.
+	//
+	// TỰ KIỂM THÊM (không phải yêu cầu của round 2 review, phát hiện khi tự
+	// xoá-từng-mục để chứng minh cổng có răng): review vòng 2 đánh giá
+	// "prompt_cache_hit_tokens" là an toàn vì bảy lần xuất hiện đều là bằng
+	// chứng CÙNG một sự thật (tên trường thật), không như "song song" lẫn
+	// nghĩa. Điều đó đúng ở cấp Ý NGHĨA — nhưng đo thực nghiệm (xoá nguyên
+	// mục 1, chạy lại test) cho thấy ở cấp CƠ CHẾ nó vẫn đi qua XANH, vì bốn
+	// lần còn lại nằm ở §4/§5/Phụ lục. Cùng hình dạng lỗ round 2 review vừa
+	// vá cho §3/§4, chỉ khác chỗ hệ quả nhẹ hơn (nội dung thực chất — tên
+	// trường — vẫn còn trong tài liệu qua bằng chứng khác, không mất trắng
+	// như §3/§4 khi đó). Để cổng không dựa vào một đánh giá "đủ an toàn"
+	// chưa đo, thêm needle THỨ NĂM chỉ tồn tại trong mục 1 (xác nhận 1 lần
+	// duy nhất, xem task-0-report.md) — giờ xoá RIÊNG mục 1 cũng làm đỏ,
+	// giống hệt ba mục kia.
 	for _, need := range []string{
-		"prompt_cache_hit_tokens", // §1: tên trường cache thật trong `usage`
-		"tool_choice",             // §2: bốn giá trị tool_choice đã thử, chỉ hai chạy được
-		"song song",               // §3: tool_calls có thể trả về nhiều phần tử trong một lượt
-		"streaming",               // §4: usage có mặt ở chunk cuối của response stream
+		"prompt_cache_hit_tokens",        // §1: tên trường cache thật trong `usage`
+		"Tồn tại đúng tên plan giả định", // §1 (neo riêng, xem TỰ KIỂM THÊM ở trên)
+		"tool_choice",                        // §2: bốn giá trị tool_choice đã thử, chỉ hai chạy được
+		"nhiều phần tử trong `tool_calls`",   // §3: một lượt có thể trả về nhiều tool_calls cùng lúc
+		"nối chuỗi `arguments` theo `index`", // §4: client streaming phải ghép arguments rời rạc theo index
 	} {
 		if !strings.Contains(doc, need) {
 			t.Errorf("docs/deepseek-measured.md thiếu mục đo %q — xem Task 0 của "+
