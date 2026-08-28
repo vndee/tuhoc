@@ -34,7 +34,7 @@ Mọi câu hỏi mở của bản nháp đã có lời đáp (§10 ghi những g
 | Thứ tự | **Course lên server trước, AI sau** — để agent có tool đọc course ngay từ lần ship đầu. |
 | CMS | Khu `/admin` trong `apps/web`, chắn bằng role. Bốn màn: Courses, Người dùng & credit, Bảng giá & prompt nền, Billing & đối soát. |
 | Credit dùng thử | **Tặng ít, đủ nếm thử** cho tài khoản mới; rate limit độc lập chống farm. |
-| Nhà cung cấp AI | **Anthropic**, một nhà duy nhất ở pha đầu. Web search dùng tool có sẵn của Messages API — không cần key tìm kiếm riêng. |
+| Nhà cung cấp AI | **DeepSeek** (chốt 28/08/2026, thay bản duyệt 25/08 vì giá — xem plan Pha 2). Một nhà duy nhất cho mô hình. Web search **cần nhà cung cấp thứ hai và key riêng**: DeepSeek không có tool tìm kiếm chạy phía máy chủ họ, nên lời hứa "không cần key tìm kiếm riêng" của bản 25/08 KHÔNG còn đúng. |
 
 ---
 
@@ -161,7 +161,7 @@ toàn bộ, không cần đăng nhập. Đọc ẩn danh không có tiến độ
 
 ### 3.1 `internal/ai`
 
-- Client Anthropic; key từ env (`AI_PROVIDER_KEY`), không ra log, không ra
+- Client DeepSeek (API tương thích OpenAI, `https://api.deepseek.com`), viết tay bằng `net/http`; key từ env (`DEEPSEEK_API_KEY`), không ra log, không ra
   response — cổng kiểm mới canh đúng điều này (§8).
 - Vòng lặp agent (tool use) + stream SSE. `useAI` phía web giữ nguyên giao diện
   `AITurn[]`, chỉ đổi đường ra.
@@ -174,7 +174,13 @@ toàn bộ, không cần đăng nhập. Đọc ẩn danh không có tiến độ
 |---|---|---|---|
 | Đọc giáo trình (mục lục, chương) | DB courses | token thường | 2 |
 | Đọc tiến độ + ghi chú người học | DB progress/notes | token thường | 3 |
-| Web search | tool có sẵn của nhà cung cấp | phụ thu credit mỗi lượt tìm | 2 |
+| Web search | nhà cung cấp tìm kiếm riêng (Brave Search API) | phụ thu credit mỗi lượt tìm | 2 |
+
+> **Đổi nhà cung cấp không phải đổi tên.** Bản 25/08 chọn Anthropic một phần vì
+> Messages API có tool tìm kiếm chạy trên máy chủ họ, nên "web search" là một
+> dòng trong mảng `tools` chứ không phải một tích hợp. DeepSeek không có thứ
+> ấy. Cái giá của việc rẻ hơn là một nhà cung cấp thứ hai, một key thứ hai, một
+> hoá đơn thứ hai, và một `SearchProvider` interface phải tự viết và tự canh.
 
 Tool đắt không cần cơ chế xin phép — bật là dùng, giá tự nói qua bảng quy đổi.
 
