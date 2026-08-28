@@ -27,7 +27,7 @@ DeepSeek API (tương thích OpenAI) qua `net/http` viết tay.
 Mọi task đều chịu những dòng này; chúng không lặp lại trong từng task.
 
 1. **Key nhà cung cấp chỉ đến từ biến môi trường** (`DEEPSEEK_API_KEY`,
-   `SEARCH_API_KEY`). Không repo, không log, không response, không tham số dòng lệnh.
+   `BRAVE_API_KEY`). Không repo, không log, không response, không tham số dòng lệnh.
 2. **`apps/api/internal/apilog` KHÔNG BAO GIỜ ghi thân hội thoại AI.** Chỉ
    metadata: user, model, token, credit. Câu hỏi của người học mang nội dung họ
    đang đọc và điều riêng tư của họ (spec §0.1).
@@ -70,11 +70,8 @@ thứ hai và hoá đơn thứ hai.
 
 ## Còn mở — chặn đúng một task, không chặn pha
 
-1. **Nhà cung cấp tìm kiếm web** (Brave Search API / Serper / Tavily / Exa).
-   Cần một tài khoản trả tiền, thủ tục nằm ngoài repo — cùng loại với
-   SePay/Polar ở spec §10.4. **Chặn Task 8**, không chặn task nào khác.
-   Task 8 viết interface trước, một implementation sau, nên đổi nhà cung cấp
-   là thay một tệp.
+1. ~~Nhà cung cấp tìm kiếm web~~ — **ĐÃ CHỐT 28/08: Brave Search API.**
+   Task 8 không còn bị chặn; chi tiết API nằm trong chính Task 8.
 2. **Mức tặng credit tài khoản mới** (Task 11). Spec §3.4: *"đủ vài câu để thấy
    agent đáng tiền, ít đến mức farm không bõ công"*. Con số cụ thể chốt khi
    Task 6 cho biết một lượt hỏi thật tốn bao nhiêu.
@@ -363,7 +360,7 @@ xoá — nó được thay bằng cổng nói điều mới.
 
 **Interfaces:**
 - Produces: `cfg.DeepSeekAPIKey string`, `cfg.DeepSeekBaseURL string` (mặc định
-  `https://api.deepseek.com`), `cfg.SearchAPIKey string` — Task 4, 8 dùng.
+  `https://api.deepseek.com`), `cfg.BraveAPIKey string` — Task 4, 8 dùng.
 
 - [ ] **Step 1: Test đỏ cho config**
 
@@ -430,7 +427,7 @@ func TestProviderKeyNeverReachesLogOrResponse(t *testing.T) {
 					offenders = append(offenders, fmtLoc(path, i+1, line))
 				}
 			}
-			if strings.Contains(line, "DeepSeekAPIKey") || strings.Contains(line, "SearchAPIKey") {
+			if strings.Contains(line, "DeepSeekAPIKey") || strings.Contains(line, "BraveAPIKey") {
 				if strings.Contains(line, "Printf") || strings.Contains(line, "Println") ||
 					strings.Contains(line, "JSON(") || strings.Contains(line, "SendString") {
 					offenders = append(offenders, fmtLoc(path, i+1, line))
@@ -448,7 +445,7 @@ func TestProviderKeyNeverReachesLogOrResponse(t *testing.T) {
 }
 
 func fmtLoc(path string, line int, src string) string {
-	return path + ":" + itoa(line) + ": " + strings.TrimSpace(src)
+	return path + ":" + strconv.Itoa(line) + ": " + strings.TrimSpace(src)
 }
 ```
 
@@ -477,7 +474,7 @@ func TestProviderKeySentinelAppearsInNoResponse(t *testing.T) {
 - [ ] **Step 7: Xoá cổng cũ** — `git rm apps/api/internal/server/no_key_transit_test.go`
 - [ ] **Step 8: Chạy** — `cd apps/api && go test ./internal/server/ -run 'ProviderKey' -count=1`
 - [ ] **Step 9: `.env.example` + `docs/deploy.md`** — thêm `DEEPSEEK_API_KEY`,
-      `DEEPSEEK_BASE_URL`, `SEARCH_API_KEY`, kèm một dòng nói rõ chúng chỉ được
+      `DEEPSEEK_BASE_URL`, `BRAVE_API_KEY`, kèm một dòng nói rõ chúng chỉ được
       đặt ở môi trường, và đường thu hồi khi lộ.
 - [ ] **Step 10: Commit** — `git commit -m "Thay no_key_transit_test: máy chủ NAY giữ key, và đây là cổng canh nó không rời máy chủ"`
 
@@ -539,6 +536,28 @@ type Request struct {
 	Tools     []Tool
 	MaxTokens int
 	Stream    bool
+}
+
+// Ánh xạ 1-1 sang các cột Task 2 tạo. Một hàng ai_pricing cho mỗi model.
+type Pricing struct {
+	Model                   string // ai_pricing.model
+	CostMicroPer1kIn        int64  // ai_pricing.cost_micro_per_1k_in
+	CostMicroPer1kCachedIn  int64  // ai_pricing.cost_micro_per_1k_cached_in
+	CostMicroPer1kOut       int64  // ai_pricing.cost_micro_per_1k_out
+	CreditsPer1kIn          int64  // ai_pricing.credits_per_1k_in
+	CreditsPer1kCachedIn    int64  // ai_pricing.credits_per_1k_cached_in
+	CreditsPer1kOut         int64  // ai_pricing.credits_per_1k_out
+}
+
+// Đúng MỘT hàng ai_settings. T6, T8, T10 và T17 đều đọc struct này, nên nó
+// sống ở gói `ai` chứ không nhân bản ở từng chỗ dùng.
+type Settings struct {
+	BaseSystemPrompt      string // ai_settings.base_system_prompt
+	CreditsPerWebSearch   int64  // ai_settings.credits_per_web_search
+	CostMicroPerWebSearch int64  // ai_settings.cost_micro_per_web_search
+	SignupGrantMicro      int64  // ai_settings.signup_grant_micro
+	MaxTokensPerTurn      int    // ai_settings.max_tokens_per_turn
+	MaxToolRoundsPerTurn  int    // ai_settings.max_tool_rounds_per_turn
 }
 ```
 
@@ -830,13 +849,29 @@ func TestStreamStopsWhenClientDisconnects(t *testing.T) { /* goleak hoặc đế
 
 ---
 
-## Task 8: Tool web search — CHẶN bởi câu hỏi mở #1
+## Task 8: Tool web search qua Brave Search API
 
-**Không bắt đầu task này cho tới khi chủ dự án chốt nhà cung cấp tìm kiếm.**
-Mọi task khác chạy được mà không cần nó.
+Nhà cung cấp chốt 28/08/2026: **Brave**. Đo từ tài liệu Brave cùng ngày —
+dùng nguyên những giá trị này, không tra lại:
+
+| | |
+|---|---|
+| Endpoint | `GET https://api.search.brave.com/res/v1/web/search` |
+| Header xác thực | `X-Subscription-Token: <BRAVE_API_KEY>` — **không** phải `Authorization: Bearer` |
+| Tham số | `q` · `count` (tối đa **20**) · `country` · `search_lang` · `safesearch` (`off`/`moderate`/`strict`, mặc định `moderate`) |
+| Kết quả | mảng `web.results[]`, mỗi phần tử có `title`, `url`, `description` |
+
+Ba điều đáng chú ý:
+
+- **Header khác lệ thường.** `X-Subscription-Token`, không phải `Authorization`.
+  Đặt sai chỗ thì Brave trả 401 mà không nói vì sao.
+- **`count` trần 20.** `maxPerTurn` của tool là số LƯỢT TÌM, không phải số kết
+  quả mỗi lượt; hai con số khác nhau và cả hai đều là tiền.
+- **`safesearch` mặc định `moderate`.** Đây là nền tảng học tập; giữ mặc định.
 
 **Files:**
-- Create: `apps/api/internal/ai/tool_search.go`, `apps/api/internal/ai/tool_search_test.go`
+- Create: `apps/api/internal/ai/tool_search.go`, `apps/api/internal/ai/brave.go`
+- Create: `apps/api/internal/ai/tool_search_test.go`, `apps/api/internal/ai/brave_test.go`
 
 **Interfaces:**
 - Produces:
@@ -860,8 +895,69 @@ chuỗi nói đã hết lượt tìm, để model biết mà dừng.
 
 - [ ] **Step 2: Test đỏ — `Result.WebSearches` đếm đúng, vì nó là tiền**
 - [ ] **Step 3: Test đỏ — provider lỗi thì tool trả chữ, không làm hỏng lượt**
-- [ ] **Step 4: Chạy đỏ, viết interface + một implementation, chạy xanh**
-- [ ] **Step 5: Commit** — `git commit -m "Tool web search: interface trước, trần mỗi lượt, đếm để tính tiền"`
+- [ ] **Step 4: Test đỏ — `brave.go` gửi đúng header, kẹp `count`, chịu được `web` vắng mặt**
+
+```go
+func TestBraveSendsSubscriptionTokenHeader(t *testing.T) {
+	var gotTok, gotAuth, gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotTok, gotAuth = r.Header.Get("X-Subscription-Token"), r.Header.Get("Authorization")
+		gotQuery = r.URL.Query().Get("q")
+		io.WriteString(w, `{"web":{"results":[{"title":"T","url":"https://e.com","description":"D"}]}}`)
+	}))
+	defer srv.Close()
+	hits, err := NewBrave(srv.URL, "bk-test", srv.Client()).Search(context.Background(), "vòng lặp", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotTok != "bk-test" {
+		t.Errorf("X-Subscription-Token = %q", gotTok)
+	}
+	// Đặt key vào Authorization là lỗi phản xạ, và Brave chỉ trả 401 câm.
+	if gotAuth != "" {
+		t.Errorf("Authorization phải RỖNG với Brave, có %q", gotAuth)
+	}
+	if gotQuery != "vòng lặp" {
+		t.Errorf("q = %q", gotQuery)
+	}
+	if len(hits) != 1 || hits[0].Title != "T" || hits[0].URL != "https://e.com" || hits[0].Snippet != "D" {
+		t.Errorf("hits = %+v", hits)
+	}
+}
+
+// Brave trần count ở 20; gửi 100 lên là một 422 lúc chạy thật.
+func TestBraveClampsCountToTwenty(t *testing.T) {
+	var gotCount string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCount = r.URL.Query().Get("count")
+		io.WriteString(w, `{"web":{"results":[]}}`)
+	}))
+	defer srv.Close()
+	_, _ = NewBrave(srv.URL, "k", srv.Client()).Search(context.Background(), "q", 100)
+	if gotCount != "20" {
+		t.Errorf("count = %q, muốn kẹp về 20", gotCount)
+	}
+}
+
+// Khoá `web` VẮNG MẶT khi không có kết quả nào — không phải một mảng rỗng.
+func TestBraveHandlesMissingWebKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{}`)
+	}))
+	defer srv.Close()
+	hits, err := NewBrave(srv.URL, "k", srv.Client()).Search(context.Background(), "q", 5)
+	if err != nil {
+		t.Fatalf("thiếu khoá web KHÔNG phải lỗi: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Errorf("hits = %+v, muốn rỗng", hits)
+	}
+}
+```
+
+- [ ] **Step 5: Test đỏ — lỗi Brave KHÔNG mang key ra ngoài** (cùng lối Task 4 Step 2)
+- [ ] **Step 6: Chạy đỏ, viết `tool_search.go` + `brave.go`, chạy xanh**
+- [ ] **Step 7: Commit** — `git commit -m "Tool web search qua Brave: header X-Subscription-Token, count kẹp 20, trần lượt tìm"`
 
 ---
 
@@ -989,13 +1085,22 @@ Cổng mới bắt buộc của spec §8.
 
 - [ ] **Step 1: Test đỏ — `useAI` không còn tham chiếu `vaultClient`**
 
+Cổng cấu trúc, không phải hành vi: một import còn sót giữ cả `apps/vault` sống
+trong bundle, và Task 16 sẽ đỏ vì một lý do trông không liên quan.
+
+**Phạm vi hẹp CÓ CHỦ Ý.** Ở thời điểm Task 13, **mười** tệp dưới `src/ai/`
+còn nhắc vault — Task 13 chỉ sở hữu bốn. Sáu tệp kia là việc của Task 16, và
+một cổng quét cả thư mục ở đây sẽ đỏ vì mã Task 13 không được phép sửa. Task 16
+Step 7 mở rộng đúng cổng này ra cả `src/ai/**` sau khi đã xoá — nên có một cổng
+thật ở CẢ HAI mốc, và không mốc nào khẳng định điều chưa đúng.
+
 ```ts
-// Cổng cấu trúc, không phải cổng hành vi: một import còn sót giữ cả apps/vault
-// sống trong bundle, và Task 16 sẽ đỏ vì một lý do trông không liên quan.
-it('không mô-đun nào dưới ai/ còn import @vault-protocol', async () => {
-  const files = await glob('src/ai/**/*.{ts,tsx}', { cwd: import.meta.dirname + '/../..' });
-  for (const f of files) {
-    const src = await readFile(f, 'utf8');
+// Bốn tệp Task 13 sở hữu. Task 16 thay danh sách này bằng một glob.
+const THUOC_TASK_13 = ['useAI.ts', 'serverClient.ts', 'AskPanel.tsx', 'DeepDive.tsx'];
+
+it('bốn mô-đun Task 13 sở hữu không còn nhắc vault', async () => {
+  for (const f of THUOC_TASK_13) {
+    const src = await readFile(new URL(`./${f}`, import.meta.url), 'utf8');
     expect(src, f).not.toMatch(/vault/i);
   }
 });
@@ -1070,12 +1175,18 @@ Ràng buộc toàn cục #4. **Một commit cho mỗi nhóm**, không phải m�
 - Delete: `apps/vault/**` (185 bài kiểm), `apps/web/src/ai/vaultClient.ts` (+test),
   `apps/web/src/shell/VaultFrame.tsx` (+test), `apps/web/src/ai/noKeyLeak.test.ts`,
   `apps/web/src/ai/protocolAlias.test.ts`
+- Modify: `apps/web/src/ai/promptsCorpus.test.ts` (còn nhắc vault; đo được ở
+  quét tiền-chuyến, KHÔNG có trong bản plan đầu)
 - Modify: `apps/web/src/shell/Shell.tsx`, `reader/ChapterView.tsx`,
   `styles/app-screens.css`, `styles/settings-auth.css`, `vite-env.d.ts`
 - Modify: `Makefile` (bỏ `dev-vault`, `test-vault`), `docs/deploy.md` (bỏ `vault.duy.dev`)
 
-- [ ] **Step 1: Đếm trước khi gỡ** — `git grep -l "vaultClient\|VaultFrame\|vault-protocol" apps/web/src | wc -l`
-      → hôm nay là **19**. Ghi con số vào commit message; sau khi gỡ phải là **0**.
+- [ ] **Step 1: Đếm trước khi gỡ** — chạy lệnh, ghi con số vào commit message.
+      Đừng tin một con số in sẵn trong plan: nó trôi theo mỗi commit.
+
+```bash
+git grep -lie vault -- apps/web/src | tee /tmp/vault-truoc.txt | wc -l
+```
 - [ ] **Step 2: Gỡ `noKeyLeak.test.ts`** — commit riêng, lý do: không còn key nào
       phía client để canh.
 - [ ] **Step 3: Gỡ `apps/vault/**` + `@vault-protocol`** — commit riêng, lý do:
@@ -1084,7 +1195,20 @@ Ràng buộc toàn cục #4. **Một commit cho mỗi nhóm**, không phải m�
 - [ ] **Step 5: Dọn Makefile + deploy.md** — commit riêng, và kiểm rằng
       `docs/deploy.md` không còn hứa một tên miền thứ ba.
 - [ ] **Step 6: Chạy toàn bộ** — `make test-web && make test-format && make test-cli`
-- [ ] **Step 7: Đếm lại** — lệnh Step 1 phải trả **0**.
+- [ ] **Step 7: MỞ RỘNG cổng của Task 13 ra cả thư mục** — thay danh sách bốn
+      tệp cứng bằng một glob, giờ đã đúng vì sáu tệp kia không còn:
+
+```ts
+it('không mô-đun nào dưới ai/ còn nhắc vault', async () => {
+  const dir = new URL('.', import.meta.url);
+  for (const f of await readdir(dir)) {
+    if (!/\.(ts|tsx)$/.test(f)) continue;
+    expect(await readFile(new URL(f, dir), 'utf8'), f).not.toMatch(/vault/i);
+  }
+});
+```
+
+- [ ] **Step 8: Đếm lại** — `git grep -lie vault -- apps/web/src | wc -l` phải trả **0**.
 
 ---
 
