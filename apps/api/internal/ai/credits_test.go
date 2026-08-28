@@ -42,6 +42,26 @@ func newCreditsUser(t *testing.T, pool *pgxpool.Pool, label string, startMicro i
 	return id
 }
 
+// newUserWithoutCredits inserts a real users row and NOTHING else — no
+// ai_credits row at all. Exists for
+// TestEnsureCreditTreatsMissingCreditsRowAsInsufficient, which needs a user
+// who has never been granted anything (the shape a caller sees between
+// signup and Task 10's grant landing, or any bug that lets the two drift
+// apart), distinct from newCreditsUser's "has a row, balance 0".
+func newUserWithoutCredits(t *testing.T, pool *pgxpool.Pool, label string) uuid.UUID {
+	t.Helper()
+
+	var id uuid.UUID
+	email := fmt.Sprintf("credits-%s-%s@example.test", label, uuid.NewString())
+	err := pool.QueryRow(context.Background(),
+		`INSERT INTO users (email, name, pw_hash) VALUES ($1,$2,$3) RETURNING id`,
+		email, label, "not-a-real-hash").Scan(&id)
+	if err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	return id
+}
+
 // balanceOf đọc thẳng balance_micro hiện tại của userID, không đi qua
 // Service — một trợ giúp độc lập với mã đang được kiểm.
 func balanceOf(t *testing.T, pool *pgxpool.Pool, userID uuid.UUID) int64 {
@@ -84,6 +104,32 @@ func seedTestPricing(t *testing.T, pool *pgxpool.Pool, model string) {
 	}
 }
 
+// seedAsymmetricTestPricing is seedTestPricing's cost_micro_* columns
+// (unchanged: 1000/100/500) paired with credits_* columns at DOUBLE those
+// rates (2000/200/1000) instead of the same numbers.
+//
+// Round 1 review, I2: seedTestPricing alone makes cost_micro and
+// credits_charged IDENTICAL in every test that uses it (both 1000/100/500),
+// so a mutant that swaps Charge's two return values (`credits, costMicro
+// := Charge(...)`) or that has ChargeTurn return costMicro instead of
+// credits is invisible to every assertion in this file — cost_micro ==
+// credits_charged == charged no matter which one lands where. Only
+// TestChargeTurnWritesExactLedgerRow claims to guard the field mapping, so
+// it is the one test in this file that needs the two numbers to actually
+// differ; every other test keeps using seedTestPricing on purpose (their
+// own arithmetic — e.g. Step 2's balance 10, charge 500, land on -490 —
+// stays easy to verify by hand when cost and credits agree).
+func seedAsymmetricTestPricing(t *testing.T, pool *pgxpool.Pool, model string) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(), `
+		INSERT INTO ai_pricing (model, cost_micro_per_1k_in, cost_micro_per_1k_cached_in,
+			cost_micro_per_1k_out, credits_per_1k_in, credits_per_1k_cached_in, credits_per_1k_out)
+		VALUES ($1, 1000, 100, 500, 2000, 200, 1000)`, model)
+	if err != nil {
+		t.Fatalf("seed ai_pricing: %v", err)
+	}
+}
+
 // TestChargeAndLedgerCommitTogether khoá đúng lời hứa cốt lõi của brief:
 // trừ credit (UPDATE ai_credits) và ghi sổ (INSERT ai_usage) là MỘT
 // transaction, không phải hai câu lệnh rời nhau.
@@ -96,6 +142,15 @@ func seedTestPricing(t *testing.T, pool *pgxpool.Pool, model string) {
 // cũng biến mất theo; nếu hai lệnh rời nhau, UPDATE đã commit độc lập và
 // số dư đổi vĩnh viễn dù không hàng sổ nào được ghi. Test khẳng định vế
 // sau KHÔNG xảy ra.
+//
+// CẢNH BÁO KHI SỬA credits.go: cơ chế ép lỗi ở trên phụ thuộc CHẶT vào
+// việc r.Usage.CacheMissTokens vẫn map vào cột in_tokens (không phải
+// cached_in_tokens hay bất kỳ cột nào khác). Đổi ánh xạ đó (kể cả để sửa
+// I2 — xem seedAsymmetricTestPricing) mà không cập nhật badResult bên
+// dưới sẽ âm thầm làm test này hết còn ép được lỗi gì cả — CHECK
+// (cached_in_tokens >= 0) cũng tồn tại nên nó vẫn có thể "may mắn" đỏ đúng
+// chỗ khác, nhưng đừng dựa vào may mắn đó, kiểm lại bằng tay nếu ánh xạ
+// đổi.
 func TestChargeAndLedgerCommitTogether(t *testing.T) {
 	pool := store.TestPool(t)
 	ctx := context.Background()
@@ -124,6 +179,13 @@ func TestChargeAndLedgerCommitTogether(t *testing.T) {
 // TestChargeTurnGoesNegativeMidTurnAndFinishes khoá spec §3.4: một lượt hết
 // credit GIỮA CHỪNG vẫn chạy nốt, và số dư sau đó được PHÉP âm — số dư 10,
 // lượt tốn 500 -> balance_micro == -490, khớp nguyên văn ví dụ của brief.
+//
+// result.Answer để "" CÓ CHỦ Ý (không chỉ là giá trị zero mặc định bị bỏ
+// quên) — đây cũng LÀ hình dạng "lượt trắng" của món nợ #2 (Content=="" và
+// không tool_calls, Run vẫn trả (Result, nil)). Trước round 1 review điều
+// này chỉ đúng TÌNH CỜ; giờ ghi thành ý định: ChargeTurn không đặc cách
+// Answer rỗng, nó trừ tiền y hệt mọi Result khác dựa trên r.Usage — xem
+// điểm 2 ở doc comment đầu credits.go.
 func TestChargeTurnGoesNegativeMidTurnAndFinishes(t *testing.T) {
 	pool := store.TestPool(t)
 	ctx := context.Background()
@@ -134,7 +196,7 @@ func TestChargeTurnGoesNegativeMidTurnAndFinishes(t *testing.T) {
 
 	userID := newCreditsUser(t, pool, "negative", 10)
 
-	result := Result{Usage: Usage{CompletionTokens: 1000}}
+	result := Result{Answer: "", Usage: Usage{CompletionTokens: 1000}}
 
 	charged, err := svc.ChargeTurn(ctx, userID, result, model)
 	if err != nil {
@@ -156,21 +218,23 @@ func TestChargeTurnGoesNegativeMidTurnAndFinishes(t *testing.T) {
 // CHECK (>= 0), and the other tests only assert the TOTAL credits charged,
 // which a swap of two distinct fields does not change when both are
 // nonzero-but-untested. This test reads the row back and checks every
-// column against a hand-computed total (seedTestPricing uses round
-// numbers specifically so this is easy to verify by hand):
+// column, using seedAsymmetricTestPricing (credits at DOUBLE cost's rate —
+// see that helper's comment, round 1 review I2) so cost_micro and
+// credits_charged land on two DIFFERENT numbers: a test that could pass
+// with the two swapped, or with ChargeTurn returning the wrong one as
+// `charged`, was not actually guarding either.
 //
-//	cost_micro = divUp(4000,100) + divUp(3000,1000) + divUp(1000,500)
-//	           =      400        +      3000         +      500       = 3900
-//
-// credits_charged uses the same rates in seedTestPricing, so it comes out
-// to the identical 3900.
+//	cost_micro     = divUp(4000,100)  + divUp(3000,1000) + divUp(1000,500)
+//	               =      400         +      3000         +      500       = 3900
+//	credits_charged = divUp(4000,200) + divUp(3000,2000) + divUp(1000,1000)
+//	               =      800         +      6000         +      1000      = 7800
 func TestChargeTurnWritesExactLedgerRow(t *testing.T) {
 	pool := store.TestPool(t)
 	ctx := context.Background()
 	svc := NewService(pool)
 
 	const model = "ledger-row-test-model"
-	seedTestPricing(t, pool, model)
+	seedAsymmetricTestPricing(t, pool, model)
 
 	userID := newCreditsUser(t, pool, "ledger-row", 100000)
 
@@ -184,14 +248,21 @@ func TestChargeTurnWritesExactLedgerRow(t *testing.T) {
 		WebSearches: 2,
 	}
 
-	if _, err := svc.ChargeTurn(ctx, userID, result, model); err != nil {
+	const wantCostMicro = 400 + 3000 + 500 // 3900
+	const wantCredits = 800 + 6000 + 1000  // 7800
+
+	charged, err := svc.ChargeTurn(ctx, userID, result, model)
+	if err != nil {
 		t.Fatalf("ChargeTurn: %v", err)
+	}
+	if charged != wantCredits {
+		t.Errorf("ChargeTurn returned charged=%d, want %d (credits_charged, the price sold to the learner — NOT cost_micro, the platform's own cost) — round 1 review I2: this is the assertion that would catch ChargeTurn returning costMicro instead of credits", charged, wantCredits)
 	}
 
 	var gotModel string
 	var inTokens, cachedInTokens, outTokens, toolCalls, webSearches int
 	var costMicro, creditsCharged int64
-	err := pool.QueryRow(ctx, `
+	err = pool.QueryRow(ctx, `
 		SELECT model, in_tokens, cached_in_tokens, out_tokens, tool_calls, web_searches,
 		       cost_micro, credits_charged
 		FROM ai_usage WHERE user_id = $1`, userID).
@@ -200,8 +271,6 @@ func TestChargeTurnWritesExactLedgerRow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read ai_usage row: %v", err)
 	}
-
-	const wantTotal = 400 + 3000 + 500 // 3900
 
 	if gotModel != model {
 		t.Errorf("model: want %q, got %q", model, gotModel)
@@ -221,11 +290,66 @@ func TestChargeTurnWritesExactLedgerRow(t *testing.T) {
 	if webSearches != 2 {
 		t.Errorf("web_searches: want 2, got %d", webSearches)
 	}
-	if costMicro != wantTotal {
-		t.Errorf("cost_micro: want %d, got %d", wantTotal, costMicro)
+	if costMicro != wantCostMicro {
+		t.Errorf("cost_micro: want %d, got %d", wantCostMicro, costMicro)
 	}
-	if creditsCharged != wantTotal {
-		t.Errorf("credits_charged: want %d, got %d", wantTotal, creditsCharged)
+	if creditsCharged != wantCredits {
+		t.Errorf("credits_charged: want %d, got %d", wantCredits, creditsCharged)
+	}
+}
+
+// TestChargeTurnAppliesWebSearchSurcharge locks the other live input Charge
+// (cost.go) reads besides Usage/Pricing: Settings.CreditsPerWebSearch and
+// Settings.CostMicroPerWebSearch.
+//
+// Round 1 review, I1: migration 0007 seeds ai_settings with BOTH surcharge
+// columns at 0, and no other test in this file changes them — so a mutant
+// that drops r.WebSearches from the Charge(...) call entirely (2 *
+// 0 == 0, same as 2 * <anything> * 0) is invisible everywhere else,
+// including TestChargeTurnWritesExactLedgerRow's web_searches column
+// (written straight from r.WebSearches into the INSERT, never through
+// Charge at all — that assertion guards the LEDGER ROW, not the PRICE).
+// This test UPDATEs the one ai_settings row to a nonzero surcharge — safe
+// because store.TestPool gives every test its own disposable container —
+// and checks the surcharge lands in real money.
+func TestChargeTurnAppliesWebSearchSurcharge(t *testing.T) {
+	pool := store.TestPool(t)
+	ctx := context.Background()
+	svc := NewService(pool)
+
+	const model = "web-search-surcharge-test-model"
+	seedTestPricing(t, pool, model)
+
+	if _, err := pool.Exec(ctx,
+		`UPDATE ai_settings SET credits_per_web_search = 300, cost_micro_per_web_search = 150`); err != nil {
+		t.Fatalf("seed ai_settings surcharge: %v", err)
+	}
+
+	userID := newCreditsUser(t, pool, "web-search", 100000)
+
+	result := Result{Usage: Usage{CompletionTokens: 1000}, WebSearches: 2}
+
+	// seedTestPricing: divUp(1000, 500) == 500 token credits (and 500 token
+	// cost_micro, same rate). Two web searches at 300 credits/150
+	// cost_micro each add 600/300 on top.
+	const wantCharged = 500 + 2*300
+	const wantCostMicro = 500 + 2*150
+
+	charged, err := svc.ChargeTurn(ctx, userID, result, model)
+	if err != nil {
+		t.Fatalf("ChargeTurn: %v", err)
+	}
+	if charged != wantCharged {
+		t.Errorf("charged: want %d (token credits + web-search surcharge), got %d", wantCharged, charged)
+	}
+
+	var costMicro int64
+	if err := pool.QueryRow(ctx, `SELECT cost_micro FROM ai_usage WHERE user_id = $1`, userID).
+		Scan(&costMicro); err != nil {
+		t.Fatalf("read ai_usage.cost_micro: %v", err)
+	}
+	if costMicro != wantCostMicro {
+		t.Errorf("cost_micro: want %d (token cost + web-search surcharge), got %d", wantCostMicro, costMicro)
 	}
 }
 
@@ -266,6 +390,50 @@ func TestEnsureCreditAllowsPositiveBalance(t *testing.T) {
 	}
 }
 
+// TestEnsureCreditBlocksAtExactlyZero pins the boundary itself.
+//
+// Round 1 review, I3: the two tests above only ever exercise +10 (allowed)
+// and -490 (blocked) — nothing in this file previously distinguished
+// `balance <= 0` from `balance < 0`, so a mutant that changed the operator
+// passed both. Balance exactly 0 is the one value that actually separates
+// the two operators, and it is also the realistic case: a learner who has
+// spent precisely what they were given, before ever going negative.
+func TestEnsureCreditBlocksAtExactlyZero(t *testing.T) {
+	pool := store.TestPool(t)
+	ctx := context.Background()
+	svc := NewService(pool)
+
+	userID := newCreditsUser(t, pool, "zero", 0)
+
+	if err := svc.EnsureCredit(ctx, userID); !errors.Is(err, ErrInsufficientCredit) {
+		t.Errorf("want ErrInsufficientCredit at balance == 0 (the boundary itself), got %v", err)
+	}
+}
+
+// TestEnsureCreditTreatsMissingCreditsRowAsInsufficient pins the error
+// SHAPE EnsureCredit returns for a user with no ai_credits row at all —
+// distinct from every balance-based test above, which all seed a row
+// first.
+//
+// Round 1 review, minor: without credits.go's explicit pgx.ErrNoRows
+// branch, this case would surface as a generic wrapped lookup error
+// instead of ErrInsufficientCredit. A caller that branches with
+// errors.Is(err, ErrInsufficientCredit) to choose between an HTTP 402 and
+// a 500 needs this case to read the same as a negative or zero balance —
+// "nothing to spend" is the same fact whether the row says 0 or is simply
+// absent.
+func TestEnsureCreditTreatsMissingCreditsRowAsInsufficient(t *testing.T) {
+	pool := store.TestPool(t)
+	ctx := context.Background()
+	svc := NewService(pool)
+
+	userID := newUserWithoutCredits(t, pool, "no-row")
+
+	if err := svc.EnsureCredit(ctx, userID); !errors.Is(err, ErrInsufficientCredit) {
+		t.Errorf("want ErrInsufficientCredit for a user with no ai_credits row, got %v", err)
+	}
+}
+
 // dbColumn is one row of information_schema.columns, the subset
 // columnsOf needs.
 type dbColumn struct {
@@ -299,16 +467,42 @@ func columnsOf(t *testing.T, table string) []dbColumn {
 	return cols
 }
 
+// freeTextTypes are the Postgres data_type strings (as
+// information_schema.columns reports them) capable of holding an
+// unbounded blob of prose — a conversation body, specifically.
+//
+// Round 1 review, I4: the previous version of this test checked only
+// c.Type == "text". A varchar column reports "character varying", not
+// "text" — and json/jsonb columns report their own names — so all three
+// could carry a conversation body exactly as well as text can, and none
+// of them were being checked.
+var freeTextTypes = map[string]bool{
+	"text":              true,
+	"character varying": true,
+	"json":              true,
+	"jsonb":             true,
+}
+
 // TestUsageLedgerHasNoFreeTextColumn is global constraint #2 of the whole
 // phase, enforced at the SCHEMA layer rather than as a "remember not to
 // write it" convention: ai_usage (migration 0007_ai_credits) may hold
-// MEASUREMENTS only. A free-text column beyond "model" is exactly where a
-// conversation body would eventually drift in.
+// MEASUREMENTS only. A free-text-capable column beyond "model" is exactly
+// where a conversation body would eventually drift in.
 func TestUsageLedgerHasNoFreeTextColumn(t *testing.T) {
 	cols := columnsOf(t, "ai_usage")
+	if len(cols) == 0 {
+		// Round 1 review, I4: a typo'd table name, a wrong search_path, or
+		// a dropped table all make information_schema.columns return
+		// nothing — and an empty result makes the loop below assert
+		// NOTHING and pass silently. This is the same "blind gate" shape
+		// i18n_server_speaks_codes_test.go's own minProductionGoFiles
+		// anchor guards against: a gate that can pass by reading zero rows
+		// is a gate that stopped gating without ever turning red.
+		t.Fatalf("columnsOf(%q) returned no columns — the table lookup itself is broken, not that the table has no free-text column", "ai_usage")
+	}
 	for _, c := range cols {
-		if c.Type == "text" && c.Name != "model" {
-			t.Errorf("text column %q in ai_usage — this ledger may only hold MEASUREMENTS, and a free-text column is where a conversation body would drift in", c.Name)
+		if freeTextTypes[c.Type] && c.Name != "model" {
+			t.Errorf("free-text-capable column %q (%s) in ai_usage — this ledger may only hold MEASUREMENTS, and a free-text-capable column is where a conversation body would drift in", c.Name, c.Type)
 		}
 	}
 }
