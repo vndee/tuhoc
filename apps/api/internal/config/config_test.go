@@ -21,6 +21,7 @@ func clearAPIEnv(t *testing.T) {
 	for _, k := range []string{
 		"PORT", "DATABASE_URL", "CORS_ORIGIN", "COOKIE_SECURE",
 		"GITHUB_TOKEN", "GITHUB_DISCUSSIONS_REPO", "ADMIN_TOKEN",
+		"DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "BRAVE_API_KEY",
 	} {
 		t.Setenv(k, "")
 	}
@@ -142,6 +143,67 @@ func TestLoad_AdminTokenOffByDefault(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "s3cret-admin-token")
 	if got := Load().AdminToken; got != "s3cret-admin-token" {
 		t.Fatalf("ADMIN_TOKEN override: want passthrough got %q", got)
+	}
+}
+
+// TestLoad_DeepSeekAPIKeyOffByDefault pins the same shape as
+// TestLoad_AdminTokenOffByDefault: this is the platform's OWN credential to
+// DeepSeek (Pha 2's server-side AI pivot — see config.go's own comment on
+// this field for why it is a genuinely different risk class from
+// GitHubToken/AdminToken above it). An unset key is the normal state of
+// every checkout that has not chosen a DeepSeek account yet, and Load must
+// pass a set value through verbatim — this is compared byte-for-byte
+// against what internal/ai (Task 4) sends DeepSeek on the Authorization
+// header, so it must never be trimmed or otherwise mangled.
+func TestLoad_DeepSeekAPIKeyOffByDefault(t *testing.T) {
+	clearAPIEnv(t)
+
+	if got := Load().DeepSeekAPIKey; got != "" {
+		t.Fatalf("DEEPSEEK_API_KEY unset: want empty (AI path off) got %q", got)
+	}
+
+	t.Setenv("DEEPSEEK_API_KEY", "sk-abc")
+	if got := Load().DeepSeekAPIKey; got != "sk-abc" {
+		t.Fatalf("DEEPSEEK_API_KEY override: want passthrough got %q", got)
+	}
+}
+
+// TestLoad_DeepSeekBaseURLDefaultAndOverride pins the same shape as
+// TestLoad_CORSOriginDefaultAndOverride: DEEPSEEK_BASE_URL has a real
+// default (the documented DeepSeek endpoint) rather than requiring an
+// operator to type it out, because a second mandatory env var whose correct
+// production value is always the one thing docs/deploy.md already prints is
+// one more way deployment can go wrong for no benefit.
+func TestLoad_DeepSeekBaseURLDefaultAndOverride(t *testing.T) {
+	clearAPIEnv(t)
+
+	if got := Load().DeepSeekBaseURL; got != DefaultDeepSeekBaseURL {
+		t.Fatalf("DEEPSEEK_BASE_URL unset: want default %q got %q", DefaultDeepSeekBaseURL, got)
+	}
+	if DefaultDeepSeekBaseURL != "https://api.deepseek.com" {
+		t.Fatalf("DefaultDeepSeekBaseURL drifted from the documented endpoint: %q", DefaultDeepSeekBaseURL)
+	}
+
+	t.Setenv("DEEPSEEK_BASE_URL", "https://deepseek.example.test")
+	if got := Load().DeepSeekBaseURL; got != "https://deepseek.example.test" {
+		t.Fatalf("DEEPSEEK_BASE_URL override: want %q got %q", "https://deepseek.example.test", got)
+	}
+}
+
+// TestLoad_BraveAPIKeyOffByDefault pins the same shape as
+// TestLoad_DeepSeekAPIKeyOffByDefault, for the second provider key spec
+// §3.2 introduces (Brave Search — DeepSeek has no built-in web-search tool
+// of its own). Unset means the web-search tool is off, not a startup error.
+func TestLoad_BraveAPIKeyOffByDefault(t *testing.T) {
+	clearAPIEnv(t)
+
+	if got := Load().BraveAPIKey; got != "" {
+		t.Fatalf("BRAVE_API_KEY unset: want empty (web search tool off) got %q", got)
+	}
+
+	t.Setenv("BRAVE_API_KEY", "brave-key-xyz")
+	if got := Load().BraveAPIKey; got != "brave-key-xyz" {
+		t.Fatalf("BRAVE_API_KEY override: want passthrough got %q", got)
 	}
 }
 
