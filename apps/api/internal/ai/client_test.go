@@ -89,19 +89,92 @@ func TestCompleteSendsBearerAndParsesUsage(t *testing.T) {
 // trường), test này quét HÀNH VI (giá trị lỗi thật, ở đúng gói phát sinh
 // nó) — hai nửa bổ khuyết cho nhau đúng cách provider_key_never_leaks_test.go
 // tự mô tả về chính nó.
+//
+// VÒNG SỬA 1 (review opus): bản trước chỉ canh MỘT trong tám đường trả lỗi
+// của Complete (500 kèm error.message) — bảy đường còn lại (marshal hỏng,
+// build request hỏng, mạng hỏng, đọc body hỏng, 200/500 body không parse
+// được, JSON hỏng, không có choices) đúng trên VĂN XUÔI chú thích, không
+// trên một khẳng định chạy được. Nghiêm trọng vì cổng cấu trúc
+// provider_key_never_leaks_test.go tự ghi nó MÙ với gói internal/ai (xem
+// PHẠM VI THẬT điểm 2 của tệp đó) — nên test hành vi ở đây là lớp phòng
+// thủ DUY NHẤT, đúng lúc Task 6/7/9 sắp thêm mã vào chính gói này. Bảng
+// dưới đây phủ năm trong tám đường tới được TỪ NGOÀI (marshal req/build
+// request không đứng lên được — req luôn hợp lệ ở đây; hai đường 200-body
+// hỏng gộp vào bảng vì cùng cơ chế với 500-thân-hỏng):
+//
+//   - server đóng kết nối ngay, không trả byte nào → err từ c.http.Do
+//     (đường "mạng hỏng")
+//   - 500 kèm error.message → đường status!=200 có message (đã canh từ
+//     đầu, giữ lại)
+//   - 200 nhưng thân không phải JSON hợp lệ → đường decode wireResponse hỏng
+//   - 200 nhưng thân là {} rỗng, không có choices → đường "không có choices"
+//   - context đã huỷ trước khi gọi → đường ctx.Err() nổi lên qua c.http.Do
 func TestCompleteErrorNeverContainsKey(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(500)
-		io.WriteString(w, `{"error":{"message":"boom"}}`)
-	}))
-	defer srv.Close()
-	_, err := New(srv.URL, "sk-SENTINEL", srv.Client()).
-		Complete(context.Background(), Request{Model: "m", Messages: []Message{{Role: "user"}}})
-	if err == nil {
-		t.Fatal("muốn lỗi")
+	const sentinel = "sk-SENTINEL-do-not-emit-4f2c"
+
+	canceledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	cases := []struct {
+		name    string
+		handler http.HandlerFunc
+		ctx     context.Context // nil dùng context.Background()
+	}{
+		{
+			name: "server đóng kết nối ngay, không trả gì (lỗi mạng)",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				// httptest.Server luôn phục vụ qua net/http.Server thật trên
+				// TCP, nên Hijacker luôn có mặt — không cần kiểm ok.
+				hj := w.(http.Hijacker)
+				conn, _, _ := hj.Hijack()
+				conn.Close()
+			},
+		},
+		{
+			name: "500 kèm error.message",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(500)
+				io.WriteString(w, `{"error":{"message":"boom"}}`)
+			},
+		},
+		{
+			name: "200 nhưng thân không phải JSON hợp lệ",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				io.WriteString(w, `khong phai json, chi la rac`)
+			},
+		},
+		{
+			name: "200 nhưng thân là {} rỗng — không có choices",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				io.WriteString(w, `{}`)
+			},
+		},
+		{
+			name: "context đã huỷ trước khi gọi",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],"usage":{}}`)
+			},
+			ctx: canceledCtx,
+		},
 	}
-	if strings.Contains(err.Error(), "sk-SENTINEL") {
-		t.Errorf("lỗi mang key: %v", err)
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(tc.handler)
+			defer srv.Close()
+			ctx := tc.ctx
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			_, err := New(srv.URL, sentinel, srv.Client()).
+				Complete(ctx, Request{Model: "m", Messages: []Message{{Role: "user"}}})
+			if err == nil {
+				t.Fatal("muốn lỗi")
+			}
+			if strings.Contains(err.Error(), sentinel) {
+				t.Errorf("lỗi mang key: %v", err)
+			}
+		})
 	}
 }
 
@@ -198,6 +271,128 @@ func TestCompleteOmitsToolsFieldWhenRequestHasNone(t *testing.T) {
 	}
 	if strings.Contains(gotBody, `"tools"`) {
 		t.Errorf("thân request mang khoá tools dù Request.Tools rỗng: %s", gotBody)
+	}
+}
+
+// TestCompleteOmitsMaxTokensFieldWhenZero là việc #5 round-1 review:
+// wireRequest.MaxTokens thiếu omitempty trong khi Tools có, và năm trong
+// sáu test gốc gọi Complete không đặt MaxTokens — tức đang lặng lẽ gửi
+// "max_tokens": 0 mà không test nào phát hiện, vì httptest không bao giờ
+// phàn nàn về giá trị đó. Hành vi thật của DeepSeek với max_tokens: 0
+// KHÔNG có trong docs/deepseek-measured.md, nên không đoán nó — chỉ đảm
+// bảo Request.MaxTokens == 0 (giá trị zero của Go, "caller không đặt")
+// không tự ý gửi lên một con số DeepSeek chưa từng được đo phản ứng ra sao.
+func TestCompleteOmitsMaxTokensFieldWhenZero(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],"usage":{}}`)
+	}))
+	defer srv.Close()
+
+	_, err := New(srv.URL, "sk-test", srv.Client()).Complete(context.Background(), Request{
+		Model:    "m",
+		Messages: []Message{{Role: "user", Content: "chào"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(gotBody, `"max_tokens"`) {
+		t.Errorf("thân request mang khoá max_tokens dù Request.MaxTokens == 0: %s", gotBody)
+	}
+}
+
+// TestCompleteRejectsStreamingRequests là việc #4 round-1 review:
+// Complete trước đây hardcode Stream: false và không bao giờ đọc
+// req.Stream — một caller đặt Stream: true nhận một lời gọi KHÔNG stream,
+// không lỗi, không cảnh báo. Task 7 (thêm đường streaming) sẽ đi thẳng vào
+// bẫy đó nếu nó tưởng Request.Stream: true đã được tôn trọng ở đâu đó.
+// Complete giờ từ chối thẳng, trước cả khi gọi mạng — baseURL cố tình trỏ
+// tới một host không giải quyết được (.invalid, RFC 2606) để chứng minh
+// không có request nào được gửi đi trước khi bị từ chối.
+func TestCompleteRejectsStreamingRequests(t *testing.T) {
+	// baseURL trỏ tới một host không giải quyết được (.invalid, RFC 2606) —
+	// nếu Complete lỡ không chặn sớm và thật sự cố gọi mạng, ta muốn thấy
+	// một lỗi DNS/kết nối RÕ RỆT KHÁC với lỗi từ chối Stream, để hai
+	// nguyên nhân không lẫn vào nhau trong khẳng định message dưới đây.
+	c := New("https://deepseek.invalid", "sk-test", &http.Client{Timeout: time.Second})
+	_, err := c.Complete(context.Background(), Request{
+		Model: "m", Messages: []Message{{Role: "user"}}, Stream: true,
+	})
+	if err == nil {
+		t.Fatal("muốn lỗi khi Request.Stream = true — Complete không hỗ trợ stream, không được nuốt im lặng")
+	}
+	if !strings.Contains(err.Error(), "Stream=true") {
+		t.Errorf("lỗi = %v, muốn nhắc rõ Stream=true bị từ chối (không phải một lỗi mạng tình cờ tới host .invalid)", err)
+	}
+}
+
+// TestCompleteTruncatesLongProviderErrorMessage là việc #2 round-1 review:
+// error.message của nhà cung cấp là văn bản BÊN THỨ BA tới 8 MiB (giới hạn
+// duy nhất trước đây là maxResponseBytes) chảy thẳng vào error.Error() —
+// và từ đó vào bất kỳ log nào ghi lại lỗi. Task 4b brief YÊU CẦU mang
+// error.message vào lỗi (để Task 6/7/9 phân biệt 401/429/500), nên không
+// thể bỏ hẳn như internal/discuss/client.go làm với body của GitHub —
+// cách dung hoà là cắt ở maxProviderErrorMessageBytes.
+func TestCompleteTruncatesLongProviderErrorMessage(t *testing.T) {
+	longMsg := strings.Repeat("x", 5000)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		io.WriteString(w, `{"error":{"message":"`+longMsg+`"}}`)
+	}))
+	defer srv.Close()
+
+	_, err := New(srv.URL, "sk-test", srv.Client()).
+		Complete(context.Background(), Request{Model: "m", Messages: []Message{{Role: "user"}}})
+	if err == nil {
+		t.Fatal("muốn lỗi")
+	}
+	if len(err.Error()) > 400 {
+		t.Errorf("lỗi dài %d byte — error.message của nhà cung cấp (5000 ký tự) phải bị cắt, không chảy nguyên vào lỗi/log", len(err.Error()))
+	}
+	if !strings.Contains(err.Error(), "truncated") {
+		t.Errorf("lỗi không có dấu hiệu đã cắt: %v", err)
+	}
+}
+
+// TestNewFallsBackToATimeoutClientWhenHCIsNil là việc #3 round-1 review:
+// bản trước rơi về http.DefaultClient khi hc == nil — một client KHÔNG
+// Timeout, treo vô hạn trước một nhà cung cấp nhận kết nối rồi im lặng.
+// Test đọc thẳng trường không xuất khẩu c.http vì client_test.go cùng gói
+// `ai` với client.go (kiểm nội bộ, không qua hành vi mạng — dựng một
+// server thật treo 90s+ chỉ để đo Timeout là đắt và không cần thiết khi
+// trường có thể đọc trực tiếp).
+func TestNewFallsBackToATimeoutClientWhenHCIsNil(t *testing.T) {
+	c := New("https://deepseek.invalid", "sk-test", nil)
+	if c.http == http.DefaultClient {
+		t.Fatal("New(..., nil) dùng http.DefaultClient — không có Timeout, một nhà cung cấp đứng hình sẽ treo mãi")
+	}
+	if c.http.Timeout <= 0 {
+		t.Errorf("http.Client rơi về không có Timeout (%v) khi hc == nil", c.http.Timeout)
+	}
+}
+
+// TestNewTrimsTrailingSlashFromBaseURL là việc-thêm round-1 review:
+// config.Load không chuẩn hoá DEEPSEEK_BASE_URL, và chatCompletionsPath đã
+// tự mang "/" ở đầu — một baseURL có "/" cuối (một lỗi cấu hình dễ mắc,
+// "https://api.deepseek.com/" thay vì không có "/") sẽ ghép thành
+// "…com//chat/completions" nếu New không cắt nó.
+func TestNewTrimsTrailingSlashFromBaseURL(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],"usage":{}}`)
+	}))
+	defer srv.Close()
+
+	_, err := New(srv.URL+"/", "sk-test", srv.Client()).
+		Complete(context.Background(), Request{Model: "m", Messages: []Message{{Role: "user"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/chat/completions" {
+		t.Errorf("path = %q, muốn /chat/completions — baseURL có / cuối phải được chuẩn hoá, không double-slash", gotPath)
 	}
 }
 
