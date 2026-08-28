@@ -248,11 +248,71 @@ var stripRawTextTags = map[string]bool{
 // (raw text element), không tự ý phân tích tiếp thành thẻ con — nên "bỏ
 // token text khi đang ở trong một thẻ thuộc stripRawTextTags" là đủ để xoá
 // sạch thân thẻ, kể cả khi thân đó chứa những ký tự trông giống thẻ HTML
-// (`x() ; if (a < b) ...`). Hàm này KHÔNG tự gọi z.NextIsNotRawText() (khác
-// internal/pkgcheck/content.go's scanHTMLText, nơi gọi nó sau MỌI token để
-// tắt hẳn chế độ raw-text) — ở đây ta MUỐN tokenizer ở lại chế độ raw-text,
-// vì mục đích chính là xoá sạch thân của đúng mười thẻ đó, không phải soi
-// thẻ con bên trong chúng.
+// (`x() ; if (a < b) ...`).
+//
+// Khác internal/pkgcheck/content.go's scanHTMLText — nơi gọi
+// z.NextIsNotRawText() sau MỌI token, không điều kiện, để tắt HẲN chế độ
+// raw-text cho toàn bộ tài liệu — hàm này chỉ gọi z.NextIsNotRawText() ở
+// ĐÚNG MỘT chỗ: case html.SelfClosingTagToken bên dưới, và chỉ cho thẻ
+// thuộc stripRawTextTags (xem chú thích tại case đó để biết vì sao). Với
+// một thẻ MỞ THẬT (StartTagToken) trong stripRawTextTags, hàm này vẫn
+// MUỐN tokenizer ở lại chế độ raw-text — mục đích chính là xoá sạch thân
+// của đúng mười thẻ đó khi chúng thực sự có thân, không phải soi thẻ con
+// bên trong chúng như scanHTMLText làm.
+//
+// # Vì sao dạng tự đóng ("<title/>") cần một xử lý riêng, và điều đo được
+// LÀ SAI so với giả thuyết ban đầu
+//
+// Vòng review Task 5 (vòng 2) ban đầu giả thuyết "thẻ tự đóng không bao giờ
+// khiến tokenizer bật chế độ raw-text" — SAI, và phép đo trực tiếp (viết
+// một chương trình gọi thẳng html.Tokenizer, KHÔNG suy luận từ tài liệu)
+// bác bỏ giả thuyết đó. Đọc readStartTag trong
+// $(go env GOMODCACHE)/golang.org/x/net@v0.58.0/html/token.go (dòng
+// ~844-859): z.rawTag được gán chỉ dựa vào TÊN thẻ — quyết định này xảy ra
+// TRƯỚC cả khi hàm kiểm tra tự đóng hay không (đoạn "Look for a
+// self-closing token" nằm SAU đoạn gán z.rawTag). Nghĩa là "<title/>" tự
+// đóng cũng bật z.rawTag = "title" giống hệt "<title>" mở thường — lần gọi
+// z.Next() TIẾP THEO sẽ nuốt mọi byte tới "</title>" (chữ, không phải thẻ
+// thật) hoặc EOF làm MỘT text token duy nhất, dù thẻ vừa đọc là tự đóng.
+// Đây thực ra khớp với đặc tả HTML5 thật: cú pháp tự đóng "/" vô nghĩa với
+// phần tử raw-text (title/textarea là RCDATA, script/style/... là RAWTEXT)
+// — trình duyệt thật CŨNG coi "<title/>" như một "<title>" chưa đóng, ăn
+// tới "</title>" thật hoặc hết tài liệu.
+//
+// Nhưng đây KHÔNG phải hành vi ta muốn ở tầng lọc này. Một chương do AI
+// sinh (xem manifest.json mẫu, generatedBy: "ai") hay một tác giả quen cú
+// pháp tự đóng của các thẻ void thật (<br/>, <img/>) rất dễ viết
+// "<title/>" với ý định "một thẻ trống, vô hại" — không ngờ nó âm thầm
+// nuốt sạch toàn bộ phần chương còn lại (tới EOF nếu tài liệu không còn
+// "</title>" nào khác, hoặc tệ hơn: tới một "</title>" hoàn toàn không
+// liên quan nếu tình cờ có một cái xuất hiện sau đó — cắt nội dung ở một
+// ranh giới ngẫu nhiên, khó dự đoán hơn cả "ăn tới EOF"). Với vai trò một
+// bộ lọc trước khi đưa văn bản vào context model — không phải một trình
+// render HTML — hậu quả im lặng và khó lường đó nghiêm trọng hơn việc giữ
+// đúng ngữ nghĩa trình duyệt cho một cú pháp mà bản thân đặc tả coi là vô
+// nghĩa ở vị trí đó.
+//
+// Vì vậy case html.SelfClosingTagToken bên dưới CHỦ ĐỘNG gọi
+// z.NextIsNotRawText() cho mọi thẻ thuộc stripRawTextTags — xoá z.rawTag
+// mà readStartTag vừa gán, để lần z.Next() tiếp theo tokenize BÌNH THƯỜNG
+// (thẻ lồng như <b>bold</b> ngay sau "<title/>" ra đúng StartTag/Text/
+// EndTag của nó). Điều này CỐ Ý khác hành vi trình duyệt thật cho đúng
+// tám thẻ raw-text-nhưng-viết-tự-đóng — một đánh đổi có chủ đích, không
+// phải sơ suất. Case html.StartTagToken (cặp mở/đóng thật) hoàn toàn không
+// đổi — vẫn bật skipping bình thường, vẫn nuốt nguyên thân như một text
+// token, đúng mục đích chính của hàm này.
+//
+// # "Nuốt tới hết tài liệu" ĐÚNG đặc tả vẫn còn, và vẫn giữ nguyên
+//
+// Sau khi sửa dạng tự đóng, "nuốt tới EOF" vẫn xảy ra cho một tình huống
+// hợp lệ duy nhất: một thẻ MỞ THẬT (StartTagToken, không phải tự đóng)
+// thuộc stripRawTextTags mà không có thẻ đóng tương ứng trong phần còn lại
+// tài liệu (tác giả quên "</script>", hoặc "<plaintext>" — theo đặc tả
+// HTML5 thẻ này vốn không có thẻ đóng, luôn ăn tới hết tài liệu). Trình
+// duyệt thật xử lý y hệt: không có ranh giới nào khác để dừng đúng chỗ,
+// nên "ăn tới EOF" ở ĐÂY là hành vi ĐÚNG, không phải một lỗi cần vá thêm.
+// TestCourseToolStripsAllRawTextTagBodies's ca "plaintext/pair" canh riêng
+// đúng hành vi này — đừng nhầm nó với lỗi thẻ-tự-đóng đã sửa ở trên.
 func stripTags(rawHTML string) string {
 	z := html.NewTokenizer(strings.NewReader(rawHTML))
 
@@ -264,11 +324,38 @@ func stripTags(rawHTML string) string {
 		case html.ErrorToken:
 			return normalizeStrippedText(sb.String())
 
-		case html.StartTagToken, html.SelfClosingTagToken:
+		case html.StartTagToken:
 			name, _ := z.TagName()
 			tag := string(name)
 			if stripRawTextTags[tag] {
 				skipping = true
+			}
+			if stripHTMLBlockTags[tag] {
+				sb.WriteByte('\n')
+			}
+
+		case html.SelfClosingTagToken:
+			// CỐ TÌNH tách khỏi case StartTagToken ở trên. z.TagName() PHẢI
+			// gọi trước z.NextIsNotRawText() — cả hai đọc/ghi trạng thái nội
+			// bộ của z liên quan tới token vừa đọc, và thứ tự này khớp cách
+			// internal/pkgcheck/content.go's scanHTMLText gọi
+			// NextIsNotRawText (ngay sau z.Next(), trước khi dùng token).
+			name, _ := z.TagName()
+			tag := string(name)
+			if stripRawTextTags[tag] {
+				// z.rawTag vừa được readStartTag gán CHỈ DỰA VÀO TÊN thẻ —
+				// xảy ra trước cả khi biết thẻ có tự đóng hay không (xem
+				// chú thích "Vì sao dạng tự đóng..." phía trên hàm) — nên
+				// KHÔNG can thiệp gì thì lần z.Next() kế tiếp vẫn nuốt mọi
+				// thứ tới "</title>" (chữ) hay EOF làm một text token, y
+				// hệt một thẻ mở thật, dù đây là thẻ tự đóng không có thân.
+				// NextIsNotRawText() xoá z.rawTag đó — quyết định có chủ
+				// đích, không phải hành vi trình duyệt thật (xem chú thích
+				// trên hàm): thẻ tự đóng ở tầng lọc NÀY được coi là "trống,
+				// không có gì để xoá", không phải "mở một vùng raw-text
+				// không đáy". KHÔNG bật skipping ở đây — không có thân nào
+				// để xoá.
+				z.NextIsNotRawText()
 			}
 			if stripHTMLBlockTags[tag] {
 				sb.WriteByte('\n')

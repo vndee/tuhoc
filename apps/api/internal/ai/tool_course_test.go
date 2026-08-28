@@ -148,18 +148,34 @@ func TestCourseToolStripsStyleBodyToo(t *testing.T) {
 // bật chế độ raw-text (xem chú thích tại stripRawTextTags trong
 // tool_course.go), đo RIÊNG từng thẻ — không suy ra bất biến từ một thẻ đại
 // diện (như <script> ở TestCourseToolStripsMarkupBeforeSendingToModel) rồi
-// coi các thẻ còn lại là "chắc cũng vậy". Trước vòng sửa này, bảng
+// coi các thẻ còn lại là "chắc cũng vậy". Trước vòng sửa đầu, bảng
 // stripRawTextTags chỉ có "script"/"style": tám thẻ dưới đây từng lọt nguyên
 // văn `<payload>` (kèm dấu "<"/">" thật) ra đầu ra.
 //
-// Mỗi ca dựng một chương "trước<TAG>...payload đóng vai kẻ tấn công,
-// trông giống một thẻ khác...</TAG>sau" và đòi CẢ BA:
-//   - không còn dấu "<" trong đầu ra (bất biến chính, xem
-//     TestCourseToolStripsMarkupBeforeSendingToModel);
-//   - "payload" (chuỗi đặc trưng của thân bị lọc) không lọt ra — chọn (a)
-//     là xoá cả thân, không phải chỉ vô hiệu hoá mà vẫn giữ chữ;
-//   - "trước"/"sau" (văn bản hai bên thẻ, KHÔNG bị lọc) vẫn còn nguyên —
-//     xác nhận việc lọc đúng phạm vi thân thẻ, không ăn lan ra ngoài.
+// Mỗi thẻ được thử CẢ HAI dạng, vì re-review vòng 2 đo được rằng chúng đi
+// qua hai nhánh khác nhau hoàn toàn của stripTags:
+//
+//   - "/pair" (cặp mở/đóng đủ, "<TAG>...</TAG>"): tokenizer BẬT chế độ
+//     raw-text thật — toàn thân tới thẻ đóng là MỘT TextToken duy nhất.
+//     Đây là ca đã có từ vòng sửa đầu.
+//   - "/self-closing" ("<TAG/>", không có thân, không có thẻ đóng riêng):
+//     đo trực tiếp bằng golang.org/x/net/html (xem task-5-report.md, mục
+//     "Vòng sửa 2") xác nhận điều NGƯỢC với giả thuyết ban đầu của vòng
+//     review này — z.rawTag bị readStartTag gán CHỈ dựa vào tên thẻ, TRƯỚC
+//     cả khi biết thẻ có tự đóng hay không, nên "<title/>" tự đóng CŨNG bật
+//     chế độ raw-text cho lần z.Next() kế tiếp, giống hệt "<title>" mở
+//     thường — không có chuyện "tự động quay lại tokenize bình thường".
+//     Máy trạng thái CŨ (StartTagToken lẫn SelfClosingTagToken đều bật
+//     skipping, chỉ EndTagToken mới tắt) không có đường tắt skipping cho
+//     dạng tự đóng — vì không có EndTagToken nào của TAG đó tới sau — nên
+//     toàn bộ phần chương CÒN LẠI sau "<TAG/>" biến mất, im lặng, không
+//     phải chỉ thân thẻ (mà thẻ tự đóng vốn không có). Sửa đúng bằng cách
+//     gọi z.NextIsNotRawText() trong case html.SelfClosingTagToken của
+//     stripTags — xem chú thích tại đó để biết vì sao đây là một lựa chọn
+//     CỐ Ý khác hành vi trình duyệt thật, không phải một hệ quả tự nhiên
+//     của việc tách case. Ca "/self-closing" khẳng định thêm một điều ca
+//     "/pair" không có: văn bản SAU thẻ (kể cả xuyên qua một thẻ lồng <b>)
+//     còn nguyên — đó chính là bất biến bị phá.
 func TestCourseToolStripsAllRawTextTagBodies(t *testing.T) {
 	tags := []string{
 		"script", "style", // đã canh ở hai test riêng phía trên; đo lại ở đây cho đủ bộ mười, không phá vỡ điều "một test cho mỗi thẻ".
@@ -167,7 +183,7 @@ func TestCourseToolStripsAllRawTextTagBodies(t *testing.T) {
 	}
 
 	for _, tag := range tags {
-		t.Run(tag, func(t *testing.T) {
+		t.Run(tag+"/pair", func(t *testing.T) {
 			// plaintext không có thẻ đóng thật theo đặc tả HTML5 (mọi byte
 			// sau <plaintext> tới hết tài liệu đều là raw text) — chèn
 			// "trước" TRƯỚC thẻ mở, không có "sau" sau thẻ đóng (không có
@@ -192,6 +208,33 @@ func TestCourseToolStripsAllRawTextTagBodies(t *testing.T) {
 			}
 			if tag != "plaintext" && !strings.Contains(out, "sau") {
 				t.Errorf("<%s>: mất văn bản đứng SAU thẻ: %q", tag, out)
+			}
+		})
+
+		t.Run(tag+"/self-closing", func(t *testing.T) {
+			// Dạng tự đóng không có thân để "payload" đại diện cho — bất
+			// biến cần đo ở đây khác: PHẦN CÒN LẠI của chương sau "<TAG/>"
+			// (kể cả xuyên qua một thẻ lồng <b>bold</b>) không được biến
+			// mất. sau1/sau2 nằm hai bên <b> để phân biệt "mất một phần"
+			// với "mất sạch từ <TAG/> trở đi" (đúng lỗi re-review mô tả).
+			chapter := "truoc <" + tag + "/> sau1 <b>bold</b> sau2"
+
+			out := runTool(t, `{"slug":"c","chapter_id":"c1"}`, withChapter(chapter))
+
+			if strings.Contains(out, "<") {
+				t.Errorf("<%s/>: còn dấu \"<\" trong đầu ra: %q", tag, out)
+			}
+			if !strings.Contains(out, "truoc") {
+				t.Errorf("<%s/>: mất văn bản đứng TRƯỚC thẻ: %q", tag, out)
+			}
+			if !strings.Contains(out, "sau1") {
+				t.Errorf("<%s/>: mất văn bản NGAY SAU thẻ tự đóng — dấu hiệu skipping bị kẹt true: %q", tag, out)
+			}
+			if !strings.Contains(out, "bold") {
+				t.Errorf("<%s/>: mất chữ bên trong thẻ lồng <b> sau thẻ tự đóng: %q", tag, out)
+			}
+			if !strings.Contains(out, "sau2") {
+				t.Errorf("<%s/>: mất văn bản Ở CUỐI chương, sau thẻ lồng <b>: %q", tag, out)
 			}
 		})
 	}
