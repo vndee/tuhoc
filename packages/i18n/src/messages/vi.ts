@@ -701,19 +701,33 @@ export const vi = {
   'ai.panel.collapse': 'Thu khung hỏi–đáp',
   'ai.panel.newThread': 'Hội thoại mới',
   'ai.panel.thinking': 'Đang nghĩ…',
-  'ai.panel.needsSetup':
-    'Trợ lý AI chạy bằng key của chính bạn, và máy này chưa có key nào. Key được cất trong kho khoá — một trang riêng ở một địa chỉ riêng, nên khoá học không đọc được nó.',
+  // `ai.panel.noCredit` thay cho cặp Pha 1 `needsSetup`/`unavailable` (đã bỏ
+  // — xem `git log` trên tệp này): Pha 2 không còn key cắm theo máy, và
+  // không còn bản dựng nào thiếu route AI, nên cả hai trạng thái đó không
+  // xảy ra được nữa. Trạng thái chặn duy nhất còn lại là hết credit nền
+  // tảng cấp.
+  'ai.panel.noCredit': 'Tài khoản đã hết credit AI. Nạp thêm trong trang cấu hình để tiếp tục hỏi.',
   'ai.panel.openSettings': 'Mở trang cấu hình',
-  'ai.panel.unavailable':
-    'Bản dựng này không có kho khoá, nên chưa dùng được trợ lý AI. Đây là thiếu sót của cấu hình khi triển khai, không phải của tài khoản bạn — phần đọc giáo trình vẫn chạy bình thường.',
-  'ai.panel.probeFailed': 'Chưa hỏi được kho khoá xem đã cắm key chưa. Bạn vẫn có thể thử hỏi.',
   'ai.panel.questionLabel': 'Câu hỏi của bạn',
   'ai.panel.questionPlaceholder': 'Hỏi về chương đang đọc…',
   'ai.panel.stop': 'Dừng',
   'ai.panel.ask': 'Hỏi',
   'ai.deepDive.heading': 'Đào sâu',
-  'ai.error.unavailable': 'Bản dựng này không có kho khoá, nên chưa dùng được AI.',
-  'ai.error.notConfigured': 'Chưa cắm key vào kho khoá trên máy này.',
+  // Mười khoá dưới đây ứng với mười `ServerAIErrorCode` (`ai/serverClient.
+  // ts`) — xem `useAI.ts`'s `describeFailure` cho quy tắc "mã nào dịch ra
+  // câu nào", và VÌ SAO không câu nào ở đây là chuỗi thô máy chủ gửi.
+  'ai.error.noCredit': 'Bạn đã dùng hết credit AI. Nạp thêm để tiếp tục hỏi.',
+  'ai.error.rateLimited': 'Bạn đang hỏi hơi nhanh — chờ một chút rồi thử lại.',
+  'ai.error.providerFailed': 'Nhà cung cấp AI không hoàn tất được lượt này. Thử lại sau một chút.',
+  'ai.error.toolBudgetExhausted':
+    'Câu hỏi này cần nhiều bước tra cứu hơn mức lượt này cho phép. Hãy hỏi cụ thể hơn, hoặc tắt bớt một công cụ.',
+  'ai.error.unauthenticated': 'Phiên đăng nhập đã hết hạn. Đăng nhập lại để tiếp tục hỏi.',
+  'ai.error.network': 'Không kết nối được tới máy chủ. Kiểm tra mạng rồi thử lại.',
+  'ai.error.aborted': 'Đã huỷ.',
+  // Chung cho `InvalidBody`/`FieldRequired`/`FieldTooLong`/`UnknownTool`/
+  // `Internal` — năm mã báo lỗi ở chính trang chính hoặc máy chủ, không
+  // phải điều người học gây ra hay có một hành động cụ thể để sửa.
+  'ai.error.requestRejected': 'Yêu cầu bị từ chối. Thử lại sau một chút.',
 
   /* ── phía trang chính của giao thức kho khoá (`ai/vaultClient.ts`) ─────── */
 

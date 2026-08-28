@@ -1,187 +1,138 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
+import { setupServer } from 'msw/node';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { VaultFrameContext } from '../shell/VaultFrame';
-import { AskPanel } from './AskPanel';
-import { VaultClient } from './vaultClient';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { LanguageProvider } from '../i18n/LanguageProvider';
-
-const VAULT = 'http://localhost:5174';
+import { AskPanel } from './AskPanel';
 
 /**
- * VÌ SAO TỆP NÀY KHÔNG DÙNG `waitFor` MỘT LẦN NÀO — nguyên văn lập luận của
- * `useAI.test.tsx`, và nó áp vào đây mạnh hơn vì panel này có THÊM một vòng
- * `setState` trong thân effect (phép hỏi trạng thái lúc mở).
+ * PHA 2: panel này không còn hỏi kho khoá qua `postMessage` — nó đi qua
+ * `useAI`/`serverClient` tới `POST /ai/chat` thật (chặn bằng msw, cùng quy
+ * ước với phần còn lại của `apps/web/src`). Không còn phép hỏi trạng thái
+ * lúc mở (`useAI.ts`'s doc comment): panel luôn hiện ô nhập ngay, và trạng
+ * thái chặn duy nhất (`NoCredit`) chỉ lộ ra SAU một lượt hỏi thật.
  *
- * `setState` trong thân effect rơi vào commit SAU so với thao tác mệnh lệnh,
- * và React Scheduler chỉ nhả sau ngân sách 5 ms. Trên máy nhàn `waitFor` thắng
- * vì Scheduler chưa kịp nhả, không phải vì đúng; dưới tải nó thua. Phép chờ
- * đúng là KHÔNG CHỜ: mọi lần bơm thông điệp nằm trong `act()`, và `act()` xả
- * hàng đợi Scheduler đồng bộ.
+ * VÌ SAO VẪN KHÔNG DÙNG `waitFor` — nguyên văn lý do của `useAI.test.tsx`:
+ * mọi lần bơm dữ liệu vào stream nằm trong `act(async () => {…})`, cộng một
+ * `flush()` thật (không phải timer giả) để nhường vòng lặp sự kiện cho pipeline
+ * `fetch`/`ReadableStream` của `serverClient.ts`.
  */
 
-interface Harness {
-  post: ReturnType<typeof vi.fn>;
-  client: VaultClient;
-  wrap: (node: ReactNode) => ReactNode;
-  sent(n: number): { id: string; kind: string; [k: string]: unknown };
-  reply(data: unknown, origin?: string): void;
+function flush(): Promise<void> {
+  return new Promise((r) => setTimeout(r, 0));
 }
 
-const live: VaultClient[] = [];
-
-function harness(): Harness {
-  const post = vi.fn();
-  const client = new VaultClient({
-    lang: 'vi',
-    vaultOrigin: VAULT,
-    target: { postMessage: post } as unknown as Window,
-    timeoutMs: 10_000,
+function controllableSSE() {
+  const encoder = new TextEncoder();
+  let ctrl!: ReadableStreamDefaultController<Uint8Array>;
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) {
+      ctrl = c;
+    },
   });
-  live.push(client);
   return {
-    post,
-    client,
-    wrap: (node) => (
-      <LanguageProvider><MemoryRouter>
-        <VaultFrameContext.Provider
-          value={{ client, origin: VAULT, expanded: false, setExpanded: () => {} }}
-        >
-          {node}
-        </VaultFrameContext.Provider>
-      </MemoryRouter></LanguageProvider>
-    ),
-    sent: (n) => post.mock.calls[n]?.[0],
-    reply: (data, origin = VAULT) => {
-      window.dispatchEvent(new MessageEvent('message', { origin, data }));
+    stream,
+    event: (kind: string, payload: { text?: string; code?: string }) => {
+      ctrl.enqueue(encoder.encode(`event: ${kind}\ndata: ${JSON.stringify(payload)}\n\n`));
+    },
+    close: () => {
+      ctrl.close();
     },
   };
 }
 
-afterEach(() => {
-  while (live.length) live.pop()!.dispose();
-});
+interface Captured {
+  readonly question: string;
+  readonly course_slug: string;
+  readonly signal: AbortSignal;
+}
 
-const CONFIGURED = { kind: 'status', configured: true, providerId: 'deepseek', model: 'deepseek-chat' };
+const server = setupServer();
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
 
-/** Trả lời phép hỏi trạng thái lúc panel mở. */
-async function settleProbe(h: Harness, status: object = CONFIGURED): Promise<void> {
-  await act(async () => {
-    h.reply({ v: 1, id: h.sent(0).id, ...status });
-  });
+function nextChat(): { requests: Captured[]; sse: ReturnType<typeof controllableSSE> } {
+  const requests: Captured[] = [];
+  const sse = controllableSSE();
+  server.use(
+    http.post(
+      '/ai/chat',
+      async ({ request }) => {
+        const body = (await request.json()) as { question: string; course_slug: string };
+        requests.push({ ...body, signal: request.signal });
+        return new HttpResponse(sse.stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      },
+      { once: true },
+    ),
+  );
+  return { requests, sse };
+}
+
+function wrap(node: ReactNode): ReactNode {
+  return (
+    <LanguageProvider>
+      <MemoryRouter>{node}</MemoryRouter>
+    </LanguageProvider>
+  );
 }
 
 function typeQuestion(text: string): void {
   const box = screen.getByLabelText('Câu hỏi của bạn');
   act(() => {
-    Object.getOwnPropertyDescriptor(
-      window.HTMLTextAreaElement.prototype,
-      'value',
-    )!.set!.call(box, text);
+    Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!.call(box, text);
     box.dispatchEvent(new Event('input', { bubbles: true }));
   });
 }
 
 const SYSTEM = 'KHOÁ HỌC:\nSố dấu phẩy động\n\nTRÍCH CHƯƠNG:\nSố mũ lệch 127.';
 
-describe('AskPanel — chưa cắm key thì MỜI đi cấu hình', () => {
-  it('mở panel khi chưa cắm key ⇒ thấy LỜI MỜI kèm đường tới trang cấu hình', async () => {
-    const h = harness();
-    render(h.wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
-
-    // Panel HỎI trạng thái ngay khi mở — người học không phải gõ một câu hỏi
-    // rồi mới biết là chưa cắm key. Đó là khác biệt giữa "lời mời" và "lỗi cụt".
-    expect(h.sent(0)).toMatchObject({ kind: 'status' });
-    await settleProbe(h, { kind: 'status', configured: false });
-
-    const invite = screen.getByTestId('ai-needs-setup');
-    expect(invite).toBeInTheDocument();
-    expect(invite.querySelector('a')?.getAttribute('href')).toBe('/settings');
-    // KHÔNG có ô nhập câu hỏi: mời người ta gõ một câu chắc chắn hỏng là bẫy.
-    expect(screen.queryByLabelText('Câu hỏi của bạn')).toBeNull();
-    expect(screen.queryByRole('alert')).toBeNull();
-  });
-
-  it('bản dựng KHÔNG có kho khoá ⇒ câu khác, và KHÔNG mời đi một trang vô ích', async () => {
-    const wrap = (node: ReactNode) => (
-      <LanguageProvider><MemoryRouter>
-        <VaultFrameContext.Provider
-          value={{ client: null, origin: null, expanded: false, setExpanded: () => {} }}
-        >
-          {node}
-        </VaultFrameContext.Provider>
-      </MemoryRouter></LanguageProvider>
-    );
-    await act(async () => {
-      render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
-    });
-
-    expect(screen.getByTestId('ai-unavailable')).toBeInTheDocument();
+describe('AskPanel — không còn vòng dò trước khi gõ', () => {
+  it('mở panel là thấy ngay ô nhập câu hỏi — không có màn hình trung gian nào', () => {
+    render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
+    expect(screen.getByLabelText('Câu hỏi của bạn')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hỏi' })).not.toBeDisabled();
     expect(screen.queryByTestId('ai-needs-setup')).toBeNull();
-  });
-
-  it('khung CHƯA gắn xong (origin có, client chưa) ⇒ KHÔNG nói dối là bản dựng thiếu kho khoá', async () => {
-    // `shell/VaultFrame.tsx` đã đo và ghi lại: `client` chỉ dựng được sau khi
-    // `<iframe>` vào DOM, nên nó rơi vào commit SAU. Một panel đọc `client` để
-    // trả lời "bản dựng này có kho khoá không" sẽ nhoáng lên một câu SAI ở mỗi
-    // lần mở, rồi tự sửa — kiểu hỏng khó thấy nhất trong một bài kiểm chỉ nhìn
-    // trạng thái cuối.
-    const wrap = (node: ReactNode) => (
-      <LanguageProvider><MemoryRouter>
-        <VaultFrameContext.Provider
-          value={{ client: null, origin: VAULT, expanded: false, setExpanded: () => {} }}
-        >
-          {node}
-        </VaultFrameContext.Provider>
-      </MemoryRouter></LanguageProvider>
-    );
-    await act(async () => {
-      render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
-    });
-
-    expect(screen.queryByTestId('ai-unavailable')).toBeNull();
-    expect(screen.queryByTestId('ai-needs-setup')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Hỏi' })).toBeDisabled();
   });
 });
 
 describe('AskPanel — hỏi, chảy chữ, huỷ', () => {
-  it('gửi NGỮ CẢNH CHƯƠNG vào vai system và câu hỏi vào vai user', async () => {
-    const h = harness();
-    render(h.wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
-    await settleProbe(h);
+  it('gửi ngữ cảnh chương GỘP VÀO question; câu hỏi HIỂN THỊ vẫn ngắn', async () => {
+    const { requests, sse } = nextChat();
+    render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
 
     typeQuestion('Số mũ lệch là gì?');
     await act(async () => {
       screen.getByRole('button', { name: 'Hỏi' }).click();
-    });
-    await act(async () => {
-      h.reply({ v: 1, id: h.sent(1).id, ...CONFIGURED });
+      await flush();
     });
 
-    expect(h.sent(2)).toMatchObject({ kind: 'chat' });
-    expect(h.sent(2).messages).toEqual([
-      { role: 'system', content: SYSTEM },
-      { role: 'user', content: 'Số mũ lệch là gì?' },
-    ]);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].question).toBe(`${SYSTEM}\n\nSố mũ lệch là gì?`);
+    expect(requests[0].course_slug).toBe('');
+    expect(screen.getByText('Số mũ lệch là gì?')).toBeInTheDocument();
+
+    await act(async () => {
+      sse.event('done', {});
+      sse.close();
+      await flush();
+    });
   });
 
   it('chữ CHẢY VỀ TỪNG MẢNH — màn hình đổi giữa chừng, không đợi hết mới hiện', async () => {
-    const h = harness();
-    render(h.wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
-    await settleProbe(h);
+    const { sse } = nextChat();
+    render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
     typeQuestion('hỏi');
     await act(async () => {
       screen.getByRole('button', { name: 'Hỏi' }).click();
+      await flush();
     });
-    await act(async () => {
-      h.reply({ v: 1, id: h.sent(1).id, ...CONFIGURED });
-    });
-    const chatId = h.sent(2).id;
 
     await act(async () => {
-      h.reply({ v: 1, id: chatId, kind: 'chunk', text: 'Số mũ ' });
+      sse.event('delta', { text: 'Số mũ ' });
+      await flush();
     });
     // Khẳng định GIỮA CHỪNG. Một cài đặt gom hết rồi mới vẽ vẫn xanh nếu chỉ
     // khẳng định ở cuối — đó là toàn bộ khác biệt giữa "streaming" và "chậm".
@@ -189,104 +140,107 @@ describe('AskPanel — hỏi, chảy chữ, huỷ', () => {
     expect(screen.getByRole('button', { name: 'Dừng' })).toBeInTheDocument();
 
     await act(async () => {
-      h.reply({ v: 1, id: chatId, kind: 'chunk', text: 'lệch 127.' });
-      h.reply({ v: 1, id: chatId, kind: 'done' });
+      sse.event('delta', { text: 'lệch 127.' });
+      sse.event('done', {});
+      sse.close();
+      await flush();
     });
     expect(screen.getByTestId('ai-answer')).toHaveTextContent('Số mũ lệch 127.');
     expect(screen.queryByRole('button', { name: 'Dừng' })).toBeNull();
   });
 
-  it('bấm Dừng gửi thông điệp HUỶ mang id lời gọi, và giữ phần chữ đã nhận', async () => {
-    const h = harness();
-    render(h.wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
-    await settleProbe(h);
+  it('bấm Dừng huỷ THẬT bằng AbortSignal, và giữ phần chữ đã nhận', async () => {
+    const { requests, sse } = nextChat();
+    render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
     typeQuestion('hỏi');
     await act(async () => {
       screen.getByRole('button', { name: 'Hỏi' }).click();
+      await flush();
     });
     await act(async () => {
-      h.reply({ v: 1, id: h.sent(1).id, ...CONFIGURED });
-    });
-    const chatId = h.sent(2).id;
-    await act(async () => {
-      h.reply({ v: 1, id: chatId, kind: 'chunk', text: 'một nửa' });
+      sse.event('delta', { text: 'một nửa' });
+      await flush();
     });
 
     await act(async () => {
       screen.getByRole('button', { name: 'Dừng' }).click();
+      await flush();
     });
 
-    expect(h.sent(3)).toMatchObject({ kind: 'cancel', cancelId: chatId });
-    expect(h.post.mock.calls[3][1]).toBe(VAULT);
+    expect(requests[0].signal.aborted).toBe(true);
     expect(screen.getByTestId('ai-answer')).toHaveTextContent('một nửa');
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('ĐÓNG panel giữa chừng cũng huỷ THẬT — không để lời gọi chạy tiếp và tính tiền', async () => {
-    const h = harness();
-    const { unmount } = render(
-      h.wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />),
-    );
-    await settleProbe(h);
+  it('ĐÓNG panel giữa chừng cũng huỷ THẬT — không để lời gọi chạy tiếp và tính credit', async () => {
+    const { requests, sse } = nextChat();
+    const { unmount } = render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
     typeQuestion('hỏi');
     await act(async () => {
       screen.getByRole('button', { name: 'Hỏi' }).click();
+      await flush();
     });
     await act(async () => {
-      h.reply({ v: 1, id: h.sent(1).id, ...CONFIGURED });
+      sse.event('delta', { text: 'x' });
+      await flush();
     });
-    const chatId = h.sent(2).id;
 
     unmount();
-    expect(h.sent(3)).toMatchObject({ kind: 'cancel', cancelId: chatId });
+    await flush();
+    expect(requests[0].signal.aborted).toBe(true);
   });
 
-  it('key bị từ chối GIỮA CHỪNG cũng thành lời mời, không phải một mã lỗi trần', async () => {
-    const h = harness();
-    render(h.wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
-    await settleProbe(h);
+  it('hết credit GIỮA CHỪNG hiện lời mời nạp, không phải một mã lỗi trần', async () => {
+    server.use(
+      http.post('/ai/chat', () => HttpResponse.json({ code: 'NoCredit', error: 'no AI credit remaining' }, { status: 402 })),
+    );
+    render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
     typeQuestion('hỏi');
     await act(async () => {
       screen.getByRole('button', { name: 'Hỏi' }).click();
-    });
-    // Người học gỡ key trong khung kho khoá ngay sau khi panel hỏi trạng thái:
-    // lời gọi thật vẫn hỏi lại và lần này nhận `configured: false`.
-    await act(async () => {
-      h.reply({ v: 1, id: h.sent(1).id, kind: 'status', configured: false });
+      await flush();
     });
 
     expect(screen.getByTestId('ai-needs-setup')).toBeInTheDocument();
+    // Chặn xong thì ô nhập biến mất — không mời người học gõ một câu chắc
+    // chắn hỏng nữa vì tài khoản vẫn hết credit.
+    expect(screen.queryByLabelText('Câu hỏi của bạn')).toBeNull();
   });
 
-  it('lỗi của NHÀ CUNG CẤP hiện ra như lỗi, KHÔNG giả làm lời mời cấu hình', async () => {
-    const h = harness();
-    render(h.wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
-    await settleProbe(h);
+  /**
+   * BÀI CHỊU LỰC của Step 2 ở tầng UI: `NoCredit` và `ProviderFailed` phải
+   * dẫn tới hai màn hình KHÁC NHAU — một lời mời nạp (chặn ô nhập), một lỗi
+   * bình thường (không chặn, người học hỏi tiếp được ngay). Đột biến
+   * (task-13-report.md): đổi `needsSetup` trong `AskPanel.tsx` thành
+   * `Boolean(error)` (bất kỳ lỗi nào cũng chặn) ⇒ bài này phải ĐỎ.
+   */
+  it('lỗi của NHÀ CUNG CẤP hiện như một lỗi bình thường, KHÔNG giả làm lời mời nạp credit', async () => {
+    const { sse } = nextChat();
+    render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
     typeQuestion('hỏi');
     await act(async () => {
       screen.getByRole('button', { name: 'Hỏi' }).click();
+      await flush();
     });
     await act(async () => {
-      h.reply({ v: 1, id: h.sent(1).id, ...CONFIGURED });
-    });
-    await act(async () => {
-      h.reply({
-        v: 1,
-        id: h.sent(2).id,
-        kind: 'error',
-        code: 'provider_error',
-        message: 'Nhà cung cấp trả 500.',
-      });
+      sse.event('error', { code: 'ProviderFailed', text: 'the AI provider could not complete this turn' });
+      sse.close();
+      await flush();
     });
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Nhà cung cấp trả 500.');
+    // Câu HIỂN THỊ là câu ĐÃ DỊCH theo mã, không phải chuỗi tiếng Anh thô mà
+    // "error" event mang theo — xem `useAI.ts`'s `describeFailure`.
+    expect(screen.getByRole('alert')).toHaveTextContent('Nhà cung cấp AI không hoàn tất được lượt này. Thử lại sau một chút.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('the AI provider could not complete this turn');
     expect(screen.queryByTestId('ai-needs-setup')).toBeNull();
+    // KHÔNG chặn: ô nhập vẫn còn, người học hỏi tiếp được ngay.
+    expect(screen.getByLabelText('Câu hỏi của bạn')).toBeInTheDocument();
   });
 
   it('`autoAsk` hỏi NGAY khi mở — "Đào sâu" không bắt người học gõ lại câu hỏi', async () => {
-    const h = harness();
+    const { requests, sse } = nextChat();
     render(
-      h.wrap(
+      wrap(
         <AskPanel
           heading="Đào sâu"
           system={SYSTEM}
@@ -296,34 +250,37 @@ describe('AskPanel — hỏi, chảy chữ, huỷ', () => {
         />,
       ),
     );
-    await settleProbe(h);
     await act(async () => {
-      h.reply({ v: 1, id: h.sent(1).id, ...CONFIGURED });
+      await flush();
     });
 
-    expect(h.sent(2)).toMatchObject({ kind: 'chat' });
-    expect(h.sent(2).messages).toEqual([
-      { role: 'system', content: SYSTEM },
-      { role: 'user', content: 'Giải thích kỹ đoạn này giúp tôi.' },
-    ]);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].question).toBe(`${SYSTEM}\n\nGiải thích kỹ đoạn này giúp tôi.`);
+
+    await act(async () => {
+      sse.event('done', {});
+      sse.close();
+      await flush();
+    });
   });
 
-  it('`autoAsk` KHÔNG hỏi khi chưa cắm key — không đốt một vòng chắc chắn hỏng', async () => {
-    const h = harness();
-    render(
-      h.wrap(
-        <AskPanel heading="Đào sâu" system={SYSTEM} initialQuestion="x" autoAsk onClose={() => {}} />,
-      ),
-    );
-    await settleProbe(h, { kind: 'status', configured: false });
-
-    expect(h.post).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId('ai-needs-setup')).toBeInTheDocument();
+  it('`autoAsk` KHÔNG hỏi hai lần dưới StrictMode-kiểu chốt — chỉ một request', async () => {
+    const { requests, sse } = nextChat();
+    render(wrap(<AskPanel heading="Đào sâu" system={SYSTEM} initialQuestion="x" autoAsk onClose={() => {}} />));
+    await act(async () => {
+      await flush();
+    });
+    expect(requests).toHaveLength(1);
+    await act(async () => {
+      sse.event('done', {});
+      sse.close();
+      await flush();
+    });
   });
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════ *
- * KÉO ĐỔI CỠ
+ * KÉO ĐỔI CỠ — không đụng gì tới `useAI`/mạng, giữ nguyên từ Pha 1.
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
@@ -374,8 +331,7 @@ describe('AskPanel — kéo đổi cỡ', () => {
   }
 
   it('buông chuột xong thì rê chuột KHÔNG còn đổi cỡ nữa', () => {
-    const h = harness();
-    render(h.wrap(<AskPanel heading="Hỏi" system="ngữ cảnh" onClose={() => undefined} />));
+    render(wrap(<AskPanel heading="Hỏi" system="ngữ cảnh" onClose={() => undefined} />));
 
     const g = grip();
     stubPointerCapture(g);
@@ -404,8 +360,7 @@ describe('AskPanel — kéo đổi cỡ', () => {
   });
 
   it('thao tác bị cắt ngang (pointercancel) cũng gỡ được listener', () => {
-    const h = harness();
-    render(h.wrap(<AskPanel heading="Hỏi" system="ngữ cảnh" onClose={() => undefined} />));
+    render(wrap(<AskPanel heading="Hỏi" system="ngữ cảnh" onClose={() => undefined} />));
 
     const g = grip();
     stubPointerCapture(g);
@@ -430,8 +385,7 @@ describe('AskPanel — kéo đổi cỡ', () => {
    * lặng không làm gì — lỗi thứ hai người dùng bắt được trong cùng một vòng.
    */
   it('bấm mở rộng trả quyền quyết định cỡ lại cho CSS', () => {
-    const h = harness();
-    render(h.wrap(<AskPanel heading="Hỏi" system="ngữ cảnh" onClose={() => undefined} />));
+    render(wrap(<AskPanel heading="Hỏi" system="ngữ cảnh" onClose={() => undefined} />));
 
     const g = grip();
     stubPointerCapture(g);

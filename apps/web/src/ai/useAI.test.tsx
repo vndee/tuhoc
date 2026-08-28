@@ -1,171 +1,232 @@
 import { act, renderHook } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
+import { setupServer } from 'msw/node';
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PROTOCOL_VERSION } from '@vault-protocol';
-import { VaultClient } from './vaultClient';
-import { VaultFrameContext } from '../shell/VaultFrame';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 import { useAI } from './useAI';
 
 /**
- * Câu trả lời của lượt CUỐI. Hook nay giữ cả cuộc hội thoại (`turns`) thay vì
- * một chuỗi `text` duy nhất — xem `AITurn`; những bài dưới đây chỉ quan tâm
- * lượt vừa hỏi, nên chúng hỏi qua đây thay vì đọc chỉ số bằng tay.
+ * CỔNG CẤU TRÚC, không phải hành vi — Task 13 Step 1.
+ *
+ * Một import còn sót giữ cả `apps/vault` sống trong bundle của trang chính,
+ * và đó là điều một cổng HÀNH VI không bắt được: `useAI`/`AskPanel`/
+ * `DeepDive` có thể hoạt động đúng ở mọi bài kiểm khác trong khi vẫn kéo
+ * theo `vaultClient.ts`/`VaultFrame.tsx` vào cây phụ thuộc.
+ *
+ * PHẠM VI HẸP CÓ CHỦ Ý. Tại thời điểm Task 13, MƯỜI tệp dưới `src/ai/` còn
+ * nhắc "vault" (`vaultClient.ts` + test, `noKeyLeak.test.ts`,
+ * `protocolAlias.test.ts`, `promptsCorpus.test.ts`, và chú thích rải rác ở
+ * vài tệp khác) — Task 13 chỉ SỞ HỮU bốn. Sáu tệp kia là việc của Task 16
+ * (gỡ `apps/vault`), và một cổng quét CẢ THƯ MỤC ở đây sẽ đỏ vì mã Task 13
+ * không được phép sửa. Task 16 Step 7 thay danh sách bốn tệp cứng dưới đây
+ * bằng một glob quét cả `src/ai/**`, ĐÚNG lúc sáu tệp kia đã bị xoá — nên có
+ * một cổng THẬT ở CẢ HAI mốc, và không mốc nào khẳng định điều chưa đúng.
  */
-function lastAnswer(r: { turns: readonly { answer: string }[] }): string {
-  return r.turns.length === 0 ? '' : r.turns[r.turns.length - 1].answer;
-}
-
-const VAULT = 'http://localhost:5174';
+const THUOC_TASK_13 = ['useAI.ts', 'serverClient.ts', 'AskPanel.tsx', 'DeepDive.tsx'];
 
 /**
- * VÌ SAO TỆP NÀY KHÔNG DÙNG `waitFor` MỘT LẦN NÀO.
- *
- * `useAI` đặt trạng thái từ một listener `message` — tức là NGOÀI hệ thống sự
- * kiện của React. Dự án này đã mất một vòng vì đúng chỗ đó (ruling P2, Task 5):
- * `setState` trong thân effect rơi vào một commit SAU so với thao tác DOM mệnh
- * lệnh, và React Scheduler chỉ nhả khi đã tiêu hết ngân sách 5 ms
- * (`shouldYieldToHost`). Trên máy nhàn, cả hai lọt vào cùng một host task và
- * `waitFor` thắng — không phải vì đúng, mà vì Scheduler chưa kịp nhả. Dưới tải
- * (`--maxWorkers=24`) nó thua **10/20 lần**.
- *
- * Nên phép chờ đúng ở đây không phải là chờ lâu hơn, mà là KHÔNG CHỜ: mọi lần
- * bơm thông điệp nằm trong `act()`, và `act()` xả hàng đợi của Scheduler một
- * cách đồng bộ. Sau khi `act()` trả về, `result.current` LÀ trạng thái đã
- * commit — theo cấu trúc, không theo may rủi.
+ * `dirname(fileURLToPath(import.meta.url))` rồi ghép ĐƯỜNG DẪN CHUỖI, không
+ * `new URL('./x', import.meta.url)` truyền thẳng cho `readFile` như brief gợi
+ * ý — đo được: dưới cấu hình vitest/jsdom của repo này, việc import
+ * `node:fs/promises` LÀM `import.meta.url` của CHÍNH tệp này đổi từ
+ * `file:///...` thành `http://localhost:3000/...` (một hiệu ứng phụ của
+ * pipeline transform, tái lập được ở mọi lần chạy), và `readFile` từ chối một
+ * URL không mang scheme `file:` với `ERR_INVALID_URL_SCHEME`. `readFileSync`
+ * + `fileURLToPath` mà `DeepDive.test.tsx` đã dùng để nạp KaTeX vendor không
+ * dính lỗi này, nên cổng ở đây theo đúng khuôn đã đo là chạy được.
  */
+const HERE = dirname(fileURLToPath(import.meta.url));
 
-interface Harness {
-  post: ReturnType<typeof vi.fn>;
-  client: VaultClient;
-  wrapper: (p: { children: ReactNode }) => ReactNode;
-  sent(n: number): { id: string; kind: string; [k: string]: unknown };
-  reply(data: unknown, origin?: string): void;
+describe('cổng cấu trúc — bốn tệp Task 13 sở hữu không còn nhắc vault', () => {
+  it('bốn mô-đun Task 13 sở hữu không còn nhắc vault', async () => {
+    for (const f of THUOC_TASK_13) {
+      const src = await readFile(join(HERE, f), 'utf8');
+      expect(src, f).not.toMatch(/vault/i);
+    }
+  });
+});
+
+/**
+ * PHA 2: `useAI` nói với MÁY CHỦ THẬT (`POST /ai/chat`) qua `fetch`, không
+ * còn `postMessage` tới một `<iframe>` kho khoá. Bài kiểm này theo đúng quy
+ * ước đã có của `apps/web/src` — msw chặn `fetch` thật, xem `api/client.
+ * test.ts`, `api/useMe.test.tsx`, `sync/engine.test.ts` — thay vì mock riêng
+ * `./serverClient`: không tệp nào khác trong repo mock sát-mô-đun kiểu đó
+ * cho tầng lấy dữ liệu, và giữ nguyên quy ước nghĩa là stream ở đây đi qua
+ * ĐÚNG mã phân tích SSE thật của `serverClient.ts`, không phải một giả định
+ * về nó.
+ *
+ * VÌ SAO VẪN KHÔNG DÙNG `waitFor`. Lý do gốc (`useAI.test.tsx` Pha 1) không
+ * đổi: `setState` từ một callback ngoài hệ thống sự kiện React rơi vào một
+ * commit sau thao tác mệnh lệnh, và Scheduler chỉ nhả khi hết ngân sách.
+ * Mỗi bước bơm dữ liệu vào stream nằm trong `act(async () => {…})`, cộng một
+ * `await` nhường vòng lặp sự kiện thật (không phải timer giả) — cần thiết ở
+ * đây vì `ReadableStreamDefaultController.enqueue()` chỉ giải quyết một
+ * `reader.read()` đang treo qua một VI TÁC VỤ của CHÍNH pipeline `fetch`, và
+ * `act()` một mình không hứa nhường đủ số vòng cho một chuỗi microtask
+ * không phải do chính callback của nó tạo ra — `serverClient.test.ts` đo
+ * được y hệt bẫy này ở tầng dây (bài "kết nối MẠNG LỖI").
+ */
+function flush(): Promise<void> {
+  return new Promise((r) => setTimeout(r, 0));
 }
 
-const live: VaultClient[] = [];
-
-function harness(): Harness {
-  const post = vi.fn();
-  const client = new VaultClient({
-    lang: 'vi',
-    vaultOrigin: VAULT,
-    target: { postMessage: post } as unknown as Window,
-    timeoutMs: 10_000,
+function controllableSSE() {
+  const encoder = new TextEncoder();
+  let ctrl!: ReadableStreamDefaultController<Uint8Array>;
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) {
+      ctrl = c;
+    },
   });
-  live.push(client);
   return {
-    post,
-    client,
-    wrapper: ({ children }) => (
-      <LanguageProvider><VaultFrameContext.Provider
-        value={{ client, origin: VAULT, expanded: false, setExpanded: () => {} }}
-      >
-        {children}
-      </VaultFrameContext.Provider></LanguageProvider>
-    ),
-    sent: (n) => post.mock.calls[n]?.[0],
-    reply: (data, origin = VAULT) => {
-      window.dispatchEvent(new MessageEvent('message', { origin, data }));
+    stream,
+    event: (kind: string, payload: { text?: string; code?: string }) => {
+      ctrl.enqueue(encoder.encode(`event: ${kind}\ndata: ${JSON.stringify(payload)}\n\n`));
+    },
+    close: () => {
+      ctrl.close();
     },
   };
 }
 
-afterEach(() => {
-  while (live.length) live.pop()!.dispose();
-});
-
-const CONFIGURED = { kind: 'status', configured: true, providerId: 'deepseek', model: 'deepseek-chat' };
-
-/** Đưa hook tới đúng lúc kho khoá đã nhận yêu cầu `chat`. Trả về id của nó. */
-async function askUntilChat(h: Harness, result: { current: ReturnType<typeof useAI> }, prompt = 'Giải thích entropy'): Promise<string> {
-  act(() => {
-    void result.current.ask(prompt);
-  });
-  await act(async () => {
-    h.reply({ v: 1, id: h.sent(0).id, ...CONFIGURED });
-  });
-  return h.sent(1).id;
+interface Captured {
+  readonly question: string;
+  readonly course_slug: string;
+  readonly signal: AbortSignal;
 }
 
-describe('useAI — dòng chữ chảy về', () => {
-  it('ask() hỏi kho khoá đã cấu hình chưa TRƯỚC, rồi mới gửi lời nhắc', async () => {
-    const h = harness();
-    const { result } = renderHook(() => useAI(), { wrapper: h.wrapper });
+const server = setupServer();
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
 
-    expect(result.current.state).toBe('idle');
+/** Đăng ký MỘT lần trả lời cho `/ai/chat`, và giao lại cả thân request LẪN
+ *  stream điều khiển được để bài kiểm tự tay bơm chunk. */
+function nextChat(): { requests: Captured[]; sse: ReturnType<typeof controllableSSE> } {
+  const requests: Captured[] = [];
+  const sse = controllableSSE();
+  server.use(
+    http.post(
+      '/ai/chat',
+      async ({ request }) => {
+        const body = (await request.json()) as { question: string; course_slug: string };
+        requests.push({ ...body, signal: request.signal });
+        return new HttpResponse(sse.stream, {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      },
+      { once: true },
+    ),
+  );
+  return { requests, sse };
+}
+
+function wrapper({ children }: { children: ReactNode }) {
+  return <LanguageProvider>{children}</LanguageProvider>;
+}
+
+function lastAnswer(r: { turns: readonly { answer: string }[] }): string {
+  return r.turns.length === 0 ? '' : r.turns[r.turns.length - 1].answer;
+}
+
+describe('useAI — một đường, thẳng tới máy chủ', () => {
+  it('gửi ĐÚNG thân {question, course_slug}; question HIỂN THỊ vẫn ngắn dù system dài', async () => {
+    const { requests, sse } = nextChat();
+    const { result } = renderHook(() => useAI(), { wrapper });
+
+    act(() => {
+      void result.current.ask('Số mũ lệch là gì?', { system: 'TRÍCH CHƯƠNG:\nSố mũ lệch 127.', courseSlug: 'so-dau-phay-dong' });
+    });
+    expect(result.current.state).toBe('streaming');
+    await act(async () => {
+      sse.event('done', {});
+      sse.close();
+      await flush();
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].question).toBe('TRÍCH CHƯƠNG:\nSố mũ lệch 127.\n\nSố mũ lệch là gì?');
+    expect(requests[0].course_slug).toBe('so-dau-phay-dong');
+    // Hiển thị cho người đọc vẫn là câu NGẮN họ gõ — không phải khối ngữ cảnh
+    // đã ghép vào để gửi đi.
+    expect(result.current.turns[0].question).toBe('Số mũ lệch là gì?');
+  });
+
+  it('courseSlug vắng ⇒ course_slug rỗng trên dây, không phải "undefined"', async () => {
+    const { requests, sse } = nextChat();
+    const { result } = renderHook(() => useAI(), { wrapper });
+    act(() => {
+      void result.current.ask('hỏi');
+    });
+    await act(async () => {
+      sse.event('done', {});
+      sse.close();
+      await flush();
+    });
+    expect(requests[0].course_slug).toBe('');
+    expect(requests[0].question).toBe('hỏi');
+  });
+
+  it('cộng dồn chunk vào một chuỗi và kết ở state "done"', async () => {
+    const { sse } = nextChat();
+    const { result } = renderHook(() => useAI(), { wrapper });
     act(() => {
       void result.current.ask('Giải thích entropy');
     });
 
-    expect(h.sent(0)).toMatchObject({ v: PROTOCOL_VERSION, kind: 'status' });
-    expect(result.current.state).toBe('streaming');
-
     await act(async () => {
-      h.reply({ v: 1, id: h.sent(0).id, ...CONFIGURED });
-    });
-
-    expect(h.sent(1)).toMatchObject({
-      v: PROTOCOL_VERSION,
-      kind: 'chat',
-      providerId: 'deepseek',
-      model: 'deepseek-chat',
-    });
-    // Lời nhắc của người học đi vào `messages`; trang chính không tự chọn mô
-    // hình — nó dùng đúng cái kho khoá nói là đang được cấu hình.
-    expect(h.sent(1).messages).toEqual([{ role: 'user', content: 'Giải thích entropy' }]);
-  });
-
-  it('cộng dồn chunk vào một chuỗi và kết ở state "done"', async () => {
-    const h = harness();
-    const { result } = renderHook(() => useAI(), { wrapper: h.wrapper });
-    const id = await askUntilChat(h, result);
-
-    await act(async () => {
-      h.reply({ v: 1, id, kind: 'chunk', text: 'Entropy ' });
+      sse.event('delta', { text: 'Entropy ' });
+      await flush();
     });
     expect(lastAnswer(result.current)).toBe('Entropy ');
     expect(result.current.state).toBe('streaming');
 
     await act(async () => {
-      h.reply({ v: 1, id, kind: 'chunk', text: 'là số bit.' });
+      sse.event('delta', { text: 'là số bit.' });
+      await flush();
     });
     expect(lastAnswer(result.current)).toBe('Entropy là số bit.');
 
     await act(async () => {
-      h.reply({ v: 1, id, kind: 'done' });
+      sse.event('done', {});
+      sse.close();
+      await flush();
     });
     expect(result.current.state).toBe('done');
     expect(result.current.error).toBeNull();
   });
 
   /**
-   * Bài này TỪNG khẳng định điều ngược lại — "một câu hỏi mới xoá câu trả lời
-   * cũ" — và nó xanh, vì hook khi ấy chỉ giữ một chuỗi. Đó chính là lỗi người
-   * dùng báo: hỏi câu thứ hai thì câu thứ nhất biến mất.
-   *
-   * Điều đáng canh thì KHÔNG đổi, chỉ chuyển chỗ: mẩu chữ của lời gọi mới không
-   * được nối vào câu trả lời cũ. Nay hai lượt là hai mục riêng, nên cả hai đều
-   * đo được cùng lúc.
+   * Bài này TỪNG khẳng định điều ngược lại ở Pha 1 — "một câu hỏi mới xoá câu
+   * trả lời cũ" — và nó xanh khi hook chỉ giữ một chuỗi. Nay hai lượt là hai
+   * mục riêng trong `turns`, và cả hai đo được cùng lúc.
    */
   it('câu hỏi mới mở một LƯỢT mới; lượt cũ ở nguyên đó', async () => {
-    const h = harness();
-    const { result } = renderHook(() => useAI(), { wrapper: h.wrapper });
-    const first = await askUntilChat(h, result);
+    const first = nextChat();
+    const { result } = renderHook(() => useAI(), { wrapper });
+    act(() => {
+      void result.current.ask('Giải thích entropy');
+    });
     await act(async () => {
-      h.reply({ v: 1, id: first, kind: 'chunk', text: 'cũ' });
-      h.reply({ v: 1, id: first, kind: 'done' });
+      first.sse.event('delta', { text: 'cũ' });
+      first.sse.event('done', {});
+      first.sse.close();
+      await flush();
     });
 
+    const second = nextChat();
     act(() => {
       void result.current.ask('câu khác');
     });
     await act(async () => {
-      h.reply({ v: 1, id: h.sent(2).id, ...CONFIGURED });
-    });
-    const second = h.sent(3).id;
-    await act(async () => {
-      h.reply({ v: 1, id: second, kind: 'chunk', text: 'mới' });
+      second.sse.event('delta', { text: 'mới' });
+      await flush();
     });
 
     expect(result.current.turns.map((turn) => [turn.question, turn.answer])).toEqual([
@@ -175,167 +236,207 @@ describe('useAI — dòng chữ chảy về', () => {
   });
 
   /**
-   * "Hỏi tiếp" chỉ có nghĩa nếu mô hình THẤY được lượt trước. Trước thay đổi
-   * này mỗi lời gọi chỉ mang `[system, user]`, nên lượt thứ hai là một cuộc trò
-   * chuyện mới — người dùng gõ "giải thích rõ hơn" và nhận lại một câu trả lời
-   * về một chủ đề mà mô hình vừa quên.
+   * BÀI CHỊU LỰC của quyết định sản phẩm "không lịch sử hội thoại trên dây".
+   * Pha 1 có một bài đối xứng khẳng định ĐIỀU NGƯỢC LẠI ("lượt sau mang theo
+   * cả hội thoại trước") — dấu vết rõ nhất trong bộ kiểm này rằng Pha 2 đã
+   * đổi hợp đồng, không chỉ đổi đường vận chuyển.
+   *
+   * Đột biến (task-13-report.md): nối `history` giả vào `wireQuestion` trong
+   * `useAI.ts` ⇒ bài này phải ĐỎ.
    */
-  it('lượt sau mang theo CẢ hội thoại trước đó', async () => {
-    const h = harness();
-    const { result } = renderHook(() => useAI(), { wrapper: h.wrapper });
-    const first = await askUntilChat(h, result);
+  it('lượt sau KHÔNG mang theo lượt trước — mỗi lượt là một request độc lập', async () => {
+    const first = nextChat();
+    const { result } = renderHook(() => useAI(), { wrapper });
+    act(() => {
+      void result.current.ask('Giải thích entropy');
+    });
     await act(async () => {
-      h.reply({ v: 1, id: first, kind: 'chunk', text: 'Là số bit.' });
-      h.reply({ v: 1, id: first, kind: 'done' });
+      first.sse.event('delta', { text: 'Là số bit.' });
+      first.sse.event('done', {});
+      first.sse.close();
+      await flush();
     });
 
+    const second = nextChat();
     act(() => {
       void result.current.ask('Rõ hơn được không?');
     });
     await act(async () => {
-      h.reply({ v: 1, id: h.sent(2).id, ...CONFIGURED });
+      await flush();
     });
 
-    expect(h.sent(3).messages).toEqual([
-      { role: 'user', content: 'Giải thích entropy' },
-      { role: 'assistant', content: 'Là số bit.' },
-      { role: 'user', content: 'Rõ hơn được không?' },
-    ]);
+    expect(second.requests[0].question).toBe('Rõ hơn được không?');
+    expect(second.requests[0].question).not.toContain('entropy');
+    expect(second.requests[0].question).not.toContain('Là số bit.');
   });
 
-  /**
-   * Một lượt hỏng KHÔNG vào lịch sử: gửi một câu hỏi kèm một câu trả lời rỗng
-   * dạy mô hình rằng im lặng là một câu trả lời hợp lệ.
-   */
-  it('lượt hỏng không được mang sang lượt sau', async () => {
-    const h = harness();
-    const { result } = renderHook(() => useAI(), { wrapper: h.wrapper });
-    const first = await askUntilChat(h, result);
-    await act(async () => {
-      h.reply({ v: 1, id: first, kind: 'error', code: 'provider_error', message: 'hỏng' });
+  it('lượt hỏng cũng không mang sang lượt sau', async () => {
+    const first = nextChat();
+    const { result } = renderHook(() => useAI(), { wrapper });
+    act(() => {
+      void result.current.ask('Giải thích entropy');
     });
+    await act(async () => {
+      first.sse.event('error', { code: 'ProviderFailed', text: 'the AI provider could not complete this turn' });
+      first.sse.close();
+      await flush();
+    });
+    expect(result.current.state).toBe('error');
 
+    const second = nextChat();
     act(() => {
       void result.current.ask('Thử lại');
     });
     await act(async () => {
-      h.reply({ v: 1, id: h.sent(2).id, ...CONFIGURED });
+      await flush();
     });
-
-    expect(h.sent(3).messages).toEqual([{ role: 'user', content: 'Thử lại' }]);
-  });
-
-  it('CHỮ GIẢ từ origin lạ KHÔNG lọt vào câu trả lời', async () => {
-    const h = harness();
-    const { result } = renderHook(() => useAI(), { wrapper: h.wrapper });
-    const id = await askUntilChat(h, result);
-
-    await act(async () => {
-      h.reply({ v: 1, id, kind: 'chunk', text: 'thật' });
-      // Một trang bất kỳ mở bằng `window.open` gửi về, mượn đúng id đang chạy.
-      h.reply({ v: 1, id, kind: 'chunk', text: 'GIA-MAO' }, 'https://evil.example');
-    });
-
-    expect(lastAnswer(result.current)).toBe('thật');
+    expect(second.requests[0].question).toBe('Thử lại');
   });
 });
 
-describe('useAI — lỗi có mã, không phải một câu cụt', () => {
-  it('kho khoá chưa cắm key ⇒ state "error" mang mã not_configured', async () => {
-    const h = harness();
-    const { result } = renderHook(() => useAI(), { wrapper: h.wrapper });
+describe('useAI — SSE đứt giữa chừng giữ lại phần đã nhận', () => {
+  /**
+   * BÀI CHỊU LỰC của Step 3, ở TẦNG HOOK (bổ sung cho tầng dây đã đo ở
+   * `serverClient.test.ts`). Đo bằng đột biến (task-13-report.md): trong
+   * nhánh `catch` của `ask()`, đổi `({ ...t0, failure: … })` thành
+   * `{ ...t0, answer: '', failure: … }` ⇒ bài này phải ĐỎ.
+   */
+  it('kết nối đứt giữa chừng: answer đã nhận CÒN NGUYÊN, failure được gắn thêm', async () => {
+    const { sse } = nextChat();
+    const { result } = renderHook(() => useAI(), { wrapper });
     act(() => {
       void result.current.ask('hỏi');
     });
     await act(async () => {
-      h.reply({ v: 1, id: h.sent(0).id, kind: 'status', configured: false });
+      sse.event('delta', { text: 'người học đã đọc được nửa câu' });
+      await flush();
     });
-    expect(result.current.state).toBe('error');
-    expect(result.current.error?.code).toBe('not_configured');
-    // Không gửi lời gọi `chat` nào: hỏi nhà cung cấp mà không có key là một
-    // vòng mạng chắc chắn hỏng.
-    expect(h.post).toHaveBeenCalledTimes(1);
-  });
+    expect(lastAnswer(result.current)).toBe('người học đã đọc được nửa câu');
 
-  it('lỗi giữa dòng giữ nguyên mã của kho khoá', async () => {
-    const h = harness();
-    const { result } = renderHook(() => useAI(), { wrapper: h.wrapper });
-    const id = await askUntilChat(h, result);
     await act(async () => {
-      h.reply({ v: 1, id, kind: 'error', code: 'bad_key', message: 'Key bị từ chối.' });
+      sse.close(); // đóng mà KHÔNG có done/error — mất kết nối giữa chừng.
+      await flush();
     });
+
+    expect(lastAnswer(result.current)).toBe('người học đã đọc được nửa câu');
     expect(result.current.state).toBe('error');
-    expect(result.current.error?.code).toBe('bad_key');
+    expect(result.current.error?.code).toBe('Network');
+  });
+});
+
+describe('useAI — mã lỗi có nghĩa RIÊNG, không hiện "thử lại sau" cho người chỉ cần nạp credit', () => {
+  it('NoCredit và ProviderFailed dẫn tới HAI câu KHÁC NHAU', async () => {
+    // NoCredit chỉ tới bằng đường 402 TRƯỚC-stream ở đời thật
+    // (`serverClient.ts`'s doc comment) — mô phỏng đúng hình dạng đó thay vì
+    // gửi nó như một sự kiện SSE.
+    server.use(
+      http.post('/ai/chat', () => HttpResponse.json({ code: 'NoCredit', error: 'no AI credit remaining' }, { status: 402 })),
+    );
+    const { result: r1 } = renderHook(() => useAI(), { wrapper });
+    await act(async () => {
+      await r1.current.ask('hỏi');
+    });
+    const noCreditError = r1.current.error;
+
+    const b = nextChat();
+    const { result: r2 } = renderHook(() => useAI(), { wrapper });
+    act(() => {
+      void r2.current.ask('hỏi');
+    });
+    await act(async () => {
+      b.sse.event('error', { code: 'ProviderFailed', text: 'the AI provider could not complete this turn' });
+      b.sse.close();
+      await flush();
+    });
+    const providerFailedError = r2.current.error;
+
+    expect(noCreditError?.code).toBe('NoCredit');
+    expect(providerFailedError?.code).toBe('ProviderFailed');
+    expect(noCreditError?.code).not.toBe(providerFailedError?.code);
+    // ĐÂY LÀ KHẲNG ĐỊNH THẬT SỰ CHỊU LỰC: không chỉ mã khác nhau, CÂU HIỆN
+    // RA cũng phải khác nhau — nếu không, một cổng chỉ so `code` có thể xanh
+    // trong khi UI vẫn hiện đúng MỘT thông điệp cho cả hai.
+    expect(noCreditError?.message).not.toBe(providerFailedError?.message);
   });
 
-  it('bản dựng KHÔNG có kho khoá ⇒ mã "unavailable", KHÁC với "chưa cắm key"', async () => {
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <LanguageProvider><VaultFrameContext.Provider
-        value={{ client: null, origin: null, expanded: false, setExpanded: () => {} }}
-      >
-        {children}
-      </VaultFrameContext.Provider></LanguageProvider>
-    );
+  it('ToolBudgetExhausted có câu RIÊNG, không mượn câu của ProviderFailed', async () => {
+    const { sse } = nextChat();
+    const { result } = renderHook(() => useAI(), { wrapper });
+    act(() => {
+      void result.current.ask('hỏi');
+    });
+    await act(async () => {
+      sse.event('error', { code: 'ToolBudgetExhausted', text: 'this turn used its whole tool budget without producing an answer' });
+      sse.close();
+      await flush();
+    });
+    expect(result.current.error?.code).toBe('ToolBudgetExhausted');
+  });
+
+  it('không có response nào tới (mất mạng) ⇒ mã Network', async () => {
+    server.use(http.post('/ai/chat', () => HttpResponse.error()));
     const { result } = renderHook(() => useAI(), { wrapper });
     await act(async () => {
       await result.current.ask('hỏi');
     });
     expect(result.current.state).toBe('error');
-    // KHÔNG phải `not_configured`: "vào cấu hình để cắm key" chỉ là lời khuyên
-    // đúng khi có chỗ để cắm. Gộp hai mã lại là gửi người học đi vào một trang
-    // cấu hình không giải quyết được gì.
-    expect(result.current.error?.code).toBe('unavailable');
+    expect(result.current.error?.code).toBe('Network');
   });
 });
 
-describe('useAI — cancel() huỷ THẬT', () => {
-  it('gửi thông điệp huỷ vào kho khoá, kèm id của lời gọi đang chạy', async () => {
-    const h = harness();
-    const { result } = renderHook(() => useAI(), { wrapper: h.wrapper });
-    const chatId = await askUntilChat(h, result);
+describe('useAI — cancel() huỷ THẬT bằng AbortSignal', () => {
+  it('cancel() abort đúng tín hiệu đã gửi cho fetch của lượt đang chạy', async () => {
+    const { requests, sse } = nextChat();
+    const { result } = renderHook(() => useAI(), { wrapper });
+    act(() => {
+      void result.current.ask('hỏi');
+    });
+    await act(async () => {
+      sse.event('delta', { text: 'một nửa' });
+      await flush();
+    });
 
     await act(async () => {
       result.current.cancel();
+      await flush();
     });
 
-    expect(h.sent(2)).toMatchObject({ kind: 'cancel', cancelId: chatId });
-    expect(h.post.mock.calls[2][1]).toBe(VAULT);
+    expect(requests[0].signal.aborted).toBe(true);
     expect(result.current.state).toBe('idle');
-  });
-
-  it('sau khi huỷ, chunk tới muộn không đổi được chữ trên màn hình', async () => {
-    const h = harness();
-    const { result } = renderHook(() => useAI(), { wrapper: h.wrapper });
-    const id = await askUntilChat(h, result);
-    await act(async () => {
-      h.reply({ v: 1, id, kind: 'chunk', text: 'một nửa' });
-    });
-    await act(async () => {
-      result.current.cancel();
-    });
-    await act(async () => {
-      h.reply({ v: 1, id, kind: 'chunk', text: 'KHONG-DUOC-CO' });
-    });
     expect(lastAnswer(result.current)).toBe('một nửa');
-    expect(result.current.state).toBe('idle');
   });
 
   it('huỷ KHÔNG bị coi là lỗi', async () => {
-    const h = harness();
-    const { result } = renderHook(() => useAI(), { wrapper: h.wrapper });
-    await askUntilChat(h, result);
+    const { sse } = nextChat();
+    const { result } = renderHook(() => useAI(), { wrapper });
+    act(() => {
+      void result.current.ask('hỏi');
+    });
+    await act(async () => {
+      sse.event('delta', { text: 'x' });
+      await flush();
+    });
     await act(async () => {
       result.current.cancel();
+      await flush();
     });
     expect(result.current.error).toBeNull();
     expect(result.current.state).not.toBe('error');
   });
 
-  it('tháo component cũng huỷ THẬT — không để lời gọi chạy tiếp và tính tiền', async () => {
-    const h = harness();
-    const { result, unmount } = renderHook(() => useAI(), { wrapper: h.wrapper });
-    const chatId = await askUntilChat(h, result);
+  it('tháo component cũng huỷ THẬT — signal của lời gọi đang chạy bị abort', async () => {
+    const { requests, sse } = nextChat();
+    const { result, unmount } = renderHook(() => useAI(), { wrapper });
+    act(() => {
+      void result.current.ask('hỏi');
+    });
+    await act(async () => {
+      sse.event('delta', { text: 'x' });
+      await flush();
+    });
+
     unmount();
-    expect(h.sent(2)).toMatchObject({ kind: 'cancel', cancelId: chatId });
+    await flush();
+    expect(requests[0].signal.aborted).toBe(true);
   });
 });
