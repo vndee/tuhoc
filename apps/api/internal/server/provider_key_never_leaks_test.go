@@ -76,8 +76,13 @@ import (
 //     quét chuỗi theo dòng. Nửa HÀNH VI là lưới an toàn cho đúng trường hợp
 //     này — nó không quan tâm mã nguồn viết trên mấy dòng, nó đọc log THẬT.
 //  2. Chỉ khớp HAI CÁI TÊN: `DeepSeekAPIKey`, `BraveAPIKey`, cộng biến `cfg`
-//     (khi đi kèm một động từ in-cả-struct `%v`/`%+v`/`%#v`). Giá trị đổi
-//     tên khi đi qua biên gói thì cổng này MÙ — và đây không phải giả
+//     khi nó đi làm đối số cho cả struct — hoặc kèm một động từ in-cả-struct
+//     (`%v`/`%+v`/`%#v`, ví dụ `log.Printf("%+v", cfg)`), hoặc đứng như một
+//     GIÁ TRỊ NGUYÊN không qua động từ format nào (ví dụ `c.JSON(cfg)`,
+//     `slog.Error("boot", "cfg", cfg)` — xem providerKeyCfgBareValue; nhánh
+//     này được thêm ở round 2 review vòng 2 sau khi nhánh động-từ-format một
+//     mình đo được bỏ lọt cả ba hình dạng trên). Giá trị đổi tên khi đi qua
+//     biên gói thì cổng này MÙ — và đây không phải giả
 //     thuyết, chính repo có sẵn tiền lệ: `cfg.GitHubToken` đi vào
 //     `discuss.NewHandlerForConfig(cfg.GitHubToken, ...)` rồi thành tham số
 //     `token string` ở `NewClient`, rồi thành trường `c.token` trên struct
@@ -157,6 +162,27 @@ var providerKeyStructDumpVerbs = []string{"%v", "%+v", "%#v"}
 // nên cụm từ này không phải một cái tên chung chung tình cờ trùng — nó LÀ
 // tên biến project đặt cho config.Config ở khắp nơi.
 var providerKeyCfgWord = regexp.MustCompile(`\bcfg\b`)
+
+// providerKeyCfgBareValue so khớp `cfg` khi nó đứng như một GIÁ TRỊ NGUYÊN
+// — tức không có `.` ngay sau nó — vì đó là hình dạng "cả struct đi làm đối
+// số" mà một động từ format (%v/%+v/%#v) không phải cách duy nhất để tạo
+// ra. Round 2 review đo được ba hình dạng bản trước (chỉ nhận biết qua động
+// từ format) bỏ lọt, tất cả đều KHÔNG có %v/%+v/%#v nào trong dòng:
+//
+//	return c.JSON(cfg)                 // c.JSON tự marshal cả struct
+//	slog.Error("boot", "cfg", cfg)     // slog tự render giá trị, không cần verb
+//	c.Send([]byte(fmt.Sprint(cfg)))    // fmt.Sprint không có verb nào để quét
+//
+// RE2 (package regexp của Go) không có lookahead, nên không viết được
+// "cfg KHÔNG theo sau bởi dấu chấm" trực tiếp. Thay vào đó khớp CHIỀU
+// DƯƠNG: `cfg` theo sau bởi một trong các ký tự chỉ xuất hiện khi `cfg` là
+// đối số/giá trị cuối cùng của một biểu thức — dấu phẩy, ngoặc đóng, ngoặc
+// vuông đóng, ngoặc nhọn đóng (`,)]}`, có thể cách nhau khoảng trắng). Điều
+// này KHÔNG khớp `cfg.Port` (ký tự ngay sau `cfg` là `.`, không nằm trong
+// lớp trên) nên mìn dương tính giả round 2 review nêu tên (`main.go:69`,
+// `log.Printf("listening on %s", cfg.Port)`) vẫn im lặng — xem case
+// `logStartup` (dùng `cfg.Port`) trong TestProviderKeyStructuralScanIsNotVacuous.
+var providerKeyCfgBareValue = regexp.MustCompile(`\bcfg\b\s*[,)\]}]`)
 
 // minProductGoFilesForProviderKeyScan là chốt chống cổng mù: một đường dẫn
 // sai (hoặc bộ lọc thư mục nuốt nhầm) làm phép quét đọc 0 tệp và báo đạt vĩnh
@@ -323,17 +349,30 @@ func providerKeyFieldMatch(line string) (string, bool) {
 	return "", false
 }
 
-// providerKeyCfgMatch chỉ khớp khi biến `cfg` (nguyên từ) VÀ một động từ
-// in-cả-struct cùng xuất hiện trên dòng — xem providerKeyStructDumpVerbs cho
-// lý do thu hẹp này (round 2 review, mìn `log.Printf("...%s...", cfg.Port)`).
+// providerKeyCfgMatch khớp "cả struct cfg đi làm đối số cho một sink" theo
+// HAI hình dạng độc lập — cả hai đều phải giữ, không cái nào thay được cái
+// kia:
+//
+//  1. `cfg` (nguyên từ) cộng một động từ format in-cả-struct (%v/%+v/%#v)
+//     cùng dòng — bắt `log.Printf("%+v", cfg)`. Thu hẹp có chủ đích khỏi
+//     một `\bcfg\b` trần (round 2 review vòng 1, mìn
+//     `log.Printf("...%s...", cfg.Port)`).
+//  2. `cfg` đứng như GIÁ TRỊ NGUYÊN (providerKeyCfgBareValue) — bắt
+//     `c.JSON(cfg)`, `slog.Error("boot", "cfg", cfg)`,
+//     `fmt.Sprint(cfg)`, những sink KHÔNG đọc một chuỗi format nên
+//     nhánh 1 mù hoàn toàn với chúng (round 2 review vòng 2, ba hình dạng
+//     nhánh 1 một mình bỏ lọt — xem case tương ứng trong
+//     TestProviderKeyStructuralScanIsNotVacuous).
 func providerKeyCfgMatch(line string) (string, bool) {
-	if !providerKeyCfgWord.MatchString(line) {
-		return "", false
-	}
-	for _, v := range providerKeyStructDumpVerbs {
-		if strings.Contains(line, v) {
-			return "cfg+" + v, true
+	if providerKeyCfgWord.MatchString(line) {
+		for _, v := range providerKeyStructDumpVerbs {
+			if strings.Contains(line, v) {
+				return "cfg+" + v, true
+			}
 		}
+	}
+	if providerKeyCfgBareValue.MatchString(line) {
+		return "cfg (giá trị nguyên)", true
 	}
 	return "", false
 }
@@ -388,6 +427,29 @@ func debugLog(cfg config.Config) {
 			"bộ dò đã chết")
 	}
 
+	// Round 2 review vòng 2: nhánh chỉ-nhận-động-từ-format (ở trên) bỏ lọt
+	// ba hình dạng "cả struct đi làm đối số" KHÔNG có %v/%+v/%#v nào trong
+	// dòng — đo được thật trên bản trước vòng này. providerKeyCfgBareValue
+	// vá đúng lỗ đó; ba dòng dưới đây phải bắt được ĐỦ CẢ BA, độc lập với
+	// nhánh động từ format.
+	violatingCfgBareValue := map[string]string{
+		"apps/api/internal/ai/client.go": strings.ToLower(`package ai
+func h1(cfg config.Config) error {
+	return c.JSON(cfg)
+}
+func h2(cfg config.Config) {
+	slog.Error("boot", "cfg", cfg)
+}
+func h3(cfg config.Config) {
+	c.Send([]byte(fmt.Sprint(cfg)))
+}`),
+	}
+	if got := providerKeyScan(violatingCfgBareValue, providerKeyCfgMatch, providerKeyLeakSinkNeedles); len(got) != 3 {
+		t.Errorf("phép quét cfg-giá-trị-nguyên phải bắt đúng 3 dòng "+
+			"(c.JSON(cfg), slog.Error(..., cfg), fmt.Sprint(cfg)) — bắt được %d: %v",
+			len(got), got)
+	}
+
 	// Chiều ngược lại: nguồn vô hại không được khớp, ở cả hai phép quét —
 	// gồm CẢ mìn round 2 review nêu tên: cfg.Port cạnh log.Printf, không có
 	// động từ in-cả-struct nào, không được khớp.
@@ -403,6 +465,14 @@ func newRequest(cfg config.Config) *http.Request {
 }
 func logStartup(cfg config.Config) {
 	log.Printf("listening on %s", cfg.Port)
+}
+// Hình dạng THẬT của chính repo này (main.go:62, server.go:386): cfg đứng
+// TRẦN, ngay trước dấu phẩy — khớp providerKeyCfgBareValue — nhưng KHÔNG có
+// sink nào trên dòng, nên vẫn phải im lặng. Đây không phải suy đoán: cả hai
+// dòng dưới lấy nguyên hình dạng từ mã sản phẩm thật đang chạy.
+func wireApp(cfg config.Config) {
+	app := server.New(cfg, deps)
+	_ = adminOrToken(cfg, handler)
 }`),
 	}
 	if got := providerKeyScan(benign, providerKeyFieldMatch, providerKeyLeakSinkNeedles); len(got) != 0 {
@@ -638,42 +708,67 @@ func TestNoRequestStructAcceptsAKey(t *testing.T) {
 
 // ── NỬA HÀNH VI ──────────────────────────────────────────────────────────
 //
-// Ba đích log riêng biệt trong tiến trình thật, cả ba phải được chụp và cả
-// ba phải chứng minh KHÔNG RỖNG trước khi "không thấy sentinel" có nghĩa gì
-// (round 2 review, Critical 2 — bản trước dùng Deps{LogOutput: io.Discard},
-// tự tay vứt bỏ đích log thứ hai, và không route nào trong ba route gốc
-// từng chạm nhánh 500 nên đích log thứ nhất — slog/apilog — cũng luôn rỗng;
-// `strings.Contains("", sentinel)` luôn false, nên khẳng định đó chưa từng
-// kiểm gì):
+// SỬA Ở ROUND 2 REVIEW VÒNG 2 (Important #3): bản trước gọi ba buffer dưới
+// đây là "ba đích log riêng biệt TRONG TIẾN TRÌNH THẬT". Câu đó SAI, và
+// đúng loại lỗi repo này chuyên đi dọn — một khẳng định nghe như đã kiểm
+// mà không đúng với thứ nó mô tả. Sự thật, đo bằng cách đọc thẳng nguồn
+// stdlib (`$(go env GOROOT)/src/log/slog/logger.go`,
+// `.../log/slog/handler.go`):
 //
-//  1. slog.Default() — thứ apilog.Internal/apilog.Panic viết qua. Chỉ chạy
-//     ở nhánh lỗi, nên phải CHỦ ĐỘNG ép một lỗi thật xảy ra (dropTable, mượn
-//     đúng kỹ thuật observability_test.go dùng) — không có bước đó, không
-//     request thành công nào tạo ra dù chỉ một dòng slog.
+//   - `slog.SetDefault` CHỈ được gọi ở hai tệp *_test.go trong toàn repo
+//     (observability_test.go:54, discuss_test.go:223). Tiến trình sản phẩm
+//     — `cmd/api/main.go` và mọi gói `internal/*` — KHÔNG BAO GIỜ gọi nó.
+//   - Khi không ai gọi `SetDefault`, `slog.Default()` là một `*defaultHandler`
+//     (log/slog/handler.go). Đọc thẳng chú thích trong nguồn của chính nó:
+//     "Collect the level, attributes and message in a string and write it
+//     with the default log.Logger. Let the log.Logger handle time and
+//     file/line." — nghĩa là ở TIẾN TRÌNH SẢN PHẨM, `slog.Error(...)` (thứ
+//     `apilog` gọi) tự nó chảy VÀO gói `log` chuẩn, không phải ngược lại.
+//   - Ngược lại, `slog.SetDefault(l)` (log/slog/logger.go:62-74) làm đúng
+//     điều ngược: nó gọi `log.SetOutput(&handlerWriter{l.Handler(), ...})`,
+//     tức chiếm quyền ghi của gói `log` chuẩn và đẩy nó VÀO `l`'s Handler.
+//     Đây CHỈ xảy ra trong bài test này, từ đúng dòng `captureSlog(t)` gọi
+//     nó, không phải một pha nào trong vòng đời tiến trình thật.
+//
+// Hệ quả: tiến trình sản phẩm thật có ĐÚNG HAI đích log, không phải ba —
+// (1) một luồng stderr DÙNG CHUNG cho cả `log.*` lẫn `slog.*` (vì
+// `defaultHandler` tự chảy vào `log`), và (2) access log riêng của fiber
+// (`Deps.LogOutput`). "Ba buffer" dưới đây là hình dạng CỦA CHÍNH HÀM TEST
+// NÀY — nó chủ động dựng ra một sự phân tách không tồn tại trong tiến
+// trình thật, để có thể chụp và kiểm riêng từng phần, KHÔNG PHẢI để mô tả
+// kiến trúc logging thật của server.
+//
+//  1. slog buffer (`slogLogs`, qua captureSlog) — thứ apilog.Internal/
+//     apilog.Panic viết qua, VÀ (chỉ trong khuôn khổ bài test này, từ thời
+//     điểm captureSlog(t) chạy trở đi) thứ mọi lời gọi `log.Printf` cũng bị
+//     đẩy vào, vì cơ chế `handlerWriter` nói trên. slog chỉ ghi ở nhánh
+//     lỗi, nên phải CHỦ ĐỘNG ép một lỗi thật xảy ra (dropTable, mượn đúng
+//     kỹ thuật observability_test.go dùng) — không có bước đó, không
+//     request thành công nào tạo ra dù chỉ một dòng.
 //  2. Access log của fiber (Deps.LogOutput) — bài trước đưa thẳng vào
 //     io.Discard, nên "không tìm thấy sentinel trong access log" chưa từng
 //     là một khẳng định có kiểm gì. Đưa vào một *bytes.Buffer thật.
-//  3. `log` chuẩn của stdlib, TRƯỚC KHI slog.SetDefault chạy — không route
-//     nào trong ba route gốc chạm tới nó, nên phải ép nó phát sinh bằng
-//     đúng cơ chế config_test.go đã dùng cho cảnh báo COOKIE_SECURE
-//     (TestLoad_CookieSecureGarbageFailsClosedWithWarning): đặt
-//     COOKIE_SECURE thành một giá trị không hợp lệ TRƯỚC khi gọi
-//     config.Load(), với log.SetOutput đã trỏ vào buffer từ trước đó.
+//  3. `log.SetOutput(&stdlibLog)` — chỉ canh được CỬA SỔ TRƯỚC ĐIỂM
+//     `captureSlog(t)` CHẠY TRONG CHÍNH HÀM TEST NÀY (không phải "trước
+//     một pha khởi động nào của server thật" — server thật không có pha
+//     đó). Sau điểm đó, `log.SetOutput` bị `handlerWriter` ghi đè lặng lẽ
+//     (đúng cơ chế mục 1), nên mọi `log.Printf` gọi SAU đi vào `slogLogs`
+//     chứ không vào `stdlibLog` nữa — đo thực nghiệm ở round 2 review vòng
+//     1: mutant `log.Printf(...)` cài trong `New()` (chạy sau
+//     captureSlog(t)) làm ĐỎ đúng khẳng định slog, không phải khẳng định
+//     stdlib log (ghi lại trong task-3-report.md). Cửa sổ TRƯỚC đó — nơi
+//     `stdlibLog` thật sự canh được — bị ép phát sinh nội dung bằng đúng cơ
+//     chế config_test.go dùng cho cảnh báo COOKIE_SECURE
+//     (TestLoad_CookieSecureGarbageFailsClosedWithWarning): đặt COOKIE_SECURE
+//     thành một giá trị không hợp lệ TRƯỚC khi gọi config.Load().
 //
-//     "TRƯỚC KHI slog.SetDefault chạy" không phải một chi tiết vặt — đó là
-//     một hành vi CÓ THẬT của stdlib, đo được: `go doc log/slog SetDefault`
-//     nói thẳng "After this call, output from the log package's default
-//     Logger (as with log.Print, etc.) will be logged using l's Handler."
-//     Nói cách khác, MỌI lời gọi `log.Printf` xảy ra SAU khi captureSlog(t)
-//     chạy (ví dụ một mutation nằm trong New()) đi vào buffer SLOG
-//     (`slogLogs`), không vào `stdlibLog` — dù `log.SetOutput(&stdlibLog)`
-//     đã được gọi trước đó. Đo thực nghiệm ở round 2 review: cài mutant
-//     `log.Printf("server: ai client configured with %s", cfg.DeepSeekAPIKey)`
-//     vào New() làm ĐỎ đúng khẳng định slog, không phải khẳng định stdlib
-//     log — ghi lại trong task-3-report.md. Vì lý do đó buffer `stdlibLog`
-//     chỉ thật sự canh được CỬA SỔ TRƯỚC captureSlog(t) — tức thời điểm
-//     cấu hình/khởi động — chứ không phải "mọi lời gọi log.Printf trong
-//     toàn bộ vòng đời request"; cửa sổ SAU đó đã được `slogged` phủ.
+// Vì mục 1 phụ thuộc vào một thuộc tính CỦA MỘT TỆP TEST KHÁC
+// (captureSlog dựng handler với `Level: slog.LevelDebug`,
+// observability_test.go:54 — thấp hơn `Info`, mức mặc định
+// `slog.SetLogLoggerLevel` dùng cho log.Printf) mà không tệp nào ở đây
+// khẳng định trực tiếp, có một canary riêng ngay trong thân hàm test dưới
+// đây kiểm đúng thuộc tính đó — xem chú thích tại chỗ khai báo
+// `logBridgeCanary`.
 
 func TestProviderKeySentinelAppearsInNoResponseOrLog(t *testing.T) {
 	const sentinel = "sk-SENTINEL-do-not-emit-7f3c1a"
@@ -698,6 +793,25 @@ func TestProviderKeySentinelAppearsInNoResponseOrLog(t *testing.T) {
 
 	pool := store.TestPool(t)
 	slogLogs := captureSlog(t)
+
+	// Canary cho cầu nối log -> slog (xem khối chú thích "NỬA HÀNH VI" phía
+	// trên cho lý do cầu nối này tồn tại và tại sao nó mong manh). Nó chỉ
+	// sống vì captureSlog dựng handler với Level: slog.LevelDebug
+	// (observability_test.go:54), trong khi slog.SetLogLoggerLevel mặc định
+	// là Info — Info >= Debug nên log.Printf/log.Print lọt qua. Nếu ai đó hạ
+	// mức đó xuống slog.LevelError (một cú dọn dẹp rất hợp lý — "mức Info
+	// thì ai đọc"), cầu nối câm lặng nuốt mọi log.Printf, VÀ KHÔNG TEST NÀO
+	// TRONG TỆP NÀY ĐỎ ĐỂ NÓI VÌ SAO: apilog.Internal vẫn ghi ở mức Error
+	// nên `slogged` bên dưới vẫn không rỗng — chỉ là không rỗng VÌ MỘT LÝ DO
+	// KHÁC, và mutation (a) (round 2 review vòng 1) sẽ thoát cả hai nửa
+	// trong im lặng. Đốt một dòng mốc NGAY TẠI ĐÂY, qua log.Print (không
+	// phải apilog/slog trực tiếp), và đòi nó CÓ MẶT trong slog trước khi tin
+	// bất kỳ khẳng định "không có sentinel trong slog" nào ngay dưới —
+	// chốt này đỏ trước và nói đúng lý do nếu cầu nối chết, thay vì để mất
+	// nửa vùng phủ trong im lặng.
+	const logBridgeCanary = "provider-key-log-bridge-canary-3f9c"
+	log.Print(logBridgeCanary)
+
 	var accessLog bytes.Buffer
 	app := New(cfg, Deps{Pool: pool, LogOutput: &accessLog})
 
@@ -738,10 +852,15 @@ func TestProviderKeySentinelAppearsInNoResponseOrLog(t *testing.T) {
 
 	// ---- slog / apilog ----
 	slogged := slogLogs.take()
-	if slogged == "" {
-		t.Fatal("không thu được dòng slog nào — dropTable ở trên phải buộc " +
-			"apilog.Internal chạy. Nếu điều này đỏ, khẳng định 'không có sentinel " +
-			"trong slog' ngay dưới đây chưa từng kiểm gì (đúng lỗ Critical 2, round 2 review).")
+	if !strings.Contains(slogged, logBridgeCanary) {
+		t.Fatalf("cầu nối log -> slog đã chết: dòng mốc %q (ghi bằng log.Print "+
+			"ngay sau captureSlog) không xuất hiện trong slog. Nguyên nhân nhiều "+
+			"khả năng nhất: captureSlog's handler (observability_test.go) không "+
+			"còn cấu hình Level: slog.LevelDebug — log.Printf/log.Print phát ở mức "+
+			"Info, và bất kỳ mức lọc nào CAO HƠN Debug (ví dụ LevelError) nuốt câm "+
+			"lặng mọi log.Printf trong khi apilog (ghi ở mức Error) vẫn lọt qua, "+
+			"khiến 'slogged không rỗng' xanh vì MỘT LÝ DO KHÁC — đây chính là lỗ "+
+			"round 2 review vòng 2 đo được. Logged:\n%s", logBridgeCanary, slogged)
 	}
 	if strings.Contains(slogged, sentinel) {
 		t.Errorf("apilog (slog) mang key nhà cung cấp. Logged:\n%s", slogged)
