@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
+	"time"
 )
 
 // chatCompletionsPath is DeepSeek's endpoint path, appended to baseURL.
@@ -27,6 +29,49 @@ const chatCompletionsPath = "/chat/completions"
 // documented cap that gets close to it.
 const maxResponseBytes int64 = 8 << 20
 
+// maxProviderErrorMessageBytes caps how many runes of a non-2xx reply's
+// error.message this file puts into a returned error — and, from there,
+// into whatever logs that error (round-1 review, Important #2).
+// error.message is third-party text: DeepSeek today, but nothing in this
+// file stops DEEPSEEK_BASE_URL (config.go) from pointing somewhere else —
+// provider_key_never_leaks_test.go's own TODO on this file names that
+// exact gap ("KHÔNG canh được ĐÍCH ĐẾN của một lời gọi ra ngoài"). raw
+// already allows up to maxResponseBytes (8 MiB) before this point, so an
+// unbounded error.message could put megabytes of arbitrary third-party
+// text into a server log on every failed call. internal/discuss/client.go
+// resolves the same tension by refusing to log GitHub's body at all — this
+// file cannot do that, because the Task 4b brief requires error.message in
+// the returned error for callers to distinguish 401/429/500. A hard cap
+// is the compromise: still useful for debugging, bounded either way.
+const maxProviderErrorMessageBytes = 200
+
+// truncateProviderMessage bounds s to maxProviderErrorMessageBytes RUNES
+// (not bytes) so a cut never lands inside a multi-byte UTF-8 sequence and
+// produces invalid text in a log line.
+func truncateProviderMessage(s string) string {
+	r := []rune(s)
+	if len(r) <= maxProviderErrorMessageBytes {
+		return s
+	}
+	return string(r[:maxProviderErrorMessageBytes]) + "... [truncated]"
+}
+
+// defaultTimeout bounds one call to DeepSeek when neither layer that could
+// supply a deadline actually supplies one (round-1 review, Important #3).
+// Applied at BOTH layers client_test.go's sibling internal/discuss/
+// client.go uses (its RequestTimeout, same pattern): as the http.Client's
+// own Timeout (New's fallback below, used only when the caller passes
+// hc == nil) and as a context.WithTimeout wrapped around ctx on every
+// Complete call regardless of hc. The second layer is what actually closes
+// the gap a Timeout-less caller-supplied hc combined with a deadline-less
+// caller ctx left open: without it, New(url, key, &http.Client{}) (no
+// Timeout field set) plus context.Background() hangs forever against a
+// provider that accepts the connection and never answers. 90s is generous
+// headroom over anything measured in docs/deepseek-measured.md (a
+// reasoning completion with several parallel tool_calls) while still being
+// a bound instead of none.
+const defaultTimeout = 90 * time.Second
+
 // Client talks to DeepSeek's OpenAI-compatible chat-completions endpoint
 // over plain net/http — no SDK dependency, matching this module's stated
 // choice to keep go.mod at ten direct deps.
@@ -46,17 +91,30 @@ type Client struct {
 	http    *http.Client
 }
 
-// New builds a Client. hc is required from the caller (Task 6/7/9 own
-// timeouts, retries, and any transport tuning) — this package does not
-// construct its own http.Client or read any environment variable; every
+// New builds a Client. hc is the caller's choice (Task 6/7/9 own timeouts,
+// retries, and any transport tuning) — this package does not construct its
+// own http.Client from scratch or read any environment variable; every
 // destination this file can reach is visible right here at the call site,
 // same discipline internal/discuss/client.go's APIURL comment describes.
-// A nil hc falls back to http.DefaultClient (no timeout) so a test or a
-// caller that truly does not care still gets a working Client rather than
-// a nil-pointer panic on first use.
+//
+// A nil hc falls back to &http.Client{Timeout: defaultTimeout} — NOT
+// http.DefaultClient. Round-1 review (Important #3) caught the earlier
+// version of this comment claiming a caller that "does not care" still
+// gets "a working Client": what they actually got was a Client with no
+// Timeout at all, which hangs forever against a provider that accepts the
+// connection and never answers, with nothing to end the wait except a
+// deadline the caller's own ctx may not carry either. See defaultTimeout's
+// comment for the second half of this fix (Complete's own
+// context.WithTimeout, needed for the hc-supplied-but-Timeout-less case
+// this fallback alone cannot cover).
+//
+// baseURL has any trailing "/" trimmed — config.Load does not normalize
+// DEEPSEEK_BASE_URL, and chatCompletionsPath below already starts with
+// "/"; a trailing slash left in would build ".../com//chat/completions".
 func New(baseURL, apiKey string, hc *http.Client) *Client {
+	baseURL = strings.TrimSuffix(baseURL, "/")
 	if hc == nil {
-		hc = http.DefaultClient
+		hc = &http.Client{Timeout: defaultTimeout}
 	}
 	return &Client{baseURL: baseURL, apiKey: apiKey, http: hc}
 }
@@ -74,11 +132,26 @@ func New(baseURL, apiKey string, hc *http.Client) *Client {
 // Task 4a wrote those to match the shape client.go needed to send/receive
 // them nested inside a request or response, so they are embedded here
 // as-is rather than re-declared.
+//
+// No tool_choice field, on purpose — and this omission is an UNMEASURED
+// ASSUMPTION, flagged rather than hidden (round-1 review, "5 việc"):
+// docs/deepseek-measured.md §2 measured that sending tool_choice: "auto"
+// explicitly works, and that "required" or a forced single function are
+// rejected in thinking mode. It did NOT measure whether omitting the field
+// entirely behaves the same as sending "auto" — that is a reasonable
+// assumption for an OpenAI-shaped API, not a measured fact, and this round
+// does not call the real API to settle it (see the Task 4b brief's
+// standing rule: measure, don't guess — but also don't spend the
+// project's DeepSeek account balance to confirm something this cheap to
+// flag instead). Task 6 needs tool_choice: "none" on the final tool-budget
+// round (spec'd in deepseek-measured.md §2); when it adds a ToolChoice
+// field to Request, it should measure the omitted-vs-"auto" question then,
+// or design around never needing to omit it.
 type wireRequest struct {
 	Model     string    `json:"model"`
 	Messages  []Message `json:"messages"`
 	Tools     []Tool    `json:"tools,omitempty"`
-	MaxTokens int       `json:"max_tokens"`
+	MaxTokens int       `json:"max_tokens,omitempty"`
 	Stream    bool      `json:"stream"`
 }
 
@@ -122,8 +195,17 @@ type wireErrorBody struct {
 }
 
 // Complete sends one chat-completions turn to DeepSeek and decodes the
-// reply. It never streams (Request.Stream is not read from req — Task 7/9
-// add a separate streaming path rather than branching this one).
+// reply. It never streams: req.Stream is READ (round-1 review, Important
+// #4 — an earlier version silently hardcoded Stream: false and ignored the
+// field entirely, so a caller that set Stream: true got a non-streaming
+// call back with no error and no warning) and req.Stream == true is
+// rejected outright, before any network I/O. Task 7/9 add a separate
+// streaming path rather than branching this one.
+//
+// Every call is bounded by defaultTimeout via context.WithTimeout, on top
+// of whatever deadline ctx already carries — see defaultTimeout's comment
+// for why this layer exists even though New's caller supplies its own
+// http.Client.
 //
 // Error handling is written around ONE constraint, spelled out in the Task
 // 4b brief: an HTTP error must never carry the API key out with it.
@@ -137,12 +219,19 @@ type wireErrorBody struct {
 // the URL and the underlying error, not headers — so that one line is the
 // one place %w wraps something that touched the request.
 func (c *Client) Complete(ctx context.Context, req Request) (Completion, error) {
+	if req.Stream {
+		return Completion{}, fmt.Errorf("ai: Complete does not support Request.Stream=true — this is a non-streaming call, and streaming is a separate path Task 7/9 add, not a silent downgrade")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	defer cancel()
+
 	body, err := json.Marshal(wireRequest{
 		Model:     req.Model,
 		Messages:  req.Messages,
 		Tools:     req.Tools,
 		MaxTokens: req.MaxTokens,
-		Stream:    false,
+		Stream:    false, // req.Stream == true already returned above; this is always false here
 	})
 	if err != nil {
 		return Completion{}, fmt.Errorf("ai: encode DeepSeek request: %w", err)
@@ -168,12 +257,15 @@ func (c *Client) Complete(ctx context.Context, req Request) (Completion, error) 
 
 	if resp.StatusCode != http.StatusOK {
 		// raw is DeepSeek's own text, decoded down to just its "message"
-		// field — never the raw request, never c.apiKey. See the doc
-		// comment above for why that distinction is load-bearing here.
+		// field and then truncated (maxProviderErrorMessageBytes) — never
+		// the raw request, never c.apiKey. See the doc comment above for
+		// why the key-secrecy half is load-bearing here, and
+		// maxProviderErrorMessageBytes's comment for why the length cap is
+		// needed too (round-1 review, Important #2).
 		var eb wireErrorBody
 		_ = json.Unmarshal(raw, &eb) // best-effort: a malformed error body still gets a status code
 		if eb.Error.Message != "" {
-			return Completion{}, fmt.Errorf("ai: DeepSeek returned HTTP %d: %s", resp.StatusCode, eb.Error.Message)
+			return Completion{}, fmt.Errorf("ai: DeepSeek returned HTTP %d: %s", resp.StatusCode, truncateProviderMessage(eb.Error.Message))
 		}
 		return Completion{}, fmt.Errorf("ai: DeepSeek returned HTTP %d", resp.StatusCode)
 	}
