@@ -733,3 +733,67 @@ func TestRunErrorStillCarriesUsageFromCompletedRounds(t *testing.T) {
 			"Task 9's ChargeTurn phải trừ đúng phần token ĐÃ TRẢ TIỀN cho DeepSeek dù lượt không hoàn tất", result.Usage.CompletionTokens)
 	}
 }
+
+// ── vòng sửa 4: usage của CHÍNH vòng lỗi, không chỉ các vòng trước nó ──────
+
+// TestRunAccumulatesUsageFromALengthCappedRound là bản sinh đôi cho đường
+// ĐỒNG BỘ của TestRunStreamAccumulatesUsageFromATruncatedRound
+// (stream_test.go) — và là ca `length` đầu tiên trong tệp này (trước vòng
+// sửa 4, `grep length agent_test.go` không ra kết quả nào).
+//
+// TestRunErrorStillCarriesUsageFromCompletedRounds ở trên chỉ khoá được nửa
+// dễ: usage của các vòng ĐÃ HOÀN TẤT TRƯỚC vòng lỗi. Nửa còn lại — usage
+// của CHÍNH vòng lỗi — không test nào khoá, và cho tới vòng sửa 3 nó không
+// quan sát được: mọi đường lỗi của Complete đều trả Completion{} rỗng, nên
+// Run cộng trước hay sau `if err != nil` cho cùng một kết quả.
+//
+// Vòng sửa 3 nhân guard finish_reason=="length" sang Complete (client.go),
+// tạo ra đường lỗi ĐẦU TIÊN của Complete mang Usage KHÁC RỖNG — xem
+// TestCompleteLengthFinishWithPendingToolCallReturnsError (client_test.go),
+// nơi khoá nửa Client: completion_tokens 8192 thật đi kèm một error. Từ
+// khoảnh khắc đó, thứ tự hai khối trong vòng lặp của Run là tiền thật: cộng
+// SAU khi kiểm err thì vứt trọn 8192 token DeepSeek đã tính tiền, trong khi
+// RunStream (cộng TRƯỚC, từ vòng sửa 2) giữ đủ — cùng một phản hồi, hai hoá
+// đơn khác nhau tuỳ người học đi đường nào.
+//
+// Vòng 1 THÀNH CÔNG, vòng 2 mô phỏng đúng hình dạng Complete trả về sau khi
+// guard `length` nổ: Usage khác rỗng ĐI KÈM error khác nil.
+func TestRunAccumulatesUsageFromALengthCappedRound(t *testing.T) {
+	wantErr := errors.New(`response ended with finish_reason "length" while it included a tool call`)
+	fc := &fakeCompleter{
+		onCall: func(round int, req Request) (Completion, error) {
+			if round == 1 {
+				return Completion{
+					FinishReason: "tool_calls",
+					Usage:        Usage{PromptTokens: 100, CompletionTokens: 10, CacheHitTokens: 20, CacheMissTokens: 80},
+					Message: Message{Role: "assistant", ToolCalls: []ToolCall{{ID: "call_0", Type: "function", Function: struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					}{Name: "read_course", Arguments: `{"slug":"x"}`}}}},
+				}, nil
+			}
+			return Completion{
+				FinishReason: "length",
+				Usage:        Usage{PromptTokens: 10, CompletionTokens: 8192, CacheHitTokens: 0, CacheMissTokens: 10},
+			}, wantErr
+		},
+	}
+	a := &Agent{
+		Client:   fc,
+		Tools:    map[string]ToolRunner{"read_course": &fakeTool{name: "read_course"}},
+		Settings: Settings{MaxToolRoundsPerTurn: 5, MaxTokensPerTurn: 8192},
+	}
+
+	result, err := a.Run(context.Background(), Turn{
+		Model: "m", BasePrompt: "base", Question: "q", ToolsEnabled: []string{"read_course"},
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("err = %v, muốn bọc (errors.Is) %v", err, wantErr)
+	}
+	if result.Usage.PromptTokens != 110 || result.Usage.CompletionTokens != 8202 ||
+		result.Usage.CacheHitTokens != 20 || result.Usage.CacheMissTokens != 90 {
+		t.Errorf("Usage = %+v, muốn cộng dồn CẢ vòng 1 (thành công) LẪN vòng 2 (lỗi nhưng vẫn mang usage đã trả tiền): "+
+			"prompt=110 completion=8202 hit=20 miss=90 — cộng usage SAU `if err != nil` sẽ vứt trọn phần vòng 2, "+
+			"đúng khoản undercharge Task 9's ChargeTurn phải gánh", result.Usage)
+	}
+}

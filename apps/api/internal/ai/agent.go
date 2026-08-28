@@ -425,14 +425,34 @@ func (a *Agent) Run(ctx context.Context, t Turn) (Result, error) {
 			MaxTokens:  a.Settings.MaxTokensPerTurn,
 			ToolChoice: toolChoice,
 		})
-		if err != nil {
-			return result, fmt.Errorf("ai: agent round %d: %w", round, err)
-		}
-
+		// VÒNG SỬA 4 — cộng usage TRƯỚC khi kiểm err, đúng thứ tự RunStream
+		// (stream.go) đã dùng từ vòng sửa 2. Trước vòng sửa 3, thứ tự ngược
+		// lại ở đây vô hại: MỌI đường lỗi của Complete đều trả Completion{}
+		// (usage rỗng), nên cộng hay không cộng cho cùng một kết quả. Vòng
+		// sửa 3 nhân guard finish_reason=="length" sang Complete (client.go)
+		// — đường lỗi ĐẦU TIÊN của Complete trả về Usage KHÁC RỖNG (token
+		// DeepSeek đã tính tiền thật, đo được: completion_tokens 8192) — và
+		// biến sự vô hại đó thành một khoản undercharge: cùng một phản hồi
+		// đi qua Run thì token đã trả tiền bị vứt, đi qua RunStream thì giữ
+		// đủ. Task 9's ChargeTurn đọc Result.Usage trên CẢ đường lỗi (xem
+		// doc comment của Run ở trên), nên phân kỳ này là tiền thật.
+		//
+		// Vẫn thuần cộng thêm, không bao giờ đếm hai lần — đã kiểm từng
+		// return của Complete (client.go): 9/10 đường lỗi trả Completion{},
+		// cộng số 0 là no-op; đúng MỘT đường (guard "length") trả usage
+		// khác rỗng; và cả hai nhánh dưới đây thoát vòng lặp ngay trong
+		// cùng lượt round này, nên mỗi completion chỉ được cộng đúng một
+		// lần. Khoá bởi TestRunAccumulatesUsageFromALengthCappedRound
+		// (agent_test.go) và TestRunAndRunStreamAgreeOnUsageWhenALengthCappedRoundFails
+		// (stream_test.go, đối chứng hai đường qua *Client thật).
 		result.Usage.PromptTokens += completion.Usage.PromptTokens
 		result.Usage.CompletionTokens += completion.Usage.CompletionTokens
 		result.Usage.CacheHitTokens += completion.Usage.CacheHitTokens
 		result.Usage.CacheMissTokens += completion.Usage.CacheMissTokens
+
+		if err != nil {
+			return result, fmt.Errorf("ai: agent round %d: %w", round, err)
+		}
 
 		// Vòng cuối LUÔN dừng ở đây, bất kể completion.Message.ToolCalls có
 		// gì — xem doc comment của Run ở trên cho lý do (không dựa vào nhà

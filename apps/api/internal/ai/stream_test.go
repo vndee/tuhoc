@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -984,6 +985,110 @@ func TestRunAndRunStreamProduceSameResultForSameScenario(t *testing.T) {
 	}
 	if !reflect.DeepEqual(fc.calls, fsc.calls) {
 		t.Errorf("Run và RunStream gửi Request KHÁC NHAU cho cùng một kịch bản:\nRun calls:       %+v\nRunStream calls: %+v", fc.calls, fsc.calls)
+	}
+}
+
+// ── vòng sửa 4: đối chứng hai đường trên ĐƯỜNG LỖI, không chỉ đường xanh ───
+
+// TestRunAndRunStreamAgreeOnUsageWhenALengthCappedRoundFails là kịch bản thứ
+// hai của lưới đối chứng — kịch bản trên chỉ so hai đường khi CẢ HAI thành
+// công, nên không lưới nào canh chỗ hai đường phân kỳ NGAY TRÊN đường lỗi.
+// Đó chính là chỗ vòng sửa 3 đẻ ra một lỗi thật:
+//
+//   - Cho tới vòng sửa 3, thứ tự "cộng usage" vs "kiểm err" khác nhau giữa
+//     Run (kiểm err trước, return ngay) và RunStream (cộng trước) mà vô hại
+//     — mọi đường lỗi của Complete đều trả Completion{} rỗng.
+//   - Vòng sửa 3 nhân guard finish_reason=="length" sang Complete
+//     (client.go): đường lỗi ĐẦU TIÊN của Complete mang Usage khác rỗng.
+//     Cùng một phản hồi DeepSeek từ đó cho hai hoá đơn khác nhau — Run vứt
+//     token đã trả tiền, RunStream giữ đủ. Không test nào bắt được.
+//
+// Nên test này đi qua *Client THẬT ở cả hai đường (httptest.Server đóng vai
+// DeepSeek, không phải fake ở tầng Agent): nó khoá CẢ chuỗi — guard `length`
+// của Complete/CompleteStream giữ usage, VÀ Run/RunStream thật sự cộng usage
+// đó vào Result — chứ không chỉ khoá một mắt xích. Vòng 1 thành công (usage
+// cộng bình thường), vòng 2 chạm trần token giữa lúc đang phát arguments của
+// một tool_call (đúng hình dạng đo được, docs/deepseek-measured.md §4).
+//
+// Hai assertion, không phải một: DeepEqual bắt PHÂN KỲ giữa hai đường; con
+// số Usage tuyệt đối bắt ca cả hai đường CÙNG SAI như nhau (bài học vòng sửa
+// 3 — đột biến #1 sống sót vì DeepEqual một mình không phân biệt được
+// "giống nhau và đúng" với "giống nhau và cùng sai").
+func TestRunAndRunStreamAgreeOnUsageWhenALengthCappedRoundFails(t *testing.T) {
+	const (
+		roundOneUsage = `"usage":{"prompt_tokens":100,"completion_tokens":10,"prompt_cache_hit_tokens":20,"prompt_cache_miss_tokens":80}`
+		roundTwoUsage = `"usage":{"prompt_tokens":10,"completion_tokens":8192,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":10}`
+	)
+	var syncCalls, streamCalls atomic.Int32
+
+	syncSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if syncCalls.Add(1) == 1 {
+			io.WriteString(w, `{"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":"",
+			  "tool_calls":[{"id":"call_1","type":"function","function":{"name":"read_course","arguments":"{\"slug\":\"x\"}"}}]}}],`+roundOneUsage+`}`)
+			return
+		}
+		// Vòng 2: chạm trần token GIỮA lúc đang sinh arguments — chuỗi
+		// arguments cụt, không đóng ngoặc. Đúng ca guard `length` chặn.
+		io.WriteString(w, `{"choices":[{"finish_reason":"length","message":{"role":"assistant","content":"",
+		  "tool_calls":[{"id":"call_2","type":"function","function":{"name":"read_course","arguments":"{\"slug\""}}]}}],`+roundTwoUsage+`}`)
+	}))
+	defer syncSrv.Close()
+
+	streamSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if streamCalls.Add(1) == 1 {
+			writeSSELines(t, w, []string{
+				`data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"read_course","arguments":""}}]},"finish_reason":null}]}`,
+				`data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"slug\":\"x\"}"}}]},"finish_reason":null}]}`,
+				`data: {"choices":[{"index":0,"delta":{"content":""},"finish_reason":"tool_calls"}],` + roundOneUsage + `}`,
+				`data: [DONE]`,
+			})
+			return
+		}
+		writeSSELines(t, w, []string{
+			`data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_2","type":"function","function":{"name":"read_course","arguments":""}}]},"finish_reason":null}]}`,
+			`data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"slug\""}}]},"finish_reason":null}]}`,
+			`data: {"choices":[{"index":0,"delta":{"content":""},"finish_reason":"length"}],` + roundTwoUsage + `}`,
+			`data: [DONE]`,
+		})
+	}))
+	defer streamSrv.Close()
+
+	turn := Turn{Model: "m", BasePrompt: "base", Question: "q", ToolsEnabled: []string{"read_course"}}
+	settings := Settings{MaxToolRoundsPerTurn: 5, MaxTokensPerTurn: 8192}
+	newTools := func() map[string]ToolRunner {
+		return map[string]ToolRunner{"read_course": &fakeTool{name: "read_course"}}
+	}
+
+	runResult, runErr := (&Agent{
+		Client: New(syncSrv.URL, "sk-test", syncSrv.Client()), Tools: newTools(), Settings: settings,
+	}).Run(context.Background(), turn)
+
+	streamResult, streamErr := (&Agent{
+		Client: New(streamSrv.URL, "sk-test", streamSrv.Client()), Tools: newTools(), Settings: settings,
+	}).RunStream(context.Background(), turn, func(Event) error { return nil })
+
+	if runErr == nil || streamErr == nil {
+		t.Fatalf("kịch bản lỗi: Run err = %v, RunStream err = %v — cả hai phải trả lỗi ở vòng 2 "+
+			"(guard `length` với tool_call dở dang), nếu không phần so usage bên dưới không còn canh đúng thứ nó định canh",
+			runErr, streamErr)
+	}
+	if !strings.Contains(runErr.Error(), "length") || !strings.Contains(streamErr.Error(), "length") {
+		t.Fatalf("kịch bản lỗi: Run err = %v, RunStream err = %v — muốn cả hai nói rõ finish_reason \"length\" "+
+			"(một lỗi KHÁC lọt vào đây sẽ làm test xanh vì lý do sai)", runErr, streamErr)
+	}
+
+	want := Usage{PromptTokens: 110, CompletionTokens: 8202, CacheHitTokens: 20, CacheMissTokens: 90}
+	if runResult.Usage != want {
+		t.Errorf("Run: Usage = %+v, muốn %+v — vòng 2 lỗi nhưng DeepSeek đã tính tiền 8192 completion token cho nó; "+
+			"cộng usage SAU `if err != nil` vứt trọn phần đó, Task 9's ChargeTurn trừ thiếu đúng bằng ngần ấy", runResult.Usage, want)
+	}
+	if streamResult.Usage != want {
+		t.Errorf("RunStream: Usage = %+v, muốn %+v", streamResult.Usage, want)
+	}
+	if !reflect.DeepEqual(runResult, streamResult) {
+		t.Errorf("Run và RunStream trả Result KHÁC NHAU cho CÙNG một phản hồi DeepSeek bị cắt vì hết token:\n"+
+			"Run:       %+v\nRunStream: %+v", runResult, streamResult)
 	}
 }
 
