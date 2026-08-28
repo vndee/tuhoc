@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -72,6 +73,21 @@ func balanceOf(t *testing.T, pool *pgxpool.Pool, userID uuid.UUID) int64 {
 		t.Fatalf("read balance: %v", err)
 	}
 	return b
+}
+
+// updatedAtOf đọc thẳng ai_credits.updated_at của userID. Tồn tại riêng cho
+// TestChargeTurnDoesNotTouchOtherUsersRow: một UPDATE thiếu WHERE user_id
+// có thể (do trùng hợp) để nguyên GIÁ TRỊ balance_micro của một hàng khác
+// (ví dụ hàng đó vừa được trừ đúng 0) trong khi vẫn stamp updated_at =
+// now() lên NÓ — balance_micro một mình không đủ để bắt hình dạng lỗi đó.
+func updatedAtOf(t *testing.T, pool *pgxpool.Pool, userID uuid.UUID) time.Time {
+	t.Helper()
+	var ts time.Time
+	if err := pool.QueryRow(context.Background(),
+		`SELECT updated_at FROM ai_credits WHERE user_id = $1`, userID).Scan(&ts); err != nil {
+		t.Fatalf("read updated_at: %v", err)
+	}
+	return ts
 }
 
 // usageRowCount đếm số hàng ai_usage của userID.
@@ -173,6 +189,55 @@ func TestChargeAndLedgerCommitTogether(t *testing.T) {
 	}
 	if n := usageRowCount(t, pool, userID); n != 0 {
 		t.Errorf("want 0 ai_usage rows after a failed charge, got %d", n)
+	}
+}
+
+// TestChargeTurnDoesNotTouchOtherUsersRow guards the tenant scope on the
+// ai_credits UPDATE, in credits.go's ChargeTurn: `WHERE user_id = $1`.
+//
+// Round 2 review ran its own mutation — deleting that WHERE clause — and
+// EVERY test in this file still passed. The reason: every other test in
+// this file seeds exactly ONE ai_credits row per pool (store.TestPool
+// gives each test its own disposable container), so an UPDATE with no
+// WHERE clause updates "every row in the table" and "the one row that
+// belongs to userID" are the SAME set — indistinguishable from outside.
+// In a real multi-learner database they are never the same set: a missing
+// WHERE clause there means ONE learner's turn silently deducts credit from
+// (and stamps updated_at on) EVERY OTHER learner's balance at once.
+//
+// This is the first test in the file to put TWO ai_credits rows in the
+// SAME pool on purpose, so a missing WHERE clause has a second row to leak
+// into. It checks THREE independent signals of that leak — balance_micro,
+// updated_at, and ai_usage row count — because a mutation could coincidentally
+// leave one of them looking right (e.g. a bystander balance that happens to
+// already equal what a broken UPDATE would produce) without the others
+// agreeing.
+func TestChargeTurnDoesNotTouchOtherUsersRow(t *testing.T) {
+	pool := store.TestPool(t)
+	ctx := context.Background()
+	svc := NewService(pool)
+
+	const model = "tenant-scope-test-model"
+	seedTestPricing(t, pool, model)
+
+	charged := newCreditsUser(t, pool, "tenant-charged", 10000)
+	bystander := newCreditsUser(t, pool, "tenant-bystander", 5000)
+
+	bystanderBalanceBefore := balanceOf(t, pool, bystander)
+	bystanderUpdatedAtBefore := updatedAtOf(t, pool, bystander)
+
+	if _, err := svc.ChargeTurn(ctx, charged, Result{Usage: Usage{CompletionTokens: 1000}}, model); err != nil {
+		t.Fatalf("ChargeTurn: %v", err)
+	}
+
+	if got := balanceOf(t, pool, bystander); got != bystanderBalanceBefore {
+		t.Errorf("bystander's balance changed from %d to %d after charging a DIFFERENT user — the UPDATE is missing (or lost) its WHERE user_id scope", bystanderBalanceBefore, got)
+	}
+	if got := updatedAtOf(t, pool, bystander); !got.Equal(bystanderUpdatedAtBefore) {
+		t.Errorf("bystander's updated_at changed from %s to %s after charging a DIFFERENT user — same missing-scope bug, catchable even on a coincidence that left balance_micro's value alone", bystanderUpdatedAtBefore, got)
+	}
+	if n := usageRowCount(t, pool, bystander); n != 0 {
+		t.Errorf("want 0 ai_usage rows for the bystander (nobody charged their turn), got %d", n)
 	}
 }
 
@@ -476,9 +541,28 @@ func columnsOf(t *testing.T, table string) []dbColumn {
 // "text" — and json/jsonb columns report their own names — so all three
 // could carry a conversation body exactly as well as text can, and none
 // of them were being checked.
+//
+// Round 2 review, I4 follow-up: experimentally confirmed against a real
+// Postgres container that char(n)/bpchar reports data_type "character"
+// (added below — a fixed-width column can still hold a truncated
+// conversation fragment, and "character" names no numeric or temporal
+// type in Postgres, so adding it carries no false-positive risk for any
+// column this migration could plausibly add).
+//
+// Deliberately NOT added: "ARRAY". information_schema.columns reports
+// EVERY array column's data_type as the bare string "ARRAY" regardless of
+// element type — text[] and int[] are indistinguishable at this view; the
+// element type lives in a separate column (udt_name, e.g. "_text" vs
+// "_int4") this test does not read. Adding "ARRAY" here would false-positive
+// on the very first int[]/uuid[] column anyone adds to ANY table this test
+// touches — a gate that cries wolf gets ignored or weakened, which is worse
+// than the gap it would have closed. Closing this properly needs a second
+// map keyed on udt_name, or a query that reads it; left as a known,
+// documented limitation rather than a rushed false-positive gate.
 var freeTextTypes = map[string]bool{
 	"text":              true,
 	"character varying": true,
+	"character":         true,
 	"json":              true,
 	"jsonb":             true,
 }
