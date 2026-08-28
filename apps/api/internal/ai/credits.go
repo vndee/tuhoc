@@ -1,8 +1,18 @@
 // credits.go is the only file in this package that speaks SQL — same split
 // as internal/rating/repo.go and internal/auth/repo.go. It owns the four
 // tables migration 0007_ai_credits created (ai_credits, ai_usage,
-// ai_pricing, ai_settings) and is the ONE place a credit is deducted or a
-// usage row is written.
+// ai_pricing, ai_settings) and is the ONE place a credit is deducted,
+// granted, or a usage row is written.
+//
+// Task 10 adds GrantSignupCredit (bottom of this file) alongside Task 9's
+// ChargeTurn/EnsureCredit/Balance: the same table (ai_credits) getting its
+// balance moved the other direction, on registration instead of on a
+// turn. It takes an explicit pgx.Tx rather than using s.pool the way every
+// other method here does, because its caller (auth.Repo.
+// CreateUserWithSignupCredit) needs the INSERT INTO users and this
+// method's INSERT INTO ai_credits to commit or roll back TOGETHER — see
+// that method's own doc comment for the orphan risk a separate statement
+// here would reopen.
 //
 // Task 9's ledger (task-9-brief.md) names two decisions this file must NOT
 // get wrong, because five earlier round reviews across this run caught the
@@ -243,4 +253,37 @@ func (s *Service) ChargeTurn(ctx context.Context, userID uuid.UUID, r Result, mo
 	}
 
 	return credits, nil
+}
+
+// GrantSignupCredit inserts userID's first ai_credits row, crediting
+// ai_settings.signup_grant_micro. It reads that column from the database
+// on every call — never a constant compiled into this binary — because
+// the project owner changes this number from Task 17's CMS and expects it
+// to take effect without a deploy; caching or hardcoding it would mean a
+// changed setting only applies to accounts that register after the NEXT
+// deploy, silently contradicting that expectation.
+//
+// It runs entirely inside the caller-supplied tx, never s.pool: the
+// caller is registration itself (auth.Repo.CreateUserWithSignupCredit),
+// and registration's own transaction is what makes "create the user" and
+// "grant the signup credit" one atomic unit. A version of this method
+// that opened its own transaction — the way ChargeTurn above does,
+// because ChargeTurn's caller has no matching transaction of its own to
+// join — would defeat that: the user row could commit while this insert
+// failed moments later, leaving a real, permanent account with no credit
+// and nothing that ever retries the grant.
+func (s *Service) GrantSignupCredit(ctx context.Context, tx pgx.Tx, userID uuid.UUID) (int64, error) {
+	var grantMicro int64
+	err := tx.QueryRow(ctx, `SELECT signup_grant_micro FROM ai_settings LIMIT 1`).Scan(&grantMicro)
+	if err != nil {
+		return 0, fmt.Errorf("ai: signup grant: read ai_settings for user %s: %w", userID, err)
+	}
+
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO ai_credits (user_id, balance_micro) VALUES ($1, $2)`,
+		userID, grantMicro); err != nil {
+		return 0, fmt.Errorf("ai: signup grant: insert ai_credits for user %s: %w", userID, err)
+	}
+
+	return grantMicro, nil
 }
