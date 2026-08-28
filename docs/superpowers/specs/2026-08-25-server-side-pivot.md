@@ -28,7 +28,7 @@ Mọi câu hỏi mở của bản nháp đã có lời đáp (§10 ghi những g
 | Key AI | **Chỉ key của ta**, từ biến môi trường server. Không bao giờ lưu key người dùng — ở browser hay ở server. |
 | Đơn vị credit | **Đơn vị riêng của ta.** Bên trong vẫn đếm token thật để tính giá vốn. |
 | Thanh toán | **SePay (VietQR) + Polar (merchant of record quốc tế), cả hai từ đầu.** |
-| Agent | Tool đọc course (pha 2), tool đọc tiến độ/ghi chú (pha 3), web search qua tool của nhà cung cấp (phụ thu credit). Người dùng config system prompt + bật/tắt tool. |
+| Agent | Tool đọc course (pha 2), tool đọc tiến độ/ghi chú (pha 3), web search do ta tự viết (gọi sang Brave Search API, key từ env `BRAVE_API_KEY`, phụ thu credit). Người dùng config system prompt + bật/tắt tool. |
 | Generate course | **Pipeline chuẩn + quality gate máy đo được** trong `course-format`. |
 | Ai publish | **Chỉ ta**, qua CLI với admin token hoặc CMS. Cộng đồng đóng góp qua PR vào kho nguồn. |
 | Thứ tự | **Course lên server trước, AI sau** — để agent có tool đọc course ngay từ lần ship đầu. |
@@ -370,7 +370,6 @@ publish được.
 1. **Giá cụ thể**: giá gói credit, tỷ lệ quy đổi, mức tặng thử — chốt ở Pha 4
    khi nhìn thấy giá vốn thật từ sổ `ai_usage` của Pha 2–3.
 2. **Ngưỡng luật chất lượng**: đo từ ba course mẫu ở đầu Pha 5.
-3. **Model mặc định**: chọn ở đầu Pha 2 theo tài liệu API hiện hành (tiêu chí:
-   chi phí phù hợp bài toán gia sư, có tool use + web search).
+3. **Model mặc định**: **deepseek-v4-pro** (chốt 28/08/2026, giá per 1M token: $1,32 vào / $3,96 ra theo api-docs.deepseek.com ngày 28/08). Tiêu chí: tool use + chi phí phù hợp bài toán gia sư.
 4. **Tài khoản SePay/Polar**: thủ tục đăng ký merchant nằm ngoài repo, cần
    xong trước khi Pha 4 ship.
