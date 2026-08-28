@@ -303,6 +303,56 @@ func TestCompleteOmitsMaxTokensFieldWhenZero(t *testing.T) {
 	}
 }
 
+// TestCompleteMapsToolChoiceOntoWireRequest là phần việc Task 6 nợ lại cho
+// client.go (task-6-brief.md): tool_choice không nằm trong docs DeepSeek
+// công khai, nhu cầu đến từ docs/deepseek-measured.md §2 — chỉ "auto" và
+// "none" chạy được trên model Thinking mode này, "required"/ép-một-hàm bị
+// từ chối. Request.ToolChoice (types.go) giờ có mặt; test này khoá đúng hai
+// điều wireRequest phải làm với nó: gửi đúng giá trị khi caller đặt, và
+// LƯỢC hẳn khoá "tool_choice" khi caller không đặt (giá trị zero) — giữ
+// nguyên hành vi mọi test khác trong tệp này vẫn đang dựa vào (chúng không
+// đặt ToolChoice và không mong đợi khoá đó xuất hiện).
+func TestCompleteMapsToolChoiceOntoWireRequest(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		toolChoice ToolChoice
+		wantKey    string // "" nghĩa là khoá "tool_choice" không được xuất hiện
+	}{
+		{name: "auto", toolChoice: ToolChoiceAuto, wantKey: `"tool_choice":"auto"`},
+		{name: "none", toolChoice: ToolChoiceNone, wantKey: `"tool_choice":"none"`},
+		{name: "chưa đặt (giá trị zero)", toolChoice: "", wantKey: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotBody string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				b, _ := io.ReadAll(r.Body)
+				gotBody = string(b)
+				w.Header().Set("Content-Type", "application/json")
+				io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],"usage":{}}`)
+			}))
+			defer srv.Close()
+
+			_, err := New(srv.URL, "sk-test", srv.Client()).Complete(context.Background(), Request{
+				Model:      "m",
+				Messages:   []Message{{Role: "user", Content: "chào"}},
+				ToolChoice: tc.toolChoice,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantKey == "" {
+				if strings.Contains(gotBody, `"tool_choice"`) {
+					t.Errorf("thân request mang khoá tool_choice dù ToolChoice chưa đặt: %s", gotBody)
+				}
+				return
+			}
+			if !strings.Contains(gotBody, tc.wantKey) {
+				t.Errorf("thân request thiếu %s: %s", tc.wantKey, gotBody)
+			}
+		})
+	}
+}
+
 // TestCompleteRejectsStreamingRequests là việc #4 round-1 review:
 // Complete trước đây hardcode Stream: false và không bao giờ đọc
 // req.Stream — một caller đặt Stream: true nhận một lời gọi KHÔNG stream,

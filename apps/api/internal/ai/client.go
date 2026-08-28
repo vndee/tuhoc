@@ -133,26 +133,32 @@ func New(baseURL, apiKey string, hc *http.Client) *Client {
 // them nested inside a request or response, so they are embedded here
 // as-is rather than re-declared.
 //
-// No tool_choice field, on purpose — and this omission is an UNMEASURED
-// ASSUMPTION, flagged rather than hidden (round-1 review, "5 việc"):
-// docs/deepseek-measured.md §2 measured that sending tool_choice: "auto"
-// explicitly works, and that "required" or a forced single function are
-// rejected in thinking mode. It did NOT measure whether omitting the field
-// entirely behaves the same as sending "auto" — that is a reasonable
-// assumption for an OpenAI-shaped API, not a measured fact, and this round
-// does not call the real API to settle it (see the Task 4b brief's
-// standing rule: measure, don't guess — but also don't spend the
-// project's DeepSeek account balance to confirm something this cheap to
-// flag instead). Task 6 needs tool_choice: "none" on the final tool-budget
-// round (spec'd in deepseek-measured.md §2); when it adds a ToolChoice
-// field to Request, it should measure the omitted-vs-"auto" question then,
-// or design around never needing to omit it.
+// ToolChoice (added by Task 6, agent.go) carries ai.ToolChoice straight
+// through with "tool_choice,omitempty" — the zero value ("") is the empty
+// ai.ToolChoice, which omitempty treats the same as any other empty string,
+// so a Request that never sets ToolChoice sends no "tool_choice" key at
+// all, exactly as before this field existed (every pre-Task-6 caller,
+// including every test in client_test.go, is unaffected).
+//
+// This resolves the question the comment used to leave open here — whether
+// omitting "tool_choice" behaves the same as sending "auto" was flagged as
+// an UNMEASURED ASSUMPTION (round-1 review, "5 việc") rather than settled,
+// because settling it meant either spending the project's DeepSeek balance
+// on a call that answers nothing else, or designing the one caller that
+// needs tool_choice at all (Agent.Run, Task 6) so it never exercises the
+// omitted path. Task 6 took the second option: agent.go sets ToolChoiceAuto
+// or ToolChoiceNone on every round, never leaving the field at its zero
+// value — see ToolChoice's doc comment in types.go and Agent.Run in
+// agent.go. The omitted-vs-"auto" question stays open for any FUTURE
+// caller that constructs a Request without setting ToolChoice; it is not
+// answered here, only avoided by every caller this package ships today.
 type wireRequest struct {
-	Model     string    `json:"model"`
-	Messages  []Message `json:"messages"`
-	Tools     []Tool    `json:"tools,omitempty"`
-	MaxTokens int       `json:"max_tokens,omitempty"`
-	Stream    bool      `json:"stream"`
+	Model      string     `json:"model"`
+	Messages   []Message  `json:"messages"`
+	Tools      []Tool     `json:"tools,omitempty"`
+	MaxTokens  int        `json:"max_tokens,omitempty"`
+	Stream     bool       `json:"stream"`
+	ToolChoice ToolChoice `json:"tool_choice,omitempty"`
 }
 
 // wireResponse is the JSON shape of a non-streaming chat-completions reply.
@@ -227,11 +233,12 @@ func (c *Client) Complete(ctx context.Context, req Request) (Completion, error) 
 	defer cancel()
 
 	body, err := json.Marshal(wireRequest{
-		Model:     req.Model,
-		Messages:  req.Messages,
-		Tools:     req.Tools,
-		MaxTokens: req.MaxTokens,
-		Stream:    false, // req.Stream == true already returned above; this is always false here
+		Model:      req.Model,
+		Messages:   req.Messages,
+		Tools:      req.Tools,
+		MaxTokens:  req.MaxTokens,
+		Stream:     false, // req.Stream == true already returned above; this is always false here
+		ToolChoice: req.ToolChoice,
 	})
 	if err != nil {
 		return Completion{}, fmt.Errorf("ai: encode DeepSeek request: %w", err)
