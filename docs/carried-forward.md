@@ -11,7 +11,7 @@ Ghi lại lúc kết thúc P1 (nhánh `p1-platform-core`, 37 commit, hợp nhấ
 | # | Nội dung | Nơi xử lý | Vì sao |
 |---|---|---|---|
 | ~~C-1~~ | ~~**Rò rỉ chéo tài khoản qua nhiều tab.**~~ **ĐÃ ĐÓNG** ở hệ thống con 4, Task 1 — xem mục "C-1 — ĐÃ ĐÓNG" bên dưới để biết **cách kiểm lại**. | ~~P4~~ | — |
-| C-2 | **`GET /courses` chưa tồn tại.** Spec §4 có liệt kê nhưng không task nào của P1 được giao xây. Dashboard hiện dùng `KNOWN_COURSE_IDS` hardcode trong `apps/web/src/pages/Dashboard.tsx`. Bảng `courses` đã được seed trong migration 0001 nhưng **không dòng Go nào đọc nó**. | **P4-T3** (plan đã sửa thành "TẠO MỚI") | Ba nguồn danh sách khóa học, không nguồn nào là chuẩn. |
+| ~~C-2~~ | ~~**`GET /courses` chưa tồn tại.**~~ **ĐÃ ĐÓNG.** Route công khai nay ở `apps/api/internal/server/server.go` (`app.Get("/courses", catalogHandler.PublicList)`), và `KNOWN_COURSE_IDS` đã bị xoá khỏi `Dashboard.tsx` — chỉ còn được nhắc trong hai chú thích kể lại chuyện cũ. Kiểm lại: `cd apps/api && go test ./internal/catalog/ -run TestPublicList -count=1` (cần Docker). | ~~P4~~ | — |
 | ~~C-3~~ | ~~**Escape hatch `SameSite=None` thiếu yêu cầu CSRF.**~~ **ĐÃ ĐÓNG** ở hệ thống con 4, Task 2 — xem mục "C-3 — ĐÃ ĐÓNG" bên dưới. | ~~P4~~ | — |
 
 ## C-3 — escape hatch `SameSite=None` — ĐÃ ĐÓNG (hệ thống con 4, Task 2)

@@ -683,6 +683,6 @@ dùng `make test-registry` làm cổng nên nó không che mắt gate nào.
 
 ## Ghi chú cho người thi công
 
-1. **Hai course `interactive` hiện có** (`so-dau-phay-dong`, `***REMOVED***`) dùng viz.js kiểu cũ — chúng KHÔNG publish được lên format v2 cho tới khi được soạn lại thành widget (việc của kho course ngoài repo, skill course-authoring, sau pha này). `bat-bien-vong-lap` là content thuần: publish được ngay. Đây là trạng thái chấp nhận được của Pha 1, không phải bug.
+1. **Hai course `interactive` hiện có** (`so-dau-phay-dong`, và một course riêng nằm ngoài repo) dùng viz.js kiểu cũ — chúng KHÔNG publish được lên format v2 cho tới khi được soạn lại thành widget (việc của kho course ngoài repo, skill course-authoring, sau pha này). `bat-bien-vong-lap` là content thuần: publish được ngay. Đây là trạng thái chấp nhận được của Pha 1, không phải bug.
 2. **Bốn unit test + e2e đọc chương thật** (README): sau Task 13/16 chúng đọc từ fixture `valid-course` qua đường server/msw thay vì `make courses` — task nào gặp thì chuyển fixture theo, giữ nguyên tinh thần "chương thật, không prose bịa".
 3. **Thứ tự task là thứ tự phụ thuộc** — 1→2→3 (format), 4 (CLI, cần 3), 5→6→7→8→9 (API), 10→11→12→13→17→14→15 (web + registry), 16 (đóng gói). Task 4 có thể chạy song song nhánh API; trong một session tuần tự thì cứ theo số, với Task 17 chen vào ngay sau Task 13 vì cả hai cùng gỡ cơ chế registry cộng đồng.
