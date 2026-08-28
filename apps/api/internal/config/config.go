@@ -17,6 +17,16 @@ const DefaultCORSOrigin = "http://localhost:5173"
 // DefaultPort is used by Load when PORT is unset.
 const DefaultPort = "8080"
 
+// DefaultDeepSeekBaseURL is used by Load when DEEPSEEK_BASE_URL is unset.
+// It is a compile-time default rather than a second mandatory env var
+// on purpose: DeepSeek's endpoint has exactly one correct production
+// value, and requiring an operator to type it out on every deploy is one
+// more way a deployment can be broken for no benefit (docs/deploy.md
+// documents the override for anyone pointing at a proxy or a mock in
+// tests). Task 4's internal/ai client reads this, not a literal string
+// of its own, so this constant is the one place the endpoint can drift.
+const DefaultDeepSeekBaseURL = "https://api.deepseek.com"
+
 // Config holds all environment-derived settings for the API process.
 type Config struct {
 	// Port is the TCP port the HTTP server listens on.
@@ -103,17 +113,81 @@ type Config struct {
 	// a checkout that has not chosen an admin credential yet, exactly as
 	// an unset GitHubToken leaves Discussions off rather than erroring.
 	AdminToken string
+
+	// ── THE SECOND SECRET, AND THE FIRST ONE spec §3.2 IS ACTUALLY ABOUT ─
+	//
+	// DeepSeekAPIKey is THIS SERVER'S OWN credential to DeepSeek — and,
+	// unlike GitHubToken above, it is exactly the kind of key spec §0.1
+	// and §3.2 are about, not a look-alike. Pha 1 kept every reader's own
+	// AI provider key in their own browser, at a separate origin
+	// (apps/vault); this server never saw one, and
+	// internal/server/no_key_transit_test.go enforced that. Pha 2
+	// deliberately ends it: the agent now runs on this server, against
+	// ONE account this platform pays for, so this server now holds a key
+	// that can spend real money on the platform's own account if it
+	// leaks.
+	//
+	// That is the trade spec §0.1 names directly: "rủi ro 'một người mất
+	// key' biến mất; rủi ro 'một vụ xâm nhập mất key của nền tảng' xuất
+	// hiện" — a valid trade, not a regression, and this field is where
+	// the new risk actually lives. internal/server/
+	// provider_key_never_leaks_test.go is the replacement gate: it
+	// enforces spec §3.2(3)'s promise rewritten for this architecture —
+	// never a log line, never a response body — and it REPLACES
+	// no_key_transit_test.go rather than sitting beside it, because the
+	// old test's claim ("this server never receives a provider key at
+	// all") is now simply false.
+	//
+	// Read from DEEPSEEK_API_KEY, no default — same shape as GitHubToken
+	// and AdminToken above: an unset key is the correct state for a
+	// checkout that hasn't chosen a DeepSeek account yet, and Task 4's
+	// internal/ai degrades the AI feature to "unavailable" rather than
+	// this package failing to boot over it.
+	DeepSeekAPIKey string
+
+	// DeepSeekBaseURL is DeepSeek's own API base URL. Read from
+	// DEEPSEEK_BASE_URL, defaulting to DefaultDeepSeekBaseURL
+	// (https://api.deepseek.com) when unset — see that constant's
+	// comment for why this one gets a default and DeepSeekAPIKey does
+	// not: one has exactly one correct production value and the other
+	// is, by definition, a secret nobody but the operator can supply.
+	DeepSeekBaseURL string
+
+	// BraveAPIKey is THIS SERVER'S OWN credential to the Brave Search
+	// API — the second provider spec §3.2 introduces. DeepSeek has no
+	// server-run web-search tool of its own (unlike the Anthropic-based
+	// design the 2026-08-25 spec first assumed, which is why the switch
+	// to DeepSeek was not just a rename — see that spec's §3.2 callout),
+	// so web search needs a second account, a second key, and a second
+	// bill.
+	//
+	// Same risk class as DeepSeekAPIKey, not GitHubToken: a leak of this
+	// key lets someone else spend against OUR Brave subscription, and
+	// provider_key_never_leaks_test.go's scans cover it identically to
+	// DeepSeekAPIKey (they name both fields explicitly). Sent to Brave
+	// on the X-Subscription-Token header — not Authorization, which is
+	// Brave's own API shape and irrelevant to how this key must be
+	// handled on the way in.
+	//
+	// Read from BRAVE_API_KEY, no default. Unset switches the web-search
+	// tool off rather than failing startup, same shape as every other
+	// optional integration in this struct.
+	BraveAPIKey string
 }
 
 // Load reads Config from the process environment, applying defaults for
 // PORT and CORS_ORIGIN when unset.
 //
-// GITHUB_TOKEN, GITHUB_DISCUSSIONS_REPO, and ADMIN_TOKEN get no default and
-// no warning when absent, unlike COOKIE_SECURE: an unparseable COOKIE_SECURE
-// is a typo with a security consequence, whereas an unset GitHub token or
-// admin token is the normal state of every local checkout and of production
-// until an operator deliberately chooses one. See the GitHubToken and
-// AdminToken fields.
+// GITHUB_TOKEN, GITHUB_DISCUSSIONS_REPO, ADMIN_TOKEN, DEEPSEEK_API_KEY, and
+// BRAVE_API_KEY get no default and no warning when absent, unlike
+// COOKIE_SECURE: an unparseable COOKIE_SECURE is a typo with a security
+// consequence, whereas an unset GitHub token, admin token, or provider key
+// is the normal state of every local checkout and of production until an
+// operator deliberately chooses one. See the GitHubToken, AdminToken,
+// DeepSeekAPIKey, and BraveAPIKey fields. DEEPSEEK_BASE_URL is the one
+// exception among the new variables — it gets DefaultDeepSeekBaseURL, same
+// as PORT and CORS_ORIGIN above, because it has exactly one correct
+// production value rather than being a secret.
 func Load() Config {
 	return Config{
 		Port:                  getEnv("PORT", DefaultPort),
@@ -123,6 +197,9 @@ func Load() Config {
 		GitHubToken:           os.Getenv("GITHUB_TOKEN"),
 		GitHubDiscussionsRepo: os.Getenv("GITHUB_DISCUSSIONS_REPO"),
 		AdminToken:            os.Getenv("ADMIN_TOKEN"),
+		DeepSeekAPIKey:        os.Getenv("DEEPSEEK_API_KEY"),
+		DeepSeekBaseURL:       getEnv("DEEPSEEK_BASE_URL", DefaultDeepSeekBaseURL),
+		BraveAPIKey:           os.Getenv("BRAVE_API_KEY"),
 	}
 }
 
