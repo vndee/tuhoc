@@ -1,12 +1,40 @@
 #!/usr/bin/env bun
 /**
- * The registry PR gate — **the hole this closes is open today**.
+ * The registry PR gate — **a convenience check, not the safety net anymore**.
  *
- * `apps/api/internal/course/usecase.go:26-34` states in prose that the server
- * deliberately does not run the HTML rule set, and delegates that job to
- * *"the registry, where CI runs the TypeScript rules on the submission"*.
- * Before this file, `.github/` did not exist. Nothing anywhere ran the HTML
- * rules over a package a stranger submitted.
+ * This file's original header said `apps/api/internal/course/usecase.go:26-34`
+ * "deliberately does not run the HTML rule set, and delegates that job to the
+ * registry." That package no longer exists. The 2026-08-25 server-side pivot
+ * (`docs/superpowers/specs/2026-08-25-server-side-pivot.md` §2.2, §33) moved
+ * publishing itself onto the server: `PUT /admin/courses/:slug`
+ * (`apps/api/internal/catalog/usecase.go`'s `publishZip`) runs
+ * `pkgcheck.Validate` — the same rule set, ported to Go — on **every** publish
+ * and **every** rollback, unconditionally, regardless of whether the zip came
+ * from `tuhoc publish` or the admin CMS. The spec says so in as many words:
+ * *"cổng thật giờ nằm ở server"* — the real gate now lives on the server. No
+ * package reaches the catalog without passing there, whether or not this file
+ * ever ran.
+ *
+ * So why does this file still exist? Because "only we publish, the community
+ * contributes by PR into the source repo" (spec, decision table) still leaves
+ * a real, if smaller, job: catching a bad package **before** it is merged,
+ * not after a maintainer has already tried to publish it and gotten a 400.
+ * That is a genuine convenience, and the alternative — the eventual course
+ * source repo's own CI hand-rolling changed-file detection and anti-blind-gate
+ * checks from scratch — is exactly the "second copy that drifts" this
+ * subsystem's other files (`tree.ts`, `course-format.ts`) already argue
+ * against. Keeping one tested, CI-shaped implementation here, ready to be
+ * pointed at whatever root a source repo's workflow checks out, costs less
+ * than reinventing it later.
+ *
+ * What died with the pivot: `build-index.ts` and `pack-site.ts` (Task 17 of
+ * the pivot removed both). Both existed to publish a catalog — `index.json`
+ * plus per-version `.zip` archives — to GitHub Pages, because the community
+ * registry WAS the catalog. The catalog is now `/courses`, served from
+ * Postgres by `apps/api`; nothing reads a registry-published `index.json` or
+ * pulls a package from a registry-hosted archive any more (`apps/web` brings
+ * a package in through exactly one door now: the server). Building either
+ * artifact here would be publishing a catalog nobody reads.
  *
  * What runs here is `packages/course-format`'s `validatePackage`, reached
  * through `course-format.ts`, which is the one place the path is written. There
@@ -24,7 +52,7 @@
  *
  * ## Usage
  *
- *   bun tools/registry/src/validate-pr.ts --root fixtures/courses [--changed-from <file>]
+ *   bun tools/registry/src/validate-pr.ts --root fixtures/registry [--changed-from <file>]
  *
  * With no `--changed-from`, every course under the root is validated — which is
  * what a scheduled run or a local `make test-registry` wants. With one, only

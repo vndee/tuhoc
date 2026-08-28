@@ -20,7 +20,7 @@ func clearAPIEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
 		"PORT", "DATABASE_URL", "CORS_ORIGIN", "COOKIE_SECURE",
-		"GITHUB_TOKEN", "GITHUB_DISCUSSIONS_REPO",
+		"GITHUB_TOKEN", "GITHUB_DISCUSSIONS_REPO", "ADMIN_TOKEN",
 	} {
 		t.Setenv(k, "")
 	}
@@ -122,6 +122,26 @@ func TestLoad_GitHubDiscussionsAreOffByDefault(t *testing.T) {
 	}
 	if cfg.GitHubDiscussionsRepo != "vndee/tuhoc-registry" {
 		t.Errorf("GITHUB_DISCUSSIONS_REPO: want passthrough, got %q", cfg.GitHubDiscussionsRepo)
+	}
+}
+
+// TestLoad_AdminTokenOffByDefault pins the same shape as
+// TestLoad_GitHubDiscussionsAreOffByDefault: an unset ADMIN_TOKEN is a
+// NORMAL state (Task 4's CLI publish path simply has nothing to send),
+// not a misconfiguration, and it must pass through verbatim when set —
+// this is the raw value compared against the "Authorization: Bearer
+// <token>" header on PUT /admin/courses/{slug} (Task 8), so it must not be
+// trimmed, defaulted, or otherwise mangled in either direction.
+func TestLoad_AdminTokenOffByDefault(t *testing.T) {
+	clearAPIEnv(t)
+
+	if got := Load().AdminToken; got != "" {
+		t.Fatalf("ADMIN_TOKEN unset: want empty (publish path off) got %q", got)
+	}
+
+	t.Setenv("ADMIN_TOKEN", "s3cret-admin-token")
+	if got := Load().AdminToken; got != "s3cret-admin-token" {
+		t.Fatalf("ADMIN_TOKEN override: want passthrough got %q", got)
 	}
 }
 

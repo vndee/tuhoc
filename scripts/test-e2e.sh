@@ -139,6 +139,60 @@ echo "migrate up exit=$MIGRATE_EXIT"
 # distinct failure mode).
 [ "$MIGRATE_EXIT" -eq 0 ] || fail "migrate up failed (exit=$MIGRATE_EXIT)"
 
+log "seeding published course 'mau-hop-le' (PUT /admin/courses/mau-hop-le)"
+# Task 16: the e2e stack now reads courses from Postgres, and nothing brings
+# one into existence any more the way `make courses` used to (that step
+# unpacked local .zip files into a directory the built web app served
+# statically — dead as of this task, see the Makefile's own comment on
+# `test-e2e`'s dropped `courses` prerequisite). `apps/web/e2e/widget.spec.ts`
+# and `p1.spec.ts` both read a REAL published course over the REAL API, so one
+# has to exist before Playwright ever opens a page. `fixtures/format-v2/
+# valid-course` is the right source: it is the shared TS/Go fixture corpus's
+# only zero-finding case (packages/course-format/src/contract.test.ts and its
+# Go mirror both assert this), it is pinned to slug `mau-hop-le` with chapters
+# `c1`/`c2`, and `c2` carries the `dem-so` counter widget widget.spec.ts drives
+# — see docs/superpowers/specs/2026-08-25-server-side-pivot.md and this task's
+# carry-forward notes for why those ids are a cross-task contract, not a local
+# choice.
+#
+# A plain `zip`, not `tuhoc pack`: the fixture is already proven clean by
+# make test-format/test-cli/test-api's own contract tests, and a raw zip keeps
+# this script from needing tools/tuhoc-cli's own dependency install just to
+# seed one course. `cd` into the package directory first so `manifest.json`
+# lands at the zip's ROOT — PUT /admin/courses/:slug (apps/api/internal/
+# catalog/handler.go's Publish) reads the archive the same way `tuhoc pack`
+# writes it, entries un-prefixed by a parent directory name.
+#
+# A failed seed must stop the whole gate, loudly, naming the real cause — a
+# suite that then runs against an empty catalog would fail every scenario
+# with "course not found", which reads exactly like a product regression
+# instead of what it actually is: the fixture never made it onto the server.
+# (Verified directly, not assumed: with this step skipped, widget.spec.ts
+# fails on `GET /courses/mau-hop-le` -> 404 — see task-16-report.md's TDD
+# evidence.)
+SEED_COURSE_DIR="$REPO_ROOT/fixtures/format-v2/valid-course"
+[ -d "$SEED_COURSE_DIR" ] || fail "seed source missing: $SEED_COURSE_DIR (fixtures/format-v2/valid-course) not found"
+command -v zip >/dev/null 2>&1 || fail "'zip' not found on PATH — needed to seed the e2e course"
+
+SEED_TMP="$(mktemp -d)"
+SEED_ZIP="$SEED_TMP/mau-hop-le.zip"
+( cd "$SEED_COURSE_DIR" && zip -rq -X "$SEED_ZIP" . -x '.*' )
+ZIP_EXIT=$?
+[ "$ZIP_EXIT" -eq 0 ] || fail "zipping $SEED_COURSE_DIR failed (exit=$ZIP_EXIT)"
+
+SEED_RESPONSE="$SEED_TMP/response.json"
+SEED_HTTP_CODE=$(curl -sS -o "$SEED_RESPONSE" -w '%{http_code}' -X PUT \
+  "$API_URL/admin/courses/mau-hop-le" \
+  -H 'Authorization: Bearer e2e-admin-token' \
+  -H 'Content-Type: application/zip' \
+  --data-binary "@$SEED_ZIP")
+CURL_EXIT=$?
+if [ "$CURL_EXIT" -ne 0 ] || [ "$SEED_HTTP_CODE" != "201" ]; then
+  fail "seeding course 'mau-hop-le' failed: PUT $API_URL/admin/courses/mau-hop-le -> curl exit=$CURL_EXIT, http=$SEED_HTTP_CODE, body: $(cat "$SEED_RESPONSE" 2>/dev/null)"
+fi
+echo "seed OK: $(cat "$SEED_RESPONSE")"
+rm -rf "$SEED_TMP"
+
 log "installing web dependencies (bun install)"
 (cd "$REPO_ROOT/apps/web" && bun install)
 INSTALL_EXIT=$?
@@ -151,7 +205,15 @@ PW_INSTALL_EXIT=$?
 echo "playwright install exit=$PW_INSTALL_EXIT"
 [ "$PW_INSTALL_EXIT" -eq 0 ] || fail "playwright browser install failed (exit=$PW_INSTALL_EXIT)"
 
-log "running the Playwright P1 definition-of-done suite"
+# Final whole-branch review, Important 4: this still runs every spec
+# `apps/web/playwright.config.ts`'s `testDir` finds — nothing here filters
+# by filename — but that config's own `testIgnore` now excludes
+# p2.spec.ts and s2.spec.ts (two pre-existing, other-phase failures; see
+# that file's comment and the quarantine note atop each spec). What
+# actually runs today is p1.spec.ts (this phase's P1 definition-of-done
+# gate) and widget.spec.ts (spec §8's sandboxed-widget proof) — the two
+# specs this phase's own work is on the hook for.
+log "running the Playwright e2e suite (see playwright.config.ts's testIgnore for what is quarantined and why)"
 (cd "$REPO_ROOT/apps/web" && VITE_API_URL="$API_URL" bunx playwright test "$@")
 TEST_EXIT=$?
 echo "playwright test exit=$TEST_EXIT"

@@ -23,6 +23,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/vndee/tuhoc-api/internal/auth"
 	"github.com/vndee/tuhoc-api/internal/config"
 	"github.com/vndee/tuhoc-api/internal/server"
 	"github.com/vndee/tuhoc-api/internal/store"
@@ -54,6 +55,7 @@ type apiResponse struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
 	Name  string `json:"name"`
+	Role  string `json:"role"`
 	Error string `json:"error"`
 }
 
@@ -144,6 +146,13 @@ func TestAuthFlows(t *testing.T) {
 		}
 		if meBody.ID != body.ID || meBody.Email != email {
 			t.Fatalf("me after register: unexpected body %+v", meBody)
+		}
+		// Task 8's admin gate (RequireAdmin) reads users.role, and every
+		// route that reports it must agree on the DEFAULT a freshly
+		// registered account gets — the migration's own
+		// `DEFAULT 'user'` — not just "some non-empty string".
+		if meBody.Role != "user" {
+			t.Fatalf("me after register: want role %q got %q", "user", meBody.Role)
 		}
 
 		logoutResp, _, _ := doJSON(t, app, http.MethodPost, "/auth/logout", nil, cookie)
@@ -498,5 +507,66 @@ func TestRequire_InternalErrorReturns500NotUnauthorized(t *testing.T) {
 	}
 	if body.Error == "unauthenticated" {
 		t.Fatalf("500 body must not reuse the 401 (\"unauthenticated\") body — the two failure modes must stay distinguishable")
+	}
+}
+
+// TestRequireAdmin proves the admin gate's second half: a genuinely valid
+// session is not enough on its own, the account behind it must also carry
+// role='admin'. This is deliberately a BARE probe app — server.go has no
+// route that stops at Require+RequireAdmin without also being a real
+// catalog write (Task 8's admin routes) — so a regression in RequireAdmin
+// itself cannot hide behind catalog's own success/failure handling, and
+// this test cannot pass merely because catalog happens to treat every
+// error the same way.
+func TestRequireAdmin(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool, false, nil) // only used to mint a real session via /auth/register
+
+	email := uniqueEmail("requireadmin")
+	regResp, _, _ := doJSON(t, app, http.MethodPost, "/auth/register",
+		map[string]string{"email": email, "password": "require-admin-password-1", "name": "RA"}, nil)
+	if regResp.StatusCode != http.StatusOK {
+		t.Fatalf("register: want 200 got %d", regResp.StatusCode)
+	}
+	cookie := sessionCookie(regResp)
+	if cookie == nil {
+		t.Fatalf("register: no %s cookie set", sessionCookieName)
+	}
+
+	// A minimal app of our own — Require and RequireAdmin take the pool
+	// directly (not a Usecase), matching the exact entry points Task 8's
+	// server.go composes for the admin routes.
+	probe := fiber.New()
+	probe.Get("/admin-probe", auth.Require(pool), auth.RequireAdmin(pool), func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	doProbe := func() *http.Response {
+		req := httptest.NewRequest(http.MethodGet, "/admin-probe", nil)
+		req.AddCookie(cookie)
+		resp, err := probe.Test(req, testTimeoutMS)
+		if err != nil {
+			t.Fatalf("GET /admin-probe: %v", err)
+		}
+		return resp
+	}
+
+	// Freshly registered accounts default to role='user' (pinned above in
+	// TestAuthFlows too) — RequireAdmin must refuse this session with 403,
+	// never 401 (the session itself IS valid; it is the wrong session).
+	if resp := doProbe(); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("role=user: want 403 got %d", resp.StatusCode)
+	}
+
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE users SET role = 'admin' WHERE email = $1`, email); err != nil {
+		t.Fatalf("promote to admin: %v", err)
+	}
+
+	// Same cookie, same session row, only the account's role changed —
+	// isolating the assertion to RequireAdmin's own decision rather than
+	// anything about session validity.
+	if resp := doProbe(); resp.StatusCode != http.StatusOK {
+		t.Fatalf("role=admin: want 200 got %d", resp.StatusCode)
 	}
 }

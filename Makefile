@@ -1,4 +1,4 @@
-.PHONY: dev-api dev-web dev-vault test-api test-web test-vault test-format test-cli test-registry registry-index pack courses test-e2e test-viz setup-extract test-extract extract check-publish
+.PHONY: dev-api dev-web dev-vault test-api test-web test-vault test-format test-cli test-registry pack courses test-e2e setup-extract test-extract extract check-publish
 dev-api:  ; cd apps/api && go run ./cmd/api
 dev-web:  courses ; cd apps/web && bun run dev
 # apps/vault — KHO KHOÁ, chạy ở CỔNG 5174 trong khi dev-web chạy ở 5173.
@@ -127,9 +127,14 @@ test-format: courses ; cd packages/course-format && bun run typecheck && bun run
 # root package.json. Run `cd tools/tuhoc-cli && bun install` once.
 #
 # `courses` first since task 13: `src/pack.test.ts`'s last describe runs the CLI
-# against `courses/so-dau-phay-dong/` and checks its exit code equals the rule
-# set's verdict. That was the sixth unit test file depending on course content,
-# and it is the one ruling S1-F5 and its own correction both missed.
+# against a real, committed course directory and checks its exit code equals the
+# rule set's verdict. That was the sixth unit test file depending on course
+# content, and it is the one ruling S1-F5 and its own correction both missed.
+# Task 17 (server-side pivot) retargeted it from `courses/so-dau-phay-dong/` to
+# `courses/bat-bien-vong-lap/` — the first is a v1 `interactive` sample kept for
+# OTHER tests' real-content needs and is deliberately, permanently invalid under
+# format v2 (`viz.js`) until it is rewritten as a widget; the second already
+# passes cleanly. See `pack.test.ts`'s own comment for the full account.
 test-cli: courses ; cd tools/tuhoc-cli && bun run typecheck && bun run test
 # tools/registry — cổng CI của registry, và bản chạy CỤC BỘ của nó.
 #
@@ -138,26 +143,36 @@ test-cli: courses ; cd tools/tuhoc-cli && bun run typecheck && bun run test
 # chỉ gọi. `make test-registry` chạy ĐÚNG những lệnh workflow chạy, nên phần
 # đáng kiểm được kiểm trước khi đẩy lên.
 #
-# Bốn phép, và phép thứ ba là khẳng định chịu lực:
+# Sau pha chuyển trục 2026-08-25 (task 17): `build-index.ts`/`pack-site.ts` đã
+# gỡ — catalog nay là `/courses` của `apps/api`, không còn `index.json` xuất
+# bản qua GitHub Pages nữa (lý do đầy đủ nằm ở đầu `validate-pr.ts`). Cái còn
+# lại là cổng kiểm PR trước khi merge, không phải cổng an toàn cuối cùng nữa —
+# `apps/api/internal/catalog/usecase.go`'s `publishZip` mới là cổng thật, chạy
+# lại TOÀN BỘ bộ luật trên mọi lần publish. `make test-registry` xanh chứng
+# minh công cụ này còn hoạt động, không chứng minh có gì đó đang được nó canh.
+#
+# Ba phép, và phép thứ ba là khẳng định chịu lực:
 #   1. `tsc -b` (không phải `tsc --noEmit` — cổng rỗng trong repo này). Đã đo
 #      chứ không đoán: nhét `const x: number = "chuỗi"` vào src/ thì thoát 1.
 #   2. vitest — trong đó có ca "gói hạng content mang <script> BỊ TỪ CHỐI" và ca
 #      ĐỐI CHỨNG "cùng gói ấy khai interactive thì ĐƯỢC". Thiếu ca hai thì một
 #      cài đặt từ chối mọi thứ cũng xanh.
-#   3. chạy bộ luật thật lên `fixtures/courses/` — hai gói mẫu công khai.
-#   4. sinh `index.json` từ chính cây ấy (ghi ra stdout, không chạm cây git).
+#   3. chạy bộ luật thật lên `fixtures/registry/` — MỘT gói mẫu tối thiểu, hợp
+#      lệ theo v2. KHÔNG phải `fixtures/courses/`: gói đó có đúng hai course, và
+#      một trong hai (`so-dau-phay-dong`) là ngữ liệu v1 cố ý giữ lại cho mười
+#      tệp test khác (xem `fixtures/README.md`) — nó sẽ MÃI MÃI không hợp lệ
+#      dưới v2 (JS_FILE_IN_PACKAGE trên `viz.js`) cho tới khi được soạn lại
+#      thành widget, việc nội dung ngoài phạm vi cổng này. Trộn hai vai — "ngữ
+#      liệu thật cho việc khác" và "cây phải sạch 100% cho cổng này" — vào
+#      cùng một thư mục là thứ đã làm `make test-registry` đỏ suốt từ task 1.
 #
-# KHÔNG phụ thuộc `courses`, và đó là điều đáng giữ chứ không phải thiếu sót:
-# registry chỉ đọc `fixtures/courses/` (gói mẫu công khai, đã commit). Giáo trình
-# riêng tư nằm ở kho ngoài cây git và KHÔNG BAO GIỜ chạm registry — `make
-# check-publish` vẫn là cổng của chuyện đó và target này không đụng vào nó.
+# KHÔNG phụ thuộc `courses`: registry chỉ đọc `fixtures/registry/` (đã commit,
+# không cần bung). Giáo trình riêng tư nằm ở kho ngoài cây git và KHÔNG BAO GIỜ
+# chạm registry — `make check-publish` vẫn là cổng của chuyện đó.
 #
 # Thư mục này có node_modules riêng; repo không có npm workspaces và không có
 # package.json ở gốc. Chạy `cd tools/registry && bun install` một lần.
-test-registry: ; cd tools/registry && bun run typecheck && bun run test && cd ../.. && bun tools/registry/src/validate-pr.ts --root fixtures/courses && bun tools/registry/src/build-index.ts --root fixtures/courses > /dev/null
-# `make registry-index` — in `index.json` của registry ra stdout. Chuyển hướng đi
-# đâu là việc của người gọi; target này không ghi vào cây git.
-registry-index: ; bun tools/registry/src/build-index.ts --root fixtures/courses
+test-registry: ; cd tools/registry && bun run typecheck && bun run test && cd ../.. && bun tools/registry/src/validate-pr.ts --root fixtures/registry
 # `make pack DIR=my-course` — check a course directory against
 # packages/course-format and write a zip. Exits 1 and prints every finding when
 # the package is not valid; DIR is relative to the repo root.
@@ -232,15 +247,24 @@ check-publish: courses ; python3 scripts/check_publishable.py
 # avoids a real Docker Hub resolution hang this task hit under its own
 # sandbox).
 #
-# test-e2e runs BOTH specs. `make test-viz` runs only the exhaustive
-# visualization sweep against a stack you already have up — minutes, not
-# seconds; see apps/web/e2e/viz.spec.ts.
+# `test-viz` and the exhaustive visualization sweep it ran
+# (`apps/web/e2e/viz.spec.ts`) are GONE as of Task 11 of the server-side
+# pivot, together, in the same commit: course-wide `viz.js` execution is
+# retired — a chapter's interactive parts are now widgets running each in
+# their own `sandbox="allow-scripts"` iframe (reader/WidgetFrame.tsx) — so
+# there is no more per-course visualization set for that target to sweep.
+# Task 16 writes its replacement, a real browser driving a real widget and
+# asserting it cannot reach the session.
 #
-# `courses` first, for the same reason test-web has it: all four e2e files open
-# the real course over HTTP, and the production bundle only carries it if it is
-# on disk when `vite build` runs.
-test-e2e: courses ; ./scripts/test-e2e.sh
-test-viz: courses ; cd apps/web && bunx playwright test viz.spec.ts
+# No `courses` prerequisite (Task 16 dropped it — it used to be here for the
+# same reason test-web has it). Courses now live on the server, not in a
+# statically-bundled `courses/` directory: `scripts/test-e2e.sh` seeds the
+# one course this gate reads (`mau-hop-le`, from `fixtures/format-v2/
+# valid-course`) straight into Postgres via `PUT /admin/courses/mau-hop-le`,
+# once the API is up — a real HTTP publish, not a build-time file copy. A
+# `make courses` run beforehand costs this target nothing (it would just sit
+# unused in `courses/`), but nothing here depends on it any more.
+test-e2e: ; ./scripts/test-e2e.sh
 # One-time setup for a fresh machine: test-extract depends on pytest, which
 # is not part of this repo's own dependency graph (tools/ has no
 # venv/lockfile of its own) and is not guaranteed to be installed by

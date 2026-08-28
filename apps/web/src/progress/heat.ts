@@ -151,3 +151,121 @@ export function heatLevel(minutes: number, maxMinutes: number): 0 | 1 | 2 | 3 | 
   if (share <= 0.75) return 3;
   return 4;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LỊCH CẢ NĂM — kiểu GitHub
+   ══════════════════════════════════════════════════════════════════════════
+
+   Người dùng yêu cầu: hiện như GitHub — cả năm, kèm cột chọn năm và danh sách
+   khoá học trong năm.
+
+   Vì sao một hàm RIÊNG chứ không nới `buildHeatCalendar` thêm một tham số: hai
+   hàm trả lời hai câu hỏi khác nhau về mốc neo. Bảy tuần neo vào NGÀY MỚI NHẤT
+   CÓ DỮ LIỆU — đúng cho một dải trượt. Lịch năm neo vào 1 THÁNG 1, một mốc
+   tuyệt đối không phụ thuộc dữ liệu; một năm không có nhịp học nào vẫn phải vẽ
+   ra đủ 12 tháng chứ không co lại thành một ô.
+
+   Và nó cần một khái niệm mà hàm kia không có: `inRange`. GitHub vẽ những ngày
+   thuộc tuần đầu/cuối nhưng KHÔNG thuộc năm đang xem thành ô trống hẳn. Gộp
+   chúng vào `known: false` sẽ làm chúng trông như "ngày không có dữ liệu", tức
+   là nói dối theo đúng cái cách mà `known` sinh ra để tránh. */
+
+export interface YearCell {
+  readonly date: string;
+  /** Ngày này có thuộc năm đang xem không. `false` ⇒ vẽ trống hẳn. */
+  readonly inRange: boolean;
+  /** `false` ⇒ máy chủ không trả ngày này. KHÔNG phải "0 phút". */
+  readonly known: boolean;
+  readonly minutes: number;
+}
+
+export interface YearMonthLabel {
+  /** 0–11. Chỗ vẽ tự định dạng theo ngôn ngữ, tệp này không giữ tên tháng. */
+  readonly month: number;
+  /** Cột (tuần) mà tháng ấy bắt đầu. */
+  readonly column: number;
+}
+
+export interface YearCalendar {
+  /** `weeks[cột][hàng]` — cột là một tuần, hàng là thứ Hai…Chủ nhật. */
+  readonly weeks: readonly (readonly YearCell[])[];
+  readonly months: readonly YearMonthLabel[];
+  readonly maxMinutes: number;
+  readonly totalMinutes: number;
+  /** Số ngày CÓ học trong năm — tử số của câu "N ngày có học". */
+  readonly activeDays: number;
+}
+
+/**
+ * `days[]` → lưới tuần × 7 phủ trọn `year`.
+ *
+ * `todayIso` cắt phần tương lai của năm hiện tại: một lịch tô xám nốt tháng 12
+ * chưa tới là đang báo cáo tương lai như một thất bại. Những ô ấy vẫn nằm
+ * trong lưới (`inRange: true`) nhưng `known: false`, nên chỗ vẽ phân biệt được
+ * "chưa tới" với "đã qua mà không học".
+ */
+export function buildYearCalendar(days: unknown, year: number, todayIso: string): YearCalendar {
+  const byDate = new Map<string, number>();
+  if (Array.isArray(days)) {
+    for (const entry of days as readonly unknown[]) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const record = entry as { date?: unknown; minutes?: unknown };
+      if (typeof record.date !== 'string') continue;
+      if (dayIndexOf(record.date) === null) continue;
+      const minutes =
+        typeof record.minutes === 'number' && Number.isFinite(record.minutes) ? record.minutes : 0;
+      byDate.set(record.date, minutes);
+    }
+  }
+
+  const firstOfYear = dayIndexOf(`${year}-01-01`);
+  if (firstOfYear === null) {
+    return { weeks: [], months: [], maxMinutes: 0, totalMinutes: 0, activeDays: 0 };
+  }
+  const lastOfYear = dayIndexOf(`${year}-12-31`) ?? firstOfYear;
+  const todayIndex = dayIndexOf(todayIso);
+  const rangeEnd = todayIndex !== null && todayIndex < lastOfYear ? todayIndex : lastOfYear;
+
+  // Lưới bắt đầu ở thứ Hai của tuần chứa 1/1 và kết thúc ở Chủ nhật của tuần
+  // chứa 31/12 — cột đầu và cột cuối vì thế có ô không thuộc năm.
+  const gridStart = firstOfYear - weekdayMondayFirst(firstOfYear);
+  const gridEnd = lastOfYear + (6 - weekdayMondayFirst(lastOfYear));
+  const columns = Math.round((gridEnd - gridStart + 1) / 7);
+
+  const weeks: YearCell[][] = [];
+  const months: YearMonthLabel[] = [];
+  let maxMinutes = 0;
+  let totalMinutes = 0;
+  let activeDays = 0;
+  let lastLabelledMonth = -1;
+
+  for (let column = 0; column < columns; column += 1) {
+    const cells: YearCell[] = [];
+    for (let weekday = 0; weekday < 7; weekday += 1) {
+      const index = gridStart + column * 7 + weekday;
+      const date = isoOfDayIndex(index);
+      const inRange = index >= firstOfYear && index <= lastOfYear;
+      // Ngoài dải đã trôi qua thì KHÔNG hỏi dữ liệu: một ngày của tháng 12 chưa
+      // tới không phải "0 phút", nó là "chưa có gì để nói".
+      const minutes = inRange && index <= rangeEnd ? byDate.get(date) : undefined;
+      cells.push({ date, inRange, known: minutes !== undefined, minutes: minutes ?? 0 });
+      if (minutes !== undefined) {
+        if (minutes > maxMinutes) maxMinutes = minutes;
+        totalMinutes += minutes;
+        if (minutes > 0) activeDays += 1;
+      }
+    }
+    weeks.push(cells);
+
+    // Nhãn tháng đặt ở cột mà tháng ấy XUẤT HIỆN LẦN ĐẦU trong năm. Đọc từ ô
+    // đầu cột: GitHub cũng gắn nhãn theo cột chứ không theo ngày 1.
+    const monthOfColumn = Number(cells[0]!.date.slice(5, 7)) - 1;
+    const yearOfColumn = Number(cells[0]!.date.slice(0, 4));
+    if (yearOfColumn === year && monthOfColumn !== lastLabelledMonth) {
+      months.push({ month: monthOfColumn, column });
+      lastLabelledMonth = monthOfColumn;
+    }
+  }
+
+  return { weeks, months, maxMinutes, totalMinutes, activeDays };
+}

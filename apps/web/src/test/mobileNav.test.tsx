@@ -10,7 +10,7 @@ const server = setupServer(
   // an authenticated GET /me is what lets App render the real page
   // instead of bouncing to /login, same as any signed-in reader.
   http.get('/me', () => HttpResponse.json({ id: 'test-user', email: 'test@example.com', name: 'Test User' })),
-  http.get('/courses/:courseId/manifest.json', () =>
+  http.get('/courses/:courseId', () =>
     HttpResponse.json({
       id: 'demo',
       title: 'Demo',
@@ -100,11 +100,18 @@ describe('mobile TOC drawer (#menu-btn)', () => {
     await user.click(document.getElementById('menu-btn')!);
     expect(document.body.classList.contains('nav-open')).toBe(true);
 
-    // The drawer's own sidebar copy and CourseHome's in-page copy both
-    // render the same chapter while the drawer is open — scope to #content
-    // (the page the reader is actually looking at) to pick one.
-    const content = document.getElementById('content')!;
-    const chapterLink = await within(content).findByRole('link', { name: /Chương một/ });
+    // KHOANH VÙNG VÀO NGĂN KÉO, không vào `#content`.
+    //
+    // Chú thích cũ ở đây nói: "bản sao trong ngăn kéo và bản sao trong trang
+    // cùng vẽ một chương, nên khoanh vào #content để chọn một cái". Bản sao
+    // TRONG TRANG đã đi cùng vòng thiết kế lại — trang khoá học nay tóm tắt
+    // theo PHẦN và mục lục chi tiết chỉ còn một nơi.
+    //
+    // Nên chỗ khoanh vùng đổi theo, và bài kiểm mạnh lên: nó nay bấm đúng cái
+    // liên kết mà người dùng thật bấm khi ngăn kéo đang mở — thứ duy nhất bấm
+    // được ở đó.
+    const drawer = document.getElementById('sidebar')!;
+    const chapterLink = await within(drawer).findByRole('link', { name: /Chương một/ });
     await user.click(chapterLink);
     expect(document.body.classList.contains('nav-open')).toBe(false);
   });

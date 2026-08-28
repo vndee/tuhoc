@@ -27,25 +27,6 @@ interface ImportMetaEnv {
    * (`strictPort: true` trong `vite.config.ts` giữ cho nó không trôi).
    */
   readonly VITE_VAULT_ORIGIN?: string;
-
-  /**
-   * Địa chỉ GỐC của registry course — thư mục chứa `index.json`, và bên cạnh
-   * nó là cây `courses/` (xem bước "gom cây course vào _site" trong
-   * `.github/workflows/registry.yml`). Ví dụ:
-   * `https://<tổ-chức>.github.io/<repo>`. KHÔNG kèm `/index.json`: một biến
-   * cho cả hai đường, để Task 6 kéo gói về từ đúng nơi đã duyệt catalog.
-   *
-   * Không đặt ⇒ nền tảng dùng `PUBLIC_REGISTRY_BASE` trong
-   * `src/registry/index.ts`. Hôm nay hằng số đó là `null` vì repo registry
-   * công khai CHƯA tồn tại (xem chú thích của chính nó), nên màn `/catalog`
-   * hiện một thông báo nêu đích danh biến này thay vì một lỗi mạng khó hiểu.
-   *
-   * Là địa chỉ của BÊN THỨ BA: `src/registry/index.ts` gọi nó bằng `fetch`
-   * với `credentials: 'omit'`, KHÔNG qua `api/client.ts` — client ấy gửi
-   * cookie phiên, và cookie phiên không có việc gì ở một máy chủ ta không sở
-   * hữu.
-   */
-  readonly VITE_REGISTRY_URL?: string;
 }
 
 interface ImportMeta {

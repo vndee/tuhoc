@@ -118,7 +118,7 @@ func NewHandlerForConfig(token, repo string) (*Handler, error) {
 // never breaks the page. A 5xx here would hand the web client's generic
 // error path a failure it would be right to treat as fatal, and the section
 // that cannot load would take the page with it — which is the shape of the
-// blank-page defect (commit 815a472) reintroduced one layer up. "There is
+// blank-page defect (commit 4f2bf1f) reintroduced one layer up. "There is
 // no discussion to show you right now" is a successful answer to the
 // question that was asked, and Reason says which of the four cases it is.
 //

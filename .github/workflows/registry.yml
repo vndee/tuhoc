@@ -1,10 +1,28 @@
-# Registry CI — the gate `apps/api` already delegates to in prose.
+# Registry CI — a pre-merge convenience check, not the platform's safety net.
 #
-# `apps/api/internal/course/usecase.go:26-34` says outright that the server does
-# NOT run the HTML rule set, and that the path it guards is "the registry, where
-# CI runs the TypeScript rules on the submission". Until this file existed,
-# `.github/` did not exist either: nothing anywhere ran those rules over a
-# package a stranger submitted. This closes that, it does not add a nicety.
+# ## What changed under the 2026-08-25 server-side pivot (task 17)
+#
+# This file's original header said the server "does NOT run the HTML rule set"
+# and delegates that job to this workflow. That is no longer true, and the file
+# it cited (`apps/api/internal/course/usecase.go`) no longer exists.
+# `apps/api/internal/catalog/usecase.go`'s `publishZip` now runs
+# `pkgcheck.Validate` — the same rule set, in Go — on every publish AND every
+# rollback, unconditionally, regardless of which door the zip came through
+# (`tuhoc publish` or the admin CMS). The spec says it plainly: *"cổng thật giờ
+# nằm ở server"* — the real gate is the server now, not this job. See
+# `tools/registry/src/validate-pr.ts`'s own header for the full account.
+#
+# What this job still buys: catching a bad package **before** it is merged
+# into whatever repo the community sends PRs into, rather than after a
+# maintainer has already tried to publish it and been handed a 400. Genuinely
+# useful, just smaller than it used to be.
+#
+# The `publish` job that used to live here — generating `index.json` and a
+# `.zip` per version, served over GitHub Pages — is GONE. It existed because
+# the community registry WAS the catalog; the catalog is now `/courses`, served
+# from Postgres by `apps/api`, and nothing pulls a package from a
+# registry-hosted archive any more. Publishing either artifact now would be
+# publishing a catalog nobody reads.
 #
 # ## Everything decidable lives in TypeScript, on purpose
 #
@@ -32,8 +50,8 @@
 # ## Not yet run on real GitHub Actions
 #
 # Written and exercised locally through `make test-registry`; the runner-shaped
-# parts (checkout depth, `oven-sh/setup-bun`, the Pages deploy) have never
-# executed on a hosted runner. Treat the first real run as the test of those.
+# parts (checkout depth, `oven-sh/setup-bun`) have never executed on a hosted
+# runner. Treat the first real run as the test of those.
 
 name: registry
 
@@ -44,13 +62,19 @@ on:
 
 # The registry root: one directory per course.
 #
-# In this repo that is `fixtures/courses/`, which holds the two committed public
-# sample packages. In the standalone public registry repo it is `courses/`.
-# It is written ONCE, here, so relocating the tree is one edit and not a hunt.
+# `fixtures/registry/` — NOT `fixtures/courses/`, on purpose. `fixtures/courses/`
+# now holds real, load-bearing test data for a dozen unrelated test files across
+# the repo (`fixtures/README.md`), including one package (`so-dau-phay-dong`)
+# that is deliberately, permanently invalid under format v2 until it is
+# rewritten as a widget — content work outside this workflow's scope. Pointing
+# this job at that root would make it permanently red for a reason it cannot
+# fix. `fixtures/registry/` is this workflow's own small, valid v2 fixture,
+# decoupled from that. It is written ONCE, here, so relocating the tree is one
+# edit and not a hunt.
 env:
-  REGISTRY_ROOT: fixtures/courses
+  REGISTRY_ROOT: fixtures/registry
 
-# Least privilege by default; the publish job widens it for itself only.
+# Least privilege: this is the only job in the file now, and it only reads.
 permissions:
   contents: read
 
@@ -59,9 +83,10 @@ jobs:
     name: bộ luật course-format trên các course PR đổi
     runs-on: ubuntu-latest
     steps:
-      # `fetch-depth: 0` is load-bearing twice over: the changed-file diff needs
-      # the merge base, and `build-index --commit-dates` needs real commit dates.
-      # The default depth of 1 makes both silently wrong rather than loud.
+      # `fetch-depth: 0` is load-bearing: the changed-file diff needs the merge
+      # base, which a depth-1 checkout does not have. The default depth of 1
+      # would make that silently wrong (an empty diff) rather than loud — and
+      # `validate-pr.ts` treats an empty diff as red, not "nothing to do".
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -90,10 +115,14 @@ jobs:
           set -euo pipefail
           bun run --cwd tools/registry typecheck
 
-      # These are the tests that assert the load-bearing claim: a `content`-tier
-      # package carrying `<script>` is REFUSED and the message names the file,
-      # and the same bytes declared `interactive` are ACCEPTED. Without the
-      # second, a validator that refused everything would also be green.
+      # These are the tests that assert the load-bearing claim: format v2 has
+      # no "tier" any more (see this file's own header) — EVERY package
+      # carrying `<script>` is REFUSED, unconditionally, and the message
+      # names the exact file. The control case is a manifest that still sets
+      # `tier: "interactive"`: that field grants no exemption any more, it
+      # only adds an EXTRA finding (`TIER_REMOVED`) on top of the same
+      # `SCRIPT_TAG` refusal every other package gets. Without that control,
+      # a validator that refused everything would also be green.
       - name: test tools/registry
         shell: bash
         run: |
@@ -129,9 +158,11 @@ jobs:
           set -euo pipefail
           bun tools/registry/src/validate-pr.ts --root "${REGISTRY_ROOT}" --changed-from "${RUNNER_TEMP}/changed.txt"
 
-      # push to main: the whole tree, every time. A course can stop being valid
-      # without anybody touching it — a rule tightens in `packages/course-format`
-      # and the catalog is suddenly serving something the current rules refuse.
+      # push to main: the whole tree, every time. `fixtures/registry/` is small
+      # and rarely touched, so this mostly proves the CLI's success path stays
+      # wired end-to-end — but a rule tightening in `packages/course-format`
+      # would still show up here, on this fixture, before anyone notices it
+      # rejecting a real submission elsewhere.
       - name: kiểm TOÀN BỘ registry
         if: github.event_name == 'push'
         shell: bash
@@ -139,94 +170,11 @@ jobs:
           set -euo pipefail
           bun tools/registry/src/validate-pr.ts --root "${REGISTRY_ROOT}"
 
-  publish:
-    name: sinh index.json và phục vụ qua Pages
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: validate
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    # One deploy at a time, and never cancel one mid-flight: a half-published
-    # Pages site is an `index.json` naming packages that are not there yet.
-    concurrency:
-      group: pages
-      cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: cài phụ thuộc
-        shell: bash
-        run: |
-          set -euo pipefail
-          bun install --frozen-lockfile --cwd packages/course-format
-          bun install --frozen-lockfile --cwd tools/registry
-
-      # `--commit-dates` makes the output byte-identical for a given commit, so
-      # the platform's ETag cache is not busted by a rebuild that changed
-      # nothing. It FAILS rather than falling back to file mtimes, which after a
-      # fresh checkout are all "now" — see build-index.ts.
-      #
-      # `build-index` re-runs the SAME rule set before it writes anything, so an
-      # invalid package can never reach the catalog even if it somehow reached
-      # main.
-      - name: sinh index.json
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p _site
-          bun tools/registry/src/build-index.ts --root "${REGISTRY_ROOT}" --commit-dates --out _site/index.json
-
-      # The course tree ships next to the index so the platform can fetch a
-      # package's files on demand from the same origin, with no GitHub API call
-      # and no per-IP rate limit.
-      - name: gom cây course vào _site
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p _site/courses
-          cp -R "${REGISTRY_ROOT}/." _site/courses/
-          echo "_site: $(find _site -type f | wc -l) tệp"
-
-      # And the ARCHIVE the platform actually pulls, one per published version,
-      # at `_site/courses/<id>/<version>.zip`.
-      #
-      # The loose tree above is browsable but it is not importable: `apps/web`
-      # brings a package in through exactly three doors — a `.zip` on disk, a
-      # `.zip` at a URL, and a public GitHub repo — and a directory of loose
-      # files on a static host is none of them. Subsystem 1 measured all three
-      # doors arriving at ONE validating funnel, and that convergence is worth
-      # more than the convenience of a fourth door, so the registry publishes
-      # the artifact the existing door already accepts.
-      #
-      # `pack-site` runs the SAME rule set (`inspectCourse` → `validatePackage`)
-      # and refuses to write an archive for a package with findings, so a
-      # course that could not pass the PR gate cannot acquire a download URL
-      # either. It also fails when it packs NOTHING: a site whose index lists
-      # courses while every "pull" button 404s is a blind gate with a CDN in
-      # front of it.
-      #
-      # Runs AFTER the copy on purpose — `cp -R` would otherwise be able to
-      # overwrite an archive with a same-named file from the source tree.
-      - name: đóng gói từng phiên bản thành .zip
-        shell: bash
-        run: |
-          set -euo pipefail
-          bun tools/registry/src/pack-site.ts --root "${REGISTRY_ROOT}" --out _site
-
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-      - id: deploy
-        uses: actions/deploy-pages@v4
+# There is no `publish` job any more. It used to generate `index.json` and a
+# per-version `.zip` archive and deploy both to GitHub Pages — the community
+# registry WAS the catalog, so publishing it here was the only publish step
+# that existed. Task 17 of the 2026-08-25 server-side pivot removed it: the
+# catalog is `/courses`, served from Postgres by `apps/api`, and publishing
+# happens through `PUT /admin/courses/:slug` (`tuhoc publish` or the admin
+# CMS), never through this workflow. See this file's header and
+# `tools/registry/src/validate-pr.ts`'s for the full account.

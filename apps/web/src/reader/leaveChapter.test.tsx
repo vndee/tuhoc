@@ -88,8 +88,8 @@ const server = setupServer(
   http.get('/me', () => HttpResponse.json({ id: 'u1', email: 'a@vi.vn', name: 'Người học' })),
   http.get('/courses', () => HttpResponse.json([])),
   http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })),
-  http.get('/courses/demo/manifest.json', () => HttpResponse.json(manifest)),
-  http.get('/courses/demo/chapters/c1.html', () => HttpResponse.text(CHAPTER_1_HTML)),
+  http.get('/courses/demo', () => HttpResponse.json(manifest)),
+  http.get('/courses/demo/chapters/c1', () => HttpResponse.json({ html: CHAPTER_1_HTML, widgets: [] })),
   // `App` khởi động vòng đồng bộ nền ngay khi `GET /me` trả về một người dùng
   // đã đăng nhập (App.tsx → `useSyncLifecycle`), nên `onUnhandledRequest:
   // 'error'` sẽ nổ ở đây nếu ba đầu này không có mặt. Chúng là NHIỄU với bài
@@ -174,14 +174,17 @@ describe('rời chương bằng điều hướng SPA', () => {
     //    `removeChild` phải KHÔNG tồn tại nữa, chứ không phải bị bắt gọn.
     expect(errorBoundaryFallback()).toBeNull();
 
-    // 4. `#crumb` quay về đúng chữ tĩnh của Topbar — SO BẰNG ĐÚNG, không
-    //    `toContain`: một `#crumb` còn dính cả breadcrumb cũ lẫn 'Tuhoc'
-    //    ("Phần 1 › 1.1 Chương mộtTuhoc") vẫn "chứa" 'Tuhoc'.
-    expect(document.getElementById('crumb')?.textContent).toBe('Tuhoc');
+    // 4. `#crumb` đã được DỌN SẠCH — so bằng đúng với chuỗi rỗng, không
+    //    `toContain`: một `#crumb` còn dính breadcrumb cũ là đúng lỗi mà số 4
+    //    này tồn tại để bắt. Nó từng đòi chữ 'Tuhoc' vì Topbar in tên app ở
+    //    đó; nhãn hiệu nay đứng ở đầu thanh trên nên `#crumb` rỗng ngoài
+    //    trang chương, và phép so bằng đúng giữ nguyên độ chặt.
+    expect(document.getElementById('crumb')?.textContent).toBe('');
 
-    // 5. Và lối ra dẫn tới một nơi CÓ đường đi tiếp: thanh bên đã trở lại ở
-    //    chế độ thư viện, nên đích cũ của bài kiểm này vẫn tới được. Không có
-    //    nửa này, "thoát được" có thể chỉ là "thoát vào ngõ cụt".
+    // 5. Và lối ra dẫn tới một nơi CÓ đường đi tiếp: điều hướng toàn cục đã
+    //    trở lại ở chế độ thư viện (nay trên thanh trên, không phải thanh
+    //    bên), nên đích cũ của bài kiểm này vẫn tới được. Không có nửa này,
+    //    "thoát được" có thể chỉ là "thoát vào ngõ cụt".
     const nav = screen.getByRole('navigation', { name: /điều hướng chính/i });
     await user.click(within(nav).getByRole('link', { name: /khoá học/i }));
     // 'Khoá học', không phải 'Thư viện': `/courses` gộp thư viện, kho cộng đồng
@@ -198,9 +201,16 @@ describe('rời chương bằng điều hướng SPA', () => {
     //
     // Bài này TỪNG đòi nhan đề 'Trợ lý AI', vì đó tình cờ là mục mặc định. Nay
     // mặc định là 'Tài khoản' (xem `pages/Settings.tsx`), và đòi đúng nhan đề
-    // ấy làm bài kiểm mạnh lên chứ không yếu đi: lối vào này là THANH BÊN, nên
-    // nó phải chứng minh đúng điều người dùng báo — bấm 'Cài đặt' không được
-    // ném ra một trang cấu hình AI.
+    // ấy làm bài kiểm mạnh lên chứ không yếu đi: nó phải chứng minh đúng điều
+    // người dùng báo — bấm 'Cài đặt' không được ném ra một trang cấu hình AI.
+    //
+    // LỐI VÀO ĐÃ DỜI CHỖ, và điều đó chính là thứ đáng canh nhất ở đây. Nó
+    // từng ở đáy thanh bên; thanh bên nay chỉ mang mục lục nên nó không còn
+    // sống ở đó được. Nếu nó không mọc lại ở đâu cả thì `/settings` chỉ tới
+    // được bằng cách gõ URL — đúng hình dạng "cổng mù #4" mà chính route ấy
+    // sinh ra để vá. Nên bài này KHÔNG khoanh vùng vào `<nav>` nữa: câu hỏi là
+    // "có tới được bằng một cú bấm không", không phải "cú bấm ấy nằm trong thẻ
+    // nào". Hôm nay câu trả lời là `AccountChip` ở mép phải thanh trên.
     render(<App />);
     await readingChapterOne();
 
@@ -209,8 +219,15 @@ describe('rời chương bằng điều hướng SPA', () => {
     expect(await screen.findByRole('heading', { name: /bảng điều khiển|học tiếp/i })).toBeInTheDocument();
     expect(screen.queryByText('NỘI-DUNG-CHƯƠNG-MỘT')).toBeNull();
 
-    const nav = screen.getByRole('navigation', { name: /điều hướng chính/i });
-    await user.click(within(nav).getByRole('link', { name: /cài đặt/i }));
+    // HAI cú bấm, và cả hai đều nằm trên thanh trên: `AccountChip` nay là một
+    // MENU (bản dựng vẽ đĩa tròn kèm mũi tên xuống — xem `shell/TopNav.tsx`),
+    // nên `Cài đặt` là mục đầu tiên bên trong nó thay vì là chính cái đĩa.
+    //
+    // Điều bài này canh KHÔNG đổi, và đó là lý do nó chỉ đi thêm một bước chứ
+    // không được nới lỏng: `/settings` phải tới được từ giao diện, vì thanh bên
+    // — chỗ ở cũ của mục ấy — không tồn tại ngoài một khoá (cổng mù #4).
+    await user.click(screen.getByRole('button', { name: /menu tài khoản/i }));
+    await user.click(screen.getByRole('menuitem', { name: /cài đặt/i }));
 
     expect(await screen.findByRole('heading', { name: 'Tài khoản' })).toBeInTheDocument();
     expect(document.querySelector('.page-settings')).not.toBeNull();

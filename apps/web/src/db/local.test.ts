@@ -10,7 +10,6 @@ import {
   db,
   DEVICE_PREFERENCE_KEYS,
   mergeRow,
-  type PackageRow,
   type ProgressRow,
   readSessionVerifiedAt,
   rememberSessionVerified,
@@ -25,32 +24,6 @@ async function clearAll() {
 
 beforeEach(clearAll);
 afterEach(clearAll);
-
-/** A minimal, valid cached course package — enough to seed `db.packages`. */
-function packageRow(courseId = 'demo', version = '1.0.0'): PackageRow {
-  const manifest = {
-    id: courseId,
-    title: 'Khóa học đã lưu',
-    description: '',
-    lang: 'vi',
-    version,
-    runtime: '^1',
-    tier: 'content',
-    parts: [{ title: 'Phần 1', chapters: [{ id: 'c1', num: '1.1', title: 'Chương một', short: 'C1', file: 'chapters/c1.html' }] }],
-  };
-  const encode = (s: string) => new TextEncoder().encode(s);
-  return {
-    key: `${courseId}@${version}`,
-    courseId,
-    version,
-    manifest,
-    files: {
-      'manifest.json': encode(JSON.stringify(manifest)),
-      'chapters/c1.html': encode('<h1 class="ch-title">Chương một</h1>'),
-    },
-    pinnedAt: '2026-08-21T10:00:00.000Z',
-  };
-}
 
 describe('mergeRow (pure LWW)', () => {
   // The four cases the brief names verbatim: incoming newer / incoming
@@ -184,45 +157,42 @@ describe('clearLocalData', () => {
   /**
    * THE TRIPWIRE, and the number it guards.
    *
-   * Five, as of Task 7's `packages` table. It was four
-   * (`progress`/`annotations`/`outbox`/`meta`) and the count was raised
-   * DELIBERATELY, which is the only way it is ever allowed to move —
-   * `docs/carried-forward.md`'s standing warning is "change the number,
-   * do not 'fix' the helper," because the helper (`clearLocalData`
-   * enumerating `db.tables`) being right about a table nobody has written
-   * yet is precisely what makes this assertion cheap enough to keep.
+   * Four — back to what it was before Task 7's `packages` table, which Task
+   * 13 removed from the schema entirely (spec
+   * `2026-08-25-server-side-pivot.md` §1: the reader import flow that was
+   * its only writer is gone, so there is nothing left for it to hold). This
+   * is the tripwire moving DOWN, and it is allowed to move for the same
+   * reason it was allowed to move up in Task 7 — `docs/carried-forward.md`'s
+   * standing warning is "change the number, do not 'fix' the helper,"
+   * because the helper (`clearLocalData` enumerating `db.tables`) being
+   * right about the schema it is actually handed is what makes this
+   * assertion cheap enough to keep, in either direction.
    *
-   * What the fifth table holds and why it belongs on the clearing side of
-   * the line: an imported course package is the reader's own copy of
-   * somebody's course, sitting in a browser-scoped database that never
-   * expires. A private course surviving into the next person's session on
-   * a shared laptop is the same failure as their half-typed note doing so
-   * — see USER_CONTENT_KEYS's comment for the incident that rule came
-   * from. `packages` is user CONTENT, not a device preference.
+   * The two tests this tripwire used to sit beside — "signing out deletes
+   * cached course packages too" and `packages` seeded in "empties every
+   * table" below — are gone rather than adjusted, and deliberately not
+   * because they stopped compiling: the risk they guarded (a private course
+   * surviving into the next person's session on a shared laptop) is gone
+   * STRUCTURALLY. There is no `db.packages` on the machine for a course to
+   * survive IN any more — every course is server-side and public (spec
+   * §2.4), so there is no private per-reader copy left to leak. Verified,
+   * not assumed: `grep -rn "db\.packages" apps/web/src` finds no production
+   * code, and `LocalDB`'s version-3 upgrade (`db/local.ts`) drops the store
+   * on an existing reader's own browser, not just for a fresh install.
    *
-   * Written out by name rather than only counted: `toHaveLength(5)` would
-   * also pass if somebody added a sixth table and deleted a different one.
+   * Written out by name rather than only counted: `toHaveLength(4)` would
+   * also pass if somebody added a fifth table and deleted a different one.
    */
-  it('has exactly five tables, and they are the five this file knows about', () => {
+  it('has exactly four tables, and they are the four this file knows about', () => {
     expect(db.tables.map((t) => t.name).sort()).toEqual([
       'annotations',
       'meta',
       'outbox',
-      'packages',
       'progress',
     ]);
   });
 
-  it('signing out deletes cached course packages too — a private course is user data, not a device setting', async () => {
-    await db.packages.put(packageRow());
-    expect(await db.packages.count()).toBe(1);
-
-    await clearLocalData();
-
-    expect(await db.packages.count()).toBe(0);
-  });
-
-  it('empties every table in the schema, not a hand-maintained list of five', async () => {
+  it('empties every table in the schema, not a hand-maintained list', async () => {
     await db.progress.put({ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: '2026-08-20T10:00:00.000Z' });
     await db.annotations.put({
       id: '11111111-1111-4111-8111-111111111111',
@@ -236,13 +206,12 @@ describe('clearLocalData', () => {
     });
     await db.outbox.add({ table: 'progress', row: {} });
     await db.meta.put({ key: 'syncCursor', value: '2026-08-20T10:00:00Z' });
-    await db.packages.put(packageRow());
 
     // Pre-condition: every table genuinely has something in it, so the
     // assertion below can't pass vacuously.
     const before = await Promise.all(db.tables.map((t) => t.count()));
     expect(before.every((n) => n > 0)).toBe(true);
-    expect(db.tables).toHaveLength(5);
+    expect(db.tables).toHaveLength(4);
 
     await clearLocalData();
 
@@ -631,23 +600,19 @@ describe('the localStorage key registry', () => {
    * `i18n/LanguageProvider.test.tsx` proves that it does rather than
    * leaving it true by luck.
    *
-   * Lần thứ BA là `itbook-nav-collapsed` (thanh bên thu gọn được). Cùng một
-   * phân loại và cùng một lập luận: nó mô tả CỬA SỔ NÀY, không phải người dùng.
-   * Đăng xuất trên máy chung phải xoá sạch ghi chú và tiến độ; nó không có lý
-   * do gì để bung lại một thanh bên mà chủ máy đã thu gọn.
+   * `itbook-nav-collapsed` (thanh bên thu gọn được) TỪNG là mục thứ ba ở đây và
+   * nay đã rời danh sách — cùng một quyết định, đi theo chiều ngược lại. Tính
+   * năng thu gọn-bền bị gỡ (lý do ở `shell/TopNav.tsx`), nên không còn ai ghi
+   * khoá ấy; để nó nằm lại là để `clearLocalData()` canh một thứ không tồn tại,
+   * và danh sách này chỉ có nghĩa khi mọi dòng trong nó còn thật.
    *
-   * Nó cũng là ví dụ đúng của cổng bên trên: bản đầu của `useSidebarCollapse`
-   * gọi thẳng `localStorage` và bài "no third place for user data to hide" đỏ
-   * ngay — sửa đúng là định tuyến qua `db/local.ts`, không phải thêm tệp ấy vào
-   * `allowedIn`.
+   * Nó cũng từng là ví dụ đúng của cổng bên trên: bản đầu của hook ấy gọi thẳng
+   * `localStorage` và bài "no third place for user data to hide" đỏ ngay — sửa
+   * đúng là định tuyến qua `db/local.ts`, không phải thêm tệp ấy vào `allowedIn`.
    */
   it('classifies every key, with nothing on both lists', () => {
     expect([...USER_CONTENT_KEYS]).toEqual(['itbook-note-draft']);
-    expect([...DEVICE_PREFERENCE_KEYS]).toEqual([
-      'itbook-theme',
-      'itbook-lang',
-      'itbook-nav-collapsed',
-    ]);
+    expect([...DEVICE_PREFERENCE_KEYS]).toEqual(['itbook-theme', 'itbook-lang']);
 
     const all = [...USER_CONTENT_KEYS, ...DEVICE_PREFERENCE_KEYS];
     expect(new Set(all).size).toBe(all.length);
@@ -848,41 +813,22 @@ const HTML_SINKS_ALLOWED: readonly {
     times: 1,
     why: 'the chapter fragment — the one string in this app that IS markup, and the only one a course author is allowed to write',
   },
-  {
-    sink: 'innerHTML',
-    file: join('apps', 'web', 'src', 'course', 'version.ts'),
-    times: 1,
-    // Added by S1 Task 10, and deliberately NOT a reopening of ruling S1-F8.
-    // The ruling's condition is "no MANIFEST field ever reaches an HTML sink",
-    // and this sink is fed the same category of string ChapterView's is: a
-    // chapter fragment, read out of `PackageRow.files[...]`. The manifest
-    // supplies the KEY into that record (`chapter.file`), never the value —
-    // so every manifest string is still a React text node everywhere in this
-    // app, and the validator's decision not to scan manifests for markup is
-    // still free.
-    //
-    // Two further properties of THIS use, neither of which ChapterView's has:
-    // it parses into an INERT document (`document.implementation.
-    // createHTMLDocument`, see `parseChapterInert`), and it exists to measure
-    // notes against a chapter the reader has not taken yet, which has to
-    // project to the SAME string the reader's page projected (see
-    // `course/version.ts`'s `CourseKitUnavailableError` for the measurement).
-    //
-    // RULING S1-F30 — this entry used to say the container was "detached …
-    // so no handler on it can ever fire", and that was measured FALSE in
-    // Chromium: an image/media load is started by the `src` attribute, not by
-    // being in a rendered tree, and the package's own `onerror` runs on it. A
-    // false security claim inside the very test that guards the area is worse
-    // than no claim, because it tells the next reader not to look. What makes
-    // this use safe is the inert DOCUMENT, and nothing else.
-    //
-    // The scanner above still sees this sink, which is the point: the fix
-    // changed WHICH document is written to, not the fact that a string becomes
-    // markup, so `times: 1` still counts it. (The rejected alternative,
-    // `DOMParser`, WOULD hide the sink from this scanner — that, not inertness,
-    // is the reason not to use it.)
-    why: 'the chapter fragment again, parsed into an inert document (no browsing context) to resolve anchors against a version not yet taken',
-  },
+  // `course/version.ts`'s `innerHTML` entry ĐÃ XOÁ Ở ĐÂY — the file is gone
+  // (Task 13: the update-impact preview it belonged to has no course-package
+  // model left to compare versions of). Its entry carried RULING S1-F30, a
+  // real measurement worth restating rather than letting vanish with the
+  // file: an image/media element's `onerror` fires because the load is
+  // started by the `src` ATTRIBUTE, not because the element sits in a
+  // rendered tree — so parsing a chapter into a `document.implementation.
+  // createHTMLDocument()` INERT document does NOT, by itself, stop a
+  // package's own `onerror` from running there. An earlier version of this
+  // entry claimed the opposite ("detached, so no handler can ever fire") and
+  // that claim was measured false in Chromium. Nothing left in this app
+  // parses chapter HTML into a detached/inert document any more (verified:
+  // `grep -rn "createHTMLDocument" apps/web/src` now matches only this
+  // comment) — but if that pattern ever returns, "inert" is not itself a
+  // safety argument; only running it through the same rule set that gates
+  // ChapterView's own `innerHTML` (SCRIPT_TAG, EVENT_HANDLER_ATTR, …) is.
   {
     sink: 'innerHTML',
     file: join('packages', 'course-kit', 'runtime.js'),
@@ -945,9 +891,16 @@ const HTML_SINKS_ALLOWED: readonly {
  * arrive from strangers' packages instead of from this repo.
  *
  * Task 7 is where manifests started arriving from strangers: an imported
- * package's manifest goes into `db.packages` and comes back out through
+ * package's manifest went into `db.packages` and came back out through
  * `course/loader.ts` with no markup scan anywhere along the way — by
- * design, per the ruling. So the ruling's floor gets a test.
+ * design, per the ruling. Task 13 removed that table and its import flow
+ * (spec `2026-08-25-server-side-pivot.md` §1), but the condition this floor
+ * depends on did not become safer for it: a manifest is STILL a stranger's
+ * data. It arrives a different way now — `api/catalog.ts` fetches it fresh
+ * off the server's public catalog for every course, published by whoever
+ * ran `tuhoc publish` — but "a course author, not this repo, wrote every
+ * string in it" is exactly as true as it was when the bytes came from a
+ * `.zip` a reader dropped in. So the ruling's floor still gets a test.
  *
  * If this goes red, the fix is almost never "add the file to the
  * allowlist." It is: render the string as text. And if some future feature

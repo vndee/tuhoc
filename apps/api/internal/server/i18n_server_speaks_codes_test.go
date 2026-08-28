@@ -72,7 +72,7 @@ const minProductionGoFiles = 20
 // đáng nhìn và để lại một thư mục khác cho đủ số.
 var handlerSentinels = []string{
 	"internal/auth/handler.go",
-	"internal/course/handler.go",
+	"internal/catalog/handler.go",
 	"internal/rating/handler.go",
 	"internal/server/server.go",
 	"internal/stats/handler.go",

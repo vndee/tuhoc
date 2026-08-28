@@ -50,15 +50,21 @@ type loginRequest struct {
 }
 
 // meResponse is the shape returned by Register, Login, and Me. It is
-// deliberately narrow: id, email, name — never pw_hash.
+// deliberately narrow: id, email, name, role — never pw_hash.
+//
+// Role is Task 8's addition: the web admin CMS needs to know whether the
+// signed-in account can reach /admin/* before it shows the option, and
+// every value here is exactly what users.role holds ("user" or "admin"),
+// never inferred from anything else.
 type meResponse struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
 	Name  string `json:"name"`
+	Role  string `json:"role"`
 }
 
 func toMeResponse(u User) meResponse {
-	return meResponse{ID: u.ID.String(), Email: u.Email, Name: u.Name}
+	return meResponse{ID: u.ID.String(), Email: u.Email, Name: u.Name, Role: u.Role}
 }
 
 // Register handles POST /auth/register {email,password,name}. On success
@@ -255,4 +261,42 @@ func RequireWithUsecase(uc *Usecase) fiber.Handler {
 func UID(c *fiber.Ctx) uuid.UUID {
 	id, _ := c.Locals(localsUIDKey).(uuid.UUID)
 	return id
+}
+
+// RequireAdmin is Task 8's admin gate. It MUST be mounted AFTER Require
+// (or after any middleware that populates the same "uid" local Require
+// does — see server.go's adminOrToken, whose token-authenticated path
+// skips both middlewares entirely and never reaches this one): it reads
+// UID(c), which is uuid.Nil and belongs to no one if Require never ran, and
+// a lookup for uuid.Nil simply finds no such user and is refused the same
+// as any other non-admin — never a special-cased bypass.
+//
+// A session that is valid but not an admin's gets 403, never 401: the
+// session itself authenticated correctly (Require already said so), it is
+// this specific account that is not allowed past this point. Collapsing
+// that into 401 would make "wrong account" indistinguishable from "no
+// account at all", which is the same distinction Require's own doc
+// comment draws between "not authenticated" and a real failure — the two
+// gates protect different facts and must not blur into one status code.
+func RequireAdmin(pool *pgxpool.Pool) fiber.Handler {
+	return RequireAdminWithUsecase(NewUsecase(NewRepo(pool)))
+}
+
+// RequireAdminWithUsecase is RequireAdmin's implementation, parameterized
+// on an already-built Usecase — the same reason RequireWithUsecase exists
+// beside Require: a caller that already holds a Usecase over this pool
+// (server.go's own authUsecase) should not have to build a second,
+// equivalent Repo/Usecase pair just to reuse this middleware.
+func RequireAdminWithUsecase(uc *Usecase) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		isAdmin, err := uc.IsAdmin(c.Context(), UID(c))
+		if err != nil {
+			apilog.Internal(c, "auth.RequireAdmin", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "role check failed"})
+		}
+		if !isAdmin {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "admin access required"})
+		}
+		return c.Next()
+	}
 }

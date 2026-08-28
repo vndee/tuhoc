@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useRef, useSyncExternalStore, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { describeAuthError, serverAnswered } from '../api/client';
 import { useMe } from '../api/useMe';
@@ -26,7 +26,7 @@ export interface RequireAuthProps {
  * Not exported: nothing outside this file seeds or invalidates it, and
  * `resetSessionScopedQueries` drops it by predicate rather than by key.
  * Exporting a non-component from a component module also costs a react
- * fast-refresh lint warning — the same call `0a733cb` made for
+ * fast-refresh lint warning — the same call `e859459` made for
  * `coursesQueryKey`.
  */
 const offlineSessionQueryKey = ['offline-session'] as const;
@@ -154,6 +154,27 @@ export function RequireAuth({ children }: RequireAuthProps) {
     void rememberSessionVerified();
   }, [confirmedUserId]);
 
+  /**
+   * Lần mount NÀY đã từng dựng `children` dưới một phiên được server xác nhận
+   * chưa. Một `ref`, không phải state: nó chỉ đi một chiều false → true và
+   * không được phép tự nó gây thêm một lần render.
+   *
+   * Nó tồn tại vì một lỗi đo được, không phải vì gọn hơn. `e2e/s3.spec.ts` mở
+   * một chương, khẳng định tiêu đề đã hiện, rồi đọc `#content` ngay sau đó và
+   * thỉnh thoảng nhận đúng 16 ký tự — "Đang tải chương…", chuỗi 16 ký tự duy
+   * nhất trong catalog tiếng Việt lọt được vào `#content`. Tức trang đọc đã
+   * dựng xong rồi TỤT LẠI. Đường duy nhất tụt lại được là `<ChapterView>` bị
+   * GỠ rồi DỰNG LẠI, và trên route ấy chỉ có một chỗ gỡ được cả cây: nhánh
+   * `return null` ngay dưới đây.
+   *
+   * Nó bị chạm tới bởi một lần `GET /me` làm mới KHÔNG NHẬN ĐƯỢC PHẢN HỒI —
+   * mạng chớp, một request bị huỷ, server bận. `useMe` đặt `retry: false` nên
+   * một lần như thế đủ đẩy truy vấn sang `isError`, và trong lúc câu hỏi ngoại
+   * tuyến còn đang chạy thì guard trả `null`, gỡ sạch cây bên dưới. Ở trang
+   * đọc, "sạch" gồm cả canvas, mô phỏng đã dựng và vị trí cuộn.
+   */
+  const authorizedOnce = useRef(false);
+
   const noResponseArrived = meQuery.isError && !serverAnswered(meQuery.error);
   const offlineSession = useQuery({
     queryKey: offlineSessionQueryKey,
@@ -182,10 +203,25 @@ export function RequireAuth({ children }: RequireAuthProps) {
     if (!noResponseArrived) {
       return <p className="ch-lede">{describeAuthError(meQuery.error, t)}</p>;
     }
-    // Same trade as the pending branch above: one blank paint while the
-    // local read settles, rather than flashing an outage message at a
-    // reader who is about to get their chapter.
     if (offlineSession.isPending) {
+      // MỘT TRANG ĐÃ ĐƯỢC CẤP PHÉP THÌ ĐỨNG YÊN. Trước đây nhánh này trả
+      // `null` cho mọi trường hợp, với lý do "một khung trắng còn hơn nhá một
+      // thông báo sự cố". Lý do ấy đúng cho lần tải ĐẦU TIÊN — lúc chưa có gì
+      // trên màn hình để mất — và sai cho một lần làm mới hỏng giữa chừng, nơi
+      // cái giá không phải một khung trắng mà là cả cây bên dưới bị gỡ.
+      //
+      // Nó KHÔNG nới quyền: `superseded` (một tài khoản khác đã chiếm phiên)
+      // vẫn chặn ở trên cùng, và một 401 thật vẫn là `meQuery.data == null` ở
+      // dưới. Nhánh này chỉ với tới được khi KHÔNG CÓ CÂU TRẢ LỜI NÀO, và nó
+      // giữ nguyên đúng thứ mà nhánh ngay dưới sẽ dựng lại ở tick sau nếu máy
+      // này còn dấu phiên. Nếu máy KHÔNG còn dấu ấy, thông báo sự cố chỉ tới
+      // chậm hơn một nhịp.
+      if (authorizedOnce.current) {
+        return <>{children}</>;
+      }
+      // Same trade as the pending branch above: one blank paint while the
+      // local read settles, rather than flashing an outage message at a
+      // reader who is about to get their chapter.
       return null;
     }
     if (offlineSession.data === true) {
@@ -198,6 +234,7 @@ export function RequireAuth({ children }: RequireAuthProps) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
+  authorizedOnce.current = true;
   return <>{children}</>;
 }
 

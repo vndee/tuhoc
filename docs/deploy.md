@@ -8,15 +8,19 @@ A from-scratch runbook for the three pieces of this platform:
 | `apps/api` | Go binary, `scratch`-based container | One container on Render (recommended) or Fly.io |
 | Schema + user data | Postgres | Neon (free tier) |
 
-**`courses/*` is normally EMPTY, and a deploy is expected to ship it empty.**
-Since task 11 no course lives in this repo: a course is a package a reader
-imports from a `.zip` on `/import`, stored in their browser, not a directory the
-build copies. `courseAssets.ts` still copies `courses/` into `dist/` when
-something is there — that path exists so `make test-e2e` can serve the real
-course over HTTP — but on a build machine that has not run `make courses` (which
-is every CI runner and every fresh clone), `dist/courses/` comes out empty and
-that is correct, not a missing step. Deploying content this way would publish it;
-if what you are about to deploy is private, read `docs/publishing.md` first.
+**A deploy ships NO course content at all, and `dist/courses/` is never
+created.** Since task 11 no course lives in this repo, and since the server-side
+pivot (`docs/superpowers/specs/2026-08-25-server-side-pivot.md`) a reader gets a
+course from Postgres through `apps/api` — not from a `.zip` they import, and not
+from a directory the build copies. `courseAssets.ts` used to copy `courses/` into
+`dist/courses/` (filtered to this repo's own public sample packages); commit
+dafd4eb removed that copy outright rather than narrowing it further, because any
+course content sitting next to the SPA bundle is a second, unsynced source of
+truth on the origin that holds the session cookie. What the build still copies is
+`course-kit/` — KaTeX and the reader runtime, which every chapter's rendering
+loads as classic `<script src>` includes regardless of where the chapter HTML
+came from. `make courses` is unaffected and still needed locally, for the handful
+of unit/dev/e2e paths that read a package straight off disk.
 
 Config files this doc walks through:
 
@@ -155,6 +159,21 @@ When a later task adds `apps/api/migrations/0002_*.up.sql` (and a matching `.dow
 
 If a migration ever needs reverting: `migrate -path apps/api/migrations -database "$NEON_DIRECT_URL" down 1` rolls back exactly one step (not exercised in this task's verification, but it's the same tool/flags, just `down` instead of `up`).
 
+**If your database already ran `0005_published_catalog` before this branch** (final whole-branch review, M10): that file was amended IN PLACE, not superseded by a new migration number — `admin_audit` gained an explicit `actor` column after some databases had already applied the original version (see `0005_published_catalog.up.sql`'s own comment on why). `golang-migrate` records only `(version, dirty)` in `schema_migrations`; it does not checksum migration files, so a database already at version 5 (or later) will never re-run 0005 no matter how its contents changed — `migrate up` reports `no change` and exits 0, looking exactly like success. The silent gap (a missing `admin_audit.actor` column) does not surface at migration time at all; it surfaces later, as a 500 on the first real publish.
+
+Fix: check where the database actually is, then go back to *before* 0005 and come back up through the current files —
+
+```bash
+migrate -path apps/api/migrations -database "$NEON_DIRECT_URL" version
+# reports 5, or 6 if this database already ran the newer 0006 on top of
+# the stale 0005 content — either way, drop below 0005 (version 4) before
+# coming back up:
+migrate -path apps/api/migrations -database "$NEON_DIRECT_URL" down <reported-version-minus-4>
+migrate -path apps/api/migrations -database "$NEON_DIRECT_URL" up
+```
+
+A genuinely fresh database (never migrated before pulling this branch) is unaffected — it reads the current, already-amended `0005_published_catalog.up.sql` the first and only time it ever runs migration 5.
+
 ---
 
 ## 4. Deploy the API
@@ -199,6 +218,36 @@ Then edit `CORS_ORIGIN` in `apps/api/fly.toml`'s `[env]` block from the placehol
 
 ---
 
+## 4c. First admin: opening the publish door on a fresh deploy
+
+The admin publish API (`PUT`/`DELETE /admin/courses/{slug}` and friends) has **two doors**, and a fresh deploy ships with both shut — correctly, but with nothing in the product itself that opens either one. There is no UI for this and no migration seed; it is entirely an operator step, done once per environment. Skipping this section is why a freshly deployed API can pass every health check and still have no way to publish a single course.
+
+**The two doors, and what each one is for:**
+
+| Door | Credential | Opens | Set where |
+|---|---|---|---|
+| CLI / scripted publish | `ADMIN_TOKEN` (a shared secret, `Authorization: Bearer <token>`) | Every admin route, with no login session at all — `who = nil`, logged in `admin_audit` as `actor = 'cli'`. What `tuhoc-cli publish` and `scripts/test-e2e.sh`'s seed step use. | Render: Environment tab (`sync: false` in `render.yaml`). Fly: `flyctl secrets set ADMIN_TOKEN=...` — never `fly.toml`'s committed `[env]` block. Local dev: `.env`/shell env. See `.env.example` for the full explanation. |
+| Admin login (`/admin` in the web app) | A real user account with `users.role = 'admin'` | The same admin routes, via a normal signed-in session — `who = <that user's id>`, logged as `actor = 'user'`. What a human clicks through in the browser. | The one SQL statement below. |
+
+`adminTokenMatches` (`apps/api/internal/server/server.go`) treats an unconfigured `ADMIN_TOKEN` as "never matches" rather than comparing against an empty string, so an unset token cannot be defeated by an empty `Authorization` header — the CLI door fails closed, not open, when nobody has chosen a value yet. The admin-login door has no equivalent bootstrap at all: `users.role` defaults to `'user'` on every signup (`0005_published_catalog.up.sql`), so even the very first account created on a fresh deploy is an ordinary reader, not an admin. Both doors are closed by design; getting through either one is the step this section fills in.
+
+**To open the CLI door**: set `ADMIN_TOKEN` on the API host — see the table above and `.env.example`'s own comment on that variable (a real secret, e.g. `openssl rand -hex 32`; never the literal fixture value `apps/api/compose.e2e.yml` uses for its own throwaway e2e stack).
+
+**To open the admin-login door** (needed for the `/admin` screen in the browser, independent of whether `ADMIN_TOKEN` is also set):
+
+1. Register a normal account through the web app's own sign-up screen first (`/register`) — this section grants an *existing* account admin, it does not create one.
+2. Promote it directly in Postgres, against the same database `DATABASE_URL` points at:
+   ```sql
+   UPDATE users SET role = 'admin' WHERE email = 'you@example.com';
+   ```
+   Use the **pooled** connection string for this (any ordinary `psql`/GUI client — this is not a schema change, so it does not need the direct/migrations connection from §2). `role` has a `CHECK (role IN ('user','admin'))` constraint (`0005_published_catalog.up.sql`), so a typo'd value fails loudly rather than silently doing nothing.
+3. No re-login needed: `IsAdmin` (`apps/api/internal/auth/usecase.go`) reads `users.role` fresh from the database on every request through `RequireAdmin` — it is not cached in the session cookie — so the very next request from that account's already-open session sees the new role.
+4. Verify: sign in as that account and open `/admin` in the web app; `GET /me`'s `role` field should read `"admin"`.
+
+Neither door is a substitute for the other, and either alone is sufficient to publish — a deploy that only ever uses `tuhoc-cli publish` from a trusted machine can skip step 2 entirely and never create an admin-login account at all.
+
+---
+
 ## 5. Deploy the web app (Cloudflare Pages)
 
 Pick names before you start if you're following the custom-domain path from §0 — you'll want `CORS_ORIGIN` (API) and `VITE_API_URL` (web) set correctly on **first** deploy rather than chasing a chicken-and-egg update afterward. If you're on default hostnames instead, both Pages (`<project-name>.pages.dev`) and Render (`<service-name>.onrender.com`)/Fly (`<app-name>.fly.dev`) URLs are deterministic from the project/service/app name you pick — so you still don't need to deploy one before naming the other.
@@ -215,12 +264,13 @@ dist/index.html                   2.22 kB
 dist/assets/index-*.css         387.84 kB
 dist/assets/index-*.js          337.38 kB
 ```
-`dist/` contains `_redirects`, `courses/`, `course-kit/`, `index.html`, `favicon.svg`, `assets/` — confirmed with `ls dist` and `cat dist/_redirects` (see §7 for why the redirects rule's exact contents matter).
+`dist/` contains `_redirects`, `course-kit/`, `index.html`, `favicon.svg`, `assets/` — confirmed with `ls dist` and `cat dist/_redirects` (see §7 for why the redirects rule's exact contents matter). There is no `dist/courses/`: commit dafd4eb removed the copy that used to create it.
 
-`dist/courses/` is **empty** unless someone ran `make courses` first; see the
-note under the table at the top of this file. Re-verified at task 11 with the
-source directory both present and entirely absent: `bun run build` exits 0 in
-both cases, and produces an empty `dist/courses/` in the second.
+`dist/courses/` is **never created**, whether or not someone ran `make courses`
+first; see the note at the top of this file. This changed at commit dafd4eb —
+before it, the build copied public sample packages there and task 11 verified
+that `bun run build` exits 0 with the source directory both present and absent.
+The copy is gone now, so the outcome no longer depends on `courses/` at all.
 
 ### 5a. Git integration (recommended for ongoing deploys)
 
@@ -307,40 +357,20 @@ origin, lỗ đó đã là lỗ mất key.
 có Pages project nào**. Phép đo hai chiều của `frame-ancestors` (origin được phép nhúng được; origin
 khác rơi vào `chrome-error://`) chạy **trên máy**, không chạy trên hạ tầng thật.
 
-## 5c. Catalog registry (`VITE_REGISTRY_URL`) — **chưa có giá trị mặc định**
+## 5c. Catalog registry — **đã nghỉ hưu, không còn `VITE_REGISTRY_URL`**
 
-Nền tảng đọc catalog từ **một** tệp `index.json` phục vụ qua GitHub Pages của repo registry.
+**Cơ chế mục này từng mô tả không còn tồn tại.** Bản trước của §5c nói nền tảng đọc catalog từ một
+tệp `index.json` phục vụ qua GitHub Pages của repo registry, đọc trực tiếp từ trình duyệt bằng
+`VITE_REGISTRY_URL` và `apps/web/src/registry/index.ts`'s `PUBLIC_REGISTRY_BASE`. Module đó đã bị
+xoá (Task 13) khi pivot server-side dọn sạch: catalog giờ là `GET /courses` — phục vụ bởi chính
+`apps/api` từ Postgres (xem §0 và `apps/web/src/api/catalog.ts`) — không còn một `index.json` nào để
+trỏ tới, và không trình duyệt nào gọi thẳng ra GitHub Pages nữa. `VITE_REGISTRY_URL` không còn được
+đọc ở bất kỳ đâu trong mã; đừng đặt biến này ở host nào cả — final whole-branch review, M6 xoá nó
+khỏi `.env.example`/`apps/web/src/vite-env.d.ts` cùng lúc với đoạn này.
 
-**Hôm nay chưa có repo registry công khai** (`git remote -v` rỗng), nên `PUBLIC_REGISTRY_BASE` được
-đặt là `null` **có chủ ý**: một URL bịa ra sẽ hỏng bằng một `TypeError` trần, **không phân biệt được
-với mất mạng** — đúng lớp lỗi mà ruling S1-F25 đã ghi (lỗi CORS ở production trông y hệt "người dùng
-ngoại tuyến", và một cấu hình deploy sai vì thế trở nên vô hình).
-
-```
-VITE_REGISTRY_URL = https://<gh-user>.github.io/<registry-repo>
-```
-
-**KHÔNG kèm `/index.json`.** `indexUrl()` (`apps/web/src/registry/index.ts:173`) tự nối `/index.json`
-vào, nên một giá trị đã kèm sẵn cho `…/index.json/index.json` — một 404 mà thông báo lỗi của chính
-mã lại nói ngược. Đây là **địa chỉ GỐC**: cùng một biến phục vụ cả việc duyệt danh mục lẫn việc kéo
-gói về (`courses/<id>/<version>.zip` nằm cạnh `index.json`), nên nếu nó trỏ vào một tệp thì nửa kéo
-về cũng hỏng theo. `.env.example` đã ghi đúng điều này; §5c bản đầu thì không, và cổng e2e của hệ
-thống con 3 là thứ bắt được mâu thuẫn ấy.
-
-**Chưa từng được đo qua một trình duyệt thật.** Hai điều đang là **suy luận**, không phải phép đo:
-
-1. **JS không đọc được `ETag` liên origin.** Đã `curl` vào GitHub Pages thật: có `etag`, có
-   `access-control-allow-origin: *`, **không có `Access-Control-Expose-Headers`**. Nhưng `curl`
-   **không cưỡng chế CORS** — trình duyệt mới cưỡng chế. Hệ quả: lớp cache theo ETag mà kế hoạch đề
-   ra **sẽ trơ** trên chính mục tiêu của nó, nên nó đã được **bỏ**; trình duyệt tự làm đúng việc ấy
-   nhờ `cache-control: max-age=600`.
-2. **Một `fetch` không header vẫn là "simple request"** mà Pages phục vụ được. Điều này **nhị phân**:
-   nó quyết định catalog có tải được ở production hay không. Gửi `If-None-Match` thì **không** — nó
-   không nằm trong danh sách an toàn, nên buộc preflight mà Pages không trả lời.
-
-⇒ **Phép kiểm sau khi dựng repo registry:** mở `https://tuhoc.<domain>/catalog` trong trình duyệt
-thật, và trong DevTools → Network khẳng định request `index.json` là **200 và không có preflight
-`OPTIONS`** đứng trước. Nếu có preflight, có ai đó vừa thêm một header.
+`.github/workflows/registry.yml` vẫn còn (xem chú thích đầu tệp đó), nhưng vai trò của nó đã đổi:
+một cổng CI tiện lợi kiểm gói trước khi merge PR vào repo nguồn cộng đồng, không còn là nơi xuất bản
+catalog nào cả — cổng thật cho việc publish giờ nằm ở server (`PUT /admin/courses/:slug`, §4c).
 
 ## 6. Free-tier realities: cold starts, stacked
 
@@ -366,7 +396,9 @@ Both are already fixed in the repo; this section is what to never undo.
 ```
 /* /index.html 200
 ```
-No `!` on the `200`. A forced rewrite (`200!`) would shadow the real static files this app depends on at runtime — `apps/web/vite-plugins/courseAssets.ts` serves `courses/*` and `course-kit/*` as plain files (they're classic `<script src>` includes, not ES modules, so they can't go through the SPA's JS bundle), and a forced catch-all would intercept every `runtime.js`/`viz.js`/`manifest.json` request meant for those paths and hand back `index.html` instead, breaking every chapter's rendering and every visualization. `apps/web/index.html` already carries a comment recording this trap; this file is the config that has to actually match it. Verified: `bun run build` → `dist/_redirects` byte-for-byte `/* /index.html 200`, sitting next to `dist/courses/` and `dist/course-kit/`.
+No `!` on the `200`. A forced rewrite (`200!`) would shadow the real static files this app depends on at runtime — the build ships `course-kit/` (KaTeX and `runtime.js`, classic `<script src>` includes rather than ES modules, so they cannot go through the SPA's JS bundle), and a forced catch-all would intercept every one of those requests and hand back `index.html` instead, breaking every chapter's rendering. `apps/web/index.html` already carries a comment recording this trap; this file is the config that has to actually match it. Verified: `bun run build` → `dist/_redirects` byte-for-byte `/* /index.html 200`, sitting next to `dist/course-kit/`.
+
+Note that `/courses` is now an SPA route (the public catalog) rather than a static directory, and course content is served by `apps/api`, so the unforced `200` is what makes both work: a real file under `course-kit/` wins, and everything else falls through to the SPA. `courseAssets.ts` still serves `courses/*` from disk in **dev and preview** — that is `serveDir`, not the build output — which is why `make dev-web` can still open a package unpacked by `make courses`.
 
 **Production Docker builds need `--platform linux/amd64`.** The Dockerfile's `FROM --platform=$BUILDPLATFORM ... AS build` + `ARG TARGETARCH` pattern cross-compiles: the build stage runs natively on whatever machine is building (fast, no emulation), and `GOARCH=$TARGETARCH` targets whatever `--platform` you asked `docker build` for. Leave `--platform` off entirely and `TARGETARCH` silently defaults to the build host's own architecture. Verified on this (arm64 Apple Silicon) machine:
 
@@ -388,6 +420,7 @@ Both builds exited 0 — the failure mode isn't a build error, it's a container 
 | Variable | Secret? | Lives where | Notes |
 |---|---|---|---|
 | `DATABASE_URL` | **Yes** | Render: Environment tab (`sync: false` in `render.yaml`, prompted at Blueprint creation). Fly: `flyctl secrets set DATABASE_URL=...` (never in `fly.toml`'s `[env]`, which is committed). | Use the **pooled** Neon string here — see §2. |
+| `ADMIN_TOKEN` | **Yes** | Render: Environment tab (`sync: false` in `render.yaml`). Fly: `flyctl secrets set ADMIN_TOKEN=...` (never in `fly.toml`'s `[env]`). | Opens the CLI-publish door — see §4c for both doors and why unset fails closed rather than open. |
 | `CORS_ORIGIN` | No, but environment-specific | `render.yaml` `[env]` / `fly.toml` `[env]` — both ship with an obvious `REPLACE-WITH-PAGES-ORIGIN` placeholder | Not a credential, but must be your *exact* production origin, not the placeholder, or CORS silently rejects the web app. |
 | `PORT` | No | `render.yaml` / `fly.toml` `[env]` | Fixed at `8080`, matches the Dockerfile's `EXPOSE`. |
 | `COOKIE_SECURE` | No | `render.yaml` / `fly.toml` `[env]` | Ships as `"true"` already — production is always https on both sides. |

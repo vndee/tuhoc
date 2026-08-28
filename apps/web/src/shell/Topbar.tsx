@@ -5,21 +5,6 @@ import type { Theme } from '../theme/useTheme';
 export interface TopbarProps {
   theme: Theme;
   onToggleTheme: () => void;
-  /**
-   * Bật/tắt thanh điều hướng. Dưới 981px là ngăn kéo trượt tạm
-   * (`body.nav-open`, xem `useMobileNav`); từ 981px là thu gọn BỀN
-   * (`#app.nav-collapsed`, xem `useSidebarCollapse`). `App.tsx` chọn cơ chế
-   * theo bề rộng ngay lúc bấm; ở đây chỉ là một cú bấm.
-   */
-  onMenuClick: () => void;
-  /**
-   * Thanh bên có đang HIỆN không, dùng cho `aria-expanded`.
-   *
-   * Mặc định `true` vì `#sidebar` mặc định hiện trên màn rộng, và vì ba tệp
-   * test dựng `<Topbar>` trực tiếp — một prop bắt buộc ở đây sẽ bắt cả ba sửa
-   * mà không đo thêm được gì.
-   */
-  navExpanded?: boolean;
 }
 
 // Matches the `/c/:courseId/:chapterId` route — same pathname-only check
@@ -73,29 +58,29 @@ const CHAPTER_ROUTE = /^\/c\/[^/]+\/[^/]+/;
  *     chapter they are two empty `<span>`s with `display:contents`, which
  *     paint nothing and take no space.
  */
-export function Topbar({ theme, onToggleTheme, onMenuClick, navExpanded = true }: TopbarProps) {
+export function Topbar({ theme, onToggleTheme }: TopbarProps) {
   const location = useLocation();
   const { t } = useLanguage();
   const isChapterRoute = CHAPTER_ROUTE.test(location.pathname);
 
   return (
     <>
-      <button
-        id="menu-btn"
-        type="button"
-        className="tb-btn"
-        aria-label={t('topbar.menu')}
-        /*
-          `aria-expanded` + `aria-controls`: nút này nay bật/tắt một vùng còn ở
-          NGUYÊN trong tài liệu, nên trình đọc màn hình phải nói được nó đang
-          mở hay đóng. Không có cặp này thì một nút "☰" chỉ là một ký tự.
-        */
-        aria-expanded={navExpanded}
-        aria-controls="sidebar"
-        onClick={onMenuClick}
-      >
-        ☰
-      </button>
+      {/*
+        `#menu-btn` NAY DỰNG Ở `App.tsx`, không ở đây — nó đứng TRƯỚC `<TopNav>`
+        trong khe `topbar`, tức là phần tử đầu tiên của thanh, cả trong thứ tự
+        đọc lẫn thứ tự tab.
+
+        Không thể để lại trong tệp này và dùng `order` của CSS để kéo nó về mép
+        trái: `#topbar` là một flex container, nên `order` chỉ đổi chỗ VẼ mà
+        không đổi chỗ TAB — người dùng bàn phím sẽ gặp nút mục lục sau ba mục
+        điều hướng trong khi mắt thấy nó đứng đầu. Doc của chính component này
+        đã nêu đúng cái bẫy ấy khi giải thích vì sao có HAI khe portal thay vì
+        một.
+
+        Nó cũng KHÔNG còn là nút thu gọn: từ 981px trở lên `reader.css` ẩn hẳn
+        nó, và trên máy bàn mục lục là một cột cố định. Lý do đầy đủ ở
+        `shell/TopNav.tsx`.
+      */}
       <span id="reader-nav" className="rd-slot" />
       {/*
         Ba nút dưới đây — đánh dấu đã học, chương trước, chương sau — chỉ có
@@ -104,9 +89,22 @@ export function Topbar({ theme, onToggleTheme, onMenuClick, navExpanded = true }
         `hidden` chứ không phải bỏ khỏi cây: `reader.css` gắn id vào chúng và
         `Reader` nối hành vi theo id, nên tháo ra sẽ đứt đường ấy.
       */}
-      <div id="crumb">{!isChapterRoute && 'Tuhoc'}</div>
+      {/*
+        `#crumb` nay RỖNG ngoài trang chương.
+
+        Nó từng in "Tuhoc" ở đó — hợp lý khi thanh trên chưa có gì khác, nhưng
+        nhãn hiệu đã đứng ở đầu thanh (`shell/TopNav.tsx`) kể từ lúc điều hướng
+        chuyển lên đây, nên in tên app lần nữa cách đó vài chục pixel là nói hai
+        lần. Phần tử vẫn ở lại vì `flex:1` của nó là thứ đẩy nhóm nút bên phải
+        về mép phải, và vì `ChapterView` portal breadcrumb thật vào chính nó.
+      */}
+      <div id="crumb" />
       <button id="mark-btn" type="button" className="tb-btn" hidden={!isChapterRoute} aria-label={t('topbar.markRead')}>
-        <span className="mk-ico">○</span>
+        <span className="mk-ico">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <circle cx="10" cy="10" r="6.5" stroke="currentColor" strokeWidth="1.6" />
+          </svg>
+        </span>
         <span className="mk-lbl">{t('topbar.markRead')}</span>
       </button>
       <span id="reader-notes" className="rd-slot" />
@@ -118,13 +116,36 @@ export function Topbar({ theme, onToggleTheme, onMenuClick, navExpanded = true }
         aria-pressed={theme === 'dark'}
         onClick={onToggleTheme}
       >
-        {theme === 'dark' ? '☀' : '☾'}
+        {theme === 'dark' ? (
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <circle cx="10" cy="10" r="3.6" stroke="currentColor" strokeWidth="1.6" />
+            <path
+              d="M10 2.4v1.9M10 15.7v1.9M17.6 10h-1.9M4.3 10H2.4M15.4 4.6l-1.3 1.3M6 14l-1.4 1.4M15.4 15.4l-1.3-1.3M6 6L4.6 4.6"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </svg>
+        ) : (
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M16.5 12.4A6.8 6.8 0 017.6 3.5a6.9 6.9 0 108.9 8.9z"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
       </button>
       <button id="prev-btn" type="button" className="tb-btn" hidden={!isChapterRoute} aria-label={t('topbar.prevChapter')}>
-        ←
+        <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M15.5 10h-11M9 5.5L4.5 10 9 14.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
       <button id="next-btn" type="button" className="tb-btn" hidden={!isChapterRoute} aria-label={t('topbar.nextChapter')}>
-        →
+        <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M4.5 10h11M11 5.5l4.5 4.5L11 14.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
     </>
   );

@@ -29,7 +29,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import App from '../App';
 import { meQueryKey } from '../api/useMe';
 import { clearLocalData } from '../db/local';
-import { Sidebar } from '../shell/Sidebar';
+import { TopNav } from '../shell/TopNav';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 
 const server = setupServer(
@@ -128,15 +128,23 @@ describe('điều hướng toàn cục (shell)', () => {
  * ------------------------------------------------------------------ *
  * `App` builds its QueryClient at module scope, so a `me` seeded by the tests
  * above would still be cached here. This one owns its cache.
+ *
+ * DỰNG `<TopNav>` CHỨ KHÔNG PHẢI `<Sidebar>` kể từ vòng thiết kế lại: điều
+ * hướng chung đã chuyển lên thanh trên, vì thanh bên nay chỉ mang mục lục.
+ *
+ * Đổi mục tiêu chứ không nới câu hỏi, và bài "đối chứng" ngay dưới là lý do
+ * phải đổi cho đúng: sau khi nav rời đi, `<Sidebar>` trả `null` trên `/login`
+ * nên bài "KHÔNG hiện gì" vẫn XANH — xanh vì không dựng gì cả, đúng thứ mà
+ * chính bài đối chứng tồn tại để bắt. Nó đã bắt được.
  */
 
-function renderSidebarAt(path: string, me: unknown) {
+function renderNavAt(path: string, me: unknown) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   queryClient.setQueryData(meQueryKey, me);
   return render(
     <QueryClientProvider client={queryClient}>
       <LanguageProvider><MemoryRouter initialEntries={[path]}>
-        <Sidebar />
+        <TopNav />
       </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
   );
@@ -144,17 +152,17 @@ function renderSidebarAt(path: string, me: unknown) {
 
 describe('điều hướng toàn cục — khi chưa đăng nhập', () => {
   it('KHÔNG hiện gì: AppShell dựng cả trên /login, và một liên kết chỉ quay về chính nó thì tệ hơn là không có', () => {
-    renderSidebarAt('/login', null);
+    renderNavAt('/login', null);
     expect(screen.queryByRole('navigation', { name: /điều hướng chính/i })).not.toBeInTheDocument();
   });
 
   it('hiện khi đã đăng nhập — đối chứng, để bài trên không xanh vì không dựng gì cả', () => {
-    renderSidebarAt('/login', { id: 'u1', email: 'a@vi.vn', name: 'Người học' });
+    renderNavAt('/login', { id: 'u1', email: 'a@vi.vn', name: 'Người học' });
     expect(screen.getByRole('navigation', { name: /điều hướng chính/i })).toBeInTheDocument();
   });
 
   it('đánh dấu trang hiện tại bằng aria-current, không bằng một class thứ hai', () => {
-    renderSidebarAt('/courses', { id: 'u1', email: 'a@vi.vn', name: 'Người học' });
+    renderNavAt('/courses', { id: 'u1', email: 'a@vi.vn', name: 'Người học' });
     const nav = globalNav();
     expect(within(nav).getByRole('link', { name: /khoá học/i })).toHaveAttribute('aria-current', 'page');
     // ĐỐI CHỨNG: một mục KHÁC trên cùng thanh không được mang dấu ấy. Trước

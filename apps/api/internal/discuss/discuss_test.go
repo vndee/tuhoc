@@ -486,7 +486,7 @@ func TestOneCoursesThreadNeverAppearsUnderAnothersID(t *testing.T) {
 //
 // The defect it descends from: a data source returned something nobody
 // expected, nothing checked it at the boundary, and a `.map` on an
-// undefined blanked the whole page (commit 815a472). Every row below is a
+// undefined blanked the whole page (commit 4f2bf1f). Every row below is a
 // way GitHub can produce a 200, or fail, that a naive decode would turn
 // into a Thread that looks real and is not.
 //

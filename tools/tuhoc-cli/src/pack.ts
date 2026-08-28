@@ -137,7 +137,17 @@ export async function pack(argv: string[], io: Io, self: string): Promise<number
     // comes back as CHAPTER_FILE_MISSING). Whoever reads only stderr — a CI
     // log, `2>&1 1>/dev/null` — must not get the finding without its cause.
     for (const line of notices) io.err(line);
-    for (const line of renderFindings(dir, result.findings, self)) io.err(line);
+    // The header and footer around `renderFindings`'s body are written here,
+    // not inside that function: they are the two lines specific to PACK's
+    // failure ("N problems in this directory", "no zip was written"), and
+    // `publish.ts` states two different true things around the identical
+    // body for a package the SERVER refused. See `renderFindings`'s own
+    // comment for why that split is not duplication.
+    io.err('');
+    io.err(`tuhoc pack: gói KHÔNG hợp lệ — ${result.findings.length} vấn đề trong ${dir}`);
+    io.err('');
+    for (const line of renderFindings(result.findings, self)) io.err(line);
+    io.err('Không có tệp .zip nào được ghi. Giải thích từng mã lỗi: docs/course-format.md');
     return 1;
   }
 

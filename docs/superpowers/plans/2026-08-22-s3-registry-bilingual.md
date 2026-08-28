@@ -216,7 +216,7 @@ it('latest là 1.10.0 chứ không phải 1.9.0', async () => {
 - [ ] **Step 1: Test đỏ — `index.json` hỏng KHÔNG được làm trắng trang.**
 
 Đây là hồi quy có thật: `api.get<T>` từng trao một chuỗi HTML dưới danh nghĩa `T`, và `.map` trên nó
-làm unmount cả cây React → trang trắng (commit `815a472`). Registry là **nguồn dữ liệu bên thứ ba**,
+làm unmount cả cây React → trang trắng (commit `4f2bf1f`). Registry là **nguồn dữ liệu bên thứ ba**,
 tức đúng lớp rủi ro ấy nhưng ở ngoài tầm kiểm soát của ta.
 
 ```ts

@@ -24,16 +24,35 @@ export interface CourseStat {
   chaptersDone: number;
 }
 
+/** Một khoá và phần của nó trong MỘT năm — `?year=` mới có. */
+export interface CourseYearStat {
+  courseId: string;
+  minutes: number;
+  /** Phần của khoá này trong tổng số phút của năm, 0..1. Máy chủ tính. */
+  share: number;
+}
+
 export interface Stats {
   totalMinutes: number;
   streakDays: number;
   days: DayStat[];
   courses: CourseStat[];
+  /** Mọi năm có hoạt động, mới nhất trước, luôn kèm năm hiện tại. */
+  years: number[];
+  /** Chỉ có nội dung khi hỏi kèm `?year=`; rỗng nếu không. */
+  yearCourses: CourseYearStat[];
 }
 
-/** TanStack Query key for the study-time summary, shared by every surface that reads it. */
-export function statsQueryKey(): readonly ['stats'] {
-  return ['stats'] as const;
+/**
+ * TanStack Query key. `year` là MỘT PHẦN của khoá, không phải một tham số bên
+ * lề: hai năm là hai câu trả lời khác nhau, và gộp chúng vào một khoá là cách
+ * chắc chắn để bấm sang 2025 rồi thấy dữ liệu 2026 trong một nhịp.
+ *
+ * `undefined` giữ nguyên khoá `['stats']` cũ — Bảng điều khiển và
+ * `course/owned.ts` vẫn dùng chung đúng một request như trước.
+ */
+export function statsQueryKey(year?: number): readonly ['stats'] | readonly ['stats', number] {
+  return year === undefined ? (['stats'] as const) : (['stats', year] as const);
 }
 
 /**
@@ -76,13 +95,27 @@ export function assertStats(body: unknown): Stats {
     if (typeof o.streakDays !== 'number') missing.push('streakDays');
     if (!Array.isArray(o.days)) missing.push('days');
     if (!Array.isArray(o.courses)) missing.push('courses');
+    // `years`/`yearCourses` KHÔNG vào danh sách bắt buộc, và đó là một quyết
+    // định về khả năng tương thích: một máy chủ cũ hơn (chưa có lịch năm) vẫn
+    // phải phục vụ được Bảng điều khiển. Chúng được chuẩn hoá bên dưới thay vì
+    // bị coi là dị dạng.
   }
   if (missing.length > 0) throw new MalformedStatsError(missing);
-  return body as Stats;
+
+  // Chuẩn hoá hai trường mới về mảng: mọi chỗ vẽ đều `.map` thẳng lên chúng,
+  // và một `undefined` từ máy chủ cũ sẽ ném đúng kiểu lỗi mà `MalformedStatsError`
+  // sinh ra để chấm dứt.
+  const normalized = body as Stats;
+  return {
+    ...normalized,
+    years: Array.isArray(o.years) ? (o.years as number[]) : [],
+    yearCourses: Array.isArray(o.yearCourses) ? (o.yearCourses as CourseYearStat[]) : [],
+  };
 }
 
-export async function fetchStats(options: RequestOptions = {}): Promise<Stats> {
-  return assertStats(await api.get<unknown>('/stats', options));
+export async function fetchStats(year?: number, options: RequestOptions = {}): Promise<Stats> {
+  const path = year === undefined ? '/stats' : `/stats?year=${year}`;
+  return assertStats(await api.get<unknown>(path, options));
 }
 
 /**
@@ -93,10 +126,10 @@ export async function fetchStats(options: RequestOptions = {}): Promise<Stats> {
  * nó — và bản chép thứ hai là đúng chỗ trôi dạt mà dự án này đã trả giá nhiều
  * lần để tránh. Cùng `queryKey`, nên hai trang là MỘT request, không phải hai.
  */
-export function useStats() {
+export function useStats(year?: number) {
   return useQuery({
-    queryKey: statsQueryKey(),
-    queryFn: () => fetchStats(),
+    queryKey: statsQueryKey(year),
+    queryFn: () => fetchStats(year),
     retry: false,
   });
 }

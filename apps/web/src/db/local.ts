@@ -65,60 +65,11 @@ export interface MetaRow {
   value: string;
 }
 
-/**
- * ONE VERSION of ONE course package, expanded, on this device.
- *
- * This is the table that makes a course readable with the network off, and
- * it is the reason the reader can hold a course at all: a package is not
- * something the server streams on demand, it is something the reader keeps.
- * `course/loader.ts` reads it BEFORE it reads anything else — see that
- * file's two-source comment.
- *
- * `files` is the archive already expanded — package-relative path to
- * contents, exactly the shape `packages/course-format`'s `unpackZip`
- * returns, which is what Task 8's file import hands straight to this table.
- * Stored expanded rather than as the `.zip` because every read is a lookup
- * by name: keeping the archive would mean re-inflating the whole thing to
- * open one chapter, on a device that already paid for the download.
- *
- * `manifest` is `unknown` on purpose — it is carried opaquely, the same way
- * `AnnotationRow.anchor` is, and for the same reason: this store has no
- * business understanding its shape. It is the PARSED form of
- * `files['manifest.json']` and is what `loadManifest` validates and returns;
- * the bytes stay in `files` because a package's own bytes are what a future
- * integrity check or re-export has to work from.
- *
- * **No hash field, deliberately.** If integrity checking is added, it must
- * hash the ARCHIVE BYTES, never the manifest: the server stores the manifest
- * in a `jsonb` column, which does not round-trip bytes — it reorders keys,
- * drops whitespace, and silently collapses duplicate keys (apps/api's
- * repo.go documents all three as measured). A manifest hash computed here
- * and a manifest hash computed there would disagree on packages that are
- * byte-identical, and agree on packages that are not.
- *
- * `key` is `${courseId}@${version}` — a package is identified by both, so
- * holding 1.0.0 and 1.1.0 of one course at once is an ordinary state rather
- * than a collision. Task 10's update flow depends on exactly that.
- *
- * `pinnedAt` is when this version became the one to open, ISO-8601. It is
- * how `loadManifest` picks among the versions a reader holds, and it is what
- * Task 10's `applyUpdate` writes.
- */
-export interface PackageRow {
-  key: string;
-  courseId: string;
-  version: string;
-  manifest: unknown;
-  files: Record<string, Uint8Array>;
-  pinnedAt: string;
-}
-
 class LocalDB extends Dexie {
   progress!: Table<ProgressRow, [string, string, string]>;
   annotations!: Table<AnnotationRow, string>;
   outbox!: Table<OutboxEntry, number>;
   meta!: Table<MetaRow, string>;
-  packages!: Table<PackageRow, string>;
 
   constructor() {
     super('tuhoc');
@@ -128,13 +79,37 @@ class LocalDB extends Dexie {
       outbox: '++seq, table',
       meta: 'key',
     });
-    // Version 2 adds `packages`. The four tables above are not repeated:
-    // Dexie carries forward every store a later version does not mention,
-    // so listing them again would be a second copy of the schema to keep in
-    // step — and a browser that already holds a version-1 database upgrades
-    // by gaining one object store, touching none of the existing rows.
+    // Version 2 added `packages` — ONE VERSION of ONE course package,
+    // expanded, on this device (`key`/`courseId`/`version`/`manifest`/
+    // `files`/`pinnedAt`). It was the table that made a course readable with
+    // the network off: `course/import.ts` filled it from a reader's own
+    // `.zip`, and `course/loader.ts` read it before it read anything else.
+    //
+    // Task 13 (spec `2026-08-25-server-side-pivot.md` §1) removed the reader
+    // import flow that was its only writer — a course now lives ONLY on the
+    // server, fetched fresh every time (`api/catalog.ts`) — so the table has
+    // nothing left to hold. `PackageRow` is gone with it; nothing in this
+    // app still needs the type.
+    //
+    // Version 3 DELETES the store, rather than leaving it to rot unused:
+    // `packages: null` is Dexie's own syntax for dropping an object store
+    // during an upgrade. An existing reader's browser that still has a
+    // version-2 database (real course bytes it imported, sitting in
+    // IndexedDB) gets that store REMOVED — not silently orphaned, not left
+    // for a future `db.tables` scan to trip over — the moment this build's
+    // `new LocalDB()` first opens on their machine. A fresh install never
+    // creates the store at all: Dexie computes a new database's schema from
+    // the LATEST version's cumulative `.stores()` calls, and `packages: null`
+    // here means it is absent from that cumulative schema, not merely empty.
+    //
+    // `progress`/`annotations`/`outbox`/`meta` are untouched — Pha 3 owns
+    // their eventual retirement (`docs/superpowers/specs/
+    // 2026-08-25-server-side-pivot.md` §4/§9), not this task.
     this.version(2).stores({
       packages: 'key, courseId',
+    });
+    this.version(3).stores({
+      packages: null,
     });
   }
 }
@@ -190,7 +165,7 @@ export const USER_CONTENT_KEYS = ['itbook-note-draft'] as const;
  * `db.outbox`, which `i18n/LanguageProvider.test.tsx` asserts stays empty
  * across a language change.
  */
-export const DEVICE_PREFERENCE_KEYS = ['itbook-theme', 'itbook-lang', 'itbook-nav-collapsed'] as const;
+export const DEVICE_PREFERENCE_KEYS = ['itbook-theme', 'itbook-lang'] as const;
 
 /**
  * Every `localStorage` key this app is allowed to touch.
@@ -254,14 +229,26 @@ export function writeLocalStorage(key: LocalStorageKey, value: string | null): v
  * call before the database has ever been opened (Dexie opens it lazily on
  * the first operation).
  *
- * That has now been collected on. Task 7's `packages` table — a reader's
- * imported courses, which are their content and no less private than their
- * notes — is emptied here without a line being written for it. What was
- * still needed was a test SAYING SO (`db/local.test.ts`'s "signing out
- * deletes cached course packages too"), because "it happens to be true"
- * and "it is guaranteed" look identical right up until the moment they
- * differ, and the way P2 learned that was a store of user content that
- * leaked from one account's session into the next one's.
+ * That was collected on once, and has since been collected on again in the
+ * OTHER direction. Task 7's `packages` table — a reader's imported courses,
+ * as private as their notes — used to be emptied here without a line being
+ * written for it, and `db/local.test.ts`'s "signing out deletes cached
+ * course packages too" existed to prove that "it happens to be true" and
+ * "it is guaranteed" were the same claim, because the way P2 learned they are
+ * NOT the same claim was a store of user content that leaked from one
+ * account's session into the next one's.
+ *
+ * Task 13 removed that table entirely (the reader import flow that was its
+ * only writer is gone — spec `2026-08-25-server-side-pivot.md` §1) — and the
+ * risk that test guarded is gone STRUCTURALLY, not merely because the test
+ * stopped compiling: there is no `db.packages` any more for anything to
+ * leak FROM. `LocalDB`'s version-3 upgrade (below) deletes the store on an
+ * existing reader's own device, so this holds for a browser that imported a
+ * course before this build shipped, not only for one that never did. Nothing
+ * was un-done here to make that true — enumerating `db.tables` meant this
+ * function required exactly ZERO changes to stop clearing a table that no
+ * longer exists, which is the same property that let it start clearing a new
+ * one automatically in the first place.
  *
  * Call sites — both auth transitions, in both directions:
  *   - `src/auth/useLogout.ts` (sign-out): the departing user's rows must

@@ -110,7 +110,7 @@ var scanSentinels = []string{
 	"apps/api/cmd/api/main.go",
 	"apps/api/internal/server/server.go",
 	"apps/api/internal/auth/handler.go",
-	"apps/api/internal/course/handler.go",
+	"apps/api/internal/catalog/handler.go",
 	"apps/api/internal/sync/handler.go",
 	"apps/api/internal/stats/handler.go",
 }

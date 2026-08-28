@@ -52,39 +52,47 @@ export const en: Messages = {
   'settings.section.account': 'Account',
   'settings.section.appearance': 'Language & appearance',
   'settings.section.localData': 'Data on this device',
+  'settings.section.general': 'General',
+  'settings.lede': 'Your account, how the app looks, and what is sitting on this machine.',
+  'settings.account.syncBlurb': 'Progress syncs through this account.',
+  'settings.appearance.themeLight': 'Light',
+  'settings.appearance.themeDark': 'Dark',
+  'settings.localData.statNotes': 'notes',
+  'settings.localData.statBytes': 'in use',
+  'settings.localData.statsAria': 'What this machine is holding',
 
-  'settings.account.blurb':
-    'The account does exactly one job: it syncs your progress and notes between your own machines. Course content lives on this device.',
   'settings.account.loading': 'Asking the server who is signed in…',
   'settings.account.unknown': 'Could not load your account details. This part needs the network.',
   'settings.account.signedInAs': (name: string, email: string) => `Signed in as ${name} · ${email}`,
+  /**
+   * "downloaded packages" dropped at fix-round-1 (task-14) — see vi.ts's
+   * comment. Comma before "and" dropped at fix-round-2: leftover from when
+   * this was a three-item list; two items don't need it.
+   */
   'settings.account.signOutWarning':
-    'Signing out erases the study data of this session from this browser: downloaded packages, notes, and the progress queue that has not been sent yet. That is the only way two people sharing one machine never see data belonging to the other.',
+    'Signing out erases the study data of this session from this browser: notes and the progress queue that has not been sent yet. That is the only way two people sharing one machine never see data belonging to the other.',
 
-  'settings.appearance.blurb':
-    'Both choices below belong to THIS DEVICE, not to your account: signing in as somebody else does not change them, and they are never synced anywhere.',
+  'settings.appearance.blurb': 'Applies to the app frame. Course content keeps its own language.',
   'settings.appearance.language': 'Language',
   'settings.appearance.theme': 'Appearance',
   'settings.appearance.themeNowLight': 'Currently using the light theme.',
   'settings.appearance.themeNowDark': 'Currently using the dark theme.',
 
-  'settings.localData.blurb':
-    'This device holds: the course packages you downloaded, your notes and highlights, the progress queue that has not been sent yet — and, in the key vault at a separate address, your AI key.',
+  /** Rewritten at fix-round-1 (task-14) — see vi.ts's comment. */
+  'settings.localData.blurb': 'Notes live in this browser. Courses aren’t downloaded as packages — they’re read straight from the server.',
   'settings.localData.clearedOnSignOut':
-    'The local database is named after the BROWSER, not after a user, so it is wiped every time the signed-in user changes — even when nobody pressed sign out.',
-  'settings.localData.kept':
-    'Language and light/dark do stay: they are device preferences, not study data.',
+    'The local database is named after the BROWSER, not the user — so it is wiped whenever a different person signs in, even if nobody signed out.',
+  'settings.localData.kept': 'Language and theme stay: they belong to the device.',
 
   'settings.ai.title': 'AI assistant',
   /**
    * Chỗ trống nằm ở VỊ TRÍ KHÁC so với bản tiếng Việt, và đó chính là lý do câu
    * này là một khoá chứ không phải ba mảnh ghép trong JSX.
    */
-  'settings.ai.blurb': (vault: string) =>
-    `You use your own key, and that key is kept in the ${vault} — a separate page served from a separate address, which opens over this one when you come here. The browser forbids code on the lesson page from reading anything inside the key vault, so an interactive course that slipped through review still cannot take your key. That is why the key field lives in the vault and not on this page.`,
+  'settings.ai.blurb': (vault: string) => `Runs on your own key, kept in the ${vault} at a separate address.`,
   'settings.ai.blurbVault': 'key vault',
   'settings.ai.keyStays':
-    'Your key never leaves this browser: it is not synced between devices and never passes through our servers. On a new machine you enter it again; if you delete it, it cannot be recovered.',
+    'Your key never leaves this browser, is never synced, and never passes through our servers.',
   'settings.ai.unavailable':
     'This build has no key vault, so the AI assistant is unavailable. That is a deployment configuration gap, not a problem with your account — reading the course still works normally.',
   'settings.ai.open': 'Open the key vault',
@@ -207,6 +215,11 @@ export const en: Messages = {
   'sidebar.noCourseLoaded': 'No course is loaded.',
 
   'topbar.menu': 'Open the menu',
+  'topbar.searchPlaceholder': 'Search courses, chapters…',
+  'topbar.searchOpen': 'Open search',
+  'topbar.searchClose': 'Close search',
+  'topbar.searchSoon': 'Search is not wired up yet — coming soon.',
+  'account.menuAria': 'Account menu',
   'topbar.markRead': 'Mark as read',
   'topbar.themeToLight': 'Switch to the light theme',
   'topbar.themeToDark': 'Switch to the dark theme',
@@ -234,6 +247,9 @@ export const en: Messages = {
 
   'course.loading': 'Loading the course…',
   'course.notFound': 'Course not found.',
+  'course.parts.title': (n: string) => `This course runs through ${n} parts`,
+  'course.parts.hint': 'Each chapter is listed in the contents on the left.',
+  'course.partCount': (read: string, total: string) => `${read}/${total}`,
   'chapter.notFound': 'Chapter not found.',
   'chapter.notFoundInCourse': 'That chapter is not in this course.',
 
@@ -253,7 +269,13 @@ export const en: Messages = {
   'home.notes.loading': 'Loading your notes…',
   'home.notes.empty': 'No notes yet. Select a passage while reading to write one.',
   'home.notes.open': 'Open the chapter',
+  'home.notes.formula': 'formula',
   'home.notes.aria': (course: string) => `Open this note in ${course}`,
+
+  /** Dashboard empty state, after the import flow died — see vi.ts's comment. */
+  'home.empty.heading': 'You have not started a course yet',
+  'home.empty.lede': 'Every course is readable right away — no import, no download to wait for.',
+  'home.empty.cta': 'Browse the course catalog',
 
   'progress.lede': 'Your study figures, told as a sentence.',
   'progress.loading': 'Loading your progress…',
@@ -265,35 +287,59 @@ export const en: Messages = {
   'progress.sentenceEmpty': 'No study time recorded yet. Open a chapter and read; the figures start there.',
   'progress.heat.title': 'The last seven weeks',
   'progress.heat.aria': 'The last seven weeks, one cell per day',
+  'progress.heat.cell': (date: string, minutes: string) => `${date}: ${minutes} min`,
+  'progress.year.title': (days: string, year: string) => `${days} days studied in ${year}`,
+  'progress.year.courses': 'Courses this year',
+  'progress.year.noCourses': (year: string) => `No study sessions recorded in ${year}.`,
+  'progress.year.pickAria': 'Pick a year',
+  'progress.year.error': 'Could not load this year’s calendar.',
   'progress.heat.day': (date: string, minutes: string) => `${date}: ${minutes} min`,
   'progress.heat.noData': (date: string) => `${date}: outside the window the server reports`,
   'progress.heat.less': 'less',
   'progress.heat.more': 'more',
   'progress.byCourse': 'By course',
-  'progress.noCourses': 'Nothing to measure yet. Import a package under Courses.',
+  'progress.stat.chapters': 'Chapters read',
+  'progress.stat.chaptersSub': (n: string) => `across ${n} courses on this device`,
+  'progress.stat.streak': 'Day streak',
+  'progress.stat.streakSub': 'as of today',
+  'progress.stat.notes': 'Notes written',
+  'progress.stat.notesSub': 'kept on this device',
+  /** Rewritten at fix-round-2 (task-14) — see vi.ts's comment for why, and for why this stops right before "Courses" rather than repeating it. */
+  'progress.noCourses': 'Nothing to measure yet. Start reading under',
   'progress.chaptersDone': (n: string) => `${n} chapters read`,
   'progress.course.chapters': (read: string, total: string) => `${read}/${total} chapters`,
   'progress.course.aria': (percent: string) => `${percent}% complete`,
   'progress.course.minutes': (minutes: string) => `${minutes} minutes studied`,
 
-  'login.pitch.headline': 'A course is a package. You keep it, not us.',
+  'login.pitch.headline': 'Courses are open to everyone.',
   'login.pitch.lede':
-    'Download a course, read it with the network off, annotate straight onto the page. Your progress syncs between your own machines.',
+    'Open a course and start reading right away — nothing to install, nothing to download. Highlight a passage to take a note right on the page, or ask the AI assistant using your own key.',
   /* Tên riêng "Tự học" KHÔNG đi vào đây: bài "en còn tiếng Việt" ở
      `i18n.test.ts` cho phép đúng hai khoá (`app.name`, `lang.name.vi`), và một
      nhãn trợ năng không đáng làm danh sách ấy dài thêm. */
   'login.pitch.aria': 'What this platform does',
-  'login.point.offline': 'Read offline — the package sits on your machine',
+  'login.point.free': 'Read every course free — no account needed',
   'login.point.ownKey': 'An AI assistant on your own key, and the key never passes through our servers',
-  'login.point.private': 'A private course stays private — nobody else sees it',
+  'login.point.sync': 'Sign in and your progress and notes follow you across devices',
 
   'login.title': 'Sign in',
-  'login.lede': 'Sign in or create an account to sync your progress across devices.',
+  'login.heading.login': 'Welcome back',
+  'login.heading.register': 'Create an account',
+  'login.lede': 'Your reading progress follows you between machines.',
   'login.tablist.aria': 'Sign in or register',
   'login.tab.login': 'Sign in',
   'login.tab.register': 'Register',
   'login.field.email': 'Email',
   'login.field.password': 'Password',
+  'login.field.emailPlaceholder': 'you@example.com',
+  'login.password.show': 'Show password',
+  'login.password.hide': 'Hide password',
+  /** Reframed at fix-round-1 (task-14) — see vi.ts's comment for why. */
+  'login.reassure': 'Not signing in now costs you nothing — create an account whenever you actually want one.',
+  'login.switch.noAccount': 'No account yet?',
+  'login.switch.hasAccount': 'Already have an account?',
+  'login.switch.toRegister': 'Create an account',
+  'login.switch.toLogin': 'Sign in',
   'login.field.name': 'Name',
   'login.submit.loggingIn': 'Signing in…',
   'login.submit.login': 'Sign in',
@@ -306,14 +352,14 @@ export const en: Messages = {
   'library.source.import': 'imported',
   'library.source.unknown': 'unknown source',
 
-  /* ── the Courses screen (`pages/Courses.tsx`) ─────────────────────────── */
+  /* ── the Courses screen (`pages/Courses.tsx`) — see vi.ts's comment ────── */
   'courses.title': 'Courses',
-  'courses.lede': 'Your courses and the community store — one place, two tabs.',
-  'courses.tabs.aria': 'Two course collections',
-  'courses.tab.yours': 'Yours',
-  'courses.tab.registry': 'Community store',
+  'courses.lede': 'Every course, public — free to read, no account needed.',
+  'courses.loading': 'Loading the catalog…',
+  'courses.empty': 'No courses have been published yet.',
+  'courses.list.aria': 'Course catalog',
+  /** Last user: `pages/Library.tsx`'s `EmptyLibrary` — see vi.ts's comment. */
   'courses.import.action': 'Import a package',
-  'courses.import.close': 'Close',
   'library.loading': 'Loading your library…',
   'library.empty.headingOffline': 'No courses on this device',
   'library.empty.heading': 'Your library is empty',
@@ -324,6 +370,7 @@ export const en: Messages = {
     'Showing the copy stored on this device — the server never answered. You may be offline, or the server may be misconfigured (CORS/DNS): the browser returns the same empty error for both, so this page cannot tell them apart. Only courses stored on this device appear below.',
   'library.meta.version': (version: string) => `version ${version}`,
   'library.meta.held': 'downloaded',
+  'library.meta.chapters': (read: string, total: string) => `${read}/${total} chapters`,
   'library.update.available': (version: string) => `New version available: v${version}`,
   'library.update.view': 'See what changed',
   'library.tier.contentTitle': 'Content tier: HTML, CSS, images and maths only — no JavaScript.',
@@ -332,9 +379,9 @@ export const en: Messages = {
   'library.tier.interactiveLabel': 'interactive — runs JavaScript',
   'library.tier.unknownTitle': 'This package declares no tier, so nothing guarantees it contains no JavaScript.',
   'library.tier.unknownLabel': 'unknown tier — may run code',
-  'library.emptyState.lede':
-    'You have no courses yet. tuhoc deliberately ships none — you choose what you read, and the only way to begin is to import a package.',
-  'library.emptyState.wayFile': (zip: string) => `a ${zip} file already on your device — this way works offline`,
+  'library.emptyState.lede': (app: string) =>
+    `${app} deliberately ships no courses — you choose what you read. Start by importing a package.`,
+  'library.emptyState.wayFile': (zip: string) => `a ${zip} file on this machine`,
   'library.emptyState.wayUrl': (zip: string) => `a link to a ${zip} file`,
   'library.emptyState.wayRepo': 'a public GitHub repository',
   'library.emptyState.registry':
@@ -384,6 +431,7 @@ export const en: Messages = {
   'reader.notesTab': (count: string) => `Notes (${count})`,
   'reader.exerciseCheckbox': (index: string) => `Mark exercise ${index} as done`,
   'reader.exerciseDone': 'Done',
+  'reader.anonNudge': 'Sign in to keep progress, notes, and ask the AI.',
 
   'reader.toc': 'Contents',
   'reader.tocOpen': 'Open the course contents',
@@ -437,6 +485,11 @@ export const en: Messages = {
   'ann.orphan.barCancel': 'Cancel',
 
   'ai.panel.close': 'Close the assistant',
+  'ai.panel.expand': 'Expand the ask panel',
+  'ai.panel.resize': 'Drag to resize the panel',
+  'ai.panel.collapse': 'Collapse the ask panel',
+  'ai.panel.newThread': 'New conversation',
+  'ai.panel.thinking': 'Thinking…',
   'ai.panel.needsSetup':
     'The AI assistant runs on your own key, and this device has none yet. The key is kept in the key vault — a separate page at a separate address, so a course cannot read it.',
   'ai.panel.openSettings': 'Open the settings page',
@@ -480,7 +533,7 @@ export const en: Messages = {
   'update.error.courseKit':
     'Could not preview: the chapter renderer (maths) failed to load. Check your connection and try again.',
   'update.error.unsafe': (version: string, findings: string) =>
-    `Cannot update: version ${version} declares itself “content” tier (text only) but contains executable code. ${findings}`,
+    `Cannot update: version ${version} contains running code, which no course may ship. ${findings}`,
   'update.error.versionUnavailable': (version: string) =>
     `Could not preview: version ${version} of this course could not be fetched.`,
   'update.summary.exact': (exact: string, total: string) => `${exact}/${total} notes stay exactly in place`,
@@ -511,23 +564,41 @@ export const en: Messages = {
     `The package has no ${manifest} at its root — that is the file describing the course.`,
   'finding.MANIFEST_PARSE': (manifest: string) => `${manifest} is not valid JSON.`,
   'finding.MANIFEST_FIELD': (manifest: string) => `${manifest} is missing a required field, or that field has the wrong type.`,
+  'finding.TIER_REMOVED':
+    'This course’s manifest still has a "tier" field — the new format has no tiers any more. Remove it from manifest.json; interactive parts now live in a separate widget instead of being declared through "tier".',
   'finding.SEMVER': 'The course version number is not in X.Y.Z form.',
   'finding.RUNTIME_RANGE': 'The course requires a runtime version this app does not support.',
   'finding.DUPLICATE_CHAPTER_ID': 'Two chapters share the same id.',
   'finding.CHAPTER_FILE_MISSING': 'The table of contents names a chapter file that is not in the package.',
   'finding.SCRIPT_TAG':
-    'This chapter contains a <script> tag. A “content” tier course may only contain text and images, never executable code.',
+    'This chapter contains a <script> tag. No course may ship running code — interactive parts live only in a widget, sandboxed in its own frame.',
   'finding.EVENT_HANDLER_ATTR':
-    'This chapter has event-handler attributes (onclick, onerror…), which are executable code. A “content” tier course may not.',
+    'This chapter has event-handler attributes (onclick, onerror…), which are executable code. No course may ship running code — interactive parts live only in a widget, sandboxed in its own frame.',
   'finding.JAVASCRIPT_URL':
-    'This chapter has a javascript: link, which is executable code. A “content” tier course may not.',
+    'This chapter has a javascript: link, which is executable code. No course may ship running code — interactive parts live only in a widget, sandboxed in its own frame.',
   'finding.EMBEDDED_FRAME':
-    'This chapter embeds another page (iframe/embed/object). A “content” tier course may not.',
+    'This chapter embeds another page (iframe/embed/object). No course may ship running code — interactive parts live only in a widget, sandboxed in its own frame.',
   'finding.FORM_TAG':
-    'This chapter has a <form>. A “content” tier course may not — a form sends data somewhere else.',
+    'This chapter has a <form> — a form sends data somewhere else. No course may ship running code — interactive parts live only in a widget, sandboxed in its own frame.',
   'finding.JS_FILE_IN_PACKAGE':
-    'The package contains JavaScript files while the course declares itself “content” tier (text and images only).',
+    'The package contains a loose JavaScript file. No course may ship running code — interactive parts live only in a widget, sandboxed in its own frame.',
   'finding.TAG_ATTR_FLOOD': 'An HTML tag in the package carries too many attributes to be a real document.',
+  'finding.WIDGET_TOO_LARGE':
+    'A widget in this course is heavier than the size limit allows. Trim its content, or move anything heavy (images, data) out of it.',
+  'finding.WIDGET_LINE_TOO_LONG':
+    'A widget’s code has a line that is too long — usually a sign it was minified or squeezed onto one line. Rewrite it as normal, wrapped lines.',
+  'finding.WIDGET_BAD_NAME':
+    'A widget’s name is not valid. Widget names may only use lowercase letters, digits and hyphens, and cannot be too long.',
+  'finding.WIDGET_FORBIDDEN_API':
+    'A widget in this course uses cookies or browser storage (localStorage…) — something a widget has no access to. Remove that code.',
+  'finding.WIDGET_EXTERNAL_URL':
+    'A widget in this course loads something from the network. A widget must be fully self-contained — remove that link, even if it is only in a comment.',
+  'finding.WIDGET_EXTRA_FILE':
+    'A widget in this course carries more than one file. A widget may only have a single file — merge the rest into it, or delete it.',
+  'finding.WIDGET_MISSING':
+    'A chapter refers to a widget this course does not have. Check the widget’s name, or add the widget to the package.',
+  'finding.WIDGET_ORPHAN':
+    'This course ships a widget that no chapter uses. Remove it if it is no longer needed, or add it to the chapter that needs it.',
   'finding.BAD_URL': 'This link cannot be used.',
   'finding.FETCH_FAILED': 'Could not download it.',
   'finding.FILE_READ_FAILED': 'Could not read the file you chose.',
@@ -622,8 +693,6 @@ export const en: Messages = {
   'catalog.empty': 'The registry has no courses yet. The catalog loaded fine — it is empty.',
   'catalog.listAria': 'Courses on the registry',
   'catalog.versionCount': (count: string) => `${count} versions`,
-  'catalog.tier.unknownTitle':
-    'This package declares a tier the platform does not know, so nothing guarantees it contains no JavaScript.',
 
   /* ── HC-3: lọc theo ngôn ngữ ───────────────────────────────────────────── */
 
@@ -638,8 +707,6 @@ export const en: Messages = {
   'catalog.pull.done': (title: string, version: string) => `Pulled ${title} version ${version} onto this device. `,
   'catalog.pull.open': 'Open the course',
   'catalog.pull.failed': (title: string) => `Could not pull ${title}:`,
-  'catalog.pull.interactiveWarning':
-    'This package is allowed to run JavaScript in your browser when you open it.',
 
   /* ── hệ thống con 4: chấm sao ──────────────────────────────────────────── */
 
@@ -682,4 +749,47 @@ export const en: Messages = {
 
   'courseKit.vizMissing': (name: string) => `[simulation "${name}" is not ready]`,
   'courseKit.vizFailed': 'This simulation could not be built in your current browser.',
+
+  /* ── quản trị — /admin ──────────────────────────────────────────────── */
+
+  'admin.title': 'Course administration',
+  'admin.lede': 'Publish, unpublish, or roll back a course — the same validation rules `tuhoc pack` runs on the command line.',
+  'admin.loading': 'Loading the list…',
+  'admin.empty': 'No courses have been published yet.',
+
+  'admin.table.slug': 'Slug',
+  'admin.table.title': 'Title',
+  'admin.table.version': 'Version',
+  'admin.table.publishedAt': 'Published',
+  'admin.table.actions': 'Actions',
+
+  'admin.upload.heading': 'Publish a new package',
+  'admin.upload.fileLabel': '.zip package',
+  'admin.upload.slugLabel': 'Slug',
+  'admin.upload.submit': 'Publish',
+  'admin.upload.submitting': 'Publishing…',
+  'admin.upload.success': (slug: string, version: number) => `Published ${slug}, version ${version}.`,
+
+  'admin.findings.heading': (count: number) => (count === 1 ? '1 problem' : `${count} problems`),
+  'admin.findings.code': 'Code',
+  'admin.findings.path': 'Path',
+  'admin.findings.detail': 'Detail',
+
+  'admin.unpublish.button': 'Unpublish',
+  'admin.unpublish.confirmPrompt': (slug: string) => `Unpublish "${slug}"? It will stop being publicly readable.`,
+  'admin.unpublish.confirmYes': 'Unpublish this course',
+  'admin.unpublish.confirmCancel': 'Cancel',
+
+  'admin.rollback.label': 'Roll back to version',
+  'admin.rollback.placeholder': 'Choose a version…',
+  'admin.rollback.button': 'Roll back',
+  'admin.rollback.versionOption': (version: number, current: boolean) => `v${version}${current ? ' (current)' : ''}`,
+  'admin.rollback.success': (version: number) => `Rolled back to version ${version}.`,
+
+  'admin.error.badRequest': 'Invalid request.',
+  'admin.error.notFound': 'This course could not be found.',
+  'admin.error.serverDown': 'The server is having trouble. Please try again later.',
+  'admin.error.unknown': 'An unknown error occurred.',
+  'admin.error.unreachable':
+    'Could not connect to the server. You may be offline, or the server may be misconfigured (CORS/DNS).',
 };

@@ -91,209 +91,396 @@
   cục hỏi đúng thứ nó cần: `flex-wrap` với `flex-basis` tối thiểu cho mỗi cột.
   Hai cột vừa thì đứng cạnh nhau; không vừa thì tự xuống dòng.
 */
+/* ═══════════════════════════════════════════════════════════════════════════
+   MÀN ĐĂNG NHẬP — hướng A (Untitled UI)
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Hình đã duyệt: khung "Đăng nhập" trên canvas thiết kế, trang Màn hình.
+
+   MARKUP KHÔNG ĐỔI MỘT DÒNG, và đó là một lựa chọn chứ không phải sự lười:
+   cấu trúc `.auth-pitch` + `.auth-side` ĐÃ đúng hình dạng bản dựng (một panel
+   thương hiệu, một cột form), còn `pages/Login.test.tsx` — 486 dòng — ghim
+   đúng cấu trúc trợ năng ấy: vai trò tablist, nhãn ô nhập, `role="alert"` của
+   khối lỗi. Viết lại markup thành utility sẽ làm đỏ hàng loạt bài kiểm mà
+   không đổi được gì người dùng nhìn thấy. Thứ đổi là DA, nên chỉ da đổi.
+
+   Token lấy từ `styles/tokens.css` (`@theme static`), tức là cùng một thang
+   với mọi màn khác — không có màu nào viết tay ở đây. */
+
+/* ── HAI NỬA TRÀN VIỀN, KHÔNG PHẢI HAI THẺ NỔI ────────────────────────────
+   Bản dựng đã duyệt vẽ `/login` là một màn hình CHIA ĐÔI: trắng nửa này, tím
+   nửa kia, chạm bốn cạnh, không bo góc, không khe hở. Bản đang chạy là hai
+   thẻ bo góc trôi giữa một nền xám, cách nhau 28px — nhìn ra ngay là hai thứ
+   khác nhau.
+
+   Muốn chạm được bốn cạnh thì phải thoát khỏi ba cái hộp đang bọc nó:
+   `#content-wrap` có `padding: 32px 40px 120px`, `#content` là một cột trong
+   một lưới, và trên nữa là thanh trên. Thanh trên đã đi (`#app.auth-screen`,
+   xem `shell/Shell.tsx`); hai cái còn lại được gỡ padding ở ngay dưới đây.
+
+   `100dvh` chứ không `100vh`: trên trình duyệt di động `100vh` tính theo thanh
+   địa chỉ ở trạng thái THU, nên trang cao hơn khung nhìn thật và đẩy nút "Đăng
+   nhập" xuống dưới nếp gấp — đúng lỗi mà lần sửa `wrap-reverse` trước đã đo
+   được ở 375px. */
+#app.auth-screen #topbar,
+#app.auth-screen #progwrap {
+  display: none;
+}
+
+/* HAI id + HAI class. `styles/app-screens.css` đặt
+   `#app:not(.reading) #content-wrap { padding: 32px 40px 120px }` — hai id một
+   class — và nạp SAU tệp này, nên một `#content-wrap:has(.auth-page)` trần sẽ
+   THUA và trang giữ nguyên viền trắng 40px quanh một bố cục vốn phải chạm bốn
+   cạnh. Người dùng nhìn thấy đúng cái viền ấy: "sao lại dùng margin / padding
+   thế kia". */
+#app:not(.reading) #content-wrap:has(.auth-page) {
+  padding: 0;
+  display: block;
+}
+
+/* Thắng `#app:not(.reading) #content { max-width: none }` VÀ mọi padding của
+   `reader.css` bằng cùng số id cộng thêm một class. */
+#app:not(.reading) #content:has(.auth-page) {
+  max-width: none;
+  padding: 0;
+  font-size: initial;
+}
+
 .auth-page {
   display: flex;
   flex-wrap: wrap;
-  gap: 30px 40px;
   align-items: stretch;
-  margin: clamp(12px, 4vh, 44px) 0 56px;
-  /* Mở một ngữ cảnh truy vấn theo BỀ RỘNG CỦA CHÍNH KHỐI NÀY, cho đúng một
-     việc: vạch kẻ chia đôi bên dưới. Xem khối `@container` ngay sau đây. */
-  container-type: inline-size;
+  min-height: 100dvh;
+  margin: 0;
+  font-family: var(--font-sans);
 }
 
+/* ── PANEL PHẢI: MỘT TẤM ẢNH, KHÔNG PHẢI MỘT MẢNG MÀU ────────────────────
+   Hình: mẫu "log in split quote image" của Untitled UI.
+
+   `order: 2` ở đây + `order: 1` ở `.auth-side` là ĐỦ, cho cả hai khổ, vì hai
+   khổ muốn cùng một thứ tự: form trước, lời rao sau. Màn rộng đọc thứ tự ấy
+   theo chiều ngang (form trái, ảnh phải), màn hẹp đọc theo chiều dọc.
+
+   Bản đầu dùng `flex-wrap: wrap-reverse` vì tôi tưởng cần nó để panel rơi
+   xuống dưới. Nó làm ngược lại — đo ở 375px trên trình duyệt thật: panel chiếm
+   trọn màn hình đầu tiên và ô nhập bị đẩy xuống dưới nếp gấp, tức là trang
+   đăng nhập mở ra mà không thấy chỗ đăng nhập. `wrap` thường mới đúng.
+
+   THỤT VÀO VÀ BO GÓC, không tràn viền: mẫu để ảnh làm một tấm thẻ có lề, và lề
+   ấy là thứ giữ nó không đọc thành nền trang. `margin` chứ không `padding` trên
+   `.auth-page`, vì phần tô nền là chính khối này. */
 .auth-pitch {
-  flex: 1 1 19rem;
+  order: 2;
+  flex: 1 1 22rem;
   min-width: 0;
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 30px;
+  justify-content: space-between;
+  margin: 24px 24px 24px 0;
+  padding: 24px;
+  border-radius: 16px;
+  overflow: hidden;
+  color: #fff;
+  background-color: var(--color-gray-900);
+  background-image: url('/img/login-hero.jpg');
+  background-size: cover;
+  background-position: center;
 }
 
-/*
-  VẠCH KẺ CHIA ĐÔI — chỉ khi thật sự có hai cột.
-
-  Đây là chỗ DUY NHẤT trong hai màn này cần biết "đã xuống dòng hay chưa", và nó
-  không hỏi được bằng `@media`: bề rộng quyết định việc xuống dòng là của
-  `.auth-page` (co theo `#content`, theo `#rail`, theo thanh bên), không phải
-  của viewport. Đo được trên trình duyệt thật ở 375px: với một `@media` sai
-  ngưỡng, vạch kẻ đứng thành một gạch dọc lơ lửng ở mép PHẢI của khối đã xếp
-  chồng — một đường kẻ không chia đôi cái gì cả.
-
-  Ngưỡng 41rem không phải con số tròn cho đẹp: hai cột có `flex-basis: 19rem` và
-  `gap: 40px` (2.5rem), nên chúng vừa một hàng khi container ≥ 40.5rem. 41rem là
-  cùng con số ấy, làm tròn LÊN — nhầm về phía "không vẽ vạch kẻ" thì chỉ mất một
-  đường trang trí, nhầm về phía kia thì được một đường kẻ sai chỗ.
-*/
-@container (min-width: 41rem) {
-  .auth-pitch {
-    padding-right: 34px;
-    border-right: 1px solid var(--rule);
-  }
+/* MÀN CHE, không phải một lớp phủ đều: chữ trắng chỉ nằm ở đáy, nên chỉ đáy
+   cần tối đi. Một lớp phủ đều đủ đậm để đọc được chữ sẽ dìm luôn cả tấm ảnh —
+   tức là trả tiền cho một tấm ảnh rồi che nó đi.
+   `::before` chứ không `box-shadow: inset`: nó phải nằm DƯỚI chữ và TRÊN ảnh,
+   và nó cần một gradient. */
+.auth-pitch::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to top, rgba(12, 17, 29, 0.88) 0%, rgba(12, 17, 29, 0.62) 32%, rgba(12, 17, 29, 0) 62%),
+    linear-gradient(to bottom, rgba(12, 17, 29, 0.42) 0%, rgba(12, 17, 29, 0) 22%);
+  pointer-events: none;
 }
 
-.auth-brand {
-  margin: 0;
-  font-family: var(--serif);
-  font-size: 19px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--ink);
+/* Mọi thứ trong panel nổi lên trên màn che. */
+.auth-pitch > * {
+  position: relative;
+  z-index: 1;
 }
 
-/* `margin-top: auto` ở danh sách bên dưới đẩy nó xuống đáy cột, nên khối chữ
-   này giữ nguyên vị trí trên cùng dù cột cao bao nhiêu. */
-.auth-pitch-body {
-  margin: 0;
+/* Hàng điều khiển của trang: chủ đề + ngôn ngữ, dồn phải. */
+.auth-pitch-top {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
-.auth-pitch-h {
-  margin: 0;
-  font-family: var(--serif);
-  /* Trần 31px, không 40px như canvas: canvas vẽ trên một khung 1180px không có
-     thanh bên; ở đây cột trái rộng chừng 28rem sau khi `#content` đã được nới
-     ra 60rem. Đo được: 34px làm câu này gãy làm bốn dòng, 31px giữ nó ở ba. */
-  font-size: clamp(23px, 2.4vw, 31px);
+.auth-chrome {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* HAI id ở bộ chọn: `styles/app-screens.css` vẽ `#app:not(.reading) #lang-select`
+   thành một hộp TRẮNG viền xám — đúng trên nền giấy, và trên một tấm ảnh nó là
+   một mảng trắng chói. `.auth-chrome #lang-select` một mình (một id) thua nó;
+   hai id ở đây thì không. */
+#app.auth-screen .auth-chrome-btn,
+#app.auth-screen .auth-chrome #lang-select {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  /* `backdrop-filter` chứ không một nền mờ đặc hơn: điều khiển vẫn phải đọc
+     được trên BẤT KỲ chỗ nào của ảnh, kể cả một vùng sáng. */
+  background: rgba(16, 24, 40, 0.32);
+  backdrop-filter: blur(8px);
+  box-shadow: none;
+  color: #fff;
+  cursor: pointer;
+}
+
+#app.auth-screen .auth-chrome-btn {
+  width: 36px;
+  padding: 0;
+}
+
+#app.auth-screen .auth-chrome #lang-select {
+  width: auto;
+  padding: 0 26px 0 10px;
+  font-family: var(--font-sans);
+  font-size: 13px;
   font-weight: 500;
-  line-height: 1.18;
-  letter-spacing: -0.02em;
-  text-wrap: balance;
+  /* Mũi tên riêng, màu trắng: mũi tên mặc định của hệ điều hành là màu chữ TỐI
+     và biến mất trên nền ảnh. */
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M6 8.5l4 4 4-4' stroke='%23ffffff' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+  background-size: 16px 16px;
+}
+
+#app.auth-screen .auth-chrome #lang-select option {
   color: var(--ink);
+  background: var(--surface-1);
+}
+
+#app.auth-screen .auth-chrome-btn:hover,
+#app.auth-screen .auth-chrome #lang-select:hover {
+  background: rgba(16, 24, 40, 0.5);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+#app.auth-screen .auth-chrome-btn:focus-visible,
+#app.auth-screen .auth-chrome #lang-select:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.5);
+}
+
+.auth-pitch-body {
+  max-width: 34rem;
+  padding: 8px 12px 12px;
+}
+
+/* ĐỘ ĐẶC HIỆU PHẢI THẮNG `#app:not(.reading) #content h1`, và đó là cái bẫy
+   trung tâm của repo này chứ không phải một dòng thừa.
+   `styles/app-screens.css` đặt thang chữ chung cho mọi màn app bằng
+   `#app:not(.reading) #content h1 { … color: var(--ink) }` — hai id, nên nó
+   thắng một class trần, và nó nạp SAU tệp này. Kết quả đo được trên bản đang
+   chạy: nhan đề trong panel render bằng `--ink`, tức chữ GẦN ĐEN trên một tấm
+   ảnh tối. Hai id + hai class ở đây thắng hai id + một class ở đó. */
+#app:not(.reading) #content .auth-pitch-h {
+  font-family: var(--font-sans);
+  margin: 0 0 12px;
+  font-size: clamp(24px, 2.6vw, 30px);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: #fff;
+  text-wrap: pretty;
+  /* Bóng chữ mảnh: ảnh là một tấm ảnh THẬT, nên độ sáng dưới chữ đổi theo từng
+     bản cắt và theo bề rộng cửa sổ. Màn che lo phần lớn; dòng này lo phần còn
+     lại mà màn che không đoán trước được. */
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.45);
 }
 
 .auth-pitch-lede {
-  margin: 16px 0 0;
-  font-family: var(--serif);
-  font-size: 16px;
-  line-height: 1.62;
-  color: var(--ink-2);
+  margin: 0 0 20px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.82);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.4);
 }
 
 .auth-points {
-  margin: auto 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .auth-points li {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  font-family: var(--serif);
-  font-size: 14.5px;
+  font-size: 13.5px;
   line-height: 1.5;
-  color: var(--ink-2);
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.4);
 }
 
+/* Dấu tích trong một đĩa tròn mờ, không phải một glyph trần: trên một tấm ảnh
+   có chỗ sáng chỗ tối, một nét trắng mảnh sẽ mất hút ở những chỗ sáng. */
 .auth-tick {
-  flex: 0 0 15px;
-  margin-top: 3px;
-  color: var(--accent);
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  margin-top: 0;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  box-sizing: border-box;
 }
 
+/* ── CỘT FORM ───────────────────────────────────────────────────────────── */
+
+/* Nền TRẮNG, không phải `--page`: mẫu chia màn hình thành một mảng trắng đặc
+   và một tấm ảnh; một nửa màu giấy xám cạnh một tấm ảnh đọc ra như một thẻ
+   chưa tô xong. */
 .auth-side {
-  flex: 1 1 19rem;
+  order: 1;
+  flex: 1 1 22rem;
   min-width: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
+  background: var(--surface-1);
+  padding: 40px clamp(24px, 4vw, 48px);
 }
 
+/* HẸP, và đứng giữa cả hai chiều — đây là hình dạng của mẫu, và nó có lý do:
+   một form đăng nhập chỉ có hai ô, nên kéo nó rộng ra chỉ làm hai ô dài thượt
+   mà không thêm được gì. 22rem là bề rộng mà `Email` và `Mật khẩu` đọc thoải
+   mái ở 16px. */
 .auth-side-inner {
   width: 100%;
-  max-width: 24rem;
+  max-width: 22rem;
 }
 
-.auth-h {
-  margin: 0;
-  font-family: var(--serif);
-  font-size: 25px;
-  font-weight: 500;
-  line-height: 1.25;
-  letter-spacing: -0.015em;
-}
-
-.auth-lede {
-  margin: 8px 0 0;
-  font-family: var(--serif);
-  font-size: 14.5px;
-  line-height: 1.55;
-  color: var(--ink-2);
-}
-
-/* `.seg` gốc là `inline-flex` và co theo nội dung — ở đây nó chỉ rộng bằng chữ,
-   và chữ "Đăng nhập" bị **xuống dòng thành hai hàng** trong ô tab. Ở đây nó
-   phải là một dải đầy đủ chia đôi. */
-.auth-tabs.seg {
+/* BA DÒNG ĐẦU căn giữa (mark, nhan đề, câu dẫn), từ hàng tab trở xuống căn
+   trái: một nhãn `Email` căn giữa thì mắt không có mép nào để bám khi chạy
+   xuống ô kế tiếp. */
+.auth-brand {
   display: flex;
-  width: 100%;
-  margin: 24px 0 4px;
-  border-radius: 8px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0 0 20px;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }
 
-.auth-tabs.seg button {
-  flex: 1 1 0;
-  padding-block: 8px;
-  font-size: 13px;
-  /* Không cho chữ gãy dòng: một nhãn hai hàng làm hai ô tab cao lệch nhau. */
-  white-space: nowrap;
+/* Nhan đề DUY NHẤT của cột, và nó thay chỗ của hai tab đã bỏ: nó là thứ nói
+   ra bạn đang ở form nào. `margin-bottom` lớn vì dưới nó là ô nhập đầu tiên,
+   không còn hàng tab làm đệm. */
+.auth-h {
+  margin: 0 0 26px;
+  font-family: var(--font-sans);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-align: center;
+  color: var(--ink);
 }
 
 .auth-form {
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
 .auth-form label {
-  font-family: var(--sans);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ink-2);
-  margin-top: 16px;
-  letter-spacing: 0.01em;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-gray-700);
+  margin-bottom: 6px;
+}
+
+.auth-form label + input {
+  margin-bottom: 18px;
 }
 
 .auth-form input {
-  font-family: var(--sans);
-  font-size: 14px;
-  padding: 10px 12px;
-  border: 1px solid var(--rule-strong);
-  border-radius: 9px;
-  background: var(--surface-1);
+  height: 44px;
+  padding: 0 14px;
+  font-family: var(--font-sans);
+  font-size: 16px;
   color: var(--ink);
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  background: var(--surface-1);
+  border: 1px solid var(--color-gray-300);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
 }
 
+/* VÒNG FOCUS 4px, trên mọi thứ bấm được — thứ bản đang chạy không có, và là
+   khác biệt lớn nhất với người dùng bàn phím. */
 .auth-form input:focus {
   outline: none;
-  border-color: var(--accent);
-  /* Vòng sáng thay cho outline mặc định: giữ được dấu hiệu tiêu điểm cho người
-     dùng bàn phím mà không làm layout nhảy. */
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  border-color: var(--color-brand-300);
+  box-shadow: var(--shadow-ring-brand);
 }
 
 /* Nút chiếm trọn bề ngang: đây là hành động DUY NHẤT của nửa này. */
 .auth-form .btn.primary {
-  margin-top: 24px;
-  padding: 11px 14px;
-  font-size: 14px;
+  margin-top: 8px;
+  height: 44px;
+  padding: 0 16px;
   width: 100%;
   justify-content: center;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--color-brand-600);
+  border: 0;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs), inset 0 -1px 0 rgba(16, 24, 40, 0.12);
+}
+
+.auth-form .btn.primary:hover:not(:disabled) {
+  background: var(--color-brand-700);
+}
+
+.auth-form .btn.primary:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring-brand);
+}
+
+.auth-form .btn.primary:disabled {
+  background: var(--color-brand-200);
+  cursor: default;
 }
 
 .auth-error {
-  margin: 14px 0 0;
-  font-family: var(--sans);
-  font-size: 12.5px;
+  margin: 16px 0 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
   line-height: 1.5;
-  color: #b3261e;
-  background: #fdeceb;
-  border: 1px solid #f5c9c5;
-  border-radius: 8px;
-  padding: 9px 11px;
+  color: var(--color-error-700);
+  background: var(--color-error-50);
+  border: 1px solid var(--color-error-200);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
 }
 
 /* Khối tối, đứng riêng — xem "GIAO DIỆN TỐI: HAI KHỐI, KHÔNG BA" ở đầu tệp.
@@ -306,7 +493,11 @@ html[data-theme='dark'] .auth-error {
   border-color: #5c2b26;
 }
 
-/* ───────────────────────────────────────────────────────────────────────────
+html[data-theme='dark'] .auth-form input {
+  background: var(--surface-1);
+  border-color: var(--rule-strong);
+}
+
    `/settings` — CÀI ĐẶT, và Trợ lý AI là MỘT MỤC bên trong
    ─────────────────────────────────────────────────────────────────────────── */
 
@@ -326,53 +517,6 @@ html[data-theme='dark'] .auth-error {
   font-weight: 500;
   line-height: 1.2;
   letter-spacing: -0.018em;
-}
-
-/* Cùng lý do như `.auth-page`: bề rộng quyết định là của `#content`, không phải
-   của viewport, nên bố cục hỏi bằng `flex-wrap` chứ không bằng `@media`. */
-.set-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px 32px;
-  align-items: flex-start;
-}
-
-.set-toc {
-  flex: 0 1 10.5rem;
-  display: flex;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  gap: 2px;
-}
-
-/*
-  `flex: 1 1 8rem` là thứ làm mục lục tự đổi hình: trong cột 10.5rem không có
-  chỗ cho hai mục 8rem cạnh nhau nên chúng xếp dọc; khi mục lục bị đẩy xuống
-  dòng riêng và rộng bằng cả trang thì bốn mục nằm ngang thành một hàng tab.
-*/
-.set-toc-item {
-  flex: 1 1 8rem;
-  text-align: left;
-  font-family: var(--sans);
-  font-size: 13px;
-  line-height: 1.4;
-  padding: 7px 10px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--ink-2);
-  cursor: pointer;
-}
-
-.set-toc-item:hover {
-  background: var(--accent-soft);
-  color: var(--ink);
-}
-
-.set-toc-item.on {
-  background: var(--panel);
-  color: var(--ink);
-  font-weight: 600;
 }
 
 .set-main {
@@ -625,4 +769,181 @@ html[data-theme='dark'] .vault-overlay {
 .vault-card iframe {
   flex: 1 1 auto;
   min-height: 0;
+}
+
+/* ── Ô MẬT KHẨU CÓ CON MẮT ─────────────────────────────────────────────────
+   Nút nằm ĐÈ lên ô chứ không đứng cạnh: `.auth-form` là một cột đơn, và một
+   hàng ngang thêm vào đó sẽ làm ô mật khẩu hẹp hơn ô email ngay trên nó. */
+/* `.auth-form` là một cột flex, nên `<span class="auth-pw">` là một flex item.
+   Nó tự giãn hết bề ngang, nhưng `<input>` BÊN TRONG thì không: một `<input>`
+   không có `width` lấy bề rộng mặc định của thuộc tính `size` (~170px). Bản
+   đầu thiếu đúng dòng `width: 100%` này, nên ô mật khẩu hẹp bằng một phần ba ô
+   email ngay trên nó và con mắt rơi ra NGOÀI ô — đúng thứ người dùng chỉ vào. */
+.auth-pw {
+  position: relative;
+  display: block;
+}
+
+/* `label + input` không còn khớp khi phần tử sau nhãn là `<span>`, nên khoảng
+   thở dưới ô mật khẩu phải khai lại ở đây. */
+.auth-form label + .auth-pw {
+  margin-bottom: 18px;
+}
+
+.auth-pw input {
+  width: 100%;
+  /* Chừa chỗ cho nút, để chữ dài không chạy xuống dưới nó. */
+  padding-right: 44px;
+}
+
+.auth-pw-eye {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-gray-400);
+  cursor: pointer;
+}
+
+.auth-pw-eye:hover {
+  color: var(--ink-2);
+  background: var(--color-gray-100);
+}
+
+.auth-pw-eye:focus-visible {
+  outline: none;
+  color: var(--ink-2);
+  box-shadow: var(--shadow-ring-brand);
+}
+
+html[data-theme='dark'] .auth-pw-eye:hover {
+  background: var(--color-gray-800);
+}
+
+/* ── "KHÔNG CÓ TÀI KHOẢN VẪN ĐỌC ĐƯỢC" ────────────────────────────────────
+   Một hộp xám nhạt, không phải một `.auth-error` màu: nó không cảnh báo gì —
+   nó gỡ một lo lắng. Tô màu nó là biến một lời trấn an thành một tín hiệu
+   nguy hiểm. */
+.auth-reassure {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 18px 0 0;
+  padding: 11px 13px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.auth-reassure svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--color-gray-400);
+}
+
+/* ── ĐỔI TAB Ở ĐÁY CỘT ────────────────────────────────────────────────────
+   Bản dựng đặt nó ở CHÂN cột, tách hẳn khỏi form — nên `margin-top` lớn, chứ
+   không phải một dòng dính ngay dưới hộp trấn an. */
+.auth-switch {
+  margin: 24px 0 0;
+  font-size: 13.5px;
+  text-align: center;
+  color: var(--ink-3);
+}
+
+/* Một `<button>` trông như liên kết: nó ĐỔI TAB chứ không điều hướng (xem
+   `pages/Login.tsx`), nên nó phải là một nút — và `border-bottom: none` vì
+   `reader.css` gạch chân mọi liên kết, còn `appearance: none` vì trình duyệt
+   vẽ nút có nền và viền. */
+.auth-switch-link {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  border-bottom: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-brand-700);
+  cursor: pointer;
+}
+
+.auth-switch-link:hover {
+  color: var(--color-brand-800);
+  text-decoration: underline;
+}
+
+.auth-switch-link:focus-visible {
+  outline: none;
+  border-radius: var(--radius-xs);
+  box-shadow: var(--shadow-ring-brand);
+}
+
+html[data-theme='dark'] .auth-switch-link {
+  color: var(--color-brand-300);
+}
+
+/* ── MÀN HẸP: hai khối xếp dọc, và form vẫn ở trên ───────────────────────
+   `flex-direction: column`, KHÔNG phải `flex-wrap` và KHÔNG phải `display: block`.
+   Hai bản sai đã đo được trên trình duyệt thật ở 390px:
+
+   · `flex-wrap` giữ nguyên: `flex-basis` thành `auto` theo chiều NGANG, nên
+     `.auth-side` ra 400px và `.auth-pitch` ra 576px trên một khung nhìn 390 —
+     một thanh cuộn ngang trên chính trang đăng nhập.
+   · `display: block`: hết cuộn ngang, nhưng `order` chỉ có nghĩa trong flex,
+     nên thứ tự DOM thắng và TẤM ẢNH nhảy lên trên form. Nút "Đăng nhập" rơi
+     xuống y=957 trên một màn cao 844 — trang đăng nhập mở ra mà không thấy chỗ
+     đăng nhập, đúng lỗi mà lần sửa `wrap-reverse` trước đã đo được.
+
+   Cột dọc giữ được cả hai: `order` vẫn chạy (form trước), và `flex-basis` nay
+   nói về CHIỀU CAO nên nó không thể đẩy bề ngang ra ngoài khung nhìn. */
+@media (max-width: 47rem) {
+  .auth-page {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    min-height: 0;
+  }
+
+  .auth-side {
+    flex: none;
+    min-height: 100dvh;
+    padding: 32px 20px 40px;
+  }
+
+  .auth-pitch {
+    flex: none;
+    min-height: 20rem;
+    margin: 0 16px 16px;
+    padding: 16px;
+  }
+
+  /* Điều khiển NỔI Ở GÓC MÀN, không ở trên tấm ảnh: ở khổ dọc tấm ảnh nằm
+     dưới nếp gấp, và một bộ chọn ngôn ngữ mà người dùng phải cuộn xuống mới
+     thấy thì với một người không đọc được tiếng Việt là không có.
+     `fixed` chứ không đổi chỗ trong DOM: thứ tự đọc (form trước) vẫn đúng. */
+  #app.auth-screen .auth-pitch-top {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 60;
+  }
+
+  /* Nền ĐẶC hơn ở đây: chip nổi trên nền TRẮNG của cột form, và lớp mờ 32%
+     dành cho một tấm ảnh tối sẽ cho chữ trắng trên xám nhạt. */
+  #app.auth-screen .auth-chrome-btn,
+  #app.auth-screen .auth-chrome #lang-select {
+    background: rgba(16, 24, 40, 0.86);
+    border-color: rgba(255, 255, 255, 0.24);
+  }
 }

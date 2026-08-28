@@ -1,0 +1,1 @@
+Ghi chú: tệp này không nên tồn tại trong một widget hợp lệ — một widget chỉ được có đúng một tệp, index.html.

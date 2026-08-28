@@ -63,9 +63,10 @@ function frames(): HTMLIFrameElement[] {
   return Array.from(document.querySelectorAll('iframe'));
 }
 
-/** Nút mục lục theo tên hiển thị. */
-function tocItem(name: string): HTMLElement {
-  return screen.getByRole('button', { name });
+/** Tiêu đề của một khối trên trang Cài đặt. Trang nay là MỘT trang, nên mọi
+ *  khối đều có mặt cùng lúc và không phải bấm gì để tới. */
+function blockHeading(name: string): HTMLElement {
+  return screen.getByRole('heading', { name });
 }
 
 /**
@@ -120,27 +121,27 @@ describe('Trang cấu hình AI của TRANG CHÍNH', () => {
    * không vẽ gì cả, nên mỗi mục phải tự chứng minh nó có mặt bằng tiêu đề của
    * chính nó trước khi lời khẳng định "không có ô nào" có nghĩa.
    */
-  it('KHÔNG có ô nhập nào ở BẤT KỲ mục nào trong bốn mục — không riêng mục mặc định', async () => {
-    const user = userEvent.setup();
+  it('KHÔNG có ô nhập nào ở BẤT KỲ khối nào trên trang', async () => {
     const { container } = renderSettings();
 
-    const sections = [
+    // Trang nay là MỘT trang, nên bài này MẠNH hơn bản cũ chứ không yếu đi:
+    // bản cũ phải bấm qua từng tab và chỉ đo được mục đang hiện, còn ở đây cả
+    // bốn khối cùng nằm trong `container` một lúc.
+    //
+    // Chốt chống-vacuous: bốn khối phải tự chứng minh chúng có mặt trước khi
+    // lời khẳng định "không có ô nào" có nghĩa. Một trang trắng cũng có 0 ô.
+    for (const name of [
       t('vi', 'settings.section.account'),
-      t('vi', 'settings.ai.title'),
       t('vi', 'settings.section.appearance'),
+      t('vi', 'settings.ai.title'),
       t('vi', 'settings.section.localData'),
-    ];
-
-    for (const name of sections) {
-      await user.click(tocItem(name));
-
-      // Mục này thật sự đang hiện — nếu không, khẳng định dưới đây rỗng.
-      expect(screen.getByRole('heading', { name }), name).toBeInTheDocument();
-
-      expect(container.querySelectorAll('input'), name).toHaveLength(0);
-      expect(container.querySelectorAll('textarea'), name).toHaveLength(0);
-      expect(container.querySelectorAll('[contenteditable]'), name).toHaveLength(0);
+    ]) {
+      expect(await screen.findByRole('heading', { name }), name).toBeInTheDocument();
     }
+
+    expect(container.querySelectorAll('input')).toHaveLength(0);
+    expect(container.querySelectorAll('textarea')).toHaveLength(0);
+    expect(container.querySelectorAll('[contenteditable]')).toHaveLength(0);
   });
 
   /**
@@ -265,17 +266,30 @@ describe('/settings là CÀI ĐẶT, không phải trang Trợ lý AI', () => {
    * xoá một mục khác trong cùng một commit. Danh sách này là hợp đồng thứ bậc
    * của đặc tả IA, nên nó phải đọc được như một hợp đồng.
    */
-  it('có mục lục với đủ bốn mục, đúng tên và đúng thứ tự', () => {
-    renderSettings();
-    const toc = screen.getByRole('navigation', { name: t('vi', 'settings.nav.aria') });
+  it('trang có đủ bốn khối, đúng tên và đúng thứ tự', () => {
+    const { container } = renderSettings();
+
+    // Thứ tự đọc được từ DOM, không từ một danh sách hằng: đây là hợp đồng thứ
+    // bậc của đặc tả IA, và nó phải đúng với thứ người dùng thấy khi cuộn.
     expect(
-      Array.from(toc.querySelectorAll('button')).map((b) => b.textContent),
+      Array.from(container.querySelectorAll('.set-block h2')).map((h) => h.textContent),
     ).toEqual([
       t('vi', 'settings.section.account'),
-      t('vi', 'settings.ai.title'),
       t('vi', 'settings.section.appearance'),
+      t('vi', 'settings.ai.title'),
       t('vi', 'settings.section.localData'),
     ]);
+  });
+
+  /**
+   * "Chung" GỘP hai mục cũ, và bài này là thứ chứng minh phép gộp không đánh
+   * rơi cái nào. Không có nó, một bản xoá nhầm `<AppearanceSection/>` khỏi
+   * nhánh `general` vẫn xanh: danh sách tab ở bài trên chỉ đếm tab.
+   */
+  it('tài khoản và ngôn ngữ & giao diện ở CÙNG một trang, không phải hai nơi', () => {
+    renderSettings();
+    expect(blockHeading(t('vi', 'settings.section.account'))).toBeInTheDocument();
+    expect(blockHeading(t('vi', 'settings.section.appearance'))).toBeInTheDocument();
   });
 
   it('tên trang là "Cài đặt" — cùng chữ với mục ở đáy thanh bên', () => {
@@ -284,34 +298,32 @@ describe('/settings là CÀI ĐẶT, không phải trang Trợ lý AI', () => {
   });
 
   /**
-   * Trợ lý AI là mục MẶC ĐỊNH, và điều đó có người phụ thuộc: `e2e/s2.spec.ts`
-   * bấm "Mở trang cấu hình" từ panel hỏi-đáp rồi đòi ô dán key phải thấy được
-   * NGAY, không qua một cú bấm nữa.
+   * Lối vào từ lời mời AI (`state={{ section: 'ai' }}`) không còn ĐỔI thứ hiện
+   * ra — trang chỉ có một, và mọi khối đều ở trên đó. Điều nó phải giữ là thứ
+   * `e2e/s2.spec.ts` phụ thuộc: người bấm "Mở trang cấu hình" từ panel hỏi-đáp
+   * tới nơi và thấy khối Trợ lý AI, không qua một cú bấm chọn mục nào nữa.
    */
-  it('mở vào mục Trợ lý AI, và mục ấy được đánh dấu là đang xem', () => {
+  it('lối vào từ lời mời AI: khối Trợ lý AI có mặt ngay, không qua một cú bấm nào', () => {
     renderSettings();
-    expect(tocItem(t('vi', 'settings.ai.title'))).toHaveAttribute('aria-current', 'true');
-    expect(tocItem(t('vi', 'settings.section.account'))).not.toHaveAttribute('aria-current');
-    expect(screen.getByRole('heading', { name: t('vi', 'settings.ai.title') })).toBeInTheDocument();
+    expect(blockHeading(t('vi', 'settings.ai.title'))).toBeInTheDocument();
+    expect(screen.getByTestId('vault-explainer')).toBeInTheDocument();
   });
 
-  it('bấm một mục khác thì đổi nội dung VÀ đổi dấu "đang xem"', async () => {
-    const user = userEvent.setup();
+  /**
+   * Và nó KHÔNG giấu ba khối kia đi. Bản có tab làm đúng thế — vào bằng lời mời
+   * AI thì chỉ thấy mục AI — nên bài này là thứ chặn một lần "khôi phục" vô ý
+   * quay lại hành vi ấy.
+   */
+  it('lối vào ấy vẫn để ba khối kia trên trang', () => {
     renderSettings();
-
-    await user.click(tocItem(t('vi', 'settings.section.localData')));
-
-    expect(screen.getByRole('heading', { name: t('vi', 'settings.section.localData') })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: t('vi', 'settings.ai.title') })).toBeNull();
-    expect(tocItem(t('vi', 'settings.section.localData'))).toHaveAttribute('aria-current', 'true');
-    expect(tocItem(t('vi', 'settings.ai.title'))).not.toHaveAttribute('aria-current');
+    expect(blockHeading(t('vi', 'settings.section.account'))).toBeInTheDocument();
+    expect(blockHeading(t('vi', 'settings.section.appearance'))).toBeInTheDocument();
+    expect(blockHeading(t('vi', 'settings.section.localData'))).toBeInTheDocument();
   });
 
-  it('mục Tài khoản nói ra ai đang đăng nhập', async () => {
-    const user = userEvent.setup();
+  it('mục Tài khoản nói ra ai đang đăng nhập', () => {
     renderSettings();
 
-    await user.click(tocItem(t('vi', 'settings.section.account')));
 
     expect(screen.getByTestId('account-identity')).toHaveTextContent(
       t('vi', 'settings.account.signedInAs', SIGNED_IN.name, SIGNED_IN.email),
@@ -327,11 +339,9 @@ describe('/settings là CÀI ĐẶT, không phải trang Trợ lý AI', () => {
    * làm phép đo ấy chọn nhầm phần tử — và im lặng, vì `getElementById` không
    * bao giờ báo có hai.
    */
-  it('bộ chọn ngôn ngữ trong Cài đặt KHÔNG chiếm id của bộ chọn trên thanh công cụ', async () => {
-    const user = userEvent.setup();
+  it('bộ chọn ngôn ngữ trong Cài đặt KHÔNG chiếm id của bộ chọn trên thanh công cụ', () => {
     const { container } = renderSettings();
 
-    await user.click(tocItem(t('vi', 'settings.section.appearance')));
 
     const select = screen.getByLabelText(t('vi', 'settings.appearance.language'));
     expect(select.tagName).toBe('SELECT');
@@ -343,11 +353,17 @@ describe('/settings là CÀI ĐẶT, không phải trang Trợ lý AI', () => {
     const user = userEvent.setup();
     renderSettings();
 
-    await user.click(tocItem(t('vi', 'settings.section.appearance')));
     expect(screen.getByTestId('theme-now')).toHaveTextContent(t('vi', 'settings.appearance.themeNowLight'));
 
-    await user.click(screen.getByRole('button', { name: t('vi', 'topbar.themeToDark') }));
+    // MỘT HÀNG CHỌN, không còn là một nút "đổi sang giao diện tối" — bản dựng
+    // vẽ hàng chọn, và `role="radio"` là thứ nói ra "hai lựa chọn loại trừ
+    // nhau" thay vì "một nút lật". Bài này đi theo hình dạng mới; điều nó đo —
+    // đổi được thật, và trang nói ra thứ đang đúng — không đổi.
+    const dark = screen.getByRole('radio', { name: t('vi', 'settings.appearance.themeDark') });
+    expect(screen.getByRole('radio', { name: t('vi', 'settings.appearance.themeLight') })).toBeChecked();
+    await user.click(dark);
 
+    expect(dark).toBeChecked();
     expect(screen.getByTestId('theme-now')).toHaveTextContent(t('vi', 'settings.appearance.themeNowDark'));
     expect(document.documentElement.dataset.theme).toBe('dark');
   });
@@ -413,6 +429,12 @@ describe('khung kho khoá là một MẶT PHẲNG KHÁC, và nó nói ra địa 
    * Hai đường tới cùng một lỗi, nên hai bài:
    *   · mở → đóng → mở (lớp bọc `.vault-card` bị điều kiện hoá);
    *   · sang mục khác rồi quay lại (mục Trợ lý AI bị tháo cùng khung của nó).
+   *
+   * Đường thứ hai KHÔNG CÒN TỒN TẠI: Cài đặt nay là một trang, nên không có
+   * "mục khác" để sang. Bài kiểm riêng cho nó đã bỏ cùng thao tác ấy — giữ lại
+   * một bài mô tả một thao tác không tồn tại là giữ một lời khẳng định luôn
+   * xanh. Đường thứ nhất (đóng rồi mở lại) vẫn nguyên, và nó là đường người
+   * dùng thật đi.
    */
   it('mở → đóng → mở KHÔNG dựng lại khung — key gõ dở không được biến mất', async () => {
     const user = userEvent.setup();
@@ -429,34 +451,6 @@ describe('khung kho khoá là một MẶT PHẲNG KHÁC, và nó nói ra địa 
     expect(frames()).toHaveLength(1);
   });
 
-  it('sang mục khác rồi quay lại cũng KHÔNG dựng lại khung', async () => {
-    const user = userEvent.setup();
-    renderSettings();
-
-    const original = frames()[0];
-
-    await user.click(tocItem(t('vi', 'settings.section.account')));
-    // Rời mục Trợ lý AI ⇒ lớp phủ đóng lại, nếu không nó che mất mục vừa chọn.
-    expect(frames()[0]).not.toBeVisible();
-    expect(frames()[0]).toBe(original);
-
-    await user.click(tocItem(t('vi', 'settings.ai.title')));
-    /*
-     * Quay lại mục Trợ lý AI KHÔNG tự bung lớp phủ nữa: ý định của lối vào chỉ
-     * dùng được một lần, và lần này chính người dùng chọn mục. Chủ đề của bài
-     * kiểm này vẫn nguyên — khung không được DỰNG LẠI — nên nó vẫn là cùng một
-     * node, chỉ là đang thu.
-     */
-    expect(frames()[0]).not.toBeVisible();
-    expect(frames()[0]).toBe(original);
-
-    // Và mở lại bằng tay vẫn ra đúng khung cũ, không phải một khung mới: key gõ
-    // dở trong kho khoá không được biến mất vì người dùng đi vòng qua mục khác.
-    await user.click(screen.getByRole('button', { name: t('vi', 'settings.ai.open') }));
-    expect(frames()[0]).toBeVisible();
-    expect(frames()[0]).toBe(original);
-    expect(frames()).toHaveLength(1);
-  });
 });
 
 /**
@@ -474,11 +468,15 @@ describe('khung kho khoá là một MẶT PHẲNG KHÁC, và nó nói ra địa 
  * bên. Nên những bài dưới đây kiểm đúng cái lối vào mà không ai từng kiểm.
  */
 describe('vào Cài đặt KHÔNG qua lời mời AI', () => {
-  it('mở vào mục trung tính, không phải Trợ lý AI', () => {
-    renderSettings(VAULT, SIGNED_IN, null);
+  it('mở ra là thấy Tài khoản trước, Trợ lý AI ở phía dưới', () => {
+    const { container } = renderSettings(VAULT, SIGNED_IN, null);
 
-    expect(tocItem(t('vi', 'settings.section.account'))).toHaveAttribute('aria-current', 'true');
-    expect(tocItem(t('vi', 'settings.ai.title'))).not.toHaveAttribute('aria-current');
+    // Không còn "mục đang xem" để đo — trang chỉ có một. Thứ thay thế nó là
+    // THỨ TỰ: khối đầu tiên người dùng gặp phải là Tài khoản, không phải một
+    // trang cấu hình AI.
+    const headings = Array.from(container.querySelectorAll('.set-block h2')).map((h) => h.textContent);
+    expect(headings[0]).toBe(t('vi', 'settings.section.account'));
+    expect(headings.indexOf(t('vi', 'settings.ai.title'))).toBeGreaterThan(0);
   });
 
   it('KHÔNG bung lớp phủ kho khoá — đó là cả nội dung của lỗi được báo', () => {
@@ -490,13 +488,14 @@ describe('vào Cài đặt KHÔNG qua lời mời AI', () => {
     expect(document.querySelector('.vault-overlay')).toBeNull();
   });
 
-  it('tự bấm sang mục Trợ lý AI cũng không bung — phải tự mở mới mở', async () => {
+  it('cuộn tới khối Trợ lý AI cũng không bung — phải tự mở mới mở', async () => {
     const user = userEvent.setup();
     renderSettings(VAULT, SIGNED_IN, null);
 
-    await user.click(tocItem(t('vi', 'settings.ai.title')));
-    // Đây là chỗ phân biệt "sửa đúng" với "chỉ đổi mục mặc định": chọn mục AI
-    // là muốn ĐỌC về nó, chưa chắc đã muốn một lớp phủ toàn màn hình.
+    // Đây là chỗ phân biệt "sửa đúng" với "chỉ đổi mục mặc định": khối AI ở
+    // sẵn trên trang và đọc được, nhưng ĐỌC về nó khác với muốn một lớp phủ
+    // toàn màn hình.
+    expect(blockHeading(t('vi', 'settings.ai.title'))).toBeInTheDocument();
     expect(frames()[0]).not.toBeVisible();
 
     await user.click(screen.getByRole('button', { name: t('vi', 'settings.ai.open') }));
@@ -508,7 +507,38 @@ describe('vào Cài đặt KHÔNG qua lời mời AI', () => {
     // back/forward, nên `readIntent` chỉ nhận đúng giá trị đã biết.
     renderSettings(VAULT, SIGNED_IN, { section: 'khong-ton-tai', openVault: 'yes' });
 
-    expect(tocItem(t('vi', 'settings.section.account'))).toHaveAttribute('aria-current', 'true');
+    expect(blockHeading(t('vi', 'settings.section.account'))).toBeInTheDocument();
     expect(frames()[0]).not.toBeVisible();
+  });
+});
+
+/**
+ * CỬA ĐĂNG XUẤT, và vì sao bài này sống ở đây kể từ vòng thiết kế lại.
+ *
+ * Nút "Đăng xuất" vốn ở đầu Bảng điều khiển, và `test/Dashboard.test.tsx` canh
+ * nó ở đó. Bản dựng đã duyệt đưa đầu trang Học tiếp sang lối vào NHẬP GÓI, nên
+ * nút ấy về đúng chỗ của nó: mục Tài khoản của `/settings`, đứng cạnh câu cảnh
+ * báo về dữ liệu trên máy — thứ một nút trơ trọi ở đầu trang không mang theo
+ * được.
+ *
+ * Bài này canh CỬA: nó có thật, nó bấm được, và nó không đứng một mình. CHUỖI
+ * HÀNH VI phía sau (dừng sync, xả outbox, POST /auth/logout, xoá mọi bảng cục
+ * bộ, về /login) có bộ canh riêng và kỹ hơn nhiều ở `auth/useLogout.test.tsx`
+ * — mười bài. Chép lại chúng ở đây là nuôi hai bản của một sự thật.
+ */
+describe('Cài đặt — cửa đăng xuất', () => {
+  it('mục Tài khoản mang nút Đăng xuất, và nút ấy không đứng trần trụi', async () => {
+    // `state: null` chứ không phải mặc định: `renderSettings` mặc định gửi
+    // `FROM_AI_INVITE`, thứ mở thẳng mục Trợ lý AI. Mục mặc định khi tới bằng
+    // đường thường mới là Tài khoản — và đó chính là mục bài này hỏi.
+    renderSettings(VAULT, SIGNED_IN, null);
+
+    const button = await screen.findByRole('button', { name: /đăng xuất/i });
+    expect(button).toBeEnabled();
+
+    // ĐỐI CHỨNG: câu cảnh báo phải ở cùng màn. Đăng xuất ở đây XOÁ ghi chú và
+    // tiến độ trên máy này (xem `auth/useLogout.ts`), và một nút làm điều đó mà
+    // không nói ra là một cái bẫy — nhất là trên máy dùng chung.
+    expect(screen.getByText(new RegExp(t('vi', 'settings.account.signOutWarning').slice(0, 24), 'i'))).toBeInTheDocument();
   });
 });

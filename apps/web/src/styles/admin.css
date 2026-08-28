@@ -1,0 +1,203 @@
+/* ══════════════════════════════════════════════════════════════════════════
+ * QUẢN TRỊ — `/admin` (Task 15, `admin/AdminCourses.tsx`)
+ *
+ * Own file, not `app-screens.css`: that file carries ~25 lines of the
+ * user's own uncommitted work at the time this task landed, and staging it
+ * would have swept those changes into this task's commit. Same tokens,
+ * same conventions as every other screen stylesheet (`courses.css` in
+ * particular) — `var(--ink*)`, `var(--rule*)`, `var(--sans)`,
+ * `var(--radius-*)`, `var(--shadow-*)` all come from `index.css`'s `:root`
+ * block, which is itself sourced from `tokens.css`'s Untitled UI scale.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+.admin-page {
+  max-width: 64rem;
+}
+
+.admin-header {
+  margin-bottom: 18px;
+}
+
+.admin-header .ch-lede {
+  margin: 4px 0 0;
+  max-width: 62ch;
+}
+
+.admin-note {
+  color: var(--ink-3);
+  font-size: 14px;
+}
+
+.admin-note[role='alert'] {
+  color: #e0453c;
+}
+
+/* ── FORM PHÁT HÀNH ─────────────────────────────────────────────────────── */
+
+.admin-upload {
+  padding: 18px 20px;
+  margin-bottom: 28px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-xl);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-xs);
+}
+
+.admin-upload-heading {
+  margin: 0 0 14px;
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.admin-upload-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.admin-upload-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.admin-upload-field input[type='text'] {
+  min-width: 16rem;
+}
+
+.admin-upload-field input[type='file'] {
+  font-family: var(--sans);
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+/* ── DANH SÁCH ─────────────────────────────────────────────────────────── */
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--sans);
+  font-size: 14px;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+.admin-table th {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.admin-table td {
+  color: var(--ink-2);
+}
+
+.admin-table td:first-child {
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 16rem;
+}
+
+.admin-confirm {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.admin-rollback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.admin-rollback label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-rollback label span {
+  color: var(--ink-3);
+}
+
+/* ── BẢNG FINDINGS — "in mọi vấn đề một lần", đúng như `tuhoc pack` ──────
+ * Nền cảnh báo nhẹ để tách khỏi phần còn lại của form: đây là câu trả lời
+ * của máy chủ, không phải chữ của giao diện. */
+.admin-findings {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-error-200);
+  border-radius: var(--radius-lg);
+  background: var(--color-error-50);
+}
+
+.admin-findings-heading {
+  margin: 0 0 10px;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-error-700);
+}
+
+.admin-findings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--sans);
+  font-size: 13px;
+}
+
+.admin-findings-table th,
+.admin-findings-table td {
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--color-error-200);
+}
+
+.admin-findings-table th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-error-700);
+}
+
+.admin-findings-table td:first-child {
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--color-error-700);
+}
+
+.admin-findings-table td:nth-child(2) {
+  color: var(--ink-3);
+  word-break: break-word;
+}
+
+.admin-findings-table td:nth-child(3) {
+  color: var(--ink-2);
+}

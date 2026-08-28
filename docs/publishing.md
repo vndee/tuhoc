@@ -1,15 +1,20 @@
 # Publish repo này ra công khai
 
-Repo này chưa từng được publish. Trước lần đầu, có **một** việc phải làm mà làm
-sau thì không cứu được: bóc giáo trình riêng tư khỏi **lịch sử** git.
+Trước lần push đầu tiên có **một** việc phải làm mà làm sau thì không cứu được:
+bóc giáo trình riêng tư khỏi **lịch sử** git.
 
-Tài liệu này là quy trình đó. Nó cũng ghi cái đã làm rồi (task 11) để không ai
-làm lại, và cái **chưa** làm — việc viết lại lịch sử — kèm đủ thứ cần biết để
-quyết định có chạy hay không.
+Tài liệu này là quy trình đó, và nay cũng là biên bản của lần chạy nó.
 
-> **Trạng thái:** phần 1 đã xong và đã commit. Phần 2 **chưa chạy**. Nó là thao
-> tác khó đảo ngược nhất trong repo này, nên nó nằm đây dưới dạng lệnh đã soạn
-> và đã kiểm chứng cách đo, chờ người duyệt — không phải một script tự chạy.
+> **Trạng thái (28/08/2026): CẢ HAI PHẦN ĐÃ XONG.** Phần 1 xong ở task 11. Phần 2
+> chạy ngay trước khi repo có remote đầu tiên (`github.com/vndee/tuhoc`, private).
+> Đo sau khi chạy: object dưới `courses/` **61 → 0**, commit chạm `courses/`
+> **4 → 0**, commit chứa `***REMOVED***` **46 → 0**, chứa
+> `***REMOVED***` **25 → 0**, và bản clone `--mirror` câm cả ba phép đo.
+> 342 commit giữ nguyên số lượng — không commit nào bị xoá, chỉ đổi mã.
+>
+> Tài liệu **không** bị hạ xuống thành ghi chép lịch sử: nếu có course riêng thứ
+> hai lọt vào, đây vẫn là quy trình phải chạy lại — và §2.2b, §2.7, §2.8 là
+> những chỗ đã làm hỏng công thức này ba lần.
 
 ---
 
@@ -23,7 +28,7 @@ mới **không giải quyết gì**: git giữ toàn bộ lịch sử, và ai cl
 cũng lấy lại được đủ 46 tệp bằng một lệnh:
 
 ```bash
-git show 955ce70:courses/***REMOVED***/chapters/p1-5.html   # vẫn đọc được sau khi xoá
+git show fd49d89:courses/***REMOVED***/chapters/p1-5.html   # vẫn đọc được sau khi xoá
 ```
 
 Nên phần 2 tồn tại. `git rm` là điều kiện cần, không phải điều kiện đủ.
@@ -170,24 +175,29 @@ gói riêng tư là tự mâu thuẫn, và nhãn ấy đi theo gói ra mọi nơ
 
 ---
 
-## 2. Chưa làm: bóc `courses/` khỏi mọi commit
+## 2. Đã làm 28/08/2026: bóc `courses/` khỏi mọi commit
 
 ### 2.1 Phạm vi, đã đo
+
+> Bản chép màn hình dưới đây là trạng thái **trước** khi viết lại, giữ nguyên làm
+> đối chứng. Mọi mã commit trong đó đã được ánh xạ sang mã mới (`commit-map`), nên
+> chúng vẫn phân giải được — nhưng `git log -- courses/` nay trả về rỗng, đó là
+> điểm của cả mục này. Xem §2.2b(a): các con số là ảnh chụp, không phải hằng số.
 
 ```
 $ git log --oneline -- courses/ | wc -l
 3
 $ git log --oneline -- courses/
-aeb18c7 feat(tools): extract course-kit runtime, vendor katex, viz.js
-955ce70 feat(tools): extract chapters + manifest from v1
-a105fe6 chore: monorepo scaffold
-$ git rev-list --count a105fe6..HEAD
+7d481b8 feat(tools): extract course-kit runtime, vendor katex, viz.js
+fd49d89 feat(tools): extract chapters + manifest from v1
+f2b4ca2 chore: monorepo scaffold
+$ git rev-list --count f2b4ca2..HEAD
 123
 ```
 
 Ba commit **chứa** course. Nhưng viết lại một commit đổi mã của **mọi hậu duệ**,
-nên **124 trên 126 commit đổi mã** (`a105fe6` và 123 commit sau nó). Chỉ hai
-commit đầu — `458f23d`, `46d1ad1` — giữ nguyên mã.
+nên **124 trên 126 commit đổi mã** (`f2b4ca2` và 123 commit sau nó). Chỉ hai
+commit đầu — `ecf01a8`, `7bc0401` — giữ nguyên mã.
 
 Cái được giữ lại là toàn bộ lịch sử phát triển: từng vòng review, từng phán
 quyết, từng lần số đo bị bác. Đó là tài sản thật của repo này, và đó là lý do
@@ -209,12 +219,12 @@ Bảy chỗ, tại thời điểm task 11:
 
 | tệp:dòng | mã được trích | trích cái gì |
 |---|---|---|
-| `apps/web/e2e/p2.spec.ts:436` | `5211e40` | commit sửa một Critical của P2 |
-| `apps/web/src/auth/RequireAuth.tsx:27` | `0a733cb` | commit đã làm cùng lựa chọn về lint fast-refresh |
-| `apps/web/src/auth/session.ts:20` | `b708620` | commit sửa rò dữ liệu chéo tài khoản |
-| `apps/web/src/course/import.test.ts:394` | `0273c88` | commit sửa zip64 của Task 2 |
-| `apps/web/src/course/import.ts:886` | `0273c88` | cùng commit trên |
-| `packages/course-format/src/validate.test.ts:600` | `64c6459` | HEAD lúc đo một số hiệu năng |
+| `apps/web/e2e/p2.spec.ts:436` | `8a27b63` | commit sửa một Critical của P2 |
+| `apps/web/src/auth/RequireAuth.tsx:27` | `e859459` | commit đã làm cùng lựa chọn về lint fast-refresh |
+| `apps/web/src/auth/session.ts:20` | `97a6e02` | commit sửa rò dữ liệu chéo tài khoản |
+| `apps/web/src/course/import.test.ts:394` | `98bf7a6` | commit sửa zip64 của Task 2 |
+| `apps/web/src/course/import.ts:886` | `98bf7a6` | cùng commit trên |
+| `packages/course-format/src/validate.test.ts:600` | `1f8201d` | HEAD lúc đo một số hiệu năng |
 | `docs/superpowers/plans/2026-08-19-p1-platform-core.md:15` | `f782323` + tag `v1-single-file` | **của repo `Research`, KHÔNG phải repo này** |
 
 Hai điều về bảng này:
@@ -304,7 +314,7 @@ git gc --prune=now --aggressive
 ```bash
 git rev-list --objects --all -- courses/ | wc -l     # 59 lúc viết
 git log --all --oneline -- courses/ | wc -l          # 3
-git show 955ce70:courses/***REMOVED***/chapters/p1-5.html | head -1   # in ra HTML
+git show fd49d89:courses/***REMOVED***/chapters/p1-5.html | head -1   # in ra HTML
 ```
 
 **Sau** (cả ba phải câm):
@@ -344,7 +354,10 @@ nằm trong pack.
 ### 2.6 Cái viết lại lịch sử KHÔNG sửa được
 
 - **Bản sao đã phát tán.** Nếu repo đã từng được đẩy đi đâu, viết lại ở đây không
-  chạm tới đó. Lúc viết dòng này chưa có remote nào, nên chưa dính.
+  chạm tới đó. Khi chạy thật (28/08/2026) repo **chưa có remote nào** — đó chính
+  là lý do thứ tự là viết-lại-trước-rồi-mới-`git remote add`. Từ nay điều kiện ấy
+  không còn đúng: một lần viết lại nữa sẽ phải force-push, và GitHub còn giữ
+  object mồ côi truy cập được bằng mã một thời gian sau đó.
 - **Bản dự phòng ở bước 0.** Nó có đầy đủ giáo trình. Đó là chủ đích — nhưng nó
   không được lẫn vào thứ gì sẽ publish.
 - **Cái ngoài git.** `~/Documents/claude/Research/***REMOVED***.html` (bản
@@ -363,19 +376,38 @@ Chạy xong §2, dọn sạch lịch sử, `git push` — và ba thứ dưới �
 | # | Đường rò | `--path courses/` có bóc? | Đóng bằng |
 |---|---|---|---|
 | 1 | `main` theo dõi 46 tệp giáo trình như **tệp sống** | có (nó nằm dưới `courses/`) | gộp nhánh đã xoá, rồi chạy §2 |
-| 2 | `apps/web/dist/courses/<id>/` — thứ `wrangler pages deploy dist` đẩy lên | **KHÔNG** — `dist/` không được git theo dõi | bộ lọc trong `apps/web/vite-plugins/courseAssets.ts` |
+| 2 | `apps/web/dist/courses/<id>/` — thứ `wrangler pages deploy dist` đẩy lên | **KHÔNG** — `dist/` không được git theo dõi | không còn bản chép nào (xem dưới) |
 | 3 | Văn xuôi + số chương chép nguyên văn vào một tệp **ngoài** `courses/` | **KHÔNG** | phép đo xuất xứ, xem dưới |
 | 4 | `INSERT INTO courses …` trong migration đã áp | **KHÔNG** | `0003_drop_seed_course` |
 
-**Đường 2 giờ có chốt máy, không còn là một câu cảnh báo.**
-`closeBundle()` chép `courses/` vào `dist/` **từng gói một**, và chỉ chép gói có
-`id` nằm trong `fixtures/courses/` — tức gói mẫu công khai do chính repo này
-phát hành. Gói riêng bị **loại khỏi bundle** (in ra một dòng nói rõ), chứ không
-làm build đỏ: luồng dev bình thường của tác giả luôn có gói riêng trong
-`courses/`, và một cờ thoát dùng hằng ngày thì luôn bật. Ngay sau đó là một phép
-khẳng định đọc `dist/courses/` thật: có gì lạ ở đó thì nó **xoá đi rồi ném lỗi**
-— xoá trước, vì `wrangler pages deploy dist` không hỏi lần build gần nhất xanh
-hay đỏ, nó chỉ đọc thư mục.
+**Đường 2 nay đóng bằng cách mạnh hơn cái chốt từng canh nó: không còn gì để
+lọc.**
+
+Chốt cũ — và nó có thật, đây là phần thuật sự chứ không phải kế hoạch —
+`closeBundle()` chép `courses/` vào `dist/` **từng gói một**, chỉ chép gói có
+`id` nằm trong `fixtures/courses/`, tức gói mẫu công khai do chính repo này phát
+hành. Gói riêng bị loại khỏi bundle (in ra một dòng nói rõ) chứ không làm build
+đỏ, vì luồng dev bình thường của tác giả luôn có gói riêng trong `courses/` và
+một cờ thoát dùng hằng ngày thì luôn bật. Ngay sau đó là một phép khẳng định đọc
+`dist/courses/` thật: có gì lạ thì xoá đi rồi ném lỗi — xoá trước, vì `wrangler
+pages deploy dist` không hỏi lần build gần nhất xanh hay đỏ, nó chỉ đọc thư mục.
+
+Commit `dafd4eb` gỡ **cả bản chép**, không siết chốt thêm. Lý do không phải là
+chốt ấy hỏng — nó chạy đúng — mà là cú chuyển trục sang máy chủ
+(`docs/superpowers/specs/2026-08-25-server-side-pivot.md`) khiến câu hỏi "gói nào
+được phép đi cạnh bundle" hết nghĩa: course nay do `apps/api` phục vụ từ
+Postgres, nên **không gói nào**, công khai hay riêng tư, còn lý do nằm trong
+`dist/`. Một bản chép đã lọc vẫn là một nguồn sự thật thứ hai, không đồng bộ, cho
+đúng cái định dạng mà pha ấy khai tử — nên thứ thay thế cái chốt là sự vắng mặt.
+`closeBundle()` giờ chỉ còn chép `course-kit/` (KaTeX và `runtime.js`, những
+`<script src>` cổ điển mà mọi chương vẫn cần khi dựng hình).
+
+Hệ quả cho tài liệu này: `dist/courses/` không bao giờ được tạo ra nữa, nên
+Đường 2 không còn cần một bộ lọc đúng để đóng. Phép đo 3 của
+`scripts/check_publishable.py` vẫn chạy, nhưng nay hỏi một câu khác — **có gì
+dưới `dist/courses/` không**, bất kể công khai hay riêng tư — vì mọi thứ ở đó
+chỉ có thể là tàn dư của một bản build từ TRƯỚC `dafd4eb`, trên một máy chưa
+build lại. Đó là lý do nó vẫn không phải một no-op.
 
 **Đường 3 là đường khó nhất, vì nó không mang tên course.**
 `.claude/skills/course-authoring/SKILL.md` từng chép 714 ký tự văn xuôi kèm số
@@ -486,9 +518,13 @@ Một repo không mang course nào **cho người dùng**. Đó là hình dạng
 tảng không đi kèm nội dung, nội dung là gói rời. Cái nó mang là **dữ liệu test**
 — hai gói mẫu công khai trong `fixtures/courses/`, do chính repo này soạn.
 
-- `make dev-web` chạy được; thư viện rỗng cho tới khi họ import gói của họ.
+- `make dev-web` chạy được; danh mục rỗng cho tới khi một `apps/api` có course
+  được trỏ tới (từ cú chuyển trục sang máy chủ, người đọc không còn tự nhập gói
+  — xem `docs/superpowers/specs/2026-08-25-server-side-pivot.md`).
 - `bun run build` chạy được với `courses/` rỗng **và** với `courses/` không tồn
-  tại (`apps/web/vite-plugins/courseAssets.ts`, `copyDirIfPresent`).
+  tại — nay vì một lý do đơn giản hơn hẳn: từ commit `dafd4eb` bản build **không
+  đọc `courses/` nữa** (`apps/web/vite-plugins/courseAssets.ts`, `closeBundle`
+  chỉ còn chép `course-kit/`).
 - `make test-web`, `make test-format`, `make test-cli`, `make test-e2e`:
   **xanh trọn vẹn**. Đo ở task 13 bằng cách xoá `courses/` và trỏ
   `TUHOC_COURSE_STORE` vào một thư mục không tồn tại — 739 + 164 + 43 test đơn

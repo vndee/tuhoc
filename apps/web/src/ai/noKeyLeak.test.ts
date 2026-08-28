@@ -211,18 +211,19 @@ describe('key không rò sang trang chính', () => {
    * HC-1 của kế hoạch, và ràng buộc §3.2(1) của spec: key phải bị loại khỏi
    * đồng bộ, nên nó không được có bảng nào trong Dexie.
    *
-   * Chốt gốc sống ở `db/local.test.ts` ("has exactly five tables"), và tệp này
-   * KHÔNG thay nó — nó lặp lại chốt ấy từ phía lời hứa BYOK, để người thêm một
-   * bảng `keys` gặp câu hỏi ở cả hai nơi: một lần với tư cách "bạn vừa đổi lược
-   * đồ cục bộ", một lần với tư cách "bạn vừa đặt key vào thứ được đồng bộ".
-   * Danh sách ghi bằng TÊN chứ không bằng số đếm, cùng lý do file kia đã nêu.
+   * Chốt gốc sống ở `db/local.test.ts` ("has exactly four tables" — bốn, không
+   * còn năm: Task 13 gỡ `packages` khỏi lược đồ, vì luồng import nó phục vụ đã
+   * chết — spec `2026-08-25-server-side-pivot.md` §1), và tệp này KHÔNG thay
+   * nó — nó lặp lại chốt ấy từ phía lời hứa BYOK, để người thêm một bảng `keys`
+   * gặp câu hỏi ở cả hai nơi: một lần với tư cách "bạn vừa đổi lược đồ cục bộ",
+   * một lần với tư cách "bạn vừa đặt key vào thứ được đồng bộ". Danh sách ghi
+   * bằng TÊN chứ không bằng số đếm, cùng lý do file kia đã nêu.
    */
-  it('Dexie vẫn đúng năm bảng — key không được thêm bảng thứ sáu', () => {
+  it('Dexie vẫn đúng bốn bảng — key không được thêm bảng thứ năm', () => {
     expect(db.tables.map((t) => t.name).sort()).toEqual([
       'annotations',
       'meta',
       'outbox',
-      'packages',
       'progress',
     ]);
   });

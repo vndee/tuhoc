@@ -60,26 +60,37 @@ export const vi = {
   'settings.section.account': 'Tài khoản',
   'settings.section.appearance': 'Ngôn ngữ & giao diện',
   'settings.section.localData': 'Dữ liệu trên máy',
+  'settings.section.general': 'Chung',
+  'settings.lede': 'Tài khoản, giao diện, và những gì đang nằm trên máy này.',
+  'settings.account.syncBlurb': 'Tiến độ đồng bộ qua tài khoản này.',
+  'settings.appearance.themeLight': 'Sáng',
+  'settings.appearance.themeDark': 'Tối',
+  'settings.localData.statNotes': 'ghi chú',
+  'settings.localData.statBytes': 'đang chiếm',
+  'settings.localData.statsAria': 'Máy này đang giữ những gì',
 
   /* ── mục Tài khoản ─────────────────────────────────────────────────────── */
 
-  'settings.account.blurb':
-    'Tài khoản giữ đúng một việc: đồng bộ tiến độ và ghi chú giữa các máy của bạn. Nội dung khoá học thì nằm trên máy này.',
   'settings.account.loading': 'Đang hỏi máy chủ xem ai đang đăng nhập…',
   'settings.account.unknown': 'Chưa lấy được thông tin tài khoản. Phần này cần mạng.',
-  'settings.account.signedInAs': (name: string, email: string) => `Đang đăng nhập: ${name} · ${email}`,
+  'settings.account.signedInAs': (name: string, email: string) =>
+    name === '' ? `Đang đăng nhập: ${email}` : `Đang đăng nhập: ${name} · ${email}`,
   /**
    * Câu này nói ra một hệ quả CÓ THẬT, không phải một lời doạ lịch sự:
    * `useLogout` gọi `clearSession()`, thứ xoá mọi bảng cục bộ. Người dùng bấm
    * "Đăng xuất" mà không biết điều đó sẽ mất ghi chú chưa kịp đồng bộ.
+   *
+   * ĐÃ BỎ "gói đã tải" ở fix-round-1 (task-14): Task 13 xoá bảng `db.packages`
+   * — không còn gói khoá học nào tải về máy để đăng xuất xoá đi cả. Hai thứ
+   * còn lại (ghi chú, hàng đợi tiến độ chưa gửi) vẫn đúng: `clearLocalData()`
+   * xoá cả hai qua `useLogout`.
    */
   'settings.account.signOutWarning':
-    'Đăng xuất xoá dữ liệu học của phiên này khỏi trình duyệt này: gói đã tải, ghi chú và hàng đợi tiến độ chưa gửi được. Đó là cách duy nhất để dữ liệu của hai người dùng chung một máy không lẫn vào nhau.',
+    'Đăng xuất xoá dữ liệu học của phiên này khỏi trình duyệt này: ghi chú và hàng đợi tiến độ chưa gửi được. Đó là cách duy nhất để dữ liệu của hai người dùng chung một máy không lẫn vào nhau.',
 
   /* ── mục Ngôn ngữ & giao diện ──────────────────────────────────────────── */
 
-  'settings.appearance.blurb':
-    'Hai lựa chọn dưới đây thuộc về THIẾT BỊ này, không thuộc tài khoản: đăng nhập bằng tài khoản khác không đổi chúng, và chúng không đồng bộ đi đâu cả.',
+  'settings.appearance.blurb': 'Áp cho khung ứng dụng. Nội dung khoá học giữ ngôn ngữ của chính nó.',
   'settings.appearance.language': 'Ngôn ngữ',
   'settings.appearance.theme': 'Giao diện',
   'settings.appearance.themeNowLight': 'Đang dùng giao diện sáng.',
@@ -87,12 +98,17 @@ export const vi = {
 
   /* ── mục Dữ liệu trên máy ──────────────────────────────────────────────── */
 
-  'settings.localData.blurb':
-    'Trên máy này có: gói khoá học đã tải về, ghi chú và phần tô sáng của bạn, hàng đợi tiến độ chưa gửi được — và, ở kho khoá tại một địa chỉ khác, key AI của bạn.',
+  /**
+   * SỬA Ở fix-round-1 (task-14): bản cũ nói "Gói khoá học và ghi chú nằm
+   * trong trình duyệt này" — sai từ Task 13, khi `db.packages` bị xoá khỏi
+   * lược đồ Dexie (spec `2026-08-25-server-side-pivot.md` §1). Không còn gói
+   * nào để nằm ở đây; hai con số ngay dưới câu này (`statNotes`, `statBytes`)
+   * đã tự nói đúng những gì bảng này còn giữ.
+   */
+  'settings.localData.blurb': 'Ghi chú nằm trong trình duyệt này. Khoá học không tải gói nào về máy — đọc thẳng từ máy chủ.',
   'settings.localData.clearedOnSignOut':
-    'Cơ sở dữ liệu cục bộ mang tên TRÌNH DUYỆT chứ không mang tên người dùng, nên nó bị xoá sạch mỗi lần đổi người đăng nhập — kể cả khi không ai bấm đăng xuất.',
-  'settings.localData.kept':
-    'Ngôn ngữ và giao diện sáng/tối thì ở lại: chúng là tuỳ chọn của thiết bị, không phải dữ liệu học.',
+    'Cơ sở dữ liệu mang tên TRÌNH DUYỆT, không mang tên người dùng — nên nó bị xoá sạch mỗi lần đổi người đăng nhập, kể cả khi không ai bấm đăng xuất.',
+  'settings.localData.kept': 'Ngôn ngữ và giao diện thì ở lại: chúng là tuỳ chọn của thiết bị.',
 
   /* ── mục Trợ lý AI ─────────────────────────────────────────────────────── */
 
@@ -106,11 +122,10 @@ export const vi = {
    * Câu giữ nguyên vẹn trong catalog thay vì bị cắt làm ba khoá, nên trật tự từ
    * của bản tiếng Anh khác được mà chỗ vẽ không phải biết.
    */
-  'settings.ai.blurb': (vault: string) =>
-    `Bạn dùng key của chính mình, và key ấy được cất trong ${vault} — một trang riêng chạy ở một địa chỉ riêng, mở ra đè lên trang này khi bạn vào đây. Trình duyệt cấm mã của trang bài học đọc bất cứ thứ gì bên trong kho khoá, nên một khóa học tương tác bị duyệt sót vẫn không lấy được key của bạn. Vì thế ô dán key nằm trong kho khoá, không nằm trên trang này.`,
+  'settings.ai.blurb': (vault: string) => `Chạy bằng key của chính bạn, cất trong ${vault} ở một địa chỉ riêng.`,
   'settings.ai.blurbVault': 'kho khoá',
   'settings.ai.keyStays':
-    'Key không rời khỏi trình duyệt này: nó không được đồng bộ giữa các thiết bị và không đi qua máy chủ của chúng tôi. Đổi máy thì cắm lại; xoá thì không lấy lại được.',
+    'Key không rời trình duyệt này, không đồng bộ, không đi qua máy chủ của chúng tôi.',
   'settings.ai.unavailable':
     'Bản dựng này không có kho khoá, nên chưa dùng được trợ lý AI. Đây là một thiếu sót của cấu hình khi triển khai, không phải của tài khoản bạn — phần đọc giáo trình vẫn chạy bình thường.',
   'settings.ai.open': 'Mở kho khoá',
@@ -142,7 +157,7 @@ export const vi = {
    * chứ không chặn được gì.
    */
   'settings.ai.budgetBody':
-    'Kho khoá đặt một hạn mức ký tự cho mỗi phiên. Tiêu hết thì nó hỏi lại ngay trong khung, và hỏi kèm nhật ký những gì đã rời máy — con số ấy là thứ đáng nhìn nhất đúng vào lúc bấm. Hạn mức không chặn được một khoá học độc kiên nhẫn; nó chỉ khiến việc ấy phải đi qua tay bạn.',
+    'Kho khoá đặt một hạn mức ký tự cho mỗi phiên. Tiêu hết thì nó hỏi lại, kèm nhật ký những gì đã rời máy.',
 
   /* ══════════════════════════════════════════════════════════════════════ *
    * KHO KHOÁ (`apps/vault`) — origin riêng, và là lý do gói này không phụ
@@ -288,6 +303,11 @@ export const vi = {
   'sidebar.noCourseLoaded': 'Chưa có khóa học nào được tải.',
 
   'topbar.menu': 'Mở menu',
+  'topbar.searchPlaceholder': 'Tìm khoá, chương…',
+  'topbar.searchOpen': 'Mở ô tìm kiếm',
+  'topbar.searchClose': 'Đóng ô tìm kiếm',
+  'topbar.searchSoon': 'Tìm kiếm chưa nối dây — sắp có.',
+  'account.menuAria': 'Menu tài khoản',
   /** Cùng chữ với nhãn nút `#mark-btn` mà `reader/ChapterView.tsx` ghi đè. */
   'topbar.markRead': 'Đánh dấu đã học',
   'topbar.themeToLight': 'Chuyển sang giao diện sáng',
@@ -323,6 +343,9 @@ export const vi = {
 
   'course.loading': 'Đang tải khóa học…',
   'course.notFound': 'Không tìm thấy khóa học.',
+  'course.parts.title': (n: string) => `Khoá này đi qua ${n} chặng`,
+  'course.parts.hint': 'Chi tiết từng chương nằm ở mục lục bên trái.',
+  'course.partCount': (read: string, total: string) => `${read}/${total}`,
   'chapter.notFound': 'Không tìm thấy chương này.',
   'chapter.notFoundInCourse': 'Không tìm thấy chương này trong khóa học.',
 
@@ -351,7 +374,21 @@ export const vi = {
   'home.notes.loading': 'Đang tải ghi chú…',
   'home.notes.empty': 'Chưa có ghi chú nào. Bôi đen một đoạn khi đọc để ghi lại.',
   'home.notes.open': 'Mở chương',
+  'home.notes.formula': 'công thức',
   'home.notes.aria': (course: string) => `Mở ghi chú này trong ${course}`,
+
+  /**
+   * Trạng thái rỗng của Bảng điều khiển, sau khi luồng import chết.
+   *
+   * Bản trước dùng `<EmptyLibrary>` (`pages/Library.tsx`) — ba cách NHẬP một
+   * gói. Nay không ai nhập gì nữa: mọi khoá học đã ở sẵn trên máy chủ, công
+   * khai, đọc được ngay. Ruling S1-F17 ("trang chủ rỗng vẫn phải là một HÀNH
+   * ĐỘNG") vẫn đúng nguyên vẹn — chỉ có hành động ấy đổi từ "nhập một gói"
+   * thành "mở danh mục".
+   */
+  'home.empty.heading': 'Bạn chưa bắt đầu khoá nào',
+  'home.empty.lede': 'Mọi khoá học đều đọc được ngay — không cần nhập gói, không cần chờ tải về.',
+  'home.empty.cta': 'Xem danh mục khoá học',
 
   /* ── tiến độ (`pages/Progress.tsx`) ─────────────────────────────────────── */
 
@@ -365,13 +402,38 @@ export const vi = {
   'progress.sentenceEmpty':
     'Chưa có phút học nào được ghi lại. Mở một chương và đọc; số liệu bắt đầu từ đó.',
   'progress.heat.title': 'Bảy tuần gần nhất',
-  'progress.heat.aria': 'Lịch bảy tuần gần nhất, mỗi ô là một ngày',
+  'progress.heat.aria': 'Lịch học cả năm, mỗi ô là một ngày',
+  'progress.heat.cell': (date: string, minutes: string) => `${date}: ${minutes} phút`,
+  'progress.year.title': (days: string, year: string) => `${days} ngày có học trong năm ${year}`,
+  'progress.year.courses': 'Khoá học trong năm',
+  'progress.year.noCourses': (year: string) => `Năm ${year} chưa có nhịp học nào được ghi lại.`,
+  'progress.year.pickAria': 'Chọn năm',
+  'progress.year.error': 'Chưa lấy được lịch của năm này.',
   'progress.heat.day': (date: string, minutes: string) => `${date}: ${minutes} phút`,
   'progress.heat.noData': (date: string) => `${date}: ngoài phạm vi số liệu máy chủ trả về`,
   'progress.heat.less': 'ít',
   'progress.heat.more': 'nhiều',
   'progress.byCourse': 'Theo khoá học',
-  'progress.noCourses': 'Chưa có khoá học nào để đo. Nhập một gói ở mục Khoá học.',
+  'progress.stat.chapters': 'Chương đã học',
+  'progress.stat.chaptersSub': (n: string) => `trên ${n} khoá trong máy này`,
+  'progress.stat.streak': 'Chuỗi ngày liền',
+  'progress.stat.streakSub': 'tính tới hôm nay',
+  'progress.stat.notes': 'Ghi chú đã viết',
+  'progress.stat.notesSub': 'còn giữ trên máy này',
+  /**
+   * fix-round-2 (task-14) — bản cũ nói "Nhập một gói ở mục Khoá học", một
+   * hành động không còn tồn tại: `Courses.tsx` (đích của route `/courses`)
+   * không còn nút "Nhập gói" nào (spec `2026-08-25-server-side-pivot.md`
+   * §1). Tệ hơn một lời hứa sai — đây là một CHỈ DẪN sai, đưa người đọc tới
+   * một màn hình để làm một việc không làm được ở đó.
+   *
+   * `Progress.tsx:161` nối chuỗi này với `{' '}` rồi một `<Link>` mang chữ
+   * `nav.courses` ("Khoá học") ngay sau — nên câu ở đây CỐ Ý không lặp lại
+   * "Khoá học" và không có dấu chấm cuối: nó dừng ngay trước từ mà cái Link
+   * sẽ tự thêm vào, để cả hai đọc thành một câu liền mạch thay vì hai câu
+   * chồng lên nhau ("...Khoá học. Khoá học" — điều bản cũ mắc phải).
+   */
+  'progress.noCourses': 'Chưa có khoá học nào để đo. Bắt đầu đọc ở mục',
   'progress.chaptersDone': (n: string) => `${n} chương đã đọc`,
   'progress.course.chapters': (read: string, total: string) => `${read}/${total} chương`,
   'progress.course.aria': (percent: string) => `${percent}% hoàn thành`,
@@ -386,24 +448,61 @@ export const vi = {
    * một thẻ trôi giữa màn hình trống: người chưa có tài khoản đọc xong vẫn
    * không biết mình sắp đăng ký cái gì. Ba gạch đầu dòng dưới đây không phải
    * khẩu hiệu — mỗi câu tương ứng một tính chất mà mã trong repo này thật sự
-   * giữ: gói nằm trên máy (`db/local.ts`), key nằm ở origin kho khoá
-   * (`apps/vault`), course riêng tư không lộ ra registry (`registry/`).
+   * giữ: khoá học đọc được ngay, miễn phí, không cần tài khoản (máy chủ phục
+   * vụ mọi khoá học công khai — không còn gói nào để tải), key nằm ở origin
+   * kho khoá (`apps/vault`), tiến độ và ghi chú đồng bộ qua tài khoản
+   * (`sync/engine.ts`).
+   *
+   * GẠCH ĐẦU DÒNG THỨ NHẤT VÀ THỨ BA ĐỔI Ở TASK NÀY (task-14, spec
+   * `2026-08-25-server-side-pivot.md` §0.2) — khoá cũng đổi tên
+   * (`login.point.offline` → `login.point.free`, `login.point.private` →
+   * `login.point.sync`) để chỗ nào còn trỏ khoá cũ nổ compile thay vì lặng lẽ
+   * trống. Bản cũ hứa "gói nằm trên máy bạn, đọc ngoại tuyến" — đúng khi
+   * course còn là một gói tải về cất trong `db/local.ts`; sai từ khi course
+   * chuyển hẳn lên máy chủ, vì đọc mà mất mạng giờ là hỏng chứ không phải một
+   * tính năng. Bullet thứ ba từng là "course riêng tư không lộ ra registry" —
+   * khái niệm ấy cũng rời đi cùng registry riêng tư (`courses.lede` đã tự
+   * khai "mọi khoá học đều công khai"), nên chỗ của nó nay là lời hứa đồng bộ.
    */
-  'login.pitch.headline': 'Giáo trình là một gói. Bạn giữ nó, không phải chúng tôi.',
+  'login.pitch.headline': 'Khoá học mở cho mọi người.',
   'login.pitch.lede':
-    'Tải một khoá học về, đọc được cả khi mất mạng, ghi chú thẳng lên trang. Tiến độ thì đồng bộ giữa các máy của bạn.',
+    'Mở một khoá học và đọc ngay — không cần cài đặt, không cần chờ tải. Bôi đen một đoạn để ghi chú thẳng lên trang, hoặc hỏi trợ lý AI bằng key của chính bạn.',
   'login.pitch.aria': 'Tự học làm được gì',
-  'login.point.offline': 'Đọc ngoại tuyến — gói nằm trên máy bạn',
+  'login.point.free': 'Đọc toàn bộ giáo trình miễn phí — không cần tài khoản',
   'login.point.ownKey': 'Trợ lý AI chạy bằng key của chính bạn, và key không đi qua máy chủ của chúng tôi',
-  'login.point.private': 'Khoá học riêng tư là riêng tư — không ai khác thấy',
+  'login.point.sync': 'Đăng nhập để tiến độ và ghi chú theo bạn trên mọi thiết bị',
 
   'login.title': 'Đăng nhập',
-  'login.lede': 'Đăng nhập hoặc tạo tài khoản để đồng bộ tiến độ học trên nhiều thiết bị.',
+  'login.heading.login': 'Chào mừng trở lại',
+  'login.heading.register': 'Tạo tài khoản',
+  'login.lede': 'Tiến độ học đồng bộ giữa các máy của bạn.',
   'login.tablist.aria': 'Đăng nhập hoặc đăng ký',
   'login.tab.login': 'Đăng nhập',
   'login.tab.register': 'Đăng ký',
   'login.field.email': 'Email',
   'login.field.password': 'Mật khẩu',
+  'login.field.emailPlaceholder': 'ban@vi-du.com',
+  'login.password.show': 'Hiện mật khẩu',
+  'login.password.hide': 'Ẩn mật khẩu',
+  /**
+   * fix-round-1 (task-14) — vòng đầu chỉ rút bản hai câu xuống còn một câu
+   * ("đăng nhập chỉ để tiến độ và ghi chú theo bạn sang máy khác"), nhưng câu
+   * còn lại vẫn là gần như NGUYÊN VĂN `login.point.sync` ("Đăng nhập để tiến
+   * độ và ghi chú theo bạn trên mọi thiết bị") đứng cách đó vài dòng — chỗ
+   * lặp chỉ chuyển từ "hai câu trùng nhau" sang "một câu trùng một bullet".
+   *
+   * SỬA THẬT ở vòng này: đổi góc nhìn thay vì rút gọn thêm. Panel bên trái đã
+   * nói HẾT lợi ích của việc đăng nhập (tiến độ + ghi chú theo bạn); câu ở
+   * đây không cần nói lại lợi ích ấy lần nữa, nó nói thứ panel bên trái không
+   * nói: KHÔNG CÓ GÌ MẤT nếu chưa đăng nhập ngay bây giờ. Đây là câu trả lời
+   * thật cho "tôi có phải quyết định ngay không" — và câu trả lời là không,
+   * tài khoản tạo lúc nào cũng được.
+   */
+  'login.reassure': 'Không đăng nhập ngay cũng không mất gì — tạo tài khoản lúc nào cần thì tạo.',
+  'login.switch.noAccount': 'Chưa có tài khoản?',
+  'login.switch.hasAccount': 'Đã có tài khoản?',
+  'login.switch.toRegister': 'Tạo tài khoản',
+  'login.switch.toLogin': 'Đăng nhập',
   'login.field.name': 'Tên',
   'login.submit.loggingIn': 'Đang đăng nhập…',
   'login.submit.login': 'Đăng nhập',
@@ -423,19 +522,27 @@ export const vi = {
 
   /* ── màn Khoá học (`pages/Courses.tsx`) ────────────────────────────────
    *
-   * MỘT nơi chốn, hai tab và một nút — thay cho ba mục thanh bên. Đặc tả:
-   * `docs/superpowers/specs/2026-08-23-ia-redesign.md`. `library.title` và
-   * `library.lede` cũ đã bị XOÁ chứ không để lại: phần đầu trang nay thuộc về
-   * `Courses.tsx`, và hai khoá mô tả một cái đầu trang không còn ai vẽ là thứ
-   * lần sau có người dịch lại mà không biết nó chết rồi.
+   * MỘT danh mục công khai, không tab, không nút nhập — spec
+   * `2026-08-25-server-side-pivot.md` §1, §2.4. Bản trước (hai tab, một nút
+   * "Nhập gói", `courses.tabs.aria`/`courses.tab.*`/`courses.import.*`) đi
+   * cùng luồng import của người đọc, nay đã chết; những khoá ấy ĐÃ BỊ XOÁ chứ
+   * không để lại — một khoá mô tả một điều khiển không còn ai vẽ là thứ lần
+   * sau có người dịch lại mà không biết nó chết rồi (task-13 report ghi rõ).
+   * `courses.lede` đổi CÂU, không đổi TÊN KHOÁ: nó vẫn là câu dẫn của đúng
+   * trang này, chỉ là trang ấy không còn "của bạn" lẫn "hai tab" để nói tới.
    */
   'courses.title': 'Khoá học',
-  'courses.lede': 'Khoá học của bạn và kho cộng đồng — một nơi, hai tab.',
-  'courses.tabs.aria': 'Hai kho khoá học',
-  'courses.tab.yours': 'Của bạn',
-  'courses.tab.registry': 'Kho cộng đồng',
+  'courses.lede': 'Mọi khoá học, công khai — đọc miễn phí, không cần tài khoản.',
+  'courses.loading': 'Đang tải danh mục…',
+  'courses.empty': 'Chưa có khoá học nào được xuất bản.',
+  'courses.list.aria': 'Danh mục khoá học',
+  /**
+   * `pages/Library.tsx`'s `EmptyLibrary` là nơi DUY NHẤT còn dùng khoá này —
+   * `pages/Dashboard.tsx` đã tự viết lời mời riêng của nó (xem `home.empty.*`
+   * bên dưới) vì thư viện không còn là khái niệm của trang chủ. Khoá này rời
+   * đi cùng `pages/Library.tsx` ở một commit sau, không phải ở đây.
+   */
   'courses.import.action': 'Nhập gói',
-  'courses.import.close': 'Đóng',
   'library.loading': 'Đang tải thư viện…',
   'library.empty.headingOffline': 'Chưa có khóa học nào trên thiết bị này',
   'library.empty.heading': 'Thư viện của bạn đang trống',
@@ -446,6 +553,7 @@ export const vi = {
     'Đang đọc bản lưu trên máy — máy chủ không trả lời một lần nào. Có thể bạn đang ngoại tuyến, hoặc máy chủ đang bị cấu hình sai (CORS/DNS): trình duyệt trả về đúng một lỗi trống cho cả hai, nên trang này không phân biệt được. Chỉ những khóa học đã lưu trên thiết bị này mới hiện ở dưới.',
   'library.meta.version': (version: string) => `phiên bản ${version}`,
   'library.meta.held': 'đã tải về máy',
+  'library.meta.chapters': (read: string, total: string) => `${read}/${total} chương`,
   'library.update.available': (version: string) => `Có bản mới: v${version}`,
   'library.update.view': 'Xem thay đổi',
   'library.tier.contentTitle': 'Hạng content: chỉ HTML, CSS, hình ảnh và công thức toán — không có JavaScript.',
@@ -454,12 +562,12 @@ export const vi = {
   'library.tier.interactiveLabel': 'interactive — chạy mã JavaScript',
   'library.tier.unknownTitle': 'Gói này không khai báo hạng, nên không có gì bảo đảm nó không chứa JavaScript.',
   'library.tier.unknownLabel': 'hạng không rõ — có thể chạy mã',
-  'library.emptyState.lede':
-    'Bạn chưa có khóa học nào. tuhoc cố ý không đóng gói sẵn khóa học nào — bạn tự chọn thứ mình đọc, và cách duy nhất để bắt đầu là nhập một gói.',
-  'library.emptyState.wayFile': (zip: string) => `một tệp ${zip} có sẵn trên máy bạn — cách này chạy được cả khi mất mạng`,
+  'library.emptyState.lede': (app: string) =>
+    `${app} cố ý không đóng gói sẵn nội dung — bạn tự chọn thứ mình đọc. Bắt đầu bằng cách nhập một gói.`,
+  'library.emptyState.wayFile': (zip: string) => `một tệp ${zip} trên máy bạn`,
   'library.emptyState.wayUrl': (zip: string) => `một đường dẫn tới tệp ${zip}`,
   'library.emptyState.wayRepo': 'một repo GitHub công khai',
-  'library.emptyState.registry': 'Kho khóa học cộng đồng (registry) đang được xây dựng — khi có, nó sẽ hiện ngay ở đây.',
+  'library.emptyState.registry': 'Kho khoá học cộng đồng (registry) đang được xây dựng — khi có, nó sẽ hiện ngay ở đây.',
 
   /* ── nhập khóa học (`pages/ImportCourse.tsx`) ──────────────────────────── */
 
@@ -517,6 +625,10 @@ export const vi = {
   'reader.notesTab': (count: string) => `Ghi chú (${count})`,
   'reader.exerciseCheckbox': (index: string) => `Đánh dấu đã làm bài tập ${index}`,
   'reader.exerciseDone': 'Đã làm',
+  /* Chỉ hiện cho người đọc chưa đăng nhập ĐÃ ĐƯỢC XÁC NHẬN (GET /me → 401) —
+     không phải mặc định trong lúc còn chờ /me trả lời, kẻo nó nháy lên cho cả
+     người đã đăng nhập rồi mới biến mất. Xem `reader/ChapterView.tsx`. */
+  'reader.anonNudge': 'Đăng nhập để lưu tiến độ, ghi chú và hỏi AI.',
 
   /* ── chế độ đọc: một cột chữ (`reader/TocDrawer.tsx`, hướng A) ──────────── */
 
@@ -584,6 +696,11 @@ export const vi = {
   /* ── bảng hỏi AI (`ai/AskPanel.tsx`, `ai/DeepDive.tsx`, `ai/useAI.ts`) ─── */
 
   'ai.panel.close': 'Đóng trợ lý',
+  'ai.panel.expand': 'Mở rộng khung hỏi–đáp',
+  'ai.panel.resize': 'Kéo để đổi cỡ khung',
+  'ai.panel.collapse': 'Thu khung hỏi–đáp',
+  'ai.panel.newThread': 'Hội thoại mới',
+  'ai.panel.thinking': 'Đang nghĩ…',
   'ai.panel.needsSetup':
     'Trợ lý AI chạy bằng key của chính bạn, và máy này chưa có key nào. Key được cất trong kho khoá — một trang riêng ở một địa chỉ riêng, nên khoá học không đọc được nó.',
   'ai.panel.openSettings': 'Mở trang cấu hình',
@@ -638,7 +755,7 @@ export const vi = {
   'update.error.courseKit':
     'Chưa xem trước được: không tải được bộ dựng chương (công thức toán). Hãy kiểm tra kết nối rồi thử lại.',
   'update.error.unsafe': (version: string, findings: string) =>
-    `Không thể cập nhật: bản ${version} tự khai là hạng “content” (chỉ có chữ) nhưng lại chứa mã chạy được. ${findings}`,
+    `Không thể cập nhật: bản ${version} chứa mã chạy được, điều không khóa học nào được phép. ${findings}`,
   'update.error.versionUnavailable': (version: string) =>
     `Chưa xem trước được: không lấy được bản ${version} của khoá học này.`,
   'update.summary.exact': (exact: string, total: string) => `${exact}/${total} ghi chú giữ đúng chỗ`,
@@ -680,23 +797,41 @@ export const vi = {
   'finding.MANIFEST_MISSING': (manifest: string) => `Gói thiếu ${manifest} ở thư mục gốc — đó là tệp mô tả khóa học.`,
   'finding.MANIFEST_PARSE': (manifest: string) => `${manifest} không phải JSON hợp lệ.`,
   'finding.MANIFEST_FIELD': (manifest: string) => `${manifest} thiếu một trường bắt buộc hoặc trường đó sai kiểu.`,
+  'finding.TIER_REMOVED':
+    'Manifest của khóa học này còn trường "tier" — định dạng mới đã bỏ khái niệm "hạng". Hãy xoá trường đó khỏi manifest.json; phần tương tác giờ là một widget riêng, không còn khai qua "tier".',
   'finding.SEMVER': 'Số phiên bản của khóa học không đúng dạng X.Y.Z.',
   'finding.RUNTIME_RANGE': 'Khóa học yêu cầu một phiên bản runtime mà ứng dụng này không hỗ trợ.',
   'finding.DUPLICATE_CHAPTER_ID': 'Hai chương dùng chung một mã id.',
   'finding.CHAPTER_FILE_MISSING': 'Mục lục nhắc tới một tệp chương không có trong gói.',
   'finding.SCRIPT_TAG':
-    'Chương này chứa thẻ <script>. Khóa học hạng "content" chỉ được chứa chữ và hình, không chứa mã chạy được.',
+    'Chương này chứa thẻ <script>. Không khóa học nào được chứa mã chạy được — phần tương tác chỉ sống trong widget, chạy trong khung sandbox riêng.',
   'finding.EVENT_HANDLER_ATTR':
-    'Chương này có thuộc tính bắt sự kiện (onclick, onerror…), tức là mã chạy được. Khóa học hạng "content" không được phép.',
+    'Chương này có thuộc tính bắt sự kiện (onclick, onerror…), tức là mã chạy được. Không khóa học nào được chứa mã chạy được — phần tương tác chỉ sống trong widget, chạy trong khung sandbox riêng.',
   'finding.JAVASCRIPT_URL':
-    'Chương này có liên kết javascript:, tức là mã chạy được. Khóa học hạng "content" không được phép.',
+    'Chương này có liên kết javascript:, tức là mã chạy được. Không khóa học nào được chứa mã chạy được — phần tương tác chỉ sống trong widget, chạy trong khung sandbox riêng.',
   'finding.EMBEDDED_FRAME':
-    'Chương này nhúng một trang khác (iframe/embed/object). Khóa học hạng "content" không được phép.',
+    'Chương này nhúng một trang khác (iframe/embed/object). Không khóa học nào được chứa mã chạy được — phần tương tác chỉ sống trong widget, chạy trong khung sandbox riêng.',
   'finding.FORM_TAG':
-    'Chương này có biểu mẫu <form>. Khóa học hạng "content" không được phép — biểu mẫu gửi dữ liệu đi nơi khác.',
+    'Chương này có biểu mẫu <form> — biểu mẫu gửi dữ liệu đi nơi khác. Không khóa học nào được chứa mã chạy được — phần tương tác chỉ sống trong widget, chạy trong khung sandbox riêng.',
   'finding.JS_FILE_IN_PACKAGE':
-    'Gói chứa tệp JavaScript, trong khi khóa học tự khai là hạng "content" (chỉ chữ và hình).',
+    'Gói chứa một tệp JavaScript rời. Không khóa học nào được chứa mã chạy được — phần tương tác chỉ sống trong widget, chạy trong khung sandbox riêng.',
   'finding.TAG_ATTR_FLOOD': 'Một thẻ HTML trong gói mang quá nhiều thuộc tính để có thể là một tài liệu thật.',
+  'finding.WIDGET_TOO_LARGE':
+    'Một widget trong khóa học này nặng hơn mức cho phép. Hãy cắt bớt nội dung của widget, hoặc tách phần nặng (ảnh, dữ liệu) ra khỏi nó.',
+  'finding.WIDGET_LINE_TOO_LONG':
+    'Mã của một widget có một dòng quá dài — thường là dấu hiệu mã đã bị minify hoặc bị dồn hết vào một dòng. Hãy viết lại thành nhiều dòng bình thường.',
+  'finding.WIDGET_BAD_NAME':
+    'Tên của một widget không hợp lệ. Tên widget chỉ được dùng chữ thường, số và dấu gạch ngang, và không được quá dài.',
+  'finding.WIDGET_FORBIDDEN_API':
+    'Một widget trong khóa học này dùng cookie hoặc bộ nhớ của trình duyệt (localStorage…) — thứ một widget không có quyền chạm tới. Hãy bỏ phần mã đó đi.',
+  'finding.WIDGET_EXTERNAL_URL':
+    'Một widget trong khóa học này tải một thứ gì đó từ mạng. Widget phải tự chứa hoàn toàn — hãy bỏ đường dẫn đó đi, kể cả khi nó chỉ nằm trong chú thích.',
+  'finding.WIDGET_EXTRA_FILE':
+    'Một widget trong khóa học này mang nhiều hơn một tệp. Một widget chỉ được có đúng một tệp — hãy gộp phần còn lại vào đó, hoặc xoá đi.',
+  'finding.WIDGET_MISSING':
+    'Một chương nhắc tới một widget mà khóa học không có. Hãy kiểm tra lại tên widget, hoặc thêm widget đó vào gói.',
+  'finding.WIDGET_ORPHAN':
+    'Khóa học này mang một widget mà không chương nào dùng tới. Hãy xoá widget đó nếu không còn cần, hoặc thêm nó vào chương cần nó.',
   'finding.BAD_URL': 'Đường dẫn này không dùng được.',
   'finding.FETCH_FAILED': 'Không tải được.',
   'finding.FILE_READ_FAILED': 'Không đọc được tệp bạn chọn.',
@@ -799,8 +934,6 @@ export const vi = {
   'catalog.empty': 'Registry chưa có khóa học nào. Danh mục tải được bình thường — nó rỗng.',
   'catalog.listAria': 'Khóa học trên registry',
   'catalog.versionCount': (count: string) => `${count} bản`,
-  'catalog.tier.unknownTitle':
-    'Gói này khai một hạng nền tảng không biết, nên không có gì bảo đảm nó không chứa JavaScript.',
 
   /* ── HC-3: lọc theo ngôn ngữ ───────────────────────────────────────────
    *
@@ -820,13 +953,6 @@ export const vi = {
   'catalog.pull.done': (title: string, version: string) => `Đã kéo ${title} phiên bản ${version} về thiết bị này. `,
   'catalog.pull.open': 'Mở khóa học',
   'catalog.pull.failed': (title: string) => `Không kéo được ${title} về:`,
-  /**
-   * Câu nói ra HẬU QUẢ AN NINH của hạng `interactive`, ở đúng chỗ nó còn kịp
-   * đổi một quyết định: cạnh cái nút, TRƯỚC khi bấm. Sau khi kéo về thì mã
-   * đã nằm trên máy người đọc và một câu cảnh báo chỉ còn là một lời xin lỗi.
-   */
-  'catalog.pull.interactiveWarning':
-    'Gói này được phép chạy JavaScript trong trình duyệt của bạn khi bạn mở nó.',
 
   /* ── hệ thống con 4: CHẤM SAO (`registry/Rating.tsx`) ──────────────────
    *
@@ -908,6 +1034,57 @@ export const vi = {
    */
   'courseKit.vizMissing': (name: string) => `[mô phỏng "${name}" chưa sẵn sàng]`,
   'courseKit.vizFailed': 'Không dựng được mô phỏng này trong trình duyệt hiện tại.',
+
+  /* ══════════════════════════════════════════════════════════════════════ *
+   * QUẢN TRỊ — `/admin` (Task 15, `admin/AdminGuard.tsx`,
+   * `admin/AdminCourses.tsx`, `admin/adminApi.ts`)
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  'admin.title': 'Quản trị khoá học',
+  'admin.lede': 'Phát hành, gỡ, hoặc lùi phiên bản một khoá học — đi cùng bộ kiểm định mà `tuhoc pack` dùng ở dòng lệnh.',
+  'admin.loading': 'Đang tải danh sách…',
+  'admin.empty': 'Chưa có khoá học nào được phát hành.',
+
+  'admin.table.slug': 'Slug',
+  'admin.table.title': 'Tên khoá học',
+  'admin.table.version': 'Phiên bản',
+  'admin.table.publishedAt': 'Phát hành lúc',
+  'admin.table.actions': 'Hành động',
+
+  'admin.upload.heading': 'Phát hành gói mới',
+  'admin.upload.fileLabel': 'Gói .zip',
+  'admin.upload.slugLabel': 'Slug',
+  'admin.upload.submit': 'Phát hành',
+  'admin.upload.submitting': 'Đang phát hành…',
+  'admin.upload.success': (slug: string, version: number) => `Đã phát hành ${slug}, phiên bản ${version}.`,
+
+  /**
+   * BẢNG FINDINGS — đúng tinh thần "in mọi vấn đề một lần" của `tuhoc pack`
+   * ở dòng lệnh: một lần 400 mang MỌI phát hiện, và màn này vẽ hết, không
+   * chỉ cái đầu tiên.
+   */
+  'admin.findings.heading': (count: number) => (count === 1 ? '1 vấn đề' : `${count} vấn đề`),
+  'admin.findings.code': 'Mã',
+  'admin.findings.path': 'Đường dẫn',
+  'admin.findings.detail': 'Chi tiết',
+
+  'admin.unpublish.button': 'Gỡ',
+  'admin.unpublish.confirmPrompt': (slug: string) => `Chắc chắn muốn gỡ "${slug}"? Khoá học sẽ ngừng đọc được công khai.`,
+  'admin.unpublish.confirmYes': 'Gỡ khoá học này',
+  'admin.unpublish.confirmCancel': 'Thôi',
+
+  'admin.rollback.label': 'Lùi về phiên bản',
+  'admin.rollback.placeholder': 'Chọn một phiên bản…',
+  'admin.rollback.button': 'Lùi phiên bản',
+  'admin.rollback.versionOption': (version: number, current: boolean) => `v${version}${current ? ' (hiện tại)' : ''}`,
+  'admin.rollback.success': (version: number) => `Đã lùi về phiên bản ${version}.`,
+
+  'admin.error.badRequest': 'Yêu cầu không hợp lệ.',
+  'admin.error.notFound': 'Không tìm thấy khoá học này.',
+  'admin.error.serverDown': 'Máy chủ đang gặp sự cố. Vui lòng thử lại sau.',
+  'admin.error.unknown': 'Đã xảy ra lỗi không xác định.',
+  'admin.error.unreachable':
+    'Không thể kết nối tới máy chủ. Có thể bạn đang ngoại tuyến, hoặc máy chủ đang bị cấu hình sai (CORS/DNS).',
 };
 
 /** Hình dạng mà MỌI ngôn ngữ phải phủ đúng. Xem chú thích trên `vi`. */

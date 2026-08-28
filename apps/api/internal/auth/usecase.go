@@ -153,3 +153,20 @@ func (uc *Usecase) ValidateSession(ctx context.Context, sessionID uuid.UUID) (uu
 func (uc *Usecase) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
 	return uc.repo.FindUserByID(ctx, id)
 }
+
+// IsAdmin is what RequireAdmin gates on: id names a user whose role is
+// exactly "admin". A user row that has been deleted out from under a still
+// -valid session (ErrNotFound) is reported as "not admin" rather than
+// propagated as an error — the caller gets a definite yes/no rather than
+// a third state to invent a policy for, and "the account is gone" is never
+// a reason to grant an elevated permission.
+func (uc *Usecase) IsAdmin(ctx context.Context, id uuid.UUID) (bool, error) {
+	role, err := uc.repo.FindRole(ctx, id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return role == "admin", nil
+}

@@ -18,18 +18,37 @@
   <li>Bài tập nào cũng phải có lời giải.</li>
 </ul>
 
-<h2>Gói này đang ở hạng "content"</h2>
+<h2>Nội dung ở đây là tĩnh</h2>
 
 <p>
-  Hạng <strong>content</strong> chỉ nhận HTML, CSS và hình ảnh — không JavaScript
-  dưới bất kỳ dạng nào. Đổi lại, gói được kiểm hoàn toàn bằng máy và gần như
-  merge tự động vào registry. Nếu course thật sự cần mô phỏng chạy được, đổi
-  <code>"tier"</code> trong <code>manifest.json</code> thành
-  <code>"interactive"</code> và chuẩn bị chờ người duyệt tay.
+  Chương này chỉ nhận HTML và CSS — không JavaScript dưới bất kỳ dạng nào: không
+  thẻ script, không thuộc tính <code>on...</code>, không URL <code>javascript:</code>,
+  không khung nhúng, không biểu mẫu, không tệp <code>.js</code> rời. Bộ luật kiểm
+  điều đó bằng máy, trên mọi tệp trong gói, nên gần như merge tự động.
+</p>
+
+<h2>Cần chạy mã thật? Đó là việc của widget</h2>
+
+<p>
+  Khung mẫu này có sẵn một widget: đúng một tệp tự chứa hoàn toàn tại
+  <code>widgets/vi-du/index.html</code> — CSS và JavaScript viết thẳng trong
+  đó, không tải gì từ mạng. Trình đọc chạy nó trong một khung cách ly riêng
+  (iframe sandbox). Đặt chỗ cho widget bằng một thẻ mang thuộc tính
+  <code>data-widget</code> đúng bằng tên thư mục của nó:
+</p>
+
+<div data-widget="vi-du"></div>
+
+<p>
+  Một widget không được chương nào tham chiếu sẽ bị từ chối; một
+  <code>data-widget</code> trỏ tới tên không có thật cũng vậy. Widget vẫn phải
+  qua người duyệt tay ở registry trước khi merge — xem
+  <code>docs/course-format.md</code>.
 </p>
 
 <p>
-  Xoá toàn bộ chương này khi bạn bắt đầu viết thật. Nhớ khai báo mỗi chương mới
-  trong <code>"parts"</code> của <code>manifest.json</code>, nếu không nó sẽ không
-  xuất hiện trong mục lục.
+  Xoá toàn bộ chương này khi bạn bắt đầu viết thật. Xoá cả widget mẫu nếu
+  không dùng — xoá một nửa (chỉ chương hoặc chỉ widget) mà để nửa kia lại sẽ
+  làm gói trượt. Nhớ khai báo mỗi chương mới trong <code>"parts"</code> của
+  <code>manifest.json</code>, nếu không nó sẽ không xuất hiện trong mục lục.
 </p>

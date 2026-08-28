@@ -71,6 +71,39 @@ describe('thân phản hồi 2xx không phải JSON', () => {
     server.use(http.get('/ok', () => HttpResponse.json({ courses: [] })));
     await expect(api.get<{ courses: unknown[] }>('/ok')).resolves.toEqual({ courses: [] });
   });
+
+  /**
+   * Final whole-branch review, Important 3. The guard above only ever
+   * caught a literal STRING body — `typeof parsed === 'string'`. A 2xx
+   * whose body parses as valid JSON but is `null` or a bare primitive
+   * (number/boolean) sailed straight through under `T`'s name, exactly
+   * the same "wrong shape read as right" chain the string case above
+   * exists to stop, one layer down: `null.slug`/`(3).slug` are not a
+   * thrown error, they are a silent `undefined`.
+   */
+  it.each([
+    ['null', null],
+    ['a bare number', 42],
+    ['a bare boolean', true],
+  ])('ném NotJsonError khi thân 2xx là JSON hợp lệ nhưng %s, không phải một object', async (_label, jsonValue) => {
+    server.use(http.get('/weird', () => HttpResponse.json(jsonValue)));
+    await expect(api.get('/weird')).rejects.toBeInstanceOf(NotJsonError);
+  });
+
+  it('mặc định ném NotJsonError khi thân 2xx là một MẢNG — request<T> không biết T là gì lúc chạy, nên phải được báo rõ ràng mới cho mảng qua', async () => {
+    server.use(http.get('/weird-array', () => HttpResponse.json([{ slug: 'demo' }])));
+    await expect(api.get('/weird-array')).rejects.toBeInstanceOf(NotJsonError);
+  });
+
+  it('allowArray:true cho một MẢNG hợp lệ đi qua — cổng GET /admin/courses (AdminCourseRow[]) cần đúng lối này', async () => {
+    server.use(http.get('/rows', () => HttpResponse.json([{ slug: 'demo' }])));
+    await expect(api.get<{ slug: string }[]>('/rows', { allowArray: true })).resolves.toEqual([{ slug: 'demo' }]);
+  });
+
+  it('allowArray:true KHÔNG nới lỏng gì thêm — null/số/chuỗi vẫn bị ném dù allowArray:true', async () => {
+    server.use(http.get('/still-weird', () => HttpResponse.json(null)));
+    await expect(api.get('/still-weird', { allowArray: true })).rejects.toBeInstanceOf(NotJsonError);
+  });
 });
 
 describe('api.get/api.post', () => {

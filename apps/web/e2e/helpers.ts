@@ -1,16 +1,18 @@
 import { expect, test, type ConsoleMessage, type Locator, type Page } from '@playwright/test';
-import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * Shared fixtures for the two Playwright suites in this directory:
- * `p1.spec.ts` (the fast definition-of-done gate) and `viz.spec.ts` (the
- * slow, exhaustive visualization sweep). Extracted rather than copied:
- * `isBenignAuthCheck401` in particular is a deliberately NARROW filter
- * whose exact scope was established by a one-off debug run (see its own
- * doc comment) — two hand-maintained copies of a rule like that drift, and
- * the drift shows up as a suite that stops failing when it should.
+ * Shared fixtures for the Playwright suites in this directory —
+ * `p1.spec.ts` (the fast definition-of-done gate), `p2.spec.ts` (the
+ * annotation phase's own gate) and `s2.spec.ts`. (`viz.spec.ts`, once a
+ * third consumer, was deleted by Task 11 of the server-side pivot alongside
+ * course-wide `viz.js` — see the Makefile's `test-e2e` comment.) Extracted
+ * rather than copied: `isBenignAuthCheck401` in particular is a deliberately
+ * NARROW filter whose exact scope was established by a one-off debug run
+ * (see its own doc comment) — two hand-maintained copies of a rule like that
+ * drift, and the drift shows up as a suite that stops failing when it
+ * should.
  *
  * Not itself a spec file: Playwright's default `testMatch` only picks up
  * `*.spec.ts`/`*.test.ts`, and vitest excludes `./e2e/**` wholesale (see
@@ -18,52 +20,41 @@ import { fileURLToPath } from 'node:url';
  */
 
 export const PASSWORD = 'secret123';
-/** fixtures/courses/so-dau-phay-dong/manifest.json's `title` — also the `<nav aria-label>` CourseHome renders it into (see courseHomeChapterLink below). */
-export const COURSE_TITLE = 'Số dấu phẩy động';
+/**
+ * `fixtures/format-v2/valid-course/manifest.json`'s `title` — also the
+ * `<nav aria-label>` CourseHome renders it into (see courseHomeChapterLink
+ * below).
+ *
+ * Task 16: was `so-dau-phay-dong`/`'Số dấu phẩy động'`, a format-v1 package
+ * (`tier: interactive`, course-wide `viz.js`) that `make courses` unpacked
+ * into a local `courses/` directory the built web app served statically.
+ * Both halves of that are gone — format v2 abolished `tier` (Task 1) and
+ * course content now comes from the server, not a static directory (Task
+ * 9-13) — and a v1 package could not even be PUBLISHED under v2's rules
+ * (`TIER_REMOVED`) if something tried. `mau-hop-le` is the shared TS/Go
+ * fixture corpus's own zero-finding v2 package (ruling D5); this suite's
+ * `scripts/test-e2e.sh` seed step is what puts it on the real server before
+ * any of these tests run.
+ */
+export const COURSE_TITLE = 'Biến đếm: từ vòng lặp đến sự kiện';
 
-/** `manifest.id` của gói mẫu — cũng là tên thư mục `make courses` bung ra. */
-export const REAL_COURSE_ID = 'so-dau-phay-dong';
+/** `manifest.id` của gói mẫu — cũng là slug được publish lên server bởi bước seed trong `scripts/test-e2e.sh` (xem chú thích của COURSE_TITLE). */
+export const REAL_COURSE_ID = 'mau-hop-le';
 
-/** apps/web/e2e/ → gốc repo là ba tầng lên. Xuất ra vì `s1.spec.ts` cũng đọc `fixtures/courses/` từ đĩa, và hai bản sao của phép tính này thì trôi. */
+/** apps/web/e2e/ → gốc repo là ba tầng lên. Xuất ra vì `s2.spec.ts` cũng đọc theo đường dẫn tuyệt đối từ gốc repo, và hai bản sao của phép tính này thì trôi. (`s3`/`s4.spec.ts` từng đọc nó nữa — cả hai đã bị xoá ở Task 16 của server-side pivot, xem commit "Cổng e2e mới".) */
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
 /**
- * Đường tới tệp `.zip` của gói course dùng làm ngữ liệu cho cả bốn tệp e2e.
- *
- * ## Nó ở TRONG repo, và đó là điểm đổi của task 13
- *
- * Task 11 đưa giáo trình riêng tư ra một kho ngoài cây git (spec §2B.1 — giáo
- * trình riêng trong một repo sắp publish, và xoá ở commit sau không cứu được).
- * Hệ quả là bốn tệp e2e này chỉ chạy được trên máy của tác giả.
- *
- * Task 13 thay ngữ liệu bằng `fixtures/courses/so-dau-phay-dong.zip` — một gói
- * mẫu **công khai**, do repo này soạn, `tuhoc pack` ghi ra, và commit. `p1`,
- * `p2` và `viz` đọc bản đã bung ở `courses/` (`make courses` bung hộ, và
- * `make test-e2e` gọi nó trước); `import.spec.ts` cần chính tệp `.zip`, vì thứ
- * nó kiểm là người dùng chọn tệp ở màn hình Import.
- *
- * Ném — không skip — khi tệp không có. Đó vẫn là hành vi đúng, chỉ khác là bây
- * giờ nó là một trạng thái sửa được trên mọi bản clone. Xem đầu
- * `import.spec.ts`.
+ * `realCoursePackageZip()` ĐÃ XOÁ Ở ĐÂY (Task 13, spec
+ * `2026-08-25-server-side-pivot.md` §1). Nó trả về đường tới chính tệp `.zip`
+ * của `fixtures/courses/so-dau-phay-dong`, dùng bởi hai tệp e2e — cả hai đã
+ * gỡ: `import.spec.ts` (kiểm màn hình Import chọn tệp) và phần §5 cũ của
+ * `s1.spec.ts` (dùng nó chỉ để đưa course công khai này vào máy trước khi mở
+ * — một bước chưa từng cần thiết, và `p1.spec.ts`'s bản kế thừa của §5 đã bỏ
+ * nó). `p1`/`p2`/`viz` không cần TỆP `.zip` — chúng đọc bản đã BUNG ở
+ * `courses/` (`make courses` bung hộ trước khi `make test-e2e` chạy), nên
+ * không còn lời gọi nào tới hàm này để giữ nó lại.
  */
-export function realCoursePackageZip(): string {
-  const zip = resolve(REPO_ROOT, 'fixtures', 'courses', `${REAL_COURSE_ID}.zip`);
-  if (!existsSync(zip)) {
-    throw new Error(
-      [
-        `Không tìm thấy gói mẫu: ${zip}`,
-        '',
-        'Cổng nghiệm thu này chạy trên GÓI THẬT do `tuhoc pack` ghi ra, không phải một',
-        'zip dựng trong lúc chạy test — xem đầu import.spec.ts.',
-        '',
-        'Tệp này ĐƯỢC COMMIT. Nếu nó biến mất, đóng gói lại từ nguồn cạnh nó:',
-        `    bun tools/tuhoc-cli/src/index.ts pack fixtures/courses/${REAL_COURSE_ID} \\`,
-        `      -o fixtures/courses/${REAL_COURSE_ID}.zip`,
-      ].join('\n'),
-    );
-  }
-  return zip;
-}
 
 /** A unique account per run (down to the millisecond) — this suite runs against a fresh, empty database each time (see compose.e2e.yml's no-volume policy), but uniqueness costs nothing and protects a developer running it twice against a stack they forgot to tear down. */
 export function freshEmail(): string {
@@ -217,10 +208,12 @@ async function submitAuthForm(page: Page, what: string, submit: () => Promise<vo
  */
 export async function registerNewUser(page: Page, email: string, password: string): Promise<void> {
   await submitAuthForm(page, 'đăng ký', async () => {
-    await page.getByRole('tab', { name: 'Đăng ký' }).click();
+    // Hai tab "Đăng nhập / Đăng ký" đã bỏ — đường tới form đăng ký nay là dòng
+    // ở chân cột, đúng một cú bấm như trước. Xem `pages/Login.tsx`.
+    await page.getByRole('button', { name: 'Tạo tài khoản', exact: true }).click();
     await page.getByLabel('Tên').fill('E2E Learner');
     await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Mật khẩu').fill(password);
+    await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Đăng ký', exact: true }).click();
   });
   await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 15_000 });
@@ -230,7 +223,7 @@ export async function registerNewUser(page: Page, email: string, password: strin
 export async function loginExistingUser(page: Page, email: string, password: string): Promise<void> {
   await submitAuthForm(page, 'đăng nhập', async () => {
     await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Mật khẩu').fill(password);
+    await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
   });
   await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 15_000 });
@@ -254,171 +247,6 @@ export async function loginExistingUser(page: Page, email: string, password: str
  */
 export function courseHomeChapterLink(page: Page, courseTitle: string, chapterId: string): Locator {
   return page.getByRole('navigation', { name: courseTitle }).locator(`[data-ch="${chapterId}"]`);
-}
-
-/**
- * Judgment 1 — "what does 'the visualization works' mean in a test?"
- *
- * A `<canvas>` existing in the DOM proves almost nothing: `initViz`
- * (packages/course-kit/runtime.js) creates the `<canvas>` element
- * unconditionally as part of `new Plot(...)`, BEFORE the viz function's
- * own `render()` ever runs — a `[data-viz] canvas` selector matching is
- * exactly as true whether or not a single pixel was ever painted onto it.
- *
- * What this asserts instead: that a *meaningful fraction* of the canvas's
- * own pixel buffer is non-transparent. `Plot.resize()` always calls
- * `this.render()` once, on construction, via `requestAnimationFrame`, and
- * `sum-drift`'s own `render()` (courses/so-dau-phay-dong/viz.js) always
- * draws axes/gridlines via `Plot.axes()` plus a filled area under the
- * running-error curve via `Plot.area()`, with zero user interaction
- * required. So:
- *
- *   - if KaTeX/runtime.js/viz.js failed to load, or `initViz` threw
- *     (caught in runtime.js's own try/catch, which replaces the node's
- *     innerHTML with an error message), the `canvas` locator itself would
- *     never resolve — a DIFFERENT, earlier failure than this check.
- *   - if the canvas exists but `render()` never actually ran (a broken
- *     `ResizeObserver`/`requestAnimationFrame` path, a JS exception
- *     inside `render()` itself that isn't caught anywhere) the canvas
- *     stays exactly as `clearRect` (or the browser's own default) leaves
- *     it: fully transparent, alpha 0 at every pixel. THIS is what the
- *     ratio check below actually catches, and a DOM-presence-only check
- *     would not.
- *   - what this does NOT catch: whether the drawing is *correct* (right
- *     numbers, right colors, right axis labels) — only that the runtime
- *     executed and produced real pixel output. Pixel-perfect correctness
- *     is a job for a visual-regression tool, not a fast e2e gate; reading
- *     `getImageData` here is the cheap, dependency-free middle ground
- *     between "element exists" (proves nothing) and a full screenshot
- *     diff (expensive, brittle across renderers/fonts).
- *
- * `expect.poll` rather than a single read: `render()`'s first call is
- * scheduled via `requestAnimationFrame` inside `Plot`'s constructor, not
- * synchronous with `initViz` returning — a single evaluate() immediately
- * after the canvas becomes visible could legitimately race that one
- * frame. Polling (bounded at 10s, far more than one frame ever needs) is
- * the fix; a longer FIXED wait here would be the same anti-pattern the
- * task brief warns about for the cross-device sync wait below, just on a
- * smaller scale.
- */
-/**
- * The general "this canvas was painted at all" floor, used by the sweep over
- * every registered viz.
- *
- * Chosen from measurement, not taste. On the private textbook (task 17) a
- * one-off diagnostic read `getImageData` for all 70 canvases its 58
- * chapter-referenced visualizations created: the LOWEST real render was
- * `huffman` at 0.0170 (a sparse tree diagram — thin edges and small labels on
- * a 736x300 canvas), the next lowest `kle` at 0.0329, the highest
- * `eval-curves` at 0.594.
- *
- * Task 13 swapped the ngữ liệu to the public sample package
- * `so-dau-phay-dong`, whose 8 canvas-drawing viz build 10 canvases. Its own
- * sweep is recorded in the task-13 report; the floor is kept at the SAME
- * number rather than re-derived downward, because the number is not a claim
- * about how much any viz ought to draw — it is a floor against the actual
- * failure mode. `clearRect` leaves alpha 0 at EVERY pixel, so a viz whose
- * `render()` never ran scores exactly 0, and 0.005 is ~1100 px above nothing
- * on a 736x300 canvas.
- *
- * Deliberately NOT the stricter number `p1.spec.ts` passes for its own one
- * viz: that is a property of that viz specifically, which is why the call
- * site keeps passing it explicitly rather than being relaxed to this floor.
- * Applying one viz's shape as a universal threshold is what made `huffman` —
- * a working visualization — fail the sweep's first run.
- */
-export const MIN_PAINTED_RATIO = 0.005;
-
-export async function expectVizCanvasDrawn(page: Page, dataViz: string, minPaintedRatio = MIN_PAINTED_RATIO): Promise<void> {
-  const canvases: Locator = page.locator(`[data-viz="${dataViz}"] canvas`);
-  await expect(canvases.first()).toBeVisible();
-
-  // EVERY canvas, not the first. On the private textbook, 16 of its 59
-  // visualizations built two or three `Plot`s in one host; the sample package
-  // that replaced it keeps that shape deliberately — `bit-lab` and `sum-drift`
-  // each build two — because asserting only `.first()` would leave a second,
-  // blank plot invisible to this check, and a package where no host holds two
-  // plots stops exercising this loop at all. Passing the multi-match locator
-  // straight to `toBeVisible` would instead be a Playwright strict-mode
-  // violation, which is how this surfaced.
-  const total = await canvases.count();
-  for (let i = 0; i < total; i += 1) {
-    const canvas = canvases.nth(i);
-    await expect(canvas).toBeVisible();
-
-    const readNonBlankRatio = () =>
-      canvas.evaluate((el) => {
-        const c = el as HTMLCanvasElement;
-        const { width, height } = c;
-        if (width === 0 || height === 0) return 0;
-        const ctx = c.getContext('2d');
-        if (!ctx) return 0;
-        const { data } = ctx.getImageData(0, 0, width, height);
-        let nonBlank = 0;
-        for (let j = 3; j < data.length; j += 4) {
-          if (data[j] !== 0) nonBlank += 1;
-        }
-        return nonBlank / (width * height);
-      });
-
-    await expect
-      .poll(readNonBlankRatio, {
-        timeout: 10_000,
-        message: `[data-viz="${dataViz}"] canvas ${i + 1}/${total} painted less than ${minPaintedRatio * 100}% of its pixels — the viz runtime likely failed silently (a canvas whose render() never ran scores exactly 0)`,
-      })
-      .toBeGreaterThan(minPaintedRatio);
-  }
-}
-
-/** The message `runtime.js`'s `initViz` puts in a node when the viz function THREW — the friendly in-page degradation that makes a broken viz invisible unless something looks for it. */
-export const VIZ_THREW_TEXT = 'Không dựng được mô phỏng này';
-/** The message `initViz` puts in a node whose `data-viz` name is not registered in viz.js at all. */
-export const VIZ_UNREGISTERED_TEXT = 'chưa sẵn sàng';
-
-/**
- * "This visualization actually ran" — the assertion the spec's §10 exit
- * gate needs, for EVERY registered viz, not just the canvas-drawing ones.
- *
- * Three things are checked, and the third has two shapes:
- *
- *  1. `initViz` reached the node at all (`data-done="1"`, which it sets
- *     immediately before invoking the viz function).
- *  2. The node does not carry either of `initViz`'s two failure texts.
- *     This is the check that matters most: a viz whose implicit dependency
- *     went missing during the extraction from the v1 shell throws, is
- *     CAUGHT by initViz, and is replaced with a polite Vietnamese message
- *     — no exception escapes, and the page looks fine to a passing glance.
- *  3. It produced real output:
- *       - canvas-based viz (8 of the sample package's 9) → every canvas
- *         painted pixels, via expectVizCanvasDrawn at the measured
- *         MIN_PAINTED_RATIO floor.
- *       - `nextafter-walk` builds no canvas at all: it is a DOM widget
- *         (a readout plus a segmented control and two buttons). For it,
- *         "it ran" means it built its interactive controls. This branch is
- *         narrower than the canvas one and says so — it is chosen by what
- *         the viz IS, not to make a failing case pass. The private textbook
- *         had two such viz (`twenty-q`, `grouping`) and the sample package
- *         keeps one on purpose, so this branch still has something to run.
- */
-export async function expectVizRendered(page: Page, dataViz: string): Promise<void> {
-  const node = page.locator(`[data-viz="${dataViz}"]`);
-  await expect(node, `[data-viz="${dataViz}"] is not on the page`).toBeVisible();
-  await expect(node, `[data-viz="${dataViz}"]: initViz never initialized this node`).toHaveAttribute('data-done', '1');
-
-  const text = (await node.innerText()).trim();
-  expect(text, `[data-viz="${dataViz}"]: initViz caught an exception from this viz and replaced it with its fallback message — a genuinely broken visualization, degrading quietly`).not.toContain(VIZ_THREW_TEXT);
-  expect(text, `[data-viz="${dataViz}"]: this name is not registered in viz.js`).not.toContain(VIZ_UNREGISTERED_TEXT);
-
-  if ((await node.locator('canvas').count()) > 0) {
-    await expectVizCanvasDrawn(page, dataViz);
-    return;
-  }
-
-  const controls = await node.locator('input, button').count();
-  expect(
-    controls,
-    `[data-viz="${dataViz}"]: no canvas and no interactive controls — it produced nothing`,
-  ).toBeGreaterThan(0);
 }
 
 /**
@@ -498,10 +326,12 @@ export function isBenignAuthCheck401(msg: ConsoleMessage): boolean {
  * from the chapter), and in the new layout the common case is that nothing
  * had to be clicked at all.
  *
- * The id is deliberately still `#rail-tab-notes`: `p2.spec.ts` (×4) and
- * `s1.spec.ts` (×2) read it directly, and those are the gates that exist to
- * notice when something about notes changes. See the comment on the button
- * itself in `src/reader/ChapterView.tsx`.
+ * The id is deliberately still `#rail-tab-notes`: `p2.spec.ts` read it
+ * directly (×4), and so did `s1.spec.ts` (×2) before Task 13 deleted it. Note
+ * that `p2.spec.ts` is currently quarantined in `playwright.config.ts` — so as
+ * things stand NO running gate reads this id, and a change to it would go
+ * unnoticed until p2 is repaired. See the comment on the button itself in
+ * `src/reader/ChapterView.tsx`.
  */
 export async function openNotesTab(page: Page): Promise<void> {
   const toggle = page.locator('#rail-tab-notes');
@@ -550,10 +380,13 @@ export async function openNotesTab(page: Page): Promise<void> {
  *
  * The return value is what `getSelection()` actually holds afterwards, not
  * what was asked for — callers assert against THAT, so an off-by-one at
- * either end of the drag can never make an assertion vacuous. `s1.spec.ts`
- * leans on that property harder than `p2.spec.ts` does: it builds the NEXT
- * version of the chapter by doing string surgery on exactly the text this
- * returned, so an edit it intends to land inside a reader's quote cannot miss.
+ * either end of the drag can never make an assertion vacuous. The caller that
+ * leaned on that property hardest was `s1.spec.ts`'s update scenario — it built
+ * the NEXT version of a chapter by doing string surgery on exactly the text this
+ * returned, so an edit meant to land inside a reader's quote could not miss.
+ * That scenario went with the version-pinning update dialog (Task 13); the
+ * property is kept because it is the right contract for any future caller, not
+ * because one still depends on it.
  */
 export async function selectParagraphByDrag(page: Page, startsWith: string, chars: number): Promise<string> {
   const prep = await page.evaluate(
