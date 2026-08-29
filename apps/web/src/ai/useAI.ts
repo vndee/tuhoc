@@ -23,6 +23,70 @@ import type { ServerAIErrorCode } from './serverClient';
  * này: `AskPanel` không được dựng gợi ý rằng gia sư nhớ câu trước.
  */
 
+/**
+ * Trần Go áp cho MỘT `question` — `MaxQuestionChars`,
+ * `apps/api/internal/ai/handler.go`. RUNES (điểm mã Unicode), không phải
+ * UTF-16 code unit hay byte: Go đếm bằng `utf8.RuneCountInString`.
+ *
+ * CON SỐ NÀY SỐNG Ở HAI NƠI — Go và đây — mà KHÔNG có cổng runtime nào canh
+ * chúng khớp nhau; chỉ có tên biến trỏ sang nhau và người đọc mã bằng mắt.
+ * Nếu Go đổi `MaxQuestionChars`, hằng số này phải đổi theo bằng tay.
+ *
+ * VÌ SAO HẰNG SỐ NÀY BẮT BUỘC PHẢI TỒN TẠI (đo được, không phải phòng xa):
+ * `chapterSystemPrompt` (`./prompts.ts`) một mình đã dựng một `system` dài
+ * ~7994–7995 rune trên MỌI chương thật của cả hai gói mẫu (`fixtures/
+ * courses/`) — ngân sách `CHAPTER_CONTEXT_LIMIT = 8_000` của nó là một trần
+ * CŨ, từ lúc `system` còn là một vai riêng trên dây (Pha 1) và không biết gì
+ * về trần MỚI trên `question` gộp. Không kẹp ở đây, "Hỏi về chương" hỏng với
+ * MỌI câu hỏi dài hơn khoảng sáu ký tự, trên MỌI chương đang tồn tại — xem
+ * bài dùng fixture thật trong `useAI.test.tsx`.
+ */
+export const MAX_WIRE_QUESTION_CHARS = 8000;
+
+/** Ký tự nối `system` và `prompt` khi gộp thành một `question` — xem
+ *  `buildWireQuestion`. Tính vào ngân sách, không phải miễn phí. */
+const WIRE_CONTEXT_SEPARATOR = '\n\n';
+
+/**
+ * Đếm RUNE, không phải `.length` (UTF-16 code unit). Một ký tự ngoài mặt
+ * phẳng cơ bản (một số emoji, ký hiệu hiếm) chiếm HAI code unit nhưng MỘT
+ * rune — `.length` đếm gấp đôi những ký tự đó, và trần phía Go đếm rune.
+ * Tiếng Việt có dấu (tổ hợp hay dựng sẵn) đều nằm trong mặt phẳng cơ bản nên
+ * không lệch, nhưng hàm này không được phép giả định trước điều đó.
+ */
+function runeLength(s: string): number {
+  return Array.from(s).length;
+}
+
+/** Cắt `s` về ĐÚNG `limit` rune đầu — an toàn với surrogate pair, khác
+ *  `s.slice(0, limit)` (có thể cắt đôi một rune ngoài mặt phẳng cơ bản). */
+function runeSlice(s: string, limit: number): string {
+  return Array.from(s).slice(0, Math.max(0, limit)).join('');
+}
+
+/**
+ * Ghép `system` (ngữ cảnh, có thể vắng) và `prompt` (câu người học vừa gõ)
+ * thành MỘT `question` gửi đi — kẹp để tổng KHÔNG BAO GIỜ vượt
+ * `MAX_WIRE_QUESTION_CHARS`, dù `system` một mình đã gần lấp đầy trần đó.
+ *
+ * ƯU TIÊN CẮT: `system` bị cắt TRƯỚC, `prompt` chỉ bị cắt khi `system` đã về
+ * 0 mà tổng vẫn vượt trần (câu hỏi cực dài, hiếm). Cắt ngữ cảnh chỉ làm câu
+ * trả lời kém chính xác hơn; cắt câu người học VỪA GÕ là cắt đúng thứ họ
+ * đang chờ được trả lời — và họ không thấy phần bị cắt để biết mà gõ lại.
+ */
+export function buildWireQuestion(system: string | undefined, prompt: string): string {
+  if (!system) {
+    return runeLength(prompt) > MAX_WIRE_QUESTION_CHARS ? runeSlice(prompt, MAX_WIRE_QUESTION_CHARS) : prompt;
+  }
+  const clampedPrompt =
+    runeLength(prompt) > MAX_WIRE_QUESTION_CHARS ? runeSlice(prompt, MAX_WIRE_QUESTION_CHARS) : prompt;
+  const budgetForSystem =
+    MAX_WIRE_QUESTION_CHARS - runeLength(WIRE_CONTEXT_SEPARATOR) - runeLength(clampedPrompt);
+  if (budgetForSystem <= 0) return clampedPrompt;
+  const clampedSystem = runeLength(system) > budgetForSystem ? runeSlice(system, budgetForSystem) : system;
+  return `${clampedSystem}${WIRE_CONTEXT_SEPARATOR}${clampedPrompt}`;
+}
+
 export type AIState = 'idle' | 'streaming' | 'done' | 'error';
 
 export interface AskContext {
@@ -95,11 +159,29 @@ export interface UseAIResult {
  * mã, không riêng hai mã đó — nửa còn lại chỉ là chuỗi từ `fail()` phía Go,
  * cùng bản chất (tiếng Anh, không dịch, không hứa hình dạng câu chữ).
  *
- * `NoCredit` và `ProviderFailed` PHẢI dẫn tới hai khoá dịch khác nhau — đây
- * là bài học lặp lại từ 13 task phía Go: "fixture đặt hai giá trị khác nhau
- * lại bằng nhau làm mọi phép hoán vị giữa chúng vô hình." Nếu một sửa đổi sau
- * này gộp hai `case` này lại, `useAI.test.tsx` phải đỏ — xem bảng đột biến ở
- * task-13-report.md.
+ * MỌI mã có một hành động RIÊNG người học có thể làm PHẢI dẫn tới một khoá
+ * dịch RIÊNG — không chỉ `NoCredit` khác `ProviderFailed`. Đây là bài học
+ * lặp lại từ 13 task phía Go: "fixture đặt hai giá trị khác nhau lại bằng
+ * nhau làm mọi phép hoán vị giữa chúng vô hình," và review vòng 1 của chính
+ * task này đo được nó SỐNG SÓT ở đây một lần: bộ kiểm ban đầu chỉ ghim CẶP
+ * `NoCredit`/`ProviderFailed`, và một đột biến gộp NĂM mã còn lại vào một
+ * câu (`ToolBudgetExhausted` mượn câu của `ProviderFailed`) vẫn xanh. Sáu mã
+ * dưới đây — `NoCredit`, `RateLimited`, `ProviderFailed`,
+ * `ToolBudgetExhausted`, `Unauthenticated`, `FieldTooLong` — mỗi mã một câu,
+ * và `useAI.test.tsx` ghim từng câu bằng CHÍNH khoá dịch của nó (không so
+ * chuỗi tiếng Việt viết tay hai lần — so với `t('vi', 'ai.error.<key>')`),
+ * cộng một khẳng định "sáu câu khác nhau đôi một" bắt được MỌI cặp gộp, kể
+ * cả cặp bài kiểm ban đầu chưa nghĩ tới.
+ *
+ * Bốn mã còn lại — `InvalidBody`/`FieldRequired`/`UnknownTool`/`Internal` —
+ * GỘP chung một câu CÓ CHỦ Ý (`requestRejected`): cả bốn là dấu hiệu một lỗi
+ * của chính trang chính hoặc một sự cố máy chủ không phân loại được, không
+ * phải điều người học gây ra hay sửa được bằng một hành động cụ thể, nên
+ * không có bốn câu khuyên hành động khác nhau để bịa ra. `FieldTooLong` bị
+ * kéo RA khỏi xô này (khác bản đầu của task) vì nó KHÁC: câu hỏi/ngữ cảnh
+ * quá dài là điều người học (hay `buildWireQuestion` ở trên, khi kẹp không
+ * đủ) có thể sửa — "thử lại sau" là lời khuyên sai cho một điều kiện mà thử
+ * lại nguyên văn không đổi gì.
  */
 function describeFailure(code: ServerAIErrorCode, t: Translate): string {
   switch (code) {
@@ -113,6 +195,8 @@ function describeFailure(code: ServerAIErrorCode, t: Translate): string {
       return t('ai.error.toolBudgetExhausted');
     case 'Unauthenticated':
       return t('ai.error.unauthenticated');
+    case 'FieldTooLong':
+      return t('ai.error.fieldTooLong');
     case 'Network':
       return t('ai.error.network');
     case 'Aborted':
@@ -121,16 +205,10 @@ function describeFailure(code: ServerAIErrorCode, t: Translate): string {
       // bên dưới). Vẫn cần một câu ở đây vì kiểu `ServerAIErrorCode` không
       // loại trừ được nó lúc biên dịch.
       return t('ai.error.aborted');
-    // InvalidBody/FieldRequired/FieldTooLong/UnknownTool/Internal: năm mã
-    // này là dấu hiệu MỘT LỖI CỦA CHÍNH TRANG CHÍNH (thân request sai hình
-    // dạng, hoặc một sự cố máy chủ không phân loại được) — không phải điều
-    // người học gây ra hay sửa được bằng một hành động cụ thể, khác hẳn năm
-    // mã ở trên (nạp tiền, chờ, hỏi cụ thể hơn…). Một câu chung, trung thực
-    // về việc "không biết chính xác vì sao", đúng hơn là bịa ra một khuyên
-    // hành động không có căn cứ.
+    // InvalidBody/FieldRequired/UnknownTool/Internal — xem khối chú thích ở
+    // trên cho lý do bốn mã này, và CHỈ bốn mã này, gộp chung một câu.
     case 'InvalidBody':
     case 'FieldRequired':
-    case 'FieldTooLong':
     case 'UnknownTool':
     case 'Internal':
       return t('ai.error.requestRejected');
@@ -206,7 +284,7 @@ export function useAI(): UseAIResult {
       setTurns((prev) => [...prev, turn]);
       setState('streaming');
 
-      const wireQuestion = ctx?.system ? `${ctx.system}\n\n${prompt}` : prompt;
+      const wireQuestion = buildWireQuestion(ctx?.system, prompt);
 
       try {
         await chat(

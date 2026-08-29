@@ -699,8 +699,16 @@ export const vi = {
   'ai.panel.expand': 'Mở rộng khung hỏi–đáp',
   'ai.panel.resize': 'Kéo để đổi cỡ khung',
   'ai.panel.collapse': 'Thu khung hỏi–đáp',
-  'ai.panel.newThread': 'Hội thoại mới',
+  // KHÔNG còn "Hội thoại mới" (chữ Pha 1) — vòng review 1: máy chủ không nhớ
+  // gì về bất kỳ lượt nào trước (xem `useAI.ts`'s doc comment), nên một nhãn
+  // ngụ ý có một "hội thoại" mà nút này "làm mới" là nhận một sự liên tục
+  // chưa từng có. Nó chỉ xoá thứ đang vẽ trên màn hình.
+  'ai.panel.newThread': 'Xoá tất cả',
   'ai.panel.thinking': 'Đang nghĩ…',
+  // THƯỜNG TRỰC, không gắn với lỗi nào — panel nói câu này TRƯỚC khi có gì
+  // hỏng, vì nó đúng ngay cả ở câu hỏi ĐẦU TIÊN. Xem `useAI.ts`'s doc comment
+  // cho lý do máy chủ không có trí nhớ giữa các lượt.
+  'ai.panel.noMemory': 'Mỗi câu hỏi là một lượt riêng — trợ lý không nhớ những câu bạn đã hỏi trước đó.',
   // `ai.panel.noCredit` thay cho cặp Pha 1 `needsSetup`/`unavailable` (đã bỏ
   // — xem `git log` trên tệp này): Pha 2 không còn key cắm theo máy, và
   // không còn bản dựng nào thiếu route AI, nên cả hai trạng thái đó không
@@ -722,11 +730,15 @@ export const vi = {
   'ai.error.toolBudgetExhausted':
     'Câu hỏi này cần nhiều bước tra cứu hơn mức lượt này cho phép. Hãy hỏi cụ thể hơn, hoặc tắt bớt một công cụ.',
   'ai.error.unauthenticated': 'Phiên đăng nhập đã hết hạn. Đăng nhập lại để tiếp tục hỏi.',
+  // Câu RIÊNG, kéo RA khỏi xô gộp bên dưới (vòng review 1): khác
+  // Internal/InvalidBody/…, người học (hoặc ngữ cảnh chương ngắn hơn) THẬT
+  // SỰ sửa được mã này bằng cách hỏi ngắn hơn.
+  'ai.error.fieldTooLong': 'Câu hỏi của bạn quá dài, kể cả ngữ cảnh đang đọc. Hỏi ngắn hơn, hoặc bôi đen ít chữ hơn.',
   'ai.error.network': 'Không kết nối được tới máy chủ. Kiểm tra mạng rồi thử lại.',
   'ai.error.aborted': 'Đã huỷ.',
-  // Chung cho `InvalidBody`/`FieldRequired`/`FieldTooLong`/`UnknownTool`/
-  // `Internal` — năm mã báo lỗi ở chính trang chính hoặc máy chủ, không
-  // phải điều người học gây ra hay có một hành động cụ thể để sửa.
+  // Chung cho `InvalidBody`/`FieldRequired`/`UnknownTool`/`Internal` — bốn
+  // mã báo lỗi ở chính trang chính hoặc máy chủ, không phải điều người học
+  // gây ra hay có một hành động cụ thể để sửa.
   'ai.error.requestRejected': 'Yêu cầu bị từ chối. Thử lại sau một chút.',
 
   /* ── phía trang chính của giao thức kho khoá (`ai/vaultClient.ts`) ─────── */

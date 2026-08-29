@@ -1,13 +1,16 @@
 import { act, renderHook } from '@testing-library/react';
+import { t as translate, type MessageKey } from '@tuhoc/i18n';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ReactNode } from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { LanguageProvider } from '../i18n/LanguageProvider';
-import { useAI } from './useAI';
+import { chapterSystemPrompt } from './prompts';
+import { MAX_WIRE_QUESTION_CHARS, buildWireQuestion, useAI } from './useAI';
 
 /**
  * CỔNG CẤU TRÚC, không phải hành vi — Task 13 Step 1.
@@ -135,6 +138,66 @@ function lastAnswer(r: { turns: readonly { answer: string }[] }): string {
   return r.turns.length === 0 ? '' : r.turns[r.turns.length - 1].answer;
 }
 
+/**
+ * MỘT lượt hỏng TRƯỚC khi stream bắt đầu — hình dạng thật của `NoCredit`/
+ * `RateLimited`/`Unauthenticated`/`FieldTooLong`/… ở đời thật
+ * (`serverClient.ts`'s doc comment): một response JSON thường, không phải
+ * một sự kiện SSE.
+ */
+async function askAndFailPreStream(
+  code: string,
+  status: number,
+): Promise<{ code: string; message: string } | null> {
+  server.use(http.post('/ai/chat', () => HttpResponse.json({ code, error: 'x' }, { status })));
+  const { result } = renderHook(() => useAI(), { wrapper });
+  await act(async () => {
+    await result.current.ask('hỏi');
+  });
+  return result.current.error;
+}
+
+/** MỘT lượt hỏng GIỮA stream — hình dạng thật của `ProviderFailed`/
+ *  `ToolBudgetExhausted` (hai mã DUY NHẤT Go từng phát ở đây). */
+async function askAndFailMidStream(code: string): Promise<{ code: string; message: string } | null> {
+  const { sse } = nextChat();
+  const { result } = renderHook(() => useAI(), { wrapper });
+  act(() => {
+    void result.current.ask('hỏi');
+  });
+  await act(async () => {
+    sse.event('error', { code, text: 'x' });
+    sse.close();
+    await flush();
+  });
+  return result.current.error;
+}
+
+/** `fixtures/courses/` — dữ liệu course CHECKED-IN (không cần `make courses`,
+ *  khác `courses/` ở gốc repo — xem `.gitignore`). */
+const FIXTURES = resolve(HERE, '../../../..', 'fixtures/courses');
+
+/**
+ * `system` THẬT một "Hỏi về chương" sẽ gửi — dựng bằng ĐÚNG hàm sản phẩm
+ * dùng (`chapterSystemPrompt`, `./prompts.ts`) trên ĐÚNG HTML của một chương
+ * đang tồn tại, không phải một chuỗi bịa cỡ tương đương. Review vòng 1 đo
+ * được: một fixture bịa "cỡ giống thật" là lý do lỗ hổng Critical (kẹp trần
+ * dây) lọt qua — nó không tự động khớp con số THẬT khi `courseTitle`/
+ * `chapterTitle`/dàn ý chương đổi.
+ */
+function realChapterSystem(relPath: string): string {
+  const html = readFileSync(resolve(FIXTURES, relPath), 'utf8');
+  const el = document.createElement('div');
+  el.innerHTML = html;
+  document.body.appendChild(el);
+  const built = chapterSystemPrompt(el, {
+    lang: 'vi',
+    courseTitle: 'Số dấu phẩy động',
+    chapterTitle: 'Phụ lục',
+  });
+  document.body.removeChild(el);
+  return built.system;
+}
+
 describe('useAI — một đường, thẳng tới máy chủ', () => {
   it('gửi ĐÚNG thân {question, course_slug}; question HIỂN THỊ vẫn ngắn dù system dài', async () => {
     const { requests, sse } = nextChat();
@@ -243,6 +306,12 @@ describe('useAI — một đường, thẳng tới máy chủ', () => {
    *
    * Đột biến (task-13-report.md): nối `history` giả vào `wireQuestion` trong
    * `useAI.ts` ⇒ bài này phải ĐỎ.
+   *
+   * Câu hỏi thứ hai CỐ Ý là một câu ĐỨNG ĐỘC LẬP ("Sai số làm tròn tính thế
+   * nào?"), không phải "Rõ hơn được không?" (bản trước của bài này) — một
+   * câu như vậy CHỈ có nghĩa nếu mô hình nhớ câu trước, tức chính bộ kiểm
+   * đang gõ ra đúng thứ `useAI.ts`'s doc comment cấm giao diện gợi ý. Review
+   * vòng 1 bắt đúng chỗ này.
    */
   it('lượt sau KHÔNG mang theo lượt trước — mỗi lượt là một request độc lập', async () => {
     const first = nextChat();
@@ -259,13 +328,13 @@ describe('useAI — một đường, thẳng tới máy chủ', () => {
 
     const second = nextChat();
     act(() => {
-      void result.current.ask('Rõ hơn được không?');
+      void result.current.ask('Sai số làm tròn tính thế nào?');
     });
     await act(async () => {
       await flush();
     });
 
-    expect(second.requests[0].question).toBe('Rõ hơn được không?');
+    expect(second.requests[0].question).toBe('Sai số làm tròn tính thế nào?');
     expect(second.requests[0].question).not.toContain('entropy');
     expect(second.requests[0].question).not.toContain('Là số bit.');
   });
@@ -324,56 +393,85 @@ describe('useAI — SSE đứt giữa chừng giữ lại phần đã nhận', (
   });
 });
 
+/**
+ * SÁU mã có một hành động RIÊNG người học có thể làm, mỗi mã một câu dịch
+ * RIÊNG — bảng này là DANH SÁCH ĐẦY ĐỦ, không phải một cặp mẫu.
+ *
+ * Review vòng 1 đo được: bộ kiểm ban đầu chỉ ghim CẶP `NoCredit`/
+ * `ProviderFailed`, và một đột biến gộp NĂM mã còn lại vào một câu (ví dụ
+ * `ToolBudgetExhausted` mượn câu của `ProviderFailed`) vẫn 48/48 xanh — bài
+ * `'ToolBudgetExhausted có câu RIÊNG'` cũ chỉ khẳng định `code`, không bao
+ * giờ khẳng định `message`, nên tên bài nói một điều còn bài đo điều khác.
+ *
+ * Khoá dịch lấy từ CHÍNH `@tuhoc/i18n` (`translate('vi', key)`), không phải
+ * chuỗi tiếng Việt chép tay hai lần — chép tay là một bản sao THỨ HAI có thể
+ * trôi khỏi catalog thật mà không ai để ý.
+ */
+const DISTINCT_PRE_STREAM: readonly { code: string; status: number; key: MessageKey }[] = [
+  { code: 'NoCredit', status: 402, key: 'ai.error.noCredit' },
+  { code: 'RateLimited', status: 429, key: 'ai.error.rateLimited' },
+  { code: 'Unauthenticated', status: 401, key: 'ai.error.unauthenticated' },
+  { code: 'FieldTooLong', status: 400, key: 'ai.error.fieldTooLong' },
+];
+const DISTINCT_MID_STREAM: readonly { code: string; key: MessageKey }[] = [
+  { code: 'ProviderFailed', key: 'ai.error.providerFailed' },
+  { code: 'ToolBudgetExhausted', key: 'ai.error.toolBudgetExhausted' },
+];
+
 describe('useAI — mã lỗi có nghĩa RIÊNG, không hiện "thử lại sau" cho người chỉ cần nạp credit', () => {
-  it('NoCredit và ProviderFailed dẫn tới HAI câu KHÁC NHAU', async () => {
-    // NoCredit chỉ tới bằng đường 402 TRƯỚC-stream ở đời thật
-    // (`serverClient.ts`'s doc comment) — mô phỏng đúng hình dạng đó thay vì
-    // gửi nó như một sự kiện SSE.
-    server.use(
-      http.post('/ai/chat', () => HttpResponse.json({ code: 'NoCredit', error: 'no AI credit remaining' }, { status: 402 })),
-    );
-    const { result: r1 } = renderHook(() => useAI(), { wrapper });
-    await act(async () => {
-      await r1.current.ask('hỏi');
-    });
-    const noCreditError = r1.current.error;
+  it.each(DISTINCT_PRE_STREAM)(
+    'mã trước-stream $code (HTTP $status) hiện ĐÚNG câu của riêng nó ($key)',
+    async ({ code, status, key }) => {
+      const err = await askAndFailPreStream(code, status);
+      expect(err?.code).toBe(code);
+      expect(err?.message).toBe(translate('vi', key));
+    },
+  );
 
-    const b = nextChat();
-    const { result: r2 } = renderHook(() => useAI(), { wrapper });
-    act(() => {
-      void r2.current.ask('hỏi');
-    });
-    await act(async () => {
-      b.sse.event('error', { code: 'ProviderFailed', text: 'the AI provider could not complete this turn' });
-      b.sse.close();
-      await flush();
-    });
-    const providerFailedError = r2.current.error;
-
-    expect(noCreditError?.code).toBe('NoCredit');
-    expect(providerFailedError?.code).toBe('ProviderFailed');
-    expect(noCreditError?.code).not.toBe(providerFailedError?.code);
-    // ĐÂY LÀ KHẲNG ĐỊNH THẬT SỰ CHỊU LỰC: không chỉ mã khác nhau, CÂU HIỆN
-    // RA cũng phải khác nhau — nếu không, một cổng chỉ so `code` có thể xanh
-    // trong khi UI vẫn hiện đúng MỘT thông điệp cho cả hai.
-    expect(noCreditError?.message).not.toBe(providerFailedError?.message);
+  it.each(DISTINCT_MID_STREAM)('mã giữa-stream $code hiện ĐÚNG câu của riêng nó ($key)', async ({ code, key }) => {
+    const err = await askAndFailMidStream(code);
+    expect(err?.code).toBe(code);
+    expect(err?.message).toBe(translate('vi', key));
   });
 
-  it('ToolBudgetExhausted có câu RIÊNG, không mượn câu của ProviderFailed', async () => {
-    const { sse } = nextChat();
-    const { result } = renderHook(() => useAI(), { wrapper });
-    act(() => {
-      void result.current.ask('hỏi');
-    });
-    await act(async () => {
-      sse.event('error', { code: 'ToolBudgetExhausted', text: 'this turn used its whole tool budget without producing an answer' });
-      sse.close();
-      await flush();
-    });
-    expect(result.current.error?.code).toBe('ToolBudgetExhausted');
+  /**
+   * BÀI CHỊU LỰC — thay cho cặp `NoCredit`/`ProviderFailed` cũ. Gộp BẤT KỲ
+   * hai trong sáu mã này lại (đột biến `describeFailure`) phải làm đúng một
+   * trong hai cặp trùng nhau xuất hiện, và `Set` bắt được bất kể là cặp nào —
+   * không cần đoán trước đột biến sẽ gộp cặp nào.
+   */
+  it('sáu mã trên tạo SÁU câu khác nhau đôi một — không cặp nào trùng, dù đột biến gộp cặp nào', async () => {
+    const messages: string[] = [];
+    for (const { code, status } of DISTINCT_PRE_STREAM) {
+      messages.push((await askAndFailPreStream(code, status))!.message);
+    }
+    for (const { code } of DISTINCT_MID_STREAM) {
+      messages.push((await askAndFailMidStream(code))!.message);
+    }
+    expect(messages).toHaveLength(6);
+    expect(new Set(messages).size).toBe(6);
   });
 
-  it('không có response nào tới (mất mạng) ⇒ mã Network', async () => {
+  /**
+   * Bốn mã CÒN LẠI gộp chung một câu CÓ CHỦ Ý (xem `useAI.ts`'s
+   * `describeFailure` doc comment) — ghim ít nhất một ca, đúng lời khuyên
+   * review: "ghim message cho mọi mã có câu riêng, VÀ cho xô gộp ít nhất một
+   * ca".
+   */
+  it('InvalidBody/FieldRequired/UnknownTool/Internal GỘP chung một câu — có chủ ý, không phải sót', async () => {
+    const expected = translate('vi', 'ai.error.requestRejected');
+    for (const [code, status] of [
+      ['InvalidBody', 400],
+      ['FieldRequired', 400],
+      ['UnknownTool', 400],
+      ['Internal', 500],
+    ] as const) {
+      const err = await askAndFailPreStream(code, status);
+      expect(err?.message, code).toBe(expected);
+    }
+  });
+
+  it('không có response nào tới (mất mạng) ⇒ mã Network, câu RIÊNG của nó', async () => {
     server.use(http.post('/ai/chat', () => HttpResponse.error()));
     const { result } = renderHook(() => useAI(), { wrapper });
     await act(async () => {
@@ -381,6 +479,90 @@ describe('useAI — mã lỗi có nghĩa RIÊNG, không hiện "thử lại sau"
     });
     expect(result.current.state).toBe('error');
     expect(result.current.error?.code).toBe('Network');
+    expect(result.current.error?.message).toBe(translate('vi', 'ai.error.network'));
+  });
+});
+
+describe('useAI — trần độ dài dây (MAX_WIRE_QUESTION_CHARS), Critical review vòng 1', () => {
+  it('không có system: prompt ngắn đi qua nguyên vẹn', () => {
+    expect(buildWireQuestion(undefined, 'Entropy là gì?')).toBe('Entropy là gì?');
+  });
+
+  it('system + prompt vừa vặn: ghép nguyên văn, có dấu phân cách', () => {
+    expect(buildWireQuestion('ngữ cảnh', 'câu hỏi')).toBe('ngữ cảnh\n\ncâu hỏi');
+  });
+
+  it('system một mình GẦN LẤP ĐẦY trần (đúng hình dạng một chương thật) — ghép được, tổng KHÔNG vượt trần, câu người học giữ nguyên', () => {
+    // 7995 rune — đúng cỡ `chapterSystemPrompt` đo được trên chương thật
+    // (xem describe dưới). "Tại sao?" là 8 rune: 7995+2+8=8005>8000 nếu
+    // KHÔNG kẹp — đúng con số review vòng 1 đo trên `appx.html`.
+    const system = 'x'.repeat(7995);
+    const prompt = 'Tại sao?';
+    const out = buildWireQuestion(system, prompt);
+    expect(Array.from(out).length).toBeLessThanOrEqual(MAX_WIRE_QUESTION_CHARS);
+    expect(out.endsWith(prompt)).toBe(true);
+  });
+
+  it('system dài HƠN CẢ trần: bị cắt về đúng phần còn lại sau khi trừ prompt + dấu phân cách', () => {
+    const system = 'a'.repeat(20_000);
+    const prompt = 'hỏi';
+    const out = buildWireQuestion(system, prompt);
+    expect(Array.from(out).length).toBe(MAX_WIRE_QUESTION_CHARS);
+    expect(out.endsWith('\n\nhỏi')).toBe(true);
+  });
+
+  it('prompt MỘT MÌNH đã vượt trần (câu cực dài, hiếm): bị cắt, không ném lỗi', () => {
+    const prompt = 'b'.repeat(9000);
+    const out = buildWireQuestion(undefined, prompt);
+    expect(Array.from(out).length).toBe(MAX_WIRE_QUESTION_CHARS);
+  });
+
+  it('cả system lẫn prompt đều cực dài: system nhường HOÀN TOÀN, prompt vẫn được ưu tiên (cắt nếu cần)', () => {
+    const system = 'a'.repeat(20_000);
+    const prompt = 'b'.repeat(9000);
+    const out = buildWireQuestion(system, prompt);
+    expect(Array.from(out).length).toBeLessThanOrEqual(MAX_WIRE_QUESTION_CHARS);
+    expect(out).toBe('b'.repeat(MAX_WIRE_QUESTION_CHARS));
+  });
+
+  /**
+   * BÀI CHỊU LỰC CỦA CRITICAL — dùng MỘT CHƯƠNG THẬT, không phải một chuỗi
+   * bịa cỡ tương đương. Review vòng 1: "Test dùng một chương THẬT... Fixture
+   * bịa ngắn là lý do lỗi này lọt."
+   *
+   * Trước phép kẹp: "Hỏi về chương" hỏng (400 `FieldTooLong`) trên CẢ BA
+   * chương này với BẤT KỲ câu hỏi nào dài hơn vài ký tự — đo được, xem
+   * task-13-report.md.
+   */
+  it.each([
+    'so-dau-phay-dong/chapters/appx.html',
+    'so-dau-phay-dong/chapters/p1-3.html',
+    'bat-bien-vong-lap/chapters/c1.html',
+  ])('chương thật %s: "Hỏi về chương" với một câu hỏi ngắn ĐI ĐƯỢC, không FieldTooLong', async (rel) => {
+    const system = realChapterSystem(rel);
+    // Khẳng định tường minh rằng fixture THẬT sự gần lấp đầy trần — nếu
+    // không, bài này xanh vì lý do sai (chương "vừa vặn" không đo được gì).
+    expect(Array.from(system).length).toBeGreaterThan(7900);
+
+    const { requests, sse } = nextChat();
+    const { result } = renderHook(() => useAI(), { wrapper });
+    await act(async () => {
+      void result.current.ask('Tại sao?', { system });
+      await flush();
+    });
+
+    expect(requests).toHaveLength(1);
+    const runeLen = Array.from(requests[0].question).length;
+    expect(runeLen).toBeLessThanOrEqual(MAX_WIRE_QUESTION_CHARS);
+    expect(requests[0].question.endsWith('Tại sao?')).toBe(true);
+
+    await act(async () => {
+      sse.event('done', {});
+      sse.close();
+      await flush();
+    });
+    expect(result.current.state).toBe('done');
+    expect(result.current.error).toBeNull();
   });
 });
 
