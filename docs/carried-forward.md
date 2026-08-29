@@ -817,8 +817,10 @@ sửa câu chữ, tài liệu, và chính sổ này.
 QĐ-1 của điều phối viên đặt `ai_settings.signup_grant_micro = 50_000` (migration `0008`). Ship `0`
 không phải "chưa chốt giá", nó là tính năng tắt — mọi tài khoản mới nhận 402 ngay câu hỏi đầu tiên.
 
-**Rủi ro đã cân và NHẬN, có tên:** đo được `grep -r 'email_verified\|VerifyEmail' apps/api` → **0**.
-Không có xác thực email, nên K tài khoản = K × 50.000 micro. Nhận vì (a) lựa chọn còn lại là ship
+**Rủi ro đã cân và NHẬN, có tên:** không có xác thực email nào trong repo. Đo lại 2026-08-29:
+`email_verified` / `VerifyEmail` khớp đúng **ba** dòng dưới `apps/api`, và **cả ba là CHÚ THÍCH ghi
+lại chính con số không ấy** (`ratelimit.go:23-24`, `admin_handler.go:99`) — không dòng mã nào. Nên K
+tài khoản = K × 50.000 micro. Nhận vì (a) lựa chọn còn lại là ship
 một sản phẩm không ai dùng được tính năng chủ lực; (b) 50.000 micro ≈ 13 lượt ở giá seed; (c)
 `RateLimiter` chặn TỐC ĐỘ đốt của mỗi tài khoản (nhưng **không** chặn số tài khoản — xem mục
 "RateLimiter khoá theo user id" ở trên, cùng lỗ, ghi từ Task 10).
