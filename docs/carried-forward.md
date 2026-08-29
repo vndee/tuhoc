@@ -713,3 +713,39 @@ hay không, cùng tinh thần cột `actor` đã chọn cho vấn đề liền k
 `published_courses`/`course_versions`'s admin_audit rows (Task 8), không chỉ hai route Task 17 —
 nên đây là một quyết định schema-rộng, không phải một sửa cục bộ trong `internal/ai`. Chưa task
 nào được giao.
+
+### 3 — Cổng quét route theo ĐỊNH DANH HANDLER: một closure trung gian vẫn né được
+
+`apps/api/internal/ai/admin_handler_test.go` (`adminAIHandlerRefs` + `TestAdminAIRoutesAllRequireAdmin`)
+khoá bảy handler admin bằng `reflect.ValueOf(method).Pointer()`, rồi duyệt `app.Stack()` thật và đòi
+mỗi route trỏ tới một trong bảy con trỏ ấy phải trả 401 khi không session **và** 403 với session
+`role='user'`. Đây là bản thay cho cách lọc theo tiền tố `/admin/ai` — cách cũ đã được ĐO là thủng:
+một handler admin gắn ở đường dẫn khác vô hình với **cả** middleware tiền tố của fiber **lẫn** test,
+non-admin đọc trọn `ai_pricing` với HTTP 200 trong khi toàn bộ suite vẫn xanh.
+
+Bản mới đóng đúng lớp đó — re-review tự tái hiện ba hình dạng (thiếu `RequireAdmin` đăng ký trước
+group; hoàn toàn trần, ngoài tiền tố; xoá cả group) và **cả ba đều ĐỎ**, kể cả hình dạng chống rỗng
+(`found=[]` → Fatal, không xanh lặng lẽ).
+
+**Điểm mù còn lại, đã ĐO chứ không suy luận:** một handler chỉ tới được qua một **hàm bọc trung
+gian** thì không khớp. Re-review thêm route `/wrapped-leak` gọi `AdminListPricing` qua closure
+`func(c *fiber.Ctx) error { return aiHandler.AdminListPricing(c) }`, không `RequireAdmin` →
+**toàn bộ test cổng vẫn XANH**, và non-admin nhận 200 kèm bảng giá. Chú thích tại chỗ khai đúng
+phạm vi này, không hứa rộng hơn.
+
+Không có route nào như vậy trong mã hôm nay — đây là hạn chế **của cổng**, không phải lỗ đang sống.
+Đóng đúng cần phân tích luồng gọi (hoặc một quy ước cấm bọc handler admin, tự nó cần một cổng),
+đắt hơn bán kính hiện tại: mọi route sau cổng admin đều là "người vận hành tự bắn chân", không phải
+lỗ hổng cho người đọc.
+
+**Nơi xử lý:** nếu sau này có lý do chính đáng để bọc một handler admin trong closure (đo đạc,
+chuyển đổi lỗi, phân trang chung), thì chính lúc ấy phải mở rộng cổng — đừng bọc trước rồi tin
+rằng cổng vẫn canh.
+
+Một rủi ro lý thuyết đã xét và bỏ qua: `reflect.Value.Pointer()` cho `Kind() == Func` được Go doc
+cảnh báo là *"not necessarily enough to identify a single function uniquely"*. Linker của Go hiện
+không gộp mã trùng, và lấy `.Pointer()` của method value buộc trình biên dịch tạo symbol có địa chỉ
+thật. Kể cả nếu va chạm xảy ra, hậu quả xấu nhất là **nhầm TÊN handler trong thông báo lỗi** — route
+vẫn nằm trong tập được kiểm, nên không sinh ra lỗ ẩn. Tiền đề "con trỏ độc lập với receiver" không
+được tin suông: `TestAdminAIHandlerRefsIdentifyMethodNotReceiver` dựng hai instance `*Handler` riêng
+và đo trên chính toolchain đang build.
