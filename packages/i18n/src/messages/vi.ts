@@ -112,10 +112,11 @@ export const vi = {
 
   /* ── mục Trợ lý AI (Pha 2 — task-14: credit + cấu hình agent thay khung
      kho khoá) ────────────────────────────────────────────────────────────
-     Task 15 đổi `login.point.ownKey` (lời hứa Pha 1, "key của chính bạn").
-     Ở ĐÂY áp cùng nguyên tắc, sớm hơn: không câu nào dưới đây được nhắc lại
-     "key", "kho khoá", hay "địa chỉ riêng" — cả ba đã sai kể từ khi AI
-     chuyển sang chạy trên máy chủ (Task 11). */
+     Task 15 đổi `login.point.ownKey` và `login.pitch.lede` (lời hứa Pha 1,
+     "key của chính bạn") ở dưới, tại mục `login.*`. Ở ĐÂY áp cùng nguyên tắc,
+     sớm hơn: không câu nào dưới đây được nhắc lại "key", "kho khoá", hay
+     "địa chỉ riêng" — cả ba đã sai kể từ khi AI chuyển sang chạy trên máy chủ
+     (Task 11). */
 
   'settings.ai.title': 'Trợ lý AI',
   'settings.ai.blurb':
@@ -462,11 +463,12 @@ export const vi = {
    * không biết mình sắp đăng ký cái gì. Ba gạch đầu dòng dưới đây không phải
    * khẩu hiệu — mỗi câu tương ứng một tính chất mà mã trong repo này thật sự
    * giữ: khoá học đọc được ngay, miễn phí, không cần tài khoản (máy chủ phục
-   * vụ mọi khoá học công khai — không còn gói nào để tải), key nằm ở origin
-   * kho khoá (`apps/vault`), tiến độ và ghi chú đồng bộ qua tài khoản
-   * (`sync/engine.ts`).
+   * vụ mọi khoá học công khai — không còn gói nào để tải), trợ lý AI chạy
+   * trên máy chủ của nền tảng và trả bằng credit (`internal/ai`,
+   * `ai/serverClient.ts`) — không còn key riêng nào để người học tự giữ, tiến
+   * độ và ghi chú đồng bộ qua tài khoản (`sync/engine.ts`).
    *
-   * GẠCH ĐẦU DÒNG THỨ NHẤT VÀ THỨ BA ĐỔI Ở TASK NÀY (task-14, spec
+   * GẠCH ĐẦU DÒNG THỨ NHẤT VÀ THỨ BA ĐỔI Ở TASK 14 (spec
    * `2026-08-25-server-side-pivot.md` §0.2) — khoá cũng đổi tên
    * (`login.point.offline` → `login.point.free`, `login.point.private` →
    * `login.point.sync`) để chỗ nào còn trỏ khoá cũ nổ compile thay vì lặng lẽ
@@ -476,13 +478,24 @@ export const vi = {
    * tính năng. Bullet thứ ba từng là "course riêng tư không lộ ra registry" —
    * khái niệm ấy cũng rời đi cùng registry riêng tư (`courses.lede` đã tự
    * khai "mọi khoá học đều công khai"), nên chỗ của nó nay là lời hứa đồng bộ.
+   *
+   * GẠCH ĐẦU DÒNG THỨ HAI (`login.point.ownKey`) VÀ CÂU LEDE ĐỔI Ở TASK 15
+   * (bàn giao Pha 1 §2, cùng spec §0.1) — KHOÁ GIỮ NGUYÊN TÊN, chỉ đổi giá
+   * trị: `ownKey` mô tả một TÍNH CHẤT ("có một trợ lý AI"), không phải cơ chế
+   * đứng sau nó, nên tên khoá không sai theo cách buộc phải đổi tên như hai
+   * khoá kia. Bản cũ hứa "trợ lý AI chạy bằng key của chính bạn, và key
+   * không đi qua máy chủ của chúng tôi" — đúng khi kho khoá (`apps/vault`)
+   * còn là đường DUY NHẤT gọi AI; sai từ khi `internal/ai` ship (Task 11) và
+   * `useAI.ts` chuyển hẳn sang gọi máy chủ. `login.pitch.lede` mắc cùng lỗi ở
+   * một câu phụ ("hỏi trợ lý AI bằng key của chính bạn") — sửa luôn ở đây,
+   * cùng thời điểm, vì cùng một lời hứa chết theo cùng một sự kiện.
    */
   'login.pitch.headline': 'Khoá học mở cho mọi người.',
   'login.pitch.lede':
-    'Mở một khoá học và đọc ngay — không cần cài đặt, không cần chờ tải. Bôi đen một đoạn để ghi chú thẳng lên trang, hoặc hỏi trợ lý AI bằng key của chính bạn.',
+    'Mở một khoá học và đọc ngay — không cần cài đặt, không cần chờ tải. Bôi đen một đoạn để ghi chú thẳng lên trang, hoặc hỏi trợ lý AI ngay trong bài.',
   'login.pitch.aria': 'Tự học làm được gì',
   'login.point.free': 'Đọc toàn bộ giáo trình miễn phí — không cần tài khoản',
-  'login.point.ownKey': 'Trợ lý AI chạy bằng key của chính bạn, và key không đi qua máy chủ của chúng tôi',
+  'login.point.ownKey': 'Trợ lý AI chạy trên máy chủ của chúng tôi, trả bằng credit — không cần key của riêng bạn',
   'login.point.sync': 'Đăng nhập để tiến độ và ghi chú theo bạn trên mọi thiết bị',
 
   'login.title': 'Đăng nhập',

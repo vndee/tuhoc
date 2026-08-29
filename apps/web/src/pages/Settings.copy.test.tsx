@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { meQueryKey, type Me } from '../api/useMe';
+import { t } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 import { VaultFrameProvider } from '../shell/VaultFrame';
 import { ThemeProvider } from '../theme/ThemeContext';
@@ -51,7 +52,7 @@ beforeEach(() => {
 });
 
 /**
- * BẢO VỆ CHỐNG TÁI PHẠM (spec `2026-08-25-server-side-pivot.md` §0.2, §1).
+ * BẢO VỆ CHỐNG TÁI PHẠM (spec `2026-08-25-server-side-pivot.md` §0.2, §0.1, §1).
  *
  * `/settings` đã mang lời hứa sai này HAI LẦN trong đúng một pha:
  * `settings.localData.blurb` ("Gói khoá học và ghi chú nằm trong trình
@@ -66,13 +67,29 @@ beforeEach(() => {
  * nên nó vẫn đỏ nếu lời hứa cũ quay lại qua bất kỳ khoá nào khác, kể cả một
  * khoá mới không ai đặt tên trước.
  *
- * Hai cụm dưới đây là NGUYÊN VĂN của bản lỗi cũ (chữ hoa, thứ tự từ đúng
- * như nó từng đứng) — không phải "gói" nói chung, vì bản ĐÃ SỬA vẫn nhắc tới
- * "gói" một cách hợp lệ (phủ định nó: "không tải gói nào về máy"). Một bộ
- * lọc rộng hơn sẽ tự đỏ ngay trên chính bản đã sửa.
+ * DANH SÁCH GỘP với `Login.test.tsx` (cùng nội dung, LẶP LẠI KHÔNG IMPORT —
+ * xem đầu tệp này cho lý do không dùng chung harness giữa hai tệp). Bốn mục
+ * đầu là NGUYÊN VĂN hai bản lỗi cũ của CHÍNH trang này lẫn của `/login`
+ * (task-14) — không phải "gói" nói chung, vì bản ĐÃ SỬA vẫn nhắc tới "gói"
+ * một cách hợp lệ (phủ định nó: "không tải gói nào về máy"); một bộ lọc rộng
+ * hơn sẽ tự đỏ ngay trên chính bản đã sửa. Hai mục cuối là lời hứa thứ BA —
+ * trợ lý AI từng chạy bằng key riêng của người học, không đi qua máy chủ —
+ * sai từ khi AI chuyển hẳn lên máy chủ (task-15, spec §0.1). Trang này
+ * không tự render `login.point.ownKey`, nhưng canh nó ở đây vẫn có nghĩa:
+ * `settings.ai.blurb` nói về CHÍNH đường AI đó, và một biên tập lại lỡ mượn
+ * câu chữ Pha 1 khi viết lại mục Trợ lý AI sẽ bị bắt ngay tại đây.
  */
-describe('Cài đặt — không còn hứa gói khoá học nằm trên máy (task-14, fix-round-2)', () => {
-  it('không chứa "gói đã tải" hay "Gói khoá học" ở bất cứ đâu trên trang', async () => {
+const LOI_HUA_DA_CHET_VI = [
+  /ngoại tuyến/i,
+  /trên máy bạn/i,
+  /gói đã tải/i,
+  /gói khoá học/i,
+  /key của chính bạn/i,
+  /không đi qua máy chủ/i,
+];
+
+describe('Cài đặt — không còn hứa gói khoá học nằm trên máy, hay trợ lý AI chạy bằng key riêng (task-14, task-15)', () => {
+  it('không chứa bất kỳ lời hứa nào trong danh sách LỜI_HỨA_ĐÃ_CHẾT ở bất cứ đâu trên trang', async () => {
     renderSettings();
 
     // Chốt chống-vacuous: hai khối mang hai câu từng sai phải THẬT SỰ có mặt
@@ -81,7 +98,33 @@ describe('Cài đặt — không còn hứa gói khoá học nằm trên máy (t
     expect(await screen.findByRole('heading', { name: 'Dữ liệu trên máy' })).toBeInTheDocument();
 
     const rendered = document.body.textContent ?? '';
-    expect(rendered.toLowerCase()).not.toContain('gói đã tải');
-    expect(rendered.toLowerCase()).not.toContain('gói khoá học');
+    for (const loiHua of LOI_HUA_DA_CHET_VI) {
+      expect(rendered).not.toMatch(loiHua);
+    }
+  });
+
+  /**
+   * CÙNG CỔNG, PHÍA TIẾNG ANH — xem lý giải đầy đủ ở `Login.test.tsx`'s bài
+   * song sinh. `try`/`finally` xoá `itbook-lang` để không rò rỉ tiếng Anh
+   * sang bài kiểm khác trong tệp: khoá này là tuỳ chọn THIẾT BỊ, nên
+   * `localStorage.clear()` ở `beforeEach` bên dưới mới là thứ thật sự dọn nó
+   * — nhưng dọn TRƯỚC khi bài chạy, không phải sau, nên vẫn cần tự dọn ở đây.
+   */
+  it('bản tiếng Anh cũng không còn hứa "your own key" hay "never passes through our servers"', async () => {
+    localStorage.setItem('itbook-lang', 'en');
+    try {
+      renderSettings();
+
+      expect(await screen.findByRole('heading', { name: t('en', 'settings.section.account') })).toBeInTheDocument();
+      expect(
+        await screen.findByRole('heading', { name: t('en', 'settings.section.localData') }),
+      ).toBeInTheDocument();
+
+      const rendered = document.body.textContent ?? '';
+      expect(rendered).not.toMatch(/your own key/i);
+      expect(rendered).not.toMatch(/never passes through our servers/i);
+    } finally {
+      localStorage.removeItem('itbook-lang');
+    }
   });
 });
