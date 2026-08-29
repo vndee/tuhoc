@@ -263,9 +263,24 @@ export interface BuiltPrompt {
    *  (vốn liệt kê mọi tiêu đề mục) trả lời hộ. */
   readonly excerpt: string;
   readonly truncated: boolean;
-  /** Số ký tự THẬT sẽ rời khỏi máy cho phần ngữ cảnh này. Bằng đúng
-   *  `system.length`, không phải một ước lượng: người gác của kho khoá trừ
-   *  ngân sách bằng số ký tự thật, nên mọi con số ở đây phải là cùng một số. */
+  /**
+   * Số ký tự THẬT sẽ rời khỏi máy cho phần ngữ cảnh này. Bằng đúng
+   * `system.length`, không phải một ước lượng — và `prompts.test.ts` cưỡng
+   * chế đẳng thức ấy.
+   *
+   * LÝ DO GỐC ĐÃ CHẾT, LÝ DO MỚI THÌ KHÔNG. Bản Pha 1 viết: *"người gác của
+   * kho khoá trừ ngân sách bằng số ký tự thật, nên mọi con số ở đây phải là
+   * cùng một số"* — tức có một BÊN THỨ HAI đếm cùng đại lượng, và lệch một ký
+   * tự là hai bên bất đồng. Task 16 gỡ người gác ấy cùng kho khoá, và Pha 2
+   * không dựng lại nó: máy chủ trừ credit theo TOKEN thật do nhà cung cấp báo
+   * về, không theo ký tự.
+   *
+   * Trường này ở lại vì nó nay phục vụ NGƯỜI ĐỌC, không phải một bộ đếm:
+   * `AskPanel`/`DeepDive` nói cho người học biết bao nhiêu chữ của chương sắp
+   * rời khỏi máy, và `CHAPTER_CONTEXT_LIMIT` cắt theo đúng con số ấy. Một ước
+   * lượng ở đây là nói dối về một điều riêng tư — nên đẳng thức
+   * `contextChars === system.length` vẫn là bất biến, chỉ đổi người thụ hưởng.
+   */
   readonly contextChars: number;
 }
 

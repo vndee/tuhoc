@@ -5,8 +5,12 @@ import { readLocalStorage, type LocalStorageKey } from '../db/local';
  * NỬA "CÓ TRẠNG THÁI" của i18n ở trang chính.
  *
  * Catalog và hàm tra cứu thuần sống ở `packages/i18n` — một gói KHÔNG phụ thuộc
- * gì, dùng chung với kho khoá (QĐ-1). Tệp này chỉ thêm thứ duy nhất mà gói ấy
- * không được phép biết: `localStorage` của trang chính.
+ * gì (QĐ-1). Tệp này chỉ thêm thứ duy nhất mà gói ấy không được phép biết:
+ * `localStorage` của trang chính.
+ *
+ * Gói ấy ra đời để DÙNG CHUNG với kho khoá ở origin thứ hai; Task 16 gỡ kho
+ * khoá, và gói vẫn đứng riêng vì một lý do khác — xem doc comment của
+ * `packages/i18n/src/index.ts`, nơi phép đổi lý do được viết ra đầy đủ.
  *
  * Re-export chứ không bắt mọi chỗ gọi nhập từ hai nơi: `useLanguage()` là đường
  * chính, và những chỗ cần `t()` thuần (mã không phải component) nhập
