@@ -737,9 +737,12 @@ func TestNoRequestStructAcceptsAKey(t *testing.T) {
 // stdlib (`$(go env GOROOT)/src/log/slog/logger.go`,
 // `.../log/slog/handler.go`):
 //
-//   - `slog.SetDefault` CHỈ được gọi ở hai tệp *_test.go trong toàn repo
-//     (observability_test.go:54, discuss_test.go:223). Tiến trình sản phẩm
-//     — `cmd/api/main.go` và mọi gói `internal/*` — KHÔNG BAO GIỜ gọi nó.
+//   - `slog.SetDefault` CHỈ được gọi từ mã TEST (vài tệp *_test.go, mỗi tệp
+//     để tự chụp log của chính bài nó — không liệt kê tên ở đây, một danh
+//     sách tên tệp trong một chú thích là thứ lệch lặng lẽ, và bản trước của
+//     dòng này đã lệch đúng như thế: nó kể hai tệp trong khi đã có ba).
+//     Điều KHÔNG đổi và là điều thật sự load-bearing: tiến trình sản phẩm —
+//     `cmd/api/main.go` và mọi gói `internal/*` — KHÔNG BAO GIỜ gọi nó.
 //   - Khi không ai gọi `SetDefault`, `slog.Default()` là một `*defaultHandler`
 //     (log/slog/handler.go). Đọc thẳng chú thích trong nguồn của chính nó:
 //     "Collect the level, attributes and message in a string and write it

@@ -17,11 +17,13 @@
 package ai_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -1588,4 +1590,91 @@ func (p *perRequestStream) CompleteStream(ctx context.Context, req ai.Request, o
 	step := p.script[i]
 	p.mu.Unlock()
 	return step(onDelta)
+}
+
+// captureAISlog redirects the default slog logger into a buffer for the
+// duration of one test, the same technique internal/server's
+// observability_test.go and internal/apilog's no_ai_bodies_test.go already
+// use. Level Debug so a Warn is not filtered out.
+func captureAISlog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return buf
+}
+
+// TestSuccessfulTurnWithNoUsageIsLoudNotSilent is D3 of the whole-branch
+// review.
+//
+// THE MEASURED HOLE: stream.go's post-loop guards check sawDone and a
+// truncated tool call. Neither checks "the stream ended cleanly and
+// reported no token usage at all". When DeepSeek's final chunk carries no
+// `usage` object, CompleteStream returns a perfectly ordinary Completion
+// with a zero Usage, RunStream accumulates zero, Charge returns (0, 0),
+// and ChargeTurn happily runs `UPDATE ... - 0` and inserts an all-zero
+// ai_usage row, returning nil. The learner gets a complete answer, the
+// platform pays DeepSeek for it, and NOTHING anywhere says so.
+//
+// THE CHOICE MADE, AND WHY (the brief asks for it in writing): a WARNING,
+// not an error. By the time this is detectable the answer has already been
+// streamed to the learner and the tokens have already been billed by the
+// provider; turning it into an error would report a failure for a turn that
+// visibly succeeded, and would put an error event on the wire after the
+// answer the learner already read — trading a silent accounting gap for a
+// loud, wrong user-facing failure. The charge still runs, so the all-zero
+// ai_usage row remains as the ledger's own record that a turn happened at
+// all; the warning is what makes the anomaly findable without reading rows.
+//
+// The two assertions are deliberately BOTH here: the log line, and the row.
+// A version of this that only logged would let a later refactor drop the
+// row (losing the ledger trace); a version that only checked the row cannot
+// tell an all-zero turn from no turn.
+func TestSuccessfulTurnWithNoUsageIsLoudNotSilent(t *testing.T) {
+	pool := store.TestPool(t)
+	seedFixtureRates(t, pool)
+	credits := ai.NewService(pool)
+	uid := newUser(t, pool, "zero-usage", 55000)
+
+	logs := captureAISlog(t)
+	// A turn that SUCCEEDS (finish_reason "stop", a real answer) and reports
+	// no usage whatsoever — exactly the shape of a provider whose final
+	// chunk omitted the usage object.
+	fs := &fakeStream{script: []streamStep{answerStep("một câu trả lời đầy đủ", ai.Usage{})}}
+	app := newAIApp(t, uid, ai.HandlerDeps{Client: fs, Credits: credits, Courses: fakeCourses{}})
+
+	resp, raw := doJSON(t, app, http.MethodPost, "/ai/chat", map[string]any{"question": "hỏi gì đó"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200 got %d body=%s", resp.StatusCode, raw)
+	}
+	if !strings.Contains(string(raw), "một câu trả lời") {
+		t.Fatalf("người học phải nhận được câu trả lời — lượt này THÀNH CÔNG: %s", raw)
+	}
+	for _, ev := range parseSSE(t, resp, raw) {
+		if ev.Kind == "error" {
+			t.Fatalf("lượt này KHÔNG được báo lỗi cho người học — nó đã trả lời xong: %+v", ev)
+		}
+	}
+
+	got := logs.String()
+	if !strings.Contains(got, "no usage") {
+		t.Fatalf("một lượt thành công với usage = 0 phải để lại một dòng cảnh báo CÓ TÊN; "+
+			"log chỉ có:\n%s", got)
+	}
+	if !strings.Contains(got, uid.String()) {
+		t.Errorf("cảnh báo phải nêu tài khoản nào (siêu dữ liệu, không phải nội dung): %s", got)
+	}
+	// Spec §0.1 / cổng Task 12: log là siêu dữ liệu, không bao giờ là thân
+	// hội thoại. Cảnh báo mới này không được là ngoại lệ đầu tiên.
+	if strings.Contains(got, "hỏi gì đó") || strings.Contains(got, "một câu trả lời") {
+		t.Fatalf("cảnh báo mang NỘI DUNG hội thoại vào log — vi phạm ràng buộc #2:\n%s", got)
+	}
+
+	// Dòng sổ vẫn phải tồn tại: nó là bằng chứng "một lượt đã xảy ra", thứ
+	// duy nhất phân biệt được lượt-toàn-0 với không-có-lượt-nào.
+	rows := usageRowsOf(t, pool, uid)
+	if len(rows) != 1 {
+		t.Fatalf("muốn đúng 1 hàng ai_usage (dấu vết lượt đã xảy ra), có %d", len(rows))
+	}
 }
