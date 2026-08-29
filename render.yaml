@@ -53,13 +53,22 @@ services:
       # Paste in the Neon pooled connection string (see docs/deploy.md).
       - key: DATABASE_URL
         sync: false
-      # GITHUB_TOKEN is a secret, and the only one this server holds that is
-      # its OWN rather than a user's: a read-only, fine-grained PAT scoped
-      # to the registry repository's Discussions, used to embed those
-      # threads on course pages. It is NOT an exception to the promise that
-      # a reader's AI provider key never touches this server — see the
-      # comment at its declaration in apps/api/internal/config/config.go,
-      # and .env.example for the three ways the two differ.
+      # GITHUB_TOKEN is a read-only, fine-grained PAT scoped to the registry
+      # repository's Discussions, used to embed those threads on course
+      # pages. It belongs to the PLATFORM, not to any reader.
+      #
+      # This comment used to add "It is NOT an exception to the promise that
+      # a reader's AI provider key never touches this server". That promise
+      # died at Task 11: the AI agent now runs on this server against ONE
+      # DeepSeek account the platform pays for (DEEPSEEK_API_KEY, below), so
+      # there is no longer a no-provider-key rule for this token to be an
+      # exception to. What survives, and is the reason the distinction was
+      # ever drawn, is narrower and still true: this server never accepts a
+      # THIRD PARTY'S key from a request — enforced by
+      # apps/api/internal/server/provider_key_never_leaks_test.go's
+      # TestNoRequestStructAcceptsAKey. See config.go's own comment on this
+      # field, and .env.example, for how the platform's own secrets differ
+      # from a reader's.
       #
       # `sync: false` for the same reason as DATABASE_URL: Render prompts
       # once and never reads it back from this file.
