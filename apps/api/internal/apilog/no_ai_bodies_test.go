@@ -717,7 +717,7 @@ var apilogSkippedDirs = map[string]bool{
 // (which `go test` sets to this package's directory) to the nearest
 // go.mod. That lands at apps/api, not the monorepo root: the apilog
 // package this gate is about only exists inside the apps/api Go module —
-// apps/web and apps/vault are TypeScript, and nothing outside apps/api can
+// apps/web is TypeScript, and nothing outside apps/api can
 // import "github.com/vndee/tuhoc-api/internal/apilog" at all — so scanning
 // wider than apps/api's own module would read source that categorically
 // cannot call this package.

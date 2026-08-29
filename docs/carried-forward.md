@@ -19,8 +19,9 @@ Ghi lại lúc kết thúc P1 (nhánh `p1-platform-core`, 37 commit, hợp nhấ
 **Món nợ này đóng bằng một QUYẾT ĐỊNH, không bằng mã.** Cookie phiên vốn đã là `SameSite=Lax`
 (`apps/api/internal/auth/handler.go:164,180`); C-3 chỉ cắn nếu chọn phương án **tên miền miễn phí** ở
 `docs/deploy.md` §0, thứ bắt buộc `None`. Chủ dự án đã có `duy.dev` và chốt `tuhoc.duy.dev` +
-`api.duy.dev` + `vault.duy.dev` — khác **origin** nhưng **cùng site**, nên `Lax` là đủ và **không cần
-đổi một dòng mã nào**.
+`api.duy.dev` — khác **origin** nhưng **cùng site**, nên `Lax` là đủ và **không cần
+đổi một dòng mã nào**. (Bố cục ấy từng có một tên miền con thứ ba, `vault.duy.dev`, cho kho khoá;
+Pha 2 Task 16 gỡ kho khoá. Lập luận "cùng site" không phụ thuộc vào số tên miền con.)
 
 Cái đã thêm là chỗ **ghi quyết định ấy lại** để nó không bị gỡ trong im lặng:
 `apps/api/internal/auth/csrf_samesite_test.go` — `TestSessionCookieIsNeverSameSiteNone`, hai nửa:
@@ -236,7 +237,13 @@ import không" — vì không cổng tự động nào hỏi hộ. Khe hở này
 (Task 10 đã tự khai đúng nó ở dòng đầu mục "Concerns"); nó sinh ra từ việc chạy song song, nên nó
 thuộc về điều phối viên.
 
-## Giao thức kho khoá: dây bẫy quét CHỮ, không quét luồng dữ liệu (S2-F8)
+## Giao thức kho khoá: dây bẫy quét CHỮ, không quét luồng dữ liệu (S2-F8) — **HẾT HIỆU LỰC (Pha 2, Task 16)**
+
+> **Trạng thái: mục này KHÔNG còn là một luật đang chạy.** Pha 2 Task 16 gỡ `apps/vault`, nên không
+> còn giao thức nào để đọc bằng mắt và không còn phép quét nào trong sáu phép ấy. Giữ lại vì **hình
+> dạng của lỗ** là thứ sẽ quay lại nguyên vẹn ngay khi có một bí mật của người dùng đi qua một ranh
+> giới nào đó lần nữa — và vì nó đặt tên cho một lớp cổng mà repo này vẫn còn nhiều: **cổng quét CHỮ
+> không đo được LUỒNG DỮ LIỆU.**
 
 Hệ thống con 2 có sáu phép quét nguồn cưỡng chế lời hứa *"key không bao giờ đi qua máy chủ"*. Tất cả
 đều quét **chữ**. `const k = resp.value` mang key qua cả sáu mà không viết chữ "key" ở đâu.
@@ -312,9 +319,18 @@ trùng tên, khác nguồn.
 cài bước gán thật, bài ấy là bài đỏ đầu tiên họ gặp, và nó chỉ cho họ **nửa còn lại phải nối cùng
 lúc**: nhãn `registry` của `pages/Library.tsx`, và mục này.
 
-## *Confused deputy* của kho khoá — ĐÃ GIẢM THIỂU, CHƯA KHẮC PHỤC (S2-F9 · HC-3)
+## *Confused deputy* của kho khoá — **KHÔNG CÒN ÁP DỤNG (Pha 2, Task 16)** (S2-F9 · HC-3)
 
-**Trạng thái: `apps/vault/src/guard.ts` đang chạy. Lỗ vẫn còn. Đừng đọc mã ấy rồi tưởng nó đóng.**
+> **Trạng thái: `apps/vault/src/guard.ts` KHÔNG còn chạy — nó bị xoá cùng `apps/vault`.** Lỗ này
+> biến mất cùng cơ chế sinh ra nó: không còn key của người học, không còn trang chính gọi hộ qua
+> `postMessage`, nên không còn phó quan nào để lẫn lộn.
+>
+> **Điều thay chỗ nó, và điều KHÔNG thay:** Pha 2 đặt hạn mức và trừ credit ở MÁY CHỦ
+> (`apps/api/internal/ai`), tức là hạn mức nay nằm ở phía không ai sửa được từ trình duyệt — mạnh
+> hơn hẳn một token bucket trong `localStorage` của một origin. Nhưng câu hỏi gốc *"một course độc
+> chạy trong trang chính có bảo được nền tảng gọi hộ không"* **vẫn là một câu hỏi thật**: nay nó đốt
+> **credit của người học**, không đốt key của họ. Ai chạm vào `POST /ai/chat` nên đọc hết mục này
+> trước, vì năm ghi chú bên dưới là năm cách một lời gọi "hợp lệ" đi qua một cổng "đang chạy".
 
 Kiến trúc origin riêng chặn được course độc **ĐỌC** key — trình duyệt cấm JS của origin này đọc
 `localStorage` của origin khác. Nó **KHÔNG** chặn được course độc **DÙNG** key: course hạng
@@ -365,7 +381,14 @@ mới đỏ. Bẫy thật của người gác là `guard.test.ts > BẪY TRUNG T
 ⇒ Bài học chung: **một dây bẫy còn xanh không có nghĩa nó còn đo thứ nó từng đo.** Khi mã dưới nó
 đổi, phải đo lại bằng đột biến, không suy luận.
 
-## Form nhập key sống trong iframe: chặn được NHÚNG, không chặn được SAO CHÉP (S2 Task 6)
+## Form nhập key sống trong iframe: chặn được NHÚNG, không chặn được SAO CHÉP (S2 Task 6) — **KHÔNG CÒN Ô NHẬP KEY (Pha 2, Task 16)**
+
+> **Trạng thái: không còn form nhập key nào trong sản phẩm.** Pha 2 gỡ `apps/vault`, và mục Trợ lý AI
+> ở Cài đặt nay chỉ hiện số dư credit và cấu hình agent — không `<input>` nào, và `pages/
+> Settings.test.tsx` khoá đúng điều đó lại. Giữ mục này vì kết luận của nó là một luật **thiết kế**,
+> không phải một chi tiết cài đặt: **bất kỳ ô nhập bí mật nào sống trong một iframe đều dạy người
+> dùng dán bí mật vào một ô họ không kiểm chứng được nguồn gốc.** Nó sẽ đúng lại ở đúng ngày ai đó
+> nghĩ tới một khung nhúng cho việc thanh toán, đăng nhập bên thứ ba, hay một key nào khác.
 
 `apps/vault/_headers` đặt `frame-ancestors`, và nó **đo được hai chiều trên bản dựng thật**: origin
 được phép thì nhúng và thấy ô nhập; origin khác thì rơi vào `chrome-error://chromewebdata/`.
@@ -432,8 +455,10 @@ Cần `git-filter-repo` (chưa cài trên máy). Công thức ở `docs/publishi
 
 ## Những gì CHƯA TỪNG chạy trên hạ tầng thật — ghi để không ai tưởng đã kiểm
 
-- `apps/vault/_headers` **chưa từng được một Cloudflare Pages thật phục vụ**; `apps/vault` chưa có
-  Pages project nào. Phép đo hai chiều của `frame-ancestors` chạy **trên máy**.
+- ~~`apps/vault/_headers` **chưa từng được một Cloudflare Pages thật phục vụ**; `apps/vault` chưa có
+  Pages project nào. Phép đo hai chiều của `frame-ancestors` chạy **trên máy**.~~ **HẾT HIỆU LỰC
+  (Pha 2, Task 16):** cả tệp lẫn ứng dụng đã bị gỡ, nên không còn gì để chạy trên hạ tầng thật. Món
+  nợ này đóng bằng việc **xoá**, không bằng việc kiểm — ghi rõ để nó không bị đọc thành "đã kiểm".
 - Truy vấn GraphQL của Discussions **chưa từng gọi GitHub thật một lần nào**. Máy chủ giả trả về đúng
   thứ bộ giải mã mong đợi — một vòng khép kín. **Ba cổng độc lập đã cùng nêu điều này** (S4 Task 5-Go
   §8, Task 4+5-web §7b, Task 6 §8): nó cần **một lần chạy thật với một token thật**.
