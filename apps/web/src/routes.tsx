@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AdminCourses } from './admin/AdminCourses';
+import { AdminCredits } from './admin/AdminCredits';
 import { AdminGuard } from './admin/AdminGuard';
+import { AdminPricing } from './admin/AdminPricing';
 import { RequireAuth } from './auth/RequireAuth';
 import { CourseHome } from './pages/CourseHome';
 import { Courses } from './pages/Courses';
@@ -161,6 +163,29 @@ export function AppRoutes() {
         element={
           <AdminGuard>
             <AdminCourses />
+          </AdminGuard>
+        }
+      />
+
+      {/*
+        Task 17 — `/admin/credits` ("Người dùng & credit") and
+        `/admin/pricing` ("Bảng giá & prompt nền"), spec §7's other two Pha
+        2 CMS screens. Same `AdminGuard` as `/admin` above, for the
+        identical reason: `role !== 'admin'` bounces to `/`, not `/login`.
+      */}
+      <Route
+        path="/admin/credits"
+        element={
+          <AdminGuard>
+            <AdminCredits />
+          </AdminGuard>
+        }
+      />
+      <Route
+        path="/admin/pricing"
+        element={
+          <AdminGuard>
+            <AdminPricing />
           </AdminGuard>
         }
       />

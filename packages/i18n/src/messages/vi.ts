@@ -947,6 +947,16 @@ export const vi = {
    * `admin/AdminCourses.tsx`, `admin/adminApi.ts`)
    * ══════════════════════════════════════════════════════════════════════ */
 
+  /**
+   * `AdminNav.tsx` — sub-nav dùng chung cho ba màn `/admin/*`. Task 17
+   * thêm ba khoá này khi `AdminCredits`/`AdminPricing` ra đời, để
+   * `AdminCourses` (Task 8/15) và hai màn mới có đường qua lại nhau.
+   */
+  'admin.nav.aria': 'Mục quản trị',
+  'admin.nav.courses': 'Khoá học',
+  'admin.nav.credits': 'Người dùng & credit',
+  'admin.nav.pricing': 'Bảng giá & prompt nền',
+
   'admin.title': 'Quản trị khoá học',
   'admin.lede': 'Phát hành, gỡ, hoặc lùi phiên bản một khoá học — đi cùng bộ kiểm định mà `tuhoc pack` dùng ở dòng lệnh.',
   'admin.loading': 'Đang tải danh sách…',
@@ -992,6 +1002,70 @@ export const vi = {
   'admin.error.unknown': 'Đã xảy ra lỗi không xác định.',
   'admin.error.unreachable':
     'Không thể kết nối tới máy chủ. Có thể bạn đang ngoại tuyến, hoặc máy chủ đang bị cấu hình sai (CORS/DNS).',
+
+  /* ══════════════════════════════════════════════════════════════════════ *
+   * QUẢN TRỊ AI — Task 17, spec §7: `admin/AdminCredits.tsx` ("Người dùng &
+   * credit") và `admin/AdminPricing.tsx` ("Bảng giá & prompt nền"), cả hai
+   * nói chuyện với bảy route `/admin/ai/*`
+   * (`apps/api/internal/ai/admin_handler.go`).
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  'admin.ai.credits.title': 'Người dùng & credit',
+  'admin.ai.credits.lede':
+    'Tìm người dùng, xem số dư và sổ dùng, cộng hoặc trừ credit tay — mọi lần cộng/trừ đều bắt buộc ghi chú và được lưu vào sổ thao tác.',
+  'admin.ai.credits.searchLabel': 'Tìm theo email',
+  'admin.ai.credits.searchPlaceholder': 'vd: minh@vidu.test',
+  'admin.ai.credits.searchButton': 'Tìm',
+  'admin.ai.credits.loading': 'Đang tải…',
+  'admin.ai.credits.empty': 'Không tìm thấy người dùng nào khớp.',
+  'admin.ai.credits.colEmail': 'Email',
+  'admin.ai.credits.colRole': 'Vai trò',
+  'admin.ai.credits.colBalance': 'Số dư credit',
+  'admin.ai.credits.colActions': 'Hành động',
+  'admin.ai.credits.selectButton': 'Xem chi tiết',
+  'admin.ai.credits.adjustTitle': 'Cộng / trừ credit tay',
+  'admin.ai.credits.amountLabel': 'Số credit',
+  'admin.ai.credits.directionLabel': 'Chiều',
+  'admin.ai.credits.directionAdd': 'Cộng',
+  'admin.ai.credits.directionSubtract': 'Trừ',
+  'admin.ai.credits.noteLabel': 'Ghi chú (bắt buộc)',
+  'admin.ai.credits.notePlaceholder': 'Vì sao bạn cộng/trừ khoản này — bắt buộc, sẽ lưu vào sổ thao tác.',
+  'admin.ai.credits.adjustSubmit': 'Áp dụng',
+  'admin.ai.credits.adjustSubmitting': 'Đang áp dụng…',
+  'admin.ai.credits.adjustSuccess': 'Đã cập nhật số dư.',
+  'admin.ai.credits.usageTitle': 'Sổ dùng gần đây',
+  'admin.ai.credits.usageEmpty': 'Chưa có lượt hỏi nào được tính phí.',
+  'admin.ai.credits.adjustmentsTitle': 'Lịch sử cộng/trừ tay',
+  'admin.ai.credits.adjustmentsEmpty': 'Chưa có lần cộng/trừ tay nào cho tài khoản này.',
+  'admin.ai.credits.colNote': 'Ghi chú',
+
+  'admin.ai.pricing.title': 'Bảng giá & prompt nền',
+  'admin.ai.pricing.lede':
+    'Sửa bảng quy đổi credit theo từng model và lời nhắc nền của agent — có hiệu lực ngay từ lượt hỏi kế tiếp, không cần triển khai lại.',
+  'admin.ai.pricing.tableTitle': 'Bảng quy đổi credit',
+  'admin.ai.pricing.loading': 'Đang tải…',
+  'admin.ai.pricing.colModel': 'Model',
+  'admin.ai.pricing.colCostIn': 'Giá vốn vào (/1K)',
+  'admin.ai.pricing.colCostCachedIn': 'Giá vốn vào-cache (/1K)',
+  'admin.ai.pricing.colCostOut': 'Giá vốn ra (/1K)',
+  'admin.ai.pricing.colCreditsIn': 'Credit vào (/1K)',
+  'admin.ai.pricing.colCreditsCachedIn': 'Credit vào-cache (/1K)',
+  'admin.ai.pricing.colCreditsOut': 'Credit ra (/1K)',
+  'admin.ai.pricing.colActions': 'Hành động',
+  'admin.ai.pricing.save': 'Lưu',
+  'admin.ai.pricing.saving': 'Đang lưu…',
+  'admin.ai.pricing.saved': 'Đã lưu.',
+  'admin.ai.pricing.promptTitle': 'Prompt nền của agent',
+  'admin.ai.pricing.promptBlurb':
+    'Lời nhắc này đứng TRƯỚC lời nhắc riêng của mọi người dùng — nó giữ vai trò gia sư và ranh giới an toàn, không được để rỗng.',
+  'admin.ai.pricing.promptLabel': 'Prompt nền',
+  'admin.ai.pricing.promptEmptyWarning': 'Prompt nền không được để rỗng — đây là ranh giới an toàn của agent.',
+  'admin.ai.pricing.promptNoteLabel': 'Ghi chú (không bắt buộc)',
+
+  'admin.ai.error.fieldRequired': 'Thiếu một trường bắt buộc.',
+  'admin.ai.error.amountOutOfRange': 'Số vượt quá mức cho phép cho một lần thao tác.',
+  'admin.ai.error.fieldTooLong': 'Nội dung dài hơn mức cho phép.',
+  'admin.ai.error.notFound': 'Không tìm thấy.',
 };
 
 /** Hình dạng mà MỌI ngôn ngữ phải phủ đúng. Xem chú thích trên `vi`. */
