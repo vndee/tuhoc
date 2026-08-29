@@ -332,23 +332,6 @@ export const vi = {
     'Phần còn lại của ứng dụng vẫn chạy. Tải lại trang thường là đủ; nếu lỗi lặp lại, nội dung dưới đây là thứ cần gửi kèm khi báo lỗi.',
   'error.boundary.reload': 'Tải lại trang',
 
-  'vault.frame.configError': '[kho khoá] cấu hình sai, tính năng AI bị tắt:',
-  /**
-   * ĐỊA CHỈ THẬT trên thanh tiêu đề của khung, không phải chữ "một địa chỉ
-   * riêng": một câu chung chung vẫn đúng với một bản dựng đã lỡ trỏ kho khoá
-   * về chính origin trang chính, còn origin in ra thì không.
-   *
-   * (Sửa vòng review 1, Task 14: câu này từng dẫn sang `settings.ai.
-   * frameLabel` làm ví dụ cùng lập luận — khoá đó đã bị Task 14 XOÁ cùng
-   * khung kho khoá của `Settings.tsx` (xem `pages/Settings.tsx`'s doc
-   * comment); dẫn chiếu tới một khoá không còn tồn tại là dối người đọc
-   * sau. `vault.frame.overlayLabel` ở đây KHÔNG bị xoá — nó vẫn phục vụ lớp
-   * phủ `VaultFrame.tsx`, thứ còn sống tới hết Task 16.)
-   */
-  'vault.frame.overlayLabel': (origin: string) => `Kho khoá — khung này chạy ở ${origin}, tách khỏi trang bài học`,
-  'vault.frame.close': 'Đóng',
-  'vault.frame.title': 'Kho khoá',
-
   /* ══════════════════════════════════════════════════════════════════════ *
    * TRANG (`pages/`)
    * ══════════════════════════════════════════════════════════════════════ */
@@ -766,16 +749,6 @@ export const vi = {
   // mã báo lỗi ở chính trang chính hoặc máy chủ, không phải điều người học
   // gây ra hay có một hành động cụ thể để sửa.
   'ai.error.requestRejected': 'Yêu cầu bị từ chối. Thử lại sau một chút.',
-
-  /* ── phía trang chính của giao thức kho khoá (`ai/vaultClient.ts`) ─────── */
-
-  'ai.vault.originShape': (received: string) =>
-    `VITE_VAULT_ORIGIN phải là một origin đúng nghĩa (scheme://host[:port]), không dấu "/" cuối, không đường dẫn, không "*" — nhận được ${received}.`,
-  'ai.vault.frameDetached': 'Khung kho khoá đã bị tháo trong lúc đang chờ.',
-  'ai.vault.abortedBeforeSend': 'Đã huỷ trước khi gửi.',
-  'ai.vault.abortedByUser': 'Người dùng đã huỷ.',
-  'ai.vault.timeout': (ms: string) =>
-    `Kho khoá không trả lời sau ${ms} ms. Khung có nạp được không, và origin có đúng không?`,
 
   /* ── LỜI NHẮC gửi cho mô hình (`ai/prompts.ts`) ────────────────────────── */
 

@@ -34,7 +34,7 @@
  *
  * Đó là lý do bốn phép đo trong `e2e/s2.spec.ts` khớp đến từng chi tiết: sang
  * `/library` cũng hỏng (mọi route KHÔNG-chương đều bật chuỗi ấy lên), bản dựng
- * không có kho khoá cũng hỏng (`#crumb` chẳng liên quan gì tới AI), còn đi từ
+ * không có trợ lý AI cũng hỏng (`#crumb` chẳng liên quan gì tới AI), còn đi từ
  * bảng điều khiển thì chạy đúng (`#crumb` đã là `'Tuhoc'` sẵn, không có portal
  * nào để xoá).
  *
@@ -197,7 +197,7 @@ describe('rời chương bằng điều hướng SPA', () => {
   it('rời chương rồi vào Cài đặt: trang thật sự dựng ra, ở mục trung tính', async () => {
     // Chủ đề là CHUYỂN TIẾP ROUTE — `/settings` có dựng ra sau khi rời chương
     // không — chứ không phải mục nào đang hiện; đi bằng lối ra + điều hướng
-    // toàn cục thay vì qua panel AI, cùng một chuyển tiếp, không cần kho khoá.
+    // toàn cục thay vì qua panel AI, cùng một chuyển tiếp, không cần trợ lý AI.
     //
     // Bài này TỪNG đòi nhan đề 'Trợ lý AI', vì đó tình cờ là mục mặc định. Nay
     // mặc định là 'Tài khoản' (xem `pages/Settings.tsx`), và đòi đúng nhan đề
@@ -231,9 +231,15 @@ describe('rời chương bằng điều hướng SPA', () => {
 
     expect(await screen.findByRole('heading', { name: 'Tài khoản' })).toBeInTheDocument();
     expect(document.querySelector('.page-settings')).not.toBeNull();
-    // Và không có lớp phủ kho khoá nào bung ra: đây là lỗi người dùng báo,
-    // bắt ở đúng lối vào sinh ra nó.
-    expect(document.querySelector('.vault-overlay')).toBeNull();
+    // ĐÃ GỠ ở Task 16, và ghi ra chứ không im lặng: bài này còn một dòng nữa,
+    // `querySelector` lớp phủ của kho khoá rồi đòi nó `toBeNull()` — lỗi người
+    // dùng báo là bấm "Cài đặt" thì lớp phủ ấy bung ra che kín trang. Lớp CSS
+    // ấy không còn được khai ở đâu và không component nào đặt nó lên phần tử
+    // nào nữa, nên phép hỏi ấy nay trả `null` bất kể ứng dụng làm gì: một
+    // khẳng định luôn đúng, tức là một cổng câm chứ không phải một cổng. Thứ
+    // nó thật sự canh — "vào Cài đặt không được ném ra thứ gì che trang" —
+    // vẫn được canh, bằng hai dòng ngay trên và ngay dưới: trang Cài đặt thật
+    // sự dựng ra, và không error boundary nào bung.
     expect(errorBoundaryFallback()).toBeNull();
   });
 

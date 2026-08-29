@@ -12,15 +12,15 @@ import { tNode } from './tNode';
  */
 /**
  * KHOÁ VÍ DỤ: `ann.orphan.barWhat` (`(quote: string) => …`,
- * `annotations/OrphanPanel.tsx`), KHÔNG PHẢI `settings.ai.blurb` nữa.
+ * `annotations/OrphanPanel.tsx`).
  *
- * Bản trước dùng `settings.ai.blurb`/`settings.ai.blurbVault` — hai khoá
- * task-14 (`pages/Settings.tsx`'s mục Trợ lý AI) đã XOÁ khi khung kho khoá
- * biến mất (Pha 2 không còn "key của chính bạn, cất trong kho khoá" để nói).
- * `ann.orphan.barWhat` giữ đúng thuộc tính bài này cần đo — chỗ trống KHÔNG ở
- * đầu câu, và ở HAI VỊ TRÍ khác nhau giữa hai bản dịch ("Gắn lại: " = 9 ký
- * tự trước nó ở vi, "Reattaching: " = 13 ký tự ở en) — mà không mượn một khoá
- * của một mục có thể còn đổi tiếp.
+ * Bản trước mượn hai khoá của mục Trợ lý AI trong `pages/Settings.tsx`, và cả
+ * hai đã bị XOÁ khỏi catalog ở task-14 khi mục ấy được viết lại cho Pha 2 —
+ * tức bài kiểm về `tNode()` đỏ vì một thay đổi CHỮ ở một màn hình chẳng liên
+ * quan gì tới nó. `ann.orphan.barWhat` giữ đúng thuộc tính bài này cần đo —
+ * chỗ trống KHÔNG ở đầu câu, và ở HAI VỊ TRÍ khác nhau giữa hai bản dịch
+ * ("Gắn lại: " = 9 ký tự trước nó ở vi, "Reattaching: " = 13 ký tự ở en) —
+ * mà không mượn một khoá của một mục có thể còn đổi tiếp.
  */
 describe('tNode()', () => {
   it('chèn phần tử vào ĐÚNG chỗ trống, và câu vẫn liền một mạch', () => {

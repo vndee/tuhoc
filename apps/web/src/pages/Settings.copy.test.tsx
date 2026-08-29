@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { meQueryKey, type Me } from '../api/useMe';
 import { t } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageProvider';
-import { VaultFrameProvider } from '../shell/VaultFrame';
 import { ThemeProvider } from '../theme/ThemeContext';
 import { Settings } from './Settings';
 
@@ -35,9 +34,7 @@ function renderSettings() {
       <MemoryRouter initialEntries={['/settings']}>
         <LanguageProvider>
           <ThemeProvider>
-            <VaultFrameProvider origin="http://localhost:5174">
-              <Settings />
-            </VaultFrameProvider>
+            <Settings />
           </ThemeProvider>
         </LanguageProvider>
       </MemoryRouter>
