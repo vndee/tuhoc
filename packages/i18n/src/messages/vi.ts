@@ -334,9 +334,15 @@ export const vi = {
   'vault.frame.configError': '[kho khoá] cấu hình sai, tính năng AI bị tắt:',
   /**
    * ĐỊA CHỈ THẬT trên thanh tiêu đề của khung, không phải chữ "một địa chỉ
-   * riêng". Xem lý do đầy đủ ở `settings.ai.frameLabel`: một câu chung chung
-   * vẫn đúng với một bản dựng đã lỡ trỏ kho khoá về chính origin trang chính,
-   * còn origin in ra thì không.
+   * riêng": một câu chung chung vẫn đúng với một bản dựng đã lỡ trỏ kho khoá
+   * về chính origin trang chính, còn origin in ra thì không.
+   *
+   * (Sửa vòng review 1, Task 14: câu này từng dẫn sang `settings.ai.
+   * frameLabel` làm ví dụ cùng lập luận — khoá đó đã bị Task 14 XOÁ cùng
+   * khung kho khoá của `Settings.tsx` (xem `pages/Settings.tsx`'s doc
+   * comment); dẫn chiếu tới một khoá không còn tồn tại là dối người đọc
+   * sau. `vault.frame.overlayLabel` ở đây KHÔNG bị xoá — nó vẫn phục vụ lớp
+   * phủ `VaultFrame.tsx`, thứ còn sống tới hết Task 16.)
    */
   'vault.frame.overlayLabel': (origin: string) => `Kho khoá — khung này chạy ở ${origin}, tách khỏi trang bài học`,
   'vault.frame.close': 'Đóng',

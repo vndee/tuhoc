@@ -621,7 +621,11 @@ html[data-theme='dark'] .auth-form input {
    Mục Trợ lý AI (`pages/Settings.tsx`'s `AiSection`) không còn vẽ khung kho
    khoá — Pha 2 chạy DeepSeek bằng key của NỀN TẢNG, không còn ô dán key nào
    để đóng khung. `CreditPanel.tsx`/`AgentConfigPanel.tsx` dùng `.set-credit`/
-   `.set-agent-config` (mục "TRỢ LÝ AI — Pha 2" bên dưới) thay chỗ này.
+   `.set-agent-config` thay chỗ này — định nghĩa của HAI LỚP ẤY nằm ở
+   `app-screens.css` (mục "TRỢ LÝ AI — `CreditPanel.tsx` / `AgentConfigPanel.
+   tsx`"), KHÔNG PHẢI "bên dưới" trong CHÍNH tệp này (vòng review 1 bắt được:
+   câu cũ ở đây nói "bên dưới" trong khi khối thật nằm ở một tệp khác —
+   đúng chỗ dễ khiến người đọc sau tin lời chú thích mà không grep lại).
 
    LỚP PHỦ (`.vault-overlay`/`.vault-card`/…) NGAY DƯỚI ĐÂY VẪN CÒN SỐNG — đừng
    xoá nhầm: `shell/VaultFrame.tsx` vẫn được `shell/Shell.tsx` gắn cho cả ứng

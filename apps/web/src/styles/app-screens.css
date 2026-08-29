@@ -1347,6 +1347,27 @@ html[data-theme='dark'] #app:not(.reading) .set-identity-avatar {
  * riêng.
  * ══════════════════════════════════════════════════════════════════════════ */
 
+/* Hai khối GỐC của mục — `CreditPanel`'s wrapper và `AgentConfigPanel`'s
+   wrapper. Vòng review 1 bắt đúng: cả hai lớp này được VIẾT vào JSX
+   (`CreditPanel.tsx:109`, `AgentConfigPanel.tsx:193`) nhưng KHÔNG một
+   selector nào định nghĩa chúng ở đây — món nợ CSS được giao đóng
+   (`.ai-panel-notice`) đã đóng đúng, nhưng hai lớp MỚI của chính hai
+   component này lại bị bỏ trống. `gap` ở đây không phải trang trí: không có
+   nó, `.set-stats`/`<p class="set-note">` (CreditPanel) và `<p class="set-
+   note">`/`<form>` (AgentConfigPanel) xếp sát nhau bằng đúng margin mặc
+   định rời rạc của mỗi thẻ con, không đều. */
+#app:not(.reading) .set-credit {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#app:not(.reading) .set-agent-config {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 #app:not(.reading) .set-usage-scroll {
   /* Bảy cột trên một điện thoại hẹp không co vừa — cuộn NGANG trong khối này,
      không bao giờ để `.page-settings` tự cuộn ngang (nguyên tắc chung của mọi

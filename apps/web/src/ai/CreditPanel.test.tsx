@@ -26,12 +26,23 @@ import { CreditPanel } from './CreditPanel';
  * $2 ... credits_charged) VALUES (..., credits)`), nên cả hai phải cùng
  * thang đo. `formatCredits` áp dụng như nhau cho cả hai.
  *
- * FIXTURE ĐÔI MỘT KHÁC NHAU — bài học của 14 task trước (task-14-brief.md
- * mục "Bài học phương pháp"): một fixture đặt hai trường bằng nhau làm một
- * phép hoán vị giữa chúng vô hình. Mọi con số dưới đây — số dư và TỪNG
- * trường của TỪNG dòng sổ dùng — khác nhau đôi một, nên một đột biến đảo
- * `in_tokens`/`out_tokens`, hay vẽ `credits_charged` của dòng này vào dòng
- * kia, phải làm đúng MỘT bài đỏ, không phải 0 bài.
+ * FIXTURE ĐÔI MỘT KHÁC NHAU — bài học của 14 task trước, dẫn lại trong chỉ
+ * thị vòng review Task 14: một fixture đặt hai trường bằng nhau làm một phép
+ * hoán vị giữa chúng vô hình. Mọi con số dưới đây — số dư và TỪNG trường của
+ * TỪNG dòng sổ dùng, KỂ CẢ giữa hai dòng — khác nhau đôi một (không còn cặp
+ * `tool_calls = web_searches = 0` của bản trước — vòng review 1 bắt đúng:
+ * đó là MỘT cặp trùng, và báo cáo khi ấy tự nhận "không hai trường nào
+ * trùng" trong khi chính fixture ngay bên dưới nó có).
+ *
+ * VÀ PHÉP KHẲNG ĐỊNH PHẢI KHỚP VỚI Ý ĐỊNH ẤY (vòng review 1, Important 3):
+ * `toHaveTextContent(str)` là so khớp CHUỖI CON, không phải so khớp bằng.
+ * `expect(cell).toHaveTextContent('2')` được thoả bởi CHÍNH Ô chứa `'1200'`,
+ * `'450'`, hay `'0,0175'` — tức fixture đôi-một-khác-nhau không bảo vệ được
+ * gì nếu phép so vẫn là "chứa", vì số nhỏ gần như luôn là chuỗi con của một
+ * số khác trong bảng. Mọi ô số nguyên dưới đây dùng regex neo hai đầu
+ * (`/^…$/`) hoặc so `.textContent` bằng `toBe` — cả hai đều là so khớp TOÀN
+ * PHẦN, nên một đột biến đảo cột chỉ còn cách trùng bằng đúng giá trị của
+ * chính ô đối diện, điều fixture đôi-một-khác-nhau vừa loại trừ.
  */
 
 const server = setupServer();
@@ -67,8 +78,8 @@ const CREDITS_FIXTURE = {
       in_tokens: 800,
       cached_in_tokens: 150,
       out_tokens: 220,
-      tool_calls: 0,
-      web_searches: 0,
+      tool_calls: 3,
+      web_searches: 5,
       credits_charged: 17_500,
     },
   ],
@@ -86,8 +97,12 @@ describe('CreditPanel — số dư và sổ dùng gần đây', () => {
     // 8_240_000 micro-credit = 8,24 credit. `findByTestId` chỉ chờ phần tử
     // TỒN TẠI — nó có mặt ngay cả lúc còn hiện "—" (chưa tải xong) — nên
     // đợi ĐÚNG nội dung bằng `waitFor` mới bắt được lúc dữ liệu đã tới.
+    //
+    // `toBe`, không `toHaveTextContent` (so khớp CHUỖI CON — "18,24" hay
+    // "8,243" cũng "chứa" "8,24"): ô này không có gì khác để lẫn vào, nhưng
+    // giữ cùng kỷ luật so khớp TOÀN PHẦN với mọi ô số khác trong tệp này.
     await waitFor(() => {
-      expect(screen.getByTestId('credit-balance')).toHaveTextContent('8,24');
+      expect(screen.getByTestId('credit-balance').textContent).toBe('8,24');
     });
   });
 
@@ -101,24 +116,39 @@ describe('CreditPanel — số dư và sổ dùng gần đây', () => {
     // hiệu "đã tải xong".
     await screen.findByTestId('usage-model-0');
 
-    // Dòng 0 (deepseek-v4-pro): mọi số khác dòng 1 và khác số dư.
-    expect(screen.getByTestId('usage-model-0')).toHaveTextContent('deepseek-v4-pro');
-    expect(screen.getByTestId('usage-in-0')).toHaveTextContent('1200');
-    expect(screen.getByTestId('usage-cached-0')).toHaveTextContent('300');
-    expect(screen.getByTestId('usage-out-0')).toHaveTextContent('450');
-    expect(screen.getByTestId('usage-tools-0')).toHaveTextContent('2');
-    expect(screen.getByTestId('usage-search-0')).toHaveTextContent('1');
-    // 63_000 micro-credit = 0,063 credit.
-    expect(screen.getByTestId('usage-credits-0')).toHaveTextContent('0,063');
+    /**
+     * VÒNG SỬA 1 (Important 3): `toHaveTextContent(str)` là so khớp CHUỖI
+     * CON — bản trước bị chính bảng "đôi một khác nhau" của mình phản: ô
+     * `usage-tools-0` (kỳ vọng `'2'`) cũng "chứa" được bởi số `'1200'` của
+     * MỘT Ô KHÁC nếu đột biến đảo cột, vì `toHaveTextContent` không đọc từ
+     * đúng ô — nó chỉ kiểm ô ĐƯỢC TRUYỀN VÀO có chứa chuỗi đó không, và một
+     * đột biến ghi `entry.outTokens` vào ô `usage-in-0` vẫn "chứa" được số
+     * nào đó tình cờ trùng một hậu tố. Đo cụ thể: ô `usage-tools-1` (kỳ vọng
+     * `'0'` ở bản cũ) được thoả bởi CHÍNH GIÁ TRỊ SAI `800`/`150`/`220`/
+     * `0,0175` — bất kỳ chuỗi nào chứa ký tự `'0'`. `.textContent` so bằng
+     * `toBe` là so khớp TOÀN PHẦN; không chuỗi nào "gần đúng" lọt qua được.
+     */
+    const cell = (testId: string) => screen.getByTestId(testId).textContent;
 
-    // Dòng 1 (deepseek-v4-flash): bộ số HOÀN TOÀN khác dòng 0.
-    expect(screen.getByTestId('usage-model-1')).toHaveTextContent('deepseek-v4-flash');
-    expect(screen.getByTestId('usage-in-1')).toHaveTextContent('800');
-    expect(screen.getByTestId('usage-cached-1')).toHaveTextContent('150');
-    expect(screen.getByTestId('usage-out-1')).toHaveTextContent('220');
-    expect(screen.getByTestId('usage-tools-1')).toHaveTextContent('0');
-    expect(screen.getByTestId('usage-search-1')).toHaveTextContent('0');
-    expect(screen.getByTestId('usage-credits-1')).toHaveTextContent('0,0175');
+    // Dòng 0 (deepseek-v4-pro): mọi số khác dòng 1 và khác số dư.
+    expect(cell('usage-model-0')).toBe('deepseek-v4-pro');
+    expect(cell('usage-in-0')).toBe('1200');
+    expect(cell('usage-cached-0')).toBe('300');
+    expect(cell('usage-out-0')).toBe('450');
+    expect(cell('usage-tools-0')).toBe('2');
+    expect(cell('usage-search-0')).toBe('1');
+    // 63_000 micro-credit = 0,063 credit.
+    expect(cell('usage-credits-0')).toBe('0,063');
+
+    // Dòng 1 (deepseek-v4-flash): bộ số HOÀN TOÀN khác dòng 0 — kể cả
+    // `tool_calls`/`web_searches` (3/5), không còn cặp `0/0` của bản trước.
+    expect(cell('usage-model-1')).toBe('deepseek-v4-flash');
+    expect(cell('usage-in-1')).toBe('800');
+    expect(cell('usage-cached-1')).toBe('150');
+    expect(cell('usage-out-1')).toBe('220');
+    expect(cell('usage-tools-1')).toBe('3');
+    expect(cell('usage-search-1')).toBe('5');
+    expect(cell('usage-credits-1')).toBe('0,0175');
   });
 
   it('thời điểm mỗi dòng đọc từ ĐÚNG trường `at` của dòng đó, định dạng UTC ổn định', async () => {
@@ -126,8 +156,10 @@ describe('CreditPanel — số dư và sổ dùng gần đây', () => {
     render(wrap(<CreditPanel />));
     await screen.findByTestId('usage-model-0');
 
-    expect(screen.getByTestId('usage-when-0')).toHaveTextContent('2026-08-20 09:15');
-    expect(screen.getByTestId('usage-when-1')).toHaveTextContent('2026-08-19 14:02');
+    // Chuỗi TOÀN PHẦN (kể cả hậu tố "UTC"), không phải một tiền tố ngày —
+    // cùng kỷ luật so khớp bằng `toBe` áp cho các ô còn lại trong tệp này.
+    expect(screen.getByTestId('usage-when-0').textContent).toBe('2026-08-20 09:15 UTC');
+    expect(screen.getByTestId('usage-when-1').textContent).toBe('2026-08-19 14:02 UTC');
   });
 
   it('sổ dùng RỖNG nói ra điều đó, không hiện một bảng trắng không giải thích', async () => {

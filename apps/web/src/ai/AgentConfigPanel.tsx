@@ -44,7 +44,12 @@ interface ConfigWire {
   readonly max_system_prompt_chars: number;
 }
 
-export interface AgentConfigInfo {
+/**
+ * VÒNG SỬA 1 (Minor #4): `export` bị bỏ — 0 chỗ gọi ngoài tệp này (kể cả
+ * `AgentConfigPanel.test.tsx`, thứ chỉ render component rồi đọc DOM). Xem
+ * chú thích tương ứng ở `CreditPanel.tsx` cho lý do đầy đủ.
+ */
+interface AgentConfigInfo {
   readonly systemPrompt: string;
   readonly toolsEnabled: readonly string[];
   readonly availableTools: readonly string[];
@@ -75,9 +80,13 @@ interface SaveInput {
  * `PUT /ratings`, chỗ gọi DUY NHẤT khác của nó; doc comment của `api.put`
  * tự mời chọn này ("A future PUT that does answer with a body should get
  * its own entry"). Ở đây chọn đường RẺ HƠN thay vì thêm một hàm dùng chung
- * mới: gọi `api.put` (bỏ qua thân trả về) rồi ĐỌC LẠI bằng cách vô hiệu hoá
- * cache `['ai','config']` — một round-trip nữa, nhưng không đụng tệp dùng
- * chung nào ngoài phạm vi task này.
+ * mới: gọi `api.put` (bỏ qua thân trả về) rồi ĐỌC LẠI bằng `queryClient.
+ * fetchQuery(['ai','config'])` trong `onSuccess` của `saveMutation` bên
+ * dưới (KHÔNG PHẢI `invalidateQueries` suông — vòng review 1 đo được:
+ * `invalidateQueries` một mình không đưa giá trị mới quay lại `draftPrompt`/
+ * `draftTools`, nên nó là một round-trip đổi lấy không gì; `fetchQuery` trả
+ * thẳng giá trị mới để gieo lại nháp) — một round-trip mạng nữa, nhưng
+ * không đụng tệp dùng chung nào ngoài phạm vi task này.
  */
 async function saveConfig(input: SaveInput): Promise<void> {
   await api.put('/ai/config', { system_prompt: input.systemPrompt, tools_enabled: input.toolsEnabled });
@@ -151,8 +160,26 @@ export function AgentConfigPanel() {
 
   const saveMutation = useMutation({
     mutationFn: saveConfig,
+    /**
+     * VÒNG SỬA 1 (Minor #1): bản trước chỉ `invalidateQueries` rồi DỪNG —
+     * `useEffect` gieo nháp (dưới) chỉ chạy khi `draftPrompt`/`draftTools`
+     * còn `null`, tức ĐÚNG MỘT LẦN, lúc tải trang. Sau đó không có đường nào
+     * đưa bản làm mới quay lại `draftPrompt`/`draftTools`, nên round-trip ấy
+     * là mạng đổi lấy không gì — đo được: xoá cả khối này vẫn xanh toàn bộ.
+     *
+     * Sửa THẬT: `fetchQuery` (không phải `invalidateQueries` + đợi observer
+     * tự cập nhật) để có luôn GIÁ TRỊ MỚI trong tay, rồi GHI ĐÈ `draftPrompt`/
+     * `draftTools` bằng đúng giá trị ấy. Đây là "Read back rather than echo"
+     * (`handler.go`'s `PutConfig`) làm cho THẬT ở phía client: máy chủ có
+     * thể trả về khác thứ vừa gửi (dedupe, chuẩn hoá), và form phải hiện
+     * ĐÚNG BẢN MÁY CHỦ GIỮ — `AgentConfigPanel.test.tsx`'s bài "đọc lại đúng
+     * bản máy chủ đã lưu" đo trực tiếp điều này bằng một GET giả lập trả về
+     * khác hẳn PUT vừa gửi.
+     */
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['ai', 'config'] });
+      const fresh = await queryClient.fetchQuery({ queryKey: ['ai', 'config'], queryFn: fetchConfig });
+      setDraftPrompt(fresh.systemPrompt);
+      setDraftTools(new Set(fresh.toolsEnabled));
     },
   });
 
@@ -167,7 +194,13 @@ export function AgentConfigPanel() {
     );
   }
 
-  const cap = query.data.maxSystemPromptChars || MAX_SYSTEM_PROMPT_CHARS;
+  // `??`, KHÔNG `||` (vòng review 1, Minor): doc comment cả tệp này lập
+  // luận "server là nguồn sự thật duy nhất" — `||` mâu thuẫn với chính lập
+  // luận đó, vì nó âm thầm đổi một `max_system_prompt_chars: 0` THẬT SỰ do
+  // server gửi thành 4000 (0 là falsy). `??` chỉ rơi về hằng dự phòng khi
+  // trường này thật sự VẮNG (`null`/`undefined`), không phải khi nó là một
+  // số hợp lệ mà client tình cờ coi là falsy.
+  const cap = query.data.maxSystemPromptChars ?? MAX_SYSTEM_PROMPT_CHARS;
   const promptLength = runeLength(draftPrompt);
   const overCap = promptLength > cap;
 
