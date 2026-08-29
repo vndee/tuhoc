@@ -337,14 +337,15 @@ export const en: Messages = {
   'progress.course.minutes': (minutes: string) => `${minutes} minutes studied`,
 
   'login.pitch.headline': 'Courses are open to everyone.',
+  /** `login.pitch.lede` and `login.point.ownKey` rewritten at task-15 — see vi.ts's comment. */
   'login.pitch.lede':
-    'Open a course and start reading right away — nothing to install, nothing to download. Highlight a passage to take a note right on the page, or ask the AI assistant using your own key.',
+    'Open a course and start reading right away — nothing to install, nothing to download. Highlight a passage to take a note right on the page, or ask the AI assistant right there.',
   /* Tên riêng "Tự học" KHÔNG đi vào đây: bài "en còn tiếng Việt" ở
      `i18n.test.ts` cho phép đúng hai khoá (`app.name`, `lang.name.vi`), và một
      nhãn trợ năng không đáng làm danh sách ấy dài thêm. */
   'login.pitch.aria': 'What this platform does',
   'login.point.free': 'Read every course free — no account needed',
-  'login.point.ownKey': 'An AI assistant on your own key, and the key never passes through our servers',
+  'login.point.ownKey': 'An AI assistant on our own servers, paid for with credit — no key of your own needed',
   'login.point.sync': 'Sign in and your progress and notes follow you across devices',
 
   'login.title': 'Sign in',
