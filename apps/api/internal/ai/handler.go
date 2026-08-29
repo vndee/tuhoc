@@ -712,6 +712,41 @@ func streamTurn(w *bufio.Writer, agent *Agent, turn Turn, credits *Service,
 	// expired must still be billed, and reusing an expired context would
 	// drop the charge in precisely the case where the turn burned the most.
 	// ────────────────────────────────────────────────────────────────────
+	//
+	// DEBT 1b (whole-branch review, D3). A turn that SUCCEEDED and reported
+	// no tokens at all is not a normal turn: DeepSeek was paid for whatever
+	// it generated, and the only reason r.Usage can be entirely zero here is
+	// that the provider's final chunk carried no `usage` object. stream.go's
+	// post-loop guards check sawDone and a truncated tool call; neither
+	// notices this. Left alone the whole path stays quiet — Charge returns
+	// (0, 0), ChargeTurn runs `UPDATE ... - 0`, inserts an all-zero ai_usage
+	// row and returns nil, and the learner reads a complete answer nobody
+	// was charged for.
+	//
+	// A WARNING, NOT AN ERROR, and the reason is the ORDER of events: by the
+	// time this is detectable the answer has already been streamed and read.
+	// Turning it into an error would append an error event AFTER a complete
+	// answer — trading a silent accounting gap for a loud, wrong,
+	// user-facing failure. The charge below still runs, so the all-zero
+	// ai_usage row stays as the ledger's own evidence that a turn happened;
+	// this line is what makes the anomaly findable without reading rows.
+	//
+	// Scoped to runErr == nil deliberately: an ERRORED turn legitimately
+	// reaches here with zero usage (it may have died before round 1 ever
+	// completed), and that case already gets its own slog.Error below.
+	// Warning on it too would drown this signal in noise from every
+	// provider outage.
+	//
+	// Metadata only, never the question and never the answer (spec §0.1,
+	// and Task 12's gate) — the same rule the two slog.Error calls in this
+	// function keep.
+	if runErr == nil && result.Usage == (Usage{}) {
+		slog.Warn("ai turn completed with no usage reported",
+			"op", "ai.Chat/usage", "user", uid.String(), "model", model,
+			"tool_calls", result.ToolCalls, "web_searches", result.WebSearches,
+			"answer_empty", result.Answer == "")
+	}
+
 	chargeCtx, chargeCancel := context.WithTimeout(context.Background(), chargeTimeout)
 	defer chargeCancel()
 	if _, err := credits.ChargeTurn(chargeCtx, uid, result, model); err != nil {
