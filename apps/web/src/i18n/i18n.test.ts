@@ -281,7 +281,7 @@ const SCAN_ROOTS: readonly { readonly name: string; readonly files: () => string
     // đó đúng là hình dạng "cổng đo đúng thứ nó với tới được".
     name: 'packages/i18n/src',
     files: () => filesUnder(join(REPO_ROOT, 'packages', 'i18n', 'src'), ['.ts']),
-    why: 'catalog dùng chung của hai origin — hai tệp `messages/` được miễn, phần còn lại thì không',
+    why: 'catalog dùng chung (ra đời cho hai origin; Task 16 gỡ origin thứ hai, gói vẫn đứng riêng — xem doc của packages/i18n/src/index.ts) — hai tệp `messages/` được miễn, phần còn lại thì không',
   },
 ];
 

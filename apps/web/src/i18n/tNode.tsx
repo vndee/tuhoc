@@ -65,7 +65,7 @@ export function tNode<K extends MessageKey>(
   const marks = parts.map((_, i) => `${MARK}${String(i)}${MARK}`) as unknown as MessageArgs<Messages[K]>;
   const rendered = t(lang, key, ...marks);
 
-  // `split` với một nhóm bắt xen kẽ chữ và chỉ số: ['Key của bạn ', '0', ' — một trang riêng.'].
+  // `split` với một nhóm bắt xen kẽ chữ và chỉ số: ['Gắn lại: ', '0', ''].
   const pieces = rendered.split(SPLIT);
   return pieces.map((piece, i) =>
     i % 2 === 1 ? (
