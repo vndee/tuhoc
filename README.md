@@ -14,7 +14,7 @@ A multi-course self-study platform designed to aggregate, organize, and deliver 
 | `make test-format` | Run course-format rule set tests (vitest + `tsc -b`) — the shared TS rule set `pack` and the browser import both use |
 | `make test-cli` | Run packaging CLI tests (vitest + `tsc -b`) |
 | `make test-registry` | Run registry-tooling tests, plus `validate-pr.ts` against `fixtures/registry` |
-| `make test-e2e` | Bring up a real Postgres + API in Docker, build the production web bundle, and run the Playwright e2e suite against all of it |
+| `make test-e2e` | Bring up a real Postgres + API in Docker (plus a fake DeepSeek double — no run of this suite ever calls the real provider), build the production web bundle, and run the Playwright e2e suite against all of it. See `docs/testing.md`. |
 | `make pack DIR=my-course` | Validate a course directory and write its `.zip` |
 | `make check-publish` | Refuse to proceed if any private course content is still reachable from the repo — the pre-publish gate |
 | `make courses` | Unpack the course packages held outside this repo into `courses/`, for local dev/test fixtures |

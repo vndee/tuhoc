@@ -43,6 +43,18 @@ API_PORT="${TUHOC_E2E_API_PORT:-8089}"
 WEB_PORT="${TUHOC_E2E_WEB_PORT:-5183}"
 API_URL="http://localhost:${API_PORT}"
 MIGRATE_DB_URL="postgres://tuhoc:tuhoc@localhost:${DB_PORT}/tuhoc?sslmode=disable"
+# Task 18: what a FRESH e2e learner's `ai_credits` row starts with — see the
+# "seeding ai_settings.signup_grant_micro" step below for why this has to be
+# set before Playwright registers anyone, and scripts/fake_deepseek.py's
+# header comment for the exact derivation of 2972 (one fake turn's cost
+# against ai_pricing's seeded deepseek-v4-pro row). Overridable, unlike the
+# course-seed step above it, because — unlike a course slug baked into
+# fixtures/format-v2/valid-course/manifest.json — this number is also typed
+# a SECOND time, by hand, in apps/web/e2e/s2.spec.ts's own SEED_MICRO
+# constant; an override here without a matching edit there would make that
+# suite fail loudly (a balance assertion mismatch), not silently, so the
+# override exists for whoever needs one rather than being refused outright.
+AI_SIGNUP_GRANT_MICRO="${TUHOC_E2E_AI_SIGNUP_GRANT_MICRO:-2972}"
 
 export TUHOC_E2E_DB_PORT="$DB_PORT" TUHOC_E2E_API_PORT="$API_PORT" TUHOC_E2E_WEB_PORT="$WEB_PORT"
 
@@ -192,6 +204,42 @@ if [ "$CURL_EXIT" -ne 0 ] || [ "$SEED_HTTP_CODE" != "201" ]; then
 fi
 echo "seed OK: $(cat "$SEED_RESPONSE")"
 rm -rf "$SEED_TMP"
+
+# Task 18: `apps/web/e2e/s2.spec.ts` needs every learner it registers to
+# start with a KNOWN, non-zero AI credit balance — `ai.Service.
+# GrantSignupCredit` (apps/api/internal/ai/credits.go) reads
+# `ai_settings.signup_grant_micro` FRESH on every registration (never a
+# compiled-in constant, and never cached — see that method's own doc
+# comment), and migration 0007_ai_credits.up.sql seeds that column at its
+# bare column DEFAULT of 0. Left alone, a fresh e2e learner registers with
+# ZERO credit and s2.spec.ts's very first scenario ("số dư hiện đúng") has
+# nothing meaningful to assert.
+#
+# This MUST run before Playwright registers anyone — s2.spec.ts's learner
+# is created by Playwright itself (`registerNewUser`, same helper p1.spec.ts
+# uses), not by this script, so "before `bunx playwright test` starts" is
+# the real deadline; running it here, right after the course seed and
+# before `bun install`, is comfortably ahead of that with room to spare.
+#
+# `psql` INSIDE the `db` container (`docker compose exec`), not on the
+# host: the compose `db` service is `postgres:16-alpine`, which always
+# carries its own client — this way the script has no NEW host prerequisite
+# to add to docs/testing.md's "Prerequisites" list (unlike `migrate`, which
+# already is one). A raw SQL UPDATE, not an admin HTTP endpoint: Task 17's
+# "Bảng giá & prompt nền" CMS screen edits this same row over
+# PUT /admin/ai/settings, but that route sits behind auth.Require +
+# auth.RequireAdmin — a REAL admin login session, not the ADMIN_TOKEN bearer
+# door this script's course-seed step above uses (that door only opens
+# /admin/courses*, see server.go's adminOrToken and docs/deploy.md §4c) —
+# and bootstrapping one just to flip a single column would be a second,
+# heavier mechanism for a number Playwright never needs to see move at
+# runtime.
+log "seeding ai_settings.signup_grant_micro (Task 18 — s2.spec.ts's credit gate; \$AI_SIGNUP_GRANT_MICRO=$AI_SIGNUP_GRANT_MICRO)"
+"${COMPOSE[@]}" exec -T db psql -U tuhoc -d tuhoc -v ON_ERROR_STOP=1 -c \
+  "UPDATE ai_settings SET signup_grant_micro = ${AI_SIGNUP_GRANT_MICRO};"
+AI_SEED_EXIT=$?
+echo "ai_settings seed exit=$AI_SEED_EXIT"
+[ "$AI_SEED_EXIT" -eq 0 ] || fail "seeding ai_settings.signup_grant_micro failed (exit=$AI_SEED_EXIT)"
 
 log "installing web dependencies (bun install)"
 (cd "$REPO_ROOT/apps/web" && bun install)

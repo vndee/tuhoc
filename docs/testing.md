@@ -9,15 +9,16 @@ doc is only about the one that's different in kind:
 Brings up the real API + Postgres, serves the real **production build**
 of the web app, and drives both with a real browser (Playwright) to prove
 the whole stack works together — see `apps/web/e2e/p1.spec.ts`,
-`apps/web/e2e/widget.spec.ts` and
+`apps/web/e2e/widget.spec.ts`, `apps/web/e2e/s2.spec.ts` (below) and
 `.superpowers/sdd/2026-08-19-p1-platform-core/task-17-report.md` for what
 it actually checks and why.
 
-**Two spec files actually run**, and they are gates for different things:
+**Three spec files actually run**, and they are gates for different things:
 `p1.spec.ts` (the reader — including the course table of contents, inherited
-from the deleted `s1.spec.ts`) and `widget.spec.ts` (the phase-1 security
+from the deleted `s1.spec.ts`), `widget.spec.ts` (the phase-1 security
 gate: a course widget runs inside `sandbox="allow-scripts"`, its origin is
-opaque, and `document.cookie` throws rather than returning the session).
+opaque, and `document.cookie` throws rather than returning the session), and
+`s2.spec.ts` (Pha 2's AI/credit gate — see below).
 
 One more sits in the directory but is **quarantined** in
 `apps/web/playwright.config.ts`'s `testIgnore`, with its reason recorded at
@@ -27,68 +28,59 @@ expectations predate the server-side pivot).
 Gone with the features they covered: `import.spec.ts` and `s1.spec.ts` (the
 Import screen and the version-pinning update dialog, removed in `e58ef41`;
 see `fixtures/README.md` for what the two package-variant scenarios were),
-`s3.spec.ts`/`s4.spec.ts` (the registry catalog UI), `viz.spec.ts` (the
-course-wide `viz.js` runtime, replaced by sandboxed widgets), and
-`s2.spec.ts` (the AI/BYOK key vault — it built, served and drove
-`apps/vault`, which Pha 2 Task 16 deleted; it was quarantined before it was
-deleted, and those are two different states).
+`s3.spec.ts`/`s4.spec.ts` (the registry catalog UI), and `viz.spec.ts` (the
+course-wide `viz.js` runtime, replaced by sandboxed widgets).
 
-### Reading `s2.spec.ts` back — where its reusable parts went
+### `s2.spec.ts` — the AI/credit gate (Pha 2, Task 18)
 
-`s2.spec.ts` is recoverable in full at:
+Rewritten from scratch around spec §8's own words for this gate: "số dư
+hiện, trừ đúng, hết chặn, config giữ" (the balance displays, deducts
+correctly, blocks when empty, personal config survives a reload). The
+Pha-1 version of this file drove `apps/vault` — a second-origin app the
+learner plugged their own DeepSeek key into — and Pha 2 Task 16 deleted
+that app along with every test that drove it; **nothing in the current
+file is lifted from that one**, because a second origin holding a
+learner's own key is not a concept the credit architecture has any use
+for. The old version is still readable at `git show
+390931e:apps/web/e2e/s2.spec.ts` for anyone curious what a BYOK-era gate
+looked like, but it is history, not a starting point.
 
-```
-git show 390931e:apps/web/e2e/s2.spec.ts        # 1122 lines, the last living version
-```
+**No real DeepSeek call, ever.** `scripts/test-e2e.sh` points
+`DEEPSEEK_BASE_URL` (`apps/api/compose.e2e.yml`) at `scripts/
+fake_deepseek.py` — a small stdlib-only HTTP server, run as its own compose
+service (`deepseek-fake`, not reachable from the host), that answers the
+exact wire shape `apps/api/internal/ai/stream.go`'s `CompleteStream` parses
+with a FIXED reply and FIXED usage, regardless of what was asked. That
+double is what this gate proves and what it does not:
 
-Written down because **nothing else points there.** Task 18 rewrites the AI
-end-to-end gate around credit, and its brief says "*Modify* `s2.spec.ts`" and
-"remove it from `testIgnore`" — both are now empty instructions, so a reader
-who takes the brief literally starts from zero and rebuilds harness code that
-already exists one `git show` away.
+- It proves `apps/api/internal/ai`'s own cost math (`cost.go`'s `Charge`,
+  `credits.go`'s `ChargeTurn`) and the SSE relay in `handler.go` end to end,
+  through a real HTTP round trip from a real browser. A real DeepSeek call
+  would exercise that same machinery identically — the double only replaces
+  the third party on the other end of one `net/http` call.
+- It does NOT prove DeepSeek's real API behaves the way `client_test.go`/
+  `stream_test.go` assume, or spend the project's real balance to find out.
+  `docs/deepseek-measured.md` is the one place that gets checked against
+  the live API — deliberately not in a suite that runs on every push, per
+  task-18-brief.md's own instruction: "một bộ e2e tiêu tiền thật mỗi lần
+  chạy là một bộ e2e sẽ bị tắt" (an e2e suite that spends real money every
+  run is an e2e suite that gets turned off).
+- The fake reply never emits a `tool_calls` entry, so every turn finishes
+  in exactly one round — the tool loop itself is not exercised here, and
+  does not need to be: Go's own coverage (`agent_test.go`, `stream_test.go`,
+  `tool_course_test.go`) already exists for it.
 
-**What is worth lifting, and what is not.**
-
-| helper | reusable? |
-|---|---|
-| `serveProvider(port)` | **the closest thing to Task 18 Step 1 that exists** — an HTTP server that streams an OpenAI-shaped SSE body one `delta.content` chunk at a time with a real inter-chunk delay, so a client that buffers and paints once is distinguishable from one that streams. **Two gaps, do not assume they are closed:** it emits no `usage` object (Task 18 Step 1 requires a fixed one), and it was reached from the *browser* (`instrument` rewrote `window.fetch`), whereas in Pha 2 the caller is the Go API inside compose — so the wiring is new even though the response shape is not |
-| `instrument(context)` | records every `fetch`, every `message` the page receives, and every state of the answer box. The third is the non-obvious one: `waitFor` on structure can never tell "streamed in chunks" from "painted once at the end", because it only ever sees the final state |
-| `freePort()`, `serveStatic(dir, port)` | pick a free port; serve a built SPA with no fallback |
-| `fingerprint(dir)` / `build(cwd, env, what)` | cache a `vite build` across runs by hashing its inputs — the reason that suite was tolerable to run at all |
-| `askPanel(page)` / `askAboutChapter(page, q)` / `openChapter(page)` | still-valid selectors for the reader's AI entry points |
-| `allLocalStorage(scope)` / `allIndexedDB(page)` | dump both stores as text for a leak assertion |
-| `vaultFrame` / `openVault` / `plugKey` | **dead** — they drive a second origin that no longer exists |
-
-**One of the six tests never touched the key vault**, and it went with the
-file rather than because of it. Whoever writes Task 18 should decide
-deliberately whether to rebuild it; this note exists so that it is a decision
-and not an oversight:
-
-- `'màn hẹp: panel hỏi–đáp nằm trong khung nhìn và không bị gì phủ lên'` —
-  375px viewport, `document.elementFromPoint` at **three** points down
-  `.ai-panel` (top edge, middle, bottom edge), plus a bounding-box check that
-  the panel does not overflow the viewport. Its only setup is
-  `instrument` + `openChapter` on a borrowed session — no key, no vault frame,
-  no consent click. This was the **only automated proof** that `.ai-panel`
-  (z-index 85) is not covered by anything. Nothing in `apps/web/src` replaces
-  it — jsdom has no layout, so no vitest test can ask this question. **See the
-  warning in `apps/web/src/styles/index.css` next to `.ai-panel`**: Task 16
-  rewrote that z-index's reference points and had no way to re-measure them.
-
-A **second** test is worth rebuilding for a different reason, but it is *not*
-vault-free and an earlier version of this note wrongly said it was:
-
-- `'đào sâu một đoạn có công thức: lời nhắc gửi đi mang LaTeX gốc'` — its
-  first four lines are `instrument`, `signIn`, **`plugKey`**, **`openVault`**
-  and a click on `[data-role="consent"]`, i.e. it types a fake key into the
-  cross-origin frame and confirms consent before it does anything else. What
-  makes it worth rebuilding is the part *after* that setup: it asserts the
-  prompt leaving the browser carries the **original LaTeX source**, not
-  KaTeX's rendered output, over a really-rendered chapter. In Pha 2 the
-  vault setup collapses to "be signed in with credit", so the reusable half is
-  the assertion, not the scaffolding. `ai/promptsCorpus.test.ts` already
-  covers the same ground against the real KaTeX vendor bundle, so of the two
-  this is the one with something close to a successor.
+**One seed, shared by hand across three files.** `scripts/test-e2e.sh` sets
+`ai_settings.signup_grant_micro` to `2972` (its own `AI_SIGNUP_GRANT_MICRO`,
+overridable via `TUHOC_E2E_AI_SIGNUP_GRANT_MICRO`) before Playwright
+registers anyone, so a freshly-registered learner's starting balance is
+exactly one fake turn's cost — `scripts/fake_deepseek.py`'s header comment
+derives that number from its own fixed usage against `ai_pricing`'s seeded
+`deepseek-v4-pro` row, and `s2.spec.ts`'s `SEED_MICRO` constant hardcodes
+the same value a third time. There is no fourth place any of the three
+could read a shared number from without a build step none of them
+otherwise needs; a mismatch fails loudly (a balance assertion off by the
+exact difference), not silently.
 
 Two properties of this gate are deliberate and easy to lose:
 
