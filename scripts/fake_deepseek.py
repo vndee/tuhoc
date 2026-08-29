@@ -21,33 +21,56 @@ recorded wire shapes, and docs/deepseek-measured.md is the one place actual
 measurements against the live API are recorded — deliberately not in a
 suite that runs on every push. This script's only job is to be a stable,
 free, wire-compatible double so apps/web/e2e/s2.spec.ts can prove the
-CREDIT machinery — balance display, deduction, blocking, config persistence
-— actually moves real numbers through a real HTTP round trip to a real
-(fake) provider, end to end.
+CREDIT machinery — balance display, deduction (including going NEGATIVE,
+spec §3.4), blocking, config persistence — actually moves real numbers
+through a real HTTP round trip to a real (fake) provider, end to end.
 
-FIXED USAGE — chosen so the exact credit math has a short derivation, not
-because it resembles a real turn: cache_hit=40, cache_miss=1200,
-completion=350 tokens (see USAGE below). Against ai_pricing's seeded
-deepseek-v4-pro row (apps/api/migrations/0007_ai_credits.up.sql:
-credits_per_1k_in=1320, credits_per_1k_cached_in=44, credits_per_1k_out=3960
-micro-credits per 1k tokens) and cost.go's divUp (ceiling division), ONE
-turn against this server costs EXACTLY:
+FIXED USAGE — chosen so EVERY term of the credit formula has a genuine,
+non-trivial ceiling to round (round-1 self-review, "M-1 cảnh báo": the
+FIRST version of this file used cache_miss=1200 and completion=350, both
+exact multiples of 1000, so cost.go's divUp only ever rounded the
+cache_hit=40 term — a "round the fixture for readability" edit could have
+silently deleted the ONLY case exercising divUp's rounding direction, and
+nothing here would have said so). All three terms below land on a genuine
+fraction:
 
-    divUp(40,   44) = ceil(   40 *   44 / 1000) =    2
-    divUp(1200, 1320) = ceil(1200 * 1320 / 1000) = 1584
-    divUp(350,  3960) = ceil( 350 * 3960 / 1000) = 1386
-    total                                        = 2972 micro-credits
+    cache_hit=137, cache_miss=1583, completion=421 (tokens)
 
-apps/web/e2e/s2.spec.ts's SEED_MICRO and scripts/test-e2e.sh's
-TUHOC_E2E_AI_SIGNUP_GRANT_MICRO default both hardcode this same 2972, so a
-freshly-registered e2e learner starts with EXACTLY one fake turn's worth of
-credit — the same fixture proves scenario 2 (balance drops by precisely
-usage × price) AND sets up scenario 3 (balance 0 blocks the next turn) with
-no second seed step. KEEP ALL THREE NUMBERS IN SYNC BY HAND if any of the
-three inputs above ever changes — there is no fourth place that could read
-a shared value from without a build step none of the three otherwise needs
-(same tension apps/web/playwright.config.ts already documents for
-CORS_ORIGIN).
+Against ai_pricing's seeded deepseek-v4-pro row (apps/api/migrations/
+0007_ai_credits.up.sql: credits_per_1k_in=1320, credits_per_1k_cached_in=44,
+credits_per_1k_out=3960 micro-credits per 1k tokens) and cost.go's divUp
+(ceiling division), ONE turn against this server costs EXACTLY:
+
+    divUp(137,    44) = ceil( 137 *   44 / 1000) = ceil(   6.028) =    7
+    divUp(1583, 1320) = ceil(1583 * 1320 / 1000) = ceil(2089.560) = 2090
+    divUp(421,  3960) = ceil( 421 * 3960 / 1000) = ceil(1667.160) = 1668
+    ONE_TURN_MICRO                                                = 3765
+
+`apps/web/e2e/s2.spec.ts` hardcodes this same 3765 as its own
+`ONE_TURN_MICRO`, and derives `SEED_MICRO = 4765` (`ONE_TURN_MICRO + 1000`)
+from it — chosen so the SECOND of two turns charges MORE than the balance
+that is left after the first, driving the balance NEGATIVE rather than
+merely to zero (see that spec's own top comment, "round-1 self-review,
+M-2", for why: a balance seeded at EXACTLY one turn's cost cannot tell
+correct subtraction apart from a bug that silently floors the result at
+zero instead of letting it go negative — spec §3.4 requires the latter).
+KEEP ALL FOUR NUMBERS (the three usage figures here and ONE_TURN_MICRO) IN
+SYNC BY HAND with `s2.spec.ts` if any of them ever changes — there is no
+third place either file could read a shared value from without a build
+step neither otherwise needs (same tension apps/web/playwright.config.ts
+already documents for CORS_ORIGIN).
+
+SEPARATE FROM `ai_pricing`'s COST columns: `scripts/test-e2e.sh` also seeds
+`ai_pricing.cost_micro_per_1k_*` to values DIFFERENT from the
+`credits_per_1k_*` columns this file's math above uses (round-1
+self-review, "M-1" — migration 0007 seeds the two sets of columns EQUAL for
+deepseek-v4-pro, which means a `ChargeTurn` bug that deducts/records the
+platform's COST instead of the learner's CREDITS is invisible to any
+assertion that only checks the numbers end up right, because both columns
+produce the identical number). This file's own derivation above is
+unaffected — it is entirely about the `credits_per_1k_*` columns, never
+`cost_micro_per_1k_*` — see `test-e2e.sh`'s own comment on that seed step
+for the full reasoning.
 
 STREAMING SHAPE, matched against stream.go's CompleteStream byte for byte:
   - Content-Type does not matter to the Go client (CompleteStream never
@@ -55,13 +78,19 @@ STREAMING SHAPE, matched against stream.go's CompleteStream byte for byte:
   - Every line is "data: <json>\\n\\n" — no "event:" field. DeepSeek's own
     stream never sends one; only apps/api's OWN downstream SSE to the
     BROWSER does (handler.go's writeSSE) — a different wire, one hop later.
-  - The answer streams across a few `delta.content` fragments with a short
-    real delay between them, so a client that buffers everything and paints
-    once is distinguishable from one that streams — the same property the
-    now-deleted `serveProvider` helper had (git show
-    390931e:apps/web/e2e/s2.spec.ts; see docs/testing.md's "Reading
-    s2.spec.ts back" for the full accounting of what did and did not carry
-    forward from that file).
+  - The answer streams across a few `delta.content` fragments with a real
+    inter-chunk delay (see DELTA_CHUNK_DELAY_S below) — the same property
+    the now-deleted `serveProvider` helper had (git show
+    390931e:apps/web/e2e/s2.spec.ts). Unlike that old helper, THIS repo
+    still has a live assertion for it: `s2.spec.ts`'s scenario 2 polls the
+    answer element mid-stream and requires it to be a non-empty, INCOMPLETE
+    prefix of the full text at least once (round-1 self-review, "Minor 2" —
+    a prior version of this file claimed this delay made "streamed"
+    distinguishable from "painted once at the end" with no assertion
+    anywhere that actually looked at an intermediate state; that claim is
+    now true rather than aspirational). See docs/testing.md's `s2.spec.ts`
+    section for where the old file's reusable ideas did and did not carry
+    forward.
   - "usage" rides on the FINAL chunk only, alongside finish_reason: "stop"
     — the exact shape docs/deepseek-measured.md §4 measured on the real
     API. Earlier chunks carry no "usage" key at all (Go's `*Usage` decodes
@@ -79,6 +108,12 @@ allows. That is what makes the cost derivation above exact rather than
 WebSearches this comment does not account for, and Go-side tool-loop
 coverage (agent_test.go, stream_test.go, tool_course_test.go) already
 exists and does not need re-proving through a real HTTP round trip.
+NAMED GAP (round-1 self-review nit): because WebSearches is always 0 here,
+cost.go's Charge's own web-search surcharge terms
+(`s.CostMicroPerWebSearch`/`s.CreditsPerWebSearch`, cost.go:33/37) have ZERO
+coverage from this e2e gate — deleting either line would not turn this
+suite red. Not closed here; Go's own cost_test.go is where that formula is
+actually pinned.
 
 NON-STREAMING PATH ALSO SERVED (a request body with "stream": false), even
 though nothing in apps/api's current code ever takes that path for
@@ -96,12 +131,14 @@ PORT = 8090
 
 MODEL = "deepseek-v4-pro"
 
-# Vietnamese, typed as \uXXXX escapes rather than raw UTF-8 source bytes —
-# keeps this file readable in a plain-ASCII editor/terminal and sidesteps
-# any doubt about the container's locale correctly reading this source
-# file. The bytes actually sent over the wire are UTF-8 either way (Python's
-# json.dumps with ensure_ascii=True below re-escapes them the same way on
-# output; \uXXXX and raw UTF-8 decode to the identical Python str).
+# Vietnamese, written as literal UTF-8 source text (this file's own encoding
+# is UTF-8, like every other .py/.ts/.go file in this repo) — NOT \uXXXX
+# escapes (round-1 self-review corrected an earlier version of this comment
+# that claimed otherwise; the raw bytes at the start of "Đây" are literally
+# 0xC4 0x90 0xC3 0xA2, i.e. UTF-8, not an escape sequence). The bytes sent
+# over the wire are UTF-8 either way — json.dumps with ensure_ascii=True
+# below re-escapes them to \uXXXX on OUTPUT, which is a separate, later
+# step from how this literal is written in the SOURCE file.
 ANSWER_TEXT = (
     "Đây là câu trả lời cố định "
     "từ DeepSeek giả, dùng cho bộ kiểm e2e của "
@@ -112,8 +149,13 @@ ANSWER_TEXT = (
 
 def _delta_chunks(text: str, words_per_chunk: int):
     """Split `text` into a handful of fragments that concatenate back to it
-    EXACTLY — s2.spec.ts asserts the full answer text, so a split that lost
-    or duplicated a character would fail loudly there, not silently here."""
+    EXACTLY — s2.spec.ts asserts the answer element's FULL text equals
+    ANSWER_TEXT verbatim (not merely a `toContainText` substring — round-1
+    self-review found an earlier version of the spec only checked a ~42-char
+    prefix ending inside the second fragment, so a bug that lost, duplicated
+    or reordered anything past that point would have passed silently), so a
+    split that lost or duplicated a character anywhere fails loudly there,
+    not silently here."""
     words = text.split(" ")
     for i in range(0, len(words), words_per_chunk):
         group = words[i:i + words_per_chunk]
@@ -123,13 +165,24 @@ def _delta_chunks(text: str, words_per_chunk: int):
 
 DELTA_CHUNKS = list(_delta_chunks(ANSWER_TEXT, 6))
 
-# See this file's header comment for the derivation of 2972 micro-credits
-# from these three numbers against ai_pricing's seeded deepseek-v4-pro row.
+# Per-chunk delay while streaming. 0.1s × up to 6 chunks = a ~0.6s
+# streaming window per turn — short enough that two turns (s2.spec.ts's
+# scenario 2, see this file's header comment on ONE_TURN_MICRO/SEED_MICRO)
+# still cost the suite well under two seconds total, but long enough to
+# give Playwright's `expect.poll` (default-ish 25-50ms sampling interval)
+# many chances to observe a genuine mid-stream, INCOMPLETE state rather
+# than racing a delivery that completes inside a single poll tick.
+DELTA_CHUNK_DELAY_S = 0.1
+
+# See this file's header comment for the derivation of 3765 micro-credits
+# (ONE_TURN_MICRO) from these three numbers against ai_pricing's seeded
+# deepseek-v4-pro CREDITS columns (never the COST columns — see the header
+# comment's "SEPARATE FROM ai_pricing's COST columns" paragraph).
 USAGE = {
-    "prompt_tokens": 1240,
-    "completion_tokens": 350,
-    "prompt_cache_hit_tokens": 40,
-    "prompt_cache_miss_tokens": 1200,
+    "prompt_tokens": 137 + 1583,
+    "completion_tokens": 421,
+    "prompt_cache_hit_tokens": 137,
+    "prompt_cache_miss_tokens": 1583,
 }
 
 
@@ -145,8 +198,8 @@ class Handler(BaseHTTPRequestHandler):
     # AT LEAST "HTTP/1.1"), so the Go client always sees a clean EOF right
     # after this handler is done writing — one fewer thing to get right for
     # a server this small, at the cost of a fresh TCP handshake per turn,
-    # which is free on a local compose network for the two or three turns
-    # any one e2e run makes.
+    # which is free on a local compose network for the handful of turns any
+    # one e2e run makes.
 
     def log_message(self, fmt, *args):  # noqa: A002 - stdlib override signature
         # Quiet by default. scripts/test-e2e.sh already prints the API
@@ -182,8 +235,8 @@ class Handler(BaseHTTPRequestHandler):
         # The request's own content — model, messages, tools, question,
         # course slug — is deliberately IGNORED past this one flag. This
         # server answers the SAME fixed reply to any question, about any
-        # chapter, with any tool list. See this file's header comment for
-        # why a fixed reply is the point, not a shortcut.
+        # chapter, with any tool list, EVERY call. See this file's header
+        # comment for why a fixed reply is the point, not a shortcut.
         streaming = bool(req.get("stream"))
 
         if not streaming:
@@ -216,11 +269,9 @@ class Handler(BaseHTTPRequestHandler):
                 _sse_line({"choices": [{"delta": {"content": fragment}, "finish_reason": None}]})
             )
             self.wfile.flush()
-            # A real inter-chunk delay — the property that tells "streamed"
-            # apart from "painted once at the end". Short enough that the
-            # whole suite stays fast (a handful of fragments per turn, well
-            # under a second total).
-            time.sleep(0.05)
+            # See DELTA_CHUNK_DELAY_S's own comment above for why this
+            # duration specifically.
+            time.sleep(DELTA_CHUNK_DELAY_S)
 
         self.wfile.write(
             _sse_line(

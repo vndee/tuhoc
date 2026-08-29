@@ -70,17 +70,40 @@ double is what this gate proves and what it does not:
   does not need to be: Go's own coverage (`agent_test.go`, `stream_test.go`,
   `tool_course_test.go`) already exists for it.
 
-**One seed, shared by hand across three files.** `scripts/test-e2e.sh` sets
-`ai_settings.signup_grant_micro` to `2972` (its own `AI_SIGNUP_GRANT_MICRO`,
-overridable via `TUHOC_E2E_AI_SIGNUP_GRANT_MICRO`) before Playwright
-registers anyone, so a freshly-registered learner's starting balance is
-exactly one fake turn's cost — `scripts/fake_deepseek.py`'s header comment
-derives that number from its own fixed usage against `ai_pricing`'s seeded
-`deepseek-v4-pro` row, and `s2.spec.ts`'s `SEED_MICRO` constant hardcodes
-the same value a third time. There is no fourth place any of the three
-could read a shared number from without a build step none of them
-otherwise needs; a mismatch fails loudly (a balance assertion off by the
-exact difference), not silently.
+**One seed, shared by hand across three files — and chosen to cross zero,
+not just reach it.** `scripts/test-e2e.sh` sets `ai_settings.
+signup_grant_micro` to `4765` (its own `AI_SIGNUP_GRANT_MICRO`, overridable
+via `TUHOC_E2E_AI_SIGNUP_GRANT_MICRO`) before Playwright registers anyone.
+`scripts/fake_deepseek.py`'s header comment derives `ONE_TURN_MICRO = 3765`
+from its own fixed usage against `ai_pricing`'s seeded `deepseek-v4-pro`
+CREDITS columns, and `4765 = 3765 + 1000` is `s2.spec.ts`'s own `SEED_MICRO`
+— hardcoded a second time by hand, same as `ONE_TURN_MICRO` itself. There is
+no fourth place either file could read a shared number from without a build
+step neither otherwise needs; a mismatch fails loudly (a balance assertion
+off by the exact difference), not silently.
+
+**Round-1 self-review found two mutations this gate could not see, both
+because a fixture made two different-meaning numbers equal — fixed, and
+re-verified red under the actual mutation:**
+
+- `ai_pricing.cost_micro_per_1k_*` (what DeepSeek bills the PLATFORM) and
+  `credits_per_1k_*` (what the platform bills the LEARNER) were seeded
+  EQUAL for `deepseek-v4-pro` (migration 0007's own comment: Pha 2 sells at
+  cost). A `ChargeTurn` that deducted/recorded the platform's cost instead
+  of the learner's credits was therefore invisible. `scripts/test-e2e.sh`
+  now seeds the two sets of columns to DIFFERENT values as a dedicated step
+  — the existing balance/ledger assertions in `s2.spec.ts` did not need to
+  change, only the fixture that was hiding a real bug from them.
+- Seeding a learner with EXACTLY one turn's cost (3765, the first version's
+  `SEED_MICRO`) cannot tell correct subtraction apart from a bug that
+  floors the result at zero instead of letting it go negative — spec §3.4
+  explicitly allows the turn that crosses zero to finish and go negative.
+  Both produce `balance_micro === 0` after one turn. `s2.spec.ts` now seeds
+  `ONE_TURN_MICRO + 1000` and runs TWO turns in its second scenario: the
+  first leaves a small positive balance (asserted exactly), the second
+  charges more than what is left and is asserted to land on the exact
+  NEGATIVE number real subtraction produces — a `LEAST($2, balance_micro)`-
+  style clamp cannot reach that number.
 
 Two properties of this gate are deliberate and easy to lose:
 
