@@ -296,3 +296,60 @@ describe('AdminPricing — prompt nền', () => {
     expect(screen.getByTestId('admin-ai-prompt-too-long')).toHaveTextContent(t('settings.ai.promptTooLong'));
   });
 });
+
+/**
+ * D1 của review tổng nhánh, nửa CLIENT.
+ *
+ * Máy chủ nay từ chối mọi đơn giá vượt `max_pricing_rate_micro`
+ * (`MaxPricingRateMicro`, admin_handler.go). Màn này phải từ chối TRƯỚC —
+ * cùng lý do `AgentConfigPanel.tsx` đã giữ cho `max_system_prompt_chars`:
+ * "TRẦN LÀ CỦA SERVER, KỂ CẢ Ở CLIENT". Con số được ĐỌC TỪ RESPONSE, không
+ * gõ lại thành hằng thứ hai ở đây — một bản sao gõ tay là đúng thứ sẽ lệch
+ * lần tới ai đó đổi hằng ở Go.
+ *
+ * Hình dạng từ chối khớp CHÍNH XÁC hình dạng đã có cho một ô số hỏng ("abc",
+ * "-1"): nút Lưu tắt. Không thêm câu chữ mới ở vòng này — câu chữ người dùng
+ * thuộc đợt 2 — nhưng ô sai được đánh dấu `aria-invalid` để người dùng bàn
+ * phím/đọc màn hình biết ô NÀO sai, thay vì một nút tắt không giải thích.
+ */
+describe('AdminPricing — trần đơn giá (D1)', () => {
+  it('một đơn giá vượt max_pricing_rate_micro làm tắt nút Lưu và đánh dấu đúng ô', async () => {
+    const user = userEvent.setup();
+    serve([pricingRow()], settingsRow({ max_pricing_rate_micro: 1_000_000_000 }));
+    renderPage();
+
+    const field = await screen.findByTestId('pricing-credits-out-deepseek-v4-pro');
+    const save = screen.getByTestId('pricing-save-deepseek-v4-pro');
+    expect(save).toBeEnabled();
+
+    await user.clear(field);
+    await user.type(field, '1000000001'); // trần + 1
+    expect(save).toBeDisabled();
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+
+    // Đúng bằng trần thì hợp lệ — biên phải mở ở đúng con số server chấp nhận.
+    await user.clear(field);
+    await user.type(field, '1000000000');
+    expect(save).toBeEnabled();
+    expect(field).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('trần đến TỪ server, không phải một hằng gõ lại trong tệp này', async () => {
+    const user = userEvent.setup();
+    // Một trần cố ý nhỏ và "không tròn": nếu màn này dùng hằng riêng thì
+    // 5001 sẽ được coi là hợp lệ và bài kiểm đỏ.
+    serve([pricingRow()], settingsRow({ max_pricing_rate_micro: 5000 }));
+    renderPage();
+
+    const field = await screen.findByTestId('pricing-cost-in-deepseek-v4-pro');
+    const save = screen.getByTestId('pricing-save-deepseek-v4-pro');
+
+    await user.clear(field);
+    await user.type(field, '5001');
+    expect(save).toBeDisabled();
+
+    await user.clear(field);
+    await user.type(field, '5000');
+    expect(save).toBeEnabled();
+  });
+});

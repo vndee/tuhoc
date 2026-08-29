@@ -47,6 +47,69 @@ import (
 // from the opposite direction (rounding a charge DOWN to zero).
 const MaxAdminCreditAdjustmentMicro int64 = 100_000_000_000
 
+// MaxPricingRateMicro bounds EVERY one of the six per-model rates
+// AdminUpdatePricing writes (PUT /admin/ai/pricing/:model).
+//
+// It does NOT bound credits_per_web_search / cost_micro_per_web_search:
+// no route writes those two today (AdminUpdateSettings accepts
+// base_system_prompt and signup_grant_micro only), so there is no boundary
+// for a ceiling to sit on. cost.go's overflow checks cover them regardless,
+// because they cover the arithmetic rather than the input.
+//
+// WHY IT EXISTS (whole-branch review, D1). Until this constant, the damage
+// ceiling and the repair ceiling on the SAME CMS screen were 1,947x apart.
+// MaxAdminCreditAdjustmentMicro above bounds one manual credit correction
+// at 1e11 and explains itself with "a fat-fingered extra zero";
+// AdminUpdatePricing — same file, same screen, same operator — checked only
+// `>= 0`, and the web client (AdminPricing.tsx) only `Number.isSafeInteger`.
+// Review typed nine extra zeros into credits_per_1k_out and measured a
+// single 49,152-token turn charging 194,641,920,000,000 micro, moving a
+// balance of 5,000,000 to -194,641,915,000,000 — a hole that takes 1,947
+// separate, individually-audited adjustments to fill, because each one is
+// capped at 1e11.
+//
+// WHY 1e9 SPECIFICALLY. The seeded output rate is 3,960 micro per 1k tokens
+// (migration 0007, measured from DeepSeek's own peak-hour pricing). 1e9 is
+// 250,000x that — no plausible repricing, including a currency change or a
+// switch to a far more expensive model, comes anywhere near it, while
+// 3,960 with even three extra zeros (3,960,000) still passes, so an
+// operator making a real, large change is not fighting this ceiling. What
+// it catches is the shape of mistake it exists for: 3,960 with nine extra
+// zeros is refused. At this ceiling the worst single 49,152-token turn
+// costs ~4.9e10 micro per rate band — below one legal admin adjustment, so
+// a bad rate that does slip through is at least undoable by hand.
+//
+// THIS IS POLICY, NOT ARITHMETIC. It narrows the range of rates the system
+// accepts; it does NOT make Charge's arithmetic safe, and cost.go's
+// overflow checks do not lean on it. An ai_pricing row written before this
+// constant existed — by the previous version of this handler, or by hand in
+// psql — never passes through here at all. See ErrChargeOverflow (cost.go)
+// for the other layer.
+const MaxPricingRateMicro int64 = 1_000_000_000
+
+// MaxSignupGrantMicro bounds ai_settings.signup_grant_micro — the welcome
+// balance every NEW account is created with (credits.go's
+// GrantSignupCredit, inside registration's own transaction).
+//
+// This ceiling is tighter than MaxAdminCreditAdjustmentMicro on purpose,
+// and the reason is not fat fingers: a manual adjustment moves ONE named
+// account and leaves an admin_audit row naming the operator. The signup
+// grant is multiplied by every account that will ever be created, and this
+// repo has NO email verification (measured: `grep -r
+// 'email_verified\|VerifyEmail' apps/api` returns nothing), so K accounts
+// cost K x this number with nothing in the way but the per-user rate
+// limiter. The whole-branch review's decision QĐ-1 sets the live value to
+// 50,000 micro (~13 turns at the seeded price) with that risk accepted and
+// NAMED; this constant is the blast radius if somebody later types the same
+// number with extra zeros. 10,000,000 is 200x the chosen value — room for a
+// deliberate, large policy change, not room for a typo to hand out ~2,600
+// free turns per account.
+//
+// Raising it is a policy decision for Phase 4 (when payments exist and the
+// grant stops being the only way to get credit), not a knob to turn to make
+// a test pass.
+const MaxSignupGrantMicro int64 = 10_000_000
+
 // MaxBasePromptChars caps ai_settings.base_system_prompt, in CHARACTERS —
 // see MaxSystemPromptChars (handler.go) for why runes, not bytes, matter on
 // a bilingual platform (spec §4.2). Five times MaxSystemPromptChars's own
@@ -406,6 +469,15 @@ func (h *Handler) AdminUpdatePricing(c *fiber.Ctx) error {
 		if *f.val < 0 {
 			return fail(c, fiber.StatusBadRequest, CodeAmountOutOfRange, fmt.Sprintf("%s must not be negative", f.name))
 		}
+		// The upper bound has no equivalent in the schema — ai_pricing's
+		// CHECKs only say ">= 0" — so this handler is the only place it can
+		// be enforced. See MaxPricingRateMicro's own doc comment for the
+		// measured damage this closes and for why it is policy rather than
+		// a substitute for cost.go's overflow arithmetic.
+		if *f.val > MaxPricingRateMicro {
+			return fail(c, fiber.StatusBadRequest, CodeAmountOutOfRange,
+				fmt.Sprintf("%s must not be greater than %d", f.name, MaxPricingRateMicro))
+		}
 	}
 
 	note := strings.TrimSpace(req.Note)
@@ -446,6 +518,13 @@ type settingsPayload struct {
 	MaxTokensPerTurn      int    `json:"max_tokens_per_turn"`
 	MaxToolRoundsPerTurn  int    `json:"max_tool_rounds_per_turn"`
 	MaxBasePromptChars    int    `json:"max_base_prompt_chars"`
+	// MaxPricingRateMicro and MaxSignupGrantMicro travel on this response
+	// for exactly the reason MaxBasePromptChars does: the CMS screens that
+	// edit those numbers must not carry a second copy of the ceiling,
+	// hand-kept in sync with the Go constant. AdminPricing.tsx reads this
+	// response already.
+	MaxPricingRateMicro int64 `json:"max_pricing_rate_micro"`
+	MaxSignupGrantMicro int64 `json:"max_signup_grant_micro"`
 }
 
 func newSettingsPayload(s Settings) settingsPayload {
@@ -453,20 +532,30 @@ func newSettingsPayload(s Settings) settingsPayload {
 		BaseSystemPrompt: s.BaseSystemPrompt, CreditsPerWebSearch: s.CreditsPerWebSearch,
 		CostMicroPerWebSearch: s.CostMicroPerWebSearch, SignupGrantMicro: s.SignupGrantMicro,
 		MaxTokensPerTurn: s.MaxTokensPerTurn, MaxToolRoundsPerTurn: s.MaxToolRoundsPerTurn,
-		MaxBasePromptChars: MaxBasePromptChars,
+		MaxBasePromptChars:  MaxBasePromptChars,
+		MaxPricingRateMicro: MaxPricingRateMicro,
+		MaxSignupGrantMicro: MaxSignupGrantMicro,
 	}
 }
 
 // AdminGetSettings serves GET /admin/ai/settings: every ai_settings column,
-// read-only context for an operator EXCEPT base_system_prompt — the only
-// one AdminUpdateSettings below accepts a write for. The other five
-// (credits_per_web_search, cost_micro_per_web_search, signup_grant_micro,
+// read-only context for an operator EXCEPT base_system_prompt and
+// signup_grant_micro — the two AdminUpdateSettings below accepts a write
+// for. The other four (credits_per_web_search, cost_micro_per_web_search,
 // max_tokens_per_turn, max_tool_rounds_per_turn) are shown so an operator
-// editing the base prompt can see the rest of the platform's AI
-// configuration at a glance; editing THEM is deliberately out of this
-// task's scope — spec §7's row for this screen names "bảng quy đổi credit"
-// (ai_pricing, the six PER-MODEL rates AdminUpdatePricing edits) and
-// "prompt nền" only, not the whole of ai_settings.
+// editing the prompt can see the rest of the platform's AI configuration at
+// a glance; editing THEM is still out of scope — spec §7's row for this
+// screen names "bảng quy đổi credit" (ai_pricing, the six PER-MODEL rates
+// AdminUpdatePricing edits) and "prompt nền", not the whole of ai_settings.
+//
+// signup_grant_micro joined the writable set in the whole-branch review fix
+// round (A1) for a reason that has nothing to do with scope creep: it had
+// NO writer at all — not this route, not the CMS, not a CLI — while
+// GrantSignupCredit's own doc comment (credits.go) told the reader "the
+// project owner changes this number from Task 17's CMS". One of the two had
+// to give, and shipping a column whose only writer is a shell script's raw
+// SQL is not a scope decision, it is a missing feature with a comment
+// covering for it.
 func (h *Handler) AdminGetSettings(c *fiber.Ctx) error {
 	actorID := h.caller(c)
 	if actorID == uuid.Nil {
@@ -485,8 +574,19 @@ func (h *Handler) AdminGetSettings(c *fiber.Ctx) error {
 // from "the empty string", because the latter is what Step 4 of
 // task-17-brief.md's red test sends on purpose, and it must be REFUSED, not
 // silently treated the same as "field not sent".
+//
+// SignupGrantMicro is a POINTER for a DIFFERENT reason, and the difference
+// matters: absent means LEAVE IT ALONE, not "set it to zero". PUT here is
+// deliberately not "replace the whole row" the way AdminUpdatePricing is —
+// AdminPricing.tsx's base-prompt form sends only base_system_prompt, and a
+// plain int64 would make every one of those saves silently reset the
+// welcome grant to 0, re-opening the exact "402 on the learner's first
+// question" failure this round exists to close, from a screen the operator
+// believes only edits a prompt. An EXPLICIT 0 is legal and does switch the
+// grant off; that is what a pointer buys.
 type updateSettingsRequest struct {
 	BaseSystemPrompt *string `json:"base_system_prompt"`
+	SignupGrantMicro *int64  `json:"signup_grant_micro"`
 	Note             string  `json:"note"`
 }
 
@@ -530,12 +630,28 @@ func (h *Handler) AdminUpdateSettings(c *fiber.Ctx) error {
 			fmt.Sprintf("base_system_prompt is longer than %d characters", MaxBasePromptChars))
 	}
 
+	// Both ends are checked HERE, before credits.go is called at all: the
+	// schema's own CHECK (signup_grant_micro >= 0) covers the lower bound
+	// but would surface as an anonymous 500, and there is no upper bound in
+	// the schema for MaxSignupGrantMicro to lean on. See that constant for
+	// why the ceiling is what it is.
+	if req.SignupGrantMicro != nil {
+		if *req.SignupGrantMicro < 0 {
+			return fail(c, fiber.StatusBadRequest, CodeAmountOutOfRange,
+				"signup_grant_micro must not be negative")
+		}
+		if *req.SignupGrantMicro > MaxSignupGrantMicro {
+			return fail(c, fiber.StatusBadRequest, CodeAmountOutOfRange,
+				fmt.Sprintf("signup_grant_micro must not be greater than %d", MaxSignupGrantMicro))
+		}
+	}
+
 	note := strings.TrimSpace(req.Note)
 	if note == "" {
 		note = "base system prompt updated"
 	}
 
-	updated, err := h.credits.UpdateBaseSystemPrompt(c.Context(), actorID, basePrompt, note)
+	updated, err := h.credits.UpdateSettings(c.Context(), actorID, basePrompt, req.SignupGrantMicro, note)
 	if err != nil {
 		return h.internal(c, "ai.AdminUpdateSettings", err)
 	}

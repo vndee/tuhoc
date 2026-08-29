@@ -64,6 +64,32 @@ function parseNonNegativeInt(text: string): number | null {
   return Number.isSafeInteger(value) ? value : null;
 }
 
+/**
+ * Same, plus the UPPER bound the server enforces
+ * (`MaxPricingRateMicro`, admin_handler.go), read off
+ * `GET /admin/ai/settings` rather than typed a second time here — D1 of the
+ * whole-branch review.
+ *
+ * WHAT THIS IS FOR, stated plainly: the server refuses these values with a
+ * 400 regardless, so this is not a security check. It is the difference
+ * between an operator seeing the mistake while typing and an operator
+ * finding out after a submit — and the mistake this bounds is the one
+ * review actually measured: nine extra zeros in `credits_per_1k_out`,
+ * charging 194,641,920,000,000 micro on a single turn, needing 1,947
+ * separate capped adjustments to undo.
+ *
+ * `max` undefined (an older server that does not advertise the ceiling)
+ * means NO client-side upper bound — deliberately, not as an oversight.
+ * The alternative is a hardcoded fallback, which is exactly the second copy
+ * of the number this whole arrangement exists to avoid.
+ */
+function parseRate(text: string, max: number | undefined): number | null {
+  const value = parseNonNegativeInt(text);
+  if (value === null) return null;
+  if (max !== undefined && value > max) return null;
+  return value;
+}
+
 interface RateDraft {
   readonly costIn: string;
   readonly costCachedIn: string;
@@ -101,7 +127,16 @@ function formatUpdatedAt(at: string): string {
 }
 
 /** One `ai_pricing` row: model name (read-only) plus six editable rates and its own Save. */
-function PricingRowEditor({ row, t }: { row: AdminPricingRow; t: Translate }) {
+function PricingRowEditor({
+  row,
+  t,
+  maxRate,
+}: {
+  row: AdminPricingRow;
+  t: Translate;
+  /** `max_pricing_rate_micro` off `GET /admin/ai/settings`; undefined on an older server. */
+  maxRate: number | undefined;
+}) {
   const [draft, setDraft] = useState<RateDraft>(() => draftFromRow(row));
   // round-2 review, Minor 2: `types.go`'s own doc comment on
   // `Pricing.UpdatedAt` says the CMS screen "shows it" — it didn't. Tracked
@@ -131,12 +166,12 @@ function PricingRowEditor({ row, t }: { row: AdminPricingRow; t: Translate }) {
   });
 
   const parsed = {
-    costIn: parseNonNegativeInt(draft.costIn),
-    costCachedIn: parseNonNegativeInt(draft.costCachedIn),
-    costOut: parseNonNegativeInt(draft.costOut),
-    creditsIn: parseNonNegativeInt(draft.creditsIn),
-    creditsCachedIn: parseNonNegativeInt(draft.creditsCachedIn),
-    creditsOut: parseNonNegativeInt(draft.creditsOut),
+    costIn: parseRate(draft.costIn, maxRate),
+    costCachedIn: parseRate(draft.costCachedIn, maxRate),
+    costOut: parseRate(draft.costOut, maxRate),
+    creditsIn: parseRate(draft.creditsIn, maxRate),
+    creditsCachedIn: parseRate(draft.creditsCachedIn, maxRate),
+    creditsOut: parseRate(draft.creditsOut, maxRate),
   };
   const allValid =
     parsed.costIn !== null &&
@@ -166,11 +201,17 @@ function PricingRowEditor({ row, t }: { row: AdminPricingRow; t: Translate }) {
   }
 
   function field(key: keyof RateDraft, testid: string) {
+    // `aria-invalid` rather than a new sentence under the input: which ONE
+    // of six fields is wrong is information a disabled Save button does not
+    // carry, and marking the field says it without inventing user-facing
+    // copy in a round that is deliberately not touching wording.
+    const invalid = parsed[key] === null;
     return (
       <input
         type="text"
         inputMode="numeric"
         value={draft[key]}
+        aria-invalid={invalid || undefined}
         onChange={(event) => setDraft((prev) => ({ ...prev, [key]: event.target.value }))}
         data-testid={testid}
       />
@@ -307,7 +348,12 @@ export function AdminPricing() {
               </thead>
               <tbody>
                 {pricingQuery.data.map((row) => (
-                  <PricingRowEditor key={row.model} row={row} t={t} />
+                  <PricingRowEditor
+                    key={row.model}
+                    row={row}
+                    t={t}
+                    maxRate={settingsQuery.data?.max_pricing_rate_micro}
+                  />
                 ))}
               </tbody>
             </table>
