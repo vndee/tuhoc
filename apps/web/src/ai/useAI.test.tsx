@@ -130,7 +130,16 @@ const SELF = basename(fileURLToPath(import.meta.url));
  * to holds only until the second member of the class appears."* Lớp ở đây là
  * **mọi mô-đun dưới `src/ai/`**, không phải "tệp `.ts`".
  */
-const SCANNED_EXTENSIONS = /\.(?:tsx?|jsx?|mjs|cjs)$/;
+const SCANNED_EXTENSIONS = /\.[mc]?[jt]sx?$/;
+
+/**
+ * Đuôi tệp KHÔNG phải mô-đun mà `src/ai/` được phép chứa. **RỖNG hôm nay**, và
+ * nó là một bánh cóc chứ không phải một tờ giấy: `selectFiles` NÉM khi gặp một
+ * tệp không khớp `SCANNED_EXTENSIONS` và cũng không có trong danh sách này, nên
+ * thêm một `.json`/`.css`/`.snap` vào thư mục này là một QUYẾT ĐỊNH có người
+ * thẩm định đọc, không phải một tệp lặng lẽ nằm ngoài tầm cổng.
+ */
+const NOT_MODULES: readonly string[] = [];
 
 /**
  * MỌI mô-đun SẢN PHẨM dưới `src/ai/`, gọi đích danh.
@@ -183,6 +192,29 @@ function selectFiles(entries: readonly EntryLike[]): string[] {
   if (notFiles.length > 0) {
     throw new Error(`cổng src/ai/ chỉ quét tệp phẳng, gặp: ${notFiles.sort().join(', ')}`);
   }
+
+  /*
+   * FAIL-CLOSED TRÊN THỨ KHÔNG NHẬN DIỆN ĐƯỢC — bản trước chỉ `filter` theo
+   * đuôi, và một tệp không khớp thì **biến mất khỏi mảng mà không đụng sàn**.
+   * Đo được: `src/ai/legacy.mts` chứa chữ bị cấm ⇒ cổng XANH 30/30. Cùng lỗ
+   * ấy đã xảy ra một lần với `.js` ở vòng sửa 1 và được vá bằng cách nới danh
+   * sách đuôi — tức là đuổi theo từng thành viên của một lớp thay vì đóng lớp.
+   *
+   * Nên ở đây `filter` đổi thành PHÂN HOẠCH: mọi tệp hoặc là mô-đun (bị quét),
+   * hoặc nằm trong `NOT_MODULES` (được miễn có lý do), hoặc **làm cổng đỏ**.
+   * Đó là cùng tư thế `notFiles` ở trên đã có với thư mục con, và nó nhất quán
+   * với `i18n.test.ts` — cổng ấy quét cả `.js` vì "mã chạy trong trình duyệt
+   * người dùng" không đồng nghĩa với "tệp TypeScript".
+   */
+  const unknown = entries
+    .map((e) => e.name)
+    .filter((n) => !SCANNED_EXTENSIONS.test(n) && !NOT_MODULES.includes(n));
+  if (unknown.length > 0) {
+    throw new Error(
+      `cổng src/ai/ không nhận diện được: ${unknown.sort().join(', ')} — thêm vào NOT_MODULES kèm lý do, hoặc dạy SCANNED_EXTENSIONS hiểu nó`,
+    );
+  }
+
   const files = entries
     .map((e) => e.name)
     .filter((n) => SCANNED_EXTENSIONS.test(n))
@@ -230,6 +262,25 @@ describe('cổng cấu trúc — CẢ `src/ai/` không còn nhắc vault', () =>
     expect(() => selectFiles([])).toThrow(/sàn/);
     expect(() => selectFiles(asEntries(['a.ts', 'b.ts']))).toThrow(/sàn/);
     expect(() => selectFiles(asEntries([], ['providers']))).toThrow(/tệp phẳng/);
+    // Một tệp KHÔNG nhận diện được phải làm ĐỎ, không được lặng lẽ rơi khỏi
+    // mảng — đó là chiều mà bản trước mù, và là cách `.js` rồi `.mts` lần lượt
+    // sống sót qua hai vòng.
+    expect(() => selectFiles(asEntries([...scanned, SELF, 'notes.md']))).toThrow(/không nhận diện/);
+    expect(() => selectFiles(asEntries([...scanned, SELF, 'theme.css']))).toThrow(/không nhận diện/);
+    expect(() => selectFiles(asEntries([...scanned, SELF, 'fixture.json']))).toThrow(
+      /không nhận diện/,
+    );
+
+    // …và MỌI đuôi mô-đun phải bị QUÉT, không phải bị ném. Danh sách viết ra
+    // từng cái vì đây đúng là chỗ đã hụt hai lần: `.js` (vòng sửa 1) rồi
+    // `.mts` (vòng sửa 2). Vá bằng cách đóng LỚP (phân hoạch + ném) chứ không
+    // bằng cách nối thêm đuôi, nhưng bài kiểm vẫn gọi tên từng thành viên —
+    // một biểu thức chính quy sai vẫn có thể khớp "đa số".
+    for (const ext of ['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'mts', 'cts']) {
+      expect(selectFiles(asEntries([...scanned, SELF, `probe.${ext}`])), ext).toContain(
+        `probe.${ext}`,
+      );
+    }
     // …và bộ dò còn sống: nó khớp một dòng import thật, và KHÔNG khớp mã sạch.
     expect(FORBIDDEN.test("import { VaultClient } from './vaultClient';")).toBe(true);
     expect(FORBIDDEN.test("import { postChat } from './serverClient';")).toBe(false);

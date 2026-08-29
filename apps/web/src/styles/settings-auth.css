@@ -533,29 +533,6 @@ html[data-theme='dark'] .auth-form input {
     · `reader/leaveChapter.test.tsx` — `document.querySelector('.page-settings')`
       phải khác `null` sau khi rời chương vào Cài đặt.
 */
-.page-settings { max-width:
-   54rem }` KHÔNG có trong bản dựng** (`grep -F '.page-settings{'
-   dist/assets/*.css` → 0 kết quả, trong khi `.set-title` ngay sau đó thì có).
-
-   Vì sao không ai thấy: `app-screens.css` có `#content:has(.page-settings) {
-   max-width: 54rem }` — cùng con số, khác selector — nên bề rộng trang Cài đặt
-   vẫn đúng. Một quy tắc chết được che bởi một quy tắc sống, tức đúng hạng lỗi
-   mà sổ nợ gọi là "im lặng".
-   ─────────────────────────────────────────────────────────────────────────── */
-
-/*
-  `.page-settings` là lớp mà HAI chốt bám vào: `.page-settings` phải thấy
-  được, và `.page-settings input, .page-settings textarea` phải đếm ra 0.
-  Đổi tên nó là làm hỏng cả hai một cách im lặng.
-
-  Chốt được nêu tên ở đây TRƯỚC Task 16 là `e2e/s2.spec.ts`, tệp đã bị xoá.
-  Chốt còn sống hôm nay:
-
-    · `pages/Settings.test.tsx` — "KHÔNG `<input>`, KHÔNG `[contenteditable]`,
-      ĐÚNG MỘT `<textarea>`" (bản Pha 2 của phép đếm 0 kia);
-    · `reader/leaveChapter.test.tsx` — `document.querySelector('.page-settings')`
-      phải khác `null` sau khi rời chương vào Cài đặt.
-*/
 .page-settings {
   max-width: 54rem;
 }

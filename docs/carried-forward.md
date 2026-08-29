@@ -442,6 +442,33 @@ chuẩn, một `BroadcastChannel` **không nhận thông điệp của chính n�
 phát"*. Cookie đổi ngay khi `POST /auth/login` trả về; tín hiệu sớm nhất là vài câu lệnh sau đó. Đóng
 đúng cách cần phía server — ví dụ một định danh phiên trên mọi phản hồi để client đối chiếu.
 
+## Không cổng nào so `src/styles/*.css` với `dist/` (Pha 2, Task 16 vòng sửa 2)
+
+**Trạng thái: hở, và đã cắn HAI lần trong cùng một tệp.** Cả hai lần, một quy tắc CSS có thật trong
+nguồn **không có trong bản dựng**, và **`bun run build` XANH cả hai lần**.
+
+| lần | nguyên nhân | thiệt hại đo trên `dist/` |
+|---|---|---|
+| `c1aacde` → 2026-08-29 | dấu ĐÓNG chú thích không có dấu mở, ở cấp cao nhất | `.page-settings { max-width: 54rem }` biến mất |
+| `4c59fdc` (một commit) | đoạn văn nháp còn sót thành CSS, mở một `{` không đóng | ~20 quy tắc từ đó tới cuối tệp: `.set-title`, `.set-select`, `.auth-pw`, `.auth-switch-link`, cả khối `@media (max-width: 47rem)` của `/login` |
+
+Nguyên nhân chung: **bộ phân tích CSS được viết để KHÔI PHỤC sau lỗi, không phải để dừng lại.** Nó bỏ
+thứ nó không hiểu rồi đi tiếp. Một quy tắc bị bỏ trong im lặng không phải lỗi cú pháp — nó là một quy
+tắc không tồn tại. Và vitest không bao giờ nạp CSS, nên cả bộ test cũng xanh.
+
+**Đã đóng một phần:** `apps/web/src/styles/cssStructure.test.ts` kiểm HÌNH DẠNG của nguồn — chú thích
+đóng/mở đúng cặp, ngoặc nhọn về 0 và không âm. Nó được chứng minh bằng cách **khôi phục nguyên văn cả
+hai tệp hỏng từ git** (`git show 390931e:…` và `git show 4c59fdc:…`) và xác nhận cổng ĐỎ ở cả hai.
+
+**Cái còn hở:** cổng ấy đọc NGUỒN, không đọc `dist/`. Một quy tắc rơi khỏi bản dựng vì bất kỳ lý do
+nào khác (selector gõ sai, một `@layer`/`@import` xếp sai, một bước tối ưu hoá) vẫn im lặng như cũ.
+Phép đo thật là `bun run build` rồi `grep` bản dựng — và không target `make` nào làm việc ấy.
+
+⇒ Ai muốn đóng: một bài kiểm chạy sau `bun run build`, đọc `dist/assets/*.css`, và khẳng định một
+DANH SÁCH SELECTOR CÓ TÊN đều có mặt (theo tên, không theo số đếm — cùng lập luận `db/local.test.ts`
+dùng cho năm bảng Dexie). Nó cần một target riêng vì `make test-web` không dựng bundle. Không thuộc
+phạm vi Task 16, nên là một món nợ CÓ TÊN chứ không phải một việc bỏ sót.
+
 ## `assert-tests-ran.mjs` mất theo `apps/vault` — không có người kế nhiệm (Pha 2, Task 16)
 
 **Trạng thái: một NĂNG LỰC đã rời khỏi repo, và không target nào nhận lại.** Ghi ra vì việc gỡ là

@@ -59,8 +59,10 @@ export default defineConfig({
   // Step 1 that has ever existed here), `instrument` (records fetches,
   // postMessages, AND every intermediate state of the answer box),
   // `freePort`/`serveStatic`/`fingerprint`+`build` (build caching),
-  // `askPanel`/`askAboutChapter`. Two of its six tests never touched the
-  // key vault at all. `docs/testing.md` -> "Reading `s2.spec.ts` back"
+  // `askPanel`/`askAboutChapter`. ONE of its six tests never touched the
+  // key vault at all (the 375px `elementFromPoint` check on `.ai-panel`);
+  // a second is worth rebuilding for its assertion but DOES plug a key
+  // first. `docs/testing.md` -> "Reading `s2.spec.ts` back"
   // has the full accounting: what is reusable, what is dead, and what
   // those two tests measured that nothing measures now. Task 18's brief
   // says "*Modify* `s2.spec.ts`" and "remove it from `testIgnore`"; both

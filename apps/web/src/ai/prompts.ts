@@ -275,11 +275,21 @@ export interface BuiltPrompt {
    * không dựng lại nó: máy chủ trừ credit theo TOKEN thật do nhà cung cấp báo
    * về, không theo ký tự.
    *
-   * Trường này ở lại vì nó nay phục vụ NGƯỜI ĐỌC, không phải một bộ đếm:
-   * `AskPanel`/`DeepDive` nói cho người học biết bao nhiêu chữ của chương sắp
-   * rời khỏi máy, và `CHAPTER_CONTEXT_LIMIT` cắt theo đúng con số ấy. Một ước
-   * lượng ở đây là nói dối về một điều riêng tư — nên đẳng thức
-   * `contextChars === system.length` vẫn là bất biến, chỉ đổi người thụ hưởng.
+   * Trường này ở lại vì nó là PHÉP TỰ KIỂM CỦA CHÍNH SỐ HỌC CẮT NGẮN ngay bên
+   * dưới — không phải vì có ai hiển thị nó. (Vòng sửa 1 viết rằng
+   * `AskPanel`/`DeepDive` cho người học xem con số này; **sai**, đã kiểm:
+   * `grep -rn contextChars apps/web/src` chỉ ra người đọc là các bài kiểm, và
+   * không component nào vẽ nó ra. Một lý do bịa ra cho một bất biến đúng vẫn
+   * là một lý do bịa.)
+   *
+   * Số học ấy: `head('')` được DỰNG THẬT để đo `overhead`, rồi cửa sổ trích
+   * được cấp đúng `limit - overhead` ký tự. Nếu `contextChars` là một ước
+   * lượng — chẳng hạn chỉ độ dài phần trích — thì `expect(contextChars <=
+   * CHAPTER_CONTEXT_LIMIT)` ở `prompts.test.ts`/`promptsCorpus.test.ts` sẽ
+   * đang kiểm MỘT ĐẠI LƯỢNG KHÁC với đại lượng thật sự rời khỏi máy, và một
+   * lời nhắc vượt trần đi qua trong im lặng. Đẳng thức
+   * `contextChars === system.length` là thứ buộc phép đo và phép cắt nói về
+   * cùng một chuỗi.
    */
   readonly contextChars: number;
 }
