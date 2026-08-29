@@ -79,7 +79,14 @@ export const en: Messages = {
   'settings.appearance.themeNowDark': 'Currently using the dark theme.',
 
   /** Rewritten at fix-round-1 (task-14) — see vi.ts's comment. */
-  'settings.localData.blurb': 'Notes live in this browser. Courses aren’t downloaded as packages — they’re read straight from the server.',
+  // E5 of the whole-branch review: the previous sentence named only the
+  // browser copy, in the one section a user reads to find out what the
+  // platform keeps. Notes also sync to the server (`POST /sync` →
+  // `sync/usecase.go` → the `annotations` table from migration 0001), which
+  // is exactly what `login.point.sync` already promises — see the vi
+  // catalog's comment on this key.
+  'settings.localData.blurb':
+    'Notes live in two places: a copy in this browser, and a copy synced to the server under your account — so signing in on another device still shows all of them. Courses aren’t downloaded as packages: they’re read straight from the server.',
   'settings.localData.clearedOnSignOut':
     'The local database is named after the BROWSER, not the user — so it is wiped whenever a different person signs in, even if nobody signed out.',
   'settings.localData.kept': 'Language and theme stay: they belong to the device.',
@@ -151,6 +158,7 @@ export const en: Messages = {
   'account.settings': 'Settings',
   'nav.dashboard': 'Dashboard',
   'nav.library': 'Library',
+  /** ORPHAN — no caller in `apps/web/src`. See the vi catalog's comment. */
   'nav.import': 'Import a course',
 
   'sidebar.searchPlaceholder': 'Find a chapter…',
@@ -296,7 +304,7 @@ export const en: Messages = {
   'courses.loading': 'Loading the catalog…',
   'courses.empty': 'No courses have been published yet.',
   'courses.list.aria': 'Course catalog',
-  /** Last user: `pages/Library.tsx`'s `EmptyLibrary` — see vi.ts's comment. */
+  /** ORPHAN — `pages/Library.tsx` no longer exists. See vi.ts's comment. */
   'courses.import.action': 'Import a package',
   'library.loading': 'Loading your library…',
   'library.empty.headingOffline': 'No courses on this device',
