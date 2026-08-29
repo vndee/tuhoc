@@ -226,14 +226,25 @@ echo "seed OK: $(cat "$SEED_RESPONSE")"
 rm -rf "$SEED_TMP"
 
 # Task 18: `apps/web/e2e/s2.spec.ts` needs every learner it registers to
-# start with a KNOWN, non-zero AI credit balance — `ai.Service.
-# GrantSignupCredit` (apps/api/internal/ai/credits.go) reads
-# `ai_settings.signup_grant_micro` FRESH on every registration (never a
-# compiled-in constant, and never cached — see that method's own doc
-# comment), and migration 0007_ai_credits.up.sql seeds that column at its
-# bare column DEFAULT of 0. Left alone, a fresh e2e learner registers with
-# ZERO credit and s2.spec.ts's very first scenario ("số dư hiện đúng") has
-# nothing meaningful to assert.
+# start with a balance this suite CHOSE — `ai.Service.GrantSignupCredit`
+# (apps/api/internal/ai/credits.go) reads `ai_settings.signup_grant_micro`
+# FRESH on every registration (never a compiled-in constant, and never
+# cached — see that method's own doc comment), so setting the column here is
+# what makes every registration land on a number the assertions know.
+#
+# WHY THAT SENTENCE CHANGED (whole-branch review fix, round 1 → 2). It used
+# to end "migration 0007_ai_credits.up.sql seeds that column at its bare
+# column DEFAULT of 0. Left alone, a fresh e2e learner registers with ZERO
+# credit". The second half is no longer true: migration
+# 0008_ai_credit_bootstrap.up.sql now seeds 50_000 (A1 of that review — the
+# 0 default was a production bug, not an e2e inconvenience). So this UPDATE
+# no longer RESCUES a zero; it PINS a specific, small number
+# (AI_SIGNUP_GRANT_MICRO above, 4765 = one turn's cost + 1000) so the second
+# turn's charge exceeds what the first left behind — see s2.spec.ts's
+# SEED_MICRO comment for why that margin is the whole point. Deleting this
+# step would no longer break the suite loudly; it would leave every learner
+# with 50_000 micro, and the "second turn is refused" scenario would quietly
+# stop testing anything.
 #
 # This MUST run before Playwright registers anyone — s2.spec.ts's learner
 # is created by Playwright itself (`registerNewUser`, same helper p1.spec.ts
@@ -245,15 +256,22 @@ rm -rf "$SEED_TMP"
 # host: the compose `db` service is `postgres:16-alpine`, which always
 # carries its own client — this way the script has no NEW host prerequisite
 # to add to docs/testing.md's "Prerequisites" list (unlike `migrate`, which
-# already is one). A raw SQL UPDATE, not an admin HTTP endpoint: Task 17's
-# "Bảng giá & prompt nền" CMS screen edits this same row over
-# PUT /admin/ai/settings, but that route sits behind auth.Require +
-# auth.RequireAdmin — a REAL admin login session, not the ADMIN_TOKEN bearer
-# door this script's course-seed step above uses (that door only opens
-# /admin/courses*, see server.go's adminOrToken and docs/deploy.md §4c) —
-# and bootstrapping one just to flip a single column would be a second,
-# heavier mechanism for a number Playwright never needs to see move at
-# runtime.
+# already is one).
+#
+# A raw SQL UPDATE, not an admin HTTP endpoint — and the honest version of
+# that reason has changed too. When this comment was written, `PUT
+# /admin/ai/settings` did not accept `signup_grant_micro` AT ALL (it took
+# `base_system_prompt` and nothing else), so this script's raw SQL was the
+# ONLY writer of the column in the entire repo, and "an admin session is
+# heavy" read as the reason when it was at best half of one. Both halves are
+# now real: the route accepts the column (review fix round 1, A1) and the
+# CMS screen has an input for it (round 2). What still argues for raw SQL is
+# only the cost: that route sits behind auth.Require + auth.RequireAdmin — a
+# REAL admin login session, not the ADMIN_TOKEN bearer door this script's
+# course-seed step above uses (that door only opens /admin/courses*, see
+# server.go's adminOrToken and docs/deploy.md §4c) — and bootstrapping one
+# just to flip a single column would be a second, heavier mechanism for a
+# number Playwright never needs to see move at runtime.
 log "seeding ai_settings.signup_grant_micro (Task 18 — s2.spec.ts's credit gate; \$AI_SIGNUP_GRANT_MICRO=$AI_SIGNUP_GRANT_MICRO)"
 "${COMPOSE[@]}" exec -T db psql -U tuhoc -d tuhoc -v ON_ERROR_STOP=1 -c \
   "UPDATE ai_settings SET signup_grant_micro = ${AI_SIGNUP_GRANT_MICRO};"
