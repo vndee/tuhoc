@@ -286,7 +286,7 @@ test.describe('S2 — AI credit gate', () => {
       }
     });
 
-    await test.step('scenario 3: balance below 0 blocks the next turn with a top-up invite', async () => {
+    await test.step('scenario 3: balance below 0 blocks the next turn, and says what to do instead', async () => {
       await page.goto(`/c/${REAL_COURSE_ID}/${CHAPTER_ID}`);
       await page.getByRole('button', { name: 'Hỏi AI về chương này' }).click();
       const dialog = page.getByRole('dialog', { name: 'Hỏi về chương' });
@@ -303,8 +303,25 @@ test.describe('S2 — AI credit gate', () => {
       // — not merely hidden, so a learner cannot type into a form that
       // will just be refused again.
       await expect(dialog.locator('.ai-panel-ask')).toHaveCount(0);
-      // The invite links to Settings' AI section — spec §8's "kèm lời mời nạp".
-      await expect(dialog.getByRole('link', { name: 'Mở trang cấu hình' })).toBeVisible();
+      // The invite still links to Settings' AI section, but for what is
+      // ACTUALLY there — a balance and a spend ledger, not a top-up form.
+      //
+      // THIS ASSERTION CAUGHT THE COPY CHANGE, which is the point of having
+      // it: E1 of the whole-branch review renamed this link because the old
+      // label ("Mở trang cấu hình") borrowed its meaning from a sentence
+      // above it that promised a top-up which has never existed —
+      // `CreditPanel.tsx` draws a balance and a usage table, and grep
+      // `topup|payment|checkout|stripe` finds nothing in product code.
+      // Billing is Pha 4 (spec §7).
+      await expect(dialog.getByRole('link', { name: 'Xem số dư và sổ dùng' })).toBeVisible();
+
+      // And the invite must not have quietly grown the promise back. Same
+      // fixed-phrase scan `AskPanel.test.tsx` keeps at the unit layer, run
+      // here against the REAL rendered panel in a real browser — the two are
+      // not redundant: this one proves the production build ships it.
+      const inviteText = (await dialog.getByTestId('ai-needs-setup').innerText()).toLowerCase();
+      expect(inviteText).not.toContain('nạp thêm');
+      expect(inviteText).toContain('liên hệ quản trị viên');
 
       const res = await page.request.get(`${API_ORIGIN}/ai/credits`);
       const body = (await res.json()) as { balance_micro: number; recent_usage: unknown[] };
