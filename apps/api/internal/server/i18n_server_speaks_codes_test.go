@@ -71,7 +71,18 @@ const minProductionGoFiles = 20
 // Tệp NEO — phép quét phải đọc được đúng những tệp mà vi phạm sẽ nằm ở đó.
 // Một ngưỡng đếm mà không có mỏ neo vẫn xanh khi bộ lọc nuốt đúng thư mục
 // đáng nhìn và để lại một thư mục khác cho đủ số.
+//
+// HAI DÒNG CUỐI THÊM Ở VÒNG SỬA SAU REVIEW TỔNG NHÁNH PHA 2 (mục F4). Sáu
+// neo đầu đều là handler Pha 1; `internal/ai` — gói LỚN NHẤT Pha 2 thêm vào,
+// và là gói duy nhất trong repo có người viết mã dưới áp lực song ngữ (mọi
+// câu người học đọc đều đi qua nó dưới dạng MÃ, không phải chuỗi) — không có
+// neo nào. Phép quét vẫn phủ nó qua `filepath.Walk`, nên đây là rủi ro TƯƠNG
+// LAI chứ không phải một lỗ đang sống: nếu một ngày bộ lọc thư mục đổi và
+// nuốt mất `internal/ai`, năm nghìn dòng còn lại vẫn đủ vượt
+// `minProductionGoFiles` và cổng vẫn xanh. Thêm neo là THU HẸP, không nới.
 var handlerSentinels = []string{
+	"internal/ai/admin_handler.go",
+	"internal/ai/handler.go",
 	"internal/auth/handler.go",
 	"internal/catalog/handler.go",
 	"internal/rating/handler.go",
