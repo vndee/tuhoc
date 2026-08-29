@@ -57,18 +57,30 @@ const MaxAdminCreditAdjustmentMicro int64 = 100_000_000_000
 // text field was never meant to hold.
 const MaxBasePromptChars = 20000
 
-// CodeNotFound and CodeAmountOutOfRange are two admin-route-only codes,
-// alongside the shared block in handler.go. Neither existing code fits
-// either case: CodeNotFound names "the id in the path matches nothing" (a
-// user, or a pricing model) — none of the three learner routes above ever
-// look something up BY ID, so this code never had a reason to exist before
-// this file. CodeAmountOutOfRange names "the number is real but outside
-// what this endpoint accepts" — CodeFieldRequired means "missing", not
-// "present but too large", and CodeFieldTooLong is about STRING length,
-// not a numeric ceiling.
+// CodeNotFound, CodeAmountOutOfRange, and CodeAmountRequired are three
+// admin-route-only codes, alongside the shared block in handler.go. None
+// of the existing codes fit: CodeNotFound names "the id in the path
+// matches nothing" (a user, or a pricing model) — none of the three
+// learner routes above ever look something up BY ID, so this code never
+// had a reason to exist before this file. CodeAmountOutOfRange names "the
+// number is real but outside what this endpoint accepts" —
+// CodeFieldRequired means "missing", not "present but too large", and
+// CodeFieldTooLong is about STRING length, not a numeric ceiling.
+//
+// CodeAmountRequired is its OWN code, not a reuse of CodeFieldRequired,
+// because AdminAdjustCredit has TWO independent "something required is
+// missing" failures on the SAME request (an empty note, and a zero
+// delta_micro) — round-2 review caught this: collapsing both into
+// CodeFieldRequired means the one English sentence attached to that code
+// ("note is required for a manual credit adjustment") is WRONG half the
+// time (a zero delta trips the same code with a note that already has
+// text in it). A zero amount is a distinct kind of "missing" — the field
+// is present and well-formed, its VALUE just cannot be zero — and gets its
+// own code and its own sentence.
 const (
 	CodeNotFound         = "NotFound"
 	CodeAmountOutOfRange = "AmountOutOfRange"
+	CodeAmountRequired   = "AmountRequired"
 )
 
 // --- GET /admin/ai/users ----------------------------------------------
@@ -264,7 +276,7 @@ func (h *Handler) AdminAdjustCredit(c *fiber.Ctx) error {
 			"note is required for a manual credit adjustment")
 	}
 	if req.DeltaMicro == 0 {
-		return fail(c, fiber.StatusBadRequest, CodeFieldRequired, "delta_micro must not be zero")
+		return fail(c, fiber.StatusBadRequest, CodeAmountRequired, "delta_micro must not be zero")
 	}
 	if req.DeltaMicro > MaxAdminCreditAdjustmentMicro || req.DeltaMicro < -MaxAdminCreditAdjustmentMicro {
 		return fail(c, fiber.StatusBadRequest, CodeAmountOutOfRange,

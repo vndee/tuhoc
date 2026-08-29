@@ -23,26 +23,60 @@ import {
  * own call site below; the ones it CANNOT own (idempotency, a hard
  * confirmation dialog) are named rather than silently skipped:
  *
- *  - **Double-submit**: the amount/note fields are cleared on a successful
- *    adjustment (see `adjustMutation`'s `onSuccess`), and the submit
- *    button is disabled while a request is in flight AND whenever the
- *    amount/note fields are not both filled in — so a second click needs
- *    a second, deliberate re-entry of both fields, not a bare re-click.
- *    This does NOT close the server-side race (two genuinely separate
- *    requests, e.g. two browser tabs) — `AdminAdjustCredit`'s own doc
- *    comment on the Go side names that gap explicitly.
+ *  - **Double-submit, the ORDINARY case (a real click while the request is
+ *    already in flight)**: `canSubmitAdjust` requires
+ *    `!adjustMutation.isPending`, so the button is disabled for the whole
+ *    round trip, and the amount/note fields are cleared on success — a
+ *    second real adjustment needs fresh input, not a bare re-click.
+ *  - **Double-submit, the ROUND-2-REVIEW case (the response is LOST, not
+ *    merely slow)**: a request can commit at the server and then never
+ *    report success to this tab (a proxy timeout, a dropped connection,
+ *    the device sleeping mid-request) — `adjustMutation` lands in its
+ *    ERROR state with the write already done. The first version of this
+ *    file only refetched the account's state in `onSuccess`, which left
+ *    the balance and `recent_adjustments` on screen STALE after exactly
+ *    this failure — the shape of evidence an operator would read as
+ *    "nothing happened yet" and retry, producing a REAL second charge.
+ *    `adjustMutation`'s `onSettled` (not `onSuccess`) now refetches on
+ *    BOTH outcomes, so a failed-but-actually-succeeded attempt still shows
+ *    its own new balance and its own new audit row before a retry is
+ *    possible. This narrows the window, it does not close it (there is
+ *    still a moment between the request failing and the refetch landing);
+ *    closing it for good needs a server-side idempotency key, which
+ *    `AdminAdjustCredit`'s own doc comment on the Go side names as
+ *    explicitly out of scope for this task — tracked as its own entry in
+ *    docs/carried-forward.md, not left to live only in a gitignored report.
+ *  - **Two browser tabs / two operators at once**: still open. Nothing in
+ *    this file can see a request this tab did not send.
  *  - **Wrong target**: the selected learner's EMAIL is shown directly
  *    above the adjustment form (never just an id), and every adjustment
  *    this screen has ever made to THIS account is listed right below it
- *    (`recent_adjustments`) — an operator about to top up the wrong
- *    person sees, in the same view, whether that account has already
- *    been touched.
+ *    (`recent_adjustments`, including WHO made each one — round-2 review,
+ *    Minor 1: the acting admin's id was on the wire but never drawn) — an
+ *    operator about to top up the wrong person sees, in the same view,
+ *    whether that account has already been touched, by whom, and when.
  */
 
 function formatUsageWhen(at: string): string {
   const d = new Date(at);
   if (Number.isNaN(d.getTime())) return at;
   return `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+}
+
+/**
+ * `who` (the acting admin's id, `creditAdjustmentPayload.who` on the Go
+ * side) shortened to its first 8 hex characters for a table cell that
+ * otherwise has to fit a "Thời điểm" column and a free-text "Ghi chú"
+ * column on the same row — the FULL id is still there, in the `title`
+ * attribute, for anyone who needs to match it against a real account.
+ * `null` (admin_audit.who can be nulled by `ON DELETE SET NULL` if the
+ * acting admin's own account is later deleted — see docs/carried-forward.md)
+ * renders as an explicit placeholder, never a blank cell someone could
+ * misread as "the system did this automatically".
+ */
+function formatWho(who: string | null): string {
+  if (who === null) return '—';
+  return who.slice(0, 8);
 }
 
 type Direction = 'add' | 'subtract';
@@ -78,6 +112,29 @@ export function AdminCredits() {
     onSuccess: () => {
       setAmountText('');
       setNoteText('');
+    },
+    /**
+     * `onSettled`, NOT `onSuccess` — round-2 review, M-6, and the report's
+     * "không mất tiền âm thầm" claim was WRONG until this fix. The real
+     * scenario: POST commits at the server, then the RESPONSE is lost
+     * (proxy timeout, a dropped connection, the tab sleeping) — the
+     * mutation lands in React Query's error state even though the money
+     * already moved. With the refetch gated on `onSuccess` alone, the
+     * screen kept showing the PRE-adjustment balance and adjustment
+     * history, which is exactly the state that invites an operator to
+     * read the error, assume nothing happened, and submit the identical
+     * adjustment again — a real double top-up, not a hypothetical one.
+     * `onSettled` runs on BOTH outcomes, so even an "error" always
+     * refetches the account's TRUE current state — if the write actually
+     * landed, the operator sees the new balance and the new
+     * `recent_adjustments` row (with its own note and timestamp) before
+     * they have a chance to retry blind. This does not turn the failed
+     * request itself into a success, and it does not add an idempotency
+     * key (see this file's own top comment on that gap) — it only makes
+     * sure the evidence on screen is never stale after an attempt, success
+     * or not.
+     */
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['admin', 'ai', 'user', selectedId] });
       void queryClient.invalidateQueries({ queryKey: ['admin', 'ai', 'users'] });
     },
@@ -290,6 +347,7 @@ export function AdminCredits() {
                     <thead>
                       <tr>
                         <th scope="col">{t('settings.ai.usageColWhen')}</th>
+                        <th scope="col">{t('admin.ai.credits.colWho')}</th>
                         <th scope="col">{t('admin.ai.credits.colNote')}</th>
                       </tr>
                     </thead>
@@ -298,6 +356,9 @@ export function AdminCredits() {
                         // eslint-disable-next-line react/no-array-index-key
                         <tr key={index}>
                           <td>{formatUsageWhen(entry.at)}</td>
+                          <td data-testid={`admin-ai-adjustment-who-${index}`} title={entry.who ?? undefined}>
+                            {formatWho(entry.who)}
+                          </td>
                           <td data-testid={`admin-ai-adjustment-note-${index}`}>{entry.note}</td>
                         </tr>
                       ))}

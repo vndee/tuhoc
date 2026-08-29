@@ -72,6 +72,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -493,6 +494,16 @@ type AdminUser struct {
 	BalanceMicro int64
 }
 
+// escapeLikePattern backslash-escapes the three characters that are
+// meaningful inside a Postgres LIKE pattern — the backslash itself, '%',
+// and '_' — so a caller-supplied search string is matched LITERALLY.
+// Paired with ListUsers's own `ESCAPE '\\'` clause; the two must agree on
+// the escape character or this is a no-op that LOOKS like a fix.
+func escapeLikePattern(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
+
 // adminUserListLimit bounds ListUsers — an operator's search box, not a
 // full export. 50 is generous for "type a few letters of an email, see who
 // matches" and cheap for the database; a deployment that needs to page past
@@ -505,21 +516,40 @@ const adminUserListLimit = 50
 // adminUserListLimit accounts alphabetically — not "every user", the same
 // bounded-by-default posture RecentUsage already takes with its own limit.
 //
-// query is matched with a bare SQL LIKE against users.email, which is
-// citext (migration 0001_init) and therefore ALREADY case-insensitive — no
-// ILIKE needed. It is NOT escaped against a literal '%'/'_' in query: this
-// endpoint sits behind auth.RequireAdmin, so a search that treats an
-// operator's own '%' as a wildcard is a UX quirk, not a security hole —
-// nobody who cannot already pass RequireAdmin can reach this query at all.
+// query is matched with a SQL LIKE against users.email, which is citext
+// (migration 0001_init) and therefore ALREADY case-insensitive — no ILIKE
+// needed.
+//
+// escapeLikePattern (below) IS applied — round-2 review corrected this
+// comment after finding the previous version argued escaping away as "a UX
+// quirk, not a security hole" and stopped there. That argument is true as
+// far as it goes (this sits behind auth.RequireAdmin, so nothing about
+// injection is at stake), but it missed the actual failure this screen
+// cares about: '_' is SQL LIKE's single-character wildcard AND a character
+// that appears constantly in real email addresses (firstname_lastname@…).
+// On the ONE screen whose named risk is "topping up the WRONG person",
+// searching "nguyen_van_a@…" matching a DIFFERENT account whose email
+// merely has some other character in that position is exactly the kind of
+// silent near-miss that risk is about — an operator who typed a real,
+// specific email and got back a result they trusted. Escaping is cheap and
+// removes that failure mode entirely.
 func (s *Service) ListUsers(ctx context.Context, query string) ([]AdminUser, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT u.id, u.email, u.role, COALESCE(c.balance_micro, 0)
 		FROM users u LEFT JOIN ai_credits c ON c.user_id = u.id
-		WHERE $1 = '' OR u.email LIKE '%' || $1 || '%'
+		WHERE $1 = '' OR u.email LIKE '%' || $1 || '%' ESCAPE '\'
 		ORDER BY u.email
-		LIMIT $2`, query, adminUserListLimit)
+		LIMIT $2`, escapeLikePattern(query), adminUserListLimit)
 	if err != nil {
-		return nil, fmt.Errorf("ai: list users (query=%q): %w", query, err)
+		// query is deliberately NOT interpolated into this error: it is
+		// operator-typed search text that may contain a fragment of a real
+		// learner's email, and this error reaches slog verbatim via
+		// h.internal (handler.go) on a 500 — the same "never let a
+		// user-supplied string ride an error into the log" discipline
+		// apilog.go's own package doc states for annotations.note and
+		// credentials. The op name in h.internal's own log line ("ai.
+		// AdminListUsers") is enough to find this call site without it.
+		return nil, fmt.Errorf("ai: list users: %w", err)
 	}
 	defer rows.Close()
 
