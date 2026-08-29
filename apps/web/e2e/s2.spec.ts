@@ -1,4 +1,4 @@
-import { expect, test, type ConsoleMessage } from '@playwright/test';
+import { expect, test, type ConsoleMessage, type Locator } from '@playwright/test';
 import { PASSWORD, REAL_COURSE_ID, freshEmail, isBenignAuthCheck401, registerNewUser } from './helpers';
 
 /**
@@ -6,71 +6,66 @@ import { PASSWORD, REAL_COURSE_ID, freshEmail, isBenignAuthCheck401, registerNew
  * vault this filename used to gate. The old file drove `apps/vault`, a
  * second-origin app the learner plugged their own DeepSeek key into; Pha 2
  * moved AI to the server, paid for in credit, and Task 16 deleted that app
- * along with every test that drove it (`git log` on this path, or
- * `docs/testing.md`'s former "Reading s2.spec.ts back" section — folded
- * into this comment now that the rewrite it was written for has landed).
- * NOTHING below is lifted from that file: the old harness built, served and
- * drove a second origin that no longer exists, so every assertion here is
- * new, written directly against the credit architecture spec §3.4/§8
- * describe.
+ * along with every test that drove it. NOTHING below is lifted from that
+ * file: the old harness built, served and drove a second origin that no
+ * longer exists, so every assertion here is new, written directly against
+ * the credit architecture spec §3.4/§8 describe. See `docs/testing.md`'s
+ * `s2.spec.ts` section for the current, living description of this gate.
  *
- * WHAT THIS PROVES — spec §8's own words for this gate: "số dư hiện, trừ
- * đúng, hết chặn, config giữ" (the balance displays, deducts correctly,
- * blocks when empty, personal config survives a reload). It does NOT
- * re-prove `p1.spec.ts`'s reader assertions (KaTeX, widgets, cross-device
- * sync) or `widget.spec.ts`'s sandbox boundary — this file's only job is
- * the AI/credit surface neither of those touches.
+ * WHAT THIS PROVES — spec §8's own words: "số dư hiện, trừ đúng, hết chặn,
+ * config giữ" (the balance displays, deducts correctly, blocks when empty,
+ * personal config survives a reload). It does NOT re-prove `p1.spec.ts`'s
+ * reader assertions or `widget.spec.ts`'s sandbox boundary — this file's
+ * only job is the AI/credit surface neither of those touches.
  *
- * NO REAL DEEPSEEK CALL, EVER. `scripts/test-e2e.sh` points
- * `DEEPSEEK_BASE_URL` (`apps/api/compose.e2e.yml`) at a small HTTP server,
- * `scripts/fake_deepseek.py`, run as its own compose service — it answers
- * the exact wire shape `apps/api/internal/ai/stream.go`'s `CompleteStream`
- * parses, with a FIXED reply and FIXED usage, regardless of what was asked.
- * See that script's own header comment for the full reasoning and the exact
- * derivation of `SEED_MICRO` below. Two consequences worth stating up
- * front, so a green run here is not read as promising more than it does:
+ * NO REAL DEEPSEEK CALL, EVER — see `scripts/fake_deepseek.py`'s own header
+ * comment for the full reasoning and the exact derivation of
+ * `ONE_TURN_MICRO`/`SEED_MICRO` below. Two things worth restating here so a
+ * green run is not read as promising more than it does: this proves
+ * `apps/api`'s OWN cost math end to end through a real HTTP round trip, NOT
+ * that DeepSeek's real API behaves the way `client_test.go`/`stream_test.go`
+ * assume (`docs/deepseek-measured.md` is where that gets checked); and the
+ * tool loop never runs here (the fake reply never emits `tool_calls`), so
+ * Go's own tool-loop coverage is what stands behind that path, not this
+ * file.
  *
- *   - This proves apps/api's OWN cost math (`cost.go`'s `Charge`,
- *     `credits.go`'s `ChargeTurn`, the SSE relay in `handler.go`'s
- *     `streamTurn`) end to end through a real HTTP round trip — the
- *     machinery a real DeepSeek call would exercise identically. It does
- *     NOT prove DeepSeek's real API behaves the way `client_test.go`/
- *     `stream_test.go` assume; `docs/deepseek-measured.md` is the one place
- *     that gets checked against the live API, deliberately not in a suite
- *     that runs on every push.
- *   - The tool loop never runs here (the fake reply never emits a
- *     `tool_calls` entry — see `fake_deepseek.py`'s own "NO TOOL CALLS"
- *     note), so every turn finishes in exactly one round. That is what
- *     makes the credit math below EXACT rather than "usually close" — Go's
- *     own tool-loop coverage (`agent_test.go`, `stream_test.go`,
- *     `tool_course_test.go`) already exists and does not need re-proving
- *     through a real browser.
+ * ROUND-1 SELF-REVIEW ("M-1", "M-2") — two mutations survived the first
+ * version of this gate, both because a fixture made two DIFFERENT-meaning
+ * numbers EQUAL:
  *
- * SEED_MICRO = 2972. `scripts/test-e2e.sh` sets
- * `ai_settings.signup_grant_micro` to this exact value (its own
- * `AI_SIGNUP_GRANT_MICRO`, default 2972, overridable via
- * `TUHOC_E2E_AI_SIGNUP_GRANT_MICRO`) before ANY user in this e2e run
- * registers — `ai.Service.GrantSignupCredit` reads that column FRESH on
- * every signup (`credits.go`'s own doc comment: never cached, never a
- * compiled-in constant), so THIS test's freshly-registered learner starts
- * with EXACTLY one fake turn's worth of credit. `fake_deepseek.py`'s header
- * comment derives 2972 from its own fixed usage (cache_hit=40,
- * cache_miss=1200, completion=350 tokens) against `ai_pricing`'s seeded
- * `deepseek-v4-pro` row (`migrations/0007_ai_credits.up.sql`) — KEEP ALL
- * THREE NUMBERS IN SYNC BY HAND; there is no fourth place any of the three
- * files could read a shared value from without a build step none of them
- * otherwise needs (same tension `playwright.config.ts` already documents
- * for `CORS_ORIGIN`). A mismatch here fails LOUDLY — a balance assertion
- * off by the exact difference — not silently.
+ *   - M-1: `ai_pricing`'s COST columns (what DeepSeek bills the platform)
+ *     and CREDITS columns (what the platform bills the learner) were seeded
+ *     EQUAL for deepseek-v4-pro (migration 0007's own comment: Pha 2 sells
+ *     at cost, the real ratio is a Pha 4 decision). A `ChargeTurn` bug that
+ *     deducted/recorded the COST instead of the CREDITS was therefore
+ *     invisible — same numbers either way. Fixed in
+ *     `scripts/test-e2e.sh`'s "seeding ai_pricing's COST columns" step,
+ *     which gives the two sets of columns DIFFERENT values; the assertions
+ *     below did not need to change, only the fixture that was hiding a real
+ *     bug from them.
+ *   - M-2: seeding a learner with EXACTLY one turn's cost (the first
+ *     version's `SEED_MICRO`) cannot tell correct subtraction apart from a
+ *     bug that floors the result at zero instead of letting it go negative
+ *     (spec §3.4 explicitly allows the turn that crosses zero to finish and
+ *     go negative — `credits.go`'s `ChargeTurn` doc comment: "never refuses
+ *     to charge because the result would be negative"). Both produce
+ *     `balance_micro === 0` after one turn. Fixed below: `SEED_MICRO` is
+ *     now `ONE_TURN_MICRO + 1000`, and scenario 2 runs TWO turns — the
+ *     second one charges MORE than the balance left after the first,
+ *     driving it NEGATIVE, and the exact negative number is asserted.
  *
- * ONE SEED, FOUR SCENARIOS, ONE LEARNER, IN ORDER. §8's four checks are
- * statefully dependent on each other (the balance the second scenario
- * expects to end at is exactly the balance the third scenario needs as its
- * starting point), so this file registers ONE fresh account and runs all
- * four as sequential steps of a single test — not four independent tests
- * each re-registering their own account. That also keeps this file's
- * contribution to `helpers.ts`'s shared `/auth/*` rate-limit budget (see
- * that file's own doc comment) to exactly one register call.
+ * Both were verified as real, not just reasoned about: patching
+ * `credits.go` to reproduce each mutation (M-1: deduct/record `costMicro`
+ * instead of `credits`; M-2: `balance_micro - LEAST($2, balance_micro)`)
+ * turns THIS spec red with the fixes below in place, and reverting the
+ * patch turns it back green — see `task-18-report.md` for the transcripts.
+ *
+ * ONE SEED, THREE TURNS, ONE LEARNER, IN ORDER. This file registers ONE
+ * fresh account and runs every scenario as sequential steps of a single
+ * test — the balance a later scenario needs as its starting point is
+ * exactly the balance the previous one left behind. That also keeps this
+ * file's contribution to `helpers.ts`'s shared `/auth/*` rate-limit budget
+ * to exactly one register call.
  */
 
 /** Same computation `playwright.config.ts` and `p1.spec.ts` already use for the real API's origin. */
@@ -79,15 +74,41 @@ const API_ORIGIN = (
 ).replace(/\/+$/, '');
 
 /**
- * MUST equal `scripts/test-e2e.sh`'s `AI_SIGNUP_GRANT_MICRO` AND
- * `scripts/fake_deepseek.py`'s derived one-turn cost — see this file's own
- * top comment for the full accounting of why 2972 and why it lives in three
- * places by hand.
+ * MUST equal `scripts/fake_deepseek.py`'s derived ONE_TURN_MICRO — three
+ * usage figures (cache_hit=137, cache_miss=1583, completion=421 tokens)
+ * against `ai_pricing`'s seeded deepseek-v4-pro CREDITS columns
+ * (credits_per_1k_in=1320, credits_per_1k_cached_in=44,
+ * credits_per_1k_out=3960), run through `cost.go`'s `divUp` (ceiling
+ * division). See that script's header comment for the full derivation —
+ * chosen, since round-1 self-review, so EVERY term rounds a genuine
+ * fraction (not just one), so a "tidier" fixture number cannot silently
+ * delete the only case exercising divUp's rounding direction.
  */
-const SEED_MICRO = 2972;
+const ONE_TURN_MICRO = 3765;
+
+/**
+ * `ONE_TURN_MICRO + 1000` — see this file's own top comment, "M-2", for why
+ * exactly-one-turn's-cost cannot tell real subtraction apart from a
+ * floor-at-zero bug, and why 1000 specifically (round, and small enough
+ * that the SECOND turn's charge exceeds what is left after the first,
+ * which is the whole point). MUST equal `scripts/test-e2e.sh`'s
+ * `AI_SIGNUP_GRANT_MICRO` default.
+ */
+const SEED_MICRO = ONE_TURN_MICRO + 1000;
 
 /** A chapter of the seeded course with no widget (that pairing is `p1.spec.ts`/`widget.spec.ts`'s job — `c2`) — plain prose + KaTeX is enough for the AI entry point this file drives. */
 const CHAPTER_ID = 'c1';
+
+/**
+ * MUST equal `scripts/fake_deepseek.py`'s `ANSWER_TEXT` verbatim. Round-1
+ * self-review found the first version of this spec only asserted a ~42
+ * character PREFIX via `toContainText`, ending inside the second of six
+ * streamed fragments — a bug that lost, duplicated or reordered anything
+ * past that point would have passed silently. Every assertion against the
+ * rendered answer below checks this FULL string exactly.
+ */
+const FULL_ANSWER_TEXT =
+  'Đây là câu trả lời cố định từ DeepSeek giả, dùng cho bộ kiểm e2e của Task 18. Không có lời gọi mạng thật nào tới DeepSeek trong lần chạy này.';
 
 /**
  * The one console line this file EXPECTS, once: scenario 3's blocked ask
@@ -106,8 +127,37 @@ function isBenignNoCreditConsoleError(msg: ConsoleMessage): boolean {
   }
 }
 
+/**
+ * Polls `locator`'s text until it is a non-empty, INCOMPLETE prefix of
+ * `full` at least once, or throws. This is the ACTUAL observation that
+ * makes `fake_deepseek.py`'s inter-chunk delay mean something — round-1
+ * self-review found a prior version of that delay's doc comment claimed it
+ * made "streamed" distinguishable from "painted once at the end" with no
+ * assertion anywhere that ever looked at an intermediate state; a client
+ * that buffered the whole SSE body and painted once at "done" would have
+ * passed identically. This is the closest live equivalent to what the
+ * now-deleted `instrument` helper's answer-box tracking used to prove (git
+ * show 390931e:apps/web/e2e/s2.spec.ts) — not the same mechanism, but the
+ * same property, actually checked.
+ */
+async function expectStreamedIncrementally(locator: Locator, full: string): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        if ((await locator.count()) === 0) return false;
+        const t = (await locator.textContent()) ?? '';
+        return t.length > 0 && t.length < full.length;
+      },
+      {
+        timeout: 3_000,
+        intervals: [25],
+      },
+    )
+    .toBe(true);
+}
+
 test.describe('S2 — AI credit gate', () => {
-  test('balance displays, deducts by fake usage × price, blocks at zero, personal config survives reload', async ({
+  test('balance displays, deducts by fake usage × price (including going negative), blocks at zero, personal config survives reload', async ({
     page,
   }) => {
     const unexpectedConsoleErrors: string[] = [];
@@ -129,11 +179,17 @@ test.describe('S2 — AI credit gate', () => {
       const balance = page.getByTestId('credit-balance');
       await expect(balance).not.toHaveText('—');
 
-      // Computed IN the browser (same V8/ICU that rendered the panel),
-      // not hand-formatted in Node — this sidesteps any doubt about
-      // whether Node's own Intl data would render `vi-VN` identically to
-      // Chromium's, and it is what `CreditPanel.tsx`'s `formatCredits`
-      // (../src/ai/money.ts) actually computes.
+      // Computed IN the browser (same V8/ICU that rendered the panel), not
+      // hand-formatted in Node. NOTE what this DOES and does NOT prove:
+      // `toLocaleString(..., { maximumFractionDigits: 4 })` rounds to the
+      // nearest 100 micro-credits REGARDLESS of magnitude, so this check
+      // alone cannot tell SEED_MICRO apart from a balance a few dozen
+      // micro-credits off — it proves the panel paints SOMETHING derived
+      // from the live API value with no stale cache, not exact-value
+      // accuracy. The `GET /ai/credits` assertion right below reads the raw
+      // integer with no rounding, and THAT is the real proof of "số dư hiện
+      // đúng" — this DOM check is a (real, but coarser) second witness, not
+      // a replacement for it.
       const expectedText = await page.evaluate(
         (micro) => (micro / 1_000_000).toLocaleString('vi-VN', { maximumFractionDigits: 4 }),
         SEED_MICRO,
@@ -147,7 +203,7 @@ test.describe('S2 — AI credit gate', () => {
       expect(body.recent_usage).toEqual([]);
     });
 
-    await test.step('scenario 2: asking one question deducts exactly usage × price', async () => {
+    await test.step('scenario 2: two turns drain the balance PAST zero — proves real subtraction, not a floor-at-0 clamp (M-2)', async () => {
       await page.goto(`/c/${REAL_COURSE_ID}/${CHAPTER_ID}`);
       const askButton = page.getByRole('button', { name: 'Hỏi AI về chương này' });
       // Disabled until the chapter's own content div is mounted
@@ -159,8 +215,18 @@ test.describe('S2 — AI credit gate', () => {
 
       const dialog = page.getByRole('dialog', { name: 'Hỏi về chương' });
       await expect(dialog).toBeVisible();
+      const answer = dialog.getByTestId('ai-answer');
+
+      // ── Turn A: balance 4765 -> 1000. Charge (3765) < balance (4765), so
+      // this alone cannot distinguish real subtraction from a clamp — it
+      // only proves a turn was billed for something close to the right
+      // amount. The DISCRIMINATING step is turn B, below.
       await dialog.getByLabel('Câu hỏi của bạn').fill('Chương này nói về điều gì?');
       await dialog.getByRole('button', { name: 'Hỏi', exact: true }).click();
+
+      // The actual observation behind "chảy từng chữ" — see
+      // expectStreamedIncrementally's own doc comment.
+      await expectStreamedIncrementally(answer, FULL_ANSWER_TEXT);
 
       // Generous timeout on this one assertion, not the suite default: it
       // waits on a REAL multi-hop round trip (EnsureCredit + Settings +
@@ -168,14 +234,30 @@ test.describe('S2 — AI credit gate', () => {
       // deepseek-fake) rather than a pure client-side state change — same
       // reasoning `playwright.config.ts` gives for its own inline
       // overrides, not a blanket bump.
-      const answer = dialog.getByTestId('ai-answer');
-      await expect(answer).toContainText('Đây là câu trả lời cố định từ DeepSeek giả', { timeout: 20_000 });
+      await expect(answer).toHaveText(FULL_ANSWER_TEXT, { timeout: 20_000 });
       // Streaming finished: "Dừng" (cancel) reverted to "Hỏi" (submit) —
       // `useAI.ts`'s `state` left `'streaming'` for `'done'`.
       await expect(dialog.getByRole('button', { name: 'Hỏi', exact: true })).toBeVisible();
 
-      const res = await page.request.get(`${API_ORIGIN}/ai/credits`);
-      const body = (await res.json()) as {
+      const resA = await page.request.get(`${API_ORIGIN}/ai/credits`);
+      const bodyA = (await resA.json()) as { balance_micro: number; recent_usage: unknown[] };
+      expect(bodyA.balance_micro).toBe(SEED_MICRO - ONE_TURN_MICRO); // 4765 - 3765 = 1000
+      expect(bodyA.recent_usage).toHaveLength(1);
+
+      // ── Turn B: balance 1000 -> -2765. Charge (3765) > balance (1000):
+      // correct code lets this go NEGATIVE (spec §3.4); a
+      // `LEAST($2, balance_micro)`-style clamp would instead floor it at 0
+      // — the exact mutation M-2's top-comment names, and the exact
+      // assertion below is what turns that mutation red.
+      await dialog.getByLabel('Câu hỏi của bạn').fill('Một câu hỏi khác, cùng phiên.');
+      await dialog.getByRole('button', { name: 'Hỏi', exact: true }).click();
+      // `answer` now refers to the SECOND turn — AskPanel.tsx tags
+      // `data-testid="ai-answer"` on the LAST turn only, so the locator
+      // (unchanged) automatically follows.
+      await expect(answer).toHaveText(FULL_ANSWER_TEXT, { timeout: 20_000 });
+
+      const resB = await page.request.get(`${API_ORIGIN}/ai/credits`);
+      const bodyB = (await resB.json()) as {
         balance_micro: number;
         recent_usage: {
           model: string;
@@ -187,28 +269,28 @@ test.describe('S2 — AI credit gate', () => {
           credits_charged: number;
         }[];
       };
-      // Zero, not "SEED_MICRO minus something computed here": one turn
-      // against the fake provider costs EXACTLY SEED_MICRO by construction
-      // (see this file's own top comment), so the fresh signup grant is
-      // drained to the last micro-credit.
-      expect(body.balance_micro).toBe(0);
-      expect(body.recent_usage).toHaveLength(1);
-      expect(body.recent_usage[0]).toMatchObject({
-        model: 'deepseek-v4-pro',
-        in_tokens: 1200,
-        cached_in_tokens: 40,
-        out_tokens: 350,
-        tool_calls: 0,
-        web_searches: 0,
-        credits_charged: SEED_MICRO,
-      });
+      // -2765, NOT 0 or clamp(0) — see the paragraph above. This is the
+      // single assertion M-2's mutation cannot survive.
+      expect(bodyB.balance_micro).toBe(SEED_MICRO - 2 * ONE_TURN_MICRO); // 4765 - 2*3765 = -2765
+      expect(bodyB.recent_usage).toHaveLength(2);
+      for (const entry of bodyB.recent_usage) {
+        expect(entry).toMatchObject({
+          model: 'deepseek-v4-pro',
+          in_tokens: 1583,
+          cached_in_tokens: 137,
+          out_tokens: 421,
+          tool_calls: 0,
+          web_searches: 0,
+          credits_charged: ONE_TURN_MICRO,
+        });
+      }
     });
 
-    await test.step('scenario 3: balance 0 blocks the next turn with a top-up invite', async () => {
+    await test.step('scenario 3: balance below 0 blocks the next turn with a top-up invite', async () => {
       await page.goto(`/c/${REAL_COURSE_ID}/${CHAPTER_ID}`);
       await page.getByRole('button', { name: 'Hỏi AI về chương này' }).click();
       const dialog = page.getByRole('dialog', { name: 'Hỏi về chương' });
-      await dialog.getByLabel('Câu hỏi của bạn').fill('Một câu hỏi khác — tài khoản đã hết credit.');
+      await dialog.getByLabel('Câu hỏi của bạn').fill('Lượt thứ ba — tài khoản đã âm.');
       await dialog.getByRole('button', { name: 'Hỏi', exact: true }).click();
 
       // Refused BEFORE the stream starts (handler.go's Chat: EnsureCredit
@@ -226,10 +308,11 @@ test.describe('S2 — AI credit gate', () => {
 
       const res = await page.request.get(`${API_ORIGIN}/ai/credits`);
       const body = (await res.json()) as { balance_micro: number; recent_usage: unknown[] };
-      // Unchanged, and the ledger has no SECOND row: a refused turn was
-      // never run, so ChargeTurn never ran either.
-      expect(body.balance_micro).toBe(0);
-      expect(body.recent_usage).toHaveLength(1);
+      // Unchanged from scenario 2's end (-2765), and the ledger has no
+      // THIRD row: a refused turn was never run, so ChargeTurn never ran
+      // either.
+      expect(body.balance_micro).toBe(SEED_MICRO - 2 * ONE_TURN_MICRO);
+      expect(body.recent_usage).toHaveLength(2);
     });
 
     await test.step('scenario 4: a personal prompt survives a reload', async () => {

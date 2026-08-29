@@ -44,10 +44,12 @@ export default defineConfig({
   // renders — a missing fixture, not a course-serving regression, and
   // P2 (annotations) is not this phase's subsystem to fix.
   //
-  // `s2.spec.ts` held a SECOND entry here for one Pha 2 commit (Task 16
-  // deleted the phase-1 AI/BYOK key vault app it drove, before deleting
-  // the spec itself that quarantined it) and then held NO entry at all —
-  // the file was gone outright, so there was nothing left to quarantine.
+  // `s2.spec.ts` held a SECOND entry here for one Pha 2 commit: Task 16
+  // deleted the phase-1 AI/BYOK key vault app it drove FIRST, in one
+  // commit, which left this testIgnore ENTRY quarantining a spec that no
+  // longer had anything real left to test; a LATER commit deleted the spec
+  // FILE itself, at which point the entry quarantined nothing at all — the
+  // file was gone outright, so there was nothing left to quarantine.
   // Task 18 wrote a REPLACEMENT `s2.spec.ts`, rebuilt around credit
   // (spec §8: "số dư hiện, trừ đúng, hết chặn, config giữ"), against a
   // fake DeepSeek double (`scripts/fake_deepseek.py`) rather than the

@@ -46,15 +46,24 @@ MIGRATE_DB_URL="postgres://tuhoc:tuhoc@localhost:${DB_PORT}/tuhoc?sslmode=disabl
 # Task 18: what a FRESH e2e learner's `ai_credits` row starts with — see the
 # "seeding ai_settings.signup_grant_micro" step below for why this has to be
 # set before Playwright registers anyone, and scripts/fake_deepseek.py's
-# header comment for the exact derivation of 2972 (one fake turn's cost
-# against ai_pricing's seeded deepseek-v4-pro row). Overridable, unlike the
-# course-seed step above it, because — unlike a course slug baked into
-# fixtures/format-v2/valid-course/manifest.json — this number is also typed
-# a SECOND time, by hand, in apps/web/e2e/s2.spec.ts's own SEED_MICRO
-# constant; an override here without a matching edit there would make that
-# suite fail loudly (a balance assertion mismatch), not silently, so the
-# override exists for whoever needs one rather than being refused outright.
-AI_SIGNUP_GRANT_MICRO="${TUHOC_E2E_AI_SIGNUP_GRANT_MICRO:-2972}"
+# header comment for the exact derivation of 3765 (ONE_TURN_MICRO — one fake
+# turn's cost against ai_pricing's seeded deepseek-v4-pro CREDITS columns).
+# 4765, not 3765 itself: round-1 self-review ("M-2") found that seeding
+# EXACTLY one turn's cost cannot tell correct subtraction apart from a bug
+# that silently floors the result at zero instead of letting it go negative
+# (spec §3.4 requires the latter) — both produce balance_micro == 0 after
+# one turn. 4765 = ONE_TURN_MICRO + 1000 so `s2.spec.ts`'s SECOND turn
+# charges MORE than the 1000 left after the first, driving the balance
+# NEGATIVE under correct code, a number a floor-at-zero bug cannot produce —
+# see that spec's own top comment for the exact numbers asserted at each
+# step. Overridable, unlike the course-seed step above it, because — unlike
+# a course slug baked into fixtures/format-v2/valid-course/manifest.json —
+# this number is also typed a SECOND time, by hand, in
+# apps/web/e2e/s2.spec.ts's own SEED_MICRO constant; an override here
+# without a matching edit there would make that suite fail loudly (a
+# balance assertion mismatch), not silently, so the override exists for
+# whoever needs one rather than being refused outright.
+AI_SIGNUP_GRANT_MICRO="${TUHOC_E2E_AI_SIGNUP_GRANT_MICRO:-4765}"
 
 export TUHOC_E2E_DB_PORT="$DB_PORT" TUHOC_E2E_API_PORT="$API_PORT" TUHOC_E2E_WEB_PORT="$WEB_PORT"
 
@@ -100,6 +109,17 @@ fail() {
   printf '\nFAIL: %s\n' "$1" >&2
   exit 1
 }
+
+# Validated HERE, not at the assignment above: this is the first point in
+# the script `fail` actually exists to call. Interpolated directly into a
+# SQL UPDATE further down (the "seeding ai_settings.signup_grant_micro"
+# step) with no driver-level parameter binding, so anything that is not a
+# plain non-negative integer is either a psql syntax error (confusing) or,
+# worse, a value nobody meant to send silently accepted by the shell.
+case "$AI_SIGNUP_GRANT_MICRO" in
+  ''|*[!0-9]*)
+    fail "TUHOC_E2E_AI_SIGNUP_GRANT_MICRO must be a plain non-negative integer (got '$AI_SIGNUP_GRANT_MICRO')" ;;
+esac
 
 STACK_UP=0
 cleanup() {
@@ -240,6 +260,38 @@ log "seeding ai_settings.signup_grant_micro (Task 18 — s2.spec.ts's credit gat
 AI_SEED_EXIT=$?
 echo "ai_settings seed exit=$AI_SEED_EXIT"
 [ "$AI_SEED_EXIT" -eq 0 ] || fail "seeding ai_settings.signup_grant_micro failed (exit=$AI_SEED_EXIT)"
+
+# Task 18 round-1 self-review ("M-1"): migration 0007_ai_credits.up.sql
+# seeds deepseek-v4-pro's COST columns (cost_micro_per_1k_in/cached_in/out —
+# what DeepSeek actually bills the PLATFORM) EQUAL to its CREDITS columns
+# (credits_per_1k_in/cached_in/out — what the platform bills the LEARNER),
+# "1320, 44, 3960" on both sides (see that migration's own comment: the real
+# conversion ratio is a Pha 4 decision, so Pha 2 just sells at cost). That
+# equality made a real bug INVISIBLE to this gate: a `ChargeTurn`
+# (credits.go) that deducts/records `costMicro` instead of `credits` — the
+# platform's cost basis instead of what the learner actually owes — produces
+# the IDENTICAL balance_micro and credits_charged as correct code, because
+# both numbers are computed from the same six pricing figures. `cost.go`'s
+# own doc comment says Pha 4 prices what it sells on `cost_micro` — this is
+# not a theoretical distinction to protect.
+#
+# Fix: give the COST columns THEIR OWN values here, different from the
+# CREDITS columns `scripts/fake_deepseek.py`'s ONE_TURN_MICRO=3765
+# derivation depends on — that derivation reads ONLY credits_per_1k_*, so
+# this step leaves it untouched. Once the two sets of columns actually
+# differ, `s2.spec.ts`'s EXISTING assertions (balance_micro after a turn,
+# recent_usage[0].credits_charged) already catch a cost/credits mix-up on
+# their own — no new assertion needed, only a fixture that stops hiding one.
+# Verified directly, not assumed: patching credits.go's ChargeTurn to
+# deduct/record costMicro instead of credits, with this seed step in place,
+# turns e2e/s2.spec.ts red (balance_micro/credits_charged both come out at
+# the cost-column numbers instead of the credit-column ones) — see
+# task-18-report.md for the exact before/after run.
+log "seeding ai_pricing's COST columns to differ from its CREDITS columns (Task 18 round-1 self-review, M-1 — see comment above)"
+"${COMPOSE[@]}" exec -T db psql -U tuhoc -d tuhoc -v ON_ERROR_STOP=1 -c   "UPDATE ai_pricing SET cost_micro_per_1k_in = 2640, cost_micro_per_1k_cached_in = 88, cost_micro_per_1k_out = 7920 WHERE model = 'deepseek-v4-pro';"
+AI_PRICING_SEED_EXIT=$?
+echo "ai_pricing cost-column seed exit=$AI_PRICING_SEED_EXIT"
+[ "$AI_PRICING_SEED_EXIT" -eq 0 ] || fail "seeding ai_pricing's cost columns failed (exit=$AI_PRICING_SEED_EXIT)"
 
 log "installing web dependencies (bun install)"
 (cd "$REPO_ROOT/apps/web" && bun install)
