@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -241,30 +242,68 @@ func pricingRowCreditsIn(t *testing.T, pool *pgxpool.Pool, model string) int64 {
 // unresolved ":id" segment.
 var paramPlaceholder = regexp.MustCompile(`:[A-Za-z0-9_]+`)
 
-// adminAIRouteSentinels is every (method, path) pair server.go's adminAI
-// group registers, by hand, ONCE — used only to prove the app.Stack() scan
-// below is reading the real app rather than an empty or wrong one. This is
-// NOT the list route-table-driven testing is supposed to avoid: the brief's
-// instruction is "don't hand-type which routes get CHECKED FOR 401/403",
-// and every route app.Stack() finds still gets checked, sentinel or not —
-// this list only asserts the scan did not come back empty or truncated,
-// the identical role handlerSentinels/providerKeyScanSentinels play in
-// this repo's other structural gates (i18n_server_speaks_codes_test.go,
-// provider_key_never_leaks_test.go).
-var adminAIRouteSentinels = map[string]bool{
-	"GET /admin/ai/users":             true,
-	"GET /admin/ai/users/:id":         true,
-	"POST /admin/ai/users/:id/credit": true,
-	"GET /admin/ai/pricing":           true,
-	"PUT /admin/ai/pricing/:model":    true,
-	"GET /admin/ai/settings":          true,
-	"PUT /admin/ai/settings":          true,
+// adminAIHandlerRefs names every *ai.Handler method server.go mounts under
+// the adminAI group, keyed by the METHOD'S OWN CODE POINTER (via
+// reflect — a bound method value's `.Pointer()` is the address of a
+// per-(type,method) thunk the compiler generates ONCE, identical across
+// every receiver instance, never the receiver's own address — confirmed
+// empirically below by TestAdminAIHandlerRefsIdentifyMethodNotReceiver
+// before this map is trusted for anything). `ref` is a throwaway *Handler
+// (zero HandlerDeps) that exists ONLY to obtain these seven method values;
+// nothing on it is ever invoked.
+//
+// round-2 review, N-1: the PREVIOUS version of this scan filtered
+// app.Stack() by `strings.HasPrefix(r.Path, "/admin/ai")` — a route bound
+// to an admin handler but registered under ANY OTHER PATH (a typo, a
+// copy-paste into the wrong section of server.go) was invisible to that
+// filter. It is ALSO invisible to fiber's own admin-gate middleware, which
+// is itself prefix-matched on "/admin/ai" (server.go's `adminAI :=
+// app.Group("/admin/ai", ...)") — so a path-prefix scan can only ever
+// re-confirm what the production prefix-match already decided, never
+// catch a MISPLACED registration. Keying the scan on the HANDLER instead
+// closes that: any route whose terminal handler is one of these seven
+// methods is checked for 401+403 regardless of what path it answers to.
+var adminAIHandlerRefs = func() map[uintptr]string {
+	ref := ai.NewHandler(ai.HandlerDeps{})
+	return map[uintptr]string{
+		reflect.ValueOf(ref.AdminListUsers).Pointer():      "AdminListUsers",
+		reflect.ValueOf(ref.AdminGetUser).Pointer():        "AdminGetUser",
+		reflect.ValueOf(ref.AdminAdjustCredit).Pointer():   "AdminAdjustCredit",
+		reflect.ValueOf(ref.AdminListPricing).Pointer():    "AdminListPricing",
+		reflect.ValueOf(ref.AdminUpdatePricing).Pointer():  "AdminUpdatePricing",
+		reflect.ValueOf(ref.AdminGetSettings).Pointer():    "AdminGetSettings",
+		reflect.ValueOf(ref.AdminUpdateSettings).Pointer(): "AdminUpdateSettings",
+	}
+}()
+
+// TestAdminAIHandlerRefsIdentifyMethodNotReceiver is the anti-vacuity proof
+// FOR adminAIHandlerRefs itself: it builds TWO independent *ai.Handler
+// instances (different receivers) and asserts the SAME method off each
+// produces the SAME `.Pointer()` value, and that TWO DIFFERENT methods off
+// the SAME instance produce DIFFERENT values. If Go's method-value
+// representation ever stopped being receiver-independent (or this reasoning
+// about it is simply wrong), this is the test that goes red — not silently,
+// two levels away, in TestAdminAIRoutesAllRequireAdmin's own pass/fail.
+func TestAdminAIHandlerRefsIdentifyMethodNotReceiver(t *testing.T) {
+	a := ai.NewHandler(ai.HandlerDeps{})
+	b := ai.NewHandler(ai.HandlerDeps{})
+
+	if reflect.ValueOf(a.AdminListUsers).Pointer() != reflect.ValueOf(b.AdminListUsers).Pointer() {
+		t.Fatal("the SAME method off two DIFFERENT *Handler receivers produced DIFFERENT " +
+			"pointers — method-value identity is receiver-dependent in this Go toolchain, " +
+			"and adminAIHandlerRefs's whole approach is unsound")
+	}
+	if reflect.ValueOf(a.AdminListUsers).Pointer() == reflect.ValueOf(a.AdminGetUser).Pointer() {
+		t.Fatal("two DIFFERENT methods off the SAME receiver produced the SAME pointer — " +
+			"adminAIHandlerRefs could not tell them apart")
+	}
 }
 
-// TestAdminAIRoutesAllRequireAdmin hits EVERY (method, path) server.New
-// registers under "/admin/ai" — discovered via app.Stack(), never a
-// hand-typed list of WHICH ROUTES TO CHECK — with TWO separate requests
-// per route:
+// TestAdminAIRoutesAllRequireAdmin hits EVERY route in the app whose
+// TERMINAL HANDLER is one of the seven `*ai.Handler` admin methods —
+// discovered via app.Stack() plus adminAIHandlerRefs, never a hand-typed
+// list of WHICH ROUTES TO CHECK, and never limited to routes under
+// "/admin/ai" — with TWO separate requests per route:
 //
 //  1. No session cookie at all: must answer 401 (auth.Require's own
 //     refusal), never a 404 (the route was never mounted, so this case
@@ -273,64 +312,68 @@ var adminAIRouteSentinels = map[string]bool{
 //     passes, auth.RequireAdmin must not): must answer 403, never a 404,
 //     and — this is the case round-1 review named CRITICAL — never a 200.
 //
-// FIXING A REAL GAP, not a style choice: round-1 review added a NEW route
-// straight to server.go — `app.Get("/admin/ai/leak", auth.Require(deps.
-// Pool), aiHandler.AdminListPricing)`, deliberately WITHOUT
-// auth.RequireAdmin — and every test in this file still passed, INCLUDING
-// the two that existed here before this fix (this test in its OLD form,
-// which only ever sent case 1 above, and the now-removed
-// TestAdminAIRoutesRejectNonAdminSession, which sent case 2 but against
-// ONE HAND-TYPED PATH — "/admin/ai/users" — so it could not see a route
-// added anywhere else). Every handler in admin_handler.go fails closed to
-// 401 on its OWN (h.caller(c) == uuid.Nil when no middleware ever ran), so
-// case 1 alone can NEVER tell "gated by real middleware" apart from "gated
-// by nothing, saved by the handler's own defensive check" — a route missing
-// auth.RequireAdmin specifically (case 2's whole reason to exist) sails
-// through case 1 looking identical to a correctly-gated one. Merging case 2
-// into THIS SAME app.Stack() loop means a route like the leak above is
-// discovered and checked automatically, by construction — there is no
-// second, separately-maintained list to forget to update.
+// FIXING TWO REAL GAPS, not a style choice, across two review rounds:
+//
+//   - Round 1 added a NEW route straight to server.go, WITHOUT
+//     auth.RequireAdmin, and every test in this file still passed. Fixed
+//     by sending case 2 above through the SAME app.Stack() loop as case 1,
+//     instead of a separate test hand-typing one path.
+//   - Round 2 added a route bound to `aiHandler.AdminListPricing` but
+//     registered at "/ai-admin-leak" — a path that does not start with
+//     "/admin/ai" at all — placed AHEAD of the adminAI group's own
+//     registration line. This slipped past BOTH fiber's prefix-matched
+//     admin-gate middleware (which only wraps paths under "/admin/ai") AND
+//     the path-prefix-filtered version of this scan, and answered a
+//     non-admin session with 200 and the whole pricing table — the entire
+//     suite stayed green. Fixed by discovering routes via HANDLER IDENTITY
+//     (adminAIHandlerRefs) instead of path prefix — see that var's own doc
+//     comment for the full reasoning and its own limits.
+//
+// WHAT THIS STILL DOES NOT CATCH, stated so the next reader does not read
+// "by construction" as "unconditionally": a handler reached only through
+// an intermediate WRAPPER FUNCTION (e.g. `func wrap(c *fiber.Ctx) error {
+// return aiHandler.AdminListPricing(c) }` registered in wrap's place) is a
+// DIFFERENT function value with a DIFFERENT code pointer, and would not
+// match adminAIHandlerRefs — this scan identifies the seven methods
+// directly, not everything that eventually calls one.
 func TestAdminAIRoutesAllRequireAdmin(t *testing.T) {
 	pool := store.TestPool(t)
 	app := server.New(config.Config{CookieSecure: false}, server.Deps{Pool: pool, LogOutput: io.Discard})
 
-	type route struct{ method, path string }
+	type route struct{ method, path, handlerName string }
 	var found []route
-	seen := map[string]bool{}
+	seenHandlers := map[string]bool{}
 	for _, methodRoutes := range app.Stack() {
 		for _, r := range methodRoutes {
-			if strings.HasPrefix(r.Path, "/admin/ai") {
-				found = append(found, route{r.Method, r.Path})
-				seen[r.Method+" "+r.Path] = true
+			if len(r.Handlers) == 0 {
+				continue
 			}
+			terminal := r.Handlers[len(r.Handlers)-1]
+			name, ok := adminAIHandlerRefs[reflect.ValueOf(terminal).Pointer()]
+			if !ok {
+				continue
+			}
+			found = append(found, route{r.Method, r.Path, name})
+			seenHandlers[name] = true
 		}
 	}
 
-	// Anti-vacuity, SENTINEL-based rather than a bare length floor: a bare
-	// "len(found) < N" floor does not say what N actually counts. The
-	// PREVIOUS version of this check asserted "< 7" and CALLED that number
-	// "seven handlers" in its own comment — false: the seven handlers this
-	// file registers produce roughly twenty entries once fiber's own
-	// HEAD-mirroring (one extra entry per GET) and the admin group's own
-	// blanket `Use` registration (one entry per HTTP method fiber
-	// supports, at the bare "/admin/ai" prefix, from building the group
-	// with middleware) are both counted in — a floor of 7 was true by a
-	// wide, accidental margin, not because it measured anything precise.
-	// Asserting every sentinel is PRESENT says exactly what is being
-	// checked, and does not need updating every time fiber's own method
-	// list or HEAD behavior changes.
-	for want := range adminAIRouteSentinels {
-		if !seen[want] {
-			t.Fatalf("route table scan under /admin/ai is missing sentinel %q — "+
-				"the scan is reading the wrong app, the route was renamed, or the "+
-				"admin group was never mounted. found=%v", want, found)
+	// Anti-vacuity: every one of the seven admin methods must have been
+	// FOUND bound to at least one route — not a bare length floor (see
+	// round-1 review's own correction of the previous, dishonest "< 7"
+	// floor for why a raw count says nothing about what it counts).
+	for wantName := range adminAIWantHandlerNames() {
+		if !seenHandlers[wantName] {
+			t.Fatalf("no route in the app is bound to ai.Handler.%s — the scan is reading "+
+				"the wrong app, the method was renamed, or it was never mounted. found=%v",
+				wantName, found)
 		}
 	}
 
 	cookie, _, _ := registerAndLogin(t, app, "route-scan-non-admin")
 
 	for _, r := range found {
-		t.Run(r.method+" "+r.path, func(t *testing.T) {
+		t.Run(r.method+" "+r.path+" ("+r.handlerName+")", func(t *testing.T) {
 			target := paramPlaceholder.ReplaceAllString(r.path, "test-placeholder")
 
 			noSessionReq := httptest.NewRequest(r.method, target, nil)
@@ -339,14 +382,14 @@ func TestAdminAIRoutesAllRequireAdmin(t *testing.T) {
 				t.Fatalf("no-session request: %v", err)
 			}
 			if noSessionResp.StatusCode == http.StatusNotFound {
-				t.Fatalf("%s %s (as %s) answered 404 with no session — this route was "+
-					"never actually reached, so the 401 this case is about was never "+
-					"exercised", r.method, r.path, target)
+				t.Fatalf("%s %s (as %s, handler=%s) answered 404 with no session — this "+
+					"route was never actually reached, so the 401 this case is about was "+
+					"never exercised", r.method, r.path, target, r.handlerName)
 			}
 			if noSessionResp.StatusCode != http.StatusUnauthorized {
 				raw, _ := io.ReadAll(noSessionResp.Body)
-				t.Fatalf("%s %s without a session: want 401 got %d body=%s",
-					r.method, r.path, noSessionResp.StatusCode, raw)
+				t.Fatalf("%s %s (handler=%s) without a session: want 401 got %d body=%s",
+					r.method, r.path, r.handlerName, noSessionResp.StatusCode, raw)
 			}
 
 			nonAdminReq := httptest.NewRequest(r.method, target, nil)
@@ -356,17 +399,32 @@ func TestAdminAIRoutesAllRequireAdmin(t *testing.T) {
 				t.Fatalf("non-admin-session request: %v", err)
 			}
 			if nonAdminResp.StatusCode == http.StatusNotFound {
-				t.Fatalf("%s %s (as %s) answered 404 with a non-admin session — route "+
-					"never reached", r.method, r.path, target)
+				t.Fatalf("%s %s (as %s, handler=%s) answered 404 with a non-admin session — "+
+					"route never reached", r.method, r.path, target, r.handlerName)
 			}
 			if nonAdminResp.StatusCode != http.StatusForbidden {
 				raw, _ := io.ReadAll(nonAdminResp.Body)
-				t.Fatalf("%s %s with a VALID, non-admin session: want 403 got %d body=%s — "+
-					"this is the case a route missing auth.RequireAdmin (but still behind "+
-					"auth.Require) answers 200 to", r.method, r.path, nonAdminResp.StatusCode, raw)
+				t.Fatalf("%s %s (handler=%s) with a VALID, non-admin session: want 403 got "+
+					"%d body=%s — this is the case a route missing auth.RequireAdmin (but "+
+					"still behind auth.Require, or reachable from a DIFFERENT, unguarded "+
+					"path entirely) answers 200 to", r.method, r.path, r.handlerName,
+					nonAdminResp.StatusCode, raw)
 			}
 		})
 	}
+}
+
+// adminAIWantHandlerNames is the same seven names adminAIHandlerRefs maps
+// TO, re-derived from it rather than duplicated by hand — a second,
+// independently-typed list of the same seven strings is exactly the kind
+// of "two things that must agree, kept in sync by hand" this file's own
+// AdjustCredit doc comment (credits.go) warns against elsewhere.
+func adminAIWantHandlerNames() map[string]bool {
+	out := make(map[string]bool, len(adminAIHandlerRefs))
+	for _, name := range adminAIHandlerRefs {
+		out[name] = true
+	}
+	return out
 }
 
 // TestAdminAIRoutesAllowRealAdminSession proves the whole chain — session
@@ -927,6 +985,69 @@ func TestUpdateBasePromptCharLimitBoundary(t *testing.T) {
 	}
 	if got := bodyCode(t, raw); got != ai.CodeFieldTooLong {
 		t.Fatalf("want code %q got %q (body=%s)", ai.CodeFieldTooLong, got, raw)
+	}
+}
+
+// TestAdminSettingsMaxBasePromptCharsIsWhatGetsEnforced — round-2 review,
+// N-4: settingsPayload's own doc comment (admin_handler.go) calls
+// max_base_prompt_chars "a plain echo of the MaxBasePromptChars constant
+// … not a second number to keep in sync by hand" — a claim nothing tested.
+// A reviewer changed ONLY the echoed literal in newSettingsPayload to
+// 40000 while the REAL enforcement (AdminUpdateSettings's own
+// `utf8.RuneCountInString(basePrompt) > MaxBasePromptChars` check) stayed
+// at the true constant, 20000 — every OTHER test in this file stayed
+// green, because none of them ever compared the ADVERTISED number against
+// the ENFORCED one; TestUpdateBasePromptCharLimitBoundary (above) reads
+// `ai.MaxBasePromptChars` directly off the Go constant, so it pins the
+// enforcement side correctly but has no opinion about what GET reports.
+//
+// This test reads whatever GET /admin/ai/settings ACTUALLY SAYS the cap
+// is, then PUTs a prompt of EXACTLY that many characters (must succeed —
+// this is the contract AgentConfigPanel.tsx/AdminPricing.tsx both build
+// on: "the number the client reads is the number the server enforces")
+// and one character MORE than that (must be refused as FieldTooLong). A
+// divergent echo fails the FIRST half: the client is told a prompt of
+// exactly the advertised length is safe to save, and the server refuses
+// it.
+func TestAdminSettingsMaxBasePromptCharsIsWhatGetsEnforced(t *testing.T) {
+	pool := store.TestPool(t)
+	credits := ai.NewService(pool)
+	adminID := newUserNoCredits(t, pool, "acting-admin-cap-echo")
+	app := newAIApp(t, adminID, ai.HandlerDeps{Credits: credits, Courses: fakeCourses{}})
+
+	getResp, getRaw := doJSON(t, app, http.MethodGet, "/admin/ai/settings", nil)
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET settings: want 200 got %d body=%s", getResp.StatusCode, getRaw)
+	}
+	var settings struct {
+		MaxBasePromptChars int `json:"max_base_prompt_chars"`
+	}
+	if err := json.Unmarshal(getRaw, &settings); err != nil {
+		t.Fatalf("unmarshal: %v (%s)", err, getRaw)
+	}
+	if settings.MaxBasePromptChars <= 0 {
+		t.Fatalf("GET reported a non-positive max_base_prompt_chars: %d", settings.MaxBasePromptChars)
+	}
+
+	atCap, rawAtCap := doJSON(t, app, http.MethodPut, "/admin/ai/settings", map[string]any{
+		"base_system_prompt": strings.Repeat("a", settings.MaxBasePromptChars),
+		"note":               "exactly the ADVERTISED cap",
+	})
+	if atCap.StatusCode != http.StatusOK {
+		t.Fatalf("a prompt of exactly the GET-advertised cap (%d chars) was refused: want 200 got %d "+
+			"body=%s — the number GET reports is not the number PUT enforces",
+			settings.MaxBasePromptChars, atCap.StatusCode, rawAtCap)
+	}
+
+	overCap, rawOverCap := doJSON(t, app, http.MethodPut, "/admin/ai/settings", map[string]any{
+		"base_system_prompt": strings.Repeat("a", settings.MaxBasePromptChars+1),
+		"note":               "one over the ADVERTISED cap",
+	})
+	if overCap.StatusCode != http.StatusBadRequest {
+		t.Fatalf("advertised cap + 1 chars: want 400 got %d body=%s", overCap.StatusCode, rawOverCap)
+	}
+	if got := bodyCode(t, rawOverCap); got != ai.CodeFieldTooLong {
+		t.Fatalf("want code %q got %q (body=%s)", ai.CodeFieldTooLong, got, rawOverCap)
 	}
 }
 

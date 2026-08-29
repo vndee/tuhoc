@@ -818,6 +818,7 @@ export const en: Messages = {
   'admin.ai.pricing.promptNoteLabel': 'Note (optional)',
 
   'admin.ai.error.fieldRequired': 'A required field is missing.',
+  'admin.ai.error.amountRequired': 'The amount must not be empty or zero.',
   'admin.ai.error.amountOutOfRange': 'That amount is outside what a single adjustment allows.',
   'admin.ai.error.fieldTooLong': 'That text is longer than allowed.',
   'admin.ai.error.notFound': 'Not found.',

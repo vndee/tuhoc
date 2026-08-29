@@ -691,8 +691,10 @@ thay vì ghi thêm lần hai. Chưa task nào được giao việc này — khô
 
 ### 2 — `admin_audit.who … ON DELETE SET NULL`: danh tính operator trên một hàng TIỀN có thể mất nếu tài khoản admin đó bị xoá
 
-Cột `who` (migration `0005_published_catalog.up.sql`) tham chiếu `users(id) ON DELETE CASCADE` …
-**SET NULL** — nếu tài khoản admin từng thực hiện một `POST /admin/ai/users/:id/credit` sau đó bị
+Cột `who` (migration `0005_published_catalog.up.sql:63`) tham chiếu
+`users(id) ON DELETE SET NULL` — round-2 review bắt đúng: bản trước của mục này viết nhầm
+thành `ON DELETE CASCADE … SET NULL`, không khớp mã thật (chỉ một mệnh đề `SET NULL`, không có
+`CASCADE` nào cả). Nếu tài khoản admin từng thực hiện một `POST /admin/ai/users/:id/credit` sau đó bị
 xoá khỏi `users`, hàng `admin_audit` ghi lượt cộng/trừ ấy vẫn còn (đúng lời hứa "sổ không xoá"), nhưng
 `who` lặng lẽ thành `NULL` — số tiền, ghi chú, thời điểm vẫn còn, danh tính **ai đã làm** thì mất.
 Cột `actor` (cũng migration 0005) phân biệt được "đi qua CLI token" khỏi "đi qua một tài khoản nay
