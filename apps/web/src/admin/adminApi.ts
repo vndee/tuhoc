@@ -503,16 +503,35 @@ function aiErrorCode(error: unknown): string | null {
 
 /**
  * Vietnamese/English sentence for a failure from one of the seven
- * `/admin/ai/*` routes — reads `error.body.code` FIRST (the four codes
+ * `/admin/ai/*` routes — reads `error.body.code` FIRST (the FIVE codes
  * these routes can answer with that `describeAdminError` has no concept
- * of), and falls back to `describeAdminError`'s own status-based mapping
- * for everything else (a 401 that somehow reaches here, a 5xx, no response
- * at all).
+ * of: `FieldRequired`, `AmountRequired`, `AmountOutOfRange`,
+ * `FieldTooLong`, `NotFound` — see `admin_handler.go`'s own const blocks
+ * for where each is thrown), and falls back to `describeAdminError`'s own
+ * status-based mapping for everything else (a 401 that somehow reaches
+ * here, a 5xx, no response at all).
+ *
+ * round-2 review, the "Hỏng mới" finding: `AmountRequired` (added to the
+ * Go side alongside `CodeFieldRequired`/`CodeAmountOutOfRange` when
+ * `delta_micro == 0` got its OWN code, distinct from the empty-note case's
+ * `FieldRequired`) had no `case` here at all — it fell through to
+ * `default`, landing on the generic "bad request" sentence instead of a
+ * specific one, and this doc comment kept saying "four codes" after a
+ * fifth existed. `AdminCredits.tsx`'s own client-side gate (the submit
+ * button stays disabled while `parseCreditsToMicro` returns `null` for an
+ * empty/zero amount) means a *0* never actually leaves the browser today,
+ * so this was a latent inconsistency, not a live bug — still worth closing
+ * exactly because the whole point of a machine-readable code is that a
+ * FUTURE caller (a different form, a retry path, a script hitting the API
+ * directly) gets the specific sentence, not "whatever `default` happens to
+ * say this week".
  */
 export function describeAdminAIError(error: unknown, t: Translate): string {
   switch (aiErrorCode(error)) {
     case 'FieldRequired':
       return t('admin.ai.error.fieldRequired');
+    case 'AmountRequired':
+      return t('admin.ai.error.amountRequired');
     case 'AmountOutOfRange':
       return t('admin.ai.error.amountOutOfRange');
     case 'FieldTooLong':

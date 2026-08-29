@@ -1066,6 +1066,7 @@ export const vi = {
   'admin.ai.pricing.promptNoteLabel': 'Ghi chú (không bắt buộc)',
 
   'admin.ai.error.fieldRequired': 'Thiếu một trường bắt buộc.',
+  'admin.ai.error.amountRequired': 'Số tiền không được để trống hoặc bằng 0.',
   'admin.ai.error.amountOutOfRange': 'Số vượt quá mức cho phép cho một lần thao tác.',
   'admin.ai.error.fieldTooLong': 'Nội dung dài hơn mức cho phép.',
   'admin.ai.error.notFound': 'Không tìm thấy.',

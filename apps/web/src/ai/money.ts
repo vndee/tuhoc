@@ -89,5 +89,13 @@ export function parseCreditsToMicro(text: string): number | null {
   const value = Number(normalized);
   if (!Number.isFinite(value) || value <= 0) return null;
   const micro = Math.round(value * MICRO_PER_CREDIT);
+  // PINNED POSITION, round-2 review N-5c: `Number.isSafeInteger` MUST run
+  // on `micro` (post-×MICRO_PER_CREDIT), never on `value`. `10**15` is
+  // itself a safe integer — well under `Number.MAX_SAFE_INTEGER`
+  // (~9.007e15) — so a check on `value` would let it through; only after
+  // the ×1,000,000 multiplication does it become `10**21`, far outside
+  // safe range. `money.test.ts`'s "becomes UNSAFE only after the
+  // x1,000,000 conversion" case is built specifically to catch a
+  // regression of this check back onto `value`.
   return Number.isSafeInteger(micro) ? micro : null;
 }

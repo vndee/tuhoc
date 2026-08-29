@@ -94,4 +94,25 @@ describe('parseCreditsToMicro', () => {
     // so this never reaches Number() at all.
     expect(parseCreditsToMicro('1e30')).toBeNull();
   });
+
+  // round-2 review, N-5c: the '9'.repeat(30) case above does NOT prove
+  // Number.isSafeInteger runs on the CONVERTED micro value rather than on
+  // the typed credit value — 9e29 is already unsafe before any
+  // multiplication, so a version of this function that checked `value`
+  // BEFORE multiplying by MICRO_PER_CREDIT would reject it too, for the
+  // wrong reason, and this test file would not be able to tell the two
+  // implementations apart. This case is chosen SPECIFICALLY to fail that
+  // way: 10^15 (1 followed by 15 zeros) is itself a SAFE integer —
+  // comfortably under Number.MAX_SAFE_INTEGER (~9.007e15) — so a
+  // pre-multiplication check would let it through. Only AFTER multiplying
+  // by MICRO_PER_CREDIT does it become 10^21, far past safe range, and
+  // only a check running on THAT value catches it. A cross-check with the
+  // implementation is below (money.ts inline comment) — if this position
+  // ever regresses to checking the pre-multiplication value, this is the
+  // one test in the file built to notice.
+  it('rejects an amount that is a SAFE integer as typed but becomes UNSAFE only after the x1,000,000 conversion', () => {
+    const safeBeforeMultiply = `1${'0'.repeat(15)}`; // 10^15
+    expect(Number.isSafeInteger(Number(safeBeforeMultiply))).toBe(true); // sanity: this IS safe pre-multiplication
+    expect(parseCreditsToMicro(safeBeforeMultiply)).toBeNull();
+  });
 });

@@ -503,6 +503,17 @@ describe('describeAdminAIError', () => {
     );
   });
 
+  // round-2 review, "Hỏng mới": AmountRequired (delta_micro == 0) had no
+  // case in describeAdminAIError at all and silently fell through to the
+  // generic bad-request sentence — this is the one test that would have
+  // caught it, and the ONLY reason it did not exist yet is that the code
+  // itself did not exist until round 2 added it.
+  it('AmountRequired → its OWN sentence, distinct from FieldRequired', () => {
+    const got = describeAdminAIError(new ApiError(400, { code: 'AmountRequired', error: 'x' }), t);
+    expect(got).toBe(t('admin.ai.error.amountRequired'));
+    expect(got).not.toBe(t('admin.ai.error.fieldRequired'));
+  });
+
   it('AmountOutOfRange → the amount-out-of-range sentence', () => {
     expect(describeAdminAIError(new ApiError(400, { code: 'AmountOutOfRange', error: 'x' }), t)).toBe(
       t('admin.ai.error.amountOutOfRange'),
