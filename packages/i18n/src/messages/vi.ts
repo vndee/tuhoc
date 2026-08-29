@@ -99,13 +99,26 @@ export const vi = {
   /* ── mục Dữ liệu trên máy ──────────────────────────────────────────────── */
 
   /**
-   * SỬA Ở fix-round-1 (task-14): bản cũ nói "Gói khoá học và ghi chú nằm
-   * trong trình duyệt này" — sai từ Task 13, khi `db.packages` bị xoá khỏi
-   * lược đồ Dexie (spec `2026-08-25-server-side-pivot.md` §1). Không còn gói
-   * nào để nằm ở đây; hai con số ngay dưới câu này (`statNotes`, `statBytes`)
-   * đã tự nói đúng những gì bảng này còn giữ.
+   * SỬA HAI LẦN, và lần thứ hai sửa đúng cái mà lần thứ nhất bỏ sót.
+   *
+   * fix-round-1 (task-14) bỏ vế "Gói khoá học" — sai từ Task 13, khi
+   * `db.packages` bị xoá khỏi lược đồ Dexie (spec
+   * `2026-08-25-server-side-pivot.md` §1). Nhưng vế CÒN LẠI ("Ghi chú nằm
+   * trong trình duyệt này") vẫn thiếu một nửa sự thật, và thiếu nó ở đúng
+   * mục người dùng tìm tới để hỏi "các anh giữ gì của tôi": ghi chú CÓ một
+   * bản trên máy chủ. Nó đi qua `POST /sync` (`sync/engine.ts`'s
+   * `flushOutbox` gửi cả `progress` lẫn `annotations`), `sync/usecase.go`
+   * đọc/ghi nó, và bảng `annotations` có từ migration `0001_init`.
+   * `login.point.sync` ở dưới đã hứa đúng điều đó — "ghi chú theo bạn trên
+   * mọi thiết bị" — nên trước bản này hai màn nói ngược nhau
+   * (review tổng nhánh Pha 2, E5).
+   *
+   * KHÔNG hứa "dùng được khi mất mạng" ở đây dù bản trong trình duyệt có
+   * làm được: đó là một khẳng định về HÀNH VI, và mục này chỉ được giao trả
+   * lời một câu hỏi về NƠI CHỐN.
    */
-  'settings.localData.blurb': 'Ghi chú nằm trong trình duyệt này. Khoá học không tải gói nào về máy — đọc thẳng từ máy chủ.',
+  'settings.localData.blurb':
+    'Ghi chú nằm ở hai nơi: một bản trong trình duyệt này, và một bản đồng bộ lên máy chủ theo tài khoản của bạn — nên đăng nhập ở thiết bị khác vẫn thấy đủ. Khoá học không tải gói nào về máy: đọc thẳng từ máy chủ.',
   'settings.localData.clearedOnSignOut':
     'Cơ sở dữ liệu mang tên TRÌNH DUYỆT, không mang tên người dùng — nên nó bị xoá sạch mỗi lần đổi người đăng nhập, kể cả khi không ai bấm đăng xuất.',
   'settings.localData.kept': 'Ngôn ngữ và giao diện thì ở lại: chúng là tuỳ chọn của thiết bị.',
@@ -114,9 +127,21 @@ export const vi = {
      kho khoá) ────────────────────────────────────────────────────────────
      Task 15 đổi `login.point.ownKey` và `login.pitch.lede` (lời hứa Pha 1,
      "key của chính bạn") ở dưới, tại mục `login.*`. Ở ĐÂY áp cùng nguyên tắc,
-     sớm hơn: không câu nào dưới đây được nhắc lại "key", "kho khoá", hay
-     "địa chỉ riêng" — cả ba đã sai kể từ khi AI chuyển sang chạy trên máy chủ
-     (Task 11). */
+     sớm hơn.
+
+     LUẬT, VIẾT LẠI CHO ĐÚNG THỨ NÓ VỐN ĐỊNH NÓI (review tổng nhánh Pha 2,
+     F4): bản trước cấm "nhắc lại 'key', 'kho khoá', hay 'địa chỉ riêng'" —
+     rồi `settings.ai.blurb` ngay năm dòng dưới nhắc chữ "key". Luật ấy tự vi
+     phạm vì nó cấm nhầm thứ: cấm CHỮ, trong khi thứ đã chết là LỜI HỨA. Câu
+     duy nhất còn nhắc "key" ở đây nhắc nó để PHỦ ĐỊNH — "không còn key nào
+     để bạn tự cắm hay tự giữ" — và một luật cấm cả câu phủ định sẽ buộc mục
+     này im lặng về đúng thứ người đọc Pha 1 đang đi tìm.
+
+     Luật thật: không câu nào dưới đây được nói rằng người học VẪN có, VẪN
+     cắm, hay VẪN giữ một key nhà cung cấp, và không câu nào được nhắc tới
+     "kho khoá" hay "địa chỉ riêng" như một thứ đang tồn tại — cả ba đã sai kể
+     từ khi AI chuyển sang chạy trên máy chủ (Task 11). Nói rằng chúng KHÔNG
+     còn thì được, và thường là việc phải làm. */
 
   'settings.ai.title': 'Trợ lý AI',
   'settings.ai.blurb':
@@ -194,10 +219,23 @@ export const vi = {
   'nav.dashboard': 'Bảng điều khiển',
   'nav.library': 'Thư viện',
   /**
-   * Vẫn là nhan đề của chính màn nhập gói (nay nằm trong hộp thoại của
-   * `/courses`), nên khoá này còn sống. Nhãn của cái NÚT mở hộp thoại là
-   * `courses.import.action` — hai chữ khác nhau cho hai việc khác nhau: một
-   * cái đặt tên cho màn hình, một cái mời người ta bấm.
+   * MỒ CÔI — không chỗ nào trong `apps/web/src` gọi khoá này (đo lại
+   * 2026-08-29, review tổng nhánh Pha 2 mục F4).
+   *
+   * Chú thích trước ở đây khẳng định nó "còn sống" vì màn nhập gói "nay nằm
+   * trong hộp thoại của `/courses`". Không có hộp thoại nào:
+   * `pages/Courses.tsx`'s doc comment tự khai bằng nguyên văn "không tab,
+   * không nút 'Nhập gói', không hộp thoại", và luồng import của người đọc
+   * chết cùng `db.packages` ở Task 13. `courses.import.action` mà chú thích
+   * ấy trỏ sang cũng mồ côi.
+   *
+   * KHÔNG XOÁ Ở ĐỢT NÀY, có chủ đích: đây là 2 trong ~168 khoá mồ côi mà
+   * review đã đếm, phần lớn là tàn dư Pha 1, và `i18n.test.ts` chưa có cổng
+   * bắt khoá mồ côi — nên xoá lẻ hai khoá vừa không đóng được lớp lỗi vừa
+   * làm con số đã đo thành sai. Món nợ có tên nằm ở `docs/carried-forward.md`.
+   * Thứ ĐƯỢC sửa ở đây là điều chú thích KHẲNG ĐỊNH, vì một khoá chết mang
+   * nhãn "còn sống" là thứ lần sau có người dịch lại, hoặc dựng lại giao
+   * diện quanh nó.
    */
   'nav.import': 'Nhập khóa học',
 
@@ -441,10 +479,13 @@ export const vi = {
   'courses.empty': 'Chưa có khoá học nào được xuất bản.',
   'courses.list.aria': 'Danh mục khoá học',
   /**
-   * `pages/Library.tsx`'s `EmptyLibrary` là nơi DUY NHẤT còn dùng khoá này —
-   * `pages/Dashboard.tsx` đã tự viết lời mời riêng của nó (xem `home.empty.*`
-   * bên dưới) vì thư viện không còn là khái niệm của trang chủ. Khoá này rời
-   * đi cùng `pages/Library.tsx` ở một commit sau, không phải ở đây.
+   * MỒ CÔI. Chú thích trước ở đây nói `pages/Library.tsx`'s `EmptyLibrary`
+   * là "nơi DUY NHẤT còn dùng khoá này" và rằng nó "rời đi cùng
+   * `pages/Library.tsx` ở một commit sau" — commit ấy đã xảy ra:
+   * `pages/Library.tsx` KHÔNG còn tồn tại (đo lại 2026-08-29), và khoá thì
+   * ở lại. Cùng lý do "không xoá lẻ" như `nav.import` bên trên.
+   *
+   * Mọi khoá `library.*` ngay dưới đây ở cùng tình trạng và cùng món nợ.
    */
   'courses.import.action': 'Nhập gói',
   'library.loading': 'Đang tải thư viện…',
