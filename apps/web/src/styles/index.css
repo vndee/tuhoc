@@ -1495,20 +1495,22 @@ mark.ann {
   }
 }
 
-/* Lớp phủ kho khoá (`.vault-overlay*`) và trang Cài đặt (`.page-settings`,
-   `.set-*`) đã chuyển sang `./settings-auth.css`, cùng tệp với `/login`. */
+/* Trang Cài đặt (`.page-settings`, `.set-*`) đã chuyển sang
+   `./settings-auth.css`, cùng tệp với `/login`. */
 
 /* ── Trợ lý AI trong lúc đọc (hệ thống con 2, Task 7 · 8) ────────────────────
 
    `.ai-launch` nằm TRONG luồng chương, ngay dưới nội dung, không phải một nút
    nổi cố định ở góc màn hình. Lý do là chỗ ấy đã chật: thanh chọn văn bản
-   (z-index 50), hộp chú thích (79/80), thanh nav di động (60/70) và lớp phủ kho
-   khoá (90) đều tranh cùng một góc phải-dưới trên màn hẹp. Một nút nổi thứ năm
-   sẽ hoặc che một trong số đó, hoặc bị che — và nút bị che là nút không tồn tại.
+   (z-index 50), hộp chú thích (79/80), thanh nav di động (60/70) và hộp thoại
+   cập nhật khoá học (90/91) đều tranh cùng một góc phải-dưới trên màn hẹp. Một
+   nút nổi thứ năm sẽ hoặc che một trong số đó, hoặc bị che — và nút bị che là
+   nút không tồn tại.
 
    `.ai-panel` thì cố định, vì nó là chỗ người học ĐỌC câu trả lời trong khi vẫn
-   nhìn thấy đoạn văn đang hỏi về. z-index 85: trên chú thích, dưới lớp phủ kho
-   khoá (90) — người dùng đang dán key thì không gì được nằm đè lên. */
+   nhìn thấy đoạn văn đang hỏi về. z-index 85: trên chú thích (79/80), dưới hộp
+   thoại cập nhật khoá học (90/91) — một quyết định đang chờ trả lời thì không
+   gì được nằm đè lên. */
 .ai-launch {
   display: block;
   margin: 1.5rem 0 0;

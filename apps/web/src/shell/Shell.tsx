@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { VaultFrameProvider } from './VaultFrame';
 
 export interface ShellProps {
   /** Rendered inside `<aside id="sidebar">`. */
@@ -10,12 +9,6 @@ export interface ShellProps {
   children: ReactNode;
   /** Rendered inside `<aside id="rail">`. Optional — not every route has one. */
   rail?: ReactNode;
-  /**
-   * Origin của kho khoá (`apps/vault`). `undefined` ⇒ lấy từ cấu hình build,
-   * là đường đi thật; truyền tường minh là chỗ để test bơm giá trị vào, và
-   * `null` là "cố ý không có kho khoá".
-   */
-  vaultOrigin?: string | null;
   /**
    * `true` on `/c/:courseId/:chapterId` — the READING mode of the two this
    * product has (đặc tả: `docs/superpowers/specs/2026-08-23-ia-redesign.md`).
@@ -87,19 +80,19 @@ export interface ShellProps {
  * hand it. Sidebar/topbar/rail *content* (nav data, buttons that do
  * something, progress) is intentionally out of scope for this task.
  *
- * Hệ thống con 2 thêm đúng một thứ: `<VaultFrameProvider>` bọc BÊN NGOÀI
- * `#app`. Đây là component duy nhất trong repo được dựng đúng một lần cho mọi
- * route, nên nó là chỗ đúng để gắn khung kho khoá — và vì provider bọc ngoài
- * chứ không lồng vào, DANH SÁCH CON CỦA `#app` KHÔNG ĐỔI và reader.css (chép
- * lại từng byte từ bản v1 một-tệp) vẫn áp đúng. `VaultFrame.test.tsx` khoá
- * chính tính chất đó lại.
+ * KHÔNG CÓ GÌ BỌC NGOÀI `#app`, và điều đó lại đúng kể từ Task 16. Hệ thống
+ * con 2 (Pha 1) treo ở đây một provider bọc BÊN NGOÀI `#app`, giữ khung ẩn của
+ * kho khoá: đây là component duy nhất trong repo được dựng đúng một lần cho
+ * mọi route, nên nó là chỗ đúng cho một khung phải sống sót qua mọi lần đổi
+ * route. Pha 2 chuyển AI lên máy chủ và không còn origin thứ hai nào để treo,
+ * nên phần tử gốc mà component này trả về lại đúng là `#app` — hình dạng mà
+ * `reader.css` (chép từng byte từ bản v1 một-tệp) được viết cho.
  */
 export function Shell({
   sidebar,
   topbar,
   children,
   rail,
-  vaultOrigin,
   reading = false,
   inCourse = false,
   authScreen = false,
@@ -116,22 +109,20 @@ export function Shell({
     .join(' ');
 
   return (
-    <VaultFrameProvider origin={vaultOrigin}>
-      <div id="app" className={appClass === '' ? undefined : appClass}>
-        <aside id="sidebar">{sidebar}</aside>
-        <div id="main">
-          <div id="topbar">{topbar}</div>
-          <div id="progwrap">
-            <div id="progbar" />
-          </div>
-          <div id="scroller">
-            <div id="content-wrap">
-              <main id="content">{children}</main>
-              <aside id="rail">{rail}</aside>
-            </div>
+    <div id="app" className={appClass === '' ? undefined : appClass}>
+      <aside id="sidebar">{sidebar}</aside>
+      <div id="main">
+        <div id="topbar">{topbar}</div>
+        <div id="progwrap">
+          <div id="progbar" />
+        </div>
+        <div id="scroller">
+          <div id="content-wrap">
+            <main id="content">{children}</main>
+            <aside id="rail">{rail}</aside>
           </div>
         </div>
       </div>
-    </VaultFrameProvider>
+    </div>
   );
 }

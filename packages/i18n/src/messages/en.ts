@@ -260,12 +260,6 @@ export const en: Messages = {
     'The rest of the app is still running. Reloading the page is usually enough; if the error comes back, the details below are what to include in a bug report.',
   'error.boundary.reload': 'Reload the page',
 
-  'vault.frame.configError': '[key vault] misconfigured, the AI feature is off:',
-  'vault.frame.overlayLabel': (origin: string) =>
-    `Key vault — this frame runs at ${origin}, apart from the lesson page`,
-  'vault.frame.close': 'Close',
-  'vault.frame.title': 'Key vault',
-
   /* ══════════════════════════════════════════════════════════════════════ *
    * TRANG (`pages/`)
    * ══════════════════════════════════════════════════════════════════════ */
@@ -556,14 +550,6 @@ export const en: Messages = {
   // mã báo lỗi ở chính trang chính hoặc máy chủ, không phải điều người học
   // gây ra hay có một hành động cụ thể để sửa.
   'ai.error.requestRejected': 'The request was rejected. Try again in a moment.',
-
-  'ai.vault.originShape': (received: string) =>
-    `VITE_VAULT_ORIGIN must be a proper origin (scheme://host[:port]) — no trailing "/", no path, no "*". Received ${received}.`,
-  'ai.vault.frameDetached': 'The key vault frame was detached while a call was in flight.',
-  'ai.vault.abortedBeforeSend': 'Cancelled before anything was sent.',
-  'ai.vault.abortedByUser': 'Cancelled by the reader.',
-  'ai.vault.timeout': (ms: string) =>
-    `The key vault did not answer within ${ms} ms. Did the frame load, and is the origin right?`,
 
   /**
    * Câu vai BẢO MÔ HÌNH TRẢ LỜI BẰNG NGÔN NGỮ NÀO — nên bản này không phải một

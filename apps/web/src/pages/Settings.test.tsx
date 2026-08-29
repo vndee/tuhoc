@@ -45,9 +45,10 @@ function mockAiRoutes(): void {
  * `state` mặc định là `FROM_AI_INVITE` — ý định mà lời mời "Mở trang cấu hình"
  * của `ai/AskPanel.tsx` gắn vào lần điều hướng khi hết credit
  * (`needsSetup`/`ai.panel.noCredit`) — vì gần như mọi bài dưới đây kiểm mục
- * Trợ lý AI, tức chúng mô tả người dùng đến TỪ lời mời ấy. `openVault` KHÔNG
- * còn trong `state` này: `AskPanel.tsx` (Task 13) đã ngừng gửi nó — không còn
- * khung nào để "mở" — chỉ `section: 'ai'` (cuộn tới khối) còn sống. Vào
+ * Trợ lý AI, tức chúng mô tả người dùng đến TỪ lời mời ấy. Ý định thứ hai mà
+ * `state` từng mang — "mở sẵn khung kho khoá ra" — KHÔNG còn: `AskPanel.tsx`
+ * (Task 13) đã ngừng gửi nó, và Task 16 đã gỡ chính cái khung ấy, nên chỉ
+ * `section: 'ai'` (cuộn tới khối) còn sống. Vào
  * `/settings` mà KHÔNG mang ý định là một hợp đồng khác hẳn, và nó có describe
  * riêng ở cuối tệp: mục trung tính, không cuộn.
  */
@@ -79,9 +80,8 @@ function blockHeading(name: string): HTMLElement {
 /**
  * `LanguageProvider` và `useTheme` đều CẤT lựa chọn vào `localStorage`, và
  * `useTheme` còn viết vào `<html data-theme>`. Một bài đổi giao diện sẽ để lại
- * giao diện tối cho bài chạy sau nó — cùng cái bẫy mà `VaultFrame.test.tsx` đã
- * ghi lại: một bộ test phụ thuộc thứ tự là một bộ test nói dối ở đúng lúc nó
- * được tin nhất.
+ * giao diện tối cho bài chạy sau nó: một bộ test phụ thuộc thứ tự là một bộ
+ * test nói dối ở đúng lúc nó được tin nhất.
  */
 beforeEach(() => {
   localStorage.clear();
@@ -240,11 +240,11 @@ describe('/settings là CÀI ĐẶT, không phải trang Trợ lý AI', () => {
   /**
    * Bộ chọn ngôn ngữ ở đây KHÔNG được mang `id="lang-select"`.
    *
-   * Id ấy thuộc về `i18n/LanguageSwitcher.tsx` trên thanh công cụ, và
-   * `e2e/s3.spec.ts` định vị bằng `document.getElementById('lang-select')` để
-   * đo xem lớp phủ kho khoá có che kín trang hay không. Hai phần tử cùng id sẽ
-   * làm phép đo ấy chọn nhầm phần tử — và im lặng, vì `getElementById` không
-   * bao giờ báo có hai.
+   * Id ấy thuộc về `i18n/LanguageSwitcher.tsx` trên thanh công cụ. Hai phần tử
+   * cùng một id là một lỗi mà DOM không báo: `document.getElementById` trả về
+   * phần tử ĐẦU TIÊN và không bao giờ nói rằng có hai — nên bất cứ ai định vị
+   * bộ chọn trên thanh công cụ bằng id (mã, bài kiểm, hay một kịch bản e2e)
+   * sẽ lặng lẽ chọn nhầm cái nằm trong trang Cài đặt.
    */
   it('bộ chọn ngôn ngữ trong Cài đặt KHÔNG chiếm id của bộ chọn trên thanh công cụ', () => {
     const { container } = renderSettings();

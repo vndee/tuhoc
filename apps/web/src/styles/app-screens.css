@@ -1339,7 +1339,7 @@ html[data-theme='dark'] #app:not(.reading) .set-identity-avatar {
 /* ══════════════════════════════════════════════════════════════════════════
  * TRỢ LÝ AI — `CreditPanel.tsx` / `AgentConfigPanel.tsx` (task-14)
  *
- * Thay chỗ `.set-vault*` cũ (khối kho khoá, đã gỡ khỏi `AiSection` — xem
+ * Thay chỗ khối cấu hình key cũ (đã gỡ khỏi `AiSection` — xem
  * `settings-auth.css`). Không đóng khung riêng như bản cũ: không còn một bí
  * mật nào ở đây cần tách bạch khỏi phần còn lại của trang (xem doc comment
  * đầu `pages/Settings.tsx`), nên số dư/prompt/tool dùng ĐÚNG những khối `.set-

@@ -1,12 +1,12 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   `/login` · `/settings` · KHUNG KHO KHOÁ
+   `/login` · `/settings`
    ═══════════════════════════════════════════════════════════════════════════
 
    MỘT TỆP RIÊNG, và lý do là quy trình chứ không phải thẩm mỹ: bốn agent đang
    dựng bốn màn hình khác nhau trong cùng một nhánh, và `styles/index.css` là
    tệp mà cả bốn đều phải chạm nếu mỗi màn để kiểu dáng ở đó. Tệp này gom trọn
-   phần của hai màn `/login` và `/settings` (kèm lớp phủ kho khoá, thứ chỉ trang
-   Cài đặt mở ra), nên `index.css` chỉ nhận đúng MỘT dòng `@import`.
+   phần của hai màn `/login` và `/settings`, nên `index.css` chỉ nhận đúng MỘT
+   dòng `@import`.
 
    Vị trí của dòng `@import` ấy — ngay sau `reader.css`, trước mọi quy tắc của
    `index.css` — là chỗ ràng buộc: `@import` phải đứng trước mọi quy tắc, và
@@ -27,10 +27,6 @@
    ấy được bỏ ở đây, không phải quên. Nếu có ngày `reader.css` học được trạng
    thái thứ ba thì cả tệp này và nó phải học cùng lúc — một nửa thì tệ hơn
    không nửa nào.
-
-   (Kho khoá `apps/vault/src/ui/vault.css` THÌ theo hệ thống, và đúng như thế:
-   nó là một origin khác, không có nút chủ đề, không đọc được `localStorage`
-   của trang chính.)
 
    ── PHÔNG CHỮ GIAO DIỆN ───────────────────────────────────────────────────
    Đặc tả IA nói *"chữ giao diện: KHÔNG dùng `system-ui`"*. `--sans` hiện là
@@ -617,119 +613,19 @@ html[data-theme='dark'] .auth-form input {
   margin-bottom: 10px;
 }
 
-/* ── `.set-vault*` ĐÃ GỠ (task-14) ─────────────────────────────────────────
-   Mục Trợ lý AI (`pages/Settings.tsx`'s `AiSection`) không còn vẽ khung kho
-   khoá — Pha 2 chạy DeepSeek bằng key của NỀN TẢNG, không còn ô dán key nào
-   để đóng khung. `CreditPanel.tsx`/`AgentConfigPanel.tsx` dùng `.set-credit`/
-   `.set-agent-config` thay chỗ này — định nghĩa của HAI LỚP ẤY nằm ở
-   `app-screens.css` (mục "TRỢ LÝ AI — `CreditPanel.tsx` / `AgentConfigPanel.
-   tsx`"), KHÔNG PHẢI "bên dưới" trong CHÍNH tệp này (vòng review 1 bắt được:
-   câu cũ ở đây nói "bên dưới" trong khi khối thật nằm ở một tệp khác —
-   đúng chỗ dễ khiến người đọc sau tin lời chú thích mà không grep lại).
+/* ── KHỐI CẤU HÌNH KEY VÀ LỚP PHỦ CỦA NÓ: ĐÃ GỠ (task-14, rồi task-16) ─────
+   Mục Trợ lý AI (`pages/Settings.tsx`'s `AiSection`) từng vẽ một khối đóng
+   khung riêng cho ô dán key, và trang Cài đặt từng mở được một LỚP PHỦ toàn
+   màn hình chứa khung ẩn ở origin thứ hai. Pha 2 chạy DeepSeek bằng key của
+   NỀN TẢNG: không còn ô dán key, nên không còn gì để đóng khung, và không còn
+   khung nào để phủ lên trang. `CreditPanel.tsx`/`AgentConfigPanel.tsx` dùng
+   `.set-credit`/`.set-agent-config` thay chỗ khối cũ — định nghĩa của HAI LỚP
+   ẤY nằm ở `app-screens.css` (mục "TRỢ LÝ AI — `CreditPanel.tsx` /
+   `AgentConfigPanel.tsx`"), KHÔNG PHẢI trong CHÍNH tệp này.
 
-   LỚP PHỦ (`.vault-overlay`/`.vault-card`/…) NGAY DƯỚI ĐÂY VẪN CÒN SỐNG — đừng
-   xoá nhầm: `shell/VaultFrame.tsx` vẫn được `shell/Shell.tsx` gắn cho cả ứng
-   dụng, và `reader/ChapterView.tsx` vẫn đọc `vaultOrigin` từ nó để quyết định
-   nút "Hỏi về chương" có hiện hay không (`aiReady = vaultOrigin !== null`) —
-   một mắt xích Pha 1 mà task-16-brief.md ghi rõ là việc CỦA TASK 16, không
-   phải task này. Gỡ `.vault-overlay*` ở đây trước khi Task 16 gỡ chỗ gọi ấy
-   sẽ để lại một khung kho khoá không có lớp phủ để mở. */
-
-/* ───────────────────────────────────────────────────────────────────────────
-   LỚP PHỦ KHO KHOÁ — mặt phẳng thứ hai, thật sự
-   ───────────────────────────────────────────────────────────────────────────
-
-   Khung kho khoá là một `<iframe>` ở origin khác, gắn MỘT LẦN cho cả ứng dụng ở
-   NGOÀI `#app` (xem shell/VaultFrame.tsx) — nên nó không nằm trong luồng bố cục
-   của trang, và một chiều cao thường sẽ đẩy nó xuống dưới đáy `#app`
-   (`min-height:100vh`), tức là ra ngoài màn hình. `position: fixed` là cách rẻ
-   nhất để nó ở đúng chỗ mà không phải chép lại các con số bố cục của reader.css.
-
-   `inset: 0` KHÔNG THƯƠNG LƯỢNG. `e2e/s3.spec.ts` kịch bản 5a đo bằng
-   `document.elementFromPoint` rằng tâm `#lang-select` KHÔNG nhận được cú bấm
-   khi khung đang mở, và ghi rõ mutant `inset: 0` → `inset: 120px 0 0 0` phải
-   giết được nó. Lý do là hành vi chứ không phải hình thức: nút "Đóng" nằm trên
-   chính lớp phủ, nên một lớp phủ hở là một lớp phủ mà nút của nó phải tranh cú
-   bấm với các nút bên dưới.
-
-   Cái ĐỔI ở đây là nền: trước là `var(--surface-1)` đục kín, nay là một tấm mờ.
-   Lớp phủ vẫn che kín y hệt (vẫn chặn con trỏ, vẫn giết đúng mutant ấy), nhưng
-   người dùng NHÌN THẤY trang Cài đặt còn nguyên ở dưới và một tấm khác nổi lên
-   trên. Đó chính là điều mà cả hệ thống con này cần người dùng tin: có hai mặt
-   phẳng, và key sống ở tấm phía trên.
-
-   z-index 90: trên hộp chú thích (80/79), trên panel AI (85) và trên topbar
-   dính (40). Người dùng đang dán key thì không có gì được nằm đè lên. */
-.vault-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: clamp(0px, 3.5vh, 40px) clamp(0px, 3.5vw, 40px);
-  background: rgba(11, 11, 11, 0.44);
-}
-
-html[data-theme='dark'] .vault-overlay {
-  background: rgba(0, 0, 0, 0.62);
-}
-
-.vault-card {
-  display: flex;
-  flex-direction: column;
-  width: min(46rem, 100%);
-  height: min(46rem, 100%);
-  background: var(--surface-1);
-  border: 1px solid var(--rule-strong);
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: var(--shadow);
-}
-
-.vault-overlay-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--rule-strong);
-  background: var(--panel);
-}
-
-/* CỐ Ý KHÔNG `display: flex`.
-   `tNode()` trả về một dãy `<Fragment>` — chữ, rồi `<strong>` chứa origin, rồi
-   chữ tiếp. Dưới một flex container, mỗi mảnh ấy thành một flex ITEM và `gap`
-   chèn khoảng trắng vào GIỮA CÂU: đo được trên trình duyệt thật, dấu phẩy ngay
-   sau origin bị đẩy ra thành "…:5274 , tách khỏi…". Ổ khoá được canh bằng
-   `vertical-align` trong luồng chữ bình thường thay vì bằng một flex item. */
-.vault-overlay-title {
-  min-width: 0;
-  font-family: var(--sans);
-  font-size: 0.78rem;
-  line-height: 1.4;
-  color: var(--ink-2);
-}
-
-.vault-lock {
-  margin-right: 6px;
-  vertical-align: -2px;
-}
-
-/* Cùng lý do như `.set-vault-label strong`: một origin là thứ phải đọc từng ký
-   tự, không phải văn xuôi. */
-.vault-overlay-title strong {
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--ink);
-  word-break: break-all;
-}
-
-.vault-card iframe {
-  flex: 1 1 auto;
-  min-height: 0;
-}
+   z-index 90 mà lớp phủ ấy chiếm nay TRỐNG ở tệp này. Nó không phải của ai:
+   `.cu-scrim`/`.cu-dialog` (90/91, `index.css`) là hộp thoại cập nhật khoá
+   học, và nó đã ở đó từ trước. */
 
 /* ── Ô MẬT KHẨU CÓ CON MẮT ─────────────────────────────────────────────────
    Nút nằm ĐÈ lên ô chứ không đứng cạnh: `.auth-form` là một cột đơn, và một
