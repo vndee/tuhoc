@@ -8,6 +8,8 @@
 // chú thích trên Usage bên dưới và docs/deepseek-measured.md §1.
 package ai
 
+import "time"
+
 // Message là một lượt trong hội thoại gửi tới/nhận từ DeepSeek, theo đúng
 // shape API kiểu OpenAI-chat mà DeepSeek dùng.
 type Message struct {
@@ -138,6 +140,16 @@ type Pricing struct {
 	CreditsPer1kIn         int64  // ai_pricing.credits_per_1k_in
 	CreditsPer1kCachedIn   int64  // ai_pricing.credits_per_1k_cached_in
 	CreditsPer1kOut        int64  // ai_pricing.credits_per_1k_out
+
+	// UpdatedAt is ai_pricing.updated_at. Added by Task 17: cost.go's Charge
+	// never reads it (it has no opinion about WHEN a rate was set, only what
+	// it currently is), but the "Bảng giá & prompt nền" CMS screen shows it
+	// so an operator can tell a rate they just changed apart from one seeded
+	// at migration time and never touched since. Zero-valued (time.Time{})
+	// on every Pricing this package builds internally (pricing(), used by
+	// ChargeTurn) — only ListPricing/UpdatePricing (admin_handler.go, both
+	// SELECT/RETURNING the column explicitly) ever populate it.
+	UpdatedAt time.Time
 }
 
 // Settings ánh xạ 1-1 sang đúng MỘT hàng bảng ai_settings (migration

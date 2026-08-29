@@ -54,6 +54,18 @@
 // the process can die, or a later statement can fail, between them — where
 // only one side lands: credit gone with no record of why (an unexplained
 // deduction), or a ledger row with no matching deduction (free tokens).
+//
+// Task 17 adds a sixth table this file speaks: admin_audit (migration
+// 0005_published_catalog, not 0007 — it predates this package and already
+// belongs to internal/catalog's own admin writes; this file only INSERTs
+// into it, it does not own its schema). Every method in the block near the
+// bottom of this file (ListUsers, GetUser, AdjustCredit, ListPricing,
+// UpdatePricing, RecentCreditAdjustments, UpdateBaseSystemPrompt) exists
+// for the two CMS screens spec §7 names ("Người dùng & credit", "Bảng giá &
+// prompt nền"), and AdjustCredit/UpdatePricing/UpdateBaseSystemPrompt keep
+// the SAME one-transaction discipline the paragraph above states for
+// ChargeTurn — a balance or a rate that moved with no matching admin_audit
+// row is the identical failure shape one table over.
 package ai
 
 import (
@@ -440,6 +452,363 @@ func (s *Service) RecentUsage(ctx context.Context, userID uuid.UUID, limit int) 
 		return nil, fmt.Errorf("ai: recent usage rows for user %s: %w", userID, err)
 	}
 	return out, nil
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Task 17 — the "Người dùng & credit" and "Bảng giá & prompt nền" CMS
+// screens (spec §7). Every method below is reachable ONLY behind
+// auth.Require + auth.RequireAdmin (server.go's "/admin/ai" group) — this
+// file has no opinion about who is allowed to call it, the same split
+// ChargeTurn/SaveAgentConfig already keep with their own callers. HTTP-layer
+// validation (empty note, zero delta, negative rate, empty base prompt)
+// lives in admin_handler.go, not here — PutConfig's own doc comment states
+// the reason this split exists and it applies unchanged to every method
+// below.
+// ═══════════════════════════════════════════════════════════════════════
+
+// ErrUserNotFound is returned by GetUser/AdjustCredit when the target id
+// names no row in users — a different failure than ErrInsufficientCredit
+// (a real account with too little money): this one names an account that
+// does not exist at all, e.g. an operator following a stale link to a
+// deleted account, or a typo'd id.
+var ErrUserNotFound = errors.New("ai: user not found")
+
+// ErrPricingModelNotFound is returned by UpdatePricing when model names no
+// row in ai_pricing. UpdatePricing is deliberately an UPDATE, never an
+// upsert — see its own doc comment for why silently creating a row for an
+// unknown model would be worse than refusing the request.
+var ErrPricingModelNotFound = errors.New("ai: pricing model not found")
+
+// AdminUser is one row of GET /admin/ai/users — a learner the way the
+// "Người dùng & credit" screen needs to see them: identity plus their
+// current AI balance. It carries nothing from ai_usage (the spend ledger)
+// or admin_audit (the adjustment history) — those are separate calls
+// (RecentUsage, RecentCreditAdjustments) that GetUser below combines for
+// ONE learner; listing every learner's ledger on the search screen would be
+// an expensive query nobody asked for.
+type AdminUser struct {
+	ID           uuid.UUID
+	Email        string
+	Role         string
+	BalanceMicro int64
+}
+
+// adminUserListLimit bounds ListUsers — an operator's search box, not a
+// full export. 50 is generous for "type a few letters of an email, see who
+// matches" and cheap for the database; a deployment that needs to page past
+// it needs a different screen (Pha 4's billing reconciliation names one),
+// not a wider LIMIT here.
+const adminUserListLimit = 50
+
+// ListUsers returns up to adminUserListLimit users, optionally filtered by
+// an email substring, ordered by email. query == "" returns the first
+// adminUserListLimit accounts alphabetically — not "every user", the same
+// bounded-by-default posture RecentUsage already takes with its own limit.
+//
+// query is matched with a bare SQL LIKE against users.email, which is
+// citext (migration 0001_init) and therefore ALREADY case-insensitive — no
+// ILIKE needed. It is NOT escaped against a literal '%'/'_' in query: this
+// endpoint sits behind auth.RequireAdmin, so a search that treats an
+// operator's own '%' as a wildcard is a UX quirk, not a security hole —
+// nobody who cannot already pass RequireAdmin can reach this query at all.
+func (s *Service) ListUsers(ctx context.Context, query string) ([]AdminUser, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT u.id, u.email, u.role, COALESCE(c.balance_micro, 0)
+		FROM users u LEFT JOIN ai_credits c ON c.user_id = u.id
+		WHERE $1 = '' OR u.email LIKE '%' || $1 || '%'
+		ORDER BY u.email
+		LIMIT $2`, query, adminUserListLimit)
+	if err != nil {
+		return nil, fmt.Errorf("ai: list users (query=%q): %w", query, err)
+	}
+	defer rows.Close()
+
+	out := make([]AdminUser, 0, adminUserListLimit)
+	for rows.Next() {
+		var u AdminUser
+		if err := rows.Scan(&u.ID, &u.Email, &u.Role, &u.BalanceMicro); err != nil {
+			return nil, fmt.Errorf("ai: list users scan: %w", err)
+		}
+		out = append(out, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ai: list users rows: %w", err)
+	}
+	return out, nil
+}
+
+// GetUser reads one learner's identity and current balance, or
+// ErrUserNotFound. Balance's own ErrNoRows-tolerant fallback (a learner who
+// predates the signup grant, or whose grant was zero) is reproduced here
+// rather than reused as-is, because THIS caller must still tell "no such
+// user" apart from "a real user with nothing in ai_credits yet" — Balance
+// alone only answers the second question.
+func (s *Service) GetUser(ctx context.Context, userID uuid.UUID) (AdminUser, error) {
+	u := AdminUser{ID: userID}
+	err := s.pool.QueryRow(ctx,
+		`SELECT email, role FROM users WHERE id = $1`, userID).Scan(&u.Email, &u.Role)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return AdminUser{}, ErrUserNotFound
+		}
+		return AdminUser{}, fmt.Errorf("ai: get user %s: %w", userID, err)
+	}
+
+	balance, err := s.Balance(ctx, userID)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return AdminUser{}, err
+		}
+		balance = 0
+	}
+	u.BalanceMicro = balance
+	return u, nil
+}
+
+// adminActionCreditAdjust is admin_audit.action's fixed value for every row
+// AdjustCredit writes — RecentCreditAdjustments below filters on this exact
+// string, so the two must never drift apart.
+const adminActionCreditAdjust = "ai.credit.adjust"
+
+// CreditAdjustment is one manual balance change an operator made through
+// POST /admin/ai/users/:id/credit, read back from admin_audit — the same
+// append-only table AdjustCredit writes into, never a second ledger of its
+// own. This IS the trail spec §7's "sổ cái thao tác, không xoá" promises
+// for the single most dangerous write in this screen: which admin moved
+// this account's balance, when, by how much, and why (Note carries the
+// signed amount AND the operator's own words — see AdjustCredit's doc
+// comment for the exact format).
+type CreditAdjustment struct {
+	At   time.Time
+	Who  *uuid.UUID
+	Note string
+}
+
+// adminAuditListLimit bounds RecentCreditAdjustments the same way
+// recentUsageLimit (handler.go) bounds RecentUsage — a detail screen, not a
+// report.
+const adminAuditListLimit = 20
+
+// RecentCreditAdjustments returns userID's most recent manual credit
+// changes, newest first — the ONE place an operator can see "has this
+// account already been topped up, and why" before adding another
+// adjustment on top of it, which is the closest this screen comes to a
+// defense against topping up the same person twice by accident.
+func (s *Service) RecentCreditAdjustments(ctx context.Context, userID uuid.UUID) ([]CreditAdjustment, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT who, at, note FROM admin_audit
+		WHERE action = $1 AND target = $2
+		ORDER BY at DESC, id DESC LIMIT $3`,
+		adminActionCreditAdjust, userID.String(), adminAuditListLimit)
+	if err != nil {
+		return nil, fmt.Errorf("ai: recent credit adjustments for user %s: %w", userID, err)
+	}
+	defer rows.Close()
+
+	out := make([]CreditAdjustment, 0, adminAuditListLimit)
+	for rows.Next() {
+		var a CreditAdjustment
+		if err := rows.Scan(&a.Who, &a.At, &a.Note); err != nil {
+			return nil, fmt.Errorf("ai: recent credit adjustments scan for user %s: %w", userID, err)
+		}
+		out = append(out, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ai: recent credit adjustments rows for user %s: %w", userID, err)
+	}
+	return out, nil
+}
+
+// AdjustCredit is the one function behind spec §7's "cộng/trừ credit tay":
+// it moves userID's balance_micro by deltaMicro (positive credits the
+// account, negative debits it) and writes the admin_audit row IN ONE
+// TRANSACTION — the same shape ChargeTurn already keeps, and for the same
+// reason: an unexplained balance change and an audit row with no matching
+// change are both worse than a failed request.
+//
+// It validates NOTHING about deltaMicro or note being non-zero/non-empty —
+// that is admin_handler.go's AdminAdjustCredit's job, at the HTTP boundary,
+// the same split PutConfig documents for user_agent_config. note here is
+// assumed to already be the FULL text to store, including the signed
+// amount AdminAdjustCredit prefixes onto the operator's own words (e.g.
+// "+500000 micro-credit: refund for double charge") — this method does not
+// reconstruct that format from deltaMicro, so the two must be kept in sync
+// by the caller, not by magic here.
+//
+// The UPSERT (INSERT ... ON CONFLICT DO UPDATE) is deliberate, not
+// something the caller is expected to have avoided by checking first: a
+// learner who predates this feature, or whose signup grant was zero, has
+// no ai_credits row yet (the same gap Balance's and EnsureCredit's own doc
+// comments describe), and an operator correcting THAT account must not
+// need a separate "does this user have a row" branch — deltaMicro simply
+// becomes the opening balance on a first-time upsert.
+func (s *Service) AdjustCredit(ctx context.Context, actorID, targetID uuid.UUID, deltaMicro int64, note string) (int64, error) {
+	var exists bool
+	if err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)`, targetID).Scan(&exists); err != nil {
+		return 0, fmt.Errorf("ai: adjust credit: check user %s exists: %w", targetID, err)
+	}
+	if !exists {
+		return 0, ErrUserNotFound
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("ai: adjust credit begin tx for user %s: %w", targetID, err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var newBalance int64
+	err = tx.QueryRow(ctx, `
+		INSERT INTO ai_credits (user_id, balance_micro) VALUES ($1, $2)
+		ON CONFLICT (user_id) DO UPDATE
+		SET balance_micro = ai_credits.balance_micro + EXCLUDED.balance_micro, updated_at = now()
+		RETURNING balance_micro`, targetID, deltaMicro).Scan(&newBalance)
+	if err != nil {
+		return 0, fmt.Errorf("ai: adjust credit upsert for user %s: %w", targetID, err)
+	}
+
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO admin_audit (who, actor, action, target, note) VALUES ($1, 'user', $2, $3, $4)`,
+		actorID, adminActionCreditAdjust, targetID.String(), note); err != nil {
+		return 0, fmt.Errorf("ai: adjust credit audit for user %s: %w", targetID, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("ai: adjust credit commit for user %s: %w", targetID, err)
+	}
+	return newBalance, nil
+}
+
+// ListPricing returns every ai_pricing row, ordered by model — the whole
+// "bảng quy đổi credit" the CMS's "Bảng giá & prompt nền" screen edits.
+func (s *Service) ListPricing(ctx context.Context) ([]Pricing, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT model, cost_micro_per_1k_in, cost_micro_per_1k_cached_in, cost_micro_per_1k_out,
+		       credits_per_1k_in, credits_per_1k_cached_in, credits_per_1k_out, updated_at
+		FROM ai_pricing ORDER BY model`)
+	if err != nil {
+		return nil, fmt.Errorf("ai: list pricing: %w", err)
+	}
+	defer rows.Close()
+
+	out := []Pricing{}
+	for rows.Next() {
+		var p Pricing
+		if err := rows.Scan(&p.Model, &p.CostMicroPer1kIn, &p.CostMicroPer1kCachedIn, &p.CostMicroPer1kOut,
+			&p.CreditsPer1kIn, &p.CreditsPer1kCachedIn, &p.CreditsPer1kOut, &p.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("ai: list pricing scan: %w", err)
+		}
+		out = append(out, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ai: list pricing rows: %w", err)
+	}
+	return out, nil
+}
+
+// adminActionPricingUpdate is admin_audit.action's fixed value for every
+// row UpdatePricing writes.
+const adminActionPricingUpdate = "ai.pricing.update"
+
+// UpdatePricing overwrites model's six rates and writes the audit row in
+// one transaction, returning the row as stored. It is an UPDATE, never an
+// upsert: ErrPricingModelNotFound's own doc comment says why a typo'd
+// model must fail loudly rather than quietly create a row nothing will
+// ever charge against — ai_pricing's rows are keyed on model names this
+// package's own Go code names (DefaultModel and its sibling), not on
+// anything an operator types freely.
+//
+// Every future ChargeTurn call reads this row FRESH: pricing (above) has
+// never cached it. That absence of a cache is the entire mechanism behind
+// spec §3.4's "đổi giá không cần deploy" — there is nothing for this method
+// to invalidate and nothing to restart, only a COMMIT here and a SELECT on
+// the very next turn.
+func (s *Service) UpdatePricing(ctx context.Context, actorID uuid.UUID, model string, p Pricing, note string) (Pricing, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Pricing{}, fmt.Errorf("ai: update pricing begin tx (model=%s): %w", model, err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var out Pricing
+	err = tx.QueryRow(ctx, `
+		UPDATE ai_pricing
+		SET cost_micro_per_1k_in=$2, cost_micro_per_1k_cached_in=$3, cost_micro_per_1k_out=$4,
+		    credits_per_1k_in=$5, credits_per_1k_cached_in=$6, credits_per_1k_out=$7, updated_at=now()
+		WHERE model = $1
+		RETURNING model, cost_micro_per_1k_in, cost_micro_per_1k_cached_in, cost_micro_per_1k_out,
+		          credits_per_1k_in, credits_per_1k_cached_in, credits_per_1k_out, updated_at`,
+		model, p.CostMicroPer1kIn, p.CostMicroPer1kCachedIn, p.CostMicroPer1kOut,
+		p.CreditsPer1kIn, p.CreditsPer1kCachedIn, p.CreditsPer1kOut).
+		Scan(&out.Model, &out.CostMicroPer1kIn, &out.CostMicroPer1kCachedIn, &out.CostMicroPer1kOut,
+			&out.CreditsPer1kIn, &out.CreditsPer1kCachedIn, &out.CreditsPer1kOut, &out.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Pricing{}, ErrPricingModelNotFound
+		}
+		return Pricing{}, fmt.Errorf("ai: update pricing (model=%s): %w", model, err)
+	}
+
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO admin_audit (who, actor, action, target, note) VALUES ($1, 'user', $2, $3, $4)`,
+		actorID, adminActionPricingUpdate, model, note); err != nil {
+		return Pricing{}, fmt.Errorf("ai: update pricing audit (model=%s): %w", model, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return Pricing{}, fmt.Errorf("ai: update pricing commit (model=%s): %w", model, err)
+	}
+	return out, nil
+}
+
+// adminActionBasePromptUpdate is admin_audit.action's fixed value for every
+// row UpdateBaseSystemPrompt writes.
+const adminActionBasePromptUpdate = "ai.settings.base_prompt"
+
+// adminSettingsAuditTarget is admin_audit.target for base-prompt edits.
+// ai_settings has no natural id of its own (its CHECK(id) enforces exactly
+// one row — migration 0007's own comment), so this fixed string names the
+// row the way a real id would name any other target.
+const adminSettingsAuditTarget = "ai_settings"
+
+// UpdateBaseSystemPrompt overwrites ai_settings.base_system_prompt and
+// writes the audit row in one transaction, then returns the settings row
+// as stored (a fresh read, not an echo — SaveAgentConfig's own doc comment
+// explains why a caller should see what was actually written).
+//
+// It validates NOTHING about basePrompt except by what it refuses to do:
+// there is no path through this method that clears the column to an empty
+// string, because there is no caller-supplied "clear it" branch at all —
+// admin_handler.go's AdminUpdateSettings refuses an empty/whitespace-only
+// value before this method is ever invoked. The base prompt is BOTH the
+// platform's tutor persona and its safety boundary (spec §3.3: a learner's
+// own user_agent_config.system_prompt is APPENDED AFTER it, never a
+// replacement), so "empty" here is not a smaller version of the prompt, it
+// is every learner's safety boundary gone.
+func (s *Service) UpdateBaseSystemPrompt(ctx context.Context, actorID uuid.UUID, basePrompt, note string) (Settings, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Settings{}, fmt.Errorf("ai: update base prompt begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE ai_settings SET base_system_prompt = $1, updated_at = now()`, basePrompt); err != nil {
+		return Settings{}, fmt.Errorf("ai: update base prompt: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO admin_audit (who, actor, action, target, note) VALUES ($1, 'user', $2, $3, $4)`,
+		actorID, adminActionBasePromptUpdate, adminSettingsAuditTarget, note); err != nil {
+		return Settings{}, fmt.Errorf("ai: update base prompt audit: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return Settings{}, fmt.Errorf("ai: update base prompt commit: %w", err)
+	}
+
+	return s.settings(ctx)
 }
 
 // dedupeStrings keeps the FIRST occurrence of each value and preserves
