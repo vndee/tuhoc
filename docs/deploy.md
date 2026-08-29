@@ -193,7 +193,14 @@ Both share the same free-tier caveat: **the container sleeps after inactivity an
 1. Push this repo to GitHub/GitLab (Render Blueprints deploy from a git remote).
 2. Sign up at render.com, connect the repo.
 3. Dashboard → **New** → **Blueprint**, pick this repo. Render reads `render.yaml` from the repo root automatically and shows one service, `tuhoc-api` (Docker runtime, `apps/api/Dockerfile`, `apps/api` build context, free plan, Singapore region). `singapore` is one of Render's five documented region values (oregon/ohio/virginia/frankfurt/singapore) — I could not confirm whether the free plan restricts region choice, since that needs a live account; if Render rejects it at Blueprint-creation time, change `region:` in `render.yaml` to `oregon` (Render's original/default region) and redeploy.
-4. Before confirming, Render prompts for the one `sync: false` var declared in `render.yaml`: `DATABASE_URL`. Paste in the **pooled** Neon connection string from §2 (not the direct one — that's only for the migration command).
+4. Before confirming, Render prompts for **every** `sync: false` var declared in `render.yaml`. There are five:
+   - `DATABASE_URL` — paste the **pooled** Neon connection string from §2 (not the direct one; that's only for the migration command).
+   - `DEEPSEEK_API_KEY` — the platform's own DeepSeek key. **Leaving it blank ships an API whose AI feature is dead**: the service boots clean, `/healthz` is green, and the failure only appears when a learner presses "Hỏi". See §8.
+   - `BRAVE_API_KEY` — enables the agent's `web_search` tool only. Blank is a supported state; the agent still answers using its other tools.
+   - `GITHUB_TOKEN` — Discussions. Blank is supported (§5c).
+   - `ADMIN_TOKEN` — the CLI publish door (§4c). Blank is supported and fails closed.
+
+   The API logs a startup warning naming each missing AI key, so `render logs` immediately after the first deploy tells you whether you filled these in.
 5. After the service is created, go to its **Environment** tab and fix the two placeholder values `render.yaml` ships with:
    - `CORS_ORIGIN` → `https://app.yourdomain.com` (or your Pages project's `*.pages.dev` URL if not using a custom domain — see §0)
    - Confirm `COOKIE_SECURE=true` and `PORT=8080` are present (they ship with real values already, not placeholders).
@@ -209,8 +216,12 @@ cd apps/api
 flyctl auth login                     # opens a browser; needs a real account + card on file
 flyctl apps create <your-unique-name> # Fly app names are global; edit `app = "tuhoc-api"` in fly.toml to match
 flyctl secrets set DATABASE_URL="<pooled Neon connection string from §2>"
+flyctl secrets set DEEPSEEK_API_KEY="<the platform's own DeepSeek key>"   # without this the AI feature is dead — see §8
+flyctl secrets set BRAVE_API_KEY="<Brave Search key>"                     # optional: enables the web_search tool only
 flyctl deploy                         # builds remotely on Fly's own amd64 builders by default — see §7
 ```
+
+`DEEPSEEK_API_KEY` and `BRAVE_API_KEY` are secrets and must go through `flyctl secrets set`, never `fly.toml`'s `[env]` block — that file is committed to git. `DEEPSEEK_BASE_URL` is deliberately set nowhere: `config.Load` falls back to `DefaultDeepSeekBaseURL`, and pinning a URL in a config file is a second copy of that Go constant. Both keys are optional in the sense that the API boots and serves everything else without them, and it logs a startup warning naming each one that is missing — but an AI-enabled deploy with no `DEEPSEEK_API_KEY` fails only at the moment a learner asks a question.
 
 Then edit `CORS_ORIGIN` in `apps/api/fly.toml`'s `[env]` block from the placeholder to your real Pages origin, and `flyctl deploy` again (or `flyctl secrets set`/`flyctl config` if you'd rather not commit the real value — see §8 on what's secret). Verify with `curl https://<your-app-name>.fly.dev/healthz`.
 
