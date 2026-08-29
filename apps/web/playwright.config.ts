@@ -52,6 +52,21 @@ export default defineConfig({
   // spec and deleting the subsystem it covers are two different acts;
   // this comment records which one happened.
   //
+  // READ THIS BEFORE WRITING THE REPLACEMENT (Task 18). The deleted file
+  // is at `git show 390931e:apps/web/e2e/s2.spec.ts` — 1122 lines, and
+  // roughly half of it is harness, not key-vault logic: `serveProvider`
+  // (an SSE-chunk-streaming fake provider, the nearest thing to Task 18's
+  // Step 1 that has ever existed here), `instrument` (records fetches,
+  // postMessages, AND every intermediate state of the answer box),
+  // `freePort`/`serveStatic`/`fingerprint`+`build` (build caching),
+  // `askPanel`/`askAboutChapter`. Two of its six tests never touched the
+  // key vault at all. `docs/testing.md` -> "Reading `s2.spec.ts` back"
+  // has the full accounting: what is reusable, what is dead, and what
+  // those two tests measured that nothing measures now. Task 18's brief
+  // says "*Modify* `s2.spec.ts`" and "remove it from `testIgnore`"; both
+  // are empty instructions now, and this pointer is what stops that from
+  // meaning "start from zero".
+  //
   // Quarantined here, not silently: `p1.spec.ts` (this phase's own P1
   // definition-of-done gate) and `widget.spec.ts` (spec §8's sandboxed-
   // widget proof, also this phase's) are what `make test-e2e` asserts
