@@ -10,7 +10,7 @@ import { DEFAULT_LANG, LANGS, LANG_STORAGE_KEY, MESSAGES, normalizeLang, t } fro
 
 /**
  * Một giá trị catalog → chuỗi để soi. Khoá có tham số là HÀM, và các hàm ấy
- * không cùng chữ ký (`(count: number)`, `(vault: string)`, …), nên không có
+ * không cùng chữ ký (`(count: number)`, `(quote: string)`, …), nên không có
  * một đối số nào hợp kiểu với tất cả. Ở đây cần đúng *chữ mà bản dịch tạo ra*,
  * không cần kiểu — nên ép một lần, tại một chỗ, kèm lý do, thay vì rắc `as never`
  * vào từng chỗ gọi.
@@ -169,12 +169,19 @@ describe('ngôn ngữ được ghi nhớ THEO THIẾT BỊ', () => {
  * ====================================================================== */
 
 /**
- * VÌ SAO CỔNG NÀY QUÉT BỐN CÂY CHỨ KHÔNG PHẢI MỘT.
+ * VÌ SAO CỔNG NÀY QUÉT BA CÂY CHỨ KHÔNG PHẢI MỘT.
  *
  * Kế hoạch (HC-1) nói thẳng ra hình dạng của lỗi cần tránh: *"một cổng i18n chỉ
- * quét `apps/web/src` sẽ IM LẶNG về 14 tệp trong `apps/vault` — nơi có form
- * nhập key"*. Dự án này đã có năm cổng mù, tất cả cùng một hình dạng: **cổng đo
- * đúng thứ nó với tới được, rồi báo đạt**.
+ * quét `apps/web/src` sẽ IM LẶNG về 14 tệp trong ứng dụng kho khoá — nơi có
+ * form nhập key"* (nguyên văn HC-1 gọi thư mục ấy bằng đường dẫn; đường dẫn đó
+ * không còn nên câu trích thay bằng tên gọi). Dự án này đã có năm cổng mù, tất
+ * cả cùng một hình dạng: **cổng đo đúng thứ nó với tới được, rồi báo đạt**.
+ *
+ * BỐN CÂY, NAY BA: Task 16 gỡ ứng dụng kho khoá (AI chuyển lên máy chủ, không
+ * còn form nhập key nào để bóc), nên cây ấy rời danh sách vì THỨ ĐƯỢC QUÉT
+ * không còn — không phải vì phạm vi bị thu hẹp. Lời cảnh báo HC-1 ở trên được
+ * giữ chứ không xoá: nó là LÝ DO cổng này có hình dạng "một danh sách cây" thay
+ * vì một đường dẫn cứng, và lý do ấy vẫn đúng cho ba cây còn lại.
  *
  * Cây thứ BA — `packages/course-kit/*.js` — không nằm trong kế hoạch, và được
  * thêm vào sau một phép đo, không phải vì cẩn thận chung chung:
@@ -263,11 +270,6 @@ const SCAN_ROOTS: readonly { readonly name: string; readonly files: () => string
     why: 'ứng dụng React — phần lớn giao diện',
   },
   {
-    name: 'apps/vault/src',
-    files: () => filesUnder(join(REPO_ROOT, 'apps', 'vault', 'src'), ['.ts', '.tsx']),
-    why: 'kho khoá, origin riêng, và là nơi có FORM NHẬP KEY — cây mà một cổng chỉ quét apps/web sẽ im lặng về',
-  },
-  {
     name: 'packages/course-kit (*.js, trừ vendor/)',
     files: () => filesUnder(join(REPO_ROOT, 'packages', 'course-kit'), ['.js']),
     why: 'runtime của trang đọc, nạp bằng <script src> — cùng trang, cùng origin, và có chữ hiện ra cho người học',
@@ -346,32 +348,6 @@ const MESSAGE_HOMES: readonly string[] = ['packages/i18n/src/messages/en.ts', 'p
  */
 const DEVELOPER_FACING: readonly { readonly file: string; readonly why: string }[] = [
   {
-    file: 'apps/vault/src/test-setup.ts',
-    why: 'thông báo của harness khi jsdom không đưa được Storage thật — chỉ hiện trong output của vitest',
-  },
-  {
-    /*
-     * XẾP LẠI Ở TASK 5, kèm phép đo chứ không kèm sự tiện lợi.
-     *
-     * `headers.ts` nằm dưới `src/`, nhưng nó KHÔNG BAO GIỜ đi vào bundle của
-     * kho khoá. Người nhập nó, đo bằng cây cú pháp ngày 2026-08-22:
-     *
-     *     apps/vault/vite.config.ts:12   import { applyAppOrigin } from './src/headers.ts';
-     *     apps/vault/src/headers.test.ts:6
-     *
-     * Hai chỗ, và không chỗ nào là mã chạy trong trình duyệt. Cả ba câu ném của
-     * nó nói với NGƯỜI ĐANG CHẠY `vite build`: thiếu `VITE_APP_ORIGIN`,
-     * `_headers` mất `frame-ancestors`, thẻ giữ chỗ bị viết cứng.
-     *
-     * Và việc dịch nó sẽ HỎNG BẢN DỰNG, không chỉ là thừa: alias `@tuhoc/i18n`
-     * do `vite.config.ts` khai, mà chính tệp cấu hình ấy được Node nạp TRƯỚC
-     * khi alias tồn tại — một `import '@tuhoc/i18n'` trong `headers.ts` sẽ
-     * không giải được lúc nạp cấu hình.
-     */
-    file: 'apps/vault/src/headers.ts',
-    why: 'chỉ `vite.config.ts` nhập (đo được: 2 chỗ, cả hai ngoài trình duyệt) — ba câu ném nói với người chạy `vite build`, và alias @tuhoc/i18n không áp cho chính tệp cấu hình',
-  },
-  {
     file: 'apps/web/src/test/sampleCourse.ts',
     why: 'ngữ liệu của một course mẫu + hướng dẫn `make courses` cho người chạy test; nội dung course, không phải giao diện',
   },
@@ -381,7 +357,7 @@ const DEVELOPER_FACING: readonly { readonly file: string; readonly why: string }
  * ALLOWLIST THU HẸP DẦN — **RỖNG từ Task 5**, và nó phải ở lại rỗng.
  *
  * Task 4 mở sổ này với 37 mục; Task 5 xoá mục cuối cùng. Danh sách rỗng KHÔNG
- * có nghĩa là bỏ được: từ lúc này nó là ràng buộc *"không tệp nào dưới bốn cây
+ * có nghĩa là bỏ được: từ lúc này nó là ràng buộc *"không tệp nào dưới các cây
  * quét được phép có một chuỗi cứng"*, và mỗi lần ai đó muốn thêm một dòng vào
  * đây là một lần người thẩm định phải đọc lý do.
  *
@@ -455,18 +431,31 @@ describe('cổng chặn chuỗi cứng', () => {
   /**
    * CHỐT CHỐNG CỔNG MÙ. Một đường dẫn sai làm cổng xanh vĩnh viễn, và đó là
    * hình dạng của cả năm cổng mù mà `docs/carried-forward.md` ghi lại. Mỗi cây
-   * phải tự nói ra rằng nó thấy tệp, và ba mỏ neo được gọi ĐÍCH DANH — trong đó
-   * `apps/vault/src/ui/Settings.ts` là màn hình nhập key, đúng tệp mà một cổng
-   * chỉ quét `apps/web/src` sẽ im lặng về.
+   * phải tự nói ra rằng nó thấy tệp, và MỖI CÂY có một mỏ neo gọi ĐÍCH DANH —
+   * `empty` một mình không đủ: nó chỉ hỏi "cây này có ra tệp nào không", nên
+   * một đường dẫn trỏ nhầm sang một thư mục KHÁC vẫn qua được nó.
+   *
+   * Mỏ neo của `apps/web/src` là `pages/Settings.tsx` — màn hình có nhiều chữ
+   * giao diện nhất và là tệp mà Pha 2 vừa viết lại; nó thế chỗ mỏ neo cũ
+   * (màn hình nhập key của kho khoá) mà Task 16 đã gỡ cùng ứng dụng ấy. Một
+   * cây quét mà KHÔNG có mỏ neo là nửa cổng: đó chính là chỗ hở ở đây trước
+   * Task 16 — `apps/web/src` được quét nhưng chưa từng được gọi tên.
    */
-  it('quét CẢ BỐN cây, và ĐỎ nếu cây nào quét ra 0 tệp', () => {
+  it('quét CẢ BA cây, và ĐỎ nếu cây nào quét ra 0 tệp', () => {
     const empty = SCAN_ROOTS.filter((root) => root.files().length === 0).map((root) => root.name);
     expect(empty).toEqual([]);
+    // Danh sách cây KHÔNG được rỗng: `empty` trên là `[].filter(...)` khi
+    // `SCAN_ROOTS` rỗng, tức `[]`, tức XANH — một cổng không quét gì.
+    expect(SCAN_ROOTS.map((root) => root.name)).toEqual([
+      'apps/web/src',
+      'packages/course-kit (*.js, trừ vendor/)',
+      'packages/i18n/src',
+    ]);
 
     const seen = scannedFiles().map(repoRelative);
     expect(seen.length).toBeGreaterThan(60);
+    expect(seen).toContain('apps/web/src/pages/Settings.tsx');
     expect(seen).toContain('packages/i18n/src/messages/vi.ts');
-    expect(seen).toContain('apps/vault/src/ui/Settings.ts');
     expect(seen).toContain('packages/course-kit/runtime.js');
     expect(seen).not.toContain('apps/web/src/db/local.test.ts');
     expect(seen).not.toContain('packages/course-kit/vendor/katex.min.js');
@@ -510,20 +499,22 @@ describe('cổng chặn chuỗi cứng', () => {
   });
 
   /**
-   * `<title>` của hai vỏ HTML là chữ người dùng THẤY (trên tab trình duyệt), và
-   * nằm ngoài tầm của một bộ quét cây cú pháp TypeScript. Ghim nguyên văn thay
-   * vì bỏ qua: đổi tiêu đề hay bóc nó đều làm bài này đỏ, nên nó không thể trôi
-   * đi trong im lặng.
+   * `<title>` của vỏ HTML là chữ người dùng THẤY (trên tab trình duyệt), và nằm
+   * ngoài tầm của một bộ quét cây cú pháp TypeScript. Ghim nguyên văn thay vì
+   * bỏ qua: đổi tiêu đề hay bóc nó đều làm bài này đỏ, nên nó không thể trôi đi
+   * trong im lặng.
+   *
+   * MỘT vỏ, không hai: vỏ HTML của kho khoá (`<title>Kho khoá tuhoc</title>`)
+   * đi cùng ứng dụng ấy ở Task 16.
    */
-  it('hai <title> tiếng Việt còn lại được ghim đích danh, không rơi ra ngoài sổ', () => {
-    const shells = ['apps/web/index.html', 'apps/vault/index.html'];
+  it('<title> tiếng Việt còn lại được ghim đích danh, không rơi ra ngoài sổ', () => {
+    const shells = ['apps/web/index.html'];
     const titles = shells.map((file) => {
       const html = readFileSync(join(REPO_ROOT, file), 'utf-8');
       return { file, title: /<title>([^<]*)<\/title>/.exec(html)?.[1] ?? null };
     });
     expect(titles.filter((entry) => entry.title !== null && VIETNAMESE.test(entry.title))).toEqual([
       { file: 'apps/web/index.html', title: 'Tự học' },
-      { file: 'apps/vault/index.html', title: 'Kho khoá tuhoc' },
     ]);
   });
 });
@@ -535,16 +526,16 @@ describe('cổng chặn chuỗi cứng', () => {
 /**
  * VÌ SAO CỔNG NÀY TỒN TẠI, và vì sao nó nằm ở đây chứ không ở gói kia.
  *
- * Catalog dịch được dùng bởi HAI origin: trang bài học, và **kho khoá** — nơi
- * người học dán key. `apps/vault/index.html` viết ra luật của chính nó:
+ * Catalog dịch RA ĐỜI cho HAI origin: trang bài học, và kho khoá — nơi người
+ * học dán key, và là origin mà mọi thứ nạp vào đều đọc được key, nên danh sách
+ * phụ thuộc ở đó là bề mặt tấn công chứ không phải tiện nghi. QĐ-1 chọn một gói
+ * dùng chung thay vì hai catalog trôi dạt, và ràng buộc làm cho lựa chọn ấy an
+ * toàn là *"chỉ hằng chuỗi và một hàm tra cứu thuần"*.
  *
- *   *"Nó cố ý trống rỗng: không router, không CSS framework, không React. Mọi
- *   thứ nạp vào origin này đều là mã có quyền đọc key, nên danh sách phụ thuộc
- *   ở đây là bề mặt tấn công chứ không phải tiện nghi."*
- *
- * QĐ-1 chọn một gói dùng chung thay vì hai catalog trôi dạt, và ràng buộc làm
- * cho lựa chọn ấy an toàn là *"chỉ hằng chuỗi và một hàm tra cứu thuần"*. **Một
- * ràng buộc không có cổng là một câu văn** — đây là cổng.
+ * Task 16 gỡ origin thứ hai, và CỔNG NÀY Ở LẠI. Ràng buộc đổi người thụ hưởng
+ * chứ không biến mất: `packages/course-format` và `tools/registry` cũng đọc
+ * được một gói không phụ thuộc gì, còn một catalog kéo theo React thì không.
+ * **Một ràng buộc không có cổng là một câu văn** — đây là cổng.
  *
  * Cổng sống ở `apps/web` chứ không ở `packages/i18n` vì một lý do trực tiếp:
  * một bộ test trong gói ấy cần `vitest` trong `devDependencies`, tức là gói
@@ -601,20 +592,18 @@ describe('packages/i18n — gói KHÔNG phụ thuộc gì', () => {
   });
 
   /**
-   * Gói này được HAI ứng dụng alias tới, và mỗi alias có hai nửa (Vite +
-   * TypeScript) mà không nửa nào ngụ ý nửa kia — đúng lằn ranh mà
-   * `tsconfig.app.json` đã ghi cho `@tuhoc/course-format`. Thiếu nửa `paths`
-   * của kho khoá thì `tsc -b` của nó đỏ; thiếu nửa `alias` thì bundle hỏng lúc
-   * dựng. Cả bốn được ghim ở đây để không nửa nào biến mất trong im lặng khi ai
-   * đó dọn cấu hình.
+   * Alias `@tuhoc/i18n` có HAI NỬA — `vite.config.ts` (lúc gói) và
+   * `tsconfig.app.json` (lúc kiểm kiểu) — và không nửa nào ngụ ý nửa kia, đúng
+   * lằn ranh mà `tsconfig.app.json` đã ghi cho `@tuhoc/course-format`. Thiếu
+   * nửa `paths` thì `tsc -b` đỏ; thiếu nửa `alias` thì bundle hỏng lúc dựng.
+   * Cả hai được ghim ở đây để không nửa nào biến mất trong im lặng khi ai đó
+   * dọn cấu hình.
+   *
+   * BỐN mục, nay HAI: kho khoá có hai nửa của riêng nó, và chúng đi cùng ứng
+   * dụng ấy ở Task 16.
    */
-  it('cả hai ứng dụng khai đủ HAI nửa của alias @tuhoc/i18n', () => {
-    const halves = [
-      'apps/web/vite.config.ts',
-      'apps/web/tsconfig.app.json',
-      'apps/vault/vite.config.ts',
-      'apps/vault/tsconfig.json',
-    ];
+  it('apps/web khai đủ HAI nửa của alias @tuhoc/i18n', () => {
+    const halves = ['apps/web/vite.config.ts', 'apps/web/tsconfig.app.json'];
     const missing = halves.filter((file) => !readFileSync(join(REPO_ROOT, file), 'utf-8').includes('@tuhoc/i18n'));
     expect(missing).toEqual([]);
   });
