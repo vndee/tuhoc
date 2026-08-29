@@ -19,17 +19,19 @@ from the deleted `s1.spec.ts`) and `widget.spec.ts` (the phase-1 security
 gate: a course widget runs inside `sandbox="allow-scripts"`, its origin is
 opaque, and `document.cookie` throws rather than returning the session).
 
-Two more sit in the directory but are **quarantined** in
-`apps/web/playwright.config.ts`'s `testIgnore`, each with its reason recorded
-at the top of the file itself: `p2.spec.ts` (annotations — its fixture
-expectations predate the server-side pivot) and `s2.spec.ts` (the AI/BYOK key
-vault — phase 2's own gate, over a subsystem phase 1 never touched).
+One more sits in the directory but is **quarantined** in
+`apps/web/playwright.config.ts`'s `testIgnore`, with its reason recorded at
+the top of the file itself: `p2.spec.ts` (annotations — its fixture
+expectations predate the server-side pivot).
 
 Gone with the features they covered: `import.spec.ts` and `s1.spec.ts` (the
 Import screen and the version-pinning update dialog, removed in `e58ef41`;
 see `fixtures/README.md` for what the two package-variant scenarios were),
-`s3.spec.ts`/`s4.spec.ts` (the registry catalog UI), and `viz.spec.ts` (the
-course-wide `viz.js` runtime, replaced by sandboxed widgets).
+`s3.spec.ts`/`s4.spec.ts` (the registry catalog UI), `viz.spec.ts` (the
+course-wide `viz.js` runtime, replaced by sandboxed widgets), and
+`s2.spec.ts` (the AI/BYOK key vault — it built, served and drove
+`apps/vault`, which Pha 2 Task 16 deleted; it was quarantined before it was
+deleted, and those are two different states).
 
 Two properties of this gate are deliberate and easy to lose:
 

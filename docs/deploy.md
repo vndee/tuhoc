@@ -79,7 +79,7 @@ That test is not an obstacle to route around. It is where this decision is recor
 2. **Replace `TestSessionCookieIsNeverSameSiteNone` with a test that gates the replacement** — i.e. one that fails if a state-changing route accepts a request without a valid Origin/token. Deleting it and putting nothing in its place returns the repo to the state C-3 described, where the string "CSRF" appeared nowhere in `apps/api` and no gate existed at all.
 3. Only then flip the attribute, and make `COOKIE_SECURE=true` mandatory rather than recommended.
 
-**Why the default is safe today:** the project owner owns `duy.dev` and the deployment is `tuhoc.duy.dev` + `api.duy.dev` (with `vault.duy.dev` for the key store). Those are different origins but the **same site**, so `SameSite=Lax` cookies flow between them and no code change is needed. C-3 is closed by that decision, not by new code — and the test above is what keeps the decision from being undone by accident.
+**Why the default is safe today:** the project owner owns `duy.dev` and the deployment is `tuhoc.duy.dev` + `api.duy.dev`. Those are different origins but the **same site**, so `SameSite=Lax` cookies flow between them and no code change is needed. (Phase 1 planned a third subdomain, `vault.duy.dev`, for the key store; Pha 2 Task 16 deleted the key store, so there are two deployables, not three — and the SameSite argument never depended on how many there were.) C-3 is closed by that decision, not by new code — and the test above is what keeps the decision from being undone by accident.
 
 This runbook's steps assume the custom-domain path. If you go the no-domain route, apply the code change above **before** relying on any authenticated flow, and treat every `CORS_ORIGIN`/`VITE_API_URL` value below as "the `*.pages.dev`/`*.onrender.com` hostname" instead of "the subdomain."
 
@@ -305,57 +305,32 @@ No `wrangler pages project validate` or equivalent config-lint command exists in
 
 ---
 
-## 5b. Deploy the key vault (`apps/vault`) — without this, AI does not exist
+## 5b. The key vault (`apps/vault`) — **RETIRED, there is no third deployable**
 
-**Đo 2026-08-22 (S2 Task 10):** bản dựng production **không có kho khoá**. `vite build` không đọc
-`.env.development`, và nếu `VITE_VAULT_ORIGIN` không được đặt thì `aiReady === false` và **nút AI
-không được vẽ ra**. Không có lỗi nào, không có cảnh báo nào — tính năng chỉ đơn giản không tồn tại.
-Tài liệu này trước đó **không nhắc `VITE_VAULT_ORIGIN` hay `apps/vault` một lần nào**, nên cả hệ
-thống con 2 không có đường ship.
+**The mechanism this section described no longer exists.** Phase 1 kept each reader's own AI provider
+key in their own browser, at a **separate origin** — a second Vite app (`apps/vault`) deployed as its
+own Cloudflare Pages project at `vault.<domain>`, embedded in a hidden iframe by the study app, with
+`VITE_VAULT_ORIGIN` (web side) and `VITE_APP_ORIGIN` (vault side) pointing at each other and
+`frame-ancestors` in `apps/vault/_headers` refusing every other embedder.
 
-### Vì sao phải là một origin RIÊNG, không phải một đường dẫn
+Pha 2 Task 16 deleted all of it. The AI agent runs on **our own server** against ONE DeepSeek account
+the platform pays for (`DEEPSEEK_API_KEY`, §4), and readers pay in credit — so there is no reader key
+left in the browser, nothing to isolate, and no second origin to deploy. **Deploy two things, not
+three**: the web app (§5) and the API (§4). Neither `VITE_VAULT_ORIGIN` nor `VITE_APP_ORIGIN` exists
+any more; setting either does nothing.
 
-Course hạng `interactive` **được phép chạy JS** (spec §1.2), và JS đó chạy **cùng trang** với ứng
-dụng. Trình duyệt cấm JS của origin này đọc `localStorage` của origin khác — đó là hàng rào thật,
-không phụ thuộc việc duyệt course có sót hay không. Một đường dẫn `/vault/` trên **cùng** cổng là
-**cùng origin** và **phá huỷ toàn bộ mục đích**.
+**Carried forward, because the reasoning outlived the subsystem.** The separate origin was not
+belt-and-braces: course packages rated `interactive` are **allowed to run JS** (spec §1.2) and that JS
+runs on the same page as the app, so a same-origin `/vault/` path would have been worth nothing. It was
+proven necessary, not theoretical — S1-F43 was a Critical hole where a `content`-rated package (the
+tier *believed* safe) ran arbitrary code through four gates. **Any future feature that puts a
+user-held secret back in the browser inherits that finding**, and inherits the conclusion with it: a
+path is not a boundary; an origin is.
 
-Điều này đã được chứng minh cần thiết chứ không phải lý thuyết: S1-F43 là một lỗ Critical trong đó
-gói hạng `content` — hạng *được cho là an toàn* — chạy được mã tuỳ ý qua bốn cổng. Nếu key nằm cùng
-origin, lỗ đó đã là lỗ mất key.
-
-### Các bước
-
-1. **Một Pages project thứ hai** cho `apps/vault`, tên miền `vault.<domain>`:
-   ```
-   Build command:     bun install && bun run build
-   Build output:      dist
-   Root directory:    apps/vault
-   ```
-2. **Biến môi trường của project kho khoá:**
-   ```
-   VITE_APP_ORIGIN = https://tuhoc.<domain>
-   ```
-   **Thiếu nó thì build HỎNG** (exit 1) chứ không ship một CSP sai — cố ý, xem `apps/vault/vite.config.ts`.
-   Giá trị này vào thẳng `frame-ancestors` trong `apps/vault/_headers`.
-3. **Biến môi trường của project web:**
-   ```
-   VITE_VAULT_ORIGIN = https://vault.<domain>
-   ```
-   Không có dấu `/` ở cuối, không phải `*` — cả hai đều bị `resolveVaultOrigin` từ chối, vì
-   `event.origin` **không bao giờ** có dấu `/` cuối và một origin sai làm mọi `postMessage` bị bỏ
-   trong im lặng.
-4. **Kiểm sau khi deploy** — ba việc, làm theo thứ tự:
-   - mở `https://tuhoc.<domain>`, vào trang cấu hình AI → **phải thấy khung kho khoá**;
-   - mở DevTools → Console, chạy `localStorage.length` **trên origin trang chính** sau khi đã cắm
-     key → key **không được** ở đó;
-   - thử nhúng `https://vault.<domain>` từ một origin khác → phải bị `frame-ancestors` chặn.
-
-### Chưa từng chạy trên hạ tầng thật
-
-`apps/vault/_headers` **chưa bao giờ được một Cloudflare Pages thật phục vụ**, và `apps/vault` **chưa
-có Pages project nào**. Phép đo hai chiều của `frame-ancestors` (origin được phép nhúng được; origin
-khác rơi vào `chrome-error://`) chạy **trên máy**, không chạy trên hạ tầng thật.
+Also carried forward, so it is not rediscovered as a surprise: `apps/vault/_headers` was **never served
+by a real Cloudflare Pages deployment** and `apps/vault` never had a Pages project. The two-way
+`frame-ancestors` measurement in the S2 report ran locally. Nothing in this repo has ever proven that
+`_headers` file works in production.
 
 ## 5c. Catalog registry — **đã nghỉ hưu, không còn `VITE_REGISTRY_URL`**
 

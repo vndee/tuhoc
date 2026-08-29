@@ -23,7 +23,9 @@ import (
 //     cross-site, which forces SameSite=None.
 //
 // The project owner already owns duy.dev and has settled on
-// tuhoc.duy.dev + vault.duy.dev. Same site. Lax is sufficient. C-3 is
+// tuhoc.duy.dev + api.duy.dev. Same site. Lax is sufficient. (Phase 1
+// planned a third subdomain for the key vault; Pha 2 Task 16 deleted it,
+// and this argument never depended on the count.) C-3 is
 // therefore closed by a DECISION, and this file is that decision written
 // down in the only form that survives six months: a test.
 //

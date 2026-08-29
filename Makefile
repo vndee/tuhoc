@@ -1,17 +1,13 @@
-.PHONY: dev-api dev-web dev-vault test-api test-web test-vault test-format test-cli test-registry pack courses test-e2e setup-extract test-extract extract check-publish
+.PHONY: dev-api dev-web test-api test-web test-format test-cli test-registry pack courses test-e2e setup-extract test-extract extract check-publish
 dev-api:  ; cd apps/api && go run ./cmd/api
 dev-web:  courses ; cd apps/web && bun run dev
-# apps/vault — KHO KHOÁ, chạy ở CỔNG 5174 trong khi dev-web chạy ở 5173.
-#
-# Hai cổng, không phải một đường dẫn `/vault/` trên cùng cổng: origin bao gồm cả
-# cổng, nên `http://localhost:5173` và `http://localhost:5174` là hai origin khác
-# nhau và trình duyệt cách ly `localStorage` giữa chúng. Đó chính là hàng rào mà
-# hệ thống con này dựng lên — một đường dẫn trên cùng cổng sẽ là CÙNG origin và
-# phá huỷ toàn bộ mục đích.
-#
-# Cần cả hai chạy song song khi phát triển tính năng AI: `make dev-web` ở một
-# terminal, `make dev-vault` ở terminal khác.
-dev-vault: ; cd apps/vault && bun run dev
+# `dev-vault` ĐÃ GỠ (Pha 2, Task 16). Nó chạy `apps/vault` — KHO KHOÁ — ở cổng
+# 5174 bên cạnh `dev-web` ở 5173, và hai cổng là hai origin, tức trình duyệt
+# cách ly `localStorage` giữa chúng: đó là toàn bộ hàng rào của hệ thống con
+# ấy. Pha 2 chuyển AI lên máy chủ và trả bằng credit, nên không còn key nào của
+# người học để cách ly, không còn ứng dụng thứ hai, và làm tính năng AI nay chỉ
+# cần MỘT terminal: `make dev-web` (cộng `make dev-api`).
+
 # gofmt là một cổng, không phải một thói quen. Hai tệp đã lệch định dạng và
 # không ai biết, vì `make` chưa từng hỏi — một trong hai do chính điều phối viên
 # thêm vào. `gofmt -l` in ra TÊN TỆP lệch và thoát 0 dù có lệch hay không, nên
@@ -29,7 +25,6 @@ test-api: gofmt-check ; cd apps/api && go test ./...
 # con 3, và lý do là một phép đo chứ không phải sự đồng bộ hình thức với bốn
 # target dưới đây:
 #
-#   apps/vault           → typecheck
 #   packages/course-format → typecheck
 #   tools/tuhoc-cli      → typecheck
 #   tools/registry       → typecheck
@@ -51,45 +46,20 @@ test-api: gofmt-check ; cd apps/api && go test ./...
 # `tsc -b`, KHÔNG `tsc --noEmit`: `--noEmit` không đi xuống project reference và
 # đã tạo ra một cổng rỗng, luôn xanh, trong repo này (docs/carried-forward.md §2).
 test-web: courses ; cd apps/web && bun run typecheck && bun run test
-# apps/vault — kho khoá ở origin riêng. BA cổng: `tsc -b` cho kiểu, `oxlint`
-# cho mã, vitest cho hành vi. KHÔNG phụ thuộc `courses`: kho khoá không bao giờ
-# chạm tới nội dung course — nó chỉ giữ key và gọi nhà cung cấp.
+# `test-vault` ĐÃ GỠ (Pha 2, Task 16), cùng `apps/vault`. Nó chạy BA cổng trên
+# kho khoá — `tsc -b`, `oxlint` (`no-console` mức ERROR cho mã sản phẩm, vì
+# "key không bao giờ vào log" là ràng buộc CÓ TÊN của hệ thống con ấy), và
+# vitest 185 bài — cộng một nửa THỨ TƯ đáng nhắc lại vì nó là bài học chung chứ
+# không phải chi tiết của kho khoá:
 #
-# `oxlint` được thêm ở Task 6 của hệ thống con 2, và lý do nằm trong một câu mà
-# ba báo cáo liên tiếp đều ghi lại: **thư mục chạm tới key là thư mục có ít cổng
-# nhất repo** — `apps/web` chạy lint, `apps/vault` thì không. Cấu hình ở
-# `apps/vault/.oxlintrc.json` hẹp có chủ ý; luật đáng kể nhất là `no-console`
-# bật mức ERROR cho mã sản phẩm, vì "key không bao giờ vào log" là một ràng buộc
-# CÓ TÊN của hệ thống con này mà cho tới nay chỉ có bẫy trong test canh. Một
-# `console.warn` để gỡ lỗi là đủ để rò key ra DevTools của bất kỳ ai mở khung
-# kho khoá, và nó là kiểu dòng mã được thêm vào lúc 2 giờ sáng rồi ở lại.
-# Tệp test và `scripts/` được miễn: `providers.test.ts` CỐ Ý gọi `console.warn`
-# với một key giả để chứng minh bẫy console của chính nó còn sống.
-#
-# `tsc -b`, KHÔNG phải `tsc --noEmit`, vì lý do đã ghi ở test-format và trong
-# docs/carried-forward.md §2. Đã kiểm là ĐỎ được chứ không giả định: chèn
-# `const mutantA: number = "chuoi"` vào src/main.ts → exit 1, và vào
-# src/protocol.test.ts → exit 1 (nên tệp test cũng được kiểm kiểu).
-#
-# NỬA THỨ BA — `assert-tests-ran.mjs` — là thứ khác với hai mục trên, và nó có
-# lý do đo được. Vitest 4.1.11, đo trong chính thư mục này ngày 2026-08-22:
-#
-#   · include không khớp tệp nào  → vitest thoát 1  (cổng tự đỏ, tốt)
-#   · MỌI describe bị `.skip`     → vitest thoát 0  ("Tests 8 skipped (8)")
-#
-# Trường hợp thứ hai là cổng mù thứ SÁU đang chờ xảy ra, cùng hình dạng với năm
-# cái đã ghi trong docs/carried-forward.md. Script đọc `numPassedTests` từ
-# reporter json và đỏ khi con số đó bằng 0 — hoặc khi có bất kỳ test nào bị
-# `.skip`/`.todo`, vì ở kho khoá thì một bài kiểm bị tắt lặng lẽ (ví dụ bài
-# "origin lạ không gây ra bất kỳ ảnh hưởng nào") là thứ không được phép trôi
-# qua. `numTotalTests` KHÔNG dùng được: ở trường hợp skip nó vẫn bằng 8.
-#
-# `rm -f` tệp tóm tắt TRƯỚC khi chạy là có chủ ý: nếu ai đó gỡ cờ
-# `--reporter=json`, cổng đỏ vì thiếu tệp thay vì đọc lại kết quả lần trước.
-#
-# Thư mục này có node_modules riêng; repo không có npm workspaces và không có
-# package.json ở gốc. Chạy `cd apps/vault && bun install` một lần.
-test-vault: ; cd apps/vault && rm -f node_modules/.tmp/vitest-summary.json && bun run typecheck && bun run lint && bunx vitest run --reporter=default --reporter=json --outputFile.json=node_modules/.tmp/vitest-summary.json && node scripts/assert-tests-ran.mjs node_modules/.tmp/vitest-summary.json
+#   `scripts/assert-tests-ran.mjs`. Đo trên vitest 4.1.11 ngày 2026-08-22: khi
+#   `include` không khớp tệp nào, vitest thoát 1 (cổng tự đỏ, tốt); nhưng khi
+#   MỌI `describe` bị `.skip`, nó thoát **0** ("Tests 8 skipped (8)"). Script
+#   ấy đọc `numPassedTests` và đỏ khi bằng 0 hoặc khi có bất kỳ bài nào bị
+#   `.skip`/`.todo` — `numTotalTests` KHÔNG dùng được, ở ca skip nó vẫn bằng 8.
+#   Không target nào khác trong tệp này có nửa ấy; nếu một cổng đã tắt lặng lẽ
+#   ở đâu đó khác, đây là hình dạng của thứ bắt được nó.
+
 # packages/course-format — the course package rule set shared by the packaging
 # CLI, registry CI and the browser importer. Two gates, both required: vitest
 # for behaviour, and `tsc -b` for types.
@@ -210,14 +180,15 @@ pack: ; bun tools/tuhoc-cli/src/index.ts pack $(DIR)
 # Cài dependency ở MỌI nơi có package.json riêng. Repo này không dùng workspace,
 # nên mỗi thư mục tự quản `node_modules` — và một worktree mới KHÔNG có cái nào.
 #
-# Đã cắn NĂM lần, mỗi lần trông như một hồi quy khác nhau:
-#   thiếu apps/vault             -> test-vault đỏ vì @types/node
+# Đã cắn NĂM lần, mỗi lần trông như một hồi quy khác nhau (lần thứ năm là
+# `apps/vault`, `test-vault` đỏ vì thiếu `@types/node` — cả thư mục lẫn target
+# đã bị gỡ ở Task 16, nhưng bài học thì không):
 #   thiếu apps/web               -> test-web không chạy
 #   thiếu packages/course-format -> test-web thoát 2, lỗi resolve `parse5`
 #   thiếu tools/tuhoc-cli        -> test-cli thoát 127, `tsc: command not found`
 #   thiếu tools/registry         -> test-registry thoát 127, cùng lỗi
 # Không cái nào tự nói ra nguyên nhân thật.
-DEP_DIRS = apps/web apps/vault packages/course-format tools/tuhoc-cli tools/registry
+DEP_DIRS = apps/web packages/course-format tools/tuhoc-cli tools/registry
 deps:
 	@for d in $(DEP_DIRS); do printf '  %-28s ' "$$d"; (cd $$d && bun install --silent 2>&1 | tail -1) || exit 1; done
 
