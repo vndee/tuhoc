@@ -1,13 +1,14 @@
 # `@tuhoc/i18n` — catalog dùng chung, KHÔNG phụ thuộc gì
 
-Hai ứng dụng đọc gói này: `apps/web` (trang bài học) và `apps/vault` (**kho khoá**,
-một origin riêng giữ bí mật của người học).
+Một ứng dụng đọc gói này hôm nay: `apps/web` (trang bài học). Nó ra đời cho **hai** —
+Pha 1 có thêm một kho khoá ở origin riêng giữ bí mật của người học, và ràng buộc mà
+gói này phải sống theo đến từ đó: mọi thứ nạp vào một origin giữ key đều là mã có
+quyền đọc key, nên **danh sách phụ thuộc ở đó là bề mặt tấn công** chứ không phải
+tiện nghi.
 
-`apps/vault/index.html` viết ra ràng buộc mà gói này phải sống theo:
-
-> *"Nó cố ý trống rỗng: không router, không CSS framework, không React. Mọi thứ nạp
-> vào origin này đều là mã có quyền đọc key, nên **danh sách phụ thuộc ở đây là bề
-> mặt tấn công** chứ không phải tiện nghi."*
+Task 16 gỡ kho khoá. Gói vẫn đứng riêng, và không phải vì quán tính: `packages/
+course-format` và `tools/registry` đọc được một gói không phụ thuộc gì mà không kéo
+theo React — một catalog nằm trong `apps/web/src` thì không.
 
 ⇒ Gói này chỉ chứa **hằng chuỗi và một hàm tra cứu thuần**. Không React, không DOM,
 không I/O, **không một phụ thuộc runtime nào** — `package.json` khai `dependencies`
@@ -24,7 +25,6 @@ và `devDependencies` **rỗng**, nên thư mục này không có `node_modules`
    `import 'react'` làm cổng đỏ còn một chú thích nhắc tới React thì không;
 3. thư mục này **không được có `node_modules`**.
 
-Kiểu được kiểm miễn phí: cả `apps/web` lẫn `apps/vault` alias `@tuhoc/i18n` vào
-`src/index.ts`, nên `tsc -b` của **hai** app kéo gói này vào chương trình. Một khoá
-thiếu ở `messages/en.ts` là **lỗi biên dịch ở cả hai nơi**, không phải một chuỗi rơi
-ra lúc chạy.
+Kiểu được kiểm miễn phí: `apps/web` alias `@tuhoc/i18n` vào `src/index.ts`, nên
+`tsc -b` của app kéo gói này vào chương trình. Một khoá thiếu ở `messages/en.ts` là
+**lỗi biên dịch**, không phải một chuỗi rơi ra lúc chạy.

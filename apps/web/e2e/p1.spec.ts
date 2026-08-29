@@ -15,7 +15,7 @@ const CHAPTER_ID = 'c2';
 /** `data-widget` mà chương c2 tham chiếu — bộ đếm mẫu widget.spec.ts cũng lái. */
 const CHAPTER_WIDGET = 'dem-so';
 
-/** Nơi API THẬT lắng nghe — cùng phép tính với `playwright.config.ts`, `s2.spec.ts` (`s3`/`s4.spec.ts` từng có bản riêng của phép tính này nữa — cả hai đã bị xoá ở Task 16 của server-side pivot). */
+/** Nơi API THẬT lắng nghe — cùng phép tính với `playwright.config.ts`. (`s3`/`s4.spec.ts` từng có bản riêng của phép tính này nữa; cả hai đã bị xoá ở Task 16 của server-side pivot. Bản `s2.spec.ts` GỐC — Pha 1, kho khoá — cũng có một bản riêng, xoá cùng tệp ở Task 16 của Pha 2; bản `s2.spec.ts` HIỆN TẠI, viết lại quanh credit ở Task 18, có bản riêng CỦA CHÍNH NÓ — xem tệp đó — nên phép tính này hiện sống ở BA nơi, không phải một.) */
 const API_ORIGIN = (
   process.env.VITE_API_URL ?? `http://localhost:${process.env.TUHOC_E2E_API_PORT ?? '8089'}`
 ).replace(/\/+$/, '');

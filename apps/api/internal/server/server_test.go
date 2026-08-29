@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -245,4 +247,80 @@ func TestOldPerUserCourseRoutesAreGone(t *testing.T) {
 			t.Errorf("GET %s: want 404 got %d", target, resp.StatusCode)
 		}
 	}
+}
+
+// captureStdlibLog points the standard log package at a buffer for one
+// test.
+//
+// log.SetOutput, not slog: server.go announces a switched-off feature with
+// log.Printf (the "discussions disabled" line this pattern is copied from),
+// and log.SetOutput WINS over whatever handlerWriter a previous test's
+// slog.SetDefault may have installed process-wide — see
+// provider_key_never_leaks_test.go's own note on that one-way door. Calling
+// it here rather than relying on the default keeps this test independent of
+// which other test in this package ran first.
+func captureStdlibLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	log.SetOutput(buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	return buf
+}
+
+// TestStartupWarnsWhenAIProviderKeysAreMissing is A4 of the whole-branch
+// review.
+//
+// THE MEASURED HOLE: config.Load reads DEEPSEEK_API_KEY and BRAVE_API_KEY
+// with a bare os.Getenv — no default, no warning — New nils out the search
+// provider silently, and cmd/api/main.go only ever checks DATABASE_URL. A
+// deployment that never set the keys therefore boots CLEAN and dies at the
+// moment a learner presses "Hỏi", with a message about the provider
+// failing. Two states that need different responses from an operator — a
+// PERMANENT misconfiguration and a TEMPORARY provider outage — were
+// indistinguishable from outside.
+//
+// The correct pattern was already in this file, four hundred lines up:
+// `log.Printf("server: discussions disabled: %v", err)`. Startup is the
+// only moment where "this is not configured" is knowable for certain and
+// free to say.
+func TestStartupWarnsWhenAIProviderKeysAreMissing(t *testing.T) {
+	t.Run("no keys at all — both features named, at startup", func(t *testing.T) {
+		logs := captureStdlibLog(t)
+		New(config.Config{}, Deps{LogOutput: io.Discard})
+
+		got := logs.String()
+		if !strings.Contains(got, "DEEPSEEK_API_KEY") {
+			t.Errorf("khởi động không cảnh báo về DEEPSEEK_API_KEY — người vận hành chỉ "+
+				"biết mình cấu hình thiếu khi một người học bấm Hỏi:\n%s", got)
+		}
+		if !strings.Contains(got, "BRAVE_API_KEY") {
+			t.Errorf("khởi động không cảnh báo về BRAVE_API_KEY:\n%s", got)
+		}
+	})
+
+	t.Run("cả hai key đã đặt — không cảnh báo nào", func(t *testing.T) {
+		logs := captureStdlibLog(t)
+		New(config.Config{
+			DeepSeekAPIKey: "sk-not-a-real-key",
+			BraveAPIKey:    "brave-not-a-real-key",
+		}, Deps{LogOutput: io.Discard})
+
+		got := logs.String()
+		if strings.Contains(got, "DEEPSEEK_API_KEY") || strings.Contains(got, "BRAVE_API_KEY") {
+			t.Errorf("một bản dựng cấu hình ĐỦ không được cảnh báo gì — cảnh báo luôn "+
+				"hiện là cảnh báo không ai đọc:\n%s", got)
+		}
+	})
+
+	// Cảnh báo tuyệt đối không được mang GIÁ TRỊ key. Đây là cùng ràng buộc
+	// #1 mà cả tệp này canh; một dòng khởi động "hữu ích" in ra key là đúng
+	// hình dạng rò rỉ mà cổng cấu trúc ở trên tồn tại để bắt.
+	t.Run("cảnh báo không bao giờ mang giá trị key", func(t *testing.T) {
+		const sentinel = "sk-SENTINEL-startup-3f9a"
+		logs := captureStdlibLog(t)
+		New(config.Config{DeepSeekAPIKey: sentinel}, Deps{LogOutput: io.Discard})
+		if strings.Contains(logs.String(), sentinel) {
+			t.Fatalf("log khởi động mang GIÁ TRỊ key: %s", logs.String())
+		}
+	})
 }

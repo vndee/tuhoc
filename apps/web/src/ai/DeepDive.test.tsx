@@ -1,18 +1,18 @@
 /// <reference types="node" />
 import { act, render, screen } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
+import { setupServer } from 'msw/node';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { useEffect, useRef, useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { normalizeContainer } from '../annotations/normalize';
 import { SelectionToolbar, type ToolbarStore } from '../annotations/SelectionToolbar';
 import type { ChapterContent } from '../annotations/useAnnotations';
-import { VaultFrameContext } from '../shell/VaultFrame';
 import { DeepDive } from './DeepDive';
 import type { SelectionExcerpt } from './prompts';
-import { VaultClient } from './vaultClient';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 
 /**
@@ -26,14 +26,14 @@ import { LanguageProvider } from '../i18n/LanguageProvider';
  * Nên tệp này chạy **KaTeX THẬT** (`packages/course-kit/vendor/`), không phải
  * một fixture viết tay: fixture là một *giả thuyết* về đầu ra của KaTeX, và
  * một giả thuyết sai làm cả bộ kiểm xanh trong khi tính năng hỏng. Và nó đi
- * **qua giao diện thật** — bôi đen, bấm nút — tới tận thông điệp `postMessage`
- * rời khỏi trang, vì ruling S1-F29 sinh ra từ đúng chỗ này: bốn cổng đơn vị
- * không hỏi được câu *"người dùng có bấm tới được không"*.
+ * **qua giao diện thật** — bôi đen, bấm nút — tới tận thân request `POST
+ * /ai/chat` THẬT rời khỏi trang (Pha 1: một thông điệp `postMessage` — xem
+ * `git log` tệp này), vì ruling S1-F29 sinh ra từ đúng chỗ này: bốn cổng đơn
+ * vị không hỏi được câu *"người dùng có bấm tới được không"*.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const VENDOR = resolve(HERE, '../../../..', 'packages/course-kit/vendor');
-const VAULT = 'http://localhost:5174';
 const ATOMIC = '￼';
 const TEX = '\\tfrac{1}{2}\\varepsilon^2';
 
@@ -97,10 +97,38 @@ const CORRECT_QUOTE = `Chặn trên là $${TEX}$ cho mỗi phép cộng.`;
 /** Chữ của cây glyph mà KaTeX vẽ ra — dấu vân tay của một phép đọc DOM ngây thơ. */
 const GLYPH_TEXT = '12ε2';
 
-const live: VaultClient[] = [];
-afterEach(() => {
-  while (live.length) live.pop()!.dispose();
-});
+/**
+ * PHA 2: lời nhắc rời trang qua `POST /ai/chat` thật (chặn bằng msw), không
+ * còn `postMessage` vào kho khoá. Xem `AskPanel.test.tsx`'s doc comment cho
+ * lý do dùng `act(async () => {…})` + `flush()` thay vì `waitFor`.
+ */
+function flush(): Promise<void> {
+  return new Promise((r) => setTimeout(r, 0));
+}
+
+function controllableSSE() {
+  const encoder = new TextEncoder();
+  let ctrl!: ReadableStreamDefaultController<Uint8Array>;
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) {
+      ctrl = c;
+    },
+  });
+  return {
+    stream,
+    event: (kind: string, payload: { text?: string; code?: string }) => {
+      ctrl.enqueue(encoder.encode(`event: ${kind}\ndata: ${JSON.stringify(payload)}\n\n`));
+    },
+    close: () => {
+      ctrl.close();
+    },
+  };
+}
+
+const server = setupServer();
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
 
 function stubStore(): ToolbarStore {
   return { create: vi.fn(), list: [], orphans: [] };
@@ -226,16 +254,14 @@ describe('SelectionToolbar — nút "Đào sâu"', () => {
 });
 
 describe('DeepDive — LỜI NHẮC RỜI KHỎI TRANG phải mang LaTeX gốc', () => {
-  it('thông điệp `chat` gửi vào kho khoá chứa mã LaTeX, không chứa ký tự rỗng', async () => {
-    const post = vi.fn();
-    const client = new VaultClient({
-      lang: 'vi',
-      vaultOrigin: VAULT,
-      target: { postMessage: post } as unknown as Window,
-      timeoutMs: 10_000,
-    });
-    live.push(client);
-
+  /**
+   * PHA 2: không còn vai `system` riêng trên dây (`chatRequest` phía Go chỉ
+   * có `question`/`course_slug` — xem `useAI.ts`'s doc comment). Ngữ cảnh mà
+   * `deepDiveSystemPrompt` dựng (khoá học, chương, LaTeX gốc của đoạn bôi
+   * đen) nay GỘP VÀO ĐẦU `question` gửi đi — bài này đo đúng chỗ đó thay vì
+   * một `message` vai `system` không còn tồn tại.
+   */
+  it('question gửi đi chứa mã LaTeX gốc của đoạn bôi đen, không chứa ký tự rỗng', async () => {
     // Lấy đoạn trích qua ĐÚNG đường người dùng đi: bôi đen rồi bấm nút.
     let captured: SelectionExcerpt | null = null;
     const { unmount } = render(
@@ -252,70 +278,51 @@ describe('DeepDive — LỜI NHẮC RỜI KHỎI TRANG phải mang LaTeX gốc',
     unmount();
     expect(captured).not.toBeNull();
 
+    const requests: { question: string }[] = [];
+    const sse = controllableSSE();
+    server.use(
+      http.post('/ai/chat', async ({ request }) => {
+        requests.push((await request.json()) as { question: string });
+        return new HttpResponse(sse.stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }),
+    );
+
     render(
       <LanguageProvider><MemoryRouter>
-        <VaultFrameContext.Provider
-          value={{ client, origin: VAULT, expanded: false, setExpanded: () => {} }}
-        >
-          <DeepDive
-            courseTitle="Số dấu phẩy động"
-            chapterTitle="Sai số làm tròn"
-            excerpt={captured!}
-            onClose={() => {}}
-          />
-        </VaultFrameContext.Provider>
+        <DeepDive
+          courseTitle="Số dấu phẩy động"
+          chapterTitle="Sai số làm tròn"
+          excerpt={captured!}
+          onClose={() => {}}
+        />
       </MemoryRouter></LanguageProvider>,
     );
 
-    // Panel hỏi trạng thái trước, rồi `autoAsk` gửi lời nhắc.
-    const probeId = (post.mock.calls[0][0] as { id: string }).id;
+    // `autoAsk` gửi lời nhắc ngay khi mở — không còn vòng dò trước
+    // (`AskPanel.tsx`'s doc comment).
     await act(async () => {
-      window.dispatchEvent(
-        new MessageEvent('message', {
-          origin: VAULT,
-          data: {
-            v: 1,
-            id: probeId,
-            kind: 'status',
-            configured: true,
-            providerId: 'deepseek',
-            model: 'deepseek-chat',
-          },
-        }),
-      );
-    });
-    const askId = (post.mock.calls[1][0] as { id: string }).id;
-    await act(async () => {
-      window.dispatchEvent(
-        new MessageEvent('message', {
-          origin: VAULT,
-          data: {
-            v: 1,
-            id: askId,
-            kind: 'status',
-            configured: true,
-            providerId: 'deepseek',
-            model: 'deepseek-chat',
-          },
-        }),
-      );
+      await flush();
     });
 
-    const chat = post.mock.calls[2][0] as {
-      kind: string;
-      messages: { role: string; content: string }[];
-    };
-    expect(chat.kind).toBe('chat');
-    const system = chat.messages.find((m) => m.role === 'system')!.content;
-    expect(system).toContain(CORRECT_QUOTE);
-    expect(system).not.toContain(ATOMIC);
-    expect(system).not.toContain(GLYPH_TEXT);
-    expect(system.split(TEX)).toHaveLength(2);
-    // Và `targetOrigin` vẫn tường minh — Global Constraint, kiểm ở mọi đường mới.
-    expect(post.mock.calls[2][1]).toBe(VAULT);
+    expect(requests).toHaveLength(1);
+    const { question } = requests[0];
+    expect(question).toContain(CORRECT_QUOTE);
+    expect(question).not.toContain(ATOMIC);
+    expect(question).not.toContain(GLYPH_TEXT);
+    expect(question.split(TEX)).toHaveLength(2);
+
+    await act(async () => {
+      sse.event('done', {});
+      sse.close();
+      await flush();
+    });
   });
 
   it('hiện lại ĐÚNG đoạn người học đã bôi đen, để họ thấy panel đang nói về cái gì', () => {
+    // `autoAsk` (dùng bên trong `AskPanel`) vẫn bắn một request thật ngay khi
+    // mở — bài này không quan tâm nó ra sao, chỉ cần một hồi đáp hợp lệ để
+    // `onUnhandledRequest: 'error'` không ném.
+    server.use(http.post('/ai/chat', () => HttpResponse.json({ code: 'Internal', error: 'x' }, { status: 500 })));
     const excerpt: SelectionExcerpt = {
       quote: `Chặn trên là $${TEX}$ cho mỗi phép cộng.`,
       before: 'Sai số',
@@ -323,13 +330,51 @@ describe('DeepDive — LỜI NHẮC RỜI KHỎI TRANG phải mang LaTeX gốc',
     };
     render(
       <LanguageProvider><MemoryRouter>
-        <VaultFrameContext.Provider
-          value={{ client: null, origin: null, expanded: false, setExpanded: () => {} }}
-        >
-          <DeepDive courseTitle="K" chapterTitle="C" excerpt={excerpt} onClose={() => {}} />
-        </VaultFrameContext.Provider>
+        <DeepDive courseTitle="K" chapterTitle="C" excerpt={excerpt} onClose={() => {}} />
       </MemoryRouter></LanguageProvider>,
     );
     expect(screen.getByTestId('ai-quote')).toHaveTextContent(TEX);
+  });
+
+  /**
+   * Important 3, review vòng 1: `courseSlug` phải tới được tận `AskPanel`
+   * qua `DeepDive`, không dừng lại ở biên `DeepDiveProps`.
+   */
+  it('courseSlug truyền vào DeepDive đi tới TẬN course_slug trên dây', async () => {
+    const requests: { course_slug: string }[] = [];
+    const sse = controllableSSE();
+    server.use(
+      http.post('/ai/chat', async ({ request }) => {
+        requests.push((await request.json()) as { course_slug: string });
+        return new HttpResponse(sse.stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }),
+    );
+    const excerpt: SelectionExcerpt = {
+      quote: `Chặn trên là $${TEX}$ cho mỗi phép cộng.`,
+      before: 'Sai số',
+      after: '',
+    };
+    render(
+      <LanguageProvider><MemoryRouter>
+        <DeepDive
+          courseTitle="Số dấu phẩy động"
+          chapterTitle="Sai số làm tròn"
+          courseSlug="so-dau-phay-dong"
+          excerpt={excerpt}
+          onClose={() => {}}
+        />
+      </MemoryRouter></LanguageProvider>,
+    );
+    await act(async () => {
+      await flush();
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0].course_slug).toBe('so-dau-phay-dong');
+
+    await act(async () => {
+      sse.event('done', {});
+      sse.close();
+      await flush();
+    });
   });
 });

@@ -116,10 +116,15 @@ func (h *Handler) Put(c *fiber.Ctx) error {
 //
 // Ratings exist only for courses published on the registry. Nothing in
 // this API can verify that, because the API never fetches the registry
-// index — apps/api product code makes no outbound calls at all, a promise
-// enforced by internal/server/no_key_transit_test.go. So a vote can be
-// stored against any id a client sends, including the id of a course that
-// is private or was imported from a file.
+// index. So a vote can be stored against any id a client sends, including
+// the id of a course that is private or was imported from a file.
+//
+// This used to read "apps/api product code makes no outbound calls at all,
+// a promise enforced by internal/server/no_key_transit_test.go". Neither
+// half survived Pha 2: that file was deleted at Task 11, and apps/api now
+// calls DeepSeek, Brave and GitHub. The premise this handler depends on is
+// only the narrow one — NOTHING READS THE REGISTRY INDEX — and it holds
+// because no code does it, not because a gate forbids it.
 //
 // That is harmless for exactly as long as no route enumerates. The ids
 // this endpoint answers about are ids the caller already had — they come

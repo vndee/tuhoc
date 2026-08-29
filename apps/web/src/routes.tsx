@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AdminCourses } from './admin/AdminCourses';
+import { AdminCredits } from './admin/AdminCredits';
 import { AdminGuard } from './admin/AdminGuard';
+import { AdminPricing } from './admin/AdminPricing';
 import { RequireAuth } from './auth/RequireAuth';
 import { CourseHome } from './pages/CourseHome';
 import { Courses } from './pages/Courses';
@@ -99,10 +101,15 @@ export function AppRoutes() {
       />
 
       {/*
-        `/settings` là ĐIỂM VÀO của kho khoá — chỗ khung được mở rộng để người
-        dùng dán key và bấm xác nhận đầu phiên. Nay vào từ MENU TÀI KHOẢN ở đáy
-        thanh bên, và "Trợ lý AI" là một mục BÊN TRONG nó, không phải một nơi
-        chốn ngang hàng với "Khoá học".
+        `/settings` TỪNG là điểm vào của kho khoá — chỗ khung `<iframe>` được
+        mở rộng để người dùng dán key và bấm xác nhận đầu phiên. Kho khoá đã bị
+        gỡ ở Task 16 (`apps/vault` không còn tồn tại), nên mục "Trợ lý AI" ở
+        đây nay là số dư credit cộng cấu hình agent (`CreditPanel.tsx`,
+        `AgentConfigPanel.tsx`) — không còn key nào để dán.
+
+        Điều KHÔNG đổi, và là lý do chú thích này vẫn đứng ở đây: `/settings`
+        vào từ MENU TÀI KHOẢN ở đáy thanh bên, và "Trợ lý AI" là một mục BÊN
+        TRONG nó, không phải một nơi chốn ngang hàng với "Khoá học".
       */}
       <Route
         path="/settings"
@@ -161,6 +168,29 @@ export function AppRoutes() {
         element={
           <AdminGuard>
             <AdminCourses />
+          </AdminGuard>
+        }
+      />
+
+      {/*
+        Task 17 — `/admin/credits` ("Người dùng & credit") and
+        `/admin/pricing` ("Bảng giá & prompt nền"), spec §7's other two Pha
+        2 CMS screens. Same `AdminGuard` as `/admin` above, for the
+        identical reason: `role !== 'admin'` bounces to `/`, not `/login`.
+      */}
+      <Route
+        path="/admin/credits"
+        element={
+          <AdminGuard>
+            <AdminCredits />
+          </AdminGuard>
+        }
+      />
+      <Route
+        path="/admin/pricing"
+        element={
+          <AdminGuard>
+            <AdminPricing />
           </AdminGuard>
         }
       />

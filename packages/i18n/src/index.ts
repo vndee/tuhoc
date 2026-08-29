@@ -4,31 +4,33 @@ import { vi, type Messages } from './messages/vi';
 export type { Messages };
 
 /**
- * CATALOG DÙNG CHUNG CỦA HAI ỨNG DỤNG — và một hàm tra cứu THUẦN. Không gì khác.
+ * CATALOG DÙNG CHUNG — và một hàm tra cứu THUẦN. Không gì khác.
  *
- * Hai ứng dụng đọc tệp này: `apps/web` (trang bài học) và `apps/vault` (kho khoá,
- * một origin riêng giữ key của người học). Chính ứng dụng thứ hai là lý do gói
- * này không được phép có phụ thuộc nào — `apps/vault/index.html` viết ra ràng
- * buộc bằng chữ của chính nó:
+ * MỘT ứng dụng đọc tệp này hôm nay (`apps/web`), và gói vẫn ĐỨNG RIÊNG. Nó ra
+ * đời cho HAI: Pha 1 có thêm một kho khoá ở origin riêng giữ key của người
+ * học, và chính ứng dụng thứ hai ấy là lý do gói này không được phép có phụ
+ * thuộc nào — mọi thứ nạp vào origin giữ key đều là mã đọc được key, nên danh
+ * sách phụ thuộc ở đó là bề mặt tấn công chứ không phải tiện nghi. Ba đường đã
+ * được cân (QĐ-1 trong kế hoạch): kho khoá nhập thẳng `apps/web/src/i18n`
+ * (ghép nó vào cây nguồn của trang chính — chính thứ kiến trúc kia sinh ra để
+ * tách), một catalog thứ hai riêng cho nó (hai bản sẽ trôi khác nhau; repo này
+ * đã đo *"một bộ luật, ba bản, bất đồng 7/12 hàng"*), hoặc gói dùng chung này.
  *
- *   *"Mọi thứ nạp vào origin này đều là mã có quyền đọc key, nên danh sách phụ
- *   thuộc ở đây là bề mặt tấn công chứ không phải tiện nghi."*
+ * Task 16 gỡ kho khoá, và gói này KHÔNG bị gộp ngược vào `apps/web/src/i18n`
+ * theo. Lý do là thứ nó mua được đã tách khỏi lý do nó ra đời: `packages/
+ * course-format` và `tools/registry` đọc được một gói không phụ thuộc gì mà
+ * không kéo theo React, còn một catalog nằm trong `apps/web/src` thì không.
+ * Gộp lại là một thay đổi kiến trúc có cái giá riêng, không phải hệ quả tự
+ * động của việc bớt một người đọc.
  *
- * Ba đường đã được cân (QĐ-1 trong kế hoạch): vault nhập thẳng
- * `apps/web/src/i18n` (ghép kho khoá vào cây nguồn của trang chính — chính thứ
- * kiến trúc này sinh ra để tách), một catalog thứ hai riêng cho vault (hai bản
- * sẽ trôi khác nhau; repo này đã đo *"một bộ luật, ba bản, bất đồng 7/12 hàng"*),
- * hoặc gói dùng chung này.
- *
- * Ràng buộc làm cho lựa chọn ấy an toàn — **không React, không DOM, không I/O,
+ * Ràng buộc làm cho gói này an toàn — **không React, không DOM, không I/O,
  * không phụ thuộc runtime nào** — có CỔNG, không phải chỉ có chú thích này. Xem
  * `apps/web/src/i18n/i18n.test.ts` → `describe('packages/i18n — gói KHÔNG phụ
- * thuộc gì')`. Không có cổng ấy thì lựa chọn này chỉ là lời hứa.
+ * thuộc gì')`. Không có cổng ấy thì nó chỉ là lời hứa.
  *
  * Hệ quả cụ thể của "không DOM": `t()` trả về `string`. Câu có thẻ nằm GIỮA
- * chừng (`<strong>kho khoá</strong>`) đi qua `tNode()` ở `apps/web/src/i18n/` —
- * hàm ấy cần React, nên nó không sống được ở đây, và đó là đúng chỗ của nó: kho
- * khoá dựng DOM bằng tay và không có React để nhận `ReactNode`.
+ * chừng (`<strong>một đoạn trích</strong>`) đi qua `tNode()` ở
+ * `apps/web/src/i18n/` — hàm ấy cần React, nên nó không sống được ở đây.
  */
 
 /**
@@ -76,8 +78,7 @@ export type Translate = <K extends MessageKey>(key: K, ...args: MessageArgs<Mess
  * định có lý do: một biến như thế là bản sao THỨ HAI của một trạng thái mà
  * React đã giữ, và `theme/ThemeContext.tsx` tồn tại chính vì bản sao thứ hai ấy
  * đã từng lệch pha một lần trong repo này. Ở trang chính chỉ có một nguồn —
- * state của `<LanguageProvider>`; ở kho khoá cũng chỉ có một — `currentLang()`
- * của `apps/vault/src/ui/lang.ts`, đọc một lần từ tham số URL.
+ * state của `<LanguageProvider>`.
  */
 export function t<K extends MessageKey>(lang: Lang, key: K, ...args: MessageArgs<Messages[K]>): string {
   const value = MESSAGES[lang][key] as unknown as string | ((...args: readonly unknown[]) => string);

@@ -285,3 +285,291 @@ export function describeAdminError(error: unknown, t: Translate): string {
   // not say which, so neither does this.
   return t('admin.error.unreachable');
 }
+
+/**
+ * ══════════════════════════════════════════════════════════════════════
+ * Task 17 — the AI half of the CMS: `AdminCredits.tsx`
+ * ("Người dùng & credit") and `AdminPricing.tsx` ("Bảng giá & prompt nền"),
+ * both talking to the seven `/admin/ai/*` routes
+ * (`apps/api/internal/ai/admin_handler.go`).
+ *
+ * Every wire shape below is copied field-for-field off that Go file's own
+ * `*Payload`/`settingsPayload` structs — same "no client-side reshaping"
+ * discipline `AdminCourseRow` above already keeps, and the same reason:
+ * there is exactly one reader of each type, so there is nothing to gain
+ * from inventing a second name for a field the server already named.
+ *
+ * These calls do NOT go through `toAdminError`: that helper exists for
+ * ONE specific 400 shape — `{error, findings}` from course-package
+ * validation — and none of these seven routes ever answers with a
+ * `findings` array. A plain `ApiError` is already the right, sufficient
+ * error type here; `describeAdminAIError` below reads its `code` instead
+ * of pretending a findings table might show up.
+ * ══════════════════════════════════════════════════════════════════════
+ */
+
+/** One row of `GET /admin/ai/users` — `adminUserPayload` on the Go side. */
+export interface AdminAIUserRow {
+  readonly id: string;
+  readonly email: string;
+  readonly role: string;
+  readonly balance_micro: number;
+}
+
+/** One row of `AdminAIUserDetail.recent_usage` — `usageEntryPayload` (handler.go), reused verbatim. */
+export interface AdminAIUsageEntry {
+  readonly at: string;
+  readonly model: string;
+  readonly in_tokens: number;
+  readonly cached_in_tokens: number;
+  readonly out_tokens: number;
+  readonly tool_calls: number;
+  readonly web_searches: number;
+  readonly credits_charged: number;
+}
+
+/**
+ * One row of `AdminAIUserDetail.recent_adjustments` — `creditAdjustmentPayload`.
+ * `note` already carries the signed micro-credit amount AND the operator's
+ * own words (`AdminAdjustCredit`'s doc comment on the Go side spells out
+ * the exact format) — this screen renders it as ONE column, it does not
+ * re-parse the amount back out of it.
+ */
+export interface AdminCreditAdjustment {
+  readonly at: string;
+  readonly who: string | null;
+  readonly note: string;
+}
+
+/** `GET /admin/ai/users/:id` — `adminUserDetailPayload`. */
+export interface AdminAIUserDetail extends AdminAIUserRow {
+  readonly recent_usage: readonly AdminAIUsageEntry[];
+  readonly recent_adjustments: readonly AdminCreditAdjustment[];
+}
+
+/** `GET`/`PUT .../pricing/:model` — `pricingPayload`. */
+export interface AdminPricingRow {
+  readonly model: string;
+  readonly cost_micro_per_1k_in: number;
+  readonly cost_micro_per_1k_cached_in: number;
+  readonly cost_micro_per_1k_out: number;
+  readonly credits_per_1k_in: number;
+  readonly credits_per_1k_cached_in: number;
+  readonly credits_per_1k_out: number;
+  readonly updated_at: string;
+}
+
+/**
+ * `GET`/`PUT /admin/ai/settings` — `settingsPayload`. `max_base_prompt_chars`
+ * is the number `AdminPricing.tsx`'s base-prompt textarea ACTUALLY caps at
+ * — same "server is the source of truth, even client-side" rule
+ * `AgentConfigPanel.tsx` already keeps for `max_system_prompt_chars`.
+ */
+export interface AdminAISettings {
+  readonly base_system_prompt: string;
+  readonly credits_per_web_search: number;
+  readonly cost_micro_per_web_search: number;
+  readonly signup_grant_micro: number;
+  readonly max_tokens_per_turn: number;
+  readonly max_tool_rounds_per_turn: number;
+  readonly max_base_prompt_chars: number;
+  /**
+   * Trần một đơn giá `ai_pricing` (`MaxPricingRateMicro`, Go). Optional vì
+   * một máy chủ CŨ hơn client không gửi trường này; `AdminPricing.tsx` khi
+   * ấy KHÔNG tự bịa một trần thay thế — nó chỉ mất lớp kiểm phía client và
+   * để server từ chối, đúng cách một client mới nói chuyện với một server
+   * cũ nên hành xử. Bịa một hằng dự phòng ở client là cách tạo ra đúng thứ
+   * bản sao gõ tay mà trường này tồn tại để xoá.
+   */
+  readonly max_pricing_rate_micro?: number;
+  /** Trần `ai_settings.signup_grant_micro` (`MaxSignupGrantMicro`, Go). Optional cùng lý do. */
+  readonly max_signup_grant_micro?: number;
+}
+
+/**
+ * `PUT .../pricing/:model`'s body — `updatePricingRequest` on the Go side,
+ * minus `Note` being spelled `note` here already (this file is the ONLY
+ * reader, no JSON-tag translation needed). All six rates are REQUIRED —
+ * `AdminUpdatePricing` (Go) refuses a body missing any one of them, the
+ * same "PUT replaces the whole row" rule `configRequest` keeps for
+ * `PUT /ai/config`.
+ */
+export interface UpdatePricingInput {
+  readonly cost_micro_per_1k_in: number;
+  readonly cost_micro_per_1k_cached_in: number;
+  readonly cost_micro_per_1k_out: number;
+  readonly credits_per_1k_in: number;
+  readonly credits_per_1k_cached_in: number;
+  readonly credits_per_1k_out: number;
+  readonly note?: string;
+}
+
+/**
+ * `putJSON` exists because `api.put` (`../api/client.ts`) deliberately
+ * returns `Promise<void>` — its own doc comment names the ONE endpoint
+ * that shape was built for (`PUT /ratings/:registryId`, which answers 204
+ * with no body) and says plainly: "a future PUT that does answer with a
+ * body should get its own entry rather than widening this one." Both
+ * `PUT /admin/ai/pricing/:model` and `PUT /admin/ai/settings` answer with
+ * the updated row/settings — this file's `adminRequest` (defined above,
+ * for `adminPublish`/`adminUnpublish`) already knows how to send a PUT and
+ * hand back the raw `Response`; this just adds the JSON encode on the way
+ * in and the SAME parse-and-shape-guard on the way out that `api.get`/
+ * `api.post` give every other call in this file (`isJsonContainer` /
+ * `NotJsonError` — see `client.ts`'s own doc comment on why a 2xx body
+ * that is not a usable object must never be cast to `T` silently).
+ */
+async function putJSON<T>(path: string, body: unknown): Promise<T> {
+  const res = await adminRequest('PUT', path, JSON.stringify(body), 'application/json');
+  const parsed = await parseBody(res);
+  if (!isJsonContainer(parsed)) {
+    throw new NotJsonError(res.status, res.headers.get('content-type'), jsonBodyPreview(parsed));
+  }
+  return parsed as T;
+}
+
+function aiUsersPath(query: string): string {
+  const q = query.trim();
+  return q === '' ? '/admin/ai/users' : `/admin/ai/users?q=${encodeURIComponent(q)}`;
+}
+
+/**
+ * The "tìm user" half of spec §7's "Người dùng & credit" screen. `query`
+ * is an email substring, matched server-side (`ai.Service.ListUsers`,
+ * `LIKE '%'||$1||'%'` against `users.email`); `''` returns the first page
+ * of accounts, alphabetically, capped server-side at 50 rows
+ * (`adminUserListLimit`, credits.go) — this is a search box, not an export.
+ */
+export async function adminListAIUsers(query: string): Promise<AdminAIUserRow[]> {
+  return api.get<AdminAIUserRow[]>(aiUsersPath(query), { allowArray: true });
+}
+
+/** One learner's balance, spend ledger, and manual-adjustment history. */
+export async function adminGetAIUser(id: string): Promise<AdminAIUserDetail> {
+  return api.get<AdminAIUserDetail>(`/admin/ai/users/${encodeURIComponent(id)}`);
+}
+
+/**
+ * Spec §7's "cộng/trừ credit tay" — `deltaMicro` positive credits the
+ * account, negative debits it; `note` is BINDING on the server (an empty
+ * one, after trimming, is refused with `FieldRequired` — see
+ * `AdminAdjustCredit`'s own doc comment on the Go side for the full
+ * reasoning, including why this call is NOT deduplicated against a
+ * double submit at this layer: `AdminCredits.tsx`'s own submit control is
+ * where that gets mitigated, by disabling itself while a request is
+ * in flight).
+ */
+export async function adminAdjustCredit(
+  id: string,
+  deltaMicro: number,
+  note: string,
+): Promise<{ balance_micro: number }> {
+  return api.post<{ balance_micro: number }>(`/admin/ai/users/${encodeURIComponent(id)}/credit`, {
+    delta_micro: deltaMicro,
+    note,
+  });
+}
+
+/** Every `ai_pricing` row — the whole "bảng quy đổi credit" this screen edits. */
+export async function adminListPricing(): Promise<AdminPricingRow[]> {
+  return api.get<AdminPricingRow[]>('/admin/ai/pricing', { allowArray: true });
+}
+
+/** Overwrites `model`'s six rates. Takes effect on the very next turn — no deploy, no restart (spec §3.4). */
+export async function adminUpdatePricing(model: string, input: UpdatePricingInput): Promise<AdminPricingRow> {
+  return putJSON<AdminPricingRow>(`/admin/ai/pricing/${encodeURIComponent(model)}`, input);
+}
+
+/** Every `ai_settings` column, for display — only `base_system_prompt` and `signup_grant_micro` are writable through this file (see `adminUpdateSettings`). */
+export async function adminGetAISettings(): Promise<AdminAISettings> {
+  return api.get<AdminAISettings>('/admin/ai/settings');
+}
+
+/**
+ * Spec §7's "sửa system prompt nền của agent", plus the ONE other column
+ * `AdminUpdateSettings` accepts a write for (`signup_grant_micro`).
+ *
+ * `basePrompt` is always sent because the server REQUIRES it on every PUT:
+ * the server refuses an empty (or whitespace-only) one with `FieldRequired`
+ * — it is the platform's tutor persona AND its safety boundary,
+ * appended-BEFORE, never replaced by, a learner's own personal prompt (spec
+ * §3.3) — see `AdminUpdateSettings`'s own doc comment on the Go side.
+ *
+ * `signupGrantMicro` is OPTIONAL here in the same sense it is optional on
+ * the Go side, and the Go side's reason is the one that matters: the field
+ * is a POINTER there, and absent means LEAVE IT ALONE, not "set it to
+ * zero". Passing `undefined` therefore drops the key from the JSON entirely
+ * (not `null`, not `0`) and the stored grant survives untouched — which is
+ * exactly what a caller that only edited the prompt needs. Sending a
+ * hardcoded `0` from here for "no change" would silently switch the welcome
+ * grant off from a screen the operator believes only edits a prompt.
+ */
+export async function adminUpdateSettings(
+  basePrompt: string,
+  note?: string,
+  signupGrantMicro?: number,
+): Promise<AdminAISettings> {
+  return putJSON<AdminAISettings>('/admin/ai/settings', {
+    base_system_prompt: basePrompt,
+    note,
+    signup_grant_micro: signupGrantMicro,
+  });
+}
+
+/**
+ * `aiErrorCode` extracts the machine-readable `code` field
+ * (`{code, error}`, `ai.fail`'s own wire shape — handler.go) off an
+ * `ApiError`'s body, or `null` when there is none to read (a non-`ApiError`
+ * failure, or a body some OTHER route on this server writes in a different
+ * shape). This file's status-code-only `describeAdminError` above cannot
+ * distinguish the AI admin routes' several different 400 causes (an empty
+ * note, a zero delta, an out-of-range amount, an empty base prompt all
+ * answer 400) — `code` is the one field that can.
+ */
+function aiErrorCode(error: unknown): string | null {
+  if (!(error instanceof ApiError) || typeof error.body !== 'object' || error.body === null) return null;
+  const code = (error.body as Record<string, unknown>).code;
+  return typeof code === 'string' ? code : null;
+}
+
+/**
+ * Vietnamese/English sentence for a failure from one of the seven
+ * `/admin/ai/*` routes — reads `error.body.code` FIRST (the FIVE codes
+ * these routes can answer with that `describeAdminError` has no concept
+ * of: `FieldRequired`, `AmountRequired`, `AmountOutOfRange`,
+ * `FieldTooLong`, `NotFound` — see `admin_handler.go`'s own const blocks
+ * for where each is thrown), and falls back to `describeAdminError`'s own
+ * status-based mapping for everything else (a 401 that somehow reaches
+ * here, a 5xx, no response at all).
+ *
+ * round-2 review, the "Hỏng mới" finding: `AmountRequired` (added to the
+ * Go side alongside `CodeFieldRequired`/`CodeAmountOutOfRange` when
+ * `delta_micro == 0` got its OWN code, distinct from the empty-note case's
+ * `FieldRequired`) had no `case` here at all — it fell through to
+ * `default`, landing on the generic "bad request" sentence instead of a
+ * specific one, and this doc comment kept saying "four codes" after a
+ * fifth existed. `AdminCredits.tsx`'s own client-side gate (the submit
+ * button stays disabled while `parseCreditsToMicro` returns `null` for an
+ * empty/zero amount) means a *0* never actually leaves the browser today,
+ * so this was a latent inconsistency, not a live bug — still worth closing
+ * exactly because the whole point of a machine-readable code is that a
+ * FUTURE caller (a different form, a retry path, a script hitting the API
+ * directly) gets the specific sentence, not "whatever `default` happens to
+ * say this week".
+ */
+export function describeAdminAIError(error: unknown, t: Translate): string {
+  switch (aiErrorCode(error)) {
+    case 'FieldRequired':
+      return t('admin.ai.error.fieldRequired');
+    case 'AmountRequired':
+      return t('admin.ai.error.amountRequired');
+    case 'AmountOutOfRange':
+      return t('admin.ai.error.amountOutOfRange');
+    case 'FieldTooLong':
+      return t('admin.ai.error.fieldTooLong');
+    case 'NotFound':
+      return t('admin.ai.error.notFound');
+    default:
+      return describeAdminError(error, t);
+  }
+}

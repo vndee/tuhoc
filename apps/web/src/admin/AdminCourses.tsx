@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ChangeEvent, type FormEvent, useState } from 'react';
 import { MESSAGES, type Lang, type Translate } from '../i18n';
 import { useLanguage } from '../i18n/LanguageProvider';
+import { AdminNav } from './AdminNav';
 import {
   FindingsError,
   type AdminCourseRow,
@@ -297,6 +298,7 @@ export function AdminCourses() {
 
   return (
     <div className="admin-page">
+      <AdminNav />
       <div className="admin-header">
         <h1 className="ch-title">{t('admin.title')}</h1>
         <p className="ch-lede">{t('admin.lede')}</p>

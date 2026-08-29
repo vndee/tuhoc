@@ -34,6 +34,37 @@ services:
       timeout: 3s
       retries: 30
 
+  # Task 18: the e2e stand-in for DeepSeek — see scripts/fake_deepseek.py's
+  # own header comment for the full reasoning (a real DeepSeek call from an
+  # e2e run costs real money and makes pass/fail depend on a third party's
+  # uptime; this answers the exact wire shape apps/api/internal/ai/stream.go's
+  # CompleteStream parses, with a FIXED reply and FIXED usage). Plain stdlib
+  # Python, no image build of its own — the script is bind-mounted read-only
+  # into an off-the-shelf `python:3.12-alpine`, the same "small HTTP server"
+  # shape task-18-brief.md's Step 1 asks for, without a Dockerfile to keep in
+  # sync.
+  #
+  # No `ports:` — deliberately NOT reachable from the host, unlike db/api.
+  # Only the `api` service ever needs to talk to it, over this compose
+  # project's own internal network (service-name DNS: `deepseek-fake`), and
+  # that network is scoped PER COMPOSE PROJECT — scripts/test-e2e.sh already
+  # gives every worktree its own project name (see that file's own comment
+  # on `COMPOSE_PROJECT`), so two worktrees running `make test-e2e` at once
+  # each get their own `deepseek-fake:8090`, never the same one. That is what
+  # makes a `TUHOC_E2E_FAKE_DEEPSEEK_PORT`-shaped override (matching
+  # DB_PORT/API_PORT/WEB_PORT below) unnecessary here: there is no host port
+  # to collide on, and no shared container port to disambiguate.
+  deepseek-fake:
+    image: python:3.12-alpine
+    volumes:
+      - ../../scripts/fake_deepseek.py:/fake_deepseek.py:ro
+    command: ['python3', '-u', '/fake_deepseek.py']
+    healthcheck:
+      test: ['CMD', 'python3', '-c', "import urllib.request; urllib.request.urlopen('http://localhost:8090/health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   api:
     # `image:` names the tag the build is TAGGED AS — matching
     # docs/deploy.md's own `docker build -t tuhoc-api apps/api` (same tag,
@@ -58,9 +89,27 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      deepseek-fake:
+        condition: service_healthy
     environment:
       PORT: '8080'
       DATABASE_URL: 'postgres://tuhoc:tuhoc@db:5432/tuhoc?sslmode=disable'
+      # Task 18: points the real DeepSeek client (server.go's
+      # ai.NewProviderClient wiring) at the fake provider above instead of
+      # DeepSeek's real API — see docs/deploy.md's own Secrets table row for
+      # DEEPSEEK_BASE_URL ("Only exists for pointing at a proxy or a test
+      # double") and scripts/fake_deepseek.py's header comment for what it
+      # answers. Service-name DNS, not localhost: this process runs INSIDE
+      # the compose network, not on the host.
+      DEEPSEEK_BASE_URL: 'http://deepseek-fake:8090'
+      # Never checked by the fake server (it does not read the Authorization
+      # header at all) and never billed anywhere — only needs to be
+      # NON-EMPTY so this value reads as "a key is configured" rather than
+      # accidentally exercising whatever an absent DEEPSEEK_API_KEY means
+      # today. A literal, obviously-fake value, same posture as ADMIN_TOKEN
+      # below: this stack is thrown away by `down -v` at the end of every
+      # run, so there is nothing here worth protecting as a real secret.
+      DEEPSEEK_API_KEY: 'e2e-fake-deepseek-key'
       # Must equal the origin the e2e web server actually runs on
       # (playwright.config.ts's PORT) — SameSite=Lax cookies require the
       # request's Origin to match what CORS allows, and the auth flow

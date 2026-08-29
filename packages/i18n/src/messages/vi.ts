@@ -99,183 +99,111 @@ export const vi = {
   /* ── mục Dữ liệu trên máy ──────────────────────────────────────────────── */
 
   /**
-   * SỬA Ở fix-round-1 (task-14): bản cũ nói "Gói khoá học và ghi chú nằm
-   * trong trình duyệt này" — sai từ Task 13, khi `db.packages` bị xoá khỏi
-   * lược đồ Dexie (spec `2026-08-25-server-side-pivot.md` §1). Không còn gói
-   * nào để nằm ở đây; hai con số ngay dưới câu này (`statNotes`, `statBytes`)
-   * đã tự nói đúng những gì bảng này còn giữ.
+   * SỬA HAI LẦN, và lần thứ hai sửa đúng cái mà lần thứ nhất bỏ sót.
+   *
+   * fix-round-1 (task-14) bỏ vế "Gói khoá học" — sai từ Task 13, khi
+   * `db.packages` bị xoá khỏi lược đồ Dexie (spec
+   * `2026-08-25-server-side-pivot.md` §1). Nhưng vế CÒN LẠI ("Ghi chú nằm
+   * trong trình duyệt này") vẫn thiếu một nửa sự thật, và thiếu nó ở đúng
+   * mục người dùng tìm tới để hỏi "các anh giữ gì của tôi": ghi chú CÓ một
+   * bản trên máy chủ. Nó đi qua `POST /sync` (`sync/engine.ts`'s
+   * `flushOutbox` gửi cả `progress` lẫn `annotations`), `sync/usecase.go`
+   * đọc/ghi nó, và bảng `annotations` có từ migration `0001_init`.
+   * `login.point.sync` ở dưới đã hứa đúng điều đó — "ghi chú theo bạn trên
+   * mọi thiết bị" — nên trước bản này hai màn nói ngược nhau
+   * (review tổng nhánh Pha 2, E5).
+   *
+   * KHÔNG hứa "dùng được khi mất mạng" ở đây dù bản trong trình duyệt có
+   * làm được: đó là một khẳng định về HÀNH VI, và mục này chỉ được giao trả
+   * lời một câu hỏi về NƠI CHỐN.
    */
-  'settings.localData.blurb': 'Ghi chú nằm trong trình duyệt này. Khoá học không tải gói nào về máy — đọc thẳng từ máy chủ.',
+  'settings.localData.blurb':
+    'Ghi chú nằm ở hai nơi: một bản trong trình duyệt này, và một bản đồng bộ lên máy chủ theo tài khoản của bạn — nên đăng nhập ở thiết bị khác vẫn thấy đủ. Khoá học không tải gói nào về máy: đọc thẳng từ máy chủ.',
   'settings.localData.clearedOnSignOut':
     'Cơ sở dữ liệu mang tên TRÌNH DUYỆT, không mang tên người dùng — nên nó bị xoá sạch mỗi lần đổi người đăng nhập, kể cả khi không ai bấm đăng xuất.',
   'settings.localData.kept': 'Ngôn ngữ và giao diện thì ở lại: chúng là tuỳ chọn của thiết bị.',
 
-  /* ── mục Trợ lý AI ─────────────────────────────────────────────────────── */
+  /* ── mục Trợ lý AI (Pha 2 — task-14: credit + cấu hình agent thay khung
+     kho khoá) ────────────────────────────────────────────────────────────
+     Task 15 đổi `login.point.ownKey` và `login.pitch.lede` (lời hứa Pha 1,
+     "key của chính bạn") ở dưới, tại mục `login.*`. Ở ĐÂY áp cùng nguyên tắc,
+     sớm hơn.
+
+     LUẬT, VIẾT LẠI CHO ĐÚNG THỨ NÓ VỐN ĐỊNH NÓI (review tổng nhánh Pha 2,
+     F4): bản trước cấm "nhắc lại 'key', 'kho khoá', hay 'địa chỉ riêng'" —
+     rồi `settings.ai.blurb` ngay năm dòng dưới nhắc chữ "key". Luật ấy tự vi
+     phạm vì nó cấm nhầm thứ: cấm CHỮ, trong khi thứ đã chết là LỜI HỨA. Câu
+     duy nhất còn nhắc "key" ở đây nhắc nó để PHỦ ĐỊNH — "không còn key nào
+     để bạn tự cắm hay tự giữ" — và một luật cấm cả câu phủ định sẽ buộc mục
+     này im lặng về đúng thứ người đọc Pha 1 đang đi tìm.
+
+     Luật thật: không câu nào dưới đây được nói rằng người học VẪN có, VẪN
+     cắm, hay VẪN giữ một key nhà cung cấp, và không câu nào được nhắc tới
+     "kho khoá" hay "địa chỉ riêng" như một thứ đang tồn tại — cả ba đã sai kể
+     từ khi AI chuyển sang chạy trên máy chủ (Task 11). Nói rằng chúng KHÔNG
+     còn thì được, và thường là việc phải làm. */
 
   'settings.ai.title': 'Trợ lý AI',
+  'settings.ai.blurb':
+    'Trợ lý AI chạy trên máy chủ của chúng tôi, trả bằng credit của tài khoản bạn — không còn key nào để bạn tự cắm hay tự giữ.',
+
+  /* ── `CreditPanel.tsx` — số dư và sổ dùng gần đây, GET /ai/credits ──────── */
+
+  'settings.ai.creditTitle': 'Credit',
+  'settings.ai.creditBalanceLabel': 'Credit khả dụng',
+  'settings.ai.creditLoading': 'Đang đọc số dư…',
+  'settings.ai.creditError': 'Không đọc được số dư credit. Thử tải lại trang.',
+  'settings.ai.usageTitle': 'Sổ dùng gần đây',
+  'settings.ai.usageEmpty': 'Chưa có lượt hỏi nào được tính phí.',
+  'settings.ai.usageColWhen': 'Thời điểm',
+  'settings.ai.usageColModel': 'Mô hình',
+  'settings.ai.usageColTokensIn': 'Token vào',
+  'settings.ai.usageColTokensCached': 'Token vào (cache)',
+  'settings.ai.usageColTokensOut': 'Token ra',
+  'settings.ai.usageColToolCalls': 'Lượt gọi công cụ',
+  'settings.ai.usageColWebSearches': 'Lượt tìm web',
+  'settings.ai.usageColCredits': 'Credit đã trừ',
+
+  /* ── `AgentConfigPanel.tsx` — prompt riêng và tool bật/tắt, GET/PUT
+     /ai/config ────────────────────────────────────────────────────────── */
+
+  'settings.ai.configTitle': 'Cấu hình agent',
+  'settings.ai.configBlurb':
+    'Lời nhắc riêng được thêm vào MỌI lượt hỏi của bạn — dùng nó để nói cho trợ lý biết bạn muốn được trả lời thế nào.',
+  'settings.ai.configLoading': 'Đang đọc cấu hình…',
+  'settings.ai.configError': 'Không đọc được cấu hình agent. Thử tải lại trang.',
+  'settings.ai.promptLabel': 'Lời nhắc riêng của bạn',
+  'settings.ai.promptPlaceholder': 'Ví dụ: luôn trả lời ngắn gọn, kèm ví dụ bằng Python.',
   /**
-   * KHOÁ CÓ CHỖ TRỐNG ĐẦU TIÊN, và là ca đã chốt QĐ-2: `<strong>kho khoá</strong>`
-   * nằm GIỮA câu, không bọc cả câu. Tham số là `string` chứ không phải
-   * `ReactNode` — catalog không được biết React tồn tại (xem `../index.ts`);
-   * `tNode()` ở `apps/web/src/i18n/tNode.tsx` mới là bên chèn phần tử vào.
+   * `(count: string, max: string) => …` — hai chuỗi SỐ THUẦN (không dấu
+   * phân cách nghìn, có chủ ý): một bộ đếm ký tự đang gõ dở đổi liên tục,
+   * và "4.000" (có dấu chấm) dễ đọc nhầm là "4" trong một số ngữ cảnh — số
+   * trần rồi cũng KHÔNG đủ lớn (4000) để một dấu phân cách thật sự cần
+   * thiết. `AgentConfigPanel.tsx` truyền `String(n)`, không `toLocaleString`.
+   */
+  'settings.ai.promptCounter': (count: string, max: string) => `${count} / ${max} ký tự`,
+  'settings.ai.promptTooLong':
+    'Lời nhắc dài hơn mức cho phép. Rút ngắn để lưu được — máy chủ sẽ từ chối bản dài hơn mức này dù bạn có bấm Lưu.',
+  'settings.ai.toolsTitle': 'Công cụ agent được dùng',
+  /* E4 của review tổng nhánh: `web_search` là một công tắc LUÔN HIỆN mà một
+   * bản triển khai không có `BRAVE_API_KEY` KHÔNG BAO GIỜ chạy được. Người
+   * học bật nó, lưu thành công, và không gì xảy ra — mãi mãi, không một
+   * dòng chữ nào. `GET /ai/config` nay trả thêm `unavailable_tools`; hai
+   * khoá dưới đây là nửa còn lại.
    *
-   * Câu giữ nguyên vẹn trong catalog thay vì bị cắt làm ba khoá, nên trật tự từ
-   * của bản tiếng Anh khác được mà chỗ vẽ không phải biết.
-   */
-  'settings.ai.blurb': (vault: string) => `Chạy bằng key của chính bạn, cất trong ${vault} ở một địa chỉ riêng.`,
-  'settings.ai.blurbVault': 'kho khoá',
-  'settings.ai.keyStays':
-    'Key không rời trình duyệt này, không đồng bộ, không đi qua máy chủ của chúng tôi.',
-  'settings.ai.unavailable':
-    'Bản dựng này không có kho khoá, nên chưa dùng được trợ lý AI. Đây là một thiếu sót của cấu hình khi triển khai, không phải của tài khoản bạn — phần đọc giáo trình vẫn chạy bình thường.',
-  'settings.ai.open': 'Mở kho khoá',
-
-  /**
-   * NHÃN CỦA MẶT PHẲNG KIA, và nó mang **địa chỉ thật** chứ không phải một câu
-   * chung chung về "một địa chỉ riêng".
-   *
-   * Kiến trúc hai origin chỉ có giá trị nếu người dùng NHÌN THẤY nó. Một câu
-   * nói "chạy ở một địa chỉ riêng" thì đúng với cả một bản dựng đã lỡ trỏ kho
-   * khoá về chính origin trang chính — tức là đúng với cả bản dựng mà cơ chế đã
-   * chết. In ra origin thật làm cho lời hứa ấy KIỂM ĐƯỢC bằng mắt, ngay tại chỗ
-   * người dùng sắp dán key.
-   */
-  /* "chạy ở", KHÔNG "khung dưới đây": khung mở ra thành một tấm NỔI LÊN TRÊN
-     trang này, không nằm dưới nhãn. Một nhãn mô tả sai vị trí của thứ nó đặt
-     tên là một nhãn dạy người đọc bỏ qua nhãn. */
-  'settings.ai.frameLabel': (origin: string) =>
-    `Kho khoá chạy ở ${origin} — một địa chỉ khác, tách khỏi trang bài học.`,
-  'settings.ai.frameOpen': 'Kho khoá đang mở ở lớp trên. Bấm "Đóng" ở đó để quay lại trang này.',
-
-  'settings.ai.budgetTitle': 'Hạn mức mỗi phiên',
-  /**
-   * KHÔNG in con số ở đây, có chủ ý. Ngân sách sống ở `SESSION_CHAR_BUDGET`
-   * trong `apps/vault/src/guard.ts` — một origin khác, không có alias sang trang
-   * chính — nên một con số chép sang đây là bản sao thứ hai của một sự thật, và
-   * bản sao thứ hai thì trôi. Câu này nói đúng thứ trang chính biết chắc: rằng
-   * hạn mức tồn tại, rằng khung sẽ hỏi lại, và rằng nó định giá bằng số cú bấm
-   * chứ không chặn được gì.
-   */
-  'settings.ai.budgetBody':
-    'Kho khoá đặt một hạn mức ký tự cho mỗi phiên. Tiêu hết thì nó hỏi lại, kèm nhật ký những gì đã rời máy.',
-
-  /* ══════════════════════════════════════════════════════════════════════ *
-   * KHO KHOÁ (`apps/vault`) — origin riêng, và là lý do gói này không phụ
-   * thuộc gì. Mọi khoá dưới đây được đọc bằng `apps/vault/src/lang.ts`.
-   * ══════════════════════════════════════════════════════════════════════ */
-
-  /* ── người gác (`guard.ts`) — câu đi kèm mỗi lần TỪ CHỐI ───────────────── */
-
-  'vault.guard.needsConsent': 'Cần một cú bấm xác nhận trong khung kho khoá trước lời gọi đầu tiên của phiên này.',
-  'vault.guard.unmeasurable': 'Kho khoá không đo được độ dài lời nhắc này nên từ chối gửi nó đi.',
-  'vault.guard.promptTooLong': 'Lời nhắc này dài hơn toàn bộ ngân sách của một phiên nên kho khoá không gửi.',
-  'vault.guard.budgetSpent': 'Phiên này đã gửi đi hết ngân sách ký tự. Hãy xác nhận lại trong khung kho khoá.',
-  'vault.guard.rateLimited': 'Kho khoá đang giới hạn tần suất để không ai gọi hộ bằng key của bạn.',
-  'vault.guard.bucketWriteFailed': 'Kho khoá không ghi được trạng thái hạn mức nên từ chối lời gọi này.',
-  'vault.guard.budgetWriteFailed': 'Kho khoá không ghi được ngân sách ký tự nên từ chối lời gọi này.',
-
-  /* ── ô cất key (`keystore.ts`) ─────────────────────────────────────────── */
-
-  'vault.keystore.missingProviderOrModel': 'writeConfig: thiếu providerId hoặc model.',
-  'vault.keystore.emptyKey': 'writeConfig: key rỗng — kho khoá không lưu cấu hình không dùng được.',
-
-  /* ── giao thức + nhà cung cấp (`main.ts`, `providers/sse.ts`) ──────────── */
-
-  'vault.protocol.version': (version: string) => `Kho khoá dùng giao thức v${version}.`,
-  'vault.protocol.unsupported': 'Chưa hỗ trợ.',
-  'vault.protocol.badChatShape': 'Yêu cầu chat không đúng hình dạng giao thức.',
-  'vault.provider.unknown': 'Kho khoá không biết nhà cung cấp này.',
-  'vault.provider.notConfigured': 'Chưa cắm key trong kho khoá.',
-  'vault.provider.callFailed': 'Kho khoá không hoàn tất được lời gọi tới nhà cung cấp.',
-  'vault.provider.unreachable': 'Không gọi được nhà cung cấp từ trình duyệt (mạng hoặc CORS).',
-  'vault.provider.badKey': 'Key bị từ chối.',
-  'vault.provider.rateLimited': 'Nhà cung cấp giới hạn tần suất.',
-
-  /**
-   * Hai câu này nói với NGƯỜI TRIỂN KHAI, không với người học — kho khoá từ
-   * chối chạy khi không biết tin ai. Chúng vẫn đi qua catalog vì chúng nằm
-   * trong `main.ts`, một tệp có cả chuỗi hướng tới người học; ngôn ngữ áp dụng
-   * là ngôn ngữ đã đọc từ URL, đúng như mọi câu khác.
-   *
-   * `apps/vault/src/headers.ts` thì KHÁC và cố ý không nằm ở đây: nó chỉ được
-   * `vite.config.ts` nhập, chạy ở Node **lúc dựng**, và alias `@tuhoc/i18n`
-   * không áp cho chính tệp cấu hình — dịch nó sẽ làm hỏng bản dựng. Nó được
-   * xếp vào `DEVELOPER_FACING` kèm phép đo.
-   */
-  'vault.boot.originRequired': 'VITE_APP_ORIGIN bắt buộc — kho khoá từ chối chạy khi không biết tin ai.',
-  'vault.boot.originShape': (received: string) =>
-    `VITE_APP_ORIGIN phải là một origin đúng nghĩa (scheme://host[:port]), không dấu "/" cuối, không đường dẫn, không "*" — nhận được ${received}.`,
-
-  /* ── màn cấu hình trong khung (`ui/Settings.ts`) ───────────────────────── */
-
-  /**
-   * Lời nhắc của nút "Kiểm tra kết nối". NGẮN CÓ CHỦ Ý: nút này gọi thật, tức
-   * tiêu tiền thật của người dùng. `settings.test.ts` ghim độ dài lại để nó
-   * không phình ra — và vì độ dài ấy là một khẳng định, bản dịch cũng phải
-   * ngắn.
-   */
-  'vault.settings.testPrompt': 'Trả lời đúng một từ: OK',
-  'vault.settings.openaiWarning':
-    'Cảnh báo đã đo được (2026-08-22): OpenAI chặn đường sinh chữ bằng CORS khi gọi thẳng từ trình duyệt — hồi đáp lỗi của họ không kèm Access-Control-Allow-Origin. Đường thành công chưa đo được, nên OpenAI có thể không dùng được ở đây, và nếu có thì lỗi sai key sẽ hiện ra là "không gọi được nhà cung cấp" chứ không phải "key bị từ chối". Hãy thử "Kiểm tra kết nối" trước khi tin vào nó. DeepSeek, OpenRouter, Groq và Anthropic đều đã đo được là gọi thẳng từ trình duyệt được.',
-  /*
-   * Kho khoá được thiết kế để NHÚNG. Mở thẳng địa chỉ của nó thì trang vẫn vẽ
-   * đầy đủ mà không có một lối nào quay về bài học — người dùng báo đúng chuyện
-   * này bằng một ảnh chụp thanh địa chỉ đang ở origin kho khoá. Hai chuỗi dưới
-   * đây chỉ hiện khi trang KHÔNG nằm trong khung.
-   */
-  'vault.standalone.notice':
-    'Đây là kho khoá, và nó được làm ra để nằm trong trang học chứ không phải mở riêng. Mở riêng thì nó vẫn cất và xoá key được, nhưng không có bài học nào ở đây.',
-  'vault.standalone.back': 'Về trang học',
-  'vault.settings.title': 'Trợ lý AI chạy bằng key của chính bạn',
-  'vault.settings.why':
-    'Ô dán key nằm trong khung này, và khung này là một trang riêng ở một origin riêng. Trình duyệt cấm mã của trang bài học đọc bất cứ thứ gì ở đây — kể cả ô bên dưới, kể cả chỗ cất key. Trang bài học chỉ gửi câu hỏi vào và nhận chữ trả lời ra; nó không bao giờ thấy key. Đó là lý do ô này không nằm ở trang cấu hình bên ngoài.',
-  'vault.settings.providerLabel': 'Nhà cung cấp',
-  'vault.settings.modelLabel': 'Mô hình',
-  'vault.settings.modelHint': 'Để nguyên nếu bạn không có lý do cụ thể để đổi.',
-  'vault.settings.keyPlaceholder': 'Dán key của bạn vào đây',
-  'vault.settings.keyLabel': 'Key của bạn',
-  'vault.settings.keyHint':
-    'Key ở lại đúng trình duyệt này, đúng thiết bị này. Nó không được đồng bộ, không đi qua máy chủ của chúng tôi, và không có cách nào lấy lại nếu bạn xoá — hãy giữ bản gốc ở trang của nhà cung cấp.',
-  'vault.settings.save': 'Lưu key trên máy này',
-  'vault.settings.test': 'Kiểm tra kết nối',
-  'vault.settings.clear': 'Xoá key khỏi máy này',
-  'vault.settings.currentKey': (providerId: string, model: string) => `Máy này đã có key: ${providerId} · ${model}.`,
-  'vault.settings.noKey': 'Máy này chưa có key nào.',
-  'vault.settings.noKeyTyped': 'Chưa dán key nào vào ô bên trên.',
-  'vault.settings.noModel': 'Chưa có tên mô hình.',
-  'vault.settings.saved': 'Đã lưu key vào trình duyệt này. Bấm "Kiểm tra kết nối" để chắc chắn nó dùng được.',
-  'vault.settings.clearArmed': 'Bấm lần nữa để xoá',
-  'vault.settings.clearWarning': 'Bấm lần nữa để xoá hẳn key khỏi trình duyệt này. Không có cách lấy lại.',
-  'vault.settings.cleared': 'Đã xoá key khỏi trình duyệt này.',
-  'vault.settings.noKeyAnywhere': 'Chưa dán key nào, và máy này cũng chưa lưu key cho nhà cung cấp đang chọn.',
-  'vault.settings.needsConsent':
-    'Kho khoá chưa được xác nhận trong phiên này. Bấm nút "Cho phép trong phiên này" ngay bên dưới rồi thử lại.',
-  'vault.settings.denied': 'Kho khoá đang từ chối lời gọi này.',
-  'vault.settings.calling': 'Đang gọi nhà cung cấp…',
-  'vault.settings.emptyReply': 'Gọi được nhà cung cấp, nhưng mô hình không trả về chữ nào. Thử một mô hình khác.',
-  'vault.settings.reply': (reply: string) => `Gọi được nhà cung cấp. Mô hình trả lời: «${reply}»`,
-  'vault.settings.openaiHint': (message: string) =>
-    `${message} (Với OpenAI, xem cảnh báo CORS ở trên — lỗi này có thể không phải do key.)`,
-
-  /* ── xác nhận + nhật ký (`ui/Consent.ts`) ──────────────────────────────── */
-
-  'vault.log.title': 'Trợ lý AI đã gửi đi những gì',
-  'vault.log.blurb':
-    'Nhật ký ghi thời điểm và SỐ KÝ TỰ đã gửi. Nội dung lời nhắc không được ghi lại ở đây — một bản sao thứ hai của ghi chú riêng tư nằm cạnh key là điều kho khoá này từ chối tạo ra.',
-  'vault.log.empty': 'Chưa có lời gọi nào.',
-  'vault.log.total': (chars: string, calls: string) => `Tổng cộng ${chars} ký tự đã rời khỏi máy này, qua ${calls} lời gọi.`,
-  'vault.log.entry': (when: string, chars: string, provider: string) => `${when} · ${chars} ký tự đã gửi · ${provider}`,
-  'vault.log.unknownProvider': 'nhà cung cấp không rõ',
-  'vault.log.denied': (rateLimited: string, needsConsent: string) =>
-    `Kho khoá đã TỪ CHỐI ${rateLimited} lời gọi vì quá tần suất và ${needsConsent} lời gọi vì chưa được xác nhận.`,
-  'vault.log.clear': 'Xoá nhật ký',
-  'vault.consent.askAgainTitle': 'Trợ lý AI xin phép gọi tiếp bằng key của bạn',
-  'vault.consent.askTitle': 'Trợ lý AI muốn gọi ra ngoài bằng key của bạn',
-  'vault.consent.askAgainBody':
-    'Kho khoá đã dừng lại và hỏi lại trước khi gửi thêm. Nhật ký ngay bên dưới cho biết chừng nào chữ đã rời khỏi máy này — hãy nhìn nó trước khi bấm lần này, vì mỗi cú bấm mở đường cho một lượng chữ tương đương nữa. Nếu con số ấy lớn hơn những gì bạn nhớ là mình đã hỏi, thì đừng bấm.',
-  'vault.consent.askBody':
-    'Trang bài học vừa yêu cầu kho khoá gọi nhà cung cấp AI. Kho khoá không cho lời gọi nào đi ra trước khi bạn bấm nút dưới đây, và cú bấm này chỉ có hiệu lực trong phiên hiện tại.',
-  'vault.consent.allow': 'Cho phép trong phiên này',
+   * Công tắc VẪN BẤM ĐƯỢC (không `disabled`): lựa chọn được lưu bền và sống
+   * lâu hơn cái key còn thiếu — người vận hành đặt key, khởi động lại, và
+   * mọi người học đã bật sẵn có nó ngay, không phải bấm lại. Nhãn phụ nói
+   * đúng một điều: hôm nay bấm cũng không chạy. */
+  'settings.ai.toolUnavailable': 'chưa bật trên máy chủ này',
+  'settings.ai.toolsUnavailableNote':
+    'Công cụ có nhãn "chưa bật trên máy chủ này" vẫn lưu được lựa chọn của bạn, nhưng máy chủ chưa được cấu hình để chạy nó — trợ lý sẽ bỏ qua cho tới khi quản trị viên bật.',
+  'settings.ai.toolReadCourse': 'Đọc nội dung khoá học',
+  'settings.ai.toolWebSearch': 'Tìm kiếm trên web',
+  'settings.ai.save': 'Lưu cấu hình',
+  'settings.ai.saved': 'Đã lưu.',
+  'settings.ai.saveUnknownTool': 'Một công cụ trong danh sách không còn tồn tại. Tải lại trang rồi thử lại.',
+  'settings.ai.saveRejected': 'Máy chủ từ chối lưu cấu hình này. Thử lại sau một chút.',
 
   /* ══════════════════════════════════════════════════════════════════════ *
    * VỎ ỨNG DỤNG (`shell/`) — thanh bên, thanh trên, rail, lưới lỗi
@@ -291,10 +219,23 @@ export const vi = {
   'nav.dashboard': 'Bảng điều khiển',
   'nav.library': 'Thư viện',
   /**
-   * Vẫn là nhan đề của chính màn nhập gói (nay nằm trong hộp thoại của
-   * `/courses`), nên khoá này còn sống. Nhãn của cái NÚT mở hộp thoại là
-   * `courses.import.action` — hai chữ khác nhau cho hai việc khác nhau: một
-   * cái đặt tên cho màn hình, một cái mời người ta bấm.
+   * MỒ CÔI — không chỗ nào trong `apps/web/src` gọi khoá này (đo lại
+   * 2026-08-29, review tổng nhánh Pha 2 mục F4).
+   *
+   * Chú thích trước ở đây khẳng định nó "còn sống" vì màn nhập gói "nay nằm
+   * trong hộp thoại của `/courses`". Không có hộp thoại nào:
+   * `pages/Courses.tsx`'s doc comment tự khai bằng nguyên văn "không tab,
+   * không nút 'Nhập gói', không hộp thoại", và luồng import của người đọc
+   * chết cùng `db.packages` ở Task 13. `courses.import.action` mà chú thích
+   * ấy trỏ sang cũng mồ côi.
+   *
+   * KHÔNG XOÁ Ở ĐỢT NÀY, có chủ đích: đây là 2 trong ~168 khoá mồ côi mà
+   * review đã đếm, phần lớn là tàn dư Pha 1, và `i18n.test.ts` chưa có cổng
+   * bắt khoá mồ côi — nên xoá lẻ hai khoá vừa không đóng được lớp lỗi vừa
+   * làm con số đã đo thành sai. Món nợ có tên nằm ở `docs/carried-forward.md`.
+   * Thứ ĐƯỢC sửa ở đây là điều chú thích KHẲNG ĐỊNH, vì một khoá chết mang
+   * nhãn "còn sống" là thứ lần sau có người dịch lại, hoặc dựng lại giao
+   * diện quanh nó.
    */
   'nav.import': 'Nhập khóa học',
 
@@ -323,17 +264,6 @@ export const vi = {
   'error.boundary.body':
     'Phần còn lại của ứng dụng vẫn chạy. Tải lại trang thường là đủ; nếu lỗi lặp lại, nội dung dưới đây là thứ cần gửi kèm khi báo lỗi.',
   'error.boundary.reload': 'Tải lại trang',
-
-  'vault.frame.configError': '[kho khoá] cấu hình sai, tính năng AI bị tắt:',
-  /**
-   * ĐỊA CHỈ THẬT trên thanh tiêu đề của khung, không phải chữ "một địa chỉ
-   * riêng". Xem lý do đầy đủ ở `settings.ai.frameLabel`: một câu chung chung
-   * vẫn đúng với một bản dựng đã lỡ trỏ kho khoá về chính origin trang chính,
-   * còn origin in ra thì không.
-   */
-  'vault.frame.overlayLabel': (origin: string) => `Kho khoá — khung này chạy ở ${origin}, tách khỏi trang bài học`,
-  'vault.frame.close': 'Đóng',
-  'vault.frame.title': 'Kho khoá',
 
   /* ══════════════════════════════════════════════════════════════════════ *
    * TRANG (`pages/`)
@@ -449,11 +379,12 @@ export const vi = {
    * không biết mình sắp đăng ký cái gì. Ba gạch đầu dòng dưới đây không phải
    * khẩu hiệu — mỗi câu tương ứng một tính chất mà mã trong repo này thật sự
    * giữ: khoá học đọc được ngay, miễn phí, không cần tài khoản (máy chủ phục
-   * vụ mọi khoá học công khai — không còn gói nào để tải), key nằm ở origin
-   * kho khoá (`apps/vault`), tiến độ và ghi chú đồng bộ qua tài khoản
-   * (`sync/engine.ts`).
+   * vụ mọi khoá học công khai — không còn gói nào để tải), trợ lý AI chạy
+   * trên máy chủ của nền tảng và trả bằng credit (`internal/ai`,
+   * `ai/serverClient.ts`) — không còn key riêng nào để người học tự giữ, tiến
+   * độ và ghi chú đồng bộ qua tài khoản (`sync/engine.ts`).
    *
-   * GẠCH ĐẦU DÒNG THỨ NHẤT VÀ THỨ BA ĐỔI Ở TASK NÀY (task-14, spec
+   * GẠCH ĐẦU DÒNG THỨ NHẤT VÀ THỨ BA ĐỔI Ở TASK 14 (spec
    * `2026-08-25-server-side-pivot.md` §0.2) — khoá cũng đổi tên
    * (`login.point.offline` → `login.point.free`, `login.point.private` →
    * `login.point.sync`) để chỗ nào còn trỏ khoá cũ nổ compile thay vì lặng lẽ
@@ -463,13 +394,24 @@ export const vi = {
    * tính năng. Bullet thứ ba từng là "course riêng tư không lộ ra registry" —
    * khái niệm ấy cũng rời đi cùng registry riêng tư (`courses.lede` đã tự
    * khai "mọi khoá học đều công khai"), nên chỗ của nó nay là lời hứa đồng bộ.
+   *
+   * GẠCH ĐẦU DÒNG THỨ HAI (`login.point.ownKey`) VÀ CÂU LEDE ĐỔI Ở TASK 15
+   * (bàn giao Pha 1 §2, cùng spec §0.1) — KHOÁ GIỮ NGUYÊN TÊN, chỉ đổi giá
+   * trị: `ownKey` mô tả một TÍNH CHẤT ("có một trợ lý AI"), không phải cơ chế
+   * đứng sau nó, nên tên khoá không sai theo cách buộc phải đổi tên như hai
+   * khoá kia. Bản cũ hứa "trợ lý AI chạy bằng key của chính bạn, và key
+   * không đi qua máy chủ của chúng tôi" — đúng khi kho khoá ở origin riêng
+   * còn là đường DUY NHẤT gọi AI; sai từ khi `internal/ai` ship (Task 11) và
+   * `useAI.ts` chuyển hẳn sang gọi máy chủ. `login.pitch.lede` mắc cùng lỗi ở
+   * một câu phụ ("hỏi trợ lý AI bằng key của chính bạn") — sửa luôn ở đây,
+   * cùng thời điểm, vì cùng một lời hứa chết theo cùng một sự kiện.
    */
   'login.pitch.headline': 'Khoá học mở cho mọi người.',
   'login.pitch.lede':
-    'Mở một khoá học và đọc ngay — không cần cài đặt, không cần chờ tải. Bôi đen một đoạn để ghi chú thẳng lên trang, hoặc hỏi trợ lý AI bằng key của chính bạn.',
+    'Mở một khoá học và đọc ngay — không cần cài đặt, không cần chờ tải. Bôi đen một đoạn để ghi chú thẳng lên trang, hoặc hỏi trợ lý AI ngay trong bài.',
   'login.pitch.aria': 'Tự học làm được gì',
   'login.point.free': 'Đọc toàn bộ giáo trình miễn phí — không cần tài khoản',
-  'login.point.ownKey': 'Trợ lý AI chạy bằng key của chính bạn, và key không đi qua máy chủ của chúng tôi',
+  'login.point.ownKey': 'Trợ lý AI chạy trên máy chủ của chúng tôi, trả bằng credit — không cần key của riêng bạn',
   'login.point.sync': 'Đăng nhập để tiến độ và ghi chú theo bạn trên mọi thiết bị',
 
   'login.title': 'Đăng nhập',
@@ -537,10 +479,13 @@ export const vi = {
   'courses.empty': 'Chưa có khoá học nào được xuất bản.',
   'courses.list.aria': 'Danh mục khoá học',
   /**
-   * `pages/Library.tsx`'s `EmptyLibrary` là nơi DUY NHẤT còn dùng khoá này —
-   * `pages/Dashboard.tsx` đã tự viết lời mời riêng của nó (xem `home.empty.*`
-   * bên dưới) vì thư viện không còn là khái niệm của trang chủ. Khoá này rời
-   * đi cùng `pages/Library.tsx` ở một commit sau, không phải ở đây.
+   * MỒ CÔI. Chú thích trước ở đây nói `pages/Library.tsx`'s `EmptyLibrary`
+   * là "nơi DUY NHẤT còn dùng khoá này" và rằng nó "rời đi cùng
+   * `pages/Library.tsx` ở một commit sau" — commit ấy đã xảy ra:
+   * `pages/Library.tsx` KHÔNG còn tồn tại (đo lại 2026-08-29), và khoá thì
+   * ở lại. Cùng lý do "không xoá lẻ" như `nav.import` bên trên.
+   *
+   * Mọi khoá `library.*` ngay dưới đây ở cùng tình trạng và cùng món nợ.
    */
   'courses.import.action': 'Nhập gói',
   'library.loading': 'Đang tải thư viện…',
@@ -699,31 +644,69 @@ export const vi = {
   'ai.panel.expand': 'Mở rộng khung hỏi–đáp',
   'ai.panel.resize': 'Kéo để đổi cỡ khung',
   'ai.panel.collapse': 'Thu khung hỏi–đáp',
-  'ai.panel.newThread': 'Hội thoại mới',
+  // KHÔNG còn "Hội thoại mới" (chữ Pha 1) — vòng review 1: máy chủ không nhớ
+  // gì về bất kỳ lượt nào trước (xem `useAI.ts`'s doc comment), nên một nhãn
+  // ngụ ý có một "hội thoại" mà nút này "làm mới" là nhận một sự liên tục
+  // chưa từng có. Nó chỉ xoá thứ đang vẽ trên màn hình.
+  'ai.panel.newThread': 'Xoá tất cả',
   'ai.panel.thinking': 'Đang nghĩ…',
-  'ai.panel.needsSetup':
-    'Trợ lý AI chạy bằng key của chính bạn, và máy này chưa có key nào. Key được cất trong kho khoá — một trang riêng ở một địa chỉ riêng, nên khoá học không đọc được nó.',
-  'ai.panel.openSettings': 'Mở trang cấu hình',
-  'ai.panel.unavailable':
-    'Bản dựng này không có kho khoá, nên chưa dùng được trợ lý AI. Đây là thiếu sót của cấu hình khi triển khai, không phải của tài khoản bạn — phần đọc giáo trình vẫn chạy bình thường.',
-  'ai.panel.probeFailed': 'Chưa hỏi được kho khoá xem đã cắm key chưa. Bạn vẫn có thể thử hỏi.',
+  // THƯỜNG TRỰC, không gắn với lỗi nào — panel nói câu này TRƯỚC khi có gì
+  // hỏng, vì nó đúng ngay cả ở câu hỏi ĐẦU TIÊN. Xem `useAI.ts`'s doc comment
+  // cho lý do máy chủ không có trí nhớ giữa các lượt.
+  'ai.panel.noMemory': 'Mỗi câu hỏi là một lượt riêng — trợ lý không nhớ những câu bạn đã hỏi trước đó.',
+  // `ai.panel.noCredit` thay cho cặp Pha 1 `needsSetup`/`unavailable` (đã bỏ
+  // — xem `git log` trên tệp này): Pha 2 không còn key cắm theo máy, và
+  // không còn bản dựng nào thiếu route AI, nên cả hai trạng thái đó không
+  // xảy ra được nữa. Trạng thái chặn duy nhất còn lại là hết credit nền
+  // tảng cấp.
+  //
+  // BẢN TRƯỚC HỨA MỘT LỐI RA KHÔNG TỒN TẠI (review tổng nhánh Pha 2, E1):
+  // nó bảo người học "nạp thêm trong trang cấu hình", và `/settings` không
+  // có nút nạp, không form, không liên kết ra ngoài — `CreditPanel.tsx` chỉ
+  // vẽ số dư cộng sổ dùng. Thanh toán là Pha 4 (spec §7); không có gì trong
+  // mã sản phẩm hôm nay nhận tiền. Một câu chỉ đường tới một nút không tồn
+  // tại tệ hơn hẳn một câu nói thẳng là chưa có đường: người học đi tới đó,
+  // không thấy gì, rồi tự hỏi mình bỏ sót cái gì.
+  //
+  // Bản này nói ba điều theo đúng thứ tự người học cần: chuyện gì xảy ra,
+  // vì sao họ không tự sửa được, và ai sửa được. "Chưa mở" chứ không phải
+  // "không có" — nó SẼ mở ở Pha 4, và câu chữ không nên nói dối theo chiều
+  // ngược lại.
+  'ai.panel.noCredit':
+    'Tài khoản đã hết credit AI. Nền tảng chưa mở thanh toán nên bạn chưa tự nạp được — liên hệ quản trị viên để được cấp thêm.',
+  // NÚT VẪN Ở LẠI, và nhãn đổi để nói đúng thứ nó dẫn tới. `/settings` mục
+  // Trợ lý AI không nạp được credit, nhưng nó vẫn trả lời đúng câu hỏi kế
+  // tiếp của một người vừa hết tiền: đã tiêu bao nhiêu, vào những lượt nào
+  // (`CreditPanel.tsx`'s số dư + sổ dùng gần đây). Nhãn cũ "Mở trang cấu
+  // hình" mượn nghĩa từ câu hứa nạp tiền ở trên; bỏ câu ấy đi thì nhãn phải
+  // tự đứng được.
+  'ai.panel.openSettings': 'Xem số dư và sổ dùng',
   'ai.panel.questionLabel': 'Câu hỏi của bạn',
   'ai.panel.questionPlaceholder': 'Hỏi về chương đang đọc…',
   'ai.panel.stop': 'Dừng',
   'ai.panel.ask': 'Hỏi',
   'ai.deepDive.heading': 'Đào sâu',
-  'ai.error.unavailable': 'Bản dựng này không có kho khoá, nên chưa dùng được AI.',
-  'ai.error.notConfigured': 'Chưa cắm key vào kho khoá trên máy này.',
-
-  /* ── phía trang chính của giao thức kho khoá (`ai/vaultClient.ts`) ─────── */
-
-  'ai.vault.originShape': (received: string) =>
-    `VITE_VAULT_ORIGIN phải là một origin đúng nghĩa (scheme://host[:port]), không dấu "/" cuối, không đường dẫn, không "*" — nhận được ${received}.`,
-  'ai.vault.frameDetached': 'Khung kho khoá đã bị tháo trong lúc đang chờ.',
-  'ai.vault.abortedBeforeSend': 'Đã huỷ trước khi gửi.',
-  'ai.vault.abortedByUser': 'Người dùng đã huỷ.',
-  'ai.vault.timeout': (ms: string) =>
-    `Kho khoá không trả lời sau ${ms} ms. Khung có nạp được không, và origin có đúng không?`,
+  // Mười khoá dưới đây ứng với mười `ServerAIErrorCode` (`ai/serverClient.
+  // ts`) — xem `useAI.ts`'s `describeFailure` cho quy tắc "mã nào dịch ra
+  // câu nào", và VÌ SAO không câu nào ở đây là chuỗi thô máy chủ gửi.
+  // Cùng lý do E1 với `ai.panel.noCredit` ở trên, và cố ý NGẮN HƠN: câu này
+  // vẽ ở dòng lỗi của một lượt, cạnh khối lời mời đầy đủ, không thay nó.
+  'ai.error.noCredit': 'Bạn đã dùng hết credit AI. Thanh toán chưa mở — liên hệ quản trị viên để được cấp thêm.',
+  'ai.error.rateLimited': 'Bạn đang hỏi hơi nhanh — chờ một chút rồi thử lại.',
+  'ai.error.providerFailed': 'Nhà cung cấp AI không hoàn tất được lượt này. Thử lại sau một chút.',
+  'ai.error.toolBudgetExhausted':
+    'Câu hỏi này cần nhiều bước tra cứu hơn mức lượt này cho phép. Hãy hỏi cụ thể hơn, hoặc tắt bớt một công cụ.',
+  'ai.error.unauthenticated': 'Phiên đăng nhập đã hết hạn. Đăng nhập lại để tiếp tục hỏi.',
+  // Câu RIÊNG, kéo RA khỏi xô gộp bên dưới (vòng review 1): khác
+  // Internal/InvalidBody/…, người học (hoặc ngữ cảnh chương ngắn hơn) THẬT
+  // SỰ sửa được mã này bằng cách hỏi ngắn hơn.
+  'ai.error.fieldTooLong': 'Câu hỏi của bạn quá dài, kể cả ngữ cảnh đang đọc. Hỏi ngắn hơn, hoặc bôi đen ít chữ hơn.',
+  'ai.error.network': 'Không kết nối được tới máy chủ. Kiểm tra mạng rồi thử lại.',
+  'ai.error.aborted': 'Đã huỷ.',
+  // Chung cho `InvalidBody`/`FieldRequired`/`UnknownTool`/`Internal` — bốn
+  // mã báo lỗi ở chính trang chính hoặc máy chủ, không phải điều người học
+  // gây ra hay có một hành động cụ thể để sửa.
+  'ai.error.requestRejected': 'Yêu cầu bị từ chối. Thử lại sau một chút.',
 
   /* ── LỜI NHẮC gửi cho mô hình (`ai/prompts.ts`) ────────────────────────── */
 
@@ -1040,6 +1023,16 @@ export const vi = {
    * `admin/AdminCourses.tsx`, `admin/adminApi.ts`)
    * ══════════════════════════════════════════════════════════════════════ */
 
+  /**
+   * `AdminNav.tsx` — sub-nav dùng chung cho ba màn `/admin/*`. Task 17
+   * thêm ba khoá này khi `AdminCredits`/`AdminPricing` ra đời, để
+   * `AdminCourses` (Task 8/15) và hai màn mới có đường qua lại nhau.
+   */
+  'admin.nav.aria': 'Mục quản trị',
+  'admin.nav.courses': 'Khoá học',
+  'admin.nav.credits': 'Người dùng & credit',
+  'admin.nav.pricing': 'Bảng giá & prompt nền',
+
   'admin.title': 'Quản trị khoá học',
   'admin.lede': 'Phát hành, gỡ, hoặc lùi phiên bản một khoá học — đi cùng bộ kiểm định mà `tuhoc pack` dùng ở dòng lệnh.',
   'admin.loading': 'Đang tải danh sách…',
@@ -1085,6 +1078,97 @@ export const vi = {
   'admin.error.unknown': 'Đã xảy ra lỗi không xác định.',
   'admin.error.unreachable':
     'Không thể kết nối tới máy chủ. Có thể bạn đang ngoại tuyến, hoặc máy chủ đang bị cấu hình sai (CORS/DNS).',
+
+  /* ══════════════════════════════════════════════════════════════════════ *
+   * QUẢN TRỊ AI — Task 17, spec §7: `admin/AdminCredits.tsx` ("Người dùng &
+   * credit") và `admin/AdminPricing.tsx` ("Bảng giá & prompt nền"), cả hai
+   * nói chuyện với bảy route `/admin/ai/*`
+   * (`apps/api/internal/ai/admin_handler.go`).
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  'admin.ai.credits.title': 'Người dùng & credit',
+  'admin.ai.credits.lede':
+    'Tìm người dùng, xem số dư và sổ dùng, cộng hoặc trừ credit tay — mọi lần cộng/trừ đều bắt buộc ghi chú và được lưu vào sổ thao tác.',
+  'admin.ai.credits.searchLabel': 'Tìm theo email',
+  'admin.ai.credits.searchPlaceholder': 'vd: minh@vidu.test',
+  'admin.ai.credits.searchButton': 'Tìm',
+  'admin.ai.credits.loading': 'Đang tải…',
+  'admin.ai.credits.empty': 'Không tìm thấy người dùng nào khớp.',
+  'admin.ai.credits.colEmail': 'Email',
+  'admin.ai.credits.colRole': 'Vai trò',
+  'admin.ai.credits.colBalance': 'Số dư credit',
+  'admin.ai.credits.colActions': 'Hành động',
+  'admin.ai.credits.selectButton': 'Xem chi tiết',
+  'admin.ai.credits.adjustTitle': 'Cộng / trừ credit tay',
+  'admin.ai.credits.amountLabel': 'Số credit',
+  'admin.ai.credits.directionLabel': 'Chiều',
+  'admin.ai.credits.directionAdd': 'Cộng',
+  'admin.ai.credits.directionSubtract': 'Trừ',
+  'admin.ai.credits.noteLabel': 'Ghi chú (bắt buộc)',
+  'admin.ai.credits.notePlaceholder': 'Vì sao bạn cộng/trừ khoản này — bắt buộc, sẽ lưu vào sổ thao tác.',
+  'admin.ai.credits.adjustSubmit': 'Áp dụng',
+  'admin.ai.credits.adjustSubmitting': 'Đang áp dụng…',
+  'admin.ai.credits.adjustSuccess': 'Đã cập nhật số dư.',
+  'admin.ai.credits.usageTitle': 'Sổ dùng gần đây',
+  'admin.ai.credits.usageEmpty': 'Chưa có lượt hỏi nào được tính phí.',
+  'admin.ai.credits.adjustmentsTitle': 'Lịch sử cộng/trừ tay',
+  'admin.ai.credits.adjustmentsEmpty': 'Chưa có lần cộng/trừ tay nào cho tài khoản này.',
+  'admin.ai.credits.colWho': 'Người thao tác',
+  'admin.ai.credits.colNote': 'Ghi chú',
+
+  'admin.ai.pricing.title': 'Bảng giá & prompt nền',
+  'admin.ai.pricing.lede':
+    'Sửa bảng quy đổi credit theo từng model và lời nhắc nền của agent — có hiệu lực ngay từ lượt hỏi kế tiếp, không cần triển khai lại.',
+  'admin.ai.pricing.tableTitle': 'Bảng quy đổi credit',
+  'admin.ai.pricing.loading': 'Đang tải…',
+  'admin.ai.pricing.colModel': 'Model',
+  'admin.ai.pricing.colCostIn': 'Giá vốn vào (/1K)',
+  'admin.ai.pricing.colCostCachedIn': 'Giá vốn vào-cache (/1K)',
+  'admin.ai.pricing.colCostOut': 'Giá vốn ra (/1K)',
+  'admin.ai.pricing.colCreditsIn': 'Credit vào (/1K)',
+  'admin.ai.pricing.colCreditsCachedIn': 'Credit vào-cache (/1K)',
+  'admin.ai.pricing.colCreditsOut': 'Credit ra (/1K)',
+  'admin.ai.pricing.colUpdatedAt': 'Cập nhật lúc',
+  'admin.ai.pricing.colActions': 'Hành động',
+  'admin.ai.pricing.rowNotePlaceholder': 'Vì sao đổi giá (không bắt buộc)',
+  'admin.ai.pricing.save': 'Lưu',
+  'admin.ai.pricing.saving': 'Đang lưu…',
+  'admin.ai.pricing.saved': 'Đã lưu.',
+  /* Nhan đề của MỘT form lưu HAI cột `ai_settings` (prompt nền +
+   * `signup_grant_micro`) — tên khoá vẫn là `promptTitle` vì nó vẫn là nhan
+   * đề của đúng khối ấy, chỉ là khối ấy nay có thêm một ô. Đổi tên khoá ở
+   * đây không mua được gì: không nghĩa nào bị ĐẢO, chỉ được nới rộng, nên
+   * không có chỗ gọi nào đang hiểu sai để bắt lỗi lúc biên dịch. */
+  'admin.ai.pricing.promptTitle': 'Prompt nền & credit tặng khi đăng ký',
+  'admin.ai.pricing.promptBlurb':
+    'Lời nhắc này đứng TRƯỚC lời nhắc riêng của mọi người dùng — nó giữ vai trò gia sư và ranh giới an toàn, không được để rỗng.',
+  'admin.ai.pricing.promptLabel': 'Prompt nền',
+  'admin.ai.pricing.promptEmptyWarning': 'Prompt nền không được để rỗng — đây là ranh giới an toàn của agent.',
+  'admin.ai.pricing.promptNoteLabel': 'Ghi chú (không bắt buộc)',
+
+  /* ── ô "credit tặng khi đăng ký" (`ai_settings.signup_grant_micro`) ────
+   *
+   * Cột này CÓ route (`PUT /admin/ai/settings` nhận nó từ vòng sửa 1, mục
+   * A1) nhưng KHÔNG có ô nhập cho tới đợt này — thêm ô cần đúng ba khoá
+   * dưới đây, tức câu chữ người dùng, tức phạm vi đợt 2. Nó nằm CÙNG form
+   * với prompt nền chứ không có form riêng vì `PUT /admin/ai/settings` đòi
+   * `base_system_prompt` ở mọi lần gọi: một nút "lưu grant" riêng sẽ phải
+   * gửi kèm bản nháp prompt đang gõ dở, tức lưu lén một thứ người vận hành
+   * chưa định lưu.
+   *
+   * ĐƠN VỊ VIẾT THẲNG TRONG NHÃN: bảng giá ngay trên cùng màn cũng đo bằng
+   * micro-credit, và một ô số không ghi đơn vị bên cạnh sáu cột có ghi là
+   * đúng chỗ một số 0 thừa đi lọt. */
+  'admin.ai.pricing.grantLabel': 'Credit tặng khi đăng ký (micro-credit)',
+  'admin.ai.pricing.grantHint':
+    'Mỗi tài khoản mới nhận số này ngay trong lượt đăng ký. Đặt 0 là TẮT hẳn: tài khoản mới sẽ bị chặn ngay ở câu hỏi đầu tiên cho tới khi có người nạp tay.',
+  'admin.ai.pricing.grantInvalid': (max: string) => `Phải là số nguyên không âm, tối đa ${max}.`,
+
+  'admin.ai.error.fieldRequired': 'Thiếu một trường bắt buộc.',
+  'admin.ai.error.amountRequired': 'Số tiền không được để trống hoặc bằng 0.',
+  'admin.ai.error.amountOutOfRange': 'Số vượt quá mức cho phép cho một lần thao tác.',
+  'admin.ai.error.fieldTooLong': 'Nội dung dài hơn mức cho phép.',
+  'admin.ai.error.notFound': 'Không tìm thấy.',
 };
 
 /** Hình dạng mà MỌI ngôn ngữ phải phủ đúng. Xem chú thích trên `vi`. */

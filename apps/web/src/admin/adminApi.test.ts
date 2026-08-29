@@ -14,10 +14,18 @@ import { redirectToLogin } from '../api/navigation';
 import { ApiError, NotJsonError } from '../api/client';
 import {
   FindingsError,
+  adminAdjustCredit,
+  adminGetAISettings,
+  adminGetAIUser,
+  adminListAIUsers,
   adminListCourses,
+  adminListPricing,
   adminPublish,
   adminRollback,
   adminUnpublish,
+  adminUpdateSettings,
+  adminUpdatePricing,
+  describeAdminAIError,
   describeAdminError,
 } from './adminApi';
 
@@ -242,5 +250,327 @@ describe('describeAdminError', () => {
 
   it('a non-ApiError (no response ever arrived) maps to the unreachable sentence', () => {
     expect(describeAdminError(new TypeError('Failed to fetch'), t)).toBe(t('admin.error.unreachable'));
+  });
+});
+
+/**
+ * ══════════════════════════════════════════════════════════════════════
+ * Task 17 — the seven `/admin/ai/*` calls (`adminListAIUsers` ...
+ * `adminUpdateSettings`) and `describeAdminAIError`.
+ * ══════════════════════════════════════════════════════════════════════
+ */
+
+function aiUserRow(over: Record<string, unknown> = {}) {
+  return { id: 'a1111111-0000-4000-8000-000000000001', email: 'hoc@vidu.test', role: 'user', balance_micro: 733100, ...over };
+}
+
+function pricingRow(over: Record<string, unknown> = {}) {
+  return {
+    model: 'deepseek-v4-pro',
+    cost_micro_per_1k_in: 1320,
+    cost_micro_per_1k_cached_in: 44,
+    cost_micro_per_1k_out: 3960,
+    credits_per_1k_in: 1320,
+    credits_per_1k_cached_in: 44,
+    credits_per_1k_out: 3960,
+    updated_at: '2026-08-28T10:00:00.000Z',
+    ...over,
+  };
+}
+
+function settingsRow(over: Record<string, unknown> = {}) {
+  return {
+    base_system_prompt: 'You are a patient tutor.',
+    credits_per_web_search: 700,
+    cost_micro_per_web_search: 250,
+    signup_grant_micro: 50000,
+    max_tokens_per_turn: 8192,
+    max_tool_rounds_per_turn: 6,
+    max_base_prompt_chars: 20000,
+    ...over,
+  };
+}
+
+describe('adminListAIUsers', () => {
+  it('GET /admin/ai/users (no ?q) when query is empty → the array, verbatim', async () => {
+    let path = '';
+    server.use(
+      http.get('/admin/ai/users', ({ request }) => {
+        path = new URL(request.url).pathname + new URL(request.url).search;
+        return HttpResponse.json([aiUserRow()]);
+      }),
+    );
+    await expect(adminListAIUsers('')).resolves.toEqual([aiUserRow()]);
+    expect(path).toBe('/admin/ai/users');
+  });
+
+  it('a non-empty query is sent as ?q=<encoded>, trimmed', async () => {
+    let search = '';
+    server.use(
+      http.get('/admin/ai/users', ({ request }) => {
+        search = new URL(request.url).search;
+        return HttpResponse.json([]);
+      }),
+    );
+    await adminListAIUsers('  đại số@vidu.test  ');
+    expect(search).toBe(`?q=${encodeURIComponent('đại số@vidu.test')}`);
+  });
+
+  it('a non-2xx rejects with ApiError', async () => {
+    server.use(http.get('/admin/ai/users', () => HttpResponse.json({ error: 'boom' }, { status: 500 })));
+    await expect(adminListAIUsers('')).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe('adminGetAIUser', () => {
+  it('GET /admin/ai/users/:id, id percent-encoded → the detail object', async () => {
+    let path = '';
+    const detail = { ...aiUserRow(), recent_usage: [], recent_adjustments: [] };
+    server.use(
+      http.get('/admin/ai/users/:id', ({ request, params }) => {
+        path = String(params.id);
+        void request;
+        return HttpResponse.json(detail);
+      }),
+    );
+    await expect(adminGetAIUser('a b')).resolves.toEqual(detail);
+    expect(path).toBe('a b');
+  });
+
+  it('404 (unknown id) rejects with ApiError', async () => {
+    server.use(http.get('/admin/ai/users/:id', () => HttpResponse.json({ code: 'NotFound', error: 'no such user' }, { status: 404 })));
+    await expect(adminGetAIUser('ghost')).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe('adminAdjustCredit', () => {
+  it('POST /admin/ai/users/:id/credit, body {delta_micro, note} → {balance_micro}', async () => {
+    let path = '';
+    let body: unknown = null;
+    server.use(
+      http.post('/admin/ai/users/:id/credit', async ({ request, params }) => {
+        path = String(params.id);
+        body = await request.json();
+        return HttpResponse.json({ balance_micro: 1148400 });
+      }),
+    );
+    await expect(adminAdjustCredit('u1', 415300, 'top-up')).resolves.toEqual({ balance_micro: 1148400 });
+    expect(path).toBe('u1');
+    expect(body).toEqual({ delta_micro: 415300, note: 'top-up' });
+  });
+
+  it('a negative delta_micro is sent through unchanged (a debit, not an error)', async () => {
+    let body: unknown = null;
+    server.use(
+      http.post('/admin/ai/users/:id/credit', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ balance_micro: 941700 });
+      }),
+    );
+    await adminAdjustCredit('u1', -206700, 'correction');
+    expect(body).toEqual({ delta_micro: -206700, note: 'correction' });
+  });
+
+  it('a 400 (e.g. empty note) rejects with ApiError carrying the code', async () => {
+    server.use(
+      http.post('/admin/ai/users/:id/credit', () =>
+        HttpResponse.json({ code: 'FieldRequired', error: 'note is required' }, { status: 400 }),
+      ),
+    );
+    const failure = adminAdjustCredit('u1', 100, '');
+    await expect(failure).rejects.toBeInstanceOf(ApiError);
+    await expect(failure).rejects.toMatchObject({ status: 400, body: { code: 'FieldRequired' } });
+  });
+
+  it('401 triggers the shared redirectToLogin side effect', async () => {
+    server.use(http.post('/admin/ai/users/:id/credit', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
+    await expect(adminAdjustCredit('u1', 100, 'note')).rejects.toBeInstanceOf(ApiError);
+    expect(redirectToLogin).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('adminListPricing', () => {
+  it('GET /admin/ai/pricing → the array, verbatim', async () => {
+    server.use(http.get('/admin/ai/pricing', () => HttpResponse.json([pricingRow()])));
+    await expect(adminListPricing()).resolves.toEqual([pricingRow()]);
+  });
+});
+
+describe('adminUpdatePricing', () => {
+  const input = {
+    cost_micro_per_1k_in: 1320,
+    cost_micro_per_1k_cached_in: 44,
+    cost_micro_per_1k_out: 3960,
+    credits_per_1k_in: 4170,
+    credits_per_1k_cached_in: 44,
+    credits_per_1k_out: 3960,
+    note: 'raising the input rate',
+  };
+
+  it('PUT /admin/ai/pricing/:model, Content-Type application/json, model percent-encoded → the updated row', async () => {
+    let method = '';
+    let contentType: string | null = null;
+    let path = '';
+    let body: unknown = null;
+    server.use(
+      http.put('/admin/ai/pricing/:model', async ({ request, params }) => {
+        method = request.method;
+        contentType = request.headers.get('content-type');
+        path = String(params.model);
+        body = await request.json();
+        return HttpResponse.json(pricingRow({ credits_per_1k_in: 4170 }));
+      }),
+    );
+
+    await expect(adminUpdatePricing('deepseek v4', input)).resolves.toEqual(pricingRow({ credits_per_1k_in: 4170 }));
+    expect(method).toBe('PUT');
+    expect(path).toBe('deepseek v4');
+    expect(contentType).toBe('application/json');
+    expect(body).toEqual(input);
+  });
+
+  it('404 (unknown model) rejects with ApiError', async () => {
+    server.use(http.put('/admin/ai/pricing/:model', () => HttpResponse.json({ code: 'NotFound', error: 'no such model' }, { status: 404 })));
+    await expect(adminUpdatePricing('ghost-model', input)).rejects.toMatchObject({ status: 404 });
+  });
+
+  /**
+   * `putJSON` (adminApi.ts) reuses the EXACT `isJsonContainer`/`NotJsonError`
+   * guard `api.get`/`api.post` already apply — this proves that guard
+   * survived the trip through the hand-rolled PUT path, the same shape of
+   * regression `adminPublish`'s own equivalent test (above) exists to catch.
+   */
+  it('a 200 whose body is not JSON rejects with NotJsonError, never a fake success', async () => {
+    server.use(http.put('/admin/ai/pricing/:model', () => HttpResponse.html('<!doctype html><p>not found</p>')));
+    await expect(adminUpdatePricing('deepseek-v4-pro', input)).rejects.toBeInstanceOf(NotJsonError);
+  });
+
+  it('a 200 whose body is a JSON array (not an object) rejects with NotJsonError', async () => {
+    server.use(http.put('/admin/ai/pricing/:model', () => HttpResponse.json([pricingRow()])));
+    await expect(adminUpdatePricing('deepseek-v4-pro', input)).rejects.toBeInstanceOf(NotJsonError);
+  });
+});
+
+describe('adminGetAISettings', () => {
+  it('GET /admin/ai/settings → the settings object, verbatim', async () => {
+    server.use(http.get('/admin/ai/settings', () => HttpResponse.json(settingsRow())));
+    await expect(adminGetAISettings()).resolves.toEqual(settingsRow());
+  });
+});
+
+describe('adminUpdateSettings', () => {
+  it('PUT /admin/ai/settings, body {base_system_prompt, note} → the updated settings', async () => {
+    let body: unknown = null;
+    server.use(
+      http.put('/admin/ai/settings', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(settingsRow({ base_system_prompt: 'new prompt' }));
+      }),
+    );
+    await expect(adminUpdateSettings('new prompt', 'adding a rule')).resolves.toEqual(
+      settingsRow({ base_system_prompt: 'new prompt' }),
+    );
+    expect(body).toEqual({ base_system_prompt: 'new prompt', note: 'adding a rule' });
+  });
+
+  it('an omitted note is not sent as a literal key at all (JSON.stringify drops `undefined`)', async () => {
+    let body: unknown = null;
+    server.use(
+      http.put('/admin/ai/settings', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(settingsRow());
+      }),
+    );
+    await adminUpdateSettings('a prompt');
+    expect(body).toEqual({ base_system_prompt: 'a prompt' });
+  });
+
+  /**
+   * NỬA QUAN TRỌNG NHẤT của cặp bài này, và là lý do `signupGrantMicro` là
+   * tham số TÙY CHỌN chứ không phải một `number` trần: phía Go khai trường
+   * ấy là con trỏ, và VẮNG nghĩa là "đừng động tới". Nếu tệp này gửi `0`
+   * thay cho "không đổi", mọi lần lưu prompt nền sẽ lặng lẽ tắt credit tặng
+   * khi đăng ký — đúng lỗ hổng "402 ở câu hỏi đầu tiên" mà vòng sửa 1 đóng,
+   * mở lại từ một màn người vận hành tưởng chỉ sửa chữ.
+   */
+  it('an omitted signupGrantMicro leaves the key out of the body entirely — never sends 0', async () => {
+    let body: unknown = null;
+    server.use(
+      http.put('/admin/ai/settings', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(settingsRow());
+      }),
+    );
+    await adminUpdateSettings('a prompt', 'a note');
+    expect(body).toEqual({ base_system_prompt: 'a prompt', note: 'a note' });
+    expect(Object.keys(body as object)).not.toContain('signup_grant_micro');
+  });
+
+  it('an EXPLICIT 0 is sent, because switching the grant off on purpose is legal', async () => {
+    let body: unknown = null;
+    server.use(
+      http.put('/admin/ai/settings', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(settingsRow({ signup_grant_micro: 0 }));
+      }),
+    );
+    await adminUpdateSettings('a prompt', 'switching the grant off', 0);
+    expect(body).toEqual({ base_system_prompt: 'a prompt', note: 'switching the grant off', signup_grant_micro: 0 });
+  });
+
+  it('a 400 (empty prompt) rejects with ApiError carrying FieldRequired', async () => {
+    server.use(
+      http.put('/admin/ai/settings', () =>
+        HttpResponse.json({ code: 'FieldRequired', error: 'base_system_prompt must not be empty' }, { status: 400 }),
+      ),
+    );
+    const failure = adminUpdateSettings('', 'trying to clear it');
+    await expect(failure).rejects.toMatchObject({ status: 400, body: { code: 'FieldRequired' } });
+  });
+});
+
+describe('describeAdminAIError', () => {
+  it('FieldRequired → the field-required sentence', () => {
+    expect(describeAdminAIError(new ApiError(400, { code: 'FieldRequired', error: 'x' }), t)).toBe(
+      t('admin.ai.error.fieldRequired'),
+    );
+  });
+
+  // round-2 review, "Hỏng mới": AmountRequired (delta_micro == 0) had no
+  // case in describeAdminAIError at all and silently fell through to the
+  // generic bad-request sentence — this is the one test that would have
+  // caught it, and the ONLY reason it did not exist yet is that the code
+  // itself did not exist until round 2 added it.
+  it('AmountRequired → its OWN sentence, distinct from FieldRequired', () => {
+    const got = describeAdminAIError(new ApiError(400, { code: 'AmountRequired', error: 'x' }), t);
+    expect(got).toBe(t('admin.ai.error.amountRequired'));
+    expect(got).not.toBe(t('admin.ai.error.fieldRequired'));
+  });
+
+  it('AmountOutOfRange → the amount-out-of-range sentence', () => {
+    expect(describeAdminAIError(new ApiError(400, { code: 'AmountOutOfRange', error: 'x' }), t)).toBe(
+      t('admin.ai.error.amountOutOfRange'),
+    );
+  });
+
+  it('FieldTooLong → the field-too-long sentence', () => {
+    expect(describeAdminAIError(new ApiError(400, { code: 'FieldTooLong', error: 'x' }), t)).toBe(
+      t('admin.ai.error.fieldTooLong'),
+    );
+  });
+
+  it('NotFound → the not-found sentence', () => {
+    expect(describeAdminAIError(new ApiError(404, { code: 'NotFound', error: 'x' }), t)).toBe(
+      t('admin.ai.error.notFound'),
+    );
+  });
+
+  it('an unrecognized/absent code falls back to describeAdminError (status-based)', () => {
+    expect(describeAdminAIError(new ApiError(500, { error: 'boom' }), t)).toBe(t('admin.error.serverDown'));
+    expect(describeAdminAIError(new ApiError(400, { error: 'no code at all' }), t)).toBe(t('admin.error.badRequest'));
+  });
+
+  it('a non-ApiError falls back to the unreachable sentence', () => {
+    expect(describeAdminAIError(new TypeError('Failed to fetch'), t)).toBe(t('admin.error.unreachable'));
   });
 });

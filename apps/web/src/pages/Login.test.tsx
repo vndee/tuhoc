@@ -120,20 +120,85 @@ describe('Login — hai cột: sản phẩm tự giới thiệu bên trái, form
   });
 
   /**
-   * BẢO VỆ CHỐNG TÁI PHẠM (spec `2026-08-25-server-side-pivot.md` §0.2).
+   * BẢO VỆ CHỐNG TÁI PHẠM — danh sách LỜI HỨA ĐÃ CHẾT, quét NGUYÊN VĂN chữ
+   * render ra chứ không so khớp một khoá cụ thể (thiết kế gốc của bài kiểm
+   * này, spec `2026-08-25-server-side-pivot.md` §0.2) — nên nó vẫn đỏ nếu
+   * lời hứa cũ quay lại qua bất kỳ khoá nào khác, kể cả một khoá mới không ai
+   * đặt tên trước.
    *
-   * `/login` từng hứa "gói nằm trên máy bạn, đọc ngoại tuyến" — đúng dưới kiến
-   * trúc course-là-gói-tải-về, sai từ khi course chuyển hẳn lên máy chủ
-   * (task-14). Bài này không so khớp một khoá cụ thể — nó quét NGUYÊN VĂN chữ
-   * render ra, nên nó vẫn đỏ nếu lời hứa cũ quay lại qua bất kỳ khoá nào khác,
-   * kể cả một khoá mới không ai đặt tên trước.
+   * Sáu mục, hai lời hứa đã chết ở hai pha khác nhau:
+   *   - "ngoại tuyến" / "trên máy bạn" / "gói đã tải" / "gói khoá học" —
+   *     course từng là một gói tải về, đọc được khi mất mạng; sai từ khi
+   *     course chuyển hẳn lên máy chủ (task-14, spec §0.2). Bốn mục chứ
+   *     không phải hai: hai mục đầu là NGUYÊN VĂN bản Login từng hứa, hai
+   *     mục sau là NGUYÊN VĂN bản Settings từng hứa
+   *     (`Settings.copy.test.tsx`) — gộp cả bốn vào MỘT danh sách để bài
+   *     kiểm này cũng đỏ nếu lời hứa của Settings trôi dạt sang Login.
+   *   - "key của chính bạn" / "không đi qua máy chủ" — trợ lý AI từng chạy
+   *     bằng key riêng của người học, và key đó từng không đi qua máy chủ
+   *     tuhoc; sai từ khi AI chuyển hẳn lên máy chủ (task-15, cùng spec
+   *     §0.1 — bàn giao Pha 1 gọi đích danh câu này ở `login.point.ownKey`).
+   *
+   * GIỚI HẠN ĐÃ ĐO, KHÔNG SUY ĐOÁN: đây là so khớp CỤM CỐ ĐỊNH, không phải
+   * so khớp NGỮ NGHĨA — một câu diễn đạt LẠI cùng nghĩa nhưng né cả sáu cụm
+   * dưới đây (đo được ở task-15-report.md, không phải khả năng lý thuyết:
+   * "trợ lý AI dùng mã truy cập bạn tự nhập, chữ ở lại trên thiết bị bạn,
+   * chẳng ghé qua hạ tầng tuhoc") đi qua danh sách này MÀ KHÔNG BỊ BẮT. Vẫn
+   * chọn cách này vì so khớp ngữ nghĩa không làm được trong một unit test
+   * đồng bộ không gọi mô hình, và cụm cố định vẫn bắt được ca hồi quy THỰC
+   * TẾ NHẤT — ai đó khôi phục lại NGUYÊN VĂN câu cũ.
+   *
+   * LẶP LẠI (không import) ở `Settings.copy.test.tsx` — cùng lý do docstring
+   * của tệp đó đã nói cho việc không dùng chung harness: import một hằng số
+   * từ tệp kia vẫn là một điểm chạm.
    */
-  it('không còn hứa đọc ngoại tuyến hay giữ gói trên máy bạn — kiến trúc đã đổi ở pha này (spec §0.2)', async () => {
+  const LOI_HUA_DA_CHET_VI = [
+    /ngoại tuyến/i,
+    /trên máy bạn/i,
+    /gói đã tải/i,
+    /gói khoá học/i,
+    /key của chính bạn/i,
+    /không đi qua máy chủ/i,
+  ];
+
+  it('không còn hứa đọc ngoại tuyến, giữ gói trên máy bạn, hay chạy AI bằng key riêng — kiến trúc đã đổi ở hai pha (spec §0.2, §0.1)', async () => {
     await renderLoginForm();
 
     const rendered = document.body.textContent ?? '';
-    expect(rendered).not.toContain('ngoại tuyến');
-    expect(rendered).not.toContain('trên máy bạn');
+    for (const loiHua of LOI_HUA_DA_CHET_VI) {
+      expect(rendered).not.toMatch(loiHua);
+    }
+  });
+
+  /**
+   * CÙNG CỔNG, PHÍA TIẾNG ANH. task-15 sửa câu chữ ở CẢ HAI ngôn ngữ — một
+   * cổng chỉ quét bản tiếng Việt sẽ bỏ lọt nếu ai đó lỡ vá lại "your own key"
+   * mà không đụng câu tiếng Việt tương ứng.
+   *
+   * `itbook-lang` là khoá `localStorage` mà `readStoredLang()`
+   * (`i18n/index.ts`) đọc TRƯỚC khi `LanguageProvider` khởi tạo state lần
+   * đầu (`useState(() => readStoredLang() ?? DEFAULT_LANG)`) — set nó rồi
+   * mới render là cách render thẳng bản tiếng Anh mà không cần mô phỏng một
+   * cú bấm đổi ngôn ngữ.
+   *
+   * `try`/`finally` xoá khoá này khi bài kiểm xong: `clearLocalData()`
+   * (chạy trong `beforeEach`/`afterEach` của cả tệp) CỐ Ý không đụng tới
+   * `itbook-lang` — nó là tuỳ chọn THIẾT BỊ, không phải nội dung người dùng
+   * (`i18n/i18n.test.ts` → `'ngôn ngữ được ghi nhớ THEO THIẾT BỊ'`) — nên
+   * nếu bài này không tự dọn, mọi bài Login sau nó trong tệp sẽ render bằng
+   * tiếng Anh và đỏ ở `getByLabelText(/^mật khẩu$/i)`.
+   */
+  it('bản tiếng Anh cũng không còn hứa "your own key" hay "never passes through our servers"', async () => {
+    localStorage.setItem('itbook-lang', 'en');
+    try {
+      await renderLoginForm();
+
+      const rendered = document.body.textContent ?? '';
+      expect(rendered).not.toMatch(/your own key/i);
+      expect(rendered).not.toMatch(/never passes through our servers/i);
+    } finally {
+      localStorage.removeItem('itbook-lang');
+    }
   });
 
   it('hai nửa là hai con của cùng MỘT trang, không phải hai trang xếp chồng', async () => {

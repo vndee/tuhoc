@@ -597,8 +597,11 @@ func TestNoRouteReadsUserFromTheRequest(t *testing.T) {
 // plan states: a private course must not appear in any leaderboard.
 //
 // The API cannot tell a registry id from a private course id — it never
-// fetches the registry index, and it must not (apps/api product code makes
-// no outbound calls; see internal/server/no_key_transit_test.go). So the
+// fetches the registry index, and it must not. (This used to cite
+// internal/server/no_key_transit_test.go's "no outbound calls at all"
+// scan; that file was deleted at Task 11 and apps/api does make outbound
+// calls now — see handler.go's List for the full note. Nothing reads the
+// registry index, and nothing enforces that beyond nobody writing it.) So the
 // barrier is not validation, it is the ABSENCE OF ENUMERATION: every
 // answer this API gives about ratings is scoped to ids the caller already
 // named, and those come from the public registry index.
@@ -612,8 +615,10 @@ func TestNoRouteReadsUserFromTheRequest(t *testing.T) {
 //  2. shape — no route exists that could enumerate. app.GetRoutes is the
 //     right tool for exactly this question and the wrong tool for most
 //     others: it knows which routes EXIST (which is the claim here), and
-//     it knows nothing about what a handler reads (which is why
-//     no_key_transit_test.go refuses to use it for that).
+//     it knows nothing about what a handler reads (which is why the
+//     key-transit gate refused to use it for that — an argument its
+//     successor internal/server/provider_key_never_leaks_test.go still
+//     keeps, by scanning source rather than the route table).
 func TestPrivateCourseNeverAppearsInAnyListing(t *testing.T) {
 	pool := store.TestPool(t)
 	appA, appB := newTestApp(pool), newTestApp(pool)

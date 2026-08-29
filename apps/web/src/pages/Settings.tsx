@@ -1,11 +1,12 @@
 import { useEffect, useId, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import { AgentConfigPanel } from '../ai/AgentConfigPanel';
+import { CreditPanel } from '../ai/CreditPanel';
 import { useMe, accountInitials } from '../api/useMe';
 import { useLogout } from '../auth/useLogout';
 import { db } from '../db/local';
 import { LANGS, normalizeLang } from '../i18n';
 import { useLanguage } from '../i18n/LanguageProvider';
-import { useVaultFrame } from '../shell/VaultFrame';
 import { useThemeContext } from '../theme/ThemeContext';
 
 /**
@@ -19,23 +20,32 @@ import { useThemeContext } from '../theme/ThemeContext';
  * khoản, Trợ lý AI, Ngôn ngữ & giao diện, Dữ liệu trên máy.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * RÀNG BUỘC AN NINH CỦA TRANG NÀY, và nó KHÔNG phải chuyện thẩm mỹ
+ * RÀNG BUỘC AN NINH CỦA TRANG NÀY — ĐÃ ĐỔI Ở PHA 2, VÀ VÌ SAO ĐỔI ĐÚNG
  * ─────────────────────────────────────────────────────────────────────────────
  *
- * Trang này không có một `<input>` nào, và đó là ràng buộc chứ không phải sự
- * tình cờ. Ô dán key sống trong khung của kho khoá, ở một origin riêng; một ô
- * trên trang này sẽ đi qua DOM của trang này, và một khoá học hạng `interactive`
- * bị duyệt sót đọc được nó bằng đúng một listener `input` — tức là toàn bộ kiến
- * trúc hai origin trở thành trang trí.
+ * Tới Task 13, trang này KHÔNG có một `<input>`/`<textarea>` nào, và đó từng là
+ * ràng buộc chứ không phải sự tình cờ: ô dán KEY của nhà cung cấp (DeepSeek/
+ * OpenAI/…) sống trong khung của kho khoá, ở một origin riêng. Một ô trên trang
+ * chính sẽ đi qua DOM của trang chính, và một khoá học hạng `interactive` bị
+ * duyệt sót — hay bất kỳ mã nào chạy được trong origin này — đọc được nó bằng
+ * đúng một listener `input`.
  *
- * `Settings.test.tsx` khẳng định **"không có `<input>` nào"** — ở MỌI mục, chứ
- * không chỉ ở mục mặc định — và `e2e/s2.spec.ts` khẳng định lại điều đó trên
- * trình duyệt thật (`.page-settings input, .page-settings textarea` ⇒ 0). Đó là
- * lý do mục "Ngôn ngữ & giao diện" dùng `<select>` và `<button>`: một ô radio
- * hay một ô text ở đây sẽ làm cả hai cổng đỏ, và đúng ra là như thế.
+ * PHA 2 GỠ ĐÚNG THỨ CẦN GỠ ĐI: `apps/api/internal/ai/handler.go` chạy DeepSeek
+ * bằng key CỦA NỀN TẢNG, trả bằng credit — không còn key nào của người học để
+ * bảo vệ. Lời nhắc riêng (`system_prompt`, `AgentConfigPanel.tsx`) không phải
+ * một bí mật: nó là một tuỳ chỉnh cá nhân, lưu qua `PUT /ai/config` trên PHIÊN
+ * ĐĂNG NHẬP đã có — và một mã độc chạy được trong origin này đã có thể gọi
+ * chính route đó bằng cookie phiên (`credentials: 'include'`), KHÔNG CẦN đọc
+ * bất kỳ ô nào trên màn hình để làm vậy. Cách ly hai origin chỉ có giá trị cho
+ * một bí mật mà chính JavaScript của trang cũng không được phép biết; không gì
+ * trên trang này còn ở hạng đó.
  *
- * `.page-settings` là lớp mà cả hai cổng ấy bám vào; đừng đổi tên nó mà không
- * đổi cả hai.
+ * Ràng buộc còn lại — hẹp hơn — là: KHÔNG `<input>` và KHÔNG `[contenteditable]`
+ * nào (không đổi: những hạng phần tử đó chưa từng cần ở đây), và ĐÚNG MỘT
+ * `<textarea>` — ô sửa `system_prompt` của `AgentConfigPanel`, không hơn.
+ * `Settings.test.tsx` khẳng định đúng con số đó ở MỌI mục, không chỉ mục mặc
+ * định. `.page-settings` là lớp mà cổng ấy bám vào; đừng đổi tên nó mà không
+ * sửa cổng theo.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * VÌ SAO MỖI MỤC LÀ MỘT COMPONENT RIÊNG, CHỈ GẮN KHI ĐƯỢC CHỌN
@@ -54,13 +64,13 @@ import { useThemeContext } from '../theme/ThemeContext';
  *
  * Trang này có bốn khối và tổng cộng khoảng một màn rưỡi nội dung. Chia một
  * lượng như thế thành ba tab bắt người dùng trả một cái giá mà không nhận lại
- * gì: mỗi lần muốn biết "mình đã cắm key chưa" hay "máy đang giữ bao nhiêu"
- * đều là một cú bấm và một lần đoán xem nó nằm ở tab nào. Cuộn thì rẻ hơn.
+ * gì: mỗi lần muốn biết "mình còn bao nhiêu credit" hay "máy đang giữ bao
+ * nhiêu" đều là một cú bấm và một lần đoán xem nó nằm ở tab nào. Cuộn thì rẻ
+ * hơn.
  *
  * `SectionId` VẪN CÒN, và nó không phải tàn dư: `ai/AskPanel.tsx` điều hướng
- * sang đây với `state={{ section: 'ai', openVault: true }}`, và ý định ấy nay
- * có nghĩa "CUỘN tới khối ấy" thay vì "mở tab ấy". Cùng một hợp đồng, một cách
- * thực hiện khác — nên lối vào từ panel hỏi-đáp không phải sửa một dòng nào.
+ * sang đây với `state={{ section: 'ai' }}` (lời mời nạp credit khi hết —
+ * `ai/AskPanel.tsx`'s `needsSetup`), và ý định ấy có nghĩa "CUỘN tới khối ấy".
  */
 type SectionId = 'general' | 'ai' | 'localData';
 
@@ -69,7 +79,6 @@ const SECTIONS: readonly SectionId[] = ['general', 'ai', 'localData'];
 /** Ý định do lối vào truyền sang, qua `<Link state={…}>`. Không có thì `null`. */
 export type SettingsNavIntent = {
   readonly section?: SectionId;
-  readonly openVault?: boolean;
 };
 
 function readIntent(state: unknown): SettingsNavIntent {
@@ -77,9 +86,9 @@ function readIntent(state: unknown): SettingsNavIntent {
   // bằng history API, và nó sống sót qua back/forward), nên đọc phòng thủ và
   // chỉ nhận đúng những giá trị đã biết.
   if (typeof state !== 'object' || state === null) return {};
-  const record = state as { section?: unknown; openVault?: unknown };
+  const record = state as { section?: unknown };
   const section = SECTIONS.find((id) => id === record.section);
-  return { section, openVault: record.openVault === true };
+  return { section };
 }
 
 /** Neo để cuộn tới. Cũng là `id` thật trên DOM, nên `#ai` trên URL cũng chạy. */
@@ -92,11 +101,6 @@ const SECTION_ANCHOR: Record<SectionId, string> = {
 export function Settings() {
   const { t } = useLanguage();
   const intent = readIntent(useLocation().state);
-
-  // Đọc ý định MỘT LẦN lúc mount: `history.state` sống dai hơn lần điều hướng
-  // sinh ra nó (nó còn nguyên qua back/forward), nên đọc lại ở mỗi render sẽ
-  // bung kho khoá lần thứ hai sau khi người dùng đã đóng nó.
-  const [autoOpenVault] = useState(() => intent.openVault === true);
 
   /**
    * Cuộn tới khối mà lối vào chỉ định — MỘT LẦN, sau khi cây đã dựng.
@@ -128,7 +132,7 @@ export function Settings() {
       <div className="set-main">
         <AccountSection anchor={SECTION_ANCHOR.general} />
         <AppearanceSection />
-        <AiSection anchor={SECTION_ANCHOR.ai} autoOpen={autoOpenVault} />
+        <AiSection anchor={SECTION_ANCHOR.ai} />
         <LocalDataSection anchor={SECTION_ANCHOR.localData} />
       </div>
     </section>
@@ -136,136 +140,50 @@ export function Settings() {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════ *
- * TRỢ LÝ AI
+ * TRỢ LÝ AI — Pha 2: credit + cấu hình agent thay khung kho khoá
  * ══════════════════════════════════════════════════════════════════════════ */
 
 /**
- * Mục Trợ lý AI có hai việc, và chỉ hai: **giải thích** vì sao ô nhập nằm ở chỗ
- * khác, và **mở khung kho khoá ra** để người dùng nhìn thấy nó.
+ * Mục Trợ lý AI, viết lại hoàn toàn cho task-14 (task-14-brief.md).
  *
- * Việc thứ hai vá một ngõ cụt có thật (cổng mù #4 / S1-F29): bảng xác nhận đầu
- * phiên và form cấu hình đều được vẽ sẵn trong khung, nhưng khung ẩn — nên
- * trước trang này chưa ai từng nhìn thấy chúng, và một `needs_consent` là ngõ
- * cụt.
+ * KHÔNG CÒN GÌ ĐỂ MỞ RA. Bản Task 9 có một việc trung tâm: mở khung kho khoá
+ * ẩn ra để người dùng nhìn thấy nó (vá ngõ cụt "bảng xác nhận vẽ trong một
+ * khung không ai từng thấy"). Pha 2 không có khung nào cả — `useAI.ts`'s doc
+ * comment nói rõ: máy chủ luôn cấu hình sẵn AI, không có "chưa cắm key" hay
+ * "bản dựng thiếu kho khoá" để giải thích hay mở ra nữa.
  *
- * **Cái mới ở đây là cái KHUNG.** Kiến trúc origin riêng chỉ có giá trị nếu
- * người dùng nhìn thấy nó, và trước đây trang này chỉ *kể* rằng có một địa chỉ
- * riêng. Nay chỗ ấy là một hộp có viền, có thanh tiêu đề riêng, và trên thanh
- * ấy là **origin thật** — `origin` từ context, tức chính chuỗi mà `src` của
- * khung trỏ tới. Một bản dựng lỡ trỏ kho khoá về origin trang chính sẽ tự nói
- * ra điều đó ở đây, thay vì âm thầm chạy tiếp với một cơ chế đã chết.
+ * Mục này giờ chỉ LÀM hai việc, và cả hai đều đọc/ghi máy chủ thật (không còn
+ * `postMessage` tới một origin khác):
+ *
+ *   1. `CreditPanel` (`ai/CreditPanel.tsx`) — số dư và sổ dùng gần đây,
+ *      `GET /ai/credits`.
+ *   2. `AgentConfigPanel` (`ai/AgentConfigPanel.tsx`) — lời nhắc riêng và
+ *      tool bật/tắt, `GET`/`PUT /ai/config`.
+ *
+ * Cả hai là component ĐỘC LẬP (tự `useQuery`/`useMutation` riêng), không phải
+ * hai nhánh JSX rẽ theo cùng một `useAI`-kiểu state ở đây — mỗi cái đứng vững
+ * một mình và có bộ kiểm riêng (`CreditPanel.test.tsx`,
+ * `AgentConfigPanel.test.tsx`); tệp này (và `Settings.test.tsx`) chỉ còn phải
+ * canh rằng CẢ HAI có mặt đúng chỗ, không lặp lại việc kiểm chi tiết bên trong
+ * chúng.
  */
-function AiSection({ anchor, autoOpen }: { anchor: string; autoOpen: boolean }) {
-  const { origin, expanded, setExpanded } = useVaultFrame();
-  const { t, tNode } = useLanguage();
-
-  /**
-   * KHÔNG mở khung khi vào mục này — chỉ đóng khi rời mục HOẶC rời trang.
-   *
-   * Trước đây chỗ này gọi `setExpanded(true)` lúc mount. Cộng với
-   * `DEFAULT_SECTION` từng là `'ai'`, hệ quả là mở `/settings` sẽ ném thẳng một
-   * lớp phủ TOÀN MÀN HÌNH cấu hình AI vào mặt người dùng trước khi họ hỏi tới
-   * nó. Một người chỉ muốn đổi ngôn ngữ hay xoá dữ liệu máy phải đóng một trang
-   * cấu hình AI trước đã. Trợ lý AI là TUỲ CHỌN của sản phẩm này — cả giáo
-   * trình đọc được mà không cần một key nào — nên nó không được là cửa trước
-   * của Cài đặt. Người dùng báo đúng chuyện này.
-   *
-   * Việc tự mở còn thừa: ngay bên dưới đã có nút `settings.ai.open`
-   * ("Mở kho khoá") làm đúng việc ấy khi người ta thật sự muốn. Khung `<iframe>`
-   * vẫn luôn được gắn (`VaultFrame` chỉ `display:none` nó khi thu), nên không
-   * mở sẵn KHÔNG làm chậm hay hỏng cầu nối postMessage.
-   *
-   * Đóng lại khi rời đi thì vẫn bắt buộc, ở cả hai chiều: để lớp phủ mở sau khi
-   * người học đã bấm sang một chương là che mất giáo trình bằng một trang cấu
-   * hình — và để nó mở khi họ vừa bấm sang mục "Tài khoản" là che mất chính mục
-   * họ vừa chọn.
-   */
-  useEffect(() => {
-    if (autoOpen) setExpanded(true);
-    return () => {
-      setExpanded(false);
-    };
-  }, [autoOpen, setExpanded]);
+function AiSection({ anchor }: { anchor: string }) {
+  const { t } = useLanguage();
 
   return (
     <section className="set-block" id={anchor}>
       <div className="set-side">
         <h2 className="set-h">{t('settings.ai.title')}</h2>
-        {/*
-          `tNode`, không `t`: `<strong>kho khoá</strong>` nằm GIỮA câu. Đây là ca
-          đã chốt QĐ-2 — nếu `t()` trả `ReactNode` thì mọi `aria-label`/`title`/
-          `throw` trong 37 tệp còn lại phải thu hẹp kiểu bằng tay.
-        */}
-        <p className="set-lede" data-testid="vault-explainer">
-          {tNode('settings.ai.blurb', <strong>{t('settings.ai.blurbVault')}</strong>)}
-        </p>
+        <p className="set-lede">{t('settings.ai.blurb')}</p>
       </div>
 
       <div className="set-block-main">
-      {/*
-        CỘT TRÁI LÀ MỘT Ô, KHÔNG PHẢI HAI Ô CHỒNG NHAU.
+        <CreditPanel />
 
-        Trước đây `.set-h` và `.set-lede` là hai con phẳng của `.set-main`, đặt
-        vào hàng 1 và hàng 2 của lưới. Nhưng CHIỀU CAO của một hàng lưới do phần
-        tử CAO NHẤT trong hàng ấy quyết định — và hàng 1 còn chứa cả khối bên
-        phải. Đo trên mục Trợ lý AI: hàng 1 cao 138px vì hộp kho khoá, nên nhan
-        đề 36px đứng ở đỉnh còn câu giải thích của chính nó bị đẩy xuống dưới
-        một khoảng trống 100px.
-
-        Một thẻ bọc gộp hai thứ vào MỘT ô, nên chúng lại xếp liền nhau — và nó
-        đồng thời gỡ hai chỗ mong manh mà bản trước phải dựa vào: `>` và
-        `:first-of-type` (mục này có `.set-lede` thứ hai lồng trong `.set-sub`).
-      */}
-
-      {origin === null ? (
-        <p className="set-note" data-testid="vault-unavailable">
-          {t('settings.ai.unavailable')}
-        </p>
-      ) : (
-        <div className="set-vault" data-testid="vault-plane">
-          <div className="set-vault-bar">
-            <svg
-              className="set-vault-lock"
-              width="12"
-              height="12"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              aria-hidden="true"
-            >
-              <rect x="3" y="7" width="10" height="6.5" rx="1.5" />
-              <path d="M5.5 7V4.8a2.5 2.5 0 0 1 5 0V7" />
-            </svg>
-            <p className="set-vault-label" data-testid="vault-frame-label">
-              {tNode('settings.ai.frameLabel', <strong data-testid="vault-origin-inline">{origin}</strong>)}
-            </p>
-          </div>
-          <div className="set-vault-body">
-            {expanded ? (
-              <p className="set-vault-live">{t('settings.ai.frameOpen')}</p>
-            ) : (
-              <button
-                type="button"
-                className="btn primary"
-                onClick={() => {
-                  setExpanded(true);
-                }}
-              >
-                {t('settings.ai.open')}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      <p className="set-note">{t('settings.ai.keyStays')}</p>
-
-      <section className="set-sub">
-        <h3 className="set-eyebrow">{t('settings.ai.budgetTitle')}</h3>
-        <p className="set-lede">{t('settings.ai.budgetBody')}</p>
-      </section>
+        <section className="set-sub">
+          <h3 className="set-eyebrow">{t('settings.ai.configTitle')}</h3>
+          <AgentConfigPanel />
+        </section>
       </div>
     </section>
   );
