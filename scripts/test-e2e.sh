@@ -242,9 +242,15 @@ rm -rf "$SEED_TMP"
 # (AI_SIGNUP_GRANT_MICRO above, 4765 = one turn's cost + 1000) so the second
 # turn's charge exceeds what the first left behind — see s2.spec.ts's
 # SEED_MICRO comment for why that margin is the whole point. Deleting this
-# step would no longer break the suite loudly; it would leave every learner
-# with 50_000 micro, and the "second turn is refused" scenario would quietly
-# stop testing anything.
+# step leaves every learner with the 50_000 micro that migration 0008 seeds,
+# and the suite DOES still break loudly: re-review disabled exactly this step
+# and measured scenario 1 going red on the first assertion
+# (`Expected: "0,0048"` vs `Received: "0,05"`), plus s2.spec.ts's
+# `expect(body.balance_micro).toBe(SEED_MICRO)`, which is exact and does not
+# round. An earlier draft of this comment claimed the opposite — that the
+# scenario would "quietly stop testing anything" — and that was wrong; it was
+# written while explaining that the sentence before it had gone stale, which
+# is exactly how the other stale claims in this run got made.
 #
 # This MUST run before Playwright registers anyone — s2.spec.ts's learner
 # is created by Playwright itself (`registerNewUser`, same helper p1.spec.ts

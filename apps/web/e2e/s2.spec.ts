@@ -310,8 +310,12 @@ test.describe('S2 — AI credit gate', () => {
       // it: E1 of the whole-branch review renamed this link because the old
       // label ("Mở trang cấu hình") borrowed its meaning from a sentence
       // above it that promised a top-up which has never existed —
-      // `CreditPanel.tsx` draws a balance and a usage table, and grep
-      // `topup|payment|checkout|stripe` finds nothing in product code.
+      // `CreditPanel.tsx` draws a balance and a usage table — no top-up
+      // button, no form, no outbound link. (An earlier draft of this comment
+      // cited a `topup|payment|checkout|stripe` grep as the proof. Measured:
+      // `checkout` matches 9 product lines and `payment` matches 2, all of
+      // them unrelated — GitHub Discussions and config prose. The grep was
+      // never the evidence; reading CreditPanel.tsx is.)
       // Billing is Pha 4 (spec §7).
       await expect(dialog.getByRole('link', { name: 'Xem số dư và sổ dùng' })).toBeVisible();
 
