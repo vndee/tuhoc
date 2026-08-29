@@ -789,6 +789,7 @@ export const en: Messages = {
   'admin.ai.credits.usageEmpty': 'No charged turns yet.',
   'admin.ai.credits.adjustmentsTitle': 'Manual adjustment history',
   'admin.ai.credits.adjustmentsEmpty': 'No manual adjustments for this account yet.',
+  'admin.ai.credits.colWho': 'Acted by',
   'admin.ai.credits.colNote': 'Note',
 
   'admin.ai.pricing.title': 'Pricing & base prompt',
@@ -803,7 +804,9 @@ export const en: Messages = {
   'admin.ai.pricing.colCreditsIn': 'Credits in (/1K)',
   'admin.ai.pricing.colCreditsCachedIn': 'Credits cache-in (/1K)',
   'admin.ai.pricing.colCreditsOut': 'Credits out (/1K)',
+  'admin.ai.pricing.colUpdatedAt': 'Updated at',
   'admin.ai.pricing.colActions': 'Actions',
+  'admin.ai.pricing.rowNotePlaceholder': 'Why this rate changed (optional)',
   'admin.ai.pricing.save': 'Save',
   'admin.ai.pricing.saving': 'Saving…',
   'admin.ai.pricing.saved': 'Saved.',

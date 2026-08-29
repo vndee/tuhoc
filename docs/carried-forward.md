@@ -659,3 +659,55 @@ sinh chậm nhất đã đo (~20 token/giây) → ~6,8 phút cho vòng trả l�
 17 cho phép sửa cột ấy từ CMS **không cần deploy**. Nâng nó lên quá ~12000 làm một câu trả lời hợp
 lệ có thể sống lâu hơn trần này và bị cắt giữa chừng — và không test nào, không cổng nào bắt được
 cặp ràng buộc ấy, vì một bên là hằng số Go còn bên kia là một hàng trong bảng.
+
+---
+
+## Nợ Pha 2 (AI máy chủ) — hai màn CMS (Task 17, `apps/web/src/admin/AdminCredits.tsx`, `apps/api/internal/ai/admin_handler.go`)
+
+Hai mục dưới đây do vòng review 2 của Task 17 tìm ra. Cả hai từng chỉ được ghi trong báo cáo task
+(`.superpowers/sdd/…`, không nằm trong git) — reviewer chỉ ra đúng lỗ mà mục "Cổng mù #4" ở trên
+từng đóng cho một trường hợp khác: một nợ chỉ sống trong một tệp gitignored không phải một nợ đã
+ghi. Mục này là bản lưu bền.
+
+### 1 — `POST /admin/ai/users/:id/credit` không có khoá idempotency: một response bị mất VẪN có thể thành nạp đôi thật
+
+`AdminAdjustCredit` (Go) ghi số dư và audit trong MỘT transaction — nếu request tới máy chủ, giao
+dịch đó hoặc chạy trọn vẹn hoặc không chạy gì, không có trạng thái nửa vời. Nhưng **giữa** "giao
+dịch đã commit" và "trình duyệt của operator biết điều đó" là một khoảng trống HTTP bình thường:
+proxy timeout, mất kết nối, thiết bị ngủ giữa chừng — response không bao giờ về tới tab, dù tiền đã
+chuyển thật. `AdminCredits.tsx`'s `adjustMutation` (round-2 review, M-6) nay refetch số dư và
+`recent_adjustments` ở `onSettled`, không chỉ `onSuccess`, nên một lượt như vậy vẫn cho operator
+thấy TRẠNG THÁI THẬT trước khi họ có cơ hội bấm lại — điều này **thu hẹp** cửa sổ (operator nhìn
+thấy bằng chứng trước khi gõ lại), nó **không đóng** cửa sổ: vẫn có một khoảnh khắc giữa lúc request
+lỗi và lúc refetch xong, và hai tab trình duyệt (hoặc hai operator) gửi hai request thật, độc lập,
+không có cách nào cho tầng API biết chúng "cùng một ý định".
+
+**Nơi xử lý:** một khoá idempotency phía server — client sinh một token ngẫu nhiên cho MỖI lần bấm
+Áp dụng, gửi kèm request; `AdminAdjustCredit`/`Service.AdjustCredit` (credits.go) kiểm token đó
+trong CÙNG transaction ghi số dư (một bảng `admin_idempotency_key` hoặc một cột trên chính hàng
+`admin_audit`, UNIQUE), và một request lặp lại đúng token trả về **cùng kết quả** đã ghi lần đầu
+thay vì ghi thêm lần hai. Chưa task nào được giao việc này — không nằm trong phạm vi Task 17
+(task-17-brief.md không yêu cầu, và spec §7 không nhắc idempotency).
+
+### 2 — `admin_audit.who … ON DELETE SET NULL`: danh tính operator trên một hàng TIỀN có thể mất nếu tài khoản admin đó bị xoá
+
+Cột `who` (migration `0005_published_catalog.up.sql`) tham chiếu `users(id) ON DELETE CASCADE` …
+**SET NULL** — nếu tài khoản admin từng thực hiện một `POST /admin/ai/users/:id/credit` sau đó bị
+xoá khỏi `users`, hàng `admin_audit` ghi lượt cộng/trừ ấy vẫn còn (đúng lời hứa "sổ không xoá"), nhưng
+`who` lặng lẽ thành `NULL` — số tiền, ghi chú, thời điểm vẫn còn, danh tính **ai đã làm** thì mất.
+Cột `actor` (cũng migration 0005) phân biệt được "đi qua CLI token" khỏi "đi qua một tài khoản nay
+không còn", nhưng không mang lại danh tính đã mất — nó chỉ nói RÕ RẰNG danh tính đã mất, thay vì để
+`who = NULL` mập mờ giữa hai trường hợp.
+
+Migration 0005 chọn `SET NULL` khi bảng chỉ giữ dấu vết PUBLISH/UNPUBLISH course — nội dung, không
+phải tiền. Task 17 là task ĐẦU TIÊN đưa tiền thật (`ai.credit.adjust`, `ai.pricing.update`) qua
+đúng bảng ấy, và không ai xét lại quyết định `SET NULL` khi việc đó xảy ra — Task 17 chỉ VIẾT vào
+bảng có sẵn, không sửa schema của nó.
+
+**Nơi xử lý:** cân nhắc lại `ON DELETE` cho MỖI dòng `admin_audit` mang tiền — có thể là
+`ON DELETE RESTRICT` (không cho xoá một tài khoản admin còn để lại dấu vết tiền, buộc phải xử lý
+dấu vết trước), hoặc một cột phụ lưu EMAIL/tên tại thời điểm ghi (không phụ thuộc `users` còn sống
+hay không, cùng tinh thần cột `actor` đã chọn cho vấn đề liền kề). Quyết định này ảnh hưởng cả
+`published_courses`/`course_versions`'s admin_audit rows (Task 8), không chỉ hai route Task 17 —
+nên đây là một quyết định schema-rộng, không phải một sửa cục bộ trong `internal/ai`. Chưa task
+nào được giao.

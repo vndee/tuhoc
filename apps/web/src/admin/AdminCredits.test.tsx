@@ -235,4 +235,96 @@ describe('AdminCredits — cộng/trừ credit tay', () => {
     // NOT the raw server sentence — the whole point of the code-based mapping.
     expect(error.textContent).not.toContain('within +/-');
   });
+
+  // round-2 review, M-5/W2: the OLD suite passed 76/76 even with
+  // `!adjustMutation.isPending` deleted from `canSubmitAdjust` — nothing
+  // here ever controlled response TIMING, so nothing could ever observe
+  // the button DURING a request. This test holds the POST open with an
+  // unresolved promise specifically so "disabled while pending" has
+  // something to fail against.
+  it('the submit button is disabled WHILE the request is in flight, not merely before and after it', async () => {
+    const user = await selectUser();
+    let releaseResponse: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    server.use(
+      http.post('/admin/ai/users/:id/credit', async () => {
+        await held;
+        return HttpResponse.json({ balance_micro: 1148400 });
+      }),
+    );
+
+    await user.type(screen.getByTestId('admin-ai-amount-input'), '50');
+    await user.type(screen.getByTestId('admin-ai-note-input'), 'top-up');
+    const submit = screen.getByTestId('admin-ai-adjust-submit');
+    expect(submit).toBeEnabled();
+
+    await user.click(submit);
+    await waitFor(() => expect(submit).toBeDisabled());
+
+    releaseResponse?.();
+    await screen.findByTestId('admin-ai-adjust-success');
+  });
+
+  // round-2 review, M-6: the report's "không mất tiền âm thầm" claim was
+  // wrong before this fix. A request that COMMITS at the server but whose
+  // RESPONSE never arrives (proxy timeout, dropped connection) must not
+  // leave stale evidence on screen — this test proxies that shape with an
+  // ordinary 500 (the client cannot tell "the server rejected it" apart
+  // from "the write actually landed and only the response was lost"; the
+  // fix has to refetch on EITHER), asserting the detail query is refetched
+  // on the ERROR path, not only on success.
+  it('a FAILED adjustment still refetches the account detail — onSettled, not only onSuccess, so a lost response never leaves stale evidence on screen', async () => {
+    let detailFetches = 0;
+    serveInitialList([userRow()]);
+    server.use(
+      http.get('/admin/ai/users/:id', () => {
+        detailFetches += 1;
+        return HttpResponse.json(userDetail());
+      }),
+    );
+    server.use(http.post('/admin/ai/users/:id/credit', () => HttpResponse.json({ error: 'boom' }, { status: 500 })));
+
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: t('admin.ai.credits.selectButton') }));
+    await screen.findByTestId('admin-ai-detail-email');
+    const fetchesBeforeAdjust = detailFetches;
+
+    await user.type(screen.getByTestId('admin-ai-amount-input'), '50');
+    await user.type(screen.getByTestId('admin-ai-note-input'), 'a note');
+    await user.click(screen.getByTestId('admin-ai-adjust-submit'));
+
+    await screen.findByTestId('admin-ai-adjust-error');
+    await waitFor(() => expect(detailFetches).toBeGreaterThan(fetchesBeforeAdjust));
+  });
+});
+
+describe('AdminCredits — dấu vết ai đã thao tác', () => {
+  // round-2 review, Minor 1: `who` (the acting admin id) was on the wire
+  // (`creditAdjustmentPayload.who`) but never drawn — on the ONE screen
+  // whose whole job is "where is the trail for a wrong top-up", the
+  // adjustments table showed WHEN and WHY but never WHO.
+  it('renders the acting admin id (shortened) for each adjustment row, and — for a legacy row with no actor — an explicit placeholder', async () => {
+    serveInitialList([userRow()]);
+    server.use(
+      http.get('/admin/ai/users/:id', () =>
+        HttpResponse.json(
+          userDetail({
+            recent_adjustments: [
+              { at: '2026-08-28T08:00:00Z', who: 'a1b2c3d4-0000-4000-8000-000000000001', note: '+415300 micro-credit: top-up' },
+              { at: '2026-08-27T08:00:00Z', who: null, note: '+100 micro-credit: a legacy row with no actor' },
+            ],
+          }),
+        ),
+      ),
+    );
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: t('admin.ai.credits.selectButton') }));
+
+    expect(await screen.findByTestId('admin-ai-adjustment-who-0')).toHaveTextContent('a1b2c3d4');
+    expect(screen.getByTestId('admin-ai-adjustment-who-1')).toHaveTextContent('—');
+  });
 });

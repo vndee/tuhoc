@@ -53,11 +53,41 @@ export function formatCredits(micro: number, lang: Lang): string {
  * micro-credit is the same precision `balance_micro` itself has, so this
  * is the closest whole-number amount to what was actually typed, not a
  * truncation toward zero that quietly undercounts.
+ *
+ * THE REGEX GATE, added round-2 review (Minor 4) — `text` is checked
+ * against `^\d+(\.\d+)?$` BEFORE it ever reaches `Number(...)`, for two
+ * reasons the previous version (a bare `Number.isFinite` check) missed
+ * entirely:
+ *
+ *  1. **Consistency with `parseNonNegativeInt`** (`AdminPricing.tsx`), the
+ *     sibling parser for the six `ai_pricing` rate fields: that one already
+ *     only ever accepted `^\d+$`, so `"1e3"` was rejected there but
+ *     ACCEPTED here as `1000` — the same shape of number read as valid in
+ *     one admin form and invalid in the sibling form one screen over, with
+ *     no reason for readers to expect the difference.
+ *  2. **`Number.isSafeInteger` on the FINAL micro value, not just on
+ *     `value`** — a bare `Number.isFinite(value)` check lets through any
+ *     magnitude short of `Infinity`: `"1e30"` credits is a finite number,
+ *     multiplying it by `MICRO_PER_CREDIT` produces `1e36`,
+ *     `JSON.stringify` on THAT renders as `"1e+36"` in the request body,
+ *     and Go's `encoding/json` rejects the whole body outright — an
+ *     operator who fat-fingered an amount would have read "request body is
+ *     not valid JSON" instead of a sane "amount out of range" message, or
+ *     (worse, before this fix, since the button was NOT disabled for that
+ *     input) gotten no client-side refusal at all. The regex closes the
+ *     `1e30`-shaped case structurally (no exponent syntax is ever matched),
+ *     and `Number.isSafeInteger` on the computed micro value below is the
+ *     backstop for a plain, exponent-free digit string still long enough to
+ *     overflow (e.g. thirty nines) — the SAME backstop `parseNonNegativeInt`
+ *     already applies to its own single value, just applied here to the
+ *     value AFTER the ×1e6 conversion, since that is the number that
+ *     actually has to survive the trip to the server.
  */
 export function parseCreditsToMicro(text: string): number | null {
   const normalized = text.trim().replace(',', '.');
-  if (normalized === '') return null;
+  if (!/^\d+(\.\d+)?$/.test(normalized)) return null;
   const value = Number(normalized);
   if (!Number.isFinite(value) || value <= 0) return null;
-  return Math.round(value * MICRO_PER_CREDIT);
+  const micro = Math.round(value * MICRO_PER_CREDIT);
+  return Number.isSafeInteger(micro) ? micro : null;
 }

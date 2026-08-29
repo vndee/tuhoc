@@ -147,6 +147,68 @@ describe('AdminPricing — bảng quy đổi credit', () => {
     const error = await screen.findByTestId('pricing-error-deepseek-v4-pro');
     expect(error).toHaveTextContent(t('admin.ai.error.amountOutOfRange'));
   });
+
+  // round-2 review, Minor 7: PricingRowEditor built its mutate() call
+  // without ever reading the note input at all — every admin_audit row for
+  // a pricing change carried only the server's auto-generated "rates set
+  // to ..." summary, and an operator's actual REASON had nowhere to go.
+  it('typing a per-row note sends it alongside the six rates; an untouched note field sends none at all', async () => {
+    let bodyWithNote: unknown = null;
+    serve([pricingRow()], settingsRow());
+    server.use(
+      http.put('/admin/ai/pricing/:model', async ({ request }) => {
+        bodyWithNote = await request.json();
+        return HttpResponse.json(pricingRow());
+      }),
+    );
+    renderPage();
+    await screen.findByTestId('pricing-model-deepseek-v4-pro');
+
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId('pricing-note-deepseek-v4-pro'), 'raising the input rate for margin');
+    await user.click(screen.getByTestId('pricing-save-deepseek-v4-pro'));
+
+    await waitFor(() =>
+      expect(bodyWithNote).toMatchObject({ note: 'raising the input rate for margin' }),
+    );
+  });
+
+  it('the note field is cleared after a successful save, matching the credit-adjustment form’s own reset-on-success rule', async () => {
+    serve([pricingRow()], settingsRow());
+    server.use(http.put('/admin/ai/pricing/:model', () => HttpResponse.json(pricingRow())));
+    renderPage();
+    await screen.findByTestId('pricing-model-deepseek-v4-pro');
+
+    const user = userEvent.setup();
+    const noteInput = screen.getByTestId('pricing-note-deepseek-v4-pro');
+    await user.type(noteInput, 'a reason');
+    await user.click(screen.getByTestId('pricing-save-deepseek-v4-pro'));
+
+    await screen.findByTestId('pricing-success-deepseek-v4-pro');
+    expect(noteInput).toHaveValue('');
+  });
+
+  // round-2 review, Minor 2: `types.go`'s own doc comment on
+  // `Pricing.UpdatedAt` says the CMS screen "shows it" — it did not, on
+  // either the initial load OR after a save that changed it.
+  it('renders updated_at, and reflects the NEW timestamp the server returns after a save', async () => {
+    serve([pricingRow({ updated_at: '2026-08-28T10:00:00.000Z' })], settingsRow());
+    server.use(
+      http.put('/admin/ai/pricing/:model', () =>
+        HttpResponse.json(pricingRow({ updated_at: '2026-08-29T11:30:00.000Z' })),
+      ),
+    );
+    renderPage();
+
+    expect(await screen.findByTestId('pricing-updated-at-deepseek-v4-pro')).toHaveTextContent('2026-08-28 10:00 UTC');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('pricing-save-deepseek-v4-pro'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('pricing-updated-at-deepseek-v4-pro')).toHaveTextContent('2026-08-29 11:30 UTC'),
+    );
+  });
 });
 
 describe('AdminPricing — prompt nền', () => {
@@ -209,7 +271,13 @@ describe('AdminPricing — prompt nền', () => {
     expect(await screen.findByTestId('admin-ai-prompt-success')).toHaveTextContent(t('admin.ai.pricing.saved'));
   });
 
-  it('typing past the SERVER-DECLARED cap (max_base_prompt_chars) disables Save and warns — the cap is read from the server, never a hardcoded client number', async () => {
+  // round-2 review, Minor 8: the prior version of this test typed 44
+  // characters against a cap of 10 — "way over", not "one over" — which
+  // proves the warning CAN fire, but not that it fires at the EXACT
+  // boundary. Mirrors the precision `TestUpdateBasePromptCharLimitBoundary`
+  // (admin_handler_test.go, Go side) already pins: accepted at exactly the
+  // cap, rejected at cap+1.
+  it('accepts a prompt of exactly the SERVER-DECLARED cap, and rejects exactly one character over it — the cap is read from the server, never a hardcoded client number', async () => {
     serve([], settingsRow({ base_system_prompt: 'x', max_base_prompt_chars: 10 }));
     renderPage();
     await screen.findByTestId('admin-ai-prompt-textarea');
@@ -217,7 +285,12 @@ describe('AdminPricing — prompt nền', () => {
     const user = userEvent.setup();
     const textarea = screen.getByTestId('admin-ai-prompt-textarea');
     await user.clear(textarea);
-    await user.type(textarea, 'this is definitely more than ten characters');
+    await user.type(textarea, 'a'.repeat(10));
+
+    expect(screen.getByTestId('admin-ai-prompt-submit')).toBeEnabled();
+    expect(screen.queryByTestId('admin-ai-prompt-too-long')).not.toBeInTheDocument();
+
+    await user.type(textarea, 'a');
 
     expect(screen.getByTestId('admin-ai-prompt-submit')).toBeDisabled();
     expect(screen.getByTestId('admin-ai-prompt-too-long')).toHaveTextContent(t('settings.ai.promptTooLong'));

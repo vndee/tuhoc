@@ -73,4 +73,25 @@ describe('parseCreditsToMicro', () => {
     expect(parseCreditsToMicro('Infinity')).toBeNull();
     expect(parseCreditsToMicro('NaN')).toBeNull();
   });
+
+  // round-2 review, Minor 4.
+  it('rejects scientific notation, consistent with the sibling gate parseNonNegativeInt applies on the pricing form', () => {
+    expect(parseCreditsToMicro('1e3')).toBeNull();
+    expect(parseCreditsToMicro('1E3')).toBeNull();
+  });
+
+  it('rejects an amount whose micro-credit value cannot be represented as a safe integer', () => {
+    // A finite, exponent-free, all-digit number the regex alone would let
+    // through — the Number.isSafeInteger backstop on the COMPUTED micro
+    // value is what has to catch this one, not the regex.
+    expect(parseCreditsToMicro('9'.repeat(30))).toBeNull();
+  });
+
+  it('rejects an amount whose *600 000-fold ceiling before this fix* (1e30 credits) would have serialized as invalid JSON', () => {
+    // The exact shape round-2 review measured: 1e30 -> *1e6 -> 1e36 ->
+    // JSON.stringify renders "1e+36" -> Go's encoding/json rejects the
+    // whole request body. The regex rejects the exponent syntax outright,
+    // so this never reaches Number() at all.
+    expect(parseCreditsToMicro('1e30')).toBeNull();
+  });
 });

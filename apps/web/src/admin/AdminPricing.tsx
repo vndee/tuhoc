@@ -84,9 +84,37 @@ function draftFromRow(row: AdminPricingRow): RateDraft {
   };
 }
 
+/**
+ * `at` (RFC3339, Go `time.Time`) → "YYYY-MM-DD HH:mm UTC" — mirrors
+ * `AdminCredits.tsx`'s own `formatUsageWhen` byte for byte. A third small
+ * local copy rather than a shared helper: unlike money (`ai/money.ts`,
+ * extracted specifically because a SECOND caller of the same rounding/
+ * locale logic is where drift bugs live), a cosmetic date-string
+ * difference between two admin screens costs a reader a squint, not a
+ * wrong balance — the asymmetry review rounds on this task keep drawing
+ * between money code and everything else.
+ */
+function formatUpdatedAt(at: string): string {
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return at;
+  return `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+}
+
 /** One `ai_pricing` row: model name (read-only) plus six editable rates and its own Save. */
 function PricingRowEditor({ row, t }: { row: AdminPricingRow; t: Translate }) {
   const [draft, setDraft] = useState<RateDraft>(() => draftFromRow(row));
+  // round-2 review, Minor 2: `types.go`'s own doc comment on
+  // `Pricing.UpdatedAt` says the CMS screen "shows it" — it didn't. Tracked
+  // in its own piece of state (not read straight off `row.updated_at` on
+  // every render) because a successful save must show the NEW timestamp
+  // the server just wrote, not the one this row was seeded with.
+  const [updatedAt, setUpdatedAt] = useState(row.updated_at);
+  // round-2 review, Minor 7: PricingRowEditor never sent `note` at all, so
+  // every `ai.pricing.update` audit row carried only the auto-generated
+  // "rates set to ..." summary (admin_handler.go's own fallback) — an
+  // operator's REASON for a rate change never had anywhere to go, even
+  // though the endpoint has accepted one since Task 17 shipped.
+  const [noteDraft, setNoteDraft] = useState('');
 
   const mutation = useMutation({
     mutationFn: (input: UpdatePricingInput) => adminUpdatePricing(row.model, input),
@@ -95,7 +123,11 @@ function PricingRowEditor({ row, t }: { row: AdminPricingRow; t: Translate }) {
     // AgentConfigPanel.tsx already keep; nothing here NORMALIZES the six
     // numbers today, but there is no reason this draft should ever diverge
     // from what the server actually stored.
-    onSuccess: (updated) => setDraft(draftFromRow(updated)),
+    onSuccess: (updated) => {
+      setDraft(draftFromRow(updated));
+      setUpdatedAt(updated.updated_at);
+      setNoteDraft('');
+    },
   });
 
   const parsed = {
@@ -116,6 +148,7 @@ function PricingRowEditor({ row, t }: { row: AdminPricingRow; t: Translate }) {
 
   function handleSave() {
     if (!allValid || mutation.isPending) return;
+    const note = noteDraft.trim();
     mutation.mutate({
       cost_micro_per_1k_in: parsed.costIn as number,
       cost_micro_per_1k_cached_in: parsed.costCachedIn as number,
@@ -123,6 +156,12 @@ function PricingRowEditor({ row, t }: { row: AdminPricingRow; t: Translate }) {
       credits_per_1k_in: parsed.creditsIn as number,
       credits_per_1k_cached_in: parsed.creditsCachedIn as number,
       credits_per_1k_out: parsed.creditsOut as number,
+      // Omitted entirely (not sent as `""`) when blank, so the server's own
+      // auto-generated summary (admin_handler.go's AdminUpdatePricing
+      // fallback) still fires for an operator who saves without typing a
+      // reason — the empty-vs-absent distinction JSON.stringify already
+      // gives us for free by dropping an `undefined` key.
+      note: note === '' ? undefined : note,
     });
   }
 
@@ -148,7 +187,15 @@ function PricingRowEditor({ row, t }: { row: AdminPricingRow; t: Translate }) {
         <td>{field('creditsIn', `pricing-credits-in-${row.model}`)}</td>
         <td>{field('creditsCachedIn', `pricing-credits-cached-${row.model}`)}</td>
         <td>{field('creditsOut', `pricing-credits-out-${row.model}`)}</td>
+        <td data-testid={`pricing-updated-at-${row.model}`}>{formatUpdatedAt(updatedAt)}</td>
         <td>
+          <input
+            type="text"
+            value={noteDraft}
+            placeholder={t('admin.ai.pricing.rowNotePlaceholder')}
+            onChange={(event) => setNoteDraft(event.target.value)}
+            data-testid={`pricing-note-${row.model}`}
+          />
           <button
             type="button"
             className="btn primary"
@@ -162,7 +209,7 @@ function PricingRowEditor({ row, t }: { row: AdminPricingRow; t: Translate }) {
       </tr>
       {(mutation.isError || mutation.isSuccess) && (
         <tr>
-          <td colSpan={8}>
+          <td colSpan={9}>
             {mutation.isError && (
               <p className="admin-note" role="alert" data-testid={`pricing-error-${row.model}`}>
                 {describeAdminAIError(mutation.error, t)}
@@ -254,6 +301,7 @@ export function AdminPricing() {
                   <th>{t('admin.ai.pricing.colCreditsIn')}</th>
                   <th>{t('admin.ai.pricing.colCreditsCachedIn')}</th>
                   <th>{t('admin.ai.pricing.colCreditsOut')}</th>
+                  <th>{t('admin.ai.pricing.colUpdatedAt')}</th>
                   <th>{t('admin.ai.pricing.colActions')}</th>
                 </tr>
               </thead>

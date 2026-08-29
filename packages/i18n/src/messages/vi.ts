@@ -1037,6 +1037,7 @@ export const vi = {
   'admin.ai.credits.usageEmpty': 'Chưa có lượt hỏi nào được tính phí.',
   'admin.ai.credits.adjustmentsTitle': 'Lịch sử cộng/trừ tay',
   'admin.ai.credits.adjustmentsEmpty': 'Chưa có lần cộng/trừ tay nào cho tài khoản này.',
+  'admin.ai.credits.colWho': 'Người thao tác',
   'admin.ai.credits.colNote': 'Ghi chú',
 
   'admin.ai.pricing.title': 'Bảng giá & prompt nền',
@@ -1051,7 +1052,9 @@ export const vi = {
   'admin.ai.pricing.colCreditsIn': 'Credit vào (/1K)',
   'admin.ai.pricing.colCreditsCachedIn': 'Credit vào-cache (/1K)',
   'admin.ai.pricing.colCreditsOut': 'Credit ra (/1K)',
+  'admin.ai.pricing.colUpdatedAt': 'Cập nhật lúc',
   'admin.ai.pricing.colActions': 'Hành động',
+  'admin.ai.pricing.rowNotePlaceholder': 'Vì sao đổi giá (không bắt buộc)',
   'admin.ai.pricing.save': 'Lưu',
   'admin.ai.pricing.saving': 'Đang lưu…',
   'admin.ai.pricing.saved': 'Đã lưu.',
