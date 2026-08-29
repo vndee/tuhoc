@@ -22,10 +22,13 @@ import type { SelectionExcerpt } from './prompts';
 export interface DeepDiveProps {
   readonly courseTitle: string;
   readonly chapterTitle: string;
-  /** Chương đang đọc — truyền thẳng xuống `AskPanel`'s `courseSlug`. Xem
-   *  `AskPanelProps.courseSlug`'s doc comment cho việc dây này chưa tới được
-   *  `ChapterView.tsx` (ngoài bốn tệp Task 13 sở hữu). Optional, không phải
-   *  vì nó kém quan trọng — vì hôm nay chưa có bên gọi nào cung cấp được nó. */
+  /** Course đang đọc — truyền thẳng xuống `AskPanel`'s `courseSlug`.
+   *
+   *  `ChapterView.tsx` truyền `courseId` vào đây từ vòng sửa sau review tổng
+   *  nhánh Pha 2 (mục B); trước đó nó KHÔNG truyền, và hệ quả là nhánh gắn
+   *  ngữ cảnh course phía máy chủ chưa từng chạy trong sản xuất. Vẫn
+   *  optional vì `DeepDive` cũng dùng được ở một màn không thuộc course
+   *  nào, không phải vì chưa ai cung cấp được nó. */
   readonly courseSlug?: string;
   readonly excerpt: SelectionExcerpt;
   readonly onClose: () => void;

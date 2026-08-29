@@ -690,13 +690,43 @@ export function ChapterView({
           </svg>
         </button>
       )}
+      {/*
+        `courseSlug={courseId}` TRÊN CẢ HAI, và nó là nửa còn thiếu của cả
+        tính năng AI, không phải một tinh chỉnh.
+
+        Cho tới vòng sửa sau review tổng nhánh Pha 2 (mục B), không component
+        nào ở đây truyền prop này. Nó tồn tại suốt chuỗi — `DeepDive` →
+        `AskPanel` → `useAI` — với mặc định `''`, nên mọi lượt hỏi của mọi
+        người học gửi `course_slug: ""`. Hệ quả ở phía máy chủ:
+        `agent.go`'s nhánh gắn ngữ cảnh course là NHÁNH CHẾT trong sản xuất,
+        và vì `read_course` khai `"required":["slug"]` mà không tool nào liệt
+        kê được course, model không có nguồn nào để biết một slug hợp lệ —
+        trong khi tool ấy BẬT MẶC ĐỊNH (migration 0007 seed
+        `tools_enabled = '{read_course}'`) và màn cài đặt hiện nó như một
+        tính năng đang chạy.
+
+        `courseId` LÀ slug của catalog, không phải một id nội bộ nào khác:
+        `loadChapter(courseId, …)` → `fetchChapter` → `GET /courses/:slug/…`
+        (`src/api/catalog.ts`). Cùng một chuỗi, hai tên gọi.
+
+        VÌ SAO KHÔNG PHẢI MỘT PROP MỚI: component này đã cầm `courseId` cho
+        mọi thứ khác nó làm (fetch chương, dựng link pager, viết lại URL tài
+        nguyên). Thêm một prop `courseSlug` song song chỉ tạo ra hai nguồn
+        sự thật cho cùng một giá trị, và một trong hai sẽ lệch.
+      */}
       {ai?.kind === 'chapter' && (
-        <AskPanel heading={t('reader.askHeading')} system={ai.system} onClose={closeAi} />
+        <AskPanel
+          heading={t('reader.askHeading')}
+          system={ai.system}
+          courseSlug={courseId}
+          onClose={closeAi}
+        />
       )}
       {ai?.kind === 'dive' && (
         <DeepDive
           courseTitle={courseTitle}
           chapterTitle={chapter.title}
+          courseSlug={courseId}
           excerpt={ai.excerpt}
           onClose={closeAi}
         />

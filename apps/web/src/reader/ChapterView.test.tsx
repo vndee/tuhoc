@@ -1196,6 +1196,99 @@ describe('ChapterView', () => {
    * comment) — waiting for `#rail-tab-notes` would time out here on purpose,
    * since it must never appear for an anonymous reader.
    */
+  // =========================================================================
+  // B (review tổng nhánh Pha 2) — courseSlug phải TỚI ĐƯỢC dây
+  // =========================================================================
+  //
+  // ĐO ĐƯỢC TRƯỚC VÒNG SỬA NÀY: `ChapterView.tsx` render `<AskPanel heading
+  // system onClose>` và `<DeepDive courseTitle chapterTitle excerpt
+  // onClose>` — KHÔNG truyền `courseSlug` ở cả hai chỗ. Prop tồn tại suốt
+  // chuỗi (DeepDive → AskPanel → useAI, mặc định `''`), nên mọi lượt hỏi
+  // của mọi người học gửi `course_slug: ""`. Phía máy chủ, `agent.go`'s
+  // `if isValidCourseSlug(t.CourseSlug)` là một NHÁNH CHẾT trong sản xuất,
+  // và `read_course` khai `"required":["slug"]` mà không có tool nào liệt
+  // kê course — nên model không có nguồn nào để biết một slug hợp lệ. Tính
+  // năng chủ lực của cả pha, bật MẶC ĐỊNH (`0007` seed
+  // `tools_enabled = '{read_course}'`) và hiện trong màn cài đặt như đang
+  // chạy, chưa từng được nối dây.
+  //
+  // Hai bài dưới đây kiểm ĐÚNG một điều mỗi bài, ở đúng cái ranh giới mà
+  // không bài nào trong `AskPanel.test.tsx`/`DeepDive.test.tsx` nhìn thấy
+  // được: hai tệp ấy TRUYỀN `courseSlug` vào component rồi kiểm nó đi ra
+  // dây — chúng xanh suốt trong khi `ChapterView` (nơi DUY NHẤT thật sự
+  // biết slug) không truyền gì cả. Đây là hình dạng "không ai sở hữu mối
+  // nối" mà cả vòng review này nói về.
+  describe('courseSlug tới được /ai/chat (B)', () => {
+    /**
+     * Chặn POST /ai/chat (trả một stream SSE rỗng đã đóng sẵn) VÀ phục vụ
+     * chương của một course có slug KHÁC 'demo'.
+     *
+     * Slug riêng không phải để cho đẹp: với `courseId = 'demo'` thì chuỗi
+     * 'demo' cũng nằm trong `courseTitle` ("Khóa học demo") và trong URL,
+     * nên một khẳng định `toBe('demo')` không loại trừ được việc ai đó nối
+     * nhầm biến. Một slug chỉ tồn tại ở ĐÚNG MỘT prop thì loại trừ được.
+     */
+    function captureChat(courseId: string): { bodies: { question: string; course_slug: string }[] } {
+      const bodies: { question: string; course_slug: string }[] = [];
+      server.use(
+        http.get(`/courses/${courseId}/chapters/c1`, () =>
+          HttpResponse.json({ html: FRAGMENT, widgets: WIDGETS }),
+        ),
+        http.get(`/courses/${courseId}/chapters/c2`, () =>
+          HttpResponse.json({ html: CHAPTER_2_HTML, widgets: [] }),
+        ),
+        http.post('/ai/chat', async ({ request }) => {
+          bodies.push((await request.json()) as { question: string; course_slug: string });
+          const encoder = new TextEncoder();
+          const stream = new ReadableStream<Uint8Array>({
+            start(c) {
+              c.enqueue(encoder.encode('event: done\ndata: {}\n\n'));
+              c.close();
+            },
+          });
+          return new HttpResponse(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+        }),
+      );
+      return { bodies };
+    }
+
+    it('nút "Hỏi AI về chương này" gửi course_slug = courseId của chương đang đọc', async () => {
+      const { bodies } = captureChat('so-dau-phay-dong');
+      await renderChapterAndSettle({ courseId: 'so-dau-phay-dong' });
+
+      await act(async () => {
+        screen.getByRole('button', { name: t('vi', 'reader.askAi') }).click();
+      });
+      const box = await screen.findByRole('textbox');
+      fireEvent.change(box, { target: { value: 'Số mũ lệch là gì?' } });
+      await act(async () => {
+        screen.getByRole('button', { name: 'Hỏi' }).click();
+        await new Promise((r) => setTimeout(r, 0));
+      });
+
+      expect(bodies).toHaveLength(1);
+      // KHÔNG `toBeTruthy()` / `not.toBe('')`: giá trị phải là ĐÚNG slug của
+      // course đang mở, nếu không thì một dây nối nhầm biến (courseTitle,
+      // chapter.id) vẫn đi qua.
+      expect(bodies[0].course_slug).toBe('so-dau-phay-dong');
+    });
+
+    it('"Đào sâu" trên một đoạn bôi đen cũng gửi course_slug', async () => {
+      const { bodies } = captureChat('bat-bien-vong-lap');
+      await renderChapterAndSettle({ courseId: 'bat-bien-vong-lap' });
+
+      await selectAndOpenToolbar('Nội dung A');
+      // DeepDive hỏi NGAY khi mở (`autoAsk`), nên không cần gõ gì.
+      await act(async () => {
+        screen.getByRole('button', { name: t('vi', 'ann.deepDive') }).click();
+        await new Promise((r) => setTimeout(r, 0));
+      });
+
+      expect(bodies).toHaveLength(1);
+      expect(bodies[0].course_slug).toBe('bat-bien-vong-lap');
+    });
+  });
+
   describe('Task 12 — đọc công khai, gate ẩn danh', () => {
     it('an anonymous reader (GET /me → 401) sees the chapter and the nudge, and none of the session-only UI', async () => {
       server.use(http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
