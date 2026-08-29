@@ -33,12 +33,18 @@ export interface AskPanelProps {
    */
   readonly system: string;
   /**
-   * Chương đang đọc, cho công cụ `read_course` phía máy chủ dùng làm ngữ
-   * cảnh — đi thẳng vào `AskContext.courseSlug` (`useAI.ts`). VẮNG (review
-   * vòng 1 đo được: `ChapterView.tsx`/`DeepDive.tsx` chưa truyền prop này)
-   * ⇒ `useAI` gửi chuỗi rỗng, hợp lệ, chỉ mất khả năng công cụ đọc đúng
-   * chương. Dây tới TẬN `ChapterView.tsx` (nơi thật sự biết slug) không
-   * thuộc bốn tệp Task 13 sở hữu — xem task-13-report.md.
+   * Course đang đọc, cho công cụ `read_course` phía máy chủ dùng làm ngữ
+   * cảnh — đi thẳng vào `AskContext.courseSlug` (`useAI.ts`).
+   *
+   * `ChapterView.tsx` (nơi DUY NHẤT thật sự biết slug) truyền nó vào từ vòng
+   * sửa sau review tổng nhánh Pha 2 (mục B). Trước đó bản trước của chú
+   * thích này ghi đúng rằng dây chưa tới — nhưng ghi nó như một chi tiết,
+   * trong khi hệ quả thật là tính năng chủ lực của cả pha chưa từng chạy:
+   * `course_slug` rỗng ở mọi lượt, nhánh gắn ngữ cảnh phía máy chủ chết, và
+   * `read_course` (bật MẶC ĐỊNH) không có nguồn nào để biết một slug hợp lệ.
+   *
+   * VẮNG vẫn hợp lệ ⇒ `useAI` gửi chuỗi rỗng: một panel mở từ một màn không
+   * thuộc course nào là trạng thái thật, không phải một dây bị quên.
    */
   readonly courseSlug?: string;
   /** Đoạn người học bôi đen, hiện lại cho họ thấy panel đang nói về cái gì. */

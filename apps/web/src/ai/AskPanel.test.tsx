@@ -163,7 +163,7 @@ describe('AskPanel — courseSlug tới biên panel (Important 3, review vòng 1
     });
   });
 
-  it('KHÔNG truyền courseSlug (như ChapterView.tsx hôm nay) vẫn gửi được, course_slug rỗng', async () => {
+  it('KHÔNG truyền courseSlug (một màn không thuộc course nào) vẫn gửi được, course_slug rỗng', async () => {
     const { requests, sse } = nextChat();
     render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
     typeQuestion('hỏi');
