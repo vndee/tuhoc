@@ -8,7 +8,7 @@ import {
   type UpdatePricingInput,
   adminGetAISettings,
   adminListPricing,
-  adminUpdateBasePrompt,
+  adminUpdateSettings,
   adminUpdatePricing,
   describeAdminAIError,
 } from './adminApi';
@@ -30,12 +30,26 @@ import {
  * every call, never a cache); this file has nothing to do to keep it true
  * beyond not inventing a client-side cache of its own.
  *
- * `AdminGetSettings` also returns five columns this screen never lets an
- * operator edit (`credits_per_web_search`, `cost_micro_per_web_search`,
- * `signup_grant_micro`, `max_tokens_per_turn`, `max_tool_rounds_per_turn`)
- * — deliberately out of scope, see that handler's own doc comment on the
- * Go side for why. This screen reads only `base_system_prompt` (and
- * `max_base_prompt_chars`, the length cap) off that response.
+ * `AdminGetSettings` returns every `ai_settings` column. TWO of them are
+ * writable through `PUT /admin/ai/settings` and both are edited here:
+ * `base_system_prompt` and `signup_grant_micro`. The other four
+ * (`credits_per_web_search`, `cost_micro_per_web_search`,
+ * `max_tokens_per_turn`, `max_tool_rounds_per_turn`) have no writer on the
+ * server at all — deliberately out of scope, see `AdminGetSettings`'s own
+ * doc comment on the Go side for why.
+ *
+ * The signup-grant input joined the base-prompt form (rather than getting a
+ * section and a Save button of its own) because `PUT /admin/ai/settings`
+ * REQUIRES `base_system_prompt` on every call. A separate "save the grant"
+ * button would therefore have to send whatever is currently in the prompt
+ * textarea along with it — saving an in-progress prompt edit the operator
+ * never asked to save. One form, one PUT, one transaction on the Go side,
+ * and one `admin_audit` row per column that actually changed.
+ *
+ * This screen also reads two CEILINGS off the same response
+ * (`max_base_prompt_chars`, `max_signup_grant_micro`) plus
+ * `max_pricing_rate_micro` for the table above — never a second hand-typed
+ * copy of a Go constant.
  */
 
 /**
@@ -65,8 +79,7 @@ function parseNonNegativeInt(text: string): number | null {
 }
 
 /**
- * Same, plus the UPPER bound the server enforces
- * (`MaxPricingRateMicro`, admin_handler.go), read off
+ * Same, plus an UPPER bound the server enforces, read off
  * `GET /admin/ai/settings` rather than typed a second time here — D1 of the
  * whole-branch review.
  *
@@ -82,8 +95,15 @@ function parseNonNegativeInt(text: string): number | null {
  * means NO client-side upper bound — deliberately, not as an oversight.
  * The alternative is a hardcoded fallback, which is exactly the second copy
  * of the number this whole arrangement exists to avoid.
+ *
+ * TWO callers, two different ceilings, one function: the six rate inputs
+ * pass `max_pricing_rate_micro` (`MaxPricingRateMicro`, Go) and the
+ * signup-grant input passes `max_signup_grant_micro`
+ * (`MaxSignupGrantMicro`, Go). The shape of the check is identical and the
+ * numbers are not, which is exactly why the ceiling is a PARAMETER and not
+ * a constant in this file.
  */
-function parseRate(text: string, max: number | undefined): number | null {
+function parseBounded(text: string, max: number | undefined): number | null {
   const value = parseNonNegativeInt(text);
   if (value === null) return null;
   if (max !== undefined && value > max) return null;
@@ -166,12 +186,12 @@ function PricingRowEditor({
   });
 
   const parsed = {
-    costIn: parseRate(draft.costIn, maxRate),
-    costCachedIn: parseRate(draft.costCachedIn, maxRate),
-    costOut: parseRate(draft.costOut, maxRate),
-    creditsIn: parseRate(draft.creditsIn, maxRate),
-    creditsCachedIn: parseRate(draft.creditsCachedIn, maxRate),
-    creditsOut: parseRate(draft.creditsOut, maxRate),
+    costIn: parseBounded(draft.costIn, maxRate),
+    costCachedIn: parseBounded(draft.costCachedIn, maxRate),
+    costOut: parseBounded(draft.costOut, maxRate),
+    creditsIn: parseBounded(draft.creditsIn, maxRate),
+    creditsCachedIn: parseBounded(draft.creditsCachedIn, maxRate),
+    creditsOut: parseBounded(draft.creditsOut, maxRate),
   };
   const allValid =
     parsed.costIn !== null &&
@@ -283,6 +303,11 @@ export function AdminPricing() {
   // refuses to SAVE but must still let someone TYPE while composing).
   const [draftPrompt, setDraftPrompt] = useState<string | null>(null);
   const [promptNote, setPromptNote] = useState('');
+  // Same `null` = "not seeded yet" convention as draftPrompt above, and it
+  // carries the same weight here: seeding a signup-grant box with `'0'`
+  // before the server has answered, then letting a fast operator submit,
+  // would write a zero grant nobody typed.
+  const [draftGrant, setDraftGrant] = useState<string | null>(null);
 
   useEffect(() => {
     if (settingsQuery.data && draftPrompt === null) {
@@ -293,10 +318,19 @@ export function AdminPricing() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsQuery.data]);
 
-  const promptMutation = useMutation({
-    mutationFn: (input: { basePrompt: string; note: string }) => adminUpdateBasePrompt(input.basePrompt, input.note),
+  useEffect(() => {
+    if (settingsQuery.data && draftGrant === null) {
+      setDraftGrant(String(settingsQuery.data.signup_grant_micro));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsQuery.data]);
+
+  const settingsMutation = useMutation({
+    mutationFn: (input: { basePrompt: string; note: string; grantMicro?: number }) =>
+      adminUpdateSettings(input.basePrompt, input.note, input.grantMicro),
     onSuccess: (updated) => {
       setDraftPrompt(updated.base_system_prompt);
+      setDraftGrant(String(updated.signup_grant_micro));
       setPromptNote('');
       void queryClient.invalidateQueries({ queryKey: ['admin', 'ai', 'settings'] });
     },
@@ -306,12 +340,32 @@ export function AdminPricing() {
   const promptLength = draftPrompt === null ? 0 : runeLength(draftPrompt);
   const overCap = promptLength > cap;
   const promptEmpty = draftPrompt === null || draftPrompt.trim() === '';
-  const canSavePrompt = !promptEmpty && !overCap && !promptMutation.isPending;
 
-  function handlePromptSubmit(event: FormEvent<HTMLFormElement>) {
+  const grantMax = settingsQuery.data?.max_signup_grant_micro;
+  const parsedGrant = draftGrant === null ? null : parseBounded(draftGrant, grantMax);
+  const grantInvalid = draftGrant !== null && parsedGrant === null;
+  const canSave = !promptEmpty && !overCap && !grantInvalid && !settingsMutation.isPending;
+
+  // SENT ONLY WHEN IT ACTUALLY CHANGED, and this is a decision rather than
+  // an optimization. `UpdateSettings` (credits.go) writes an
+  // `ai.settings.signup_grant` audit row whenever the field is PRESENT in
+  // the request — not whenever the stored value moved. Echoing the current
+  // grant back on every base-prompt save would therefore file one
+  // "signup_grant_micro set to 50000" row per prompt edit, burying the rows
+  // that record a real policy change in rows that record nothing. Absent
+  // means LEAVE IT ALONE on the Go side (the field is a pointer there
+  // exactly so it can), which is precisely what "unchanged" wants to say.
+  const grantChanged =
+    parsedGrant !== null && settingsQuery.data !== undefined && parsedGrant !== settingsQuery.data.signup_grant_micro;
+
+  function handleSettingsSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canSavePrompt || draftPrompt === null) return;
-    promptMutation.mutate({ basePrompt: draftPrompt, note: promptNote });
+    if (!canSave || draftPrompt === null) return;
+    settingsMutation.mutate({
+      basePrompt: draftPrompt,
+      note: promptNote,
+      grantMicro: grantChanged ? (parsedGrant as number) : undefined,
+    });
   }
 
   return (
@@ -371,7 +425,7 @@ export function AdminPricing() {
           </p>
         )}
         {draftPrompt !== null && (
-          <form data-testid="admin-ai-prompt-form" onSubmit={handlePromptSubmit}>
+          <form data-testid="admin-ai-prompt-form" onSubmit={handleSettingsSubmit}>
             <label className="admin-upload-field">
               <span>{t('admin.ai.pricing.promptLabel')}</span>
               <textarea
@@ -394,6 +448,31 @@ export function AdminPricing() {
                 {t('settings.ai.promptTooLong')}
               </p>
             )}
+            {/*
+              CÙNG FORM, không phải form riêng — xem doc comment đầu tệp.
+              `PUT /admin/ai/settings` đòi `base_system_prompt` ở MỌI lần
+              gọi, nên một nút "lưu grant" riêng buộc phải gửi kèm bản nháp
+              prompt đang gõ dở.
+            */}
+            <label className="admin-upload-field">
+              <span>{t('admin.ai.pricing.grantLabel')}</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={draftGrant ?? ''}
+                aria-invalid={grantInvalid || undefined}
+                onChange={(event) => setDraftGrant(event.target.value)}
+                data-testid="admin-ai-grant-input"
+              />
+            </label>
+            <p className="admin-note" data-testid="admin-ai-grant-hint">
+              {t('admin.ai.pricing.grantHint')}
+            </p>
+            {grantInvalid && (
+              <p className="admin-note set-note-warn" role="alert" data-testid="admin-ai-grant-invalid">
+                {t('admin.ai.pricing.grantInvalid', String(grantMax ?? ''))}
+              </p>
+            )}
             <label className="admin-upload-field">
               <span>{t('admin.ai.pricing.promptNoteLabel')}</span>
               <input
@@ -403,15 +482,15 @@ export function AdminPricing() {
                 data-testid="admin-ai-prompt-note-input"
               />
             </label>
-            <button type="submit" className="btn primary" disabled={!canSavePrompt} data-testid="admin-ai-prompt-submit">
-              {promptMutation.isPending ? t('admin.ai.pricing.saving') : t('admin.ai.pricing.save')}
+            <button type="submit" className="btn primary" disabled={!canSave} data-testid="admin-ai-prompt-submit">
+              {settingsMutation.isPending ? t('admin.ai.pricing.saving') : t('admin.ai.pricing.save')}
             </button>
-            {promptMutation.isError && (
+            {settingsMutation.isError && (
               <p className="admin-note" role="alert" data-testid="admin-ai-prompt-error">
-                {describeAdminAIError(promptMutation.error, t)}
+                {describeAdminAIError(settingsMutation.error, t)}
               </p>
             )}
-            {promptMutation.isSuccess && (
+            {settingsMutation.isSuccess && (
               <p className="admin-note" role="status" data-testid="admin-ai-prompt-success">
                 {t('admin.ai.pricing.saved')}
               </p>
