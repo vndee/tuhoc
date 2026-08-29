@@ -605,8 +605,28 @@ export const vi = {
   // không còn bản dựng nào thiếu route AI, nên cả hai trạng thái đó không
   // xảy ra được nữa. Trạng thái chặn duy nhất còn lại là hết credit nền
   // tảng cấp.
-  'ai.panel.noCredit': 'Tài khoản đã hết credit AI. Nạp thêm trong trang cấu hình để tiếp tục hỏi.',
-  'ai.panel.openSettings': 'Mở trang cấu hình',
+  //
+  // BẢN TRƯỚC HỨA MỘT LỐI RA KHÔNG TỒN TẠI (review tổng nhánh Pha 2, E1):
+  // nó bảo người học "nạp thêm trong trang cấu hình", và `/settings` không
+  // có nút nạp, không form, không liên kết ra ngoài — `CreditPanel.tsx` chỉ
+  // vẽ số dư cộng sổ dùng. Thanh toán là Pha 4 (spec §7); không có gì trong
+  // mã sản phẩm hôm nay nhận tiền. Một câu chỉ đường tới một nút không tồn
+  // tại tệ hơn hẳn một câu nói thẳng là chưa có đường: người học đi tới đó,
+  // không thấy gì, rồi tự hỏi mình bỏ sót cái gì.
+  //
+  // Bản này nói ba điều theo đúng thứ tự người học cần: chuyện gì xảy ra,
+  // vì sao họ không tự sửa được, và ai sửa được. "Chưa mở" chứ không phải
+  // "không có" — nó SẼ mở ở Pha 4, và câu chữ không nên nói dối theo chiều
+  // ngược lại.
+  'ai.panel.noCredit':
+    'Tài khoản đã hết credit AI. Nền tảng chưa mở thanh toán nên bạn chưa tự nạp được — liên hệ quản trị viên để được cấp thêm.',
+  // NÚT VẪN Ở LẠI, và nhãn đổi để nói đúng thứ nó dẫn tới. `/settings` mục
+  // Trợ lý AI không nạp được credit, nhưng nó vẫn trả lời đúng câu hỏi kế
+  // tiếp của một người vừa hết tiền: đã tiêu bao nhiêu, vào những lượt nào
+  // (`CreditPanel.tsx`'s số dư + sổ dùng gần đây). Nhãn cũ "Mở trang cấu
+  // hình" mượn nghĩa từ câu hứa nạp tiền ở trên; bỏ câu ấy đi thì nhãn phải
+  // tự đứng được.
+  'ai.panel.openSettings': 'Xem số dư và sổ dùng',
   'ai.panel.questionLabel': 'Câu hỏi của bạn',
   'ai.panel.questionPlaceholder': 'Hỏi về chương đang đọc…',
   'ai.panel.stop': 'Dừng',
@@ -615,7 +635,9 @@ export const vi = {
   // Mười khoá dưới đây ứng với mười `ServerAIErrorCode` (`ai/serverClient.
   // ts`) — xem `useAI.ts`'s `describeFailure` cho quy tắc "mã nào dịch ra
   // câu nào", và VÌ SAO không câu nào ở đây là chuỗi thô máy chủ gửi.
-  'ai.error.noCredit': 'Bạn đã dùng hết credit AI. Nạp thêm để tiếp tục hỏi.',
+  // Cùng lý do E1 với `ai.panel.noCredit` ở trên, và cố ý NGẮN HƠN: câu này
+  // vẽ ở dòng lỗi của một lượt, cạnh khối lời mời đầy đủ, không thay nó.
+  'ai.error.noCredit': 'Bạn đã dùng hết credit AI. Thanh toán chưa mở — liên hệ quản trị viên để được cấp thêm.',
   'ai.error.rateLimited': 'Bạn đang hỏi hơi nhanh — chờ một chút rồi thử lại.',
   'ai.error.providerFailed': 'Nhà cung cấp AI không hoàn tất được lượt này. Thử lại sau một chút.',
   'ai.error.toolBudgetExhausted':

@@ -261,6 +261,19 @@ export function AskPanel({
         {t('ai.panel.noMemory')}
       </p>
 
+      {/*
+        HẾT CREDIT — và trạng thái này KHÔNG CÓ LỐI RA TỰ PHỤC VỤ hôm nay.
+        Thanh toán là Pha 4 (spec §7); `CreditPanel.tsx` vẽ số dư và sổ dùng,
+        không nút nạp. Câu chữ nói thẳng điều đó (`ai.panel.noCredit`, xem
+        chú thích của khoá ấy trong catalog i18n cho lịch sử: bản trước chỉ
+        người học tới một nút chưa từng tồn tại).
+
+        NÚT VẪN Ở LẠI dù nó không nạp được tiền: nó dẫn tới thứ duy nhất
+        `/settings` thật sự trả lời cho một người vừa hết credit — đã tiêu
+        bao nhiêu, vào những lượt nào. Nhãn đổi theo (`ai.panel.openSettings`
+        nay là "Xem số dư và sổ dùng") để nó không mượn nghĩa từ một câu hứa
+        nạp tiền đã bị gỡ.
+      */}
       {needsSetup && (
         <div className="ai-panel-invite" data-testid="ai-needs-setup">
           <p>{t('ai.panel.noCredit')}</p>

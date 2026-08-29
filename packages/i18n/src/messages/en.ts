@@ -435,9 +435,14 @@ export const en: Messages = {
   // there is no per-device key to plug in anymore and no build variant
   // without the AI routes, so neither of those two states can occur. The
   // one blocking state left is running out of platform-issued credit.
+  // The previous wording pointed at a top-up button that does not exist
+  // (whole-branch review, E1): `/settings` shows a balance and a spend
+  // ledger and nothing else — billing is Phase 4 (spec §7). See the vi
+  // catalog's comment on these two keys for the full reasoning, including
+  // why the button stays but its label changes.
   'ai.panel.noCredit':
-    'You are out of AI credit on this account. Top up in settings to keep asking.',
-  'ai.panel.openSettings': 'Open the settings page',
+    'You are out of AI credit on this account. Billing is not open yet, so you cannot top up yourself — ask an administrator to add more.',
+  'ai.panel.openSettings': 'View balance and usage',
   'ai.panel.questionLabel': 'Your question',
   'ai.panel.questionPlaceholder': 'Ask about the chapter you are reading…',
   'ai.panel.stop': 'Stop',
@@ -446,7 +451,7 @@ export const en: Messages = {
   // Mười khoá dưới đây ứng với mười `ServerAIErrorCode` (`ai/serverClient.
   // ts`) — xem `useAI.ts`'s `describeFailure` cho quy tắc "mã nào dịch ra
   // câu nào", và VÌ SAO không câu nào ở đây là chuỗi thô server gửi.
-  'ai.error.noCredit': 'You are out of AI credit. Top up to keep asking.',
+  'ai.error.noCredit': 'You are out of AI credit. Billing is not open yet — ask an administrator to add more.',
   'ai.error.rateLimited': 'You are asking a bit fast — wait a moment and try again.',
   'ai.error.providerFailed': 'The AI provider could not complete this turn. Try again in a moment.',
   'ai.error.toolBudgetExhausted':
