@@ -422,9 +422,37 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// A deployment with no search key gets a nil provider, and web_search is
 	// simply not registered — an advertised tool that always fails still
 	// costs the learner a tool-call round to discover that.
+	//
+	// STARTUP SIGNAL (whole-branch review, A4). Both keys are read by
+	// config.Load with a bare os.Getenv — no default, no complaint — and
+	// cmd/api/main.go only ever insists on DATABASE_URL. Before these two
+	// lines, a deployment that never set them booted perfectly clean and
+	// then failed at the moment a learner pressed "Hỏi", reporting a
+	// PROVIDER FAILURE. That is the wrong sentence for the situation: a
+	// missing key is permanent and an operator fixes it in thirty seconds,
+	// while a provider outage is temporary and an operator waits. Making
+	// them indistinguishable costs whoever is on call the whole diagnosis.
+	//
+	// log.Printf and carry on, NOT log.Fatal: this mirrors the
+	// "discussions disabled" line above exactly, and for the same reason —
+	// the reader, the catalog, sync, stats and auth are all unaffected by a
+	// missing AI key, so refusing to boot would turn a partial
+	// misconfiguration into a total outage.
+	//
+	// The NAMES of the environment variables, never their values: the whole
+	// point of provider_key_never_leaks_test.go is that a key does not
+	// reach a log, and a helpful startup line is exactly where that rule
+	// gets broken by accident.
+	if cfg.DeepSeekAPIKey == "" {
+		log.Printf("server: AI disabled: DEEPSEEK_API_KEY is not set — " +
+			"POST /ai/chat will fail for every learner until it is")
+	}
 	var aiSearch ai.SearchProvider
 	if cfg.BraveAPIKey != "" {
 		aiSearch = ai.NewBrave(ai.DefaultBraveSearchEndpoint, cfg.BraveAPIKey, nil)
+	} else {
+		log.Printf("server: AI web search disabled: BRAVE_API_KEY is not set — " +
+			"the web_search tool is not registered for any turn")
 	}
 	aiHandler := ai.NewHandler(ai.HandlerDeps{
 		Client:  ai.NewProviderClient(cfg.DeepSeekBaseURL, cfg.DeepSeekAPIKey),

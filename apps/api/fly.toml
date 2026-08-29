@@ -52,6 +52,25 @@ primary_region = "sin" # Singapore. Closest Fly region to Vietnam-based
 # trailing slash, no path) before the first real deploy — see
 # docs/deploy.md's cross-origin cookie analysis for why an exact origin
 # (not a wildcard) is required here.
+#
+# AI (hệ thống con Pha 2) — HAI BÍ MẬT, KHÔNG ĐƯỢC ĐẶT Ở ĐÂY:
+#
+#   flyctl secrets set DEEPSEEK_API_KEY="..."   # key DeepSeek của NỀN TẢNG
+#   flyctl secrets set BRAVE_API_KEY="..."      # chỉ bật tool web_search
+#
+# Chúng vắng khỏi tệp này cho tới vòng sửa sau review tổng nhánh Pha 2 (A3),
+# và hậu quả không phải là một lỗi lúc deploy mà là sự IM LẶNG: `flyctl
+# deploy` chạy sạch, `/healthz` xanh, rồi tính năng chủ lực chết đúng lúc
+# một người học bấm "Hỏi". Để trống VẪN là trạng thái hợp lệ (AI suy giảm
+# thành "chưa cấu hình", phần còn lại của ứng dụng chạy bình thường), nên
+# hai dòng trên là một BƯỚC, không phải một điều kiện tiên quyết —
+# server.go log một cảnh báo khởi động cho từng key còn thiếu.
+#
+# DEEPSEEK_BASE_URL cố tình KHÔNG có ở đây và cũng không phải secret:
+# config.Load rơi về DefaultDeepSeekBaseURL khi nó trống, và viết một URL
+# cứng vào tệp này là tạo một bản sao của hằng số Go ấy — thứ sẽ lệch lặng
+# lẽ. Chỉ đặt (`flyctl secrets set` hoặc thêm vào [env]) khi thật sự trỏ tới
+# một proxy hay một endpoint giả lập.
 [env]
   PORT = "8080"
   CORS_ORIGIN = "https://REPLACE-WITH-PAGES-ORIGIN"
