@@ -494,13 +494,67 @@ html[data-theme='dark'] .auth-form input {
   border-color: var(--rule-strong);
 }
 
+/* ───────────────────────────────────────────────────────────────────────────
    `/settings` — CÀI ĐẶT, và Trợ lý AI là MỘT MỤC bên trong
+   ───────────────────────────────────────────────────────────────────────────
+
+   DÒNG MỞ CHÚ THÍCH NGAY TRÊN LÀ MỘT BẢN VÁ, không phải trang trí. Từ commit
+   `c1aacde` tới Task 16 vòng sửa 1, tiêu đề mục này có dấu ĐÓNG chú thích mà
+   KHÔNG có dấu mở — một dấu đóng lạc giữa biểu định kiểu.
+
+   Hậu quả ĐO ĐƯỢC trên `dist/`, không suy luận: bộ phân tích CSS coi phần rác
+   ấy là phần đầu của một quy tắc, nuốt luôn khối kế tiếp, và quy tắc
+   `.page-settings` với `max-width: 54rem` KHÔNG có trong bản dựng —
+   `grep -F '.page-settings{' dist/assets/*.css` cho 0 kết quả, trong khi
+   `.set-title` ngay sau đó thì có. Bản dựng vẫn THÀNH CÔNG: đây là một quy tắc
+   bị bỏ trong im lặng, không phải một lỗi cú pháp làm gãy build.
+
+   Vì sao không ai thấy: `app-screens.css` có `#content:has(.page-settings)`
+   với đúng `max-width: 54rem` — cùng con số, khác selector — nên bề rộng trang
+   Cài đặt vẫn đúng. Một quy tắc chết được che bởi một quy tắc sống.
+
+   LUẬT RÚT RA, cho cả tệp này: đừng viết dấu đóng chú thích CSS bên trong một
+   chú thích CSS. Chú thích CSS không lồng nhau, nên nó đóng sớm ngay tại đó và
+   phần còn lại của đoạn văn thành CSS rác. Vòng sửa này mắc đúng lỗi ấy một
+   lần khi đang viết chính đoạn văn này, và Tailwind bắt được — nhưng nó chỉ
+   bắt vì ca ấy sinh ra một khai báo sai; ca ở trên thì nó im lặng cho qua.
    ─────────────────────────────────────────────────────────────────────────── */
 
 /*
-  `.page-settings` là lớp mà `e2e/s2.spec.ts` bám vào ở HAI chốt:
-  `.page-settings` phải thấy được, và `.page-settings input, .page-settings
-  textarea` phải đếm ra 0. Đổi tên nó là làm hỏng cả hai một cách im lặng.
+  `.page-settings` là lớp mà HAI chốt bám vào: `.page-settings` phải thấy
+  được, và `.page-settings input, .page-settings textarea` phải đếm ra 0.
+  Đổi tên nó là làm hỏng cả hai một cách im lặng.
+
+  Chốt được nêu tên ở đây TRƯỚC Task 16 là `e2e/s2.spec.ts`, tệp đã bị xoá.
+  Hai chốt còn sống hôm nay:
+
+    · `pages/Settings.test.tsx` — "KHÔNG `<input>`, KHÔNG `[contenteditable]`,
+      ĐÚNG MỘT `<textarea>`" (bản Pha 2 của phép đếm 0 kia);
+    · `reader/leaveChapter.test.tsx` — `document.querySelector('.page-settings')`
+      phải khác `null` sau khi rời chương vào Cài đặt.
+*/
+.page-settings { max-width:
+   54rem }` KHÔNG có trong bản dựng** (`grep -F '.page-settings{'
+   dist/assets/*.css` → 0 kết quả, trong khi `.set-title` ngay sau đó thì có).
+
+   Vì sao không ai thấy: `app-screens.css` có `#content:has(.page-settings) {
+   max-width: 54rem }` — cùng con số, khác selector — nên bề rộng trang Cài đặt
+   vẫn đúng. Một quy tắc chết được che bởi một quy tắc sống, tức đúng hạng lỗi
+   mà sổ nợ gọi là "im lặng".
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/*
+  `.page-settings` là lớp mà HAI chốt bám vào: `.page-settings` phải thấy
+  được, và `.page-settings input, .page-settings textarea` phải đếm ra 0.
+  Đổi tên nó là làm hỏng cả hai một cách im lặng.
+
+  Chốt được nêu tên ở đây TRƯỚC Task 16 là `e2e/s2.spec.ts`, tệp đã bị xoá.
+  Chốt còn sống hôm nay:
+
+    · `pages/Settings.test.tsx` — "KHÔNG `<input>`, KHÔNG `[contenteditable]`,
+      ĐÚNG MỘT `<textarea>`" (bản Pha 2 của phép đếm 0 kia);
+    · `reader/leaveChapter.test.tsx` — `document.querySelector('.page-settings')`
+      phải khác `null` sau khi rời chương vào Cài đặt.
 */
 .page-settings {
   max-width: 54rem;
