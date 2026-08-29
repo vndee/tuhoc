@@ -4,16 +4,20 @@ import { fileURLToPath } from 'node:url';
 
 /**
  * Shared fixtures for the Playwright suites in this directory —
- * `p1.spec.ts` (the fast definition-of-done gate) and `p2.spec.ts` (the
- * annotation phase's own gate). (`viz.spec.ts` was deleted by Task 11 of the
- * server-side pivot alongside course-wide `viz.js` — see the Makefile's
- * `test-e2e` comment; `s2.spec.ts`, subsystem 2's key-vault gate, by Pha 2
- * Task 16 alongside the second-origin app it drove.) Extracted
- * rather than copied: `isBenignAuthCheck401` in particular is a deliberately
- * NARROW filter whose exact scope was established by a one-off debug run
- * (see its own doc comment) — two hand-maintained copies of a rule like that
- * drift, and the drift shows up as a suite that stops failing when it
- * should.
+ * `p1.spec.ts` (the fast definition-of-done gate), `p2.spec.ts` (the
+ * annotation phase's own gate, currently quarantined), and `s2.spec.ts`
+ * (Pha 2's AI/credit gate, Task 18). (`viz.spec.ts` was deleted by Task 11
+ * of the server-side pivot alongside course-wide `viz.js` — see the
+ * Makefile's `test-e2e` comment. `s2.spec.ts` itself has a more tangled
+ * history worth naming here rather than only at its own top: the ORIGINAL
+ * file gated subsystem 2's phase-1 AI/BYOK key vault; Pha 2 Task 16 deleted
+ * that vault app AND the spec that drove it; Task 18 wrote today's file
+ * FROM SCRATCH around credit — nothing below was reused from either earlier
+ * version.) Extracted rather than copied: `isBenignAuthCheck401` in
+ * particular is a deliberately NARROW filter whose exact scope was
+ * established by a one-off debug run (see its own doc comment) — two
+ * hand-maintained copies of a rule like that drift, and the drift shows up
+ * as a suite that stops failing when it should.
  *
  * Not itself a spec file: Playwright's default `testMatch` only picks up
  * `*.spec.ts`/`*.test.ts`, and vitest excludes `./e2e/**` wholesale (see
@@ -45,12 +49,15 @@ export const REAL_COURSE_ID = 'mau-hop-le';
 /**
  * apps/web/e2e/ → gốc repo là ba tầng lên.
  *
- * CÒN ĐƯỢC XUẤT DÙ KHÔNG CÒN NGƯỜI DÙNG NGOÀI TỆP NÀY, và ghi ra chứ không im
- * lặng: nó được xuất vì `s2.spec.ts` (đọc gói dựng của kho khoá) cũng cần phép
- * tính này, và hai bản sao thì trôi. `s3`/`s4.spec.ts` đã bị xoá ở Task 16 của
- * server-side pivot; `s2.spec.ts` ở Task 16 của Pha 2. Giữ `export` là quyết
- * định một dòng: bỏ nó đi thì người viết spec tiếp theo cần đường dẫn gốc sẽ
- * tự tính lại tại chỗ, và đó đúng là cách hai bản sao ra đời.
+ * KHÔNG CÒN NGƯỜI GỌI NÀO, ghi ra chứ không im lặng — trước Task 18 nó được
+ * giữ `export` vì bản `s2.spec.ts` CŨ (kho khoá, xoá ở Task 16 của Pha 2) đọc
+ * thẳng bản dựng của `apps/vault` trên đĩa và cần phép tính đường dẫn này;
+ * `s3`/`s4.spec.ts` (đã xoá ở Task 16 của server-side pivot) cũng từng dùng
+ * nó. Bản `s2.spec.ts` MỚI (Task 18, quanh credit) không đọc gì trên đĩa cả
+ * — nó chỉ nói chuyện với API/trình duyệt thật qua HTTP — nên không còn lý
+ * do nào để giữ hằng số này export. Chưa xoá vì việc đó là một quyết định
+ * ngoài phạm vi Task 18; người tiếp theo chạm vào tệp này nên tự hỏi có
+ * còn ai cần nó không trước khi thêm một chỗ gọi thứ hai.
  */
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -80,7 +87,7 @@ export function freshEmail(): string {
  * cổng của docker, `192.168.65.1`. Giới hạn ấy là một tính năng an ninh thật
  * (chống dò mật khẩu và dò tài khoản), không phải một phiền toái để nới.
  *
- * `s2.spec.ts` (đã xoá ở Task 16, Pha 2) đã ghi lại triệu chứng: ở **17 bài**,
+ * Bản `s2.spec.ts` CŨ (kho khoá — xoá ở Task 16, Pha 2; KHÁC bản cùng tên hôm nay, viết lại quanh credit ở Task 18) đã ghi lại triệu chứng: ở **17 bài**,
  * `viz.spec.ts` — bài cuối,
  * chẳng liên quan gì tới đăng nhập — hỏng ở `registerNewUser` với `waitForURL`
  * hết giờ 15 s, và log API có **đúng một dòng** `429 POST /auth/register`. Bỏ
