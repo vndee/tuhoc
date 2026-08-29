@@ -529,6 +529,26 @@ type chatRequest struct {
 // other — Allow's own doc comment is explicit that an account with money can
 // still be calling too fast, and an account calling slowly can still be out
 // of money.
+//
+// WHAT NEITHER GATE ABOVE STOPS — read docs/carried-forward.md's "Confused
+// deputy" entry (S2-F9 / HC-3) before changing anything in this function.
+//
+// Every refusal above answers "is this SESSION allowed to spend?". None of
+// them answers "did the human whose session this is actually ask?". A course
+// package rated `interactive` runs its own JS on the reader's page (spec
+// §1.2), that page holds the session cookie, and `fetch("/ai/chat", {
+// credentials: "include" })` is one line. Phase 1 carried this hole with the
+// key vault as the deputy; Task 16 deleted the vault, and the hole moved here
+// rather than closing — the deputy is now this handler.
+//
+// Moving the budget server-side genuinely fixed the MONEY half: an in-memory
+// limiter plus a database credit check cannot be edited from a browser, which
+// a localStorage token bucket could. It did nothing for the PRIVACY half.
+// RateLimiter is a per-user budget of CALLS, not of CHARACTERS (see its own
+// doc comment), so within the limit a hostile course still exfiltrates the
+// reader's private notes at N prompts per minute with each prompt as long as
+// it likes — item #1 of six in that ledger entry, unchanged since phase 1 and
+// still open. Do not read the two gates above as closing it.
 func (h *Handler) Chat(c *fiber.Ctx) error {
 	uid := h.caller(c)
 	if uid == uuid.Nil {
