@@ -446,6 +446,27 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	app.Get("/ai/config", auth.Require(deps.Pool), aiHandler.GetConfig)
 	app.Put("/ai/config", bodyLimit(ai.MaxConfigBodyBytes), auth.Require(deps.Pool), aiHandler.PutConfig)
 
+	// Admin AI routes (Task 17): the "Người dùng & credit" and "Bảng giá &
+	// prompt nền" CMS screens (spec §7). Same admin gate Task 8's catalog
+	// routes use — auth.Require then auth.RequireAdmin, in that order, the
+	// order RequireAdmin's own doc comment requires — and nothing else:
+	// unlike mountAdmin above, there is no adminOrToken door here, because
+	// there is no CLI tool analogous to `tuhoc publish` that needs one. A
+	// request that fails auth.Require gets 401; one that passes it but is
+	// not an admin's gets 403 from auth.RequireAdmin, never a silent 404 —
+	// see admin_handler_test.go's route-table-driven test in internal/ai,
+	// which walks this exact group via app.Stack() rather than a hand-typed
+	// list, so a route added here without updating that group is caught by
+	// construction.
+	adminAI := app.Group("/admin/ai", auth.Require(deps.Pool), auth.RequireAdmin(deps.Pool))
+	adminAI.Get("/users", aiHandler.AdminListUsers)
+	adminAI.Get("/users/:id", aiHandler.AdminGetUser)
+	adminAI.Post("/users/:id/credit", aiHandler.AdminAdjustCredit)
+	adminAI.Get("/pricing", aiHandler.AdminListPricing)
+	adminAI.Put("/pricing/:model", aiHandler.AdminUpdatePricing)
+	adminAI.Get("/settings", aiHandler.AdminGetSettings)
+	adminAI.Put("/settings", aiHandler.AdminUpdateSettings)
+
 	return app
 }
 

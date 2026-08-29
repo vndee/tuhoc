@@ -264,10 +264,18 @@ func (fakeCourses) ChapterHTML(ctx context.Context, slug, chapterID string) (str
 
 // --- helpers ---------------------------------------------------------------
 
-// newAIApp mounts the three routes on a bare fiber app with a FIXED user id
-// instead of a real session. The session gate itself is proven separately,
-// against the real internal/server route table, by
-// TestAIRoutesRejectRequestsWithoutASession.
+// newAIApp mounts the three learner routes AND the seven Task 17 admin
+// routes on a bare fiber app with a FIXED user id instead of a real
+// session — for the admin routes, that fixed id stands in for "whoever
+// auth.RequireAdmin already let through", the same way it stands in for
+// "whoever auth.Require already let through" on the learner routes. Both
+// session gates (auth.Require alone, and auth.Require + auth.RequireAdmin
+// together) are proven separately, against the real internal/server route
+// table, by TestAIRoutesRejectRequestsWithoutASession and
+// admin_handler_test.go's own TestAdminAIRoutesAllRequireAdmin /
+// TestAdminAIRoutesRejectNonAdminSession — this helper exists so every
+// OTHER test (validation, transactions, wire shapes) does not also have to
+// pay for a real login+promote round trip just to reach a handler method.
 func newAIApp(t *testing.T, uid uuid.UUID, deps ai.HandlerDeps) *fiber.App {
 	t.Helper()
 	deps.UserID = func(*fiber.Ctx) uuid.UUID { return uid }
@@ -277,6 +285,13 @@ func newAIApp(t *testing.T, uid uuid.UUID, deps ai.HandlerDeps) *fiber.App {
 	app.Get("/ai/credits", h.Credits)
 	app.Get("/ai/config", h.GetConfig)
 	app.Put("/ai/config", h.PutConfig)
+	app.Get("/admin/ai/users", h.AdminListUsers)
+	app.Get("/admin/ai/users/:id", h.AdminGetUser)
+	app.Post("/admin/ai/users/:id/credit", h.AdminAdjustCredit)
+	app.Get("/admin/ai/pricing", h.AdminListPricing)
+	app.Put("/admin/ai/pricing/:model", h.AdminUpdatePricing)
+	app.Get("/admin/ai/settings", h.AdminGetSettings)
+	app.Put("/admin/ai/settings", h.AdminUpdateSettings)
 	return app
 }
 
