@@ -810,12 +810,20 @@ export const en: Messages = {
   'admin.ai.pricing.save': 'Save',
   'admin.ai.pricing.saving': 'Saving…',
   'admin.ai.pricing.saved': 'Saved.',
-  'admin.ai.pricing.promptTitle': 'Agent base prompt',
+  'admin.ai.pricing.promptTitle': 'Base prompt & signup grant',
   'admin.ai.pricing.promptBlurb':
     "This prompt runs BEFORE every user's own personal prompt — it holds the tutor persona and the safety boundary, and must never be empty.",
   'admin.ai.pricing.promptLabel': 'Base prompt',
   'admin.ai.pricing.promptEmptyWarning': "The base prompt must not be empty — it is the agent's safety boundary.",
   'admin.ai.pricing.promptNoteLabel': 'Note (optional)',
+
+  // The signup-grant field (`ai_settings.signup_grant_micro`). See the vi
+  // catalog's comment on the same three keys for why it shares the base
+  // prompt's form instead of getting its own Save button.
+  'admin.ai.pricing.grantLabel': 'Signup grant (micro-credit)',
+  'admin.ai.pricing.grantHint':
+    'Every new account receives this much during signup. Setting it to 0 switches the grant OFF: a new account is blocked on its very first question until someone tops it up by hand.',
+  'admin.ai.pricing.grantInvalid': (max: string) => `Must be a whole number, 0 or more, at most ${max}.`,
 
   'admin.ai.error.fieldRequired': 'A required field is missing.',
   'admin.ai.error.amountRequired': 'The amount must not be empty or zero.',

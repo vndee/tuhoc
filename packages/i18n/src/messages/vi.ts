@@ -1058,12 +1058,35 @@ export const vi = {
   'admin.ai.pricing.save': 'Lưu',
   'admin.ai.pricing.saving': 'Đang lưu…',
   'admin.ai.pricing.saved': 'Đã lưu.',
-  'admin.ai.pricing.promptTitle': 'Prompt nền của agent',
+  /* Nhan đề của MỘT form lưu HAI cột `ai_settings` (prompt nền +
+   * `signup_grant_micro`) — tên khoá vẫn là `promptTitle` vì nó vẫn là nhan
+   * đề của đúng khối ấy, chỉ là khối ấy nay có thêm một ô. Đổi tên khoá ở
+   * đây không mua được gì: không nghĩa nào bị ĐẢO, chỉ được nới rộng, nên
+   * không có chỗ gọi nào đang hiểu sai để bắt lỗi lúc biên dịch. */
+  'admin.ai.pricing.promptTitle': 'Prompt nền & credit tặng khi đăng ký',
   'admin.ai.pricing.promptBlurb':
     'Lời nhắc này đứng TRƯỚC lời nhắc riêng của mọi người dùng — nó giữ vai trò gia sư và ranh giới an toàn, không được để rỗng.',
   'admin.ai.pricing.promptLabel': 'Prompt nền',
   'admin.ai.pricing.promptEmptyWarning': 'Prompt nền không được để rỗng — đây là ranh giới an toàn của agent.',
   'admin.ai.pricing.promptNoteLabel': 'Ghi chú (không bắt buộc)',
+
+  /* ── ô "credit tặng khi đăng ký" (`ai_settings.signup_grant_micro`) ────
+   *
+   * Cột này CÓ route (`PUT /admin/ai/settings` nhận nó từ vòng sửa 1, mục
+   * A1) nhưng KHÔNG có ô nhập cho tới đợt này — thêm ô cần đúng ba khoá
+   * dưới đây, tức câu chữ người dùng, tức phạm vi đợt 2. Nó nằm CÙNG form
+   * với prompt nền chứ không có form riêng vì `PUT /admin/ai/settings` đòi
+   * `base_system_prompt` ở mọi lần gọi: một nút "lưu grant" riêng sẽ phải
+   * gửi kèm bản nháp prompt đang gõ dở, tức lưu lén một thứ người vận hành
+   * chưa định lưu.
+   *
+   * ĐƠN VỊ VIẾT THẲNG TRONG NHÃN: bảng giá ngay trên cùng màn cũng đo bằng
+   * micro-credit, và một ô số không ghi đơn vị bên cạnh sáu cột có ghi là
+   * đúng chỗ một số 0 thừa đi lọt. */
+  'admin.ai.pricing.grantLabel': 'Credit tặng khi đăng ký (micro-credit)',
+  'admin.ai.pricing.grantHint':
+    'Mỗi tài khoản mới nhận số này ngay trong lượt đăng ký. Đặt 0 là TẮT hẳn: tài khoản mới sẽ bị chặn ngay ở câu hỏi đầu tiên cho tới khi có người nạp tay.',
+  'admin.ai.pricing.grantInvalid': (max: string) => `Phải là số nguyên không âm, tối đa ${max}.`,
 
   'admin.ai.error.fieldRequired': 'Thiếu một trường bắt buộc.',
   'admin.ai.error.amountRequired': 'Số tiền không được để trống hoặc bằng 0.',

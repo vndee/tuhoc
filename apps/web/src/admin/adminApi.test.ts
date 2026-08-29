@@ -23,7 +23,7 @@ import {
   adminPublish,
   adminRollback,
   adminUnpublish,
-  adminUpdateBasePrompt,
+  adminUpdateSettings,
   adminUpdatePricing,
   describeAdminAIError,
   describeAdminError,
@@ -256,7 +256,7 @@ describe('describeAdminError', () => {
 /**
  * ══════════════════════════════════════════════════════════════════════
  * Task 17 — the seven `/admin/ai/*` calls (`adminListAIUsers` ...
- * `adminUpdateBasePrompt`) and `describeAdminAIError`.
+ * `adminUpdateSettings`) and `describeAdminAIError`.
  * ══════════════════════════════════════════════════════════════════════
  */
 
@@ -458,7 +458,7 @@ describe('adminGetAISettings', () => {
   });
 });
 
-describe('adminUpdateBasePrompt', () => {
+describe('adminUpdateSettings', () => {
   it('PUT /admin/ai/settings, body {base_system_prompt, note} → the updated settings', async () => {
     let body: unknown = null;
     server.use(
@@ -467,7 +467,7 @@ describe('adminUpdateBasePrompt', () => {
         return HttpResponse.json(settingsRow({ base_system_prompt: 'new prompt' }));
       }),
     );
-    await expect(adminUpdateBasePrompt('new prompt', 'adding a rule')).resolves.toEqual(
+    await expect(adminUpdateSettings('new prompt', 'adding a rule')).resolves.toEqual(
       settingsRow({ base_system_prompt: 'new prompt' }),
     );
     expect(body).toEqual({ base_system_prompt: 'new prompt', note: 'adding a rule' });
@@ -481,8 +481,41 @@ describe('adminUpdateBasePrompt', () => {
         return HttpResponse.json(settingsRow());
       }),
     );
-    await adminUpdateBasePrompt('a prompt');
+    await adminUpdateSettings('a prompt');
     expect(body).toEqual({ base_system_prompt: 'a prompt' });
+  });
+
+  /**
+   * NỬA QUAN TRỌNG NHẤT của cặp bài này, và là lý do `signupGrantMicro` là
+   * tham số TÙY CHỌN chứ không phải một `number` trần: phía Go khai trường
+   * ấy là con trỏ, và VẮNG nghĩa là "đừng động tới". Nếu tệp này gửi `0`
+   * thay cho "không đổi", mọi lần lưu prompt nền sẽ lặng lẽ tắt credit tặng
+   * khi đăng ký — đúng lỗ hổng "402 ở câu hỏi đầu tiên" mà vòng sửa 1 đóng,
+   * mở lại từ một màn người vận hành tưởng chỉ sửa chữ.
+   */
+  it('an omitted signupGrantMicro leaves the key out of the body entirely — never sends 0', async () => {
+    let body: unknown = null;
+    server.use(
+      http.put('/admin/ai/settings', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(settingsRow());
+      }),
+    );
+    await adminUpdateSettings('a prompt', 'a note');
+    expect(body).toEqual({ base_system_prompt: 'a prompt', note: 'a note' });
+    expect(Object.keys(body as object)).not.toContain('signup_grant_micro');
+  });
+
+  it('an EXPLICIT 0 is sent, because switching the grant off on purpose is legal', async () => {
+    let body: unknown = null;
+    server.use(
+      http.put('/admin/ai/settings', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(settingsRow({ signup_grant_micro: 0 }));
+      }),
+    );
+    await adminUpdateSettings('a prompt', 'switching the grant off', 0);
+    expect(body).toEqual({ base_system_prompt: 'a prompt', note: 'switching the grant off', signup_grant_micro: 0 });
   });
 
   it('a 400 (empty prompt) rejects with ApiError carrying FieldRequired', async () => {
@@ -491,7 +524,7 @@ describe('adminUpdateBasePrompt', () => {
         HttpResponse.json({ code: 'FieldRequired', error: 'base_system_prompt must not be empty' }, { status: 400 }),
       ),
     );
-    const failure = adminUpdateBasePrompt('', 'trying to clear it');
+    const failure = adminUpdateSettings('', 'trying to clear it');
     await expect(failure).rejects.toMatchObject({ status: 400, body: { code: 'FieldRequired' } });
   });
 });

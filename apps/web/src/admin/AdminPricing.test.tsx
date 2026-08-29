@@ -44,6 +44,7 @@ function settingsRow(over: Record<string, unknown> = {}) {
     max_tokens_per_turn: 8192,
     max_tool_rounds_per_turn: 6,
     max_base_prompt_chars: 20000,
+    max_signup_grant_micro: 10000000,
     ...over,
   };
 }
@@ -294,6 +295,143 @@ describe('AdminPricing — prompt nền', () => {
 
     expect(screen.getByTestId('admin-ai-prompt-submit')).toBeDisabled();
     expect(screen.getByTestId('admin-ai-prompt-too-long')).toHaveTextContent(t('settings.ai.promptTooLong'));
+  });
+});
+
+/**
+ * `signup_grant_micro` — ô nhập, đợt 2 của vòng sửa sau review tổng nhánh.
+ *
+ * Vòng sửa 1 (A1) cho `PUT /admin/ai/settings` NHẬN cột này, kèm kiểm biên,
+ * audit riêng, và một giá trị seed ở migration `0008`. Thứ duy nhất còn
+ * thiếu là ô nhập — nó cần khoá i18n mới, tức câu chữ người dùng, tức đợt
+ * này. Hình dạng "cột có route nhưng không ai bấm được" là quan ngại số 1
+ * của báo cáo đợt 1.
+ */
+describe('AdminPricing — credit tặng khi đăng ký', () => {
+  it('ô nhập được gieo bằng giá trị máy chủ đang giữ, không phải một hằng của client', async () => {
+    serve([], settingsRow({ signup_grant_micro: 777 }));
+    renderPage();
+
+    expect(await screen.findByTestId('admin-ai-grant-input')).toHaveValue('777');
+    expect(screen.getByTestId('admin-ai-grant-hint')).toHaveTextContent(t('admin.ai.pricing.grantHint'));
+  });
+
+  /**
+   * BÀI CHỊU LỰC của cả nhóm, và là lý do màn này gửi grant CÓ ĐIỀU KIỆN.
+   *
+   * `UpdateSettings` (credits.go) ghi một hàng `ai.settings.signup_grant`
+   * mỗi khi trường CÓ MẶT trong request — không phải mỗi khi giá trị ĐỔI.
+   * Một màn echo grant hiện tại ở mọi lần lưu prompt sẽ nộp một hàng audit
+   * "set to 50000" cho mỗi lần sửa chữ, chôn vùi đúng những hàng ghi một
+   * thay đổi chính sách thật.
+   */
+  it('lưu prompt mà KHÔNG đụng ô grant thì không gửi `signup_grant_micro` — vắng, không phải 0', async () => {
+    let body: unknown = null;
+    serve([], settingsRow({ base_system_prompt: 'old prompt', signup_grant_micro: 50000 }));
+    server.use(
+      http.put('/admin/ai/settings', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(settingsRow({ base_system_prompt: 'old prompt!' }));
+      }),
+    );
+    renderPage();
+    await screen.findByTestId('admin-ai-prompt-textarea');
+
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId('admin-ai-prompt-textarea'), '!');
+    await user.click(screen.getByTestId('admin-ai-prompt-submit'));
+
+    await waitFor(() => expect(body).not.toBeNull());
+    expect(Object.keys(body as object)).not.toContain('signup_grant_micro');
+  });
+
+  it('đổi ô grant thì gửi con số mới, cùng một PUT với prompt nền', async () => {
+    let body: unknown = null;
+    serve([], settingsRow({ base_system_prompt: 'a prompt', signup_grant_micro: 50000 }));
+    server.use(
+      http.put('/admin/ai/settings', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(settingsRow({ signup_grant_micro: 120000 }));
+      }),
+    );
+    renderPage();
+    await screen.findByTestId('admin-ai-grant-input');
+
+    const user = userEvent.setup();
+    const input = screen.getByTestId('admin-ai-grant-input');
+    await user.clear(input);
+    await user.type(input, '120000');
+    await user.type(screen.getByTestId('admin-ai-prompt-note-input'), 'tăng grant');
+    await user.click(screen.getByTestId('admin-ai-prompt-submit'));
+
+    await waitFor(() =>
+      expect(body).toEqual({ base_system_prompt: 'a prompt', note: 'tăng grant', signup_grant_micro: 120000 }),
+    );
+    expect(await screen.findByTestId('admin-ai-grant-input')).toHaveValue('120000');
+  });
+
+  it('MỘT SỐ 0 CÓ CHỦ Ý vẫn đi được — tắt grant là một lựa chọn hợp lệ, không phải một lỗi', async () => {
+    let body: unknown = null;
+    serve([], settingsRow({ base_system_prompt: 'a prompt', signup_grant_micro: 50000 }));
+    server.use(
+      http.put('/admin/ai/settings', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(settingsRow({ signup_grant_micro: 0 }));
+      }),
+    );
+    renderPage();
+    await screen.findByTestId('admin-ai-grant-input');
+
+    const user = userEvent.setup();
+    const input = screen.getByTestId('admin-ai-grant-input');
+    await user.clear(input);
+    await user.type(input, '0');
+    await user.click(screen.getByTestId('admin-ai-prompt-submit'));
+
+    await waitFor(() => expect(body).toMatchObject({ signup_grant_micro: 0 }));
+  });
+
+  /**
+   * TRẦN ĐỌC TỪ SERVER, không gõ lại — cùng luật `max_pricing_rate_micro`
+   * và `max_base_prompt_chars` đã theo. Con số trong bài cố ý NHỎ và LẺ
+   * (5000) để một client lén dùng hằng `MaxSignupGrantMicro` thật
+   * (10.000.000) sẽ cho ô 5001 đi qua và bài này ĐỎ.
+   */
+  it('từ chối đúng ở trần MÁY CHỦ khai, và cho qua đúng ở trần ấy', async () => {
+    serve([], settingsRow({ signup_grant_micro: 1, max_signup_grant_micro: 5000 }));
+    renderPage();
+    await screen.findByTestId('admin-ai-grant-input');
+
+    const user = userEvent.setup();
+    const input = screen.getByTestId('admin-ai-grant-input');
+    await user.clear(input);
+    await user.type(input, '5000');
+
+    expect(screen.getByTestId('admin-ai-prompt-submit')).toBeEnabled();
+    expect(screen.queryByTestId('admin-ai-grant-invalid')).not.toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, '5001');
+
+    expect(screen.getByTestId('admin-ai-prompt-submit')).toBeDisabled();
+    expect(screen.getByTestId('admin-ai-grant-invalid')).toHaveTextContent(
+      t('admin.ai.pricing.grantInvalid', '5000'),
+    );
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('một ô không phải số nguyên ("abc", "-1", "1.5") chặn nút Lưu', async () => {
+    serve([], settingsRow());
+    renderPage();
+    await screen.findByTestId('admin-ai-grant-input');
+
+    const user = userEvent.setup();
+    const input = screen.getByTestId('admin-ai-grant-input');
+    for (const bad of ['abc', '-1', '1.5']) {
+      await user.clear(input);
+      await user.type(input, bad);
+      expect(screen.getByTestId('admin-ai-prompt-submit')).toBeDisabled();
+    }
   });
 });
 

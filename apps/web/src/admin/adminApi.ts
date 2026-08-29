@@ -480,20 +480,40 @@ export async function adminUpdatePricing(model: string, input: UpdatePricingInpu
   return putJSON<AdminPricingRow>(`/admin/ai/pricing/${encodeURIComponent(model)}`, input);
 }
 
-/** Every `ai_settings` column, for display — only `base_system_prompt` is writable through this file (see `adminUpdateBasePrompt`). */
+/** Every `ai_settings` column, for display — only `base_system_prompt` and `signup_grant_micro` are writable through this file (see `adminUpdateSettings`). */
 export async function adminGetAISettings(): Promise<AdminAISettings> {
   return api.get<AdminAISettings>('/admin/ai/settings');
 }
 
 /**
- * Spec §7's "sửa system prompt nền của agent". The server refuses an empty
- * (or whitespace-only) `basePrompt` with `FieldRequired` — it is the
- * platform's tutor persona AND its safety boundary, appended-BEFORE, never
- * replaced by, a learner's own personal prompt (spec §3.3) — see
- * `AdminUpdateSettings`'s own doc comment on the Go side.
+ * Spec §7's "sửa system prompt nền của agent", plus the ONE other column
+ * `AdminUpdateSettings` accepts a write for (`signup_grant_micro`).
+ *
+ * `basePrompt` is always sent because the server REQUIRES it on every PUT:
+ * the server refuses an empty (or whitespace-only) one with `FieldRequired`
+ * — it is the platform's tutor persona AND its safety boundary,
+ * appended-BEFORE, never replaced by, a learner's own personal prompt (spec
+ * §3.3) — see `AdminUpdateSettings`'s own doc comment on the Go side.
+ *
+ * `signupGrantMicro` is OPTIONAL here in the same sense it is optional on
+ * the Go side, and the Go side's reason is the one that matters: the field
+ * is a POINTER there, and absent means LEAVE IT ALONE, not "set it to
+ * zero". Passing `undefined` therefore drops the key from the JSON entirely
+ * (not `null`, not `0`) and the stored grant survives untouched — which is
+ * exactly what a caller that only edited the prompt needs. Sending a
+ * hardcoded `0` from here for "no change" would silently switch the welcome
+ * grant off from a screen the operator believes only edits a prompt.
  */
-export async function adminUpdateBasePrompt(basePrompt: string, note?: string): Promise<AdminAISettings> {
-  return putJSON<AdminAISettings>('/admin/ai/settings', { base_system_prompt: basePrompt, note });
+export async function adminUpdateSettings(
+  basePrompt: string,
+  note?: string,
+  signupGrantMicro?: number,
+): Promise<AdminAISettings> {
+  return putJSON<AdminAISettings>('/admin/ai/settings', {
+    base_system_prompt: basePrompt,
+    note,
+    signup_grant_micro: signupGrantMicro,
+  });
 }
 
 /**

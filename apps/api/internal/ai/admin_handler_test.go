@@ -1524,7 +1524,11 @@ func TestUpdateSettingsSignupGrantIsOptionalNotZeroing(t *testing.T) {
 		t.Fatalf("first update: want 200 got %d body=%s", code, raw)
 	}
 
-	// Now a base-prompt-only save, exactly what the CMS screen sends.
+	// Now a base-prompt-only save, exactly what AdminPricing.tsx sends when
+	// the operator edited the prompt and left the signup-grant input alone:
+	// that screen omits signup_grant_micro unless the typed value actually
+	// differs from the stored one, precisely so an unchanged grant does not
+	// file an audit row saying it was "set" to what it already was.
 	resp, raw := doJSON(t, app, http.MethodPut, "/admin/ai/settings", map[string]any{
 		"base_system_prompt": "You are the platform's tutor. Second edit.",
 		"note":               "prompt only",
