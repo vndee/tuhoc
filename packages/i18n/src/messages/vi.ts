@@ -110,54 +110,61 @@ export const vi = {
     'Cơ sở dữ liệu mang tên TRÌNH DUYỆT, không mang tên người dùng — nên nó bị xoá sạch mỗi lần đổi người đăng nhập, kể cả khi không ai bấm đăng xuất.',
   'settings.localData.kept': 'Ngôn ngữ và giao diện thì ở lại: chúng là tuỳ chọn của thiết bị.',
 
-  /* ── mục Trợ lý AI ─────────────────────────────────────────────────────── */
+  /* ── mục Trợ lý AI (Pha 2 — task-14: credit + cấu hình agent thay khung
+     kho khoá) ────────────────────────────────────────────────────────────
+     Task 15 đổi `login.point.ownKey` (lời hứa Pha 1, "key của chính bạn").
+     Ở ĐÂY áp cùng nguyên tắc, sớm hơn: không câu nào dưới đây được nhắc lại
+     "key", "kho khoá", hay "địa chỉ riêng" — cả ba đã sai kể từ khi AI
+     chuyển sang chạy trên máy chủ (Task 11). */
 
   'settings.ai.title': 'Trợ lý AI',
-  /**
-   * KHOÁ CÓ CHỖ TRỐNG ĐẦU TIÊN, và là ca đã chốt QĐ-2: `<strong>kho khoá</strong>`
-   * nằm GIỮA câu, không bọc cả câu. Tham số là `string` chứ không phải
-   * `ReactNode` — catalog không được biết React tồn tại (xem `../index.ts`);
-   * `tNode()` ở `apps/web/src/i18n/tNode.tsx` mới là bên chèn phần tử vào.
-   *
-   * Câu giữ nguyên vẹn trong catalog thay vì bị cắt làm ba khoá, nên trật tự từ
-   * của bản tiếng Anh khác được mà chỗ vẽ không phải biết.
-   */
-  'settings.ai.blurb': (vault: string) => `Chạy bằng key của chính bạn, cất trong ${vault} ở một địa chỉ riêng.`,
-  'settings.ai.blurbVault': 'kho khoá',
-  'settings.ai.keyStays':
-    'Key không rời trình duyệt này, không đồng bộ, không đi qua máy chủ của chúng tôi.',
-  'settings.ai.unavailable':
-    'Bản dựng này không có kho khoá, nên chưa dùng được trợ lý AI. Đây là một thiếu sót của cấu hình khi triển khai, không phải của tài khoản bạn — phần đọc giáo trình vẫn chạy bình thường.',
-  'settings.ai.open': 'Mở kho khoá',
+  'settings.ai.blurb':
+    'Trợ lý AI chạy trên máy chủ của chúng tôi, trả bằng credit của tài khoản bạn — không còn key nào để bạn tự cắm hay tự giữ.',
 
-  /**
-   * NHÃN CỦA MẶT PHẲNG KIA, và nó mang **địa chỉ thật** chứ không phải một câu
-   * chung chung về "một địa chỉ riêng".
-   *
-   * Kiến trúc hai origin chỉ có giá trị nếu người dùng NHÌN THẤY nó. Một câu
-   * nói "chạy ở một địa chỉ riêng" thì đúng với cả một bản dựng đã lỡ trỏ kho
-   * khoá về chính origin trang chính — tức là đúng với cả bản dựng mà cơ chế đã
-   * chết. In ra origin thật làm cho lời hứa ấy KIỂM ĐƯỢC bằng mắt, ngay tại chỗ
-   * người dùng sắp dán key.
-   */
-  /* "chạy ở", KHÔNG "khung dưới đây": khung mở ra thành một tấm NỔI LÊN TRÊN
-     trang này, không nằm dưới nhãn. Một nhãn mô tả sai vị trí của thứ nó đặt
-     tên là một nhãn dạy người đọc bỏ qua nhãn. */
-  'settings.ai.frameLabel': (origin: string) =>
-    `Kho khoá chạy ở ${origin} — một địa chỉ khác, tách khỏi trang bài học.`,
-  'settings.ai.frameOpen': 'Kho khoá đang mở ở lớp trên. Bấm "Đóng" ở đó để quay lại trang này.',
+  /* ── `CreditPanel.tsx` — số dư và sổ dùng gần đây, GET /ai/credits ──────── */
 
-  'settings.ai.budgetTitle': 'Hạn mức mỗi phiên',
+  'settings.ai.creditTitle': 'Credit',
+  'settings.ai.creditBalanceLabel': 'Credit khả dụng',
+  'settings.ai.creditLoading': 'Đang đọc số dư…',
+  'settings.ai.creditError': 'Không đọc được số dư credit. Thử tải lại trang.',
+  'settings.ai.usageTitle': 'Sổ dùng gần đây',
+  'settings.ai.usageEmpty': 'Chưa có lượt hỏi nào được tính phí.',
+  'settings.ai.usageColWhen': 'Thời điểm',
+  'settings.ai.usageColModel': 'Mô hình',
+  'settings.ai.usageColTokensIn': 'Token vào',
+  'settings.ai.usageColTokensCached': 'Token vào (cache)',
+  'settings.ai.usageColTokensOut': 'Token ra',
+  'settings.ai.usageColToolCalls': 'Lượt gọi công cụ',
+  'settings.ai.usageColWebSearches': 'Lượt tìm web',
+  'settings.ai.usageColCredits': 'Credit đã trừ',
+
+  /* ── `AgentConfigPanel.tsx` — prompt riêng và tool bật/tắt, GET/PUT
+     /ai/config ────────────────────────────────────────────────────────── */
+
+  'settings.ai.configTitle': 'Cấu hình agent',
+  'settings.ai.configBlurb':
+    'Lời nhắc riêng được thêm vào MỌI lượt hỏi của bạn — dùng nó để nói cho trợ lý biết bạn muốn được trả lời thế nào.',
+  'settings.ai.configLoading': 'Đang đọc cấu hình…',
+  'settings.ai.configError': 'Không đọc được cấu hình agent. Thử tải lại trang.',
+  'settings.ai.promptLabel': 'Lời nhắc riêng của bạn',
+  'settings.ai.promptPlaceholder': 'Ví dụ: luôn trả lời ngắn gọn, kèm ví dụ bằng Python.',
   /**
-   * KHÔNG in con số ở đây, có chủ ý. Ngân sách sống ở `SESSION_CHAR_BUDGET`
-   * trong `apps/vault/src/guard.ts` — một origin khác, không có alias sang trang
-   * chính — nên một con số chép sang đây là bản sao thứ hai của một sự thật, và
-   * bản sao thứ hai thì trôi. Câu này nói đúng thứ trang chính biết chắc: rằng
-   * hạn mức tồn tại, rằng khung sẽ hỏi lại, và rằng nó định giá bằng số cú bấm
-   * chứ không chặn được gì.
+   * `(count: string, max: string) => …` — hai chuỗi SỐ THUẦN (không dấu
+   * phân cách nghìn, có chủ ý): một bộ đếm ký tự đang gõ dở đổi liên tục,
+   * và "4.000" (có dấu chấm) dễ đọc nhầm là "4" trong một số ngữ cảnh — số
+   * trần rồi cũng KHÔNG đủ lớn (4000) để một dấu phân cách thật sự cần
+   * thiết. `AgentConfigPanel.tsx` truyền `String(n)`, không `toLocaleString`.
    */
-  'settings.ai.budgetBody':
-    'Kho khoá đặt một hạn mức ký tự cho mỗi phiên. Tiêu hết thì nó hỏi lại, kèm nhật ký những gì đã rời máy.',
+  'settings.ai.promptCounter': (count: string, max: string) => `${count} / ${max} ký tự`,
+  'settings.ai.promptTooLong':
+    'Lời nhắc dài hơn mức cho phép. Rút ngắn để lưu được — máy chủ sẽ từ chối bản dài hơn mức này dù bạn có bấm Lưu.',
+  'settings.ai.toolsTitle': 'Công cụ agent được dùng',
+  'settings.ai.toolReadCourse': 'Đọc nội dung khoá học',
+  'settings.ai.toolWebSearch': 'Tìm kiếm trên web',
+  'settings.ai.save': 'Lưu cấu hình',
+  'settings.ai.saved': 'Đã lưu.',
+  'settings.ai.saveUnknownTool': 'Một công cụ trong danh sách không còn tồn tại. Tải lại trang rồi thử lại.',
+  'settings.ai.saveRejected': 'Máy chủ từ chối lưu cấu hình này. Thử lại sau một chút.',
 
   /* ══════════════════════════════════════════════════════════════════════ *
    * KHO KHOÁ (`apps/vault`) — origin riêng, và là lý do gói này không phụ

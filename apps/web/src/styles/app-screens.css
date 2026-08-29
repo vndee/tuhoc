@@ -1336,13 +1336,102 @@ html[data-theme='dark'] #app:not(.reading) .set-identity-avatar {
   color: var(--ink-3);
 }
 
-/* Khối kho khoá: nó là chỗ nói về KEY của người dùng, nên nó được đóng khung
-   rõ là một mặt phẳng khác — đúng như bản dựng, và đúng như lập luận sẵn có
-   trong `settings-auth.css` về việc kho khoá phải trông tách bạch. */
-#app:not(.reading) .set-vault {
-  border: 1px solid var(--color-brand-200);
-  border-radius: var(--radius-xl);
+/* ══════════════════════════════════════════════════════════════════════════
+ * TRỢ LÝ AI — `CreditPanel.tsx` / `AgentConfigPanel.tsx` (task-14)
+ *
+ * Thay chỗ `.set-vault*` cũ (khối kho khoá, đã gỡ khỏi `AiSection` — xem
+ * `settings-auth.css`). Không đóng khung riêng như bản cũ: không còn một bí
+ * mật nào ở đây cần tách bạch khỏi phần còn lại của trang (xem doc comment
+ * đầu `pages/Settings.tsx`), nên số dư/prompt/tool dùng ĐÚNG những khối `.set-
+ * stat`/`.set-sub` mục Dữ liệu trên máy đã dùng, không phải một mặt phẳng
+ * riêng.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+#app:not(.reading) .set-usage-scroll {
+  /* Bảy cột trên một điện thoại hẹp không co vừa — cuộn NGANG trong khối này,
+     không bao giờ để `.page-settings` tự cuộn ngang (nguyên tắc chung của mọi
+     bảng/khối rộng trên trang). */
+  overflow-x: auto;
+  margin-top: 10px;
+}
+
+#app:not(.reading) .set-usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+#app:not(.reading) .set-usage-table th,
+#app:not(.reading) .set-usage-table td {
+  padding: 6px 12px 6px 0;
+  text-align: left;
+  border-bottom: 1px solid var(--rule);
+}
+
+#app:not(.reading) .set-usage-table th {
+  color: var(--ink-3);
+  font-weight: 600;
+}
+
+#app:not(.reading) .set-agent-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 34rem;
+  margin-top: 10px;
+}
+
+#app:not(.reading) .set-textarea {
+  width: 100%;
+  padding: 8px 11px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--surface-1);
+  color: var(--ink);
+  font: inherit;
+  resize: vertical;
+}
+
+#app:not(.reading) .set-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Câu cảnh báo (trần độ dài vượt, PUT bị máy chủ từ chối) — cùng token
+   `--crit` mà `ai-panel-error` dùng, chứ không phải một mã màu viết thẳng. */
+#app:not(.reading) .set-note-warn {
+  color: var(--crit);
+}
+
+#app:not(.reading) .set-tool-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+#app:not(.reading) .set-tool-toggle {
+  padding: 6px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+#app:not(.reading) .set-tool-toggle.on {
+  border-color: var(--accent);
   background: var(--color-brand-25);
+  color: var(--ink);
+}
+
+#app:not(.reading) .set-tool-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -2211,6 +2300,21 @@ html[data-theme='dark'] #app:not(.reading) .tn-menu-danger:hover {
 .ai-panel-bar-btn:focus-visible {
   outline: none;
   box-shadow: var(--shadow-ring-gray);
+}
+
+/* `.ai-panel-notice` — Task 13 thêm thông báo "không nhớ hội thoại" ở
+   `ai/AskPanel.tsx:254` nhưng KHÔNG định nghĩa lớp này ở đâu, nên nó hiện với
+   `<p>` mặc định của trình duyệt (task-13-report.md, minor deferred sang task
+   này). Câu này ở TRÊN mọi lượt hỏi, thường trực — nó phải đọc như một mảnh
+   thông tin của panel, không như một đoạn văn rơi ra ngoài bố cục flex của
+   `.ai-panel` (`index.css`'s `.ai-panel { display: flex; flex-direction:
+   column; gap: 0.6rem; }` — một `<p>` không `margin: 0` phá khoảng cách đều
+   `gap` đó bằng margin mặc định của trình duyệt). */
+.ai-panel-notice {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--ink-3);
 }
 
 /* Vùng cuộn RIÊNG cho hội thoại, không phải cả panel. Cuộn cả panel thì ô nhập
