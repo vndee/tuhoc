@@ -101,7 +101,8 @@ cd apps/web && bunx vitest run src/sync/crossTabSession.test.tsx
    — nếu không, "tab 2 không gửi gì" đúng vì **không còn gì để gửi**.
 4. Khẳng định phủ định **không bao giờ đi qua `waitFor`**: gọi thẳng `syncOnce()` rồi so số đếm.
 
-**Đối chứng đột biến (đã đo 2026-08-22, xem `.superpowers/sdd/2026-08-22-s4-rating/task-1-report.md`):**
+**Đối chứng đột biến (đã đo 2026-08-22; sổ thực thi nằm dưới `.superpowers/`, **không có trong git** —
+xem mục E ở cuối tệp này):**
 5/5 đột biến thật **chết**, đột biến đối chứng chỉ-sửa-chú-thích **sống**. Sửa mã ở đây thì **đo lại
 bằng đột biến**, đừng suy luận — bản đầu của bài kiểm số 2 dùng `waitFor` và **đã bị đo là vô dụng**:
 đột biến "xoá hẳn phần đăng ký nghe bus" **sống sót, xanh trong 15 091 ms**, vì `asyncUtilTimeout` của
@@ -412,7 +413,15 @@ một cái ô mà họ không có cách nào kiểm chứng nó chạy ở đâu
 
 Đây là **cố hữu với mọi thiết kế cất-bí-mật-trong-iframe**, không phải lỗi cài đặt. Nhưng Task 6 là
 lần đầu nó trở thành thật, vì trước đó chưa có ô nhập key nào. Ba hướng giảm thiểu đã được cân nhắc
-và **bác bỏ có lý do** — ghi ở `.superpowers/sdd/2026-08-22-s2-ai-byok/task-6-report.md` §9.
+và **bác bỏ có lý do**. Lý lẽ đầy đủ nằm trong sổ thực thi dưới `.superpowers/`, **không có trong
+git** (xem mục E ở cuối tệp này), nên kết luận được chép thẳng vào đây:
+
+1. *Hiện origin của khung ra trong chính khung* — vô dụng: kẻ chép giao diện in đúng dòng ấy.
+2. *Bắt người dùng mở kho khoá ở một tab riêng để nhìn thấy thanh địa chỉ* — đúng về an ninh, đổi lấy
+   một luồng cấu hình nhiều khả năng bị bỏ giữa chừng; không có dữ liệu để cân đánh đổi ấy.
+3. *Một chuỗi/hình do người dùng tự chọn hiện trong khung* (kiểu SiteKey của ngân hàng) — cần một chỗ
+   cất thứ hai ở origin kho khoá và một luồng thiết lập riêng, và bằng chứng ngoài đời cho thấy người
+   dùng không nhận ra khi nó VẮNG mặt.
 
 **Hai điều chưa kiểm được, ghi để không ai tưởng đã kiểm:** `_headers` **chưa từng được một Cloudflare
 Pages thật phục vụ**, và `apps/vault` **chưa có project Pages nào**. Phép đo hai chiều ở trên chạy
@@ -950,3 +959,32 @@ bằng con số `0008` đặt).
 
 Đo: **0** lần. Nên tool `web_search` chưa từng chạy trong e2e, kể cả với một hàng giả — xem thêm mục
 "Chưa ai gọi một nhà cung cấp AI thật" ở trên.
+
+## E · Con trỏ tới `.superpowers/` — 113 chỗ trong mã, và vì sao chúng chết trong mọi clone
+
+**Luật, viết ra một lần ở đây để mọi chỗ khác trỏ về:** sổ thực thi (`.superpowers/sdd/…`) bị
+`.gitignore:41` loại khỏi repo. Một tệp tài liệu hay một chú thích trong mã **được track** mà trích
+một đường dẫn dưới đó là một con trỏ **chết trong mọi clone, kể cả clone của chính tác giả sau khi
+dọn**. Nếu một sự thật đáng để người đọc mã biết thì nó phải được **chép vào tệp được track**, không
+phải được trỏ tới.
+
+**Bán kính, đo ngày 2026-08-29:** `task-<N>-report.md` / `task-<N>-brief.md` xuất hiện **113 lần**
+trên **45 tệp** dưới `apps/`, `packages/`, `scripts/` (đếm bằng `grep -rna`, có cờ `-a` — xem lưu ý
+về NUL bên dưới), cộng vài chỗ trong `docs/`. Phần lớn dùng chúng làm **trích dẫn nguồn cho một phép
+đo** ("đo bằng đột biến, xem task-13-report.md §7.2") — tức đúng loại khẳng định mà người đọc sau
+này muốn kiểm và **không kiểm được**.
+
+**Vòng sửa đợt 2 chỉ đóng bốn cái trong `docs/`** (`deploy.md:33`, `testing.md:13`,
+`deepseek-measured.md:14-15`, cộng hai chỗ trong chính tệp này) vì đó là phạm vi được giao. 113 chỗ
+trong mã **chưa đụng**: sửa lẻ vài chỗ không đóng được lớp lỗi và làm con số đã đo thành sai — cùng
+lập luận đã dùng cho 169 khoá i18n mồ côi ở mục B3.
+
+**Nơi xử lý:** một phép quét cấm chuỗi `.superpowers/` và `task-<N>-report.md` trong tệp được track,
+với ngưỡng khởi đầu 113 hạ dần. Trước đó, mỗi lần sửa một chú thích có trích dẫn như vậy thì **chép
+kết luận vào chỗ đó** thay vì giữ con trỏ.
+
+**Một bẫy phương pháp đã trả giá trong chính đợt này, ghi để không ai vấp lại:** `grep -rn` **bỏ
+qua** `apps/web/src/api/ratings.ts` — nó chỉ in `Binary file … matches` — vì tệp ấy chứa một byte NUL
+hợp lệ (`ratingsQueryKey` dùng `\0` làm dấu phân cách khi join). Nhờ đó một chú thích SAI ở đó
+(bản sao thứ chín của khẳng định "apps/api makes no outbound calls", mục E3) suýt lọt qua cả một
+vòng dọn chuyên đi tìm đúng nó. **Mọi phép quét toàn repo trong repo này phải dùng `grep -a`.**
