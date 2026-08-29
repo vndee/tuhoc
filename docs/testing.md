@@ -33,6 +33,51 @@ course-wide `viz.js` runtime, replaced by sandboxed widgets), and
 `apps/vault`, which Pha 2 Task 16 deleted; it was quarantined before it was
 deleted, and those are two different states).
 
+### Reading `s2.spec.ts` back — where its reusable parts went
+
+`s2.spec.ts` is recoverable in full at:
+
+```
+git show 390931e:apps/web/e2e/s2.spec.ts        # 1122 lines, the last living version
+```
+
+Written down because **nothing else points there.** Task 18 rewrites the AI
+end-to-end gate around credit, and its brief says "*Modify* `s2.spec.ts`" and
+"remove it from `testIgnore`" — both are now empty instructions, so a reader
+who takes the brief literally starts from zero and rebuilds harness code that
+already exists one `git show` away.
+
+**What is worth lifting, and what is not.**
+
+| helper | reusable? |
+|---|---|
+| `serveProvider(port)` | **the closest thing to Task 18 Step 1 that exists** — an HTTP server that streams an OpenAI-shaped SSE body one `delta.content` chunk at a time with a real inter-chunk delay, so a client that buffers and paints once is distinguishable from one that streams. **Two gaps, do not assume they are closed:** it emits no `usage` object (Task 18 Step 1 requires a fixed one), and it was reached from the *browser* (`instrument` rewrote `window.fetch`), whereas in Pha 2 the caller is the Go API inside compose — so the wiring is new even though the response shape is not |
+| `instrument(context)` | records every `fetch`, every `message` the page receives, and every state of the answer box. The third is the non-obvious one: `waitFor` on structure can never tell "streamed in chunks" from "painted once at the end", because it only ever sees the final state |
+| `freePort()`, `serveStatic(dir, port)` | pick a free port; serve a built SPA with no fallback |
+| `fingerprint(dir)` / `build(cwd, env, what)` | cache a `vite build` across runs by hashing its inputs — the reason that suite was tolerable to run at all |
+| `askPanel(page)` / `askAboutChapter(page, q)` / `openChapter(page)` | still-valid selectors for the reader's AI entry points |
+| `allLocalStorage(scope)` / `allIndexedDB(page)` | dump both stores as text for a leak assertion |
+| `vaultFrame` / `openVault` / `plugKey` | **dead** — they drive a second origin that no longer exists |
+
+**Two of the six tests never touched the key vault**, and they went with the
+file rather than because of it. Whoever writes Task 18 should decide
+deliberately whether to rebuild them; this note exists so that it is a
+decision and not an oversight:
+
+- `'màn hẹp: panel hỏi–đáp nằm trong khung nhìn và không bị gì phủ lên'` —
+  375px viewport, `document.elementFromPoint` at **three** points down
+  `.ai-panel` (top edge, middle, bottom edge), plus a bounding-box check that
+  the panel does not overflow the viewport. This was the **only automated
+  proof** that `.ai-panel` (z-index 85) is not covered by anything. Nothing
+  in `apps/web/src` replaces it — jsdom has no layout, so no vitest test can
+  ask this question. **See the warning in `apps/web/src/styles/index.css`
+  next to `.ai-panel`**: Task 16 rewrote that z-index's reference points and
+  had no way to re-measure them.
+- `'đào sâu một đoạn có công thức: lời nhắc gửi đi mang LaTeX gốc'` — pure
+  `ai/prompts.ts` behaviour over a real rendered chapter. `ai/promptsCorpus.
+  test.ts` covers the same ground against the real KaTeX vendor bundle, so
+  this one has the closest thing to a successor of the two.
+
 Two properties of this gate are deliberate and easy to lose:
 
 - **The API image is rebuilt on every run** (`docker compose up -d
