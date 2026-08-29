@@ -192,8 +192,15 @@ describe('chat() — mã lỗi GIỮA stream, và vì sao NoCredit không lẫn 
 
     const err = await promise.catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ServerAIError);
+    // KHÔNG kèm `.not.toBe('NoCredit')` — review vòng 1 gọi đúng: một khẳng
+    // định `.toBe('ProviderFailed')` đã LOGIC-LOẠI TRỪ `'NoCredit'` (một giá
+    // trị không thể vừa là chuỗi này vừa là chuỗi khác), nên dòng ấy không
+    // đo thêm được gì — nó trang trí. Phân biệt NoCredit/ProviderFailed THẬT
+    // được canh ở `describe` "chat() — thân request và đường dây trước-stream"
+    // (NoCredit chỉ tới bằng 402) và ở `useAI.test.tsx`'s bài "sáu mã trên
+    // tạo SÁU câu khác nhau đôi một" (đo bằng đột biến, không phải khẳng
+    // định trần).
     expect((err as ServerAIError).code).toBe('ProviderFailed');
-    expect((err as ServerAIError).code).not.toBe('NoCredit');
   });
 
   it('ToolBudgetExhausted giữ NGUYÊN mã của nó, không rơi thành ProviderFailed', async () => {

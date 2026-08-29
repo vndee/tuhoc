@@ -22,11 +22,16 @@ import type { SelectionExcerpt } from './prompts';
 export interface DeepDiveProps {
   readonly courseTitle: string;
   readonly chapterTitle: string;
+  /** Chương đang đọc — truyền thẳng xuống `AskPanel`'s `courseSlug`. Xem
+   *  `AskPanelProps.courseSlug`'s doc comment cho việc dây này chưa tới được
+   *  `ChapterView.tsx` (ngoài bốn tệp Task 13 sở hữu). Optional, không phải
+   *  vì nó kém quan trọng — vì hôm nay chưa có bên gọi nào cung cấp được nó. */
+  readonly courseSlug?: string;
   readonly excerpt: SelectionExcerpt;
   readonly onClose: () => void;
 }
 
-export function DeepDive({ courseTitle, chapterTitle, excerpt, onClose }: DeepDiveProps) {
+export function DeepDive({ courseTitle, chapterTitle, courseSlug, excerpt, onClose }: DeepDiveProps) {
   const { lang, t } = useLanguage();
   const built = useMemo(
     () => deepDiveSystemPrompt(excerpt, { lang, courseTitle, chapterTitle }),
@@ -37,6 +42,7 @@ export function DeepDive({ courseTitle, chapterTitle, excerpt, onClose }: DeepDi
     <AskPanel
       heading={t('ai.deepDive.heading')}
       system={built.system}
+      courseSlug={courseSlug}
       // `built.excerpt`, không phải `excerpt.quote`: nếu người học bôi đen quá
       // dài và lời nhắc phải cắt bớt, thứ hiện lên phải là thứ ĐÃ GỬI ĐI. Hiện
       // bản đầy đủ trong khi gửi bản cắt là nói với người dùng một điều không

@@ -26,9 +26,10 @@ import { LanguageProvider } from '../i18n/LanguageProvider';
  * Nên tệp này chạy **KaTeX THẬT** (`packages/course-kit/vendor/`), không phải
  * một fixture viết tay: fixture là một *giả thuyết* về đầu ra của KaTeX, và
  * một giả thuyết sai làm cả bộ kiểm xanh trong khi tính năng hỏng. Và nó đi
- * **qua giao diện thật** — bôi đen, bấm nút — tới tận thông điệp `postMessage`
- * rời khỏi trang, vì ruling S1-F29 sinh ra từ đúng chỗ này: bốn cổng đơn vị
- * không hỏi được câu *"người dùng có bấm tới được không"*.
+ * **qua giao diện thật** — bôi đen, bấm nút — tới tận thân request `POST
+ * /ai/chat` THẬT rời khỏi trang (Pha 1: một thông điệp `postMessage` — xem
+ * `git log` tệp này), vì ruling S1-F29 sinh ra từ đúng chỗ này: bốn cổng đơn
+ * vị không hỏi được câu *"người dùng có bấm tới được không"*.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -333,5 +334,47 @@ describe('DeepDive — LỜI NHẮC RỜI KHỎI TRANG phải mang LaTeX gốc',
       </MemoryRouter></LanguageProvider>,
     );
     expect(screen.getByTestId('ai-quote')).toHaveTextContent(TEX);
+  });
+
+  /**
+   * Important 3, review vòng 1: `courseSlug` phải tới được tận `AskPanel`
+   * qua `DeepDive`, không dừng lại ở biên `DeepDiveProps`.
+   */
+  it('courseSlug truyền vào DeepDive đi tới TẬN course_slug trên dây', async () => {
+    const requests: { course_slug: string }[] = [];
+    const sse = controllableSSE();
+    server.use(
+      http.post('/ai/chat', async ({ request }) => {
+        requests.push((await request.json()) as { course_slug: string });
+        return new HttpResponse(sse.stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }),
+    );
+    const excerpt: SelectionExcerpt = {
+      quote: `Chặn trên là $${TEX}$ cho mỗi phép cộng.`,
+      before: 'Sai số',
+      after: '',
+    };
+    render(
+      <LanguageProvider><MemoryRouter>
+        <DeepDive
+          courseTitle="Số dấu phẩy động"
+          chapterTitle="Sai số làm tròn"
+          courseSlug="so-dau-phay-dong"
+          excerpt={excerpt}
+          onClose={() => {}}
+        />
+      </MemoryRouter></LanguageProvider>,
+    );
+    await act(async () => {
+      await flush();
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0].course_slug).toBe('so-dau-phay-dong');
+
+    await act(async () => {
+      sse.event('done', {});
+      sse.close();
+      await flush();
+    });
   });
 });

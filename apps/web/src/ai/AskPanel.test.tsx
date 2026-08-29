@@ -98,6 +98,129 @@ describe('AskPanel — không còn vòng dò trước khi gõ', () => {
   });
 });
 
+/**
+ * Important 2, review vòng 1: `useAI.ts`'s doc comment cấm giao diện gợi ý
+ * "gia sư nhớ câu trước", nhưng bản trước của `AskPanel` vẽ mọi lượt thành
+ * một mạch liền và nút xoá ghi "Hội thoại mới" — không một chữ nào nói mỗi
+ * lượt là một yêu cầu riêng. Nhóm bài này canh cả hai phần của sửa chữa.
+ */
+describe('AskPanel — trung thực về việc KHÔNG có trí nhớ giữa các lượt', () => {
+  it('câu "mỗi câu hỏi là một lượt riêng" hiện NGAY khi mở, trước cả câu hỏi đầu tiên', () => {
+    render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
+    expect(screen.getByTestId('ai-no-memory-notice')).toHaveTextContent(
+      'Mỗi câu hỏi là một lượt riêng — trợ lý không nhớ những câu bạn đã hỏi trước đó.',
+    );
+  });
+
+  it('câu ấy vẫn còn đó sau khi đã có vài lượt — không phải một lời chào biến mất', async () => {
+    const { sse } = nextChat();
+    render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
+    typeQuestion('hỏi');
+    await act(async () => {
+      screen.getByRole('button', { name: 'Hỏi' }).click();
+      await flush();
+    });
+    await act(async () => {
+      sse.event('done', {});
+      sse.close();
+      await flush();
+    });
+    expect(screen.getByTestId('ai-no-memory-notice')).toBeInTheDocument();
+  });
+
+  it('nút xoá ghi "Xoá tất cả", KHÔNG còn "Hội thoại mới" (ngụ ý một hội thoại liên tục)', async () => {
+    const { sse } = nextChat();
+    render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
+    typeQuestion('hỏi');
+    await act(async () => {
+      screen.getByRole('button', { name: 'Hỏi' }).click();
+      await flush();
+    });
+    await act(async () => {
+      sse.event('done', {});
+      sse.close();
+      await flush();
+    });
+    expect(screen.getByRole('button', { name: 'Xoá tất cả' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Hội thoại mới' })).toBeNull();
+  });
+});
+
+describe('AskPanel — courseSlug tới biên panel (Important 3, review vòng 1)', () => {
+  it('courseSlug truyền vào AskPanel đi ra ĐÚNG course_slug trên dây', async () => {
+    const { requests, sse } = nextChat();
+    render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} courseSlug="so-dau-phay-dong" onClose={() => {}} />));
+    typeQuestion('hỏi');
+    await act(async () => {
+      screen.getByRole('button', { name: 'Hỏi' }).click();
+      await flush();
+    });
+    expect(requests[0].course_slug).toBe('so-dau-phay-dong');
+    await act(async () => {
+      sse.event('done', {});
+      sse.close();
+      await flush();
+    });
+  });
+
+  it('KHÔNG truyền courseSlug (như ChapterView.tsx hôm nay) vẫn gửi được, course_slug rỗng', async () => {
+    const { requests, sse } = nextChat();
+    render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
+    typeQuestion('hỏi');
+    await act(async () => {
+      screen.getByRole('button', { name: 'Hỏi' }).click();
+      await flush();
+    });
+    expect(requests[0].course_slug).toBe('');
+    await act(async () => {
+      sse.event('done', {});
+      sse.close();
+      await flush();
+    });
+  });
+});
+
+/**
+ * Minor #2, review vòng 1: `turn.failure && !blocked` (bản cũ) ẩn thông báo
+ * của MỌI lượt hễ lượt CUỐI là `NoCredit` — một lượt trước đó hỏng vì
+ * `ProviderFailed` mất tích khỏi mạch không lý do. Chỉ lượt GÂY RA chặn mới
+ * cần ẩn (khối lời mời đã nói thay nó).
+ */
+describe('AskPanel — lỗi của lượt TRƯỚC không biến mất khi lượt SAU hết credit', () => {
+  it('lượt 1 hỏng ProviderFailed vẫn còn thông báo, sau khi lượt 2 hỏng NoCredit và chặn ô nhập', async () => {
+    const first = nextChat();
+    render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
+    typeQuestion('hỏi 1');
+    await act(async () => {
+      screen.getByRole('button', { name: 'Hỏi' }).click();
+      await flush();
+    });
+    await act(async () => {
+      first.sse.event('error', { code: 'ProviderFailed', text: 'the AI provider could not complete this turn' });
+      first.sse.close();
+      await flush();
+    });
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+
+    server.use(
+      http.post('/ai/chat', () => HttpResponse.json({ code: 'NoCredit', error: 'no AI credit remaining' }, { status: 402 })),
+    );
+    typeQuestion('hỏi 2');
+    await act(async () => {
+      screen.getByRole('button', { name: 'Hỏi' }).click();
+      await flush();
+    });
+
+    // Chặn đã bật (lời mời nạp hiện ra)...
+    expect(screen.getByTestId('ai-needs-setup')).toBeInTheDocument();
+    // ...NHƯNG thông báo của lượt 1 vẫn ở đó — nó không phải nguyên nhân
+    // gây chặn, và người học vẫn cần biết lượt 1 đã hỏng vì sao.
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Nhà cung cấp AI không hoàn tất được lượt này. Thử lại sau một chút.',
+    );
+  });
+});
+
 describe('AskPanel — hỏi, chảy chữ, huỷ', () => {
   it('gửi ngữ cảnh chương GỘP VÀO question; câu hỏi HIỂN THỊ vẫn ngắn', async () => {
     const { requests, sse } = nextChat();

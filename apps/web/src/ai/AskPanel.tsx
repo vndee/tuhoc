@@ -32,6 +32,15 @@ export interface AskPanelProps {
    * doc comment).
    */
   readonly system: string;
+  /**
+   * Chương đang đọc, cho công cụ `read_course` phía máy chủ dùng làm ngữ
+   * cảnh — đi thẳng vào `AskContext.courseSlug` (`useAI.ts`). VẮNG (review
+   * vòng 1 đo được: `ChapterView.tsx`/`DeepDive.tsx` chưa truyền prop này)
+   * ⇒ `useAI` gửi chuỗi rỗng, hợp lệ, chỉ mất khả năng công cụ đọc đúng
+   * chương. Dây tới TẬN `ChapterView.tsx` (nơi thật sự biết slug) không
+   * thuộc bốn tệp Task 13 sở hữu — xem task-13-report.md.
+   */
+  readonly courseSlug?: string;
   /** Đoạn người học bôi đen, hiện lại cho họ thấy panel đang nói về cái gì. */
   readonly quote?: string;
   readonly initialQuestion?: string;
@@ -43,6 +52,7 @@ export interface AskPanelProps {
 export function AskPanel({
   heading,
   system,
+  courseSlug,
   quote,
   initialQuestion = '',
   autoAsk = false,
@@ -71,9 +81,9 @@ export function AskPanel({
       // Ô câu hỏi trống lại sau khi gửi. Giữ nguyên chữ cũ ở đó là mời người
       // dùng bấm Hỏi lần nữa và trả tiền cho đúng một câu hỏi hai lần.
       setQuestion('');
-      void ask(trimmed, { system });
+      void ask(trimmed, { system, courseSlug });
     },
-    [ask, system],
+    [ask, system, courseSlug],
   );
 
   /**
@@ -122,9 +132,12 @@ export function AskPanel({
    * trống. Kéo từ góc dưới–phải sẽ đẩy panel ra ngoài khung nhìn.
    *
    * `setPointerCapture` chứ không phải nghe `mousemove` trên `document`: nó giữ
-   * được cả khi con trỏ chạy ra ngoài cửa sổ hoặc lướt qua một `<iframe>` — và
-   * trang này CÓ một iframe (khung kho khoá), thứ nuốt sự kiện chuột của trang
-   * cha. Không có capture thì kéo qua nó là mất luôn thao tác kéo.
+   * được cả khi con trỏ chạy ra ngoài cửa sổ hoặc lướt qua một `<iframe>` —
+   * và trang đọc CÓ THỂ mang iframe (một hình tương tác của chương, một
+   * widget), thứ nuốt sự kiện chuột của trang cha. Không có capture thì kéo
+   * qua nó là mất luôn thao tác kéo. (Không neo vào MỘT iframe cụ thể nào có
+   * chủ ý — Task 16 gỡ khung kho khoá Pha 1 mà không đổi gì ở đây, vì lý do
+   * kéo-đổi-cỡ chưa bao giờ phụ thuộc riêng nó.)
    */
   const onResizeStart = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
     /**
@@ -230,6 +243,18 @@ export function AskPanel({
         </span>
       </header>
 
+      {/*
+        THƯỜNG TRỰC, không đợi lượt nào hỏng hay tồn tại. `useAI.ts`'s doc
+        comment đặt ra ràng buộc: panel không được dựng gợi ý rằng gia sư nhớ
+        câu trước — nhưng trước sửa này, panel vẽ mọi lượt thành MỘT mạch
+        liền và nút xoá từng ghi "Hội thoại mới" (ngụ ý có MỘT hội thoại để
+        làm mới). Câu này nói thẳng điều mã đã làm từ đầu: mỗi lượt là một
+        yêu cầu độc lập, không có bảng transcript nào ở giữa (đó là Pha 3).
+      */}
+      <p className="ai-panel-notice" data-testid="ai-no-memory-notice">
+        {t('ai.panel.noMemory')}
+      </p>
+
       {needsSetup && (
         <div className="ai-panel-invite" data-testid="ai-needs-setup">
           <p>{t('ai.panel.noCredit')}</p>
@@ -291,7 +316,14 @@ export function AskPanel({
                   {renderMarkdown(turn.answer)}
                 </div>
               )}
-              {turn.failure && !blocked && (
+              {/*
+                `!blocked` cũ ẩn lỗi của MỌI lượt hễ lượt CUỐI là `NoCredit`
+                — một lượt trước đó hỏng vì `ProviderFailed` thì thông báo
+                của nó biến mất khỏi mạch, không lý do gì. Chỉ lượt GÂY RA
+                trạng thái chặn (đúng lượt cuối, đúng lúc `blocked`) mới cần
+                ẩn — khối lời mời nạp bên trên đã nói thay nó rồi.
+              */}
+              {turn.failure && !(blocked && index === turns.length - 1) && (
                 <p className="ai-panel-error" role="alert">
                   {turn.failure.message}
                 </p>

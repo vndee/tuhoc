@@ -488,8 +488,16 @@ export const en: Messages = {
   'ai.panel.expand': 'Expand the ask panel',
   'ai.panel.resize': 'Drag to resize the panel',
   'ai.panel.collapse': 'Collapse the ask panel',
-  'ai.panel.newThread': 'New conversation',
+  // NOT "New conversation" (Phase 1's wording) — review round 1: the server
+  // has no memory of any earlier turn (see useAI.ts's doc comment), so a
+  // label implying a "conversation" that this button then "renews" claims a
+  // continuity that was never there. It only clears what is drawn on screen.
+  'ai.panel.newThread': 'Clear all',
   'ai.panel.thinking': 'Thinking…',
+  // Persistent, not tied to any error — the panel says this BEFORE anything
+  // has gone wrong, because it is true on the very first question too. See
+  // useAI.ts's doc comment for why the server has no cross-turn memory.
+  'ai.panel.noMemory': 'Each question stands on its own — the assistant does not remember earlier questions.',
   // `ai.panel.noCredit` is Phase 2's replacement for the Phase 1 pair
   // `needsSetup`/`unavailable` (removed — see `git log` on this file):
   // there is no per-device key to plug in anymore and no build variant
@@ -512,11 +520,15 @@ export const en: Messages = {
   'ai.error.toolBudgetExhausted':
     'This question needed more lookup steps than this turn allows. Try asking something more specific, or turn off a tool.',
   'ai.error.unauthenticated': 'Your session has expired. Sign in again to keep asking.',
+  // Own message, pulled OUT of the shared bucket below (review round 1):
+  // unlike Internal/InvalidBody/etc., a learner (or a shorter chapter
+  // context) can actually fix this by asking something shorter.
+  'ai.error.fieldTooLong': 'Your question is too long, including the reading context. Ask something shorter, or select less text.',
   'ai.error.network': 'Could not reach the server. Check your connection and try again.',
   'ai.error.aborted': 'Cancelled.',
-  // Chung cho `InvalidBody`/`FieldRequired`/`FieldTooLong`/`UnknownTool`/
-  // `Internal` — năm mã báo lỗi ở chính trang chính hoặc máy chủ, không
-  // phải điều người học gây ra hay có một hành động cụ thể để sửa.
+  // Chung cho `InvalidBody`/`FieldRequired`/`UnknownTool`/`Internal` — bốn
+  // mã báo lỗi ở chính trang chính hoặc máy chủ, không phải điều người học
+  // gây ra hay có một hành động cụ thể để sửa.
   'ai.error.requestRejected': 'The request was rejected. Try again in a moment.',
 
   'ai.vault.originShape': (received: string) =>
