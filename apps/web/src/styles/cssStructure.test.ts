@@ -263,4 +263,23 @@ describe('cấu trúc biểu định kiểu', () => {
  *      là một món nợ có tên, ghi ở `docs/carried-forward.md`.
  *   4. **CSS ngoài `src/styles/`.** `packages/course-kit/reader.css` không đi
  *      qua đây — nó là bản chép từng byte từ v1 và có luật riêng.
+ *
+ *   5. **Một chuỗi CSS dùng dấu nháy escape (`\'`, `\"`) ngay trước một ngoặc
+ *      thật.** Cả hai bất biến ở đây đều mù trước nó, theo cả hai chiều — đo
+ *      ngày 2026-08-29, không phải suy luận:
+ *
+ *        - `content: 'foo \' { bar'` là CSS HỢP LỆ, nhưng `scanCss` đếm cái
+ *          `{` ấy và báo `unbalanced` → cổng đỏ oan.
+ *        - Nguy hơn: một tệp hỏng THẬT (thiếu một `}`) mà bù lại bằng một `}`
+ *          giấu trong đúng loại chuỗi ấy thì lọt CẢ HAI phép kiểm — vì regex
+ *          của `bracesInsideStrings` cũng không hiểu `\'`, nên nó không thấy
+ *          chuỗi đó chứa ngoặc.
+ *
+ *      Đây là cùng một lớp mù mà chú thích ở `bracesInsideStrings` cảnh báo,
+ *      chỉ khác chỗ đứng. Lý do không đóng: đóng đúng cần một trình quét
+ *      chuỗi hiểu escape, tức là bắt đầu viết một parser CSS — mà toàn bộ giá
+ *      trị của cổng này nằm ở chỗ nó KHÔNG phải parser và vẫn chạy được trên
+ *      tệp đã hỏng. Lưới thật cho ca này vẫn còn: `bun run build` — Lightning
+ *      CSS ném `CssSyntaxError: Missing closing }` ngay. Cổng ở đây là lớp
+ *      phòng thủ thứ hai, và ở đúng ca này nó thủng.
  */
