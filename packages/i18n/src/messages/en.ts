@@ -84,27 +84,52 @@ export const en: Messages = {
     'The local database is named after the BROWSER, not the user — so it is wiped whenever a different person signs in, even if nobody signed out.',
   'settings.localData.kept': 'Language and theme stay: they belong to the device.',
 
+  /* AI section — Phase 2 (task-14): credit + agent config replace the key
+     vault frame. See vi.ts for the full rationale; no string below may say
+     "key", "vault", or "separate address" again — all three went false the
+     moment AI moved server-side (Task 11). */
+
   'settings.ai.title': 'AI assistant',
-  /**
-   * Chỗ trống nằm ở VỊ TRÍ KHÁC so với bản tiếng Việt, và đó chính là lý do câu
-   * này là một khoá chứ không phải ba mảnh ghép trong JSX.
-   */
-  'settings.ai.blurb': (vault: string) => `Runs on your own key, kept in the ${vault} at a separate address.`,
-  'settings.ai.blurbVault': 'key vault',
-  'settings.ai.keyStays':
-    'Your key never leaves this browser, is never synced, and never passes through our servers.',
-  'settings.ai.unavailable':
-    'This build has no key vault, so the AI assistant is unavailable. That is a deployment configuration gap, not a problem with your account — reading the course still works normally.',
-  'settings.ai.open': 'Open the key vault',
+  'settings.ai.blurb':
+    'The AI assistant runs on our own servers and is paid for with your account credit — there is no key left for you to paste or keep.',
 
-  /** Chỗ trống là ORIGIN THẬT — xem lý do đầy đủ ở `vi.ts`. */
-  'settings.ai.frameLabel': (origin: string) =>
-    `The key vault runs at ${origin} — a different address, apart from the lesson page.`,
-  'settings.ai.frameOpen': 'The key vault is open on the layer above. Press "Close" there to come back to this page.',
+  /* `CreditPanel.tsx` — balance and recent usage, GET /ai/credits */
 
-  'settings.ai.budgetTitle': 'Per-session limit',
-  'settings.ai.budgetBody':
-    'The key vault enforces a character budget for each session. Spend it and the vault asks again, right there in the frame, with the log of what has already left the machine beside the question — that number matters most at exactly the moment you click. The budget cannot stop a patient hostile course; it only makes that course go through your hands.',
+  'settings.ai.creditTitle': 'Credit',
+  'settings.ai.creditBalanceLabel': 'Available credit',
+  'settings.ai.creditLoading': 'Reading your balance…',
+  'settings.ai.creditError': 'Could not read your credit balance. Try reloading the page.',
+  'settings.ai.usageTitle': 'Recent usage',
+  'settings.ai.usageEmpty': 'No charged questions yet.',
+  'settings.ai.usageColWhen': 'When',
+  'settings.ai.usageColModel': 'Model',
+  'settings.ai.usageColTokensIn': 'Tokens in',
+  'settings.ai.usageColTokensCached': 'Tokens in (cached)',
+  'settings.ai.usageColTokensOut': 'Tokens out',
+  'settings.ai.usageColToolCalls': 'Tool calls',
+  'settings.ai.usageColWebSearches': 'Web searches',
+  'settings.ai.usageColCredits': 'Credit charged',
+
+  /* `AgentConfigPanel.tsx` — personal prompt and tool toggles,
+     GET/PUT /ai/config */
+
+  'settings.ai.configTitle': 'Agent configuration',
+  'settings.ai.configBlurb':
+    'Your personal prompt is added to EVERY question you ask — use it to tell the assistant how you want to be answered.',
+  'settings.ai.configLoading': 'Reading configuration…',
+  'settings.ai.configError': 'Could not read the agent configuration. Try reloading the page.',
+  'settings.ai.promptLabel': 'Your personal prompt',
+  'settings.ai.promptPlaceholder': 'For example: always answer briefly, with a Python example.',
+  'settings.ai.promptCounter': (count: string, max: string) => `${count} / ${max} characters`,
+  'settings.ai.promptTooLong':
+    'This prompt is longer than the allowed limit. Shorten it to save — the server will reject anything longer than this even if you press Save.',
+  'settings.ai.toolsTitle': 'Agent tools in use',
+  'settings.ai.toolReadCourse': 'Read course content',
+  'settings.ai.toolWebSearch': 'Search the web',
+  'settings.ai.save': 'Save configuration',
+  'settings.ai.saved': 'Saved.',
+  'settings.ai.saveUnknownTool': 'One of the listed tools no longer exists. Reload the page and try again.',
+  'settings.ai.saveRejected': 'The server rejected this configuration. Try again in a moment.',
 
   /* ══════════════════════════════════════════════════════════════════════ *
    * KHO KHOÁ (`apps/vault`)

@@ -617,63 +617,19 @@ html[data-theme='dark'] .auth-form input {
   margin-bottom: 10px;
 }
 
-/* ── Khung kho khoá, ĐÓNG KHUNG rõ là một mặt phẳng khác ───────────────────
-   Đây là chỗ kiến trúc hai origin trở nên NHÌN THẤY ĐƯỢC. Hộp có viền riêng,
-   thanh tiêu đề riêng, ổ khoá, và trên thanh ấy là ĐỊA CHỈ THẬT mà khung chạy
-   ở đó — chứ không phải một câu chung chung về "một địa chỉ riêng". */
-.set-vault {
-  margin-top: 24px;
-  max-width: 34rem;
-  border: 1px solid var(--rule-strong);
-  border-radius: 12px;
-  overflow: hidden;
-  background: var(--surface-1);
-}
+/* ── `.set-vault*` ĐÃ GỠ (task-14) ─────────────────────────────────────────
+   Mục Trợ lý AI (`pages/Settings.tsx`'s `AiSection`) không còn vẽ khung kho
+   khoá — Pha 2 chạy DeepSeek bằng key của NỀN TẢNG, không còn ô dán key nào
+   để đóng khung. `CreditPanel.tsx`/`AgentConfigPanel.tsx` dùng `.set-credit`/
+   `.set-agent-config` (mục "TRỢ LÝ AI — Pha 2" bên dưới) thay chỗ này.
 
-.set-vault-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 14px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--rule);
-}
-
-.set-vault-lock {
-  flex: 0 0 12px;
-  color: var(--ink-2);
-}
-
-.set-vault-label {
-  margin: 0;
-  font-family: var(--sans);
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--ink-2);
-}
-
-/* Địa chỉ ở phông chữ đơn cách: một origin là một chuỗi phải đọc từng ký tự
-   (`localhost:5174` khác `localhost:5173` đúng một chữ số), và phông đơn cách
-   là cách rẻ nhất để nói ra rằng đây là một địa chỉ, không phải văn xuôi. */
-.set-vault-label strong {
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--ink);
-  word-break: break-all;
-}
-
-.set-vault-body {
-  padding: 18px 16px;
-}
-
-.set-vault-live {
-  margin: 0;
-  font-family: var(--sans);
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--ink-3);
-}
+   LỚP PHỦ (`.vault-overlay`/`.vault-card`/…) NGAY DƯỚI ĐÂY VẪN CÒN SỐNG — đừng
+   xoá nhầm: `shell/VaultFrame.tsx` vẫn được `shell/Shell.tsx` gắn cho cả ứng
+   dụng, và `reader/ChapterView.tsx` vẫn đọc `vaultOrigin` từ nó để quyết định
+   nút "Hỏi về chương" có hiện hay không (`aiReady = vaultOrigin !== null`) —
+   một mắt xích Pha 1 mà task-16-brief.md ghi rõ là việc CỦA TASK 16, không
+   phải task này. Gỡ `.vault-overlay*` ở đây trước khi Task 16 gỡ chỗ gọi ấy
+   sẽ để lại một khung kho khoá không có lớp phủ để mở. */
 
 /* ───────────────────────────────────────────────────────────────────────────
    LỚP PHỦ KHO KHOÁ — mặt phẳng thứ hai, thật sự
