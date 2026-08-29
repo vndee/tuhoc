@@ -3,8 +3,8 @@ import { t as translate, type MessageKey } from '@tuhoc/i18n';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { readFileSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { readFile, readdir } from 'node:fs/promises';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ReactNode } from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -13,23 +13,66 @@ import { chapterSystemPrompt } from './prompts';
 import { MAX_WIRE_QUESTION_CHARS, buildWireQuestion, useAI } from './useAI';
 
 /**
- * CỔNG CẤU TRÚC, không phải hành vi — Task 13 Step 1.
+ * CỔNG CẤU TRÚC, không phải hành vi — Task 13 Step 1, MỞ RỘNG ở Task 16 Step 7.
  *
- * Một import còn sót giữ cả `apps/vault` sống trong bundle của trang chính,
- * và đó là điều một cổng HÀNH VI không bắt được: `useAI`/`AskPanel`/
- * `DeepDive` có thể hoạt động đúng ở mọi bài kiểm khác trong khi vẫn kéo
- * theo `vaultClient.ts`/`VaultFrame.tsx` vào cây phụ thuộc.
+ * Một import còn sót giữ cả ứng dụng kho khoá sống trong bundle của trang
+ * chính, và đó là điều một cổng HÀNH VI không bắt được: `useAI`/`AskPanel`/
+ * `DeepDive` có thể hoạt động đúng ở mọi bài kiểm khác trong khi vẫn kéo theo
+ * lớp client `postMessage` và khung ẩn vào cây phụ thuộc.
  *
- * PHẠM VI HẸP CÓ CHỦ Ý. Tại thời điểm Task 13, MƯỜI tệp dưới `src/ai/` còn
- * nhắc "vault" (`vaultClient.ts` + test, `noKeyLeak.test.ts`,
- * `protocolAlias.test.ts`, `promptsCorpus.test.ts`, và chú thích rải rác ở
- * vài tệp khác) — Task 13 chỉ SỞ HỮU bốn. Sáu tệp kia là việc của Task 16
- * (gỡ `apps/vault`), và một cổng quét CẢ THƯ MỤC ở đây sẽ đỏ vì mã Task 13
- * không được phép sửa. Task 16 Step 7 thay danh sách bốn tệp cứng dưới đây
- * bằng một glob quét cả `src/ai/**`, ĐÚNG lúc sáu tệp kia đã bị xoá — nên có
- * một cổng THẬT ở CẢ HAI mốc, và không mốc nào khẳng định điều chưa đúng.
+ * BỐN TỆP CỨNG → CẢ THƯ MỤC, và mốc chuyển là một sự kiện chứ không phải một
+ * lần dọn dẹp. Tại Task 13, MƯỜI tệp dưới `src/ai/` còn nhắc chữ ấy, và Task
+ * 13 chỉ SỞ HỮU bốn (`useAI.ts`, `serverClient.ts`, `AskPanel.tsx`,
+ * `DeepDive.tsx`); một cổng quét cả thư mục khi ấy sẽ đỏ vì mã Task 13 không
+ * được phép sửa. Task 16 gỡ sáu tệp kia cùng `apps/vault`, nên danh sách cứng
+ * nay đổi được thành phép quét thư mục mà không mốc nào phải khẳng định điều
+ * chưa đúng.
+ *
+ * ─── VÌ SAO CỔNG NÀY MIỄN TRỪ ĐÚNG MỘT TỆP, VÀ VÌ SAO ĐÓ KHÔNG PHẢI LỖ ───
+ *
+ * Tệp bị miễn là CHÍNH TỆP NÀY, và nó buộc phải được miễn: một cổng cấm một
+ * chữ thì phải VIẾT chữ ấy ra để cấm (`FORBIDDEN` ngay dưới). Quét cả thư mục
+ * mà không miễn nó thì cổng đỏ vì chính nó, vĩnh viễn — đó là lý do đoạn mã
+ * gợi ý trong brief (`for (const f of await readdir(dir))`, không lọc gì)
+ * KHÔNG chạy được.
+ *
+ * Miễn trừ ấy có ba chốt, và cả ba đều ở bài "cổng có răng" dưới đây:
+ *
+ *   1. tên tệp được miễn LẤY TỪ `import.meta.url`, không gõ tay — nó không
+ *      trôi được sang một tệp khác;
+ *   2. tệp được miễn PHẢI khớp `FORBIDDEN` (`expect(...).toBe(true)`). Nếu
+ *      một ngày nó không còn chứa chữ ấy thì miễn trừ đã thành thừa, và bài
+ *      kiểm ĐỎ để buộc gỡ miễn trừ thay vì để nó thành cái ô cửa mở sẵn;
+ *   3. đúng MỘT tệp bị loại khỏi danh sách quét, đo bằng hiệu số.
+ *
+ * HỆ QUẢ CHO PHÉP ĐẾM, ghi ra để không ai tưởng còn sót việc. Phép đếm của
+ * Task 16 là:
+ *
+ *     $ git grep -lie vault -- apps/web/src | wc -l
+ *
+ * Nó trả **1**, không phải 0, và tệp duy nhất ấy là CHÍNH TỆP NÀY. Loại nó ra
+ * thì bằng 0:
+ *
+ *     $ git grep -lie vault -- apps/web/src ':(exclude)apps/web/src/ai/useAI.test.tsx'
+ *
+ * Ba đường đã cân để phép đếm ra 0 tuyệt đối, và cả ba đều làm cổng YẾU hơn:
+ *
+ *   a. dựng `FORBIDDEN` từ mảnh (`new RegExp('v' + 'ault', 'i')`) — phép đếm
+ *      ra 0, nhưng chính cái grep mà người thẩm định sau này dùng để tìm tàn
+ *      dư cũng không thấy cổng. Một cổng mà công cụ kiểm tra không nhìn thấy
+ *      là một cổng không ai kiểm được;
+ *   b. dời cổng ra ngoài `src/` (ví dụ `apps/web/gates/`) — hết cần miễn trừ,
+ *      nhưng `tsconfig.app.json` chỉ `include: ["src"]`, `tsconfig.node.json`
+ *      chỉ `vite.config.ts`+`vite-plugins`, `tsconfig.e2e.json` chỉ `e2e` —
+ *      nên tệp ấy KHÔNG có cổng kiểu nào cả, đúng hình dạng cổng mù §2 của
+ *      `docs/carried-forward.md`. Thêm một project tsconfig thứ tư cho một tệp
+ *      là cái giá lớn hơn thứ mua được;
+ *   c. bỏ cổng đi — không.
+ *
+ * ⇒ Con số đúng của Task 16 là **1, và nó là cổng**. Ai đọc phép đếm sau này
+ * nên chạy bản có `:(exclude)` ở trên.
  */
-const THUOC_TASK_13 = ['useAI.ts', 'serverClient.ts', 'AskPanel.tsx', 'DeepDive.tsx'];
+const FORBIDDEN = /vault/i;
 
 /**
  * `dirname(fileURLToPath(import.meta.url))` rồi ghép ĐƯỜNG DẪN CHUỖI, không
@@ -44,12 +87,121 @@ const THUOC_TASK_13 = ['useAI.ts', 'serverClient.ts', 'AskPanel.tsx', 'DeepDive.
  */
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-describe('cổng cấu trúc — bốn tệp Task 13 sở hữu không còn nhắc vault', () => {
-  it('bốn mô-đun Task 13 sở hữu không còn nhắc vault', async () => {
-    for (const f of THUOC_TASK_13) {
-      const src = await readFile(join(HERE, f), 'utf8');
-      expect(src, f).not.toMatch(/vault/i);
+/** Tệp duy nhất được miễn — xem khối chú thích trên. Lấy từ `import.meta.url`. */
+const SELF = basename(fileURLToPath(import.meta.url));
+
+/**
+ * MỌI mô-đun SẢN PHẨM dưới `src/ai/`, gọi đích danh.
+ *
+ * Sàn đếm (`MIN_SCANNED`) một mình KHÔNG đủ, cùng lập luận `db/local.test.ts`
+ * đã viết cho năm bảng Dexie: *"`toHaveLength(5)` would also pass if somebody
+ * added a sixth table and deleted a different one."* Một mô-đun sản phẩm rơi
+ * khỏi phép quét là chuyện đáng đỏ; một tệp test bị xoá thì không — nên danh
+ * sách này chỉ ghim mã sản phẩm.
+ */
+const PRODUCT_MODULES = [
+  'AgentConfigPanel.tsx',
+  'AskPanel.tsx',
+  'CreditPanel.tsx',
+  'DeepDive.tsx',
+  'markdown.tsx',
+  'prompts.ts',
+  'serverClient.ts',
+  'useAI.ts',
+];
+
+/**
+ * Sàn, không phải con số đo được: 16 tệp lúc Task 16 gỡ xong, sàn 12 để một
+ * lần dọn dẹp hợp lệ không làm đỏ cổng. Chốt THẬT là `PRODUCT_MODULES`.
+ */
+const MIN_SCANNED = 12;
+
+/** Hình dạng tối thiểu của một `Dirent` mà `selectFiles` cần — để bài kiểm
+ *  bơm được danh sách tổng hợp vào và đo chiều FAIL-CLOSED. */
+interface EntryLike {
+  readonly name: string;
+  isFile: () => boolean;
+}
+
+/**
+ * Danh sách tệp sẽ bị quét — VÀ NÓ NÉM thay vì trả về danh sách rỗng.
+ *
+ * Đây là khác biệt giữa cổng này và khuôn `for (const f of await readdir(…))`:
+ * một `readdir` trỏ nhầm chỗ, một `filter` viết hỏng, hay một lần đổi phần mở
+ * rộng tệp đều cho ra MỘT MẢNG RỖNG, và một vòng lặp trên mảng rỗng chạy đúng
+ * không lần nào rồi báo XANH. Đó là hình dạng của cả năm cổng mù trong
+ * `docs/carried-forward.md`. Ở đây nó ném, nên cổng ĐỎ chứ không xanh câm.
+ *
+ * Thư mục con cũng ném: `src/ai/` phẳng hôm nay, và một `src/ai/providers/`
+ * thêm vào ngày mai sẽ đi qua phép quét này mà không ai biết — ném là cách bắt
+ * người thêm nó phải quyết định, thay vì để nó lọt.
+ */
+function selectFiles(entries: readonly EntryLike[]): string[] {
+  const notFiles = entries.filter((e) => !e.isFile()).map((e) => e.name);
+  if (notFiles.length > 0) {
+    throw new Error(`cổng src/ai/ chỉ quét tệp phẳng, gặp: ${notFiles.sort().join(', ')}`);
+  }
+  const files = entries
+    .map((e) => e.name)
+    .filter((n) => /\.tsx?$/.test(n))
+    .filter((n) => n !== SELF)
+    .sort();
+  if (files.length < MIN_SCANNED) {
+    throw new Error(`cổng src/ai/ chỉ chọn được ${String(files.length)} tệp (sàn ${String(MIN_SCANNED)})`);
+  }
+  return files;
+}
+
+const asEntries = (names: readonly string[], dirs: readonly string[] = []): EntryLike[] => [
+  ...names.map((name) => ({ name, isFile: () => true })),
+  ...dirs.map((name) => ({ name, isFile: () => false })),
+];
+
+describe('cổng cấu trúc — CẢ `src/ai/` không còn nhắc vault', () => {
+  /**
+   * BÀI ĐỌC-ĐỒNG-HỒ. Bài dưới nó khẳng định "không tìm thấy gì", và một phép
+   * quét đọc 0 tệp cho ra ĐÚNG cùng một màu xanh. Bài này hỏi bốn câu mà một
+   * cổng chết không trả lời được.
+   */
+  it('cổng có răng: quét thật, fail-closed, và miễn trừ đúng một tệp cần miễn', async () => {
+    const entries = await readdir(HERE, { withFileTypes: true });
+    const scanned = selectFiles(entries);
+
+    // 1. Phép quét ĐỌC ĐƯỢC tệp, và đọc đúng những tệp phải đọc.
+    expect(scanned.length).toBeGreaterThanOrEqual(MIN_SCANNED);
+    expect(PRODUCT_MODULES.filter((m) => !scanned.includes(m))).toEqual([]);
+
+    // 2. Miễn trừ đúng MỘT tệp, và đó là chính tệp này — đo bằng hiệu số, nên
+    //    một `filter` nới rộng ra hai tệp sẽ đỏ.
+    const allTs = entries.map((e) => e.name).filter((n) => /\.tsx?$/.test(n));
+    expect(allTs.length - scanned.length).toBe(1);
+    expect(allTs).toContain(SELF);
+    expect(scanned).not.toContain(SELF);
+
+    // 3. Miễn trừ CÒN CẦN THIẾT: tệp được miễn thật sự chứa chữ bị cấm. Ngày
+    //    nó không còn chứa, bài này đỏ và người sửa phải gỡ miễn trừ thay vì
+    //    để lại một ô cửa mở sẵn.
+    expect(FORBIDDEN.test(await readFile(join(HERE, SELF), 'utf8'))).toBe(true);
+
+    // 4. FAIL-CLOSED, cả hai hướng — đo trên nguồn tổng hợp, qua đúng hàm mà
+    //    bài thật dùng.
+    expect(() => selectFiles([])).toThrow(/sàn/);
+    expect(() => selectFiles(asEntries(['a.ts', 'b.ts']))).toThrow(/sàn/);
+    expect(() => selectFiles(asEntries([], ['providers']))).toThrow(/tệp phẳng/);
+    // …và bộ dò còn sống: nó khớp một dòng import thật, và KHÔNG khớp mã sạch.
+    expect(FORBIDDEN.test("import { VaultClient } from './vaultClient';")).toBe(true);
+    expect(FORBIDDEN.test("import { postChat } from './serverClient';")).toBe(false);
+  });
+
+  it('không mô-đun nào dưới `src/ai/` còn nhắc vault', async () => {
+    const scanned = selectFiles(await readdir(HERE, { withFileTypes: true }));
+    const offenders: string[] = [];
+    for (const f of scanned) {
+      if (FORBIDDEN.test(await readFile(join(HERE, f), 'utf8'))) offenders.push(f);
     }
+    // Một danh sách, không một `expect` mỗi vòng lặp: khi đỏ, người đọc thấy
+    // MỌI tệp vi phạm cùng lúc thay vì tệp đầu tiên theo thứ tự bảng chữ cái.
+    expect(offenders).toEqual([]);
   });
 });
 
