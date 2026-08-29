@@ -59,24 +59,36 @@ already exists one `git show` away.
 | `allLocalStorage(scope)` / `allIndexedDB(page)` | dump both stores as text for a leak assertion |
 | `vaultFrame` / `openVault` / `plugKey` | **dead** — they drive a second origin that no longer exists |
 
-**Two of the six tests never touched the key vault**, and they went with the
+**One of the six tests never touched the key vault**, and it went with the
 file rather than because of it. Whoever writes Task 18 should decide
-deliberately whether to rebuild them; this note exists so that it is a
-decision and not an oversight:
+deliberately whether to rebuild it; this note exists so that it is a decision
+and not an oversight:
 
 - `'màn hẹp: panel hỏi–đáp nằm trong khung nhìn và không bị gì phủ lên'` —
   375px viewport, `document.elementFromPoint` at **three** points down
   `.ai-panel` (top edge, middle, bottom edge), plus a bounding-box check that
-  the panel does not overflow the viewport. This was the **only automated
-  proof** that `.ai-panel` (z-index 85) is not covered by anything. Nothing
-  in `apps/web/src` replaces it — jsdom has no layout, so no vitest test can
-  ask this question. **See the warning in `apps/web/src/styles/index.css`
-  next to `.ai-panel`**: Task 16 rewrote that z-index's reference points and
-  had no way to re-measure them.
-- `'đào sâu một đoạn có công thức: lời nhắc gửi đi mang LaTeX gốc'` — pure
-  `ai/prompts.ts` behaviour over a real rendered chapter. `ai/promptsCorpus.
-  test.ts` covers the same ground against the real KaTeX vendor bundle, so
-  this one has the closest thing to a successor of the two.
+  the panel does not overflow the viewport. Its only setup is
+  `instrument` + `openChapter` on a borrowed session — no key, no vault frame,
+  no consent click. This was the **only automated proof** that `.ai-panel`
+  (z-index 85) is not covered by anything. Nothing in `apps/web/src` replaces
+  it — jsdom has no layout, so no vitest test can ask this question. **See the
+  warning in `apps/web/src/styles/index.css` next to `.ai-panel`**: Task 16
+  rewrote that z-index's reference points and had no way to re-measure them.
+
+A **second** test is worth rebuilding for a different reason, but it is *not*
+vault-free and an earlier version of this note wrongly said it was:
+
+- `'đào sâu một đoạn có công thức: lời nhắc gửi đi mang LaTeX gốc'` — its
+  first four lines are `instrument`, `signIn`, **`plugKey`**, **`openVault`**
+  and a click on `[data-role="consent"]`, i.e. it types a fake key into the
+  cross-origin frame and confirms consent before it does anything else. What
+  makes it worth rebuilding is the part *after* that setup: it asserts the
+  prompt leaving the browser carries the **original LaTeX source**, not
+  KaTeX's rendered output, over a really-rendered chapter. In Pha 2 the
+  vault setup collapses to "be signed in with credit", so the reusable half is
+  the assertion, not the scaffolding. `ai/promptsCorpus.test.ts` already
+  covers the same ground against the real KaTeX vendor bundle, so of the two
+  this is the one with something close to a successor.
 
 Two properties of this gate are deliberate and easy to lose:
 
