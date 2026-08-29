@@ -319,18 +319,30 @@ trùng tên, khác nguồn.
 cài bước gán thật, bài ấy là bài đỏ đầu tiên họ gặp, và nó chỉ cho họ **nửa còn lại phải nối cùng
 lúc**: nhãn `registry` của `pages/Library.tsx`, và mục này.
 
-## *Confused deputy* của kho khoá — **KHÔNG CÒN ÁP DỤNG (Pha 2, Task 16)** (S2-F9 · HC-3)
+## *Confused deputy* — **CÒN SỐNG, ĐỔI NẠN NHÂN sang `POST /ai/chat` (Pha 2, Task 16)** (S2-F9 · HC-3)
 
-> **Trạng thái: `apps/vault/src/guard.ts` KHÔNG còn chạy — nó bị xoá cùng `apps/vault`.** Lỗ này
-> biến mất cùng cơ chế sinh ra nó: không còn key của người học, không còn trang chính gọi hộ qua
-> `postMessage`, nên không còn phó quan nào để lẫn lộn.
+> **CƠ CHẾ CŨ ĐÃ CHẾT, LỖ THÌ KHÔNG.** `apps/vault/src/guard.ts` không còn chạy — nó bị xoá cùng
+> `apps/vault` ở Task 16. Nhưng đây là một mục **đang sống**, và nhan đề nói thế vì trong một sổ nợ,
+> nhan đề là thứ được lướt và được `grep`: một mục đọc thành "KHÔNG CÒN ÁP DỤNG" là một mục bị bỏ qua.
 >
-> **Điều thay chỗ nó, và điều KHÔNG thay:** Pha 2 đặt hạn mức và trừ credit ở MÁY CHỦ
-> (`apps/api/internal/ai`), tức là hạn mức nay nằm ở phía không ai sửa được từ trình duyệt — mạnh
-> hơn hẳn một token bucket trong `localStorage` của một origin. Nhưng câu hỏi gốc *"một course độc
-> chạy trong trang chính có bảo được nền tảng gọi hộ không"* **vẫn là một câu hỏi thật**: nay nó đốt
-> **credit của người học**, không đốt key của họ. Ai chạm vào `POST /ai/chat` nên đọc hết mục này
-> trước, vì năm ghi chú bên dưới là năm cách một lời gọi "hợp lệ" đi qua một cổng "đang chạy".
+> **Câu hỏi gốc không đổi:** *một course độc chạy trong trang chính có bảo được nền tảng gọi hộ
+> không?* Course hạng `interactive` vẫn chạy JS trong trang chính, trang chính vẫn có phiên đăng
+> nhập, và `fetch('/ai/chat', { credentials: 'include' })` vẫn là một dòng. Thứ đổi là **nạn nhân**,
+> và nó đổi theo HAI hướng — nói một hướng thôi là mô tả nửa nhẹ hơn:
+>
+>   · **tiền** — nay nó đốt **credit của người học** thay vì key của họ. Hướng này ĐƯỢC giảm thiểu
+>     thật: hạn mức và phép trừ credit nằm ở MÁY CHỦ (`internal/ai/ratelimit.go`,
+>     `internal/ai/credits.go`), tức phía không ai sửa được từ trình duyệt — mạnh hơn hẳn một token
+>     bucket trong `localStorage` của một origin.
+>   · **ghi chú riêng tư** — **chuyển giao NGUYÊN VẸN, không được giảm thiểu chút nào.** Đó là món
+>     #1 trong danh sách dưới đây, nửa nghiêm trọng của HC-3. `RateLimiter` là *"a sliding-window
+>     **call** budget per user id"* (`ratelimit.go`): nó chặn **số lời gọi**, không chặn **số chữ**.
+>     Trong hạn mức, một course độc vẫn gửi đi được ~N lời nhắc/phút, **mỗi lời nhắc dài tuỳ ý** —
+>     y hệt bản Pha 1, chỉ đổi chỗ đặt bộ đếm.
+>
+> Ai chạm vào `POST /ai/chat` nên đọc hết **SÁU** ghi chú bên dưới (danh sách tự đánh số 1–6, và
+> chính nó mở đầu bằng chữ "sáu món"): chúng là sáu cách một lời gọi "hợp lệ" đi qua một cổng "đang
+> chạy". Món #1 là món chưa ai chạm tới.
 
 Kiến trúc origin riêng chặn được course độc **ĐỌC** key — trình duyệt cấm JS của origin này đọc
 `localStorage` của origin khác. Nó **KHÔNG** chặn được course độc **DÙNG** key: course hạng
