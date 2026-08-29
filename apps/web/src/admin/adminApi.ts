@@ -373,6 +373,17 @@ export interface AdminAISettings {
   readonly max_tokens_per_turn: number;
   readonly max_tool_rounds_per_turn: number;
   readonly max_base_prompt_chars: number;
+  /**
+   * Trần một đơn giá `ai_pricing` (`MaxPricingRateMicro`, Go). Optional vì
+   * một máy chủ CŨ hơn client không gửi trường này; `AdminPricing.tsx` khi
+   * ấy KHÔNG tự bịa một trần thay thế — nó chỉ mất lớp kiểm phía client và
+   * để server từ chối, đúng cách một client mới nói chuyện với một server
+   * cũ nên hành xử. Bịa một hằng dự phòng ở client là cách tạo ra đúng thứ
+   * bản sao gõ tay mà trường này tồn tại để xoá.
+   */
+  readonly max_pricing_rate_micro?: number;
+  /** Trần `ai_settings.signup_grant_micro` (`MaxSignupGrantMicro`, Go). Optional cùng lý do. */
+  readonly max_signup_grant_micro?: number;
 }
 
 /**

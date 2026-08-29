@@ -215,6 +215,20 @@ func auditRowsFor(t *testing.T, pool *pgxpool.Pool, action, target string) []aud
 	return out
 }
 
+// operatorRowsOf keeps only the admin_audit rows a HUMAN OPERATOR wrote —
+// who IS NOT NULL. Migration 0008 writes one 'ai.settings.signup_grant' row
+// of its own (who NULL, actor 'cli') so the mint-rate timeline has no gap at
+// its start; a test about what a CMS request wrote must not count it.
+func operatorRowsOf(rows []auditRow) []auditRow {
+	out := make([]auditRow, 0, len(rows))
+	for _, r := range rows {
+		if r.who != nil {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 // pricingRow reads one ai_pricing row directly, for assertions that must
 // not go through the Service's own accessor (which is exactly the thing
 // under test in the "no restart" case).
@@ -1267,5 +1281,317 @@ func TestGetUserUnknownIdIsNotFound(t *testing.T) {
 	resp, raw := doJSON(t, app, http.MethodGet, "/admin/ai/users/"+uuid.NewString(), nil)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown user: want 404 got %d body=%s", resp.StatusCode, raw)
+	}
+}
+
+// TestPricingUpdateRejectsRateAboveCeiling is D1 of the whole-branch review.
+//
+// The measured asymmetry it closes: AdminAdjustCredit — same file, same CMS
+// screen, same operator — bounds ONE manual adjustment at
+// MaxAdminCreditAdjustmentMicro (1e11) with a doc comment about a
+// "fat-fingered extra zero". AdminUpdatePricing checked only `>= 0`. Review
+// typed nine extra zeros into credits_per_1k_out and charged
+// 194,641,920,000,000 micro on a SINGLE 49,152-token turn, taking a balance
+// of 5,000,000 to -194,641,915,000,000 — an amount that needs 1,947
+// separate, individually-audited adjustments to undo, because each one is
+// capped at 1e11.
+//
+// The boundary is asserted from BOTH sides on the SAME field, and on every
+// one of the six rates in turn: a ceiling that is only checked on the field
+// the test happens to name is the same shape of hole D1 is about.
+func TestPricingUpdateRejectsRateAboveCeiling(t *testing.T) {
+	pool := store.TestPool(t)
+	credits := ai.NewService(pool)
+	adminID := newUserNoCredits(t, pool, "acting-admin-pricing-ceiling")
+	app := newAIApp(t, adminID, ai.HandlerDeps{Credits: credits, Courses: fakeCourses{}})
+
+	rateFields := []string{
+		"cost_micro_per_1k_in",
+		"cost_micro_per_1k_cached_in",
+		"cost_micro_per_1k_out",
+		"credits_per_1k_in",
+		"credits_per_1k_cached_in",
+		"credits_per_1k_out",
+	}
+
+	body := func(field string, value int64) map[string]any {
+		b := map[string]any{}
+		for _, f := range rateFields {
+			b[f] = 1000
+		}
+		b[field] = value
+		b["note"] = "ceiling probe"
+		return b
+	}
+
+	for _, field := range rateFields {
+		t.Run(field+" vượt trần thì 400", func(t *testing.T) {
+			resp, raw := doJSON(t, app, http.MethodPut, "/admin/ai/pricing/"+ai.DefaultModel,
+				body(field, ai.MaxPricingRateMicro+1))
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("%s = trần+1: want 400 got %d body=%s", field, resp.StatusCode, raw)
+			}
+			if got := bodyCode(t, raw); got != ai.CodeAmountOutOfRange {
+				t.Fatalf("want code %q got %q (body=%s)", ai.CodeAmountOutOfRange, got, raw)
+			}
+			if !strings.Contains(string(raw), field) {
+				t.Errorf("thông điệp lỗi không nêu TÊN cột sai (%s): %s", field, raw)
+			}
+		})
+
+		t.Run(field+" ĐÚNG bằng trần thì 200", func(t *testing.T) {
+			resp, raw := doJSON(t, app, http.MethodPut, "/admin/ai/pricing/"+ai.DefaultModel,
+				body(field, ai.MaxPricingRateMicro))
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("%s = trần: want 200 got %d body=%s", field, resp.StatusCode, raw)
+			}
+		})
+	}
+
+	// Con số THẬT của review: 3960 (giá seed của credits_per_1k_out) cộng
+	// chín số 0. Nếu trần bị nới tới mức con số này lọt qua thì cả D1 mất
+	// nghĩa, nên nó được ghim riêng chứ không chỉ suy ra từ trần+1.
+	const nineExtraZeros = int64(3960) * 1_000_000_000
+	resp, raw := doJSON(t, app, http.MethodPut, "/admin/ai/pricing/"+ai.DefaultModel,
+		body("credits_per_1k_out", nineExtraZeros))
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("3960 kèm chín số 0 (%d) — đúng phép đo của review: want 400 got %d body=%s",
+			nineExtraZeros, resp.StatusCode, raw)
+	}
+}
+
+// signupGrantOf reads ai_settings.signup_grant_micro straight from the
+// table, never through the Service — the column's whole point is that
+// GrantSignupCredit re-reads it on every registration, so an assertion that
+// went through the same accessor would prove nothing about what was stored.
+func signupGrantOf(t *testing.T, pool *pgxpool.Pool) int64 {
+	t.Helper()
+	var v int64
+	if err := pool.QueryRow(context.Background(),
+		`SELECT signup_grant_micro FROM ai_settings LIMIT 1`).Scan(&v); err != nil {
+		t.Fatalf("read signup_grant_micro: %v", err)
+	}
+	return v
+}
+
+// TestUpdateSettingsAppliesSignupGrantAndAudits is A1 of the whole-branch
+// review: before this, `signup_grant_micro` had NO writer anywhere in the
+// product — not a route, not the CMS, not a CLI. The only thing in the repo
+// that ever set it was `scripts/test-e2e.sh`, with raw SQL, for its own
+// stack. Meanwhile credits.go's GrantSignupCredit promised in a doc comment
+// that "the project owner changes this number from Task 17's CMS" — two
+// comments in one repo contradicting each other, with the operator on the
+// losing side.
+//
+// The assertion that matters is the LAST one: the number does not just land
+// in the row, it reaches the next registration. GrantSignupCredit re-reads
+// the column on every call, so a cached or hardcoded value would show up
+// here as a grant that ignores the update.
+func TestUpdateSettingsAppliesSignupGrantAndAudits(t *testing.T) {
+	pool := store.TestPool(t)
+	credits := ai.NewService(pool)
+	adminID := newUserNoCredits(t, pool, "acting-admin-signup-grant")
+	app := newAIApp(t, adminID, ai.HandlerDeps{Credits: credits, Courses: fakeCourses{}})
+
+	const newGrant int64 = 123_456
+	resp, raw := doJSON(t, app, http.MethodPut, "/admin/ai/settings", map[string]any{
+		"base_system_prompt": "You are the platform's tutor.",
+		"signup_grant_micro": newGrant,
+		"note":               "raising the welcome grant",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("valid update: want 200 got %d body=%s", resp.StatusCode, raw)
+	}
+	var out struct {
+		SignupGrantMicro int64 `json:"signup_grant_micro"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("unmarshal: %v (%s)", err, raw)
+	}
+	if out.SignupGrantMicro != newGrant {
+		t.Fatalf("response signup_grant_micro: want %d got %d", newGrant, out.SignupGrantMicro)
+	}
+	if got := signupGrantOf(t, pool); got != newGrant {
+		t.Fatalf("DB signup_grant_micro: want %d got %d", newGrant, got)
+	}
+
+	// Migration 0008 already wrote ONE row on this action, for the value it
+	// bootstrapped (who IS NULL, actor 'cli' — no operator pressed anything).
+	// Filtering on the operator rows is not a convenience: an assertion of
+	// "exactly one row on this action" would pass today and start failing
+	// the day the bootstrap row exists, which is precisely the coupling
+	// worth not having.
+	rows := operatorRowsOf(auditRowsFor(t, pool, "ai.settings.signup_grant", "ai_settings"))
+	if len(rows) != 1 {
+		t.Fatalf("admin_audit rows written by an OPERATOR for the signup-grant change: want 1 got %d: %+v", len(rows), rows)
+	}
+	if rows[0].who == nil || *rows[0].who != adminID {
+		t.Fatalf("admin_audit.who: want %s got %v", adminID, rows[0].who)
+	}
+	if !strings.Contains(rows[0].note, "123456") {
+		t.Errorf("audit note must carry the AMOUNT (a grant that moved with no number "+
+			"attached is unreadable a week later), got %q", rows[0].note)
+	}
+
+	// The point of the column: the very next registration uses it, with no
+	// deploy and no restart, off this same long-lived *Service.
+	newbie := newUserNoCredits(t, pool, "fresh-learner-after-grant-change")
+	tx, err := pool.Begin(context.Background())
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	granted, err := credits.GrantSignupCredit(context.Background(), tx, newbie)
+	if err != nil {
+		t.Fatalf("GrantSignupCredit: %v", err)
+	}
+	if granted != newGrant {
+		t.Fatalf("signup grant for a user registering AFTER the CMS change: want %d got %d — "+
+			"the number reached the row but not the registration path", newGrant, granted)
+	}
+}
+
+// TestUpdateSettingsSignupGrantBoundary pins both ends of the accepted
+// range, in the exact style TestUpdateBasePromptCharLimitBoundary and
+// TestAdjustCreditAmountBoundary already use: at the constant, and one past
+// it — never at a round number nearby.
+func TestUpdateSettingsSignupGrantBoundary(t *testing.T) {
+	pool := store.TestPool(t)
+	credits := ai.NewService(pool)
+	adminID := newUserNoCredits(t, pool, "acting-admin-signup-grant-bound")
+	app := newAIApp(t, adminID, ai.HandlerDeps{Credits: credits, Courses: fakeCourses{}})
+
+	put := func(v int64) (int, []byte) {
+		resp, raw := doJSON(t, app, http.MethodPut, "/admin/ai/settings", map[string]any{
+			"base_system_prompt": "You are the platform's tutor.",
+			"signup_grant_micro": v,
+			"note":               "boundary probe",
+		})
+		return resp.StatusCode, raw
+	}
+
+	// Zero is LEGAL and meaningful: it switches the welcome grant off
+	// deliberately (every new account starts at nothing and needs a manual
+	// top-up). It must not be confused with "field absent".
+	if code, raw := put(0); code != http.StatusOK {
+		t.Fatalf("signup_grant_micro=0 (switching the grant off on purpose): want 200 got %d body=%s", code, raw)
+	}
+	if got := signupGrantOf(t, pool); got != 0 {
+		t.Fatalf("DB after explicit 0: want 0 got %d", got)
+	}
+
+	if code, raw := put(ai.MaxSignupGrantMicro); code != http.StatusOK {
+		t.Fatalf("signup_grant_micro = trần: want 200 got %d body=%s", code, raw)
+	}
+	code, raw := put(ai.MaxSignupGrantMicro + 1)
+	if code != http.StatusBadRequest {
+		t.Fatalf("signup_grant_micro = trần+1: want 400 got %d body=%s", code, raw)
+	}
+	if got := bodyCode(t, raw); got != ai.CodeAmountOutOfRange {
+		t.Fatalf("want code %q got %q (body=%s)", ai.CodeAmountOutOfRange, got, raw)
+	}
+	code, raw = put(-1)
+	if code != http.StatusBadRequest {
+		t.Fatalf("signup_grant_micro = -1: want 400 got %d body=%s", code, raw)
+	}
+	// A refused value must not have moved the row.
+	if got := signupGrantOf(t, pool); got != ai.MaxSignupGrantMicro {
+		t.Fatalf("DB after two REFUSED updates: want %d (the last accepted value) got %d",
+			ai.MaxSignupGrantMicro, got)
+	}
+}
+
+// TestUpdateSettingsSignupGrantIsOptionalNotZeroing is the trap this field
+// shape exists to avoid: `AdminPricing.tsx` sends only `base_system_prompt`
+// today, and a non-pointer int64 would make every one of those saves
+// silently reset the welcome grant to 0 — re-opening the exact 402-on-the-
+// first-question failure A1 is about, from a screen the operator thinks
+// only edits a prompt.
+func TestUpdateSettingsSignupGrantIsOptionalNotZeroing(t *testing.T) {
+	pool := store.TestPool(t)
+	credits := ai.NewService(pool)
+	adminID := newUserNoCredits(t, pool, "acting-admin-signup-grant-absent")
+	app := newAIApp(t, adminID, ai.HandlerDeps{Credits: credits, Courses: fakeCourses{}})
+
+	if code, raw := func() (int, []byte) {
+		resp, raw := doJSON(t, app, http.MethodPut, "/admin/ai/settings", map[string]any{
+			"base_system_prompt": "You are the platform's tutor.",
+			"signup_grant_micro": 777_000,
+			"note":               "set it once",
+		})
+		return resp.StatusCode, raw
+	}(); code != http.StatusOK {
+		t.Fatalf("first update: want 200 got %d body=%s", code, raw)
+	}
+
+	// Now a base-prompt-only save, exactly what the CMS screen sends.
+	resp, raw := doJSON(t, app, http.MethodPut, "/admin/ai/settings", map[string]any{
+		"base_system_prompt": "You are the platform's tutor. Second edit.",
+		"note":               "prompt only",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("prompt-only update: want 200 got %d body=%s", resp.StatusCode, raw)
+	}
+	if got := signupGrantOf(t, pool); got != 777_000 {
+		t.Fatalf("signup_grant_micro after a PROMPT-ONLY save: want 777000 (untouched) got %d", got)
+	}
+	// And no audit row claiming a grant change that never happened. (The
+	// bootstrap row migration 0008 writes has who IS NULL, so it is filtered
+	// out here — see operatorRowsOf.)
+	if rows := operatorRowsOf(auditRowsFor(t, pool, "ai.settings.signup_grant", "ai_settings")); len(rows) != 1 {
+		t.Fatalf("operator-written admin_audit rows for signup_grant: want exactly 1 (the real change), got %d: %+v", len(rows), rows)
+	}
+}
+
+// TestAdminSettingsAdvertisedCeilingsAreWhatGetsEnforced extends the
+// property TestAdminSettingsMaxBasePromptCharsIsWhatGetsEnforced pins for
+// the prompt cap to the two ceilings this round adds. The failure it
+// catches is a divergent ECHO: newSettingsPayload reporting one number
+// while the handler enforces another, so a client that trusts the response
+// builds a form the server then refuses.
+func TestAdminSettingsAdvertisedCeilingsAreWhatGetsEnforced(t *testing.T) {
+	pool := store.TestPool(t)
+	credits := ai.NewService(pool)
+	adminID := newUserNoCredits(t, pool, "acting-admin-advertised-ceilings")
+	app := newAIApp(t, adminID, ai.HandlerDeps{Credits: credits, Courses: fakeCourses{}})
+
+	resp, raw := doJSON(t, app, http.MethodGet, "/admin/ai/settings", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET settings: want 200 got %d body=%s", resp.StatusCode, raw)
+	}
+	var advertised struct {
+		MaxPricingRateMicro int64 `json:"max_pricing_rate_micro"`
+		MaxSignupGrantMicro int64 `json:"max_signup_grant_micro"`
+	}
+	if err := json.Unmarshal(raw, &advertised); err != nil {
+		t.Fatalf("unmarshal: %v (%s)", err, raw)
+	}
+	if advertised.MaxPricingRateMicro <= 0 || advertised.MaxSignupGrantMicro <= 0 {
+		t.Fatalf("GET settings must advertise both ceilings, got %+v", advertised)
+	}
+
+	// Exactly the advertised pricing ceiling must be accepted.
+	rates := map[string]any{
+		"cost_micro_per_1k_in": advertised.MaxPricingRateMicro, "cost_micro_per_1k_cached_in": 1,
+		"cost_micro_per_1k_out": 1, "credits_per_1k_in": 1,
+		"credits_per_1k_cached_in": 1, "credits_per_1k_out": 1, "note": "at the advertised ceiling",
+	}
+	if resp, raw := doJSON(t, app, http.MethodPut, "/admin/ai/pricing/"+ai.DefaultModel, rates); resp.StatusCode != http.StatusOK {
+		t.Fatalf("rate = advertised ceiling: want 200 got %d body=%s — the number the client "+
+			"reads is not the number the server enforces", resp.StatusCode, raw)
+	}
+	rates["cost_micro_per_1k_in"] = advertised.MaxPricingRateMicro + 1
+	if resp, raw := doJSON(t, app, http.MethodPut, "/admin/ai/pricing/"+ai.DefaultModel, rates); resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("rate = advertised ceiling + 1: want 400 got %d body=%s", resp.StatusCode, raw)
+	}
+
+	// Same, for the signup grant.
+	grant := map[string]any{"base_system_prompt": "p", "signup_grant_micro": advertised.MaxSignupGrantMicro}
+	if resp, raw := doJSON(t, app, http.MethodPut, "/admin/ai/settings", grant); resp.StatusCode != http.StatusOK {
+		t.Fatalf("grant = advertised ceiling: want 200 got %d body=%s", resp.StatusCode, raw)
+	}
+	grant["signup_grant_micro"] = advertised.MaxSignupGrantMicro + 1
+	if resp, raw := doJSON(t, app, http.MethodPut, "/admin/ai/settings", grant); resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("grant = advertised ceiling + 1: want 400 got %d body=%s", resp.StatusCode, raw)
 	}
 }

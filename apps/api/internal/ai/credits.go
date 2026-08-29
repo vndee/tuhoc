@@ -60,9 +60,9 @@
 // belongs to internal/catalog's own admin writes; this file only INSERTs
 // into it, it does not own its schema). Every method in the block near the
 // bottom of this file (ListUsers, GetUser, AdjustCredit, ListPricing,
-// UpdatePricing, RecentCreditAdjustments, UpdateBaseSystemPrompt) exists
+// UpdatePricing, RecentCreditAdjustments, UpdateSettings) exists
 // for the two CMS screens spec §7 names ("Người dùng & credit", "Bảng giá &
-// prompt nền"), and AdjustCredit/UpdatePricing/UpdateBaseSystemPrompt keep
+// prompt nền"), and AdjustCredit/UpdatePricing/UpdateSettings keep
 // the SAME one-transaction discipline the paragraph above states for
 // ChargeTurn — a balance or a rate that moved with no matching admin_audit
 // row is the identical failure shape one table over.
@@ -233,7 +233,20 @@ func (s *Service) ChargeTurn(ctx context.Context, userID uuid.UUID, r Result, mo
 	// searches errored. Fine today (nothing downstream reads cost_micro as
 	// a cost ledger yet), but a debt Phase 4 needs to know about if it ever
 	// wants an accurate cost_micro rather than an accurate credits_charged.
-	costMicro, credits := Charge(r.Usage, pricing, r.WebSearches, settings)
+	//
+	// The error return is ErrChargeOverflow and nothing else (cost.go): a
+	// pricing row whose rates make this turn's cost unrepresentable in an
+	// int64. Refused HERE, before Begin, so no transaction is opened and no
+	// half-written row exists — and, more to the point, so a wrapped
+	// negative number never reaches `balance_micro - $2`. Before this check
+	// existed the wrapped value DID reach Postgres and was rejected by
+	// ai_usage_cost_micro_check as an anonymous 23514, which read in the log
+	// as "the database refused something" rather than "this ai_pricing row
+	// is impossible".
+	costMicro, credits, err := Charge(r.Usage, pricing, r.WebSearches, settings)
+	if err != nil {
+		return 0, fmt.Errorf("ai: charge turn for user %s (model=%s): %w", userID, model, err)
+	}
 
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -279,10 +292,45 @@ func (s *Service) ChargeTurn(ctx context.Context, userID uuid.UUID, r Result, mo
 // GrantSignupCredit inserts userID's first ai_credits row, crediting
 // ai_settings.signup_grant_micro. It reads that column from the database
 // on every call — never a constant compiled into this binary — because
-// the project owner changes this number from Task 17's CMS and expects it
-// to take effect without a deploy; caching or hardcoding it would mean a
-// changed setting only applies to accounts that register after the NEXT
-// deploy, silently contradicting that expectation.
+// the project owner changes this number from the CMS (PUT
+// /admin/ai/settings, AdminUpdateSettings) and expects it to take effect
+// without a deploy; caching or hardcoding it would mean a changed setting
+// only applies to accounts that register after the NEXT deploy, silently
+// contradicting that expectation.
+//
+// That sentence used to be FALSE, and the falseness was the bug. Until the
+// whole-branch review fix round (A1), no route, CMS screen or CLI could
+// write signup_grant_micro at all — AdminUpdateSettings accepted
+// base_system_prompt and nothing else, and the only writer in the whole
+// repo was a raw SQL UPDATE inside scripts/test-e2e.sh, for its own
+// throwaway stack. The column sat at its 0 DEFAULT (migration 0007), so
+// every new account was created with a zero balance and got a 402 on its
+// very first question. Migration 0008 seeds the value and backfills the
+// accounts that predate 0007; this comment now describes a path that
+// exists.
+//
+// WHAT THIS METHOD DOES NOT LEAVE BEHIND (whole-branch review, F3 — read
+// before assuming there is a ledger here). This is the ONE path in the
+// system that creates credit without writing a row anywhere except
+// ai_credits itself: no admin_audit entry (there is no operator — the
+// learner registered), and no ai_usage row (that table is a SPEND ledger,
+// with CHECK (credits_charged >= 0), so a grant cannot be expressed in it).
+// It was harmless while the grant was 0; it stopped being harmless the
+// moment 0008 made it non-zero.
+//
+// The decision taken, and why: DO NOT write a per-registration audit row.
+// admin_audit is the operator-action table — its `who` column is a
+// foreign key to the human who acted, and a self-registration has no such
+// human — so one row per signup would grow it without bound with entries
+// that name nobody, burying the operator actions it exists to make
+// findable. What IS made traceable instead is the MINT RATE over time:
+// every change to signup_grant_micro writes an 'ai.settings.signup_grant'
+// row carrying the amount (UpdateSettings, below), and migration 0008
+// writes the same row for the INITIAL value so the timeline has no gap at
+// its start. Any account's grant is therefore reconstructable by reading
+// users.created_at against that timeline. The residual gap — no per-account
+// record of the mint EVENT, only of the rate in force — is recorded as a
+// named debt rather than papered over here.
 //
 // It runs entirely inside the caller-supplied tx, never s.pool: the
 // caller is registration itself (auth.Repo.CreateUserWithSignupCredit),
@@ -792,20 +840,41 @@ func (s *Service) UpdatePricing(ctx context.Context, actorID uuid.UUID, model st
 	return out, nil
 }
 
-// adminActionBasePromptUpdate is admin_audit.action's fixed value for every
-// row UpdateBaseSystemPrompt writes.
-const adminActionBasePromptUpdate = "ai.settings.base_prompt"
+// adminActionBasePromptUpdate and adminActionSignupGrantUpdate are
+// admin_audit.action's fixed values for the two columns UpdateSettings
+// writes. They are SEPARATE actions, not one "settings updated" action with
+// the detail buried in the note: an operator asking "who changed the
+// welcome grant, and when" must be able to filter on that alone, the same
+// way RecentCreditAdjustments filters on adminActionCreditAdjust.
+const (
+	adminActionBasePromptUpdate  = "ai.settings.base_prompt"
+	adminActionSignupGrantUpdate = "ai.settings.signup_grant"
+)
 
-// adminSettingsAuditTarget is admin_audit.target for base-prompt edits.
+// adminSettingsAuditTarget is admin_audit.target for ai_settings edits.
 // ai_settings has no natural id of its own (its CHECK(id) enforces exactly
 // one row — migration 0007's own comment), so this fixed string names the
 // row the way a real id would name any other target.
 const adminSettingsAuditTarget = "ai_settings"
 
-// UpdateBaseSystemPrompt overwrites ai_settings.base_system_prompt and
-// writes the audit row in one transaction, then returns the settings row
-// as stored (a fresh read, not an echo — SaveAgentConfig's own doc comment
-// explains why a caller should see what was actually written).
+// UpdateSettings overwrites ai_settings.base_system_prompt, optionally
+// overwrites ai_settings.signup_grant_micro, and writes one audit row PER
+// COLUMN ACTUALLY WRITTEN — all in ONE transaction — then returns the
+// settings row as stored (a fresh read, not an echo — SaveAgentConfig's own
+// doc comment explains why a caller should see what was actually written).
+//
+// ONE TRANSACTION, not two calls: the two columns can move in the same
+// request, and a base prompt that committed while the grant did not (or the
+// reverse) would leave the operator looking at a screen that half-took. It
+// is the same shape ChargeTurn and AdjustCredit already keep, for the same
+// reason.
+//
+// signupGrantMicro is a POINTER and nil means DO NOT TOUCH — not "set it to
+// zero". See updateSettingsRequest's own comment (admin_handler.go) for the
+// concrete regression a plain int64 would cause here. When it is nil, no
+// signup-grant audit row is written either: an audit trail that records
+// changes that did not happen is worse than none, because it teaches the
+// reader to ignore it.
 //
 // It validates NOTHING about basePrompt except by what it refuses to do:
 // there is no path through this method that clears the column to an empty
@@ -815,11 +884,12 @@ const adminSettingsAuditTarget = "ai_settings"
 // platform's tutor persona and its safety boundary (spec §3.3: a learner's
 // own user_agent_config.system_prompt is APPENDED AFTER it, never a
 // replacement), so "empty" here is not a smaller version of the prompt, it
-// is every learner's safety boundary gone.
-func (s *Service) UpdateBaseSystemPrompt(ctx context.Context, actorID uuid.UUID, basePrompt, note string) (Settings, error) {
+// is every learner's safety boundary gone. signupGrantMicro's own range is
+// checked at the same boundary, against MaxSignupGrantMicro.
+func (s *Service) UpdateSettings(ctx context.Context, actorID uuid.UUID, basePrompt string, signupGrantMicro *int64, note string) (Settings, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return Settings{}, fmt.Errorf("ai: update base prompt begin tx: %w", err)
+		return Settings{}, fmt.Errorf("ai: update settings begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -834,8 +904,28 @@ func (s *Service) UpdateBaseSystemPrompt(ctx context.Context, actorID uuid.UUID,
 		return Settings{}, fmt.Errorf("ai: update base prompt audit: %w", err)
 	}
 
+	if signupGrantMicro != nil {
+		if _, err := tx.Exec(ctx,
+			`UPDATE ai_settings SET signup_grant_micro = $1, updated_at = now()`, *signupGrantMicro); err != nil {
+			return Settings{}, fmt.Errorf("ai: update signup grant: %w", err)
+		}
+		// The AMOUNT is baked into the stored note, the same way
+		// AdminAdjustCredit bakes the signed delta into its own: admin_audit
+		// has no numeric column of its own (migration 0005's schema), so
+		// this is the one place the number and the operator's reason travel
+		// together into the one column that exists. Without it the trail
+		// reads "somebody changed the welcome grant" with no way to tell
+		// 50,000 from 50,000,000.
+		grantNote := fmt.Sprintf("signup_grant_micro set to %d: %s", *signupGrantMicro, note)
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO admin_audit (who, actor, action, target, note) VALUES ($1, 'user', $2, $3, $4)`,
+			actorID, adminActionSignupGrantUpdate, adminSettingsAuditTarget, grantNote); err != nil {
+			return Settings{}, fmt.Errorf("ai: update signup grant audit: %w", err)
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
-		return Settings{}, fmt.Errorf("ai: update base prompt commit: %w", err)
+		return Settings{}, fmt.Errorf("ai: update settings commit: %w", err)
 	}
 
 	return s.settings(ctx)
