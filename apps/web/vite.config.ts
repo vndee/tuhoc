@@ -23,11 +23,22 @@ export default defineConfig({
   // ngoài một dòng log. Origin lệch ⇒ mọi thông điệp bị bỏ đúng theo thiết kế,
   // và triệu chứng duy nhất là "AI không trả lời".
   //
-  // Task 16 gỡ origin thứ hai, nên LÝ DO GỐC ĐÃ CHẾT — dòng này vẫn ở lại, và
-  // vì một lý do nhỏ hơn nhưng còn sống: một cổng nhảy trong im lặng là một
-  // lớp lỗi tự nó, và `make dev-web` hỏng ngay kèm câu giải thích thì rẻ hơn
-  // một dev server chạy ở chỗ không ai ngờ. Không có gì ở nơi khác trong repo
-  // còn ghim con số 5173.
+  // Task 16 gỡ origin thứ hai, nên LÝ DO GỐC ĐÃ CHẾT. Dòng này vẫn ở lại, và
+  // lý do thay thế MẠNH HƠN lý do tôi viết ở vòng đầu — vòng ấy nói "không có
+  // gì ở nơi khác trong repo còn ghim con số 5173", và đó là một khẳng định
+  // SAI, đã đo:
+  //
+  //   apps/api/internal/config/config.go:15   DefaultCORSOrigin = "http://localhost:5173"
+  //   .env.example:54                          CORS_ORIGIN=http://localhost:5173
+  //   apps/web/src/api/catalog.test.ts:43      (giải thích `VITE_API_URL` chưa đặt
+  //                                            thì `/courses` giải về chính 5173)
+  //
+  // Tức 5173 vẫn là một hằng số ĐƯỢC CHIA SẺ, chỉ là bên kia của nó đổi từ kho
+  // khoá sang API: `dev-web` trôi sang 5175 thì trình duyệt gửi `Origin:
+  // http://localhost:5175`, không khớp `CORS_ORIGIN` mặc định, và MỌI lời gọi
+  // có cookie hỏng — cùng một triệu chứng câm như trước, chỉ đổi tính năng bị
+  // câm. Nên `strictPort` không phải di sản: nó vẫn canh đúng một hằng số hai
+  // bên đang chia nhau.
   //
   // Chỉ áp cho `vite dev`. Cổng e2e không đi qua đây: nó dùng `vite preview` ở
   // 5183 với `--strictPort` của riêng nó (xem playwright.config.ts).

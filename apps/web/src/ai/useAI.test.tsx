@@ -71,6 +71,30 @@ import { MAX_WIRE_QUESTION_CHARS, buildWireQuestion, useAI } from './useAI';
  *
  * ⇒ Con số đúng của Task 16 là **1, và nó là cổng**. Ai đọc phép đếm sau này
  * nên chạy bản có `:(exclude)` ở trên.
+ *
+ * ─── CỔNG NÀY KHÔNG BẮT ĐƯỢC GÌ ───────────────────────────────────────────
+ *
+ * Ở ĐÂY chứ không chỉ trong commit message, vì người đọc mã không đọc
+ * `git log` và sẽ tin cổng rộng hơn thực tế. Bốn giới hạn, tất cả đều thật:
+ *
+ *   1. **Quét CHỮ, không quét LUỒNG DỮ LIỆU.** Một mô-đun mới tên `bridge.ts`
+ *      làm đúng việc của lớp client Pha 1, không viết chữ bị cấm ở đâu, đi qua
+ *      sạch sẽ. Đây đúng là lớp lỗi mà S2-F8 trong `docs/carried-forward.md`
+ *      đã đặt tên — và mục ấy nói thẳng rằng không phép quét chữ nào đóng được
+ *      nó.
+ *   2. **Chỉ quét `src/ai/`.** Một import kho khoá đặt ở `src/shell/` hay
+ *      `src/reader/` không đi qua đây. Thứ phủ chỗ đó là phép đếm THỦ CÔNG của
+ *      Task 16 (`git grep -lie vault -- apps/web/src`), chạy một lần, không
+ *      phải một cổng chạy mỗi lần.
+ *   3. **Không quét chính tệp này** (miễn trừ ở trên). Ba chốt làm nó hẹp và
+ *      ồn ào, nhưng mã kho khoá dán vào CHÍNH `useAI.test.tsx` vẫn lọt.
+ *   4. **Không đọc theo cây phụ thuộc.** Một tệp không ai import vẫn bị quét
+ *      (tốt), nhưng một import gián tiếp qua `../shell/` thì không — hệ quả
+ *      trực tiếp của giới hạn 2.
+ *
+ * Giới hạn THỨ NĂM đã từng có và ĐÃ ĐÓNG ở vòng sửa 1: cổng chỉ khớp
+ * `.ts`/`.tsx`, nên một `src/ai/legacyBridge.js` chứa chữ bị cấm đi qua **xanh
+ * 30/30**. Xem `SCANNED_EXTENSIONS`.
  */
 const FORBIDDEN = /vault/i;
 
@@ -89,6 +113,24 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 /** Tệp duy nhất được miễn — xem khối chú thích trên. Lấy từ `import.meta.url`. */
 const SELF = basename(fileURLToPath(import.meta.url));
+
+/**
+ * PHẦN MỞ RỘNG ĐƯỢC QUÉT — và vì sao nó KHÔNG chỉ là `.ts`/`.tsx`.
+ *
+ * Bản đầu của cổng này (Task 16) chỉ khớp `/\.tsx?$/`, và đó là một lỗ đo
+ * được: một `src/ai/legacyBridge.js` chứa chữ bị cấm đi qua cổng **xanh
+ * 30/30**. Lỗ ấy lệch với hai thứ cùng lúc — với chính tư thế fail-closed của
+ * `selectFiles` (nó NÉM khi gặp thư mục con, nhưng lại IM LẶNG bỏ qua một tệp
+ * nó không nhận ra), và với cổng anh em `i18n/i18n.test.ts`, vốn đã quét
+ * `packages/course-kit/*.js` chính vì *"mã của chúng ta chạy trong trình duyệt
+ * người dùng"* không đồng nghĩa với "tệp TypeScript".
+ *
+ * `.mjs`/`.cjs` có mặt vì cùng lập luận `db/local.test.ts` dùng khi mở rộng
+ * phạm vi lần đầu: *"A rule that names one file instead of the class it belongs
+ * to holds only until the second member of the class appears."* Lớp ở đây là
+ * **mọi mô-đun dưới `src/ai/`**, không phải "tệp `.ts`".
+ */
+const SCANNED_EXTENSIONS = /\.(?:tsx?|jsx?|mjs|cjs)$/;
 
 /**
  * MỌI mô-đun SẢN PHẨM dưới `src/ai/`, gọi đích danh.
@@ -143,7 +185,7 @@ function selectFiles(entries: readonly EntryLike[]): string[] {
   }
   const files = entries
     .map((e) => e.name)
-    .filter((n) => /\.tsx?$/.test(n))
+    .filter((n) => SCANNED_EXTENSIONS.test(n))
     .filter((n) => n !== SELF)
     .sort();
   if (files.length < MIN_SCANNED) {
@@ -173,9 +215,9 @@ describe('cổng cấu trúc — CẢ `src/ai/` không còn nhắc vault', () =>
 
     // 2. Miễn trừ đúng MỘT tệp, và đó là chính tệp này — đo bằng hiệu số, nên
     //    một `filter` nới rộng ra hai tệp sẽ đỏ.
-    const allTs = entries.map((e) => e.name).filter((n) => /\.tsx?$/.test(n));
-    expect(allTs.length - scanned.length).toBe(1);
-    expect(allTs).toContain(SELF);
+    const allModules = entries.map((e) => e.name).filter((n) => SCANNED_EXTENSIONS.test(n));
+    expect(allModules.length - scanned.length).toBe(1);
+    expect(allModules).toContain(SELF);
     expect(scanned).not.toContain(SELF);
 
     // 3. Miễn trừ CÒN CẦN THIẾT: tệp được miễn thật sự chứa chữ bị cấm. Ngày

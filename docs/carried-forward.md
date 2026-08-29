@@ -442,6 +442,43 @@ chuẩn, một `BroadcastChannel` **không nhận thông điệp của chính n�
 phát"*. Cookie đổi ngay khi `POST /auth/login` trả về; tín hiệu sớm nhất là vài câu lệnh sau đó. Đóng
 đúng cách cần phía server — ví dụ một định danh phiên trên mọi phản hồi để client đối chiếu.
 
+## `assert-tests-ran.mjs` mất theo `apps/vault` — không có người kế nhiệm (Pha 2, Task 16)
+
+**Trạng thái: một NĂNG LỰC đã rời khỏi repo, và không target nào nhận lại.** Ghi ra vì việc gỡ là
+ĐÚNG (thư mục nó phục vụ không còn) nhưng hệ quả thì không được im lặng.
+
+`make test-vault` có bốn nửa; ba nửa đầu (`tsc -b`, `oxlint`, vitest) chết cùng thư mục và không để
+lại gì. Nửa thứ tư thì khác hạng: `apps/vault/scripts/assert-tests-ran.mjs` đọc reporter JSON của
+vitest và **đỏ khi `numPassedTests === 0`, hoặc khi có BẤT KỲ bài nào bị `.skip`/`.todo`**.
+
+Nó tồn tại vì một phép đo, không vì sự cẩn thận chung. Vitest 4.1.11, đo trong chính thư mục ấy ngày
+2026-08-22:
+
+| tình huống | vitest thoát |
+|---|---|
+| `include` không khớp tệp nào | **1** — cổng tự đỏ, tốt |
+| MỌI `describe` bị `.skip` | **0** — `"Tests 8 skipped (8)"` |
+
+Hàng thứ hai là cổng mù thứ SÁU đang chờ xảy ra, cùng hình dạng với năm cái ghi phía trên tệp này.
+`numTotalTests` KHÔNG dùng thay được: ở ca skip nó vẫn bằng 8.
+
+**Ai thừa hưởng lỗ này:** `test-web`, `test-format`, `test-cli`, `test-registry` — cả bốn chỉ nhìn mã
+thoát của vitest. **Đo lại trên `apps/web` ngày 2026-08-29**, không chép lại phép đo cũ của thư mục
+đã xoá: đổi `describe('tNode()'` thành `describe.skip(...)` rồi chạy
+`bunx vitest run src/i18n/tNode.test.tsx` cho
+
+```
+Test Files  1 skipped (1)
+Tests  3 skipped (3)
+exit=0
+```
+
+⇒ lỗ **có thật ở `apps/web` hôm nay**, không chỉ ở thư mục đã gỡ.
+
+⇒ Ai muốn đóng: chép `assert-tests-ran.mjs` từ `git show 390931e:apps/vault/scripts/assert-tests-ran.mjs`
+và nối vào bốn target ấy. Đó không phải việc của Task 16 (brief chỉ nói gỡ), nên nó là một món nợ
+CÓ TÊN chứ không phải một việc bỏ sót.
+
 ---
 
 # Trạng thái khi bốn hệ thống con hoàn thành — 2026-08-23
