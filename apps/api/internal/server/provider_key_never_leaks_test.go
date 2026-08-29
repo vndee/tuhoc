@@ -75,7 +75,8 @@ import (
 //     một trình phân tích cú pháp Go thật (go/parser), không phải một phép
 //     quét chuỗi theo dòng. Nửa HÀNH VI là lưới an toàn cho đúng trường hợp
 //     này — nó không quan tâm mã nguồn viết trên mấy dòng, nó đọc log THẬT.
-//  2. Chỉ khớp HAI CÁI TÊN: `DeepSeekAPIKey`, `BraveAPIKey`, cộng biến `cfg`
+//  2. Chỉ khớp BA CÁI TÊN: `DeepSeekAPIKey`, `BraveAPIKey`, `apiKey`, cộng
+//     biến `cfg`
 //     khi nó đi làm đối số cho cả struct — hoặc kèm một động từ in-cả-struct
 //     (`%v`/`%+v`/`%#v`, ví dụ `log.Printf("%+v", cfg)`), hoặc đứng như một
 //     GIÁ TRỊ NGUYÊN không qua động từ format nào (ví dụ `c.JSON(cfg)`,
@@ -87,14 +88,20 @@ import (
 //     `discuss.NewHandlerForConfig(cfg.GitHubToken, ...)` rồi thành tham số
 //     `token string` ở `NewClient`, rồi thành trường `c.token` trên struct
 //     `Client` (`internal/discuss/client.go`) — từ biên gói `internal/discuss`
-//     trở đi, không còn chuỗi `githubtoken` nào để khớp nữa. Task 4 viết
-//     `internal/ai` gần như chắc sẽ lặp lại đúng hình dạng đó cho
-//     `DeepSeekAPIKey`. Cổng này KHÔNG theo dõi giá trị qua biên gói (đó là
-//     phân tích taint liên-hàm, ngoài tầm một phép quét chuỗi viết tay) —
-//     nó chỉ canh được TRONG một tệp, TRÊN một dòng. Việc của Task 4 khi
-//     viết `internal/ai` là hoặc giữ tên trường/tham số là
-//     `DeepSeekAPIKey`/`BraveAPIKey` xuyên suốt (cho cổng này tiếp tục nhìn
-//     thấy), hoặc tự thêm một cổng tương đương phạm vi tới gói mới.
+//     trở đi, không còn chuỗi `githubtoken` nào để khớp nữa. `internal/ai`
+//     (Task 4) ĐÃ lặp lại đúng hình dạng đó cho `DeepSeekAPIKey`: trường trên
+//     `ai.Client`/`ai.Brave` tên là `apiKey`. Vòng sửa sau review tổng nhánh
+//     Pha 2 (C1) thu hẹp điểm mù ấy bằng cách thêm needle `apikey` — nên hôm
+//     nay cổng này NHÌN THẤY một `fmt.Errorf(..., c.apiKey, ...)` trong
+//     `internal/ai`, đo trực tiếp bằng đúng đột biến mà review đã dùng
+//     (`stream.go:553`). Điều KHÔNG đổi: cổng vẫn không theo dõi GIÁ TRỊ qua
+//     biên gói (đó là phân tích taint liên-hàm, ngoài tầm một phép quét
+//     chuỗi viết tay) — nó chỉ canh được TRONG một tệp, TRÊN một dòng, và
+//     chỉ với những TÊN nó biết. Một gói mới đặt tên khác nữa (`secret`,
+//     `token`, `credential`) vẫn phải hoặc dùng một trong ba tên trên, hoặc
+//     tự mang theo một cổng hành vi tương đương — như `internal/ai` làm với
+//     TestCompleteErrorNeverContainsKey / TestCompleteStreamErrorNeverContainsKey
+//     / TestBraveSearchErrorNeverContainsKey.
 //  3. KHÔNG canh được ĐÍCH ĐẾN của một lời gọi ra ngoài. Tệp cũ
 //     (no_key_transit_test.go) có một allowlist đích đến chặn "mã sản phẩm
 //     không được gọi ra ngoài trừ danh sách cho phép hẹp" — nó bị xoá NGUYÊN
@@ -106,11 +113,26 @@ import (
 // Một cổng hẹp được ghi lại đúng phạm vi là một cổng dùng được; một cổng hẹp
 // mà chú thích nói là rộng hơn thật là một cái bẫy tự tin giả.
 
-// providerKeyLeakFieldNeedles là tên hai trường mang key, hạ chữ thường vì
+// providerKeyLeakFieldNeedles là tên các trường mang key, hạ chữ thường vì
 // nguồn được so khớp sau khi hạ chữ thường (xem providerKeyGoSources).
+//
+// `apikey` (vòng sửa sau review tổng nhánh Pha 2, C1) là needle THỨ BA, thêm
+// vào chứ không thay hai needle trên: nó THU HẸP đúng điểm mù mà PHẠM VI
+// THẬT điểm 2 ở trên tự khai — `cfg.DeepSeekAPIKey` đi qua biên gói và trở
+// thành trường `apiKey` trên `ai.Client`/`ai.Brave` (client.go:100,
+// brave.go:74), từ đó không còn chuỗi `deepseekapikey` nào để khớp. Hai
+// needle cụ thể ở trên vẫn đứng trước để NHÃN của một vi phạm gọi đúng tên
+// trường config; `apikey` bao trùm cả hai và bắt thêm mọi biến thể trong
+// gói khác.
+//
+// KHÔNG mở rộng thành `key` trần: đo ngày 2026-08-29 trên toàn repo, `apikey`
+// + một sink bất kỳ khớp ĐÚNG 0 dòng mã sản phẩm (không dương tính giả nào),
+// còn `key` trần thì khớp mọi `map key`, `query key`, `cache key` trong chú
+// thích. Đây là lý do needle dừng ở `apikey`.
 var providerKeyLeakFieldNeedles = []string{
 	"deepseekapikey",
 	"braveapikey",
+	"apikey",
 }
 
 // providerKeyLeakSinkNeedles là những cách mã Go thật sự GHI một giá trị ra

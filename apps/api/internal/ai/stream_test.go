@@ -1433,3 +1433,224 @@ func TestCompleteStreamTotalTimeoutFiresDespiteSteadyProgress(t *testing.T) {
 		t.Errorf("mất %s để timeout, muốn gần streamTotalTimeout (%s) — không phải một trần lớn hơn nhiều", elapsed, streamTotalTimeout)
 	}
 }
+
+// ── Ràng buộc #1: key nhà cung cấp không bao giờ rời máy chủ ──────────────
+
+// TestCompleteStreamErrorNeverContainsKey là nửa CÒN THIẾU của nghĩa vụ mà
+// client.go tự nhận cho cả gói này.
+//
+// VÌ SAO NÓ PHẢI TỒN TẠI (đo được, không suy luận). Cổng cấu trúc
+// apps/api/internal/server/provider_key_never_leaks_test.go chỉ khớp hai tên
+// trường `DeepSeekAPIKey`/`BraveAPIKey`; trong gói này key mang tên `apiKey`
+// — CÓ CHỦ Ý (xem doc comment của Client ở client.go), với điều kiện gói tự
+// canh lấy bằng test cục bộ. Nghĩa vụ ấy trước vòng sửa này trả 2/3:
+//
+//	Complete       → TestCompleteErrorNeverContainsKey      (client_test.go)
+//	Brave.Search   → TestBraveSearchErrorNeverContainsKey   (brave_test.go)
+//	CompleteStream → KHÔNG CÓ GÌ CẢ
+//
+// Mà POST /ai/chat — đường DUY NHẤT người học chạm tới DeepSeek — chỉ dùng
+// CompleteStream. Review tổng nhánh đo trực tiếp: chèn `c.apiKey` vào đường
+// lỗi thật của CompleteStream rồi chạy `go test ./...` cho **478 passed, 0
+// failed**; cùng đột biến trên client.go/brave.go đều ĐỎ ngay. Bán kính của
+// lỗ ấy không dừng ở gói này: CompleteStream → RunStream → runErr →
+// handler.go's `slog.Error(..., "err", runErr.Error())` → key vào log máy chủ.
+//
+// PHẠM VI: mười ba đường trả lỗi của CompleteStream, tức MỌI đường dựng
+// được từ bên ngoài. Hai đường còn lại (json.Marshal của wireRequest hỏng)
+// không dựng lên được từ đây — req luôn hợp lệ — nên chúng không có hàng
+// trong bảng. Một bảng phủ MỘT đường là đúng hình dạng lỗi mà vòng sửa 1 của
+// client_test.go đã phải sửa: văn xuôi nói "mọi đường", khẳng định chạy được
+// chỉ có một.
+func TestCompleteStreamErrorNeverContainsKey(t *testing.T) {
+	const sentinel = "sk-SENTINEL-do-not-emit-9b1e"
+
+	canceledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// Một dòng "data:" dài 2 MiB: dưới maxResponseBytes (8 MiB) của
+	// io.LimitReader nên nó ĐẾN được scanner, nhưng vượt trần token 1 MiB
+	// scanner.Buffer đặt — đó là cách duy nhất từ bên ngoài làm
+	// scanner.Err() khác nil mà KHÔNG phải qua một ctx nào.
+	oversizedLine := "data: {\"x\":\"" + strings.Repeat("a", 2<<20) + "\"}"
+
+	// newHandler nhận `block`, một kênh mỗi subtest tự đóng TRƯỚC srv.Close()
+	// — một handler chặn trên một kênh của HÀM BAO NGOÀI sẽ treo srv.Close()
+	// vĩnh viễn (httptest.Server.Close chờ mọi request đang bay kết thúc).
+	cases := []struct {
+		name       string
+		newHandler func(block <-chan struct{}) http.HandlerFunc
+		ctx        context.Context
+		baseURL    string
+		onDelta    func(string) error
+		idle       time.Duration
+		cancelMid  bool // huỷ ctx của caller ngay khi delta đầu tiên tới
+	}{
+		{
+			name:    "URL hỏng — không dựng nổi http.Request",
+			baseURL: "http://exa\x7fmple.com",
+		},
+		{
+			name: "server đóng kết nối ngay, không trả byte nào (lỗi mạng)",
+			newHandler: func(<-chan struct{}) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					hj := w.(http.Hijacker)
+					conn, _, _ := hj.Hijack()
+					conn.Close()
+				}
+			},
+		},
+		{
+			name: "context đã huỷ trước khi gọi",
+			newHandler: func(<-chan struct{}) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					io.WriteString(w, "data: [DONE]\n\n")
+				}
+			},
+			ctx: canceledCtx,
+		},
+		{
+			name: "im lặng TRƯỚC cả header — readCtx (idle) hết hạn trong c.http.Do",
+			newHandler: func(block <-chan struct{}) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) { <-block }
+			},
+			idle: 80 * time.Millisecond,
+		},
+		{
+			name: "HTTP 500 kèm error.message của nhà cung cấp",
+			newHandler: func(<-chan struct{}) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(500)
+					io.WriteString(w, `{"error":{"message":"boom"}}`)
+				}
+			},
+		},
+		{
+			name: "HTTP 500 thân rỗng — không có error.message",
+			newHandler: func(<-chan struct{}) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) }
+			},
+		},
+		{
+			name: "chunk là JSON hỏng",
+			newHandler: func(<-chan struct{}) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					io.WriteString(w, "data: {broken json\n\n")
+				}
+			},
+		},
+		{
+			name: "sink của caller lỗi (người học rớt kết nối)",
+			newHandler: func(<-chan struct{}) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					io.WriteString(w, `data: {"choices":[{"index":0,"delta":{"content":"xin "}}]}`+"\n\n")
+				}
+			},
+			onDelta: func(string) error { return errors.New("sink broken") },
+		},
+		{
+			name: "ctx của caller huỷ GIỮA stream",
+			newHandler: func(block <-chan struct{}) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					flusher := w.(http.Flusher)
+					io.WriteString(w, `data: {"choices":[{"index":0,"delta":{"content":"xin "}}]}`+"\n\n")
+					flusher.Flush()
+					<-block
+				}
+			},
+			cancelMid: true,
+		},
+		{
+			name: "im lặng SAU chunk đầu — readCtx (idle) hết hạn trong scanner",
+			newHandler: func(block <-chan struct{}) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					flusher := w.(http.Flusher)
+					io.WriteString(w, `data: {"choices":[{"index":0,"delta":{"content":"xin "}}]}`+"\n\n")
+					flusher.Flush()
+					<-block
+				}
+			},
+			idle: 80 * time.Millisecond,
+		},
+		{
+			name: "một dòng data: vượt trần token của scanner",
+			newHandler: func(<-chan struct{}) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					io.WriteString(w, oversizedLine+"\n\n")
+				}
+			},
+		},
+		{
+			name: "stream kết thúc mà không có [DONE] (bị cắt cụt)",
+			newHandler: func(<-chan struct{}) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					io.WriteString(w, `data: {"choices":[{"index":0,"delta":{"content":"xin "},"finish_reason":"stop"}]}`+"\n\n")
+				}
+			},
+		},
+		{
+			name: "finish_reason length khi một tool_call còn dở",
+			newHandler: func(<-chan struct{}) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					io.WriteString(w, `data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"read_course","arguments":"{\"slug\":"}}]},"finish_reason":"length"}]}`+"\n\n")
+					io.WriteString(w, "data: [DONE]\n\n")
+				}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.idle != 0 {
+				orig := streamIdleTimeout
+				streamIdleTimeout = tc.idle
+				defer func() { streamIdleTimeout = orig }()
+			}
+
+			baseURL := tc.baseURL
+			var hc *http.Client
+			if tc.newHandler != nil {
+				block := make(chan struct{})
+				srv := httptest.NewServer(tc.newHandler(block))
+				// LIFO: close(block) chạy TRƯỚC srv.Close(), nếu không
+				// srv.Close() chờ một handler còn đang chặn — treo mãi.
+				defer srv.Close()
+				defer close(block)
+				if baseURL == "" {
+					baseURL = srv.URL
+				}
+				hc = srv.Client()
+			}
+
+			ctx := tc.ctx
+			cancelMid := func() {}
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			if tc.cancelMid {
+				var c2 context.Context
+				c2, cancelMid = context.WithCancel(ctx)
+				ctx = c2
+				defer cancelMid()
+			}
+
+			onDelta := tc.onDelta
+			if onDelta == nil {
+				onDelta = func(string) error {
+					cancelMid() // no-op ở mọi case không đặt cancelMid
+					return nil
+				}
+			}
+
+			_, err := New(baseURL, sentinel, hc).CompleteStream(ctx, Request{
+				Model: "m", Messages: []Message{{Role: "user", Content: "hi"}},
+			}, onDelta)
+			if err == nil {
+				t.Fatal("muốn lỗi")
+			}
+			if strings.Contains(err.Error(), sentinel) {
+				t.Errorf("lỗi mang key: %v", err)
+			}
+		})
+	}
+}
