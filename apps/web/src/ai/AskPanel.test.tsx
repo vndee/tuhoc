@@ -335,9 +335,14 @@ describe('AskPanel — hỏi, chảy chữ, huỷ', () => {
    *
    * `ai.panel.noCredit` từng bảo người học "Nạp thêm trong trang cấu hình" —
    * và `/settings` không có nút nạp, không form, không liên kết ra ngoài
-   * (`CreditPanel.tsx` chỉ vẽ số dư + sổ dùng). Thanh toán là Pha 4; grep
-   * `topup|payment|checkout|stripe|thanh toán` cho **0** kết quả trong mã sản
-   * phẩm. Câu ấy chỉ đường tới một nút chưa từng tồn tại.
+   * (`CreditPanel.tsx` chỉ vẽ số dư + sổ dùng). Thanh toán là Pha 4.
+   *
+   * Đo lại 2026-08-29, và ghi CHÍNH XÁC thứ đã đo chứ không chép lại: quét
+   * `topup|payment|stripe` (không dấu, không phân biệt hoa thường) trên
+   * `apps/web/src` + `apps/api/internal` + mọi `packages/<gói>/src`, bỏ tệp test →
+   * **0** kết quả. Từ `checkout` bị bỏ khỏi phép quét có chủ đích: nó khớp
+   * 10 dòng, và cả 10 dùng nó theo nghĩa `git checkout`, không phải nghĩa
+   * thanh toán — một needle cho dương tính giả không chứng minh được gì.
    *
    * Quét VĂN BẢN ĐÃ RENDER, không so khớp một khoá — cùng lối
    * `Settings.copy.test.tsx` và `Login.test.tsx` canh hai trang kia, và vì
