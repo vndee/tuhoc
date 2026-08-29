@@ -848,8 +848,19 @@ vô hạn bằng những dòng không nêu tên ai, chôn vùi đúng những th
 
 Thay vào đó, **TỶ GIÁ đúc** truy được đủ: mỗi lần `signup_grant_micro` đổi, `UpdateSettings` ghi một
 hàng `ai.settings.signup_grant` kèm con số; migration `0008` ghi hàng ấy cho giá trị KHỞI ĐẦU
-(`who = NULL`, `actor = 'cli'`) nên trục thời gian không có lỗ ở đầu. Grant của bất kỳ tài khoản nào
-tái dựng được: `users.created_at` đối chiếu chuỗi hàng ấy.
+(`who = NULL`, `actor = 'cli'`) nên trục thời gian không có lỗ **ở đầu**.
+
+**Nhưng trục ấy CÓ lỗ, và chính repo này đi qua nó.** Re-review đo: không `TRIGGER` nào trên
+`ai_settings` (0 trong toàn bộ `migrations/`), và nơi ghi audit DUY NHẤT là `credits.go:909` bên
+trong `UpdateSettings`. Một `UPDATE ai_settings` thô **không để lại hàng nào** — và repo có một cái
+đang chạy: `scripts/test-e2e.sh:277`. Chú thích của chính `0008` còn hợp thức hoá đường ấy ("người
+vận hành đã tự sửa cột này bằng psql … KHÔNG được migration này ghi đè"). Tệ hơn: sau một lần sửa
+bằng psql, `0008` cũng sẽ không ghi bù, vì điều kiện `= 0` không còn đúng.
+
+Nên câu trả lời đúng cho "đổi ba lần rồi hỏi tài khoản X nhận bao nhiêu" là: **tái dựng được CHỈ KHI
+cả ba lần đi qua CMS hoặc route**. Một lần đi qua psql thì trục gãy **im lặng**, và phép tái dựng
+trả về một **số sai** — không phải "không biết". Đó là chế độ hỏng tệ hơn, vì nó trông như một câu
+trả lời.
 
 **Khoảng trống còn lại:** không có bản ghi từng SỰ KIỆN đúc, chỉ có tỷ giá đang hiệu lực. Đóng nó
 cần một bảng riêng (hoặc một cột trên `ai_credits`) — một quyết định schema.
@@ -968,8 +979,10 @@ một đường dẫn dưới đó là một con trỏ **chết trong mọi clon
 dọn**. Nếu một sự thật đáng để người đọc mã biết thì nó phải được **chép vào tệp được track**, không
 phải được trỏ tới.
 
-**Bán kính, đo ngày 2026-08-29:** `task-<N>-report.md` / `task-<N>-brief.md` xuất hiện **113 lần**
-trên **45 tệp** dưới `apps/`, `packages/`, `scripts/` (đếm bằng `grep -rna`, có cờ `-a` — xem lưu ý
+**Bán kính, đo lại ngày 2026-08-29 sau vòng sửa cuối:** `task-<N>-report.md` /
+`task-<N>-brief.md` xuất hiện **115 lần** trên **47 tệp** dưới `apps/`, `packages/`, `scripts/`
+(một bản nháp trước của mục này ghi 113/45 — đo trước khi chính vòng sửa ấy thêm hai chỗ nữa; một
+cổng gieo ở 113 sẽ đỏ ngay lúc dựng, nên con số phải đo SAU cùng) (đếm bằng `grep -rna`, có cờ `-a` — xem lưu ý
 về NUL bên dưới), cộng vài chỗ trong `docs/`. Phần lớn dùng chúng làm **trích dẫn nguồn cho một phép
 đo** ("đo bằng đột biến, xem task-13-report.md §7.2") — tức đúng loại khẳng định mà người đọc sau
 này muốn kiểm và **không kiểm được**.
