@@ -15,24 +15,19 @@ export default defineConfig({
   // mới được biên dịch; thiếu nó thì dòng import ấy lọt xuống trình duyệt
   // nguyên văn và im lặng không làm gì.
   plugins: [tailwindcss(), react(), courseAssets()],
-  // Cổng 5173 trở thành CÓ TẢI TRỌNG kể từ hệ thống con 2, và đây là lý do
-  // `strictPort` xuất hiện ở đây.
+  // `strictPort` xuất hiện ở đây vì hệ thống con 2 (Pha 1) làm cổng 5173 CÓ
+  // TẢI TRỌNG: kho khoá ở origin thứ hai chỉ tin đúng một origin, và ở dev đó
+  // là `http://localhost:5173`. Mặc định của Vite là lặng lẽ nhảy sang cổng kế
+  // tiếp khi cổng đang bận — đo được ngày 2026-08-22 trên chính máy này: 5173
+  // bị một tiến trình khác giữ, `vite dev` khởi động ở **5175** và không nói gì
+  // ngoài một dòng log. Origin lệch ⇒ mọi thông điệp bị bỏ đúng theo thiết kế,
+  // và triệu chứng duy nhất là "AI không trả lời".
   //
-  // Kho khoá (`apps/vault`, cổng 5174) chỉ nói chuyện với MỘT origin, đọc từ
-  // `VITE_APP_ORIGIN`, và ở dev giá trị đó là `http://localhost:5173`. Mặc định
-  // của Vite là lặng lẽ nhảy sang cổng kế tiếp khi cổng đang bận — đo được ngày
-  // 2026-08-22 trên chính máy này: 5173 bị một tiến trình khác giữ, `vite dev`
-  // khởi động ở **5175** và không nói gì ngoài một dòng log.
-  //
-  // Hậu quả nếu để nguyên: origin của trang chính không còn khớp với origin kho
-  // khoá được cấu hình để tin, nên MỌI `postMessage` bị bỏ — đúng theo thiết kế
-  // — và triệu chứng duy nhất người dùng thấy là "AI không trả lời". Không lỗi,
-  // không cảnh báo, không manh mối.
-  //
-  // Đổi lại: 5173 bận thì `make dev-web` hỏng ngay và nói rõ. Ai thật sự cần
-  // chạy ở cổng khác thì đổi cả hai đầu — cổng ở đây và `VITE_APP_ORIGIN` trong
-  // `apps/vault/.env.local` — tức là một quyết định có ý thức thay vì một lần
-  // trôi dạt im lặng.
+  // Task 16 gỡ origin thứ hai, nên LÝ DO GỐC ĐÃ CHẾT — dòng này vẫn ở lại, và
+  // vì một lý do nhỏ hơn nhưng còn sống: một cổng nhảy trong im lặng là một
+  // lớp lỗi tự nó, và `make dev-web` hỏng ngay kèm câu giải thích thì rẻ hơn
+  // một dev server chạy ở chỗ không ai ngờ. Không có gì ở nơi khác trong repo
+  // còn ghim con số 5173.
   //
   // Chỉ áp cho `vite dev`. Cổng e2e không đi qua đây: nó dùng `vite preview` ở
   // 5183 với `--strictPort` của riêng nó (xem playwright.config.ts).
@@ -64,31 +59,10 @@ export default defineConfig({
       // has to exist — `cd packages/course-format && bun install` — which is
       // what the Makefile's test-format target already says.
       '@tuhoc/course-format': path.resolve(HERE, '../../packages/course-format/src/index.ts'),
-      // GIAO THỨC postMessage của kho khoá (apps/vault) — CHỈ KIỂU, không mã.
-      //
-      // Nó nằm ở `apps/vault/` chứ không ở `packages/` vì kho khoá là bên định
-      // nghĩa giao thức và là bên duy nhất có thể từ chối; trang chính là bên
-      // đi hỏi. Một định nghĩa, không hai bản trôi dạt.
-      //
-      // Aliased tới TỆP `protocol.ts`, không tới thư mục, cùng lý do đã ghi ở
-      // `@tuhoc/course-format` bên trên: alias của Vite là phép viết lại đường
-      // dẫn thuần tuý, nó không đọc package.json.
-      //
-      // Nửa TypeScript của alias này nằm ở `tsconfig.app.json` → `paths`. Cả
-      // hai nửa đều bắt buộc và không nửa nào ngụ ý nửa kia.
-      //
-      // ĐIỀU KHÔNG ĐƯỢC LÀM: đừng bao giờ alias thứ gì khác của `apps/vault/`
-      // vào đây. `protocol.ts` không có phụ thuộc và không chạm tới key —
-      // `keystore.ts`, `providers/*` thì có, và kéo chúng vào bundle của trang
-      // chính là tự tay bốc key về đúng cái origin mà kiến trúc này dựng lên để
-      // giữ nó ra ngoài.
-      '@vault-protocol': path.resolve(HERE, '../vault/src/protocol.ts'),
-      // CATALOG DỊCH dùng chung với kho khoá (QĐ-1). Cùng khuôn alias-tới-TỆP
-      // như hai mục trên, cùng lý do.
+      // CATALOG DỊCH (QĐ-1). Cùng khuôn alias-tới-TỆP như mục trên, cùng lý do.
       //
       // Gói này KHÔNG có phụ thuộc nào — `dependencies` rỗng, không
-      // `node_modules`, không React, không DOM — nên nó là thứ DUY NHẤT ngoài
-      // `protocol.ts` được phép đi vào cả hai origin. Ràng buộc ấy có cổng ở
+      // `node_modules`, không React, không DOM. Ràng buộc ấy có cổng ở
       // `src/i18n/i18n.test.ts`; nó không phải một quy ước.
       '@tuhoc/i18n': path.resolve(HERE, '../../packages/i18n/src/index.ts'),
     },

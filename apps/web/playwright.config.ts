@@ -33,7 +33,7 @@ const API_URL = process.env.VITE_API_URL ?? `http://localhost:${process.env.TUHO
 export default defineConfig({
   testDir: './e2e',
   // Final whole-branch review, Important 4: `make test-e2e` ran all four
-  // specs unfiltered, and two of them are red for reasons that predate
+  // specs unfiltered, and two of them were red for reasons that predate
   // this phase and belong to it: `p2.spec.ts` navigates to a chapter in
   // course `so-dau-phay-dong` (see its own `COURSE_ID` constant), but
   // `scripts/test-e2e.sh`'s seed step only ever publishes ONE course to
@@ -42,10 +42,15 @@ export default defineConfig({
   // that reason). `so-dau-phay-dong` was never seeded, so
   // `GET /courses/so-dau-phay-dong/chapters/p2-2` 404s and `.katex` never
   // renders — a missing fixture, not a course-serving regression, and
-  // P2 (annotations) is not this phase's subsystem to fix. `s2.spec.ts`
-  // is subsystem 2's own end-to-end gate for the AI/BYOK key vault
-  // (`apps/vault`) — see that file's own "HỆ THỐNG CON 2" header — a
-  // different phase's subject entirely, untouched by this one.
+  // P2 (annotations) is not this phase's subsystem to fix.
+  //
+  // The list held a SECOND entry until Pha 2 Task 16: `s2.spec.ts`,
+  // subsystem 2's own end-to-end gate for the phase-1 AI/BYOK key vault.
+  // That entry is gone because the FILE is gone — the second-origin app
+  // it built, served and drove no longer exists (AI runs server-side
+  // now), so there is nothing left for it to quarantine. Quarantining a
+  // spec and deleting the subsystem it covers are two different acts;
+  // this comment records which one happened.
   //
   // Quarantined here, not silently: `p1.spec.ts` (this phase's own P1
   // definition-of-done gate) and `widget.spec.ts` (spec §8's sandboxed-
@@ -54,9 +59,9 @@ export default defineConfig({
   // built. Un-skip a file by deleting its entry below once its own
   // subsystem re-seeds what it needs (`p2.spec.ts`: a second course, or a
   // fixture switch) or is otherwise made independently green — this list
-  // is not a place to add a THIRD entry without the same kind of
-  // investigation that put these two here.
-  testIgnore: ['**/p2.spec.ts', '**/s2.spec.ts'],
+  // is not a place to add a SECOND entry without the same kind of
+  // investigation that put this one here.
+  testIgnore: ['**/p2.spec.ts'],
   // One real network round trip per assertion, two independent browser
   // contexts, and a deliberate wait for a 15s server-side sync timer (see
   // e2e/p1.spec.ts) — this is not a fast suite, and 90s is a real budget

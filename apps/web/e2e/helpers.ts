@@ -4,10 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 /**
  * Shared fixtures for the Playwright suites in this directory —
- * `p1.spec.ts` (the fast definition-of-done gate), `p2.spec.ts` (the
- * annotation phase's own gate) and `s2.spec.ts`. (`viz.spec.ts`, once a
- * third consumer, was deleted by Task 11 of the server-side pivot alongside
- * course-wide `viz.js` — see the Makefile's `test-e2e` comment.) Extracted
+ * `p1.spec.ts` (the fast definition-of-done gate) and `p2.spec.ts` (the
+ * annotation phase's own gate). (`viz.spec.ts` was deleted by Task 11 of the
+ * server-side pivot alongside course-wide `viz.js` — see the Makefile's
+ * `test-e2e` comment; `s2.spec.ts`, subsystem 2's key-vault gate, by Pha 2
+ * Task 16 alongside the second-origin app it drove.) Extracted
  * rather than copied: `isBenignAuthCheck401` in particular is a deliberately
  * NARROW filter whose exact scope was established by a one-off debug run
  * (see its own doc comment) — two hand-maintained copies of a rule like that
@@ -41,7 +42,16 @@ export const COURSE_TITLE = 'Biến đếm: từ vòng lặp đến sự kiện'
 /** `manifest.id` của gói mẫu — cũng là slug được publish lên server bởi bước seed trong `scripts/test-e2e.sh` (xem chú thích của COURSE_TITLE). */
 export const REAL_COURSE_ID = 'mau-hop-le';
 
-/** apps/web/e2e/ → gốc repo là ba tầng lên. Xuất ra vì `s2.spec.ts` cũng đọc theo đường dẫn tuyệt đối từ gốc repo, và hai bản sao của phép tính này thì trôi. (`s3`/`s4.spec.ts` từng đọc nó nữa — cả hai đã bị xoá ở Task 16 của server-side pivot, xem commit "Cổng e2e mới".) */
+/**
+ * apps/web/e2e/ → gốc repo là ba tầng lên.
+ *
+ * CÒN ĐƯỢC XUẤT DÙ KHÔNG CÒN NGƯỜI DÙNG NGOÀI TỆP NÀY, và ghi ra chứ không im
+ * lặng: nó được xuất vì `s2.spec.ts` (đọc gói dựng của kho khoá) cũng cần phép
+ * tính này, và hai bản sao thì trôi. `s3`/`s4.spec.ts` đã bị xoá ở Task 16 của
+ * server-side pivot; `s2.spec.ts` ở Task 16 của Pha 2. Giữ `export` là quyết
+ * định một dòng: bỏ nó đi thì người viết spec tiếp theo cần đường dẫn gốc sẽ
+ * tự tính lại tại chỗ, và đó đúng là cách hai bản sao ra đời.
+ */
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
 /**
@@ -70,7 +80,8 @@ export function freshEmail(): string {
  * cổng của docker, `192.168.65.1`. Giới hạn ấy là một tính năng an ninh thật
  * (chống dò mật khẩu và dò tài khoản), không phải một phiền toái để nới.
  *
- * `s2.spec.ts` đã ghi lại triệu chứng: ở **17 bài**, `viz.spec.ts` — bài cuối,
+ * `s2.spec.ts` (đã xoá ở Task 16, Pha 2) đã ghi lại triệu chứng: ở **17 bài**,
+ * `viz.spec.ts` — bài cuối,
  * chẳng liên quan gì tới đăng nhập — hỏng ở `registerNewUser` với `waitForURL`
  * hết giờ 15 s, và log API có **đúng một dòng** `429 POST /auth/register`. Bỏ
  * BẤT KỲ bài nào ra để còn 16 thì cả bộ xanh. Task 7 thêm 7 bài (tổng **24**)

@@ -207,12 +207,13 @@ echo "playwright install exit=$PW_INSTALL_EXIT"
 
 # Final whole-branch review, Important 4: this still runs every spec
 # `apps/web/playwright.config.ts`'s `testDir` finds — nothing here filters
-# by filename — but that config's own `testIgnore` now excludes
-# p2.spec.ts and s2.spec.ts (two pre-existing, other-phase failures; see
-# that file's comment and the quarantine note atop each spec). What
-# actually runs today is p1.spec.ts (this phase's P1 definition-of-done
-# gate) and widget.spec.ts (spec §8's sandboxed-widget proof) — the two
-# specs this phase's own work is on the hook for.
+# by filename — but that config's own `testIgnore` excludes p2.spec.ts (a
+# pre-existing, other-phase failure; see that file's comment and the
+# quarantine note atop the spec). It used to exclude s2.spec.ts too;
+# Pha 2 Task 16 deleted that spec along with the key-vault app it drove,
+# so there is nothing left to ignore. What actually runs today is
+# p1.spec.ts (the P1 definition-of-done gate) and widget.spec.ts (spec
+# §8's sandboxed-widget proof).
 log "running the Playwright e2e suite (see playwright.config.ts's testIgnore for what is quarantined and why)"
 (cd "$REPO_ROOT/apps/web" && VITE_API_URL="$API_URL" bunx playwright test "$@")
 TEST_EXIT=$?
