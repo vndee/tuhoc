@@ -30,12 +30,14 @@ import { AgentConfigPanel } from './AgentConfigPanel';
  * dưới đây CỐ Ý dùng trần 50 (khác hẳn 4000) ở phần lớn bài, để chứng minh
  * component đọc SỐ CỦA MÁY CHỦ chứ không phải một hằng cứng.
  *
- * TRẦN RUNE VS UTF-16 — món nợ Task 13 để lại (task-14-brief.md mục "Ba
- * món nợ"): đổi đếm rune sang `.length` UTF-16 thuần thì fixture KHÔNG có
- * ký tự ngoài mặt phẳng cơ bản (BMP) không bắt được lỗ này. Bài
- * "trần THẬT 4000 rune, có emoji" dưới đây dựng một chuỗi runeLength ĐÚNG
- * 4000 nhưng `.length` (UTF-16) là 4001 — một phép kẹp sai (`.length`) sẽ
- * CHẶN NHẦM một lời nhắc hợp lệ.
+ * TRẦN RUNE VS UTF-16 — món nợ Task 13 để lại, ghi đích danh trong CHỈ THỊ
+ * dispatch của vòng chạy Task 14 (KHÔNG PHẢI trong `task-14-brief.md` — tệp
+ * đó chỉ 19 dòng, không có mục "Ba món nợ" nào; vòng review 1 bắt đúng một
+ * trích dẫn sai chỗ tương tự và đây là chỗ sửa cho tương xứng): đổi đếm rune
+ * sang `.length` UTF-16 thuần thì fixture KHÔNG có ký tự ngoài mặt phẳng cơ
+ * bản (BMP) không bắt được lỗ này. Bài "trần THẬT 4000 rune, có emoji" dưới
+ * đây dựng một chuỗi runeLength ĐÚNG 4000 nhưng `.length` (UTF-16) là 4001 —
+ * một phép kẹp sai (`.length`) sẽ CHẶN NHẦM một lời nhắc hợp lệ.
  */
 
 const server = setupServer();
@@ -96,16 +98,26 @@ describe('AgentConfigPanel — tải cấu hình', () => {
     expect(screen.getByTestId('agent-tool-web_search')).toHaveAttribute('aria-checked', 'false');
   });
 
-  it('hai tool mang hai NHÃN KHÁC NHAU — không tool nào vô hình đứng cạnh một nhãn trùng', async () => {
+  /**
+   * VÒNG SỬA 1 (Minor #2): `not.toBe('')` + `not.toBe(other)` được thoả bởi
+   * BẤT KỲ chuỗi không rỗng nào khác nhau — kể cả một chuỗi THÔ do lỗi đánh
+   * máy trong `TOOL_LABEL_KEYS` (đo được: đổi khoá `read_course` →
+   * `read_courses` làm `toolLabel()` rơi về nhánh dự phòng "hiện nguyên tên
+   * tool", ra chuỗi `"read_course"` — không rỗng, khác nhãn `web_search`,
+   * nên bài cũ vẫn xanh dù nhãn đã hỏng). So với bản DỊCH THẬT đọc từ
+   * catalog (`t('vi', 'settings.ai.toolReadCourse')`), không phải chỉ
+   * "khác nhau và không rỗng".
+   */
+  it('hai tool mang hai NHÃN KHÁC NHAU — đúng bản dịch thật, không phải tên tool thô', async () => {
     mockConfigGet(BASE_CONFIG);
     render(wrap(<AgentConfigPanel />));
     await screen.findByTestId('agent-tool-web_search');
 
-    const readCourseLabel = screen.getByTestId('agent-tool-read_course').textContent;
-    const webSearchLabel = screen.getByTestId('agent-tool-web_search').textContent;
-    expect(readCourseLabel).not.toBe('');
-    expect(webSearchLabel).not.toBe('');
-    expect(readCourseLabel).not.toBe(webSearchLabel);
+    expect(screen.getByTestId('agent-tool-read_course').textContent).toBe(t('vi', 'settings.ai.toolReadCourse'));
+    expect(screen.getByTestId('agent-tool-web_search').textContent).toBe(t('vi', 'settings.ai.toolWebSearch'));
+    // Đối chứng phụ, giữ lại từ bản trước: hai bản dịch phải thật sự khác
+    // nhau (bắt được nếu ai đó gán trùng khoá dịch cho cả hai tool).
+    expect(t('vi', 'settings.ai.toolReadCourse')).not.toBe(t('vi', 'settings.ai.toolWebSearch'));
   });
 
   it('lỗi tải cấu hình (500) hiện một câu, không phải một form trắng', async () => {
@@ -213,6 +225,45 @@ describe('AgentConfigPanel — PUT gửi đúng thứ, và tool bật/tắt ph�
     });
   });
 
+  /**
+   * VÒNG SỬA 1 (Minor #3): `submit()` xây `tools_enabled` bằng cách lọc
+   * `availableTools` theo `draftTools.has(name)` — có CHỦ Ý, để thứ tự
+   * KHÔNG phụ thuộc trình tự bấm (doc comment của `submit()` gọi rõ tính
+   * chất này). Nhưng bài "PUT mang ĐÚNG…" ở trên chỉ bấm ĐÚNG MỘT trình tự
+   * (bật `web_search`, giữ nguyên `read_course` đã bật sẵn) — trình tự ấy
+   * TÌNH CỜ trùng thứ tự `available_tools`, nên nó không phân biệt được
+   * "lọc theo available_tools" với "giữ nguyên thứ tự Set theo lúc bấm" (V8
+   * giữ thứ tự chèn của `Set`, và ở bài kia thứ tự chèn CŨNG là read_course
+   * rồi web_search). Bài này bấm NGƯỢC — `web_search` trước, `read_course`
+   * sau — để hai giả thuyết cho ra hai mảng KHÁC NHAU, và chỉ "lọc theo
+   * available_tools" cho ra mảng đúng.
+   */
+  it('bấm NGƯỢC thứ tự (web_search trước, read_course sau) vẫn gửi mảng theo available_tools, không theo thứ tự bấm', async () => {
+    mockConfigGet({ ...BASE_CONFIG, tools_enabled: [] }); // cả hai tool tắt sẵn
+    let captured: PutCapture | null = null;
+    mockConfigPut((c) => {
+      captured = c;
+      return BASE_CONFIG;
+    });
+
+    const user = userEvent.setup();
+    render(wrap(<AgentConfigPanel />));
+    await screen.findByTestId('agent-tool-read_course');
+
+    // NGƯỢC thứ tự `available_tools` (['read_course', 'web_search']).
+    await user.click(screen.getByTestId('agent-tool-web_search'));
+    await user.click(screen.getByTestId('agent-tool-read_course'));
+    await user.click(screen.getByRole('button', { name: t('vi', 'settings.ai.save') }));
+
+    await waitFor(() => {
+      expect(captured).not.toBeNull();
+    });
+    expect(captured!.body).toEqual({
+      system_prompt: 'Trả lời ngắn gọn.',
+      tools_enabled: ['read_course', 'web_search'],
+    });
+  });
+
   it('bật rồi tắt lại MỘT tool: PUT không mang tool đó — trạng thái cuối, không phải một nửa', async () => {
     mockConfigGet(BASE_CONFIG); // read_course bật sẵn
     let captured: PutCapture | null = null;
@@ -234,6 +285,48 @@ describe('AgentConfigPanel — PUT gửi đúng thứ, và tool bật/tắt ph�
     expect(captured!.body).toEqual({ system_prompt: 'Trả lời ngắn gọn.', tools_enabled: [] });
   });
 
+  /**
+   * VÒNG SỬA 1 (Minor #1): bản trước gọi `invalidateQueries(['ai','config'])`
+   * trong `onSuccess` nhưng KHÔNG BAO GIỜ đọc lại kết quả vào `draftPrompt`/
+   * `draftTools` — `useEffect` gieo nháp chỉ chạy khi CẢ HAI còn `null`, và
+   * sau lần gieo đầu tiên chúng không bao giờ về `null` nữa. Reviewer đo:
+   * xoá hẳn khối `onSuccess` đó vẫn 26/26 xanh — một round-trip mạng đổi lấy
+   * KHÔNG GÌ. Bài này khẳng định hành vi PHẢI CÓ mà round-trip ấy tồn tại để
+   * phục vụ: "Read back rather than echo" (`handler.go`'s `PutConfig`) — máy
+   * chủ có thể chuẩn hoá/dedupe khác với thứ client vừa gửi, và form phải
+   * hiện ĐÚNG BẢN MÁY CHỦ GIỮ, không phải bản nháp người dùng vừa gõ.
+   */
+  it('sau khi lưu, form đọc lại ĐÚNG bản máy chủ đã lưu — không phải bản nháp vừa gửi (đọc lại thật, không phải echo)', async () => {
+    mockConfigGet(BASE_CONFIG);
+    const SAVED_BY_SERVER = {
+      ...BASE_CONFIG,
+      system_prompt: 'Đã chuẩn hoá bởi máy chủ.',
+      tools_enabled: ['web_search'],
+    };
+    server.use(
+      http.put('/ai/config', () => {
+        // Từ đây, GET KẾ TIẾP (round-trip đọc lại sau khi lưu) phải thấy
+        // bản ĐÃ LƯU — không phải bản vừa gửi lên. Mô phỏng đúng phát biểu
+        // "Read back rather than echo" ở phía Go.
+        server.use(http.get('/ai/config', () => HttpResponse.json(SAVED_BY_SERVER)));
+        return HttpResponse.json(SAVED_BY_SERVER);
+      }),
+    );
+
+    const user = userEvent.setup();
+    render(wrap(<AgentConfigPanel />));
+    const textarea = await screen.findByLabelText<HTMLTextAreaElement>(t('vi', 'settings.ai.promptLabel'));
+
+    fireEvent.change(textarea, { target: { value: 'Bản nháp người dùng gõ, KHÁC bản máy chủ trả về.' } });
+    await user.click(screen.getByRole('button', { name: t('vi', 'settings.ai.save') }));
+
+    await waitFor(() => {
+      expect(textarea.value).toBe('Đã chuẩn hoá bởi máy chủ.');
+    });
+    expect(screen.getByTestId('agent-tool-read_course')).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByTestId('agent-tool-web_search')).toHaveAttribute('aria-checked', 'true');
+  });
+
   it('lưu thành công hiện một xác nhận', async () => {
     mockConfigGet(BASE_CONFIG);
     mockConfigPut(() => BASE_CONFIG);
@@ -248,9 +341,31 @@ describe('AgentConfigPanel — PUT gửi đúng thứ, và tool bật/tắt ph�
 });
 
 describe('AgentConfigPanel — máy chủ từ chối PUT, ba mã ba câu khác nhau', () => {
-  it('UnknownTool, FieldTooLong, và mã hạ tầng khác dẫn tới BA câu khác nhau đôi một', async () => {
+  /**
+   * VÒNG SỬA 1 (I2): bài trước CHỈ khẳng định `new Set(messages).size === 3`
+   * — "ba câu khác nhau" là điều kiện CẦN nhưng KHÔNG ĐỦ. Đo được: hoán vị
+   * `FieldTooLong` ↔ `UnknownTool` trong `describeSaveError` (mỗi mã trả về
+   * câu của mã KIA) vẫn cho ra ba chuỗi khác nhau đôi một — bài cũ không hề
+   * biết `FieldTooLong` phải đi với CÂU NÀO, chỉ biết nó không trùng câu của
+   * hai mã kia. Hậu quả thật: người học viết prompt quá dài nhận nhầm câu
+   * "một tool không còn tồn tại" — lời khuyên sai hướng.
+   *
+   * Sửa: ghim TỪNG CẶP mã → khoá dịch, so với `t('vi', <khoá>)` đọc thẳng từ
+   * catalog (không chép tay chuỗi tiếng Việt hai lần) — đúng khuôn
+   * `useAI.test.tsx`'s bảng `DISTINCT_PRE_STREAM`/`DISTINCT_MID_STREAM`
+   * (mô tả trong `task-13-report.md` §7.2, KHÔNG PHẢI trong `task-14-brief.
+   * md` — tệp đó không nhắc tới hai tên này; sửa cùng đợt với trích dẫn sai
+   * chỗ ở đầu tệp này mà vòng review 1 bắt được).
+   */
+  const CODE_TO_MESSAGE_KEY = {
+    UnknownTool: 'settings.ai.saveUnknownTool',
+    FieldTooLong: 'settings.ai.promptTooLong',
+    InvalidBody: 'settings.ai.saveRejected',
+  } as const;
+
+  it('MỖI mã dẫn tới ĐÚNG câu của chính nó — không chỉ "ba câu khác nhau"', async () => {
     const messages: string[] = [];
-    for (const code of ['UnknownTool', 'FieldTooLong', 'InvalidBody']) {
+    for (const [code, messageKey] of Object.entries(CODE_TO_MESSAGE_KEY)) {
       // Đặt lại TRƯỚC mỗi vòng — bài này chạy nhiều lượt render/PUT trong
       // MỘT `it()`, nên `afterEach`'s reset (chỉ chạy GIỮA hai `it()`)
       // không đủ; không đặt lại thì handler PUT của vòng trước còn đó.
@@ -264,10 +379,15 @@ describe('AgentConfigPanel — máy chủ từ chối PUT, ba mã ba câu khác 
       await user.click(screen.getByRole('button', { name: t('vi', 'settings.ai.save') }));
 
       const alert = await screen.findByRole('alert');
+      // CHỐT CHÍNH: đúng mã này phải cho đúng khoá này — không phải "một
+      // khoá nào đó chưa dùng".
+      expect(alert.textContent, `mã ${code}`).toBe(t('vi', messageKey));
       messages.push(alert.textContent ?? '');
       unmount();
     }
 
+    // Chốt phụ, GIỮ LẠI từ bản trước: bắt cặp gộp mà bảng trên chưa liệt kê
+    // tên (ví dụ nếu có ngày thêm mã thứ tư và quên thêm dòng cho nó).
     expect(new Set(messages).size).toBe(3);
   });
 });

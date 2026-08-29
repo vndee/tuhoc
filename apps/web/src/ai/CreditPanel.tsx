@@ -47,7 +47,17 @@ interface CreditsWire {
   readonly recent_usage: readonly UsageEntryWire[];
 }
 
-export interface UsageEntry {
+/**
+ * VÒNG SỬA 1 (Minor #4): `export` bị bỏ khỏi năm định danh trong tệp này
+ * (`UsageEntry`/`CreditsInfo` ở đây, `AgentConfigInfo` ở `AgentConfigPanel.
+ * tsx`, cộng `formatCredits`/`formatUsageWhen` bên dưới) — reviewer grep
+ * toàn `apps/web/src` (kể cả hai tệp test): 0 chỗ gọi ngoài tệp gốc. Miễn
+ * phí: hết cảnh báo `only-export-components` của oxlint mà KHÔNG đổi hành
+ * vi gì (test vẫn chỉ render component rồi đọc DOM, không import các hàm/
+ * kiểu này trực tiếp). Nếu một chỗ khác THẬT SỰ cần chúng sau này, thêm lại
+ * `export` lúc đó — không giữ sẵn một API không ai gọi.
+ */
+interface UsageEntry {
   readonly at: string;
   readonly model: string;
   readonly inTokens: number;
@@ -58,7 +68,7 @@ export interface UsageEntry {
   readonly creditsCharged: number;
 }
 
-export interface CreditsInfo {
+interface CreditsInfo {
   readonly balanceMicro: number;
   readonly recentUsage: readonly UsageEntry[];
 }
@@ -82,7 +92,7 @@ async function fetchCredits(): Promise<CreditsInfo> {
 
 /** micro-credit → credit đọc được, theo dấu phân cách thập phân của ngôn ngữ
  *  đang hiển thị — cùng khuôn `formatBytes` (`pages/Settings.tsx`). */
-export function formatCredits(micro: number, lang: Lang): string {
+function formatCredits(micro: number, lang: Lang): string {
   return (micro / 1_000_000).toLocaleString(lang === 'en' ? 'en-US' : 'vi-VN', { maximumFractionDigits: 4 });
 }
 
@@ -95,7 +105,7 @@ export function formatCredits(micro: number, lang: Lang): string {
  * cách, không đổi giá trị), giờ-ngày thì có (múi giờ dịch cả giá trị). Cắt
  * chuỗi ISO và gắn nhãn "UTC" cho ra cùng một chuỗi trên MỌI máy.
  */
-export function formatUsageWhen(at: string): string {
+function formatUsageWhen(at: string): string {
   const d = new Date(at);
   if (Number.isNaN(d.getTime())) return at;
   return `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
