@@ -78,6 +78,14 @@ beforeEach(() => {
  * không tự render `login.point.ownKey`, nhưng canh nó ở đây vẫn có nghĩa:
  * `settings.ai.blurb` nói về CHÍNH đường AI đó, và một biên tập lại lỡ mượn
  * câu chữ Pha 1 khi viết lại mục Trợ lý AI sẽ bị bắt ngay tại đây.
+ *
+ * GIỚI HẠN ĐÃ ĐO, KHÔNG SUY ĐOÁN (xem `Login.test.tsx` cho bản đầy đủ): đây
+ * là so khớp CỤM CỐ ĐỊNH, không phải so khớp NGỮ NGHĨA — một câu diễn đạt
+ * LẠI cùng nghĩa nhưng né cả sáu cụm dưới đây đi qua MÀ KHÔNG BỊ BẮT (đo
+ * được ở task-15-report.md). Vẫn chọn cách này vì so khớp ngữ nghĩa không
+ * làm được trong một unit test đồng bộ không gọi mô hình, và cụm cố định
+ * vẫn bắt được ca hồi quy THỰC TẾ NHẤT — ai đó khôi phục lại NGUYÊN VĂN câu
+ * cũ.
  */
 const LOI_HUA_DA_CHET_VI = [
   /ngoại tuyến/i,
@@ -89,7 +97,7 @@ const LOI_HUA_DA_CHET_VI = [
 ];
 
 describe('Cài đặt — không còn hứa gói khoá học nằm trên máy, hay trợ lý AI chạy bằng key riêng (task-14, task-15)', () => {
-  it('không chứa bất kỳ lời hứa nào trong danh sách LỜI_HỨA_ĐÃ_CHẾT ở bất cứ đâu trên trang', async () => {
+  it('không chứa bất kỳ lời hứa nào trong danh sách LOI_HUA_DA_CHET_VI ở bất cứ đâu trên trang', async () => {
     renderSettings();
 
     // Chốt chống-vacuous: hai khối mang hai câu từng sai phải THẬT SỰ có mặt

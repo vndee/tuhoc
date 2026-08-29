@@ -139,6 +139,15 @@ describe('Login — hai cột: sản phẩm tự giới thiệu bên trái, form
    *     tuhoc; sai từ khi AI chuyển hẳn lên máy chủ (task-15, cùng spec
    *     §0.1 — bàn giao Pha 1 gọi đích danh câu này ở `login.point.ownKey`).
    *
+   * GIỚI HẠN ĐÃ ĐO, KHÔNG SUY ĐOÁN: đây là so khớp CỤM CỐ ĐỊNH, không phải
+   * so khớp NGỮ NGHĨA — một câu diễn đạt LẠI cùng nghĩa nhưng né cả sáu cụm
+   * dưới đây (đo được ở task-15-report.md, không phải khả năng lý thuyết:
+   * "trợ lý AI dùng mã truy cập bạn tự nhập, chữ ở lại trên thiết bị bạn,
+   * chẳng ghé qua hạ tầng tuhoc") đi qua danh sách này MÀ KHÔNG BỊ BẮT. Vẫn
+   * chọn cách này vì so khớp ngữ nghĩa không làm được trong một unit test
+   * đồng bộ không gọi mô hình, và cụm cố định vẫn bắt được ca hồi quy THỰC
+   * TẾ NHẤT — ai đó khôi phục lại NGUYÊN VĂN câu cũ.
+   *
    * LẶP LẠI (không import) ở `Settings.copy.test.tsx` — cùng lý do docstring
    * của tệp đó đã nói cho việc không dùng chung harness: import một hằng số
    * từ tệp kia vẫn là một điểm chạm.
