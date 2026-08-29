@@ -331,6 +331,44 @@ describe('AskPanel — hỏi, chảy chữ, huỷ', () => {
   });
 
   /**
+   * CỔNG CHỐNG TÁI PHẠM cho E1 của review tổng nhánh Pha 2.
+   *
+   * `ai.panel.noCredit` từng bảo người học "Nạp thêm trong trang cấu hình" —
+   * và `/settings` không có nút nạp, không form, không liên kết ra ngoài
+   * (`CreditPanel.tsx` chỉ vẽ số dư + sổ dùng). Thanh toán là Pha 4; grep
+   * `topup|payment|checkout|stripe|thanh toán` cho **0** kết quả trong mã sản
+   * phẩm. Câu ấy chỉ đường tới một nút chưa từng tồn tại.
+   *
+   * Quét VĂN BẢN ĐÃ RENDER, không so khớp một khoá — cùng lối
+   * `Settings.copy.test.tsx` và `Login.test.tsx` canh hai trang kia, và vì
+   * cùng một lý do: lời hứa có thể quay lại qua BẤT KỲ khoá nào, kể cả một
+   * khoá chưa ai đặt tên. Chốt chống-rỗng là dòng `ai-needs-setup` ngay
+   * trên: nếu khối lời mời không render thì phép quét "không chứa" vô nghĩa.
+   *
+   * GIỚI HẠN, nói thẳng: đây là so khớp CỤM CỐ ĐỊNH. Một câu diễn đạt lại
+   * cùng lời hứa mà né được cả bốn cụm sẽ đi qua. Vẫn chọn cách này vì nó
+   * bắt được ca hồi quy thực tế nhất — ai đó khôi phục nguyên văn câu cũ.
+   */
+  it('lời mời KHÔNG hứa một nút nạp tiền không tồn tại (E1)', async () => {
+    server.use(
+      http.post('/ai/chat', () => HttpResponse.json({ code: 'NoCredit', error: 'no AI credit remaining' }, { status: 402 })),
+    );
+    render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
+    typeQuestion('hỏi');
+    await act(async () => {
+      screen.getByRole('button', { name: 'Hỏi' }).click();
+      await flush();
+    });
+
+    expect(screen.getByTestId('ai-needs-setup')).toBeInTheDocument();
+
+    const rendered = document.body.textContent ?? '';
+    for (const loiHua of [/nạp thêm/i, /tự nạp được ngay/i, /top up/i, /add credit yourself/i]) {
+      expect(rendered).not.toMatch(loiHua);
+    }
+  });
+
+  /**
    * BÀI CHỊU LỰC của Step 2 ở tầng UI: `NoCredit` và `ProviderFailed` phải
    * dẫn tới hai màn hình KHÁC NHAU — một lời mời nạp (chặn ô nhập), một lỗi
    * bình thường (không chặn, người học hỏi tiếp được ngay). Đột biến
