@@ -420,6 +420,12 @@ func (h *Handler) AdminUpdatePricing(c *fiber.Ctx) error {
 
 // --- GET/PUT /admin/ai/settings ------------------------------------------
 
+// settingsPayload's MaxBasePromptChars mirrors configResponse's own
+// max_system_prompt_chars (handler.go): "TRẦN ĐỘ DÀI: SERVER LÀ NGUỒN SỰ
+// THẬT DUY NHẤT, KỂ CẢ Ở CLIENT" — AgentConfigPanel.tsx's own doc comment
+// states the rule this field exists to keep for the ADMIN side too. It is
+// a plain echo of the MaxBasePromptChars constant above, not a second
+// number to keep in sync by hand.
 type settingsPayload struct {
 	BaseSystemPrompt      string `json:"base_system_prompt"`
 	CreditsPerWebSearch   int64  `json:"credits_per_web_search"`
@@ -427,6 +433,7 @@ type settingsPayload struct {
 	SignupGrantMicro      int64  `json:"signup_grant_micro"`
 	MaxTokensPerTurn      int    `json:"max_tokens_per_turn"`
 	MaxToolRoundsPerTurn  int    `json:"max_tool_rounds_per_turn"`
+	MaxBasePromptChars    int    `json:"max_base_prompt_chars"`
 }
 
 func newSettingsPayload(s Settings) settingsPayload {
@@ -434,6 +441,7 @@ func newSettingsPayload(s Settings) settingsPayload {
 		BaseSystemPrompt: s.BaseSystemPrompt, CreditsPerWebSearch: s.CreditsPerWebSearch,
 		CostMicroPerWebSearch: s.CostMicroPerWebSearch, SignupGrantMicro: s.SignupGrantMicro,
 		MaxTokensPerTurn: s.MaxTokensPerTurn, MaxToolRoundsPerTurn: s.MaxToolRoundsPerTurn,
+		MaxBasePromptChars: MaxBasePromptChars,
 	}
 }
 

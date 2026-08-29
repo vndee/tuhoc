@@ -703,6 +703,17 @@ export const en: Messages = {
 
   /* ── quản trị — /admin ──────────────────────────────────────────────── */
 
+  /**
+   * `AdminNav.tsx` — shared sub-nav across the three `/admin/*` screens.
+   * Task 17 adds these three keys alongside `AdminCredits`/`AdminPricing`,
+   * so `AdminCourses` (Task 8/15) and the two new screens can reach each
+   * other.
+   */
+  'admin.nav.aria': 'Admin sections',
+  'admin.nav.courses': 'Courses',
+  'admin.nav.credits': 'Users & credit',
+  'admin.nav.pricing': 'Pricing & base prompt',
+
   'admin.title': 'Course administration',
   'admin.lede': 'Publish, unpublish, or roll back a course — the same validation rules `tuhoc pack` runs on the command line.',
   'admin.loading': 'Loading the list…',
@@ -743,4 +754,68 @@ export const en: Messages = {
   'admin.error.unknown': 'An unknown error occurred.',
   'admin.error.unreachable':
     'Could not connect to the server. You may be offline, or the server may be misconfigured (CORS/DNS).',
+
+  /* ══════════════════════════════════════════════════════════════════════ *
+   * AI ADMIN — Task 17, spec §7: `admin/AdminCredits.tsx` ("Users &
+   * credit") and `admin/AdminPricing.tsx` ("Pricing & base prompt"), both
+   * talking to the seven `/admin/ai/*` routes
+   * (`apps/api/internal/ai/admin_handler.go`).
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  'admin.ai.credits.title': 'Users & credit',
+  'admin.ai.credits.lede':
+    "Find a user, see their balance and usage ledger, and add or remove credit by hand — every manual adjustment requires a note and is recorded in the operations log.",
+  'admin.ai.credits.searchLabel': 'Search by email',
+  'admin.ai.credits.searchPlaceholder': 'e.g. jane@example.test',
+  'admin.ai.credits.searchButton': 'Search',
+  'admin.ai.credits.loading': 'Loading…',
+  'admin.ai.credits.empty': 'No matching users found.',
+  'admin.ai.credits.colEmail': 'Email',
+  'admin.ai.credits.colRole': 'Role',
+  'admin.ai.credits.colBalance': 'Credit balance',
+  'admin.ai.credits.colActions': 'Actions',
+  'admin.ai.credits.selectButton': 'View details',
+  'admin.ai.credits.adjustTitle': 'Add or remove credit by hand',
+  'admin.ai.credits.amountLabel': 'Amount (credits)',
+  'admin.ai.credits.directionLabel': 'Direction',
+  'admin.ai.credits.directionAdd': 'Add',
+  'admin.ai.credits.directionSubtract': 'Remove',
+  'admin.ai.credits.noteLabel': 'Note (required)',
+  'admin.ai.credits.notePlaceholder': 'Why you are adjusting this — required, and recorded in the operations log.',
+  'admin.ai.credits.adjustSubmit': 'Apply',
+  'admin.ai.credits.adjustSubmitting': 'Applying…',
+  'admin.ai.credits.adjustSuccess': 'Balance updated.',
+  'admin.ai.credits.usageTitle': 'Recent usage',
+  'admin.ai.credits.usageEmpty': 'No charged turns yet.',
+  'admin.ai.credits.adjustmentsTitle': 'Manual adjustment history',
+  'admin.ai.credits.adjustmentsEmpty': 'No manual adjustments for this account yet.',
+  'admin.ai.credits.colNote': 'Note',
+
+  'admin.ai.pricing.title': 'Pricing & base prompt',
+  'admin.ai.pricing.lede':
+    "Edit the per-model credit conversion table and the agent's base prompt — changes take effect on the very next turn, no deploy required.",
+  'admin.ai.pricing.tableTitle': 'Credit conversion table',
+  'admin.ai.pricing.loading': 'Loading…',
+  'admin.ai.pricing.colModel': 'Model',
+  'admin.ai.pricing.colCostIn': 'Cost in (/1K)',
+  'admin.ai.pricing.colCostCachedIn': 'Cost cache-in (/1K)',
+  'admin.ai.pricing.colCostOut': 'Cost out (/1K)',
+  'admin.ai.pricing.colCreditsIn': 'Credits in (/1K)',
+  'admin.ai.pricing.colCreditsCachedIn': 'Credits cache-in (/1K)',
+  'admin.ai.pricing.colCreditsOut': 'Credits out (/1K)',
+  'admin.ai.pricing.colActions': 'Actions',
+  'admin.ai.pricing.save': 'Save',
+  'admin.ai.pricing.saving': 'Saving…',
+  'admin.ai.pricing.saved': 'Saved.',
+  'admin.ai.pricing.promptTitle': 'Agent base prompt',
+  'admin.ai.pricing.promptBlurb':
+    "This prompt runs BEFORE every user's own personal prompt — it holds the tutor persona and the safety boundary, and must never be empty.",
+  'admin.ai.pricing.promptLabel': 'Base prompt',
+  'admin.ai.pricing.promptEmptyWarning': "The base prompt must not be empty — it is the agent's safety boundary.",
+  'admin.ai.pricing.promptNoteLabel': 'Note (optional)',
+
+  'admin.ai.error.fieldRequired': 'A required field is missing.',
+  'admin.ai.error.amountOutOfRange': 'That amount is outside what a single adjustment allows.',
+  'admin.ai.error.fieldTooLong': 'That text is longer than allowed.',
+  'admin.ai.error.notFound': 'Not found.',
 };

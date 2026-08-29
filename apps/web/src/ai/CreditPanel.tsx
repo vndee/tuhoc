@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
-import type { Lang } from '../i18n';
 import { useLanguage } from '../i18n/LanguageProvider';
+import { formatCredits } from './money';
 
 /**
  * `CreditPanel` — nửa ĐẦU của mục Trợ lý AI trong Cài đặt, Pha 2
@@ -22,7 +22,8 @@ import { useLanguage } from '../i18n/LanguageProvider';
  * `credits` (giá trị `Charge()` trả) bị TRỪ THẲNG vào `balance_micro`, không
  * qua một phép quy đổi nào (`UPDATE ai_credits SET balance_micro =
  * balance_micro - $2 ...`, cùng giá trị ấy ghi vào cột `credits_charged`).
- * Hai chỗ dùng CÙNG MỘT hàm `formatCredits` bên dưới vì lý do đó.
+ * Phép quy đổi (và `formatCredits`) sống ở `./money.ts` từ Task 17 — xem
+ * doc comment của tệp đó cho lý do nó rời khỏi đây.
  *
  * Dùng `api.get` (`../api/client.ts`), KHÔNG dựng `fetch` riêng như
  * `serverClient.ts`'s `chat()`: đây là JSON thường, không phải SSE, nên
@@ -48,14 +49,17 @@ interface CreditsWire {
 }
 
 /**
- * VÒNG SỬA 1 (Minor #4): `export` bị bỏ khỏi năm định danh trong tệp này
- * (`UsageEntry`/`CreditsInfo` ở đây, `AgentConfigInfo` ở `AgentConfigPanel.
- * tsx`, cộng `formatCredits`/`formatUsageWhen` bên dưới) — reviewer grep
- * toàn `apps/web/src` (kể cả hai tệp test): 0 chỗ gọi ngoài tệp gốc. Miễn
- * phí: hết cảnh báo `only-export-components` của oxlint mà KHÔNG đổi hành
- * vi gì (test vẫn chỉ render component rồi đọc DOM, không import các hàm/
- * kiểu này trực tiếp). Nếu một chỗ khác THẬT SỰ cần chúng sau này, thêm lại
- * `export` lúc đó — không giữ sẵn một API không ai gọi.
+ * VÒNG SỬA 1 (Minor #4): `export` bị bỏ khỏi những định danh dưới đây
+ * (`UsageEntry`/`CreditsInfo`, cộng `AgentConfigInfo` ở `AgentConfigPanel.
+ * tsx`) — reviewer grep toàn `apps/web/src` (kể cả hai tệp test): 0 chỗ gọi
+ * ngoài tệp gốc. Miễn phí: hết cảnh báo `only-export-components` của oxlint
+ * mà KHÔNG đổi hành vi gì (test vẫn chỉ render component rồi đọc DOM, không
+ * import các kiểu này trực tiếp). `formatCredits` KHÔNG còn trong nhóm này
+ * từ Task 17 — nó rời sang `./money.ts` (một module thuần, không phải
+ * component, nên đứng ngoài quy tắc oxlint này) đúng lúc `AdminCredits.tsx`
+ * trở thành chỗ gọi THẬT thứ hai. Nếu một chỗ khác THẬT SỰ cần hai kiểu còn
+ * lại sau này, thêm lại `export` lúc đó — không giữ sẵn một API không ai
+ * gọi.
  */
 interface UsageEntry {
   readonly at: string;
@@ -88,12 +92,6 @@ async function fetchCredits(): Promise<CreditsInfo> {
       creditsCharged: u.credits_charged,
     })),
   };
-}
-
-/** micro-credit → credit đọc được, theo dấu phân cách thập phân của ngôn ngữ
- *  đang hiển thị — cùng khuôn `formatBytes` (`pages/Settings.tsx`). */
-function formatCredits(micro: number, lang: Lang): string {
-  return (micro / 1_000_000).toLocaleString(lang === 'en' ? 'en-US' : 'vi-VN', { maximumFractionDigits: 4 });
 }
 
 /**
