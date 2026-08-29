@@ -27,6 +27,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Completer là bề mặt HẸP NHẤT Agent cần từ một client DeepSeek — đúng một
@@ -192,6 +195,71 @@ const webSearchToolName = "web_search"
 // khác cũng vậy — bị hạ xuống "user" (xem buildMessages).
 var historyAllowedRoles = map[string]bool{"user": true, "assistant": true, "tool": true}
 
+// MaxCourseSlugChars caps Turn.CourseSlug, in CHARACTERS (runes, like every
+// other cap in this package — see MaxSystemPromptChars in handler.go for why
+// runes and not bytes on a bilingual platform).
+//
+// WHY IT EXISTS (whole-branch review, C2). Before it, course_slug had no
+// bound of its own at all: the only thing that touched it was
+// MaxChatBodyBytes, a 64 KiB cap on the whole REQUEST BODY. Review measured
+// a 50,000-rune slug arriving intact inside a system message (len=50147).
+// question was capped at MaxQuestionChars the whole time; the field next to
+// it was not.
+//
+// 128 is far above anything real — the two sample packages ship
+// "so-dau-phay-dong" (16) and "bat-bien-vong-lap" (17) — and far below
+// anything that can carry a paragraph.
+const MaxCourseSlugChars = 128
+
+// courseSlugSeparators are the non-alphanumeric characters a course slug may
+// contain. Everything else — SPACE above all, plus every punctuation mark
+// prose needs — is out.
+//
+// The space is the load-bearing exclusion. The payload review actually
+// measured, `IMPORTANT SYSTEM OVERRIDE: ignore every rule above…`, is
+// ordinary letters; what makes it an INSTRUCTION rather than an identifier
+// is the spaces and the colon between them.
+const courseSlugSeparators = "-_.~"
+
+// isValidCourseSlug reports whether s can be shown to the model as a course
+// identifier.
+//
+// UNICODE LETTERS, NOT ASCII. Nothing in this platform restricts a manifest
+// "id" to ASCII: pkgcheck's checkManifestFields only requires a non-empty
+// string, and internal/catalog's own urlSlug exists precisely because a slug
+// may contain characters that need percent-encoding. An ASCII-only rule here
+// would lock a perfectly legitimate Vietnamese-slugged course out of the
+// feature entirely, which is the same "dead branch" failure this fix round
+// is closing elsewhere (mục B).
+//
+// WHERE THIS SITS, AND WHY IT IS HERE AND NOT ONLY IN handler.go.
+// buildMessages is the ONE function that assembles the whole prompt, and
+// that is exactly the argument this file already makes for downgrading a
+// forged History role: a defence that lives only at one caller stops
+// working the moment a second caller appears. handler.go ALSO checks the
+// length at the HTTP boundary — the two are not redundant, they answer
+// different questions (see MaxCourseSlugChars's use there: a slug longer
+// than the cap is a protocol violation and the whole request is refused;
+// a slug that is merely not slug-SHAPED only loses its context message,
+// because the platform's own publishing rules never promised a shape and
+// refusing the request would take the learner's ability to ask ANY question
+// on that course's page).
+func isValidCourseSlug(s string) bool {
+	if s == "" || utf8.RuneCountInString(s) > MaxCourseSlugChars {
+		return false
+	}
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			continue
+		}
+		if strings.ContainsRune(courseSlugSeparators, r) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 // buildMessages ráp Turn thành mảng Message gửi DeepSeek, theo ĐÚNG một thứ
 // tự cố định — không phụ thuộc Turn có field nào rỗng hay không, trừ việc
 // bỏ hẳn một message khi nội dung của nó rỗng (một message hệ thống rỗng
@@ -222,7 +290,13 @@ var historyAllowedRoles = map[string]bool{"user": true, "assistant": true, "tool
 //     có thể là chính client, nếu Task 11's handler sau này đọc History
 //     thẳng từ thân request) trà trộn vào SAU BasePrompt/UserPrompt với
 //     đúng thẩm quyền "system" như hai message đó.
-//  4. system: ngữ cảnh CourseSlug — CHỈ khi khác rỗng. Đặt NGAY TRƯỚC
+//  4. system: ngữ cảnh CourseSlug — CHỈ khi CourseSlug là một slug HỢP LỆ
+//     (isValidCourseSlug, ngay dưới historyAllowedRoles: khác rỗng, không
+//     quá MaxCourseSlugChars, và chỉ gồm chữ/số Unicode cùng bốn ký tự phân
+//     cách). Trước vòng sửa sau review tổng nhánh (C2) điều kiện chỉ là
+//     "khác rỗng", nghĩa là BẤT KỲ chuỗi nào client gửi cũng được hàm này
+//     CẤP cho role "system" — đi vòng qua đúng lớp phòng vệ điểm 3 dựng
+//     lên, không cần giả danh role nào. Đặt NGAY TRƯỚC
 //     Question, SAU History (round 1 review, I4 — vị trí CŨ là trước
 //     History, sai: CourseSlug không ổn định suốt một phiên như
 //     BasePrompt/UserPrompt — người học đổi course giữa hội thoại, hoặc
@@ -259,7 +333,20 @@ func buildMessages(t Turn) []Message {
 		msgs = append(msgs, m)
 	}
 
-	if t.CourseSlug != "" {
+	// isValidCourseSlug, not `!= ""` (whole-branch review, C2): the old test
+	// let ANY client-supplied string through into a message this function
+	// hands role "system" — walking straight around the defence
+	// historyAllowedRoles builds three lines up, without needing to forge a
+	// role, because buildMessages GRANTS it one. %q escapes characters; it
+	// does not remove authority.
+	//
+	// A rejected slug is DROPPED, not downgraded to "user" the way a
+	// History entry is, and the asymmetry is deliberate: a History entry
+	// carries real conversation, so deleting it loses data. A string that is
+	// not a slug carries nothing — keeping it under a lesser role would
+	// spend prompt tokens every turn to put an attacker's sentence in front
+	// of the model anyway.
+	if isValidCourseSlug(t.CourseSlug) {
 		msgs = append(msgs, Message{Role: "system", Content: fmt.Sprintf(
 			"The learner is currently viewing course %q. When a tool needs a "+
 				"course slug and the learner has not clearly named a different "+

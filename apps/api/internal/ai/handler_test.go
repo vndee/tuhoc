@@ -1513,6 +1513,19 @@ func TestAIHandlerFlows(t *testing.T) {
 			{"blank question", `{"question":"   "}`, ai.CodeFieldRequired},
 			{"question too long", fmt.Sprintf(`{"question":%q}`,
 				strings.Repeat("q", ai.MaxQuestionChars+1)), ai.CodeFieldTooLong},
+			// C2 (review tổng nhánh): trước vòng sửa này `course_slug` KHÔNG
+			// có trần nào của riêng nó — thứ duy nhất chạm tới nó là
+			// MaxChatBodyBytes (64 KiB), một trần về KÍCH THƯỚC THÂN
+			// REQUEST. Review đo một slug 50.000 rune đi TRỌN vào một
+			// message role `system` (len=50147). Trần độ dài là một luật
+			// GIAO THỨC — không slug thật nào dài thế — nên nó từ chối cả
+			// request, khác với luật charset (agent.go) vốn chỉ bỏ message
+			// ngữ cảnh; xem MaxCourseSlugChars cho vì sao hai luật hành xử
+			// khác nhau.
+			{"course_slug too long", fmt.Sprintf(`{"question":"q","course_slug":%q}`,
+				strings.Repeat("a", ai.MaxCourseSlugChars+1)), ai.CodeFieldTooLong},
+			{"course_slug of the measured 50,000 runes", fmt.Sprintf(`{"question":"q","course_slug":%q}`,
+				strings.Repeat("x", 50000)), ai.CodeFieldTooLong},
 		}
 		for _, tc := range cases {
 			t.Run(tc.label, func(t *testing.T) {
@@ -1538,6 +1551,13 @@ func TestAIHandlerFlows(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("a question of exactly %d characters must be accepted: got %d body=%s",
 				ai.MaxQuestionChars, resp.StatusCode, raw)
+		}
+		// Same boundary for course_slug: exactly the limit is accepted.
+		resp, raw = doRaw(t, app, http.MethodPost, "/ai/chat",
+			fmt.Sprintf(`{"question":"q","course_slug":%q}`, strings.Repeat("a", ai.MaxCourseSlugChars)))
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("a course_slug of exactly %d characters must be accepted: got %d body=%s",
+				ai.MaxCourseSlugChars, resp.StatusCode, raw)
 		}
 	})
 }

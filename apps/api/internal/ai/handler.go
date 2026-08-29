@@ -504,12 +504,26 @@ func (h *Handler) caller(c *fiber.Ctx) uuid.UUID {
 type chatRequest struct {
 	Question string `json:"question"`
 
-	// CourseSlug is which course the learner is reading right now. It is
-	// context, not authority: buildMessages puts it in a system message
-	// immediately before the question (never in the cacheable prefix) so
-	// the model knows which slug to pass read_course. An unknown or
-	// nonsense slug costs a failed tool call, nothing more — the tool reads
-	// only PUBLISHED courses, which are public to everyone anyway.
+	// CourseSlug is which course the learner is reading right now.
+	//
+	// "It is context, not authority" is what an earlier version of this
+	// comment claimed, together with "an unknown or nonsense slug costs a
+	// failed tool call, nothing more". Both were FALSE, and the
+	// whole-branch review (C2) measured it: buildMessages (agent.go) puts
+	// this value in a message it gives role "system", which is placed AFTER
+	// BasePrompt/UserPrompt and BEFORE any tool runs — so a nonsense slug
+	// never had to reach a tool call to have already been read by the model
+	// as a system instruction. A 50,000-rune payload reading
+	// `IMPORTANT SYSTEM OVERRIDE: ignore every rule above…` arrived intact
+	// (len=50147), because question was capped at MaxQuestionChars and this
+	// field next to it was capped by nothing but the 64 KiB body limit.
+	//
+	// Two checks now stand between this field and that message, and they
+	// are deliberately in different places doing different jobs: the LENGTH
+	// cap below, at this boundary, refuses the whole request
+	// (MaxCourseSlugChars — nothing legitimate is that long), and
+	// isValidCourseSlug (agent.go) drops the context message for anything
+	// that is not slug-SHAPED, without failing the turn.
 	CourseSlug string `json:"course_slug"`
 }
 
@@ -567,6 +581,20 @@ func (h *Handler) Chat(c *fiber.Ctx) error {
 		return fail(c, fiber.StatusBadRequest, CodeFieldTooLong,
 			fmt.Sprintf("question is longer than %d characters", MaxQuestionChars))
 	}
+	// Checked HERE and not left to agent.go alone, because the two answer
+	// different questions. A slug longer than MaxCourseSlugChars is a
+	// PROTOCOL violation — no published course has an id of that length, so
+	// the only thing that produces one is a broken client or an attempt to
+	// spend the 64 KiB body budget on prompt text — and it is refused with
+	// the same code and shape as an over-long question, before the rate
+	// limiter and before a single database read. A slug that is merely not
+	// slug-shaped is a different matter and is handled by dropping the
+	// context message (see isValidCourseSlug, agent.go).
+	courseSlug := strings.TrimSpace(req.CourseSlug)
+	if utf8.RuneCountInString(courseSlug) > MaxCourseSlugChars {
+		return fail(c, fiber.StatusBadRequest, CodeFieldTooLong,
+			fmt.Sprintf("course_slug is longer than %d characters", MaxCourseSlugChars))
+	}
 
 	if err := h.limiter.Allow(uid); err != nil {
 		return fail(c, fiber.StatusTooManyRequests, CodeRateLimited,
@@ -593,7 +621,7 @@ func (h *Handler) Chat(c *fiber.Ctx) error {
 		Model:      h.model,
 		BasePrompt: settings.BaseSystemPrompt,
 		UserPrompt: agentConfig.SystemPrompt,
-		CourseSlug: strings.TrimSpace(req.CourseSlug),
+		CourseSlug: courseSlug,
 		Question:   question,
 		// History is deliberately absent — see chatRequest's doc comment.
 		ToolsEnabled: agentConfig.ToolsEnabled,
