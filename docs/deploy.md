@@ -30,7 +30,9 @@ Config files this doc walks through:
 - `.env.example` (repo root) — every env var either side reads
 - `apps/web/public/_redirects` — Pages SPA fallback (ships inside `dist/`)
 
-Every command below was actually run against a local stand-in (a throwaway Postgres container, `docker build`, `bun run build`, `flyctl`/`wrangler` CLIs) unless marked **[unverified — needs a live account]**. See task-16-report.md for the raw exit codes.
+Every command below was actually run against a local stand-in (a throwaway Postgres container, `docker build`, `bun run build`, `flyctl`/`wrangler` CLIs) unless marked **[unverified — needs a live account]**. Each such command is quoted inline with its own exit code where it matters.
+
+> The previous version of this line said "See task-16-report.md for the raw exit codes." That file is not in this repository and never was: execution reports live under `.superpowers/`, which `.gitignore` excludes, so the pointer was dead in every clone including this one. Same class as the two pointers `docs/testing.md` and `docs/deepseek-measured.md` carried — see `docs/carried-forward.md`'s note on why `.superpowers/` paths must not be cited from tracked docs.
 
 ---
 
@@ -79,7 +81,7 @@ That test is not an obstacle to route around. It is where this decision is recor
 2. **Replace `TestSessionCookieIsNeverSameSiteNone` with a test that gates the replacement** — i.e. one that fails if a state-changing route accepts a request without a valid Origin/token. Deleting it and putting nothing in its place returns the repo to the state C-3 described, where the string "CSRF" appeared nowhere in `apps/api` and no gate existed at all.
 3. Only then flip the attribute, and make `COOKIE_SECURE=true` mandatory rather than recommended.
 
-**Why the default is safe today:** the project owner owns `duy.dev` and the deployment is `tuhoc.duy.dev` + `api.duy.dev` (with `vault.duy.dev` for the key store). Those are different origins but the **same site**, so `SameSite=Lax` cookies flow between them and no code change is needed. C-3 is closed by that decision, not by new code — and the test above is what keeps the decision from being undone by accident.
+**Why the default is safe today:** the project owner owns `duy.dev` and the deployment is `tuhoc.duy.dev` + `api.duy.dev`. Those are different origins but the **same site**, so `SameSite=Lax` cookies flow between them and no code change is needed. (Phase 1 planned a third subdomain, `vault.duy.dev`, for the key store; Pha 2 Task 16 deleted the key store, so there are two deployables, not three — and the SameSite argument never depended on how many there were.) C-3 is closed by that decision, not by new code — and the test above is what keeps the decision from being undone by accident.
 
 This runbook's steps assume the custom-domain path. If you go the no-domain route, apply the code change above **before** relying on any authenticated flow, and treat every `CORS_ORIGIN`/`VITE_API_URL` value below as "the `*.pages.dev`/`*.onrender.com` hostname" instead of "the subdomain."
 
@@ -144,11 +146,13 @@ $ echo $?
 0
 ```
 
-`\dt` afterward showed exactly the 7 tables `0001_init.up.sql` defines (`annotations`, `courses`, `events`, `progress`, `schema_migrations`, `sessions`, `users`).
+At the time that was run, `0001_init.up.sql` was the only migration, and `\dt` afterward showed its 6 tables plus `schema_migrations` (`annotations`, `courses`, `events`, `progress`, `schema_migrations`, `sessions`, `users`).
+
+**A clean migrate today produces far more than that**, and this line used to say "exactly the 7 tables" without the qualifier — an operator comparing `\dt` against it would conclude the migration was broken. Counting the migrations in `apps/api/migrations/` as they stand: `0001` adds 6 tables; `0002` adds `course_packages` and `0006` drops it again (net 0); `0004` adds `course_ratings`; `0005` adds `published_courses`, `published_chapters`, `published_assets`, `published_widgets`, `course_versions`, `admin_audit`; `0007` adds `ai_credits`, `ai_usage`, `user_agent_config`, `ai_pricing`, `ai_settings`; `0008` adds none (it seeds and backfills). That is **18 tables plus `schema_migrations`**. Do not treat the list above as a checklist — read the migration files, which are the only thing that stays correct as more land.
 
 ### Subsequent migrations
 
-When a later task adds `apps/api/migrations/0002_*.up.sql` (and a matching `.down.sql`):
+When a later migration lands (this doc was written when `0001` was the newest; the repo is at `0008` as of Pha 2), with its matching `.down.sql`:
 
 1. Merge/deploy the migration files (they ship inside the repo — no separate artifact).
 2. Run the same command again, before or as part of rolling out the API build that depends on the new schema:
@@ -193,7 +197,14 @@ Both share the same free-tier caveat: **the container sleeps after inactivity an
 1. Push this repo to GitHub/GitLab (Render Blueprints deploy from a git remote).
 2. Sign up at render.com, connect the repo.
 3. Dashboard → **New** → **Blueprint**, pick this repo. Render reads `render.yaml` from the repo root automatically and shows one service, `tuhoc-api` (Docker runtime, `apps/api/Dockerfile`, `apps/api` build context, free plan, Singapore region). `singapore` is one of Render's five documented region values (oregon/ohio/virginia/frankfurt/singapore) — I could not confirm whether the free plan restricts region choice, since that needs a live account; if Render rejects it at Blueprint-creation time, change `region:` in `render.yaml` to `oregon` (Render's original/default region) and redeploy.
-4. Before confirming, Render prompts for the one `sync: false` var declared in `render.yaml`: `DATABASE_URL`. Paste in the **pooled** Neon connection string from §2 (not the direct one — that's only for the migration command).
+4. Before confirming, Render prompts for **every** `sync: false` var declared in `render.yaml`. There are five:
+   - `DATABASE_URL` — paste the **pooled** Neon connection string from §2 (not the direct one; that's only for the migration command).
+   - `DEEPSEEK_API_KEY` — the platform's own DeepSeek key. **Leaving it blank ships an API whose AI feature is dead**: the service boots clean, `/healthz` is green, and the failure only appears when a learner presses "Hỏi". See §8.
+   - `BRAVE_API_KEY` — enables the agent's `web_search` tool only. Blank is a supported state; the agent still answers using its other tools.
+   - `GITHUB_TOKEN` — the read-only PAT that lets the API embed GitHub Discussions on course pages (§8's table). Blank is supported and is the correct value today: there is no public registry repository yet, so the discussions panel simply reports "not loaded" (§5c explains why that repository does not exist).
+   - `ADMIN_TOKEN` — the CLI publish door (§4c). Blank is supported and fails closed.
+
+   The API logs a startup warning naming each missing AI key, so `render logs` immediately after the first deploy tells you whether you filled these in.
 5. After the service is created, go to its **Environment** tab and fix the two placeholder values `render.yaml` ships with:
    - `CORS_ORIGIN` → `https://app.yourdomain.com` (or your Pages project's `*.pages.dev` URL if not using a custom domain — see §0)
    - Confirm `COOKIE_SECURE=true` and `PORT=8080` are present (they ship with real values already, not placeholders).
@@ -209,8 +220,12 @@ cd apps/api
 flyctl auth login                     # opens a browser; needs a real account + card on file
 flyctl apps create <your-unique-name> # Fly app names are global; edit `app = "tuhoc-api"` in fly.toml to match
 flyctl secrets set DATABASE_URL="<pooled Neon connection string from §2>"
+flyctl secrets set DEEPSEEK_API_KEY="<the platform's own DeepSeek key>"   # without this the AI feature is dead — see §8
+flyctl secrets set BRAVE_API_KEY="<Brave Search key>"                     # optional: enables the web_search tool only
 flyctl deploy                         # builds remotely on Fly's own amd64 builders by default — see §7
 ```
+
+`DEEPSEEK_API_KEY` and `BRAVE_API_KEY` are secrets and must go through `flyctl secrets set`, never `fly.toml`'s `[env]` block — that file is committed to git. `DEEPSEEK_BASE_URL` is deliberately set nowhere: `config.Load` falls back to `DefaultDeepSeekBaseURL`, and pinning a URL in a config file is a second copy of that Go constant. Both keys are optional in the sense that the API boots and serves everything else without them, and it logs a startup warning naming each one that is missing — but an AI-enabled deploy with no `DEEPSEEK_API_KEY` fails only at the moment a learner asks a question.
 
 Then edit `CORS_ORIGIN` in `apps/api/fly.toml`'s `[env]` block from the placeholder to your real Pages origin, and `flyctl deploy` again (or `flyctl secrets set`/`flyctl config` if you'd rather not commit the real value — see §8 on what's secret). Verify with `curl https://<your-app-name>.fly.dev/healthz`.
 
@@ -226,7 +241,7 @@ The admin publish API (`PUT`/`DELETE /admin/courses/{slug}` and friends) has **t
 
 | Door | Credential | Opens | Set where |
 |---|---|---|---|
-| CLI / scripted publish | `ADMIN_TOKEN` (a shared secret, `Authorization: Bearer <token>`) | Every admin route, with no login session at all — `who = nil`, logged in `admin_audit` as `actor = 'cli'`. What `tuhoc-cli publish` and `scripts/test-e2e.sh`'s seed step use. | Render: Environment tab (`sync: false` in `render.yaml`). Fly: `flyctl secrets set ADMIN_TOKEN=...` — never `fly.toml`'s committed `[env]` block. Local dev: `.env`/shell env. See `.env.example` for the full explanation. |
+| CLI / scripted publish | `ADMIN_TOKEN` (a shared secret, `Authorization: Bearer <token>`) | The four `/admin/courses*` routes ONLY (publish, list, unpublish, rollback), with no login session at all — `who = nil`, logged in `admin_audit` as `actor = 'cli'`. What `tuhoc-cli publish` and `scripts/test-e2e.sh`'s seed step use. **It does NOT open `/admin/ai/*`** (the AI pricing, settings and credit routes): `server.go` mounts that group behind `auth.Require + auth.RequireAdmin` with no `adminOrToken` at all, deliberately — money routes want a named human, not a shared secret. This row used to claim "every admin route"; an operator who set `ADMIN_TOKEN` and believed it would never reach `/admin/ai/settings`. | Render: Environment tab (`sync: false` in `render.yaml`). Fly: `flyctl secrets set ADMIN_TOKEN=...` — never `fly.toml`'s committed `[env]` block. Local dev: `.env`/shell env. See `.env.example` for the full explanation. |
 | Admin login (`/admin` in the web app) | A real user account with `users.role = 'admin'` | The same admin routes, via a normal signed-in session — `who = <that user's id>`, logged as `actor = 'user'`. What a human clicks through in the browser. | The one SQL statement below. |
 
 `adminTokenMatches` (`apps/api/internal/server/server.go`) treats an unconfigured `ADMIN_TOKEN` as "never matches" rather than comparing against an empty string, so an unset token cannot be defeated by an empty `Authorization` header — the CLI door fails closed, not open, when nobody has chosen a value yet. The admin-login door has no equivalent bootstrap at all: `users.role` defaults to `'user'` on every signup (`0005_published_catalog.up.sql`), so even the very first account created on a fresh deploy is an ordinary reader, not an admin. Both doors are closed by design; getting through either one is the step this section fills in.
@@ -305,58 +320,6 @@ No `wrangler pages project validate` or equivalent config-lint command exists in
 
 ---
 
-## 5b. Deploy the key vault (`apps/vault`) — without this, AI does not exist
-
-**Đo 2026-08-22 (S2 Task 10):** bản dựng production **không có kho khoá**. `vite build` không đọc
-`.env.development`, và nếu `VITE_VAULT_ORIGIN` không được đặt thì `aiReady === false` và **nút AI
-không được vẽ ra**. Không có lỗi nào, không có cảnh báo nào — tính năng chỉ đơn giản không tồn tại.
-Tài liệu này trước đó **không nhắc `VITE_VAULT_ORIGIN` hay `apps/vault` một lần nào**, nên cả hệ
-thống con 2 không có đường ship.
-
-### Vì sao phải là một origin RIÊNG, không phải một đường dẫn
-
-Course hạng `interactive` **được phép chạy JS** (spec §1.2), và JS đó chạy **cùng trang** với ứng
-dụng. Trình duyệt cấm JS của origin này đọc `localStorage` của origin khác — đó là hàng rào thật,
-không phụ thuộc việc duyệt course có sót hay không. Một đường dẫn `/vault/` trên **cùng** cổng là
-**cùng origin** và **phá huỷ toàn bộ mục đích**.
-
-Điều này đã được chứng minh cần thiết chứ không phải lý thuyết: S1-F43 là một lỗ Critical trong đó
-gói hạng `content` — hạng *được cho là an toàn* — chạy được mã tuỳ ý qua bốn cổng. Nếu key nằm cùng
-origin, lỗ đó đã là lỗ mất key.
-
-### Các bước
-
-1. **Một Pages project thứ hai** cho `apps/vault`, tên miền `vault.<domain>`:
-   ```
-   Build command:     bun install && bun run build
-   Build output:      dist
-   Root directory:    apps/vault
-   ```
-2. **Biến môi trường của project kho khoá:**
-   ```
-   VITE_APP_ORIGIN = https://tuhoc.<domain>
-   ```
-   **Thiếu nó thì build HỎNG** (exit 1) chứ không ship một CSP sai — cố ý, xem `apps/vault/vite.config.ts`.
-   Giá trị này vào thẳng `frame-ancestors` trong `apps/vault/_headers`.
-3. **Biến môi trường của project web:**
-   ```
-   VITE_VAULT_ORIGIN = https://vault.<domain>
-   ```
-   Không có dấu `/` ở cuối, không phải `*` — cả hai đều bị `resolveVaultOrigin` từ chối, vì
-   `event.origin` **không bao giờ** có dấu `/` cuối và một origin sai làm mọi `postMessage` bị bỏ
-   trong im lặng.
-4. **Kiểm sau khi deploy** — ba việc, làm theo thứ tự:
-   - mở `https://tuhoc.<domain>`, vào trang cấu hình AI → **phải thấy khung kho khoá**;
-   - mở DevTools → Console, chạy `localStorage.length` **trên origin trang chính** sau khi đã cắm
-     key → key **không được** ở đó;
-   - thử nhúng `https://vault.<domain>` từ một origin khác → phải bị `frame-ancestors` chặn.
-
-### Chưa từng chạy trên hạ tầng thật
-
-`apps/vault/_headers` **chưa bao giờ được một Cloudflare Pages thật phục vụ**, và `apps/vault` **chưa
-có Pages project nào**. Phép đo hai chiều của `frame-ancestors` (origin được phép nhúng được; origin
-khác rơi vào `chrome-error://`) chạy **trên máy**, không chạy trên hạ tầng thật.
-
 ## 5c. Catalog registry — **đã nghỉ hưu, không còn `VITE_REGISTRY_URL`**
 
 **Cơ chế mục này từng mô tả không còn tồn tại.** Bản trước của §5c nói nền tảng đọc catalog từ một
@@ -371,6 +334,33 @@ khỏi `.env.example`/`apps/web/src/vite-env.d.ts` cùng lúc với đoạn này
 `.github/workflows/registry.yml` vẫn còn (xem chú thích đầu tệp đó), nhưng vai trò của nó đã đổi:
 một cổng CI tiện lợi kiểm gói trước khi merge PR vào repo nguồn cộng đồng, không còn là nơi xuất bản
 catalog nào cả — cổng thật cho việc publish giờ nằm ở server (`PUT /admin/courses/:slug`, §4c).
+
+## 5d. The key vault (`apps/vault`) — **RETIRED, there is no third deployable**
+
+**The mechanism this section described no longer exists.** Phase 1 kept each reader's own AI provider
+key in their own browser, at a **separate origin** — a second Vite app (`apps/vault`) deployed as its
+own Cloudflare Pages project at `vault.<domain>`, embedded in a hidden iframe by the study app, with
+`VITE_VAULT_ORIGIN` (web side) and `VITE_APP_ORIGIN` (vault side) pointing at each other and
+`frame-ancestors` in `apps/vault/_headers` refusing every other embedder.
+
+Pha 2 Task 16 deleted all of it. The AI agent runs on **our own server** against ONE DeepSeek account
+the platform pays for (`DEEPSEEK_API_KEY`, §4), and readers pay in credit — so there is no reader key
+left in the browser, nothing to isolate, and no second origin to deploy. **Deploy two things, not
+three**: the web app (§5) and the API (§4). Neither `VITE_VAULT_ORIGIN` nor `VITE_APP_ORIGIN` exists
+any more; setting either does nothing.
+
+**Carried forward, because the reasoning outlived the subsystem.** The separate origin was not
+belt-and-braces: course packages rated `interactive` are **allowed to run JS** (spec §1.2) and that JS
+runs on the same page as the app, so a same-origin `/vault/` path would have been worth nothing. It was
+proven necessary, not theoretical — S1-F43 was a Critical hole where a `content`-rated package (the
+tier *believed* safe) ran arbitrary code through four gates. **Any future feature that puts a
+user-held secret back in the browser inherits that finding**, and inherits the conclusion with it: a
+path is not a boundary; an origin is.
+
+Also carried forward, so it is not rediscovered as a surprise: `apps/vault/_headers` was **never served
+by a real Cloudflare Pages deployment** and `apps/vault` never had a Pages project. The two-way
+`frame-ancestors` measurement in the S2 report ran locally. Nothing in this repo has ever proven that
+`_headers` file works in production.
 
 ## 6. Free-tier realities: cold starts, stacked
 
@@ -421,13 +411,24 @@ Both builds exited 0 — the failure mode isn't a build error, it's a container 
 |---|---|---|---|
 | `DATABASE_URL` | **Yes** | Render: Environment tab (`sync: false` in `render.yaml`, prompted at Blueprint creation). Fly: `flyctl secrets set DATABASE_URL=...` (never in `fly.toml`'s `[env]`, which is committed). | Use the **pooled** Neon string here — see §2. |
 | `ADMIN_TOKEN` | **Yes** | Render: Environment tab (`sync: false` in `render.yaml`). Fly: `flyctl secrets set ADMIN_TOKEN=...` (never in `fly.toml`'s `[env]`). | Opens the CLI-publish door — see §4c for both doors and why unset fails closed rather than open. |
+| `DEEPSEEK_API_KEY` | **Yes — and a different risk class from the rows above** | Render: Environment tab (`sync: false`). Fly: `flyctl secrets set DEEPSEEK_API_KEY=...` (never in `fly.toml`'s `[env]`). | The platform's own credential to DeepSeek — see the note right after this table for what makes this different from `ADMIN_TOKEN`/`GITHUB_TOKEN`, and the revocation path if it leaks. Unset is a valid state: the AI feature degrades to "not configured" rather than the API refusing to boot. |
+| `DEEPSEEK_BASE_URL` | No | `render.yaml` / `fly.toml` `[env]`, or leave unset | Defaults to `https://api.deepseek.com` (`config.DefaultDeepSeekBaseURL`) — normal deploys never need to set this at all. Only exists for pointing at a proxy or a test double. |
+| `BRAVE_API_KEY` | **Yes — same risk class as `DEEPSEEK_API_KEY`** | Render: Environment tab (`sync: false`). Fly: `flyctl secrets set BRAVE_API_KEY=...` (never in `fly.toml`'s `[env]`). | The platform's own credential to the Brave Search API (the agent's web-search tool — spec §3.2). Unset just switches that one tool off. See the note below the table. |
+| `GITHUB_TOKEN` | **Yes** | Render: Environment tab (`sync: false` in `render.yaml`). Fly: `flyctl secrets set GITHUB_TOKEN=...` (never in `fly.toml`'s `[env]`). | A read-only, fine-grained PAT scoped to the registry repository's Discussions — the platform's OWN credential, against PUBLIC data, so a leak costs nothing that is not already public. Unset is the correct value today (§5c). Was missing from this table entirely until the Pha 2 review fix round, while §4a's step 4 already told operators to fill it in. |
+| `GITHUB_DISCUSSIONS_REPO` | No | `render.yaml` `[env]` (ships as `""`) / `fly.toml` `[env]` | Names the repository whose Discussions get embedded, as `"owner/name"`. Deliberately separate from the token: a token says who we are, not what we may read. Empty switches Discussions off, same as an empty `GITHUB_TOKEN`. |
 | `CORS_ORIGIN` | No, but environment-specific | `render.yaml` `[env]` / `fly.toml` `[env]` — both ship with an obvious `REPLACE-WITH-PAGES-ORIGIN` placeholder | Not a credential, but must be your *exact* production origin, not the placeholder, or CORS silently rejects the web app. |
 | `PORT` | No | `render.yaml` / `fly.toml` `[env]` | Fixed at `8080`, matches the Dockerfile's `EXPOSE`. |
 | `COOKIE_SECURE` | No | `render.yaml` / `fly.toml` `[env]` | Ships as `"true"` already — production is always https on both sides. |
 | `VITE_API_URL` | No, but must not be committed with a real backend URL if you consider that sensitive routing info | Cloudflare Pages dashboard (Environment variables) for git-integration builds, or exported in the shell for CLI builds | Baked into the public JS bundle at build time either way — it's visible to anyone who opens devtools, so "secret" isn't really the right frame for it; it's environment-specific, not confidential. |
 | Neon DB password (inside `DATABASE_URL`) | **Yes** | Same as `DATABASE_URL` above | Never appears in any file in this repo. |
 
-What must never be committed: any real `DATABASE_URL` (pooled or direct), any real Neon password, and — once you've filled it in for your own deploy — your production `CORS_ORIGIN`/`VITE_API_URL` are not secret but there's no reason to commit your personal domain into a shared repo either; keep the checked-in `fly.toml`/`render.yaml` on the `REPLACE-WITH-...` placeholders and set the real values through each host's own env-var UI. The root `.gitignore` already covers `.env`; `.env.example` (this task's deliverable) intentionally contains no real values, only placeholders and documentation.
+**`DEEPSEEK_API_KEY` and `BRAVE_API_KEY` are not just two more rows in this table.** Every other secret above either belongs to nobody in particular (`DATABASE_URL`) or is the platform's OWN credential to something that costs nothing if it leaks (`ADMIN_TOKEN` only opens a door on this same app; `GITHUB_TOKEN`, where configured, is read-only against public data). These two are the platform's own credential to a **billed third-party account**, and this is the exact risk the server-side pivot introduces (`docs/superpowers/specs/2026-08-25-server-side-pivot.md` §0.1): a leaked key here does not cost one reader their own key, it spends money on the platform's bill until somebody notices and revokes it. Three rules follow directly from that:
+
+1. **Set only through the environment** — never committed, never in a log, never hand-typed into a support ticket. `apps/api/internal/server/provider_key_never_leaks_test.go` enforces the code side of this (the key must never reach a log line or a response body); this doc covers the operational side.
+2. **Rotate by revoking, not by adding.** Minting a second key and leaving the first one active means the leaked key keeps working until someone explicitly kills it — generating a new one is not the same step as disabling the old one, and skipping the second step is how a "rotation" leaves the actual hole open.
+3. **If a key leaks:** revoke it immediately in the provider's own dashboard (DeepSeek: platform.deepseek.com; Brave: api-dashboard.search.brave.com/register — under whichever account holds the platform's subscription) — do this *before* generating the replacement, since the leaked key keeps spending until it's revoked, not until a new one exists. Generate a new key, set it via the host's secret UI (table above), and restart the process (`flyctl deploy` / a Render manual deploy — an env var change alone does not restart a running container). Then check the provider's own usage/billing dashboard for the window the key may have been exposed: unlike a leaked reader key in the Pha 1 architecture, there is no individual "affected user" to notify — the entire cost of misuse lands on the platform's one bill.
+
+What must never be committed: any real `DATABASE_URL` (pooled or direct), any real Neon password, any real `DEEPSEEK_API_KEY`/`BRAVE_API_KEY`, and — once you've filled it in for your own deploy — your production `CORS_ORIGIN`/`VITE_API_URL` are not secret but there's no reason to commit your personal domain into a shared repo either; keep the checked-in `fly.toml`/`render.yaml` on the `REPLACE-WITH-...` placeholders and set the real values through each host's own env-var UI. The root `.gitignore` already covers `.env`; `.env.example` (this task's deliverable) intentionally contains no real values, only placeholders and documentation.
 
 ---
 

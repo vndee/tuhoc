@@ -28,13 +28,13 @@ Mọi câu hỏi mở của bản nháp đã có lời đáp (§10 ghi những g
 | Key AI | **Chỉ key của ta**, từ biến môi trường server. Không bao giờ lưu key người dùng — ở browser hay ở server. |
 | Đơn vị credit | **Đơn vị riêng của ta.** Bên trong vẫn đếm token thật để tính giá vốn. |
 | Thanh toán | **SePay (VietQR) + Polar (merchant of record quốc tế), cả hai từ đầu.** |
-| Agent | Tool đọc course (pha 2), tool đọc tiến độ/ghi chú (pha 3), web search qua tool của nhà cung cấp (phụ thu credit). Người dùng config system prompt + bật/tắt tool. |
+| Agent | Tool đọc course (pha 2), tool đọc tiến độ/ghi chú (pha 3), web search do ta tự viết (gọi sang Brave Search API, key từ env `BRAVE_API_KEY`, phụ thu credit). Người dùng config system prompt + bật/tắt tool. |
 | Generate course | **Pipeline chuẩn + quality gate máy đo được** trong `course-format`. |
 | Ai publish | **Chỉ ta**, qua CLI với admin token hoặc CMS. Cộng đồng đóng góp qua PR vào kho nguồn. |
 | Thứ tự | **Course lên server trước, AI sau** — để agent có tool đọc course ngay từ lần ship đầu. |
 | CMS | Khu `/admin` trong `apps/web`, chắn bằng role. Bốn màn: Courses, Người dùng & credit, Bảng giá & prompt nền, Billing & đối soát. |
 | Credit dùng thử | **Tặng ít, đủ nếm thử** cho tài khoản mới; rate limit độc lập chống farm. |
-| Nhà cung cấp AI | **Anthropic**, một nhà duy nhất ở pha đầu. Web search dùng tool có sẵn của Messages API — không cần key tìm kiếm riêng. |
+| Nhà cung cấp AI | **DeepSeek** (chốt 28/08/2026, thay bản duyệt 25/08 vì giá — xem plan Pha 2). Một nhà duy nhất cho mô hình. Web search **cần nhà cung cấp thứ hai và key riêng**: DeepSeek không có tool tìm kiếm chạy phía máy chủ họ, nên lời hứa "không cần key tìm kiếm riêng" của bản 25/08 KHÔNG còn đúng. |
 
 ---
 
@@ -161,7 +161,7 @@ toàn bộ, không cần đăng nhập. Đọc ẩn danh không có tiến độ
 
 ### 3.1 `internal/ai`
 
-- Client Anthropic; key từ env (`AI_PROVIDER_KEY`), không ra log, không ra
+- Client DeepSeek (API tương thích OpenAI, `https://api.deepseek.com`), viết tay bằng `net/http`; key từ env (`DEEPSEEK_API_KEY`), không ra log, không ra
   response — cổng kiểm mới canh đúng điều này (§8).
 - Vòng lặp agent (tool use) + stream SSE. `useAI` phía web giữ nguyên giao diện
   `AITurn[]`, chỉ đổi đường ra.
@@ -174,7 +174,13 @@ toàn bộ, không cần đăng nhập. Đọc ẩn danh không có tiến độ
 |---|---|---|---|
 | Đọc giáo trình (mục lục, chương) | DB courses | token thường | 2 |
 | Đọc tiến độ + ghi chú người học | DB progress/notes | token thường | 3 |
-| Web search | tool có sẵn của nhà cung cấp | phụ thu credit mỗi lượt tìm | 2 |
+| Web search | nhà cung cấp tìm kiếm riêng (Brave Search API) | phụ thu credit mỗi lượt tìm | 2 |
+
+> **Đổi nhà cung cấp không phải đổi tên.** Bản 25/08 chọn Anthropic một phần vì
+> Messages API có tool tìm kiếm chạy trên máy chủ họ, nên "web search" là một
+> dòng trong mảng `tools` chứ không phải một tích hợp. DeepSeek không có thứ
+> ấy. Cái giá của việc rẻ hơn là một nhà cung cấp thứ hai, một key thứ hai, một
+> hoá đơn thứ hai, và một `SearchProvider` interface phải tự viết và tự canh.
 
 Tool đắt không cần cơ chế xin phép — bật là dùng, giá tự nói qua bảng quy đổi.
 
@@ -364,7 +370,6 @@ publish được.
 1. **Giá cụ thể**: giá gói credit, tỷ lệ quy đổi, mức tặng thử — chốt ở Pha 4
    khi nhìn thấy giá vốn thật từ sổ `ai_usage` của Pha 2–3.
 2. **Ngưỡng luật chất lượng**: đo từ ba course mẫu ở đầu Pha 5.
-3. **Model mặc định**: chọn ở đầu Pha 2 theo tài liệu API hiện hành (tiêu chí:
-   chi phí phù hợp bài toán gia sư, có tool use + web search).
+3. **Model mặc định**: **deepseek-v4-pro** (chốt 28/08/2026, giá per 1M token: $1,32 vào / $3,96 ra theo api-docs.deepseek.com ngày 28/08). Tiêu chí: tool use + chi phí phù hợp bài toán gia sư.
 4. **Tài khoản SePay/Polar**: thủ tục đăng ký merchant nằm ngoài repo, cần
    xong trước khi Pha 4 ship.

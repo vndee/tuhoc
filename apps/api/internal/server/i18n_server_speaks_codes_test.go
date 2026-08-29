@@ -48,8 +48,9 @@ import (
 //
 // PHẠM VI: mọi tệp `.go` KHÔNG PHẢI test dưới `apps/api`, kể cả gói chưa tồn
 // tại lúc viết dòng này. Một danh sách gói được phép là đúng hình dạng cổng mù
-// mà `no_key_transit_test.go` bên cạnh đã bác một lần rồi ("đừng loại trừ cả
-// gói").
+// mà cổng key-transit đã bác một lần rồi ("đừng loại trừ cả gói"). Tệp ấy
+// (`no_key_transit_test.go`) đã bị XOÁ ở Task 11 — nó không còn "bên cạnh" —
+// và bản thay `provider_key_never_leaks_test.go` giữ nguyên nguyên tắc ấy.
 
 // Ký tự chỉ xuất hiện trong CHỮ Latin có dấu — không bao giờ trong mã định
 // danh hay chuỗi kỹ thuật của repo này.
@@ -70,7 +71,18 @@ const minProductionGoFiles = 20
 // Tệp NEO — phép quét phải đọc được đúng những tệp mà vi phạm sẽ nằm ở đó.
 // Một ngưỡng đếm mà không có mỏ neo vẫn xanh khi bộ lọc nuốt đúng thư mục
 // đáng nhìn và để lại một thư mục khác cho đủ số.
+//
+// HAI DÒNG CUỐI THÊM Ở VÒNG SỬA SAU REVIEW TỔNG NHÁNH PHA 2 (mục F4). Sáu
+// neo đầu đều là handler Pha 1; `internal/ai` — gói LỚN NHẤT Pha 2 thêm vào,
+// và là gói duy nhất trong repo có người viết mã dưới áp lực song ngữ (mọi
+// câu người học đọc đều đi qua nó dưới dạng MÃ, không phải chuỗi) — không có
+// neo nào. Phép quét vẫn phủ nó qua `filepath.Walk`, nên đây là rủi ro TƯƠNG
+// LAI chứ không phải một lỗ đang sống: nếu một ngày bộ lọc thư mục đổi và
+// nuốt mất `internal/ai`, năm nghìn dòng còn lại vẫn đủ vượt
+// `minProductionGoFiles` và cổng vẫn xanh. Thêm neo là THU HẸP, không nới.
 var handlerSentinels = []string{
+	"internal/ai/admin_handler.go",
+	"internal/ai/handler.go",
 	"internal/auth/handler.go",
 	"internal/catalog/handler.go",
 	"internal/rating/handler.go",
@@ -122,7 +134,10 @@ func productionGoFiles(t *testing.T) []string {
 }
 
 // apiRoot neo ở `apps/api` bằng cách đi ngược lên tìm `go.mod`. KHÔNG có
-// đường lui im lặng, cùng lý do `repoRoot` ở `no_key_transit_test.go` nêu.
+// đường lui im lặng, cùng lý do `providerKeyRepoRoot`
+// (`provider_key_never_leaks_test.go`) nêu — lập luận ấy ra đời ở
+// `no_key_transit_test.go`, tệp đã bị xoá ở Task 11, và được chép nguyên vào
+// tệp thay nó.
 func apiRoot(t *testing.T) string {
 	t.Helper()
 

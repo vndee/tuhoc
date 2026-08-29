@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
+import { MemoryRouter } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { t as lookup, type Translate } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageProvider';
@@ -31,12 +32,22 @@ function listOnce(rows: unknown[]) {
   return http.get('/admin/courses', () => HttpResponse.json(rows));
 }
 
+/**
+ * `MemoryRouter` wraps `<AdminCourses>` starting Task 17: the screen now
+ * renders `<AdminNav>` (shared sub-nav to `/admin/credits`/`/admin/pricing`,
+ * both new this task), and `<NavLink>` throws outside a Router context —
+ * measured directly: this suite was 8/8 red with "useLocation() may be
+ * used only in the context of a <Router> component" before this wrapper
+ * was added.
+ */
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <LanguageProvider>
-        <AdminCourses />
+        <MemoryRouter initialEntries={['/admin']}>
+          <AdminCourses />
+        </MemoryRouter>
       </LanguageProvider>
     </QueryClientProvider>,
   );

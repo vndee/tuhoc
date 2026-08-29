@@ -33,8 +33,8 @@ const API_URL = process.env.VITE_API_URL ?? `http://localhost:${process.env.TUHO
 export default defineConfig({
   testDir: './e2e',
   // Final whole-branch review, Important 4: `make test-e2e` ran all four
-  // specs unfiltered, and two of them are red for reasons that predate
-  // this phase and belong to it: `p2.spec.ts` navigates to a chapter in
+  // specs unfiltered, and one of them was red for a reason that predates
+  // this phase and belongs to it: `p2.spec.ts` navigates to a chapter in
   // course `so-dau-phay-dong` (see its own `COURSE_ID` constant), but
   // `scripts/test-e2e.sh`'s seed step only ever publishes ONE course to
   // the e2e stack — `mau-hop-le` (`fixtures/format-v2/valid-course`, the
@@ -42,21 +42,32 @@ export default defineConfig({
   // that reason). `so-dau-phay-dong` was never seeded, so
   // `GET /courses/so-dau-phay-dong/chapters/p2-2` 404s and `.katex` never
   // renders — a missing fixture, not a course-serving regression, and
-  // P2 (annotations) is not this phase's subsystem to fix. `s2.spec.ts`
-  // is subsystem 2's own end-to-end gate for the AI/BYOK key vault
-  // (`apps/vault`) — see that file's own "HỆ THỐNG CON 2" header — a
-  // different phase's subject entirely, untouched by this one.
+  // P2 (annotations) is not this phase's subsystem to fix.
+  //
+  // `s2.spec.ts` held a SECOND entry here for one Pha 2 commit: Task 16
+  // deleted the phase-1 AI/BYOK key vault app it drove FIRST, in one
+  // commit, which left this testIgnore ENTRY quarantining a spec that no
+  // longer had anything real left to test; a LATER commit deleted the spec
+  // FILE itself, at which point the entry quarantined nothing at all — the
+  // file was gone outright, so there was nothing left to quarantine.
+  // Task 18 wrote a REPLACEMENT `s2.spec.ts`, rebuilt around credit
+  // (spec §8: "số dư hiện, trừ đúng, hết chặn, config giữ"), against a
+  // fake DeepSeek double (`scripts/fake_deepseek.py`) rather than the
+  // real API — see that spec file's own top comment for the full
+  // reasoning. It runs unfiltered, same as `p1.spec.ts`/`widget.spec.ts`
+  // below; nothing about it belongs in this list.
   //
   // Quarantined here, not silently: `p1.spec.ts` (this phase's own P1
-  // definition-of-done gate) and `widget.spec.ts` (spec §8's sandboxed-
-  // widget proof, also this phase's) are what `make test-e2e` asserts
-  // from now on — the only two specs actually exercising what this phase
-  // built. Un-skip a file by deleting its entry below once its own
-  // subsystem re-seeds what it needs (`p2.spec.ts`: a second course, or a
-  // fixture switch) or is otherwise made independently green — this list
-  // is not a place to add a THIRD entry without the same kind of
-  // investigation that put these two here.
-  testIgnore: ['**/p2.spec.ts', '**/s2.spec.ts'],
+  // definition-of-done gate), `widget.spec.ts` (spec §8's sandboxed-
+  // widget proof, also this phase's) and `s2.spec.ts` (the AI/credit
+  // gate, above) are what `make test-e2e` asserts from now on — the only
+  // three specs actually exercising what this phase built. Un-skip a
+  // file by deleting its entry below once its own subsystem re-seeds
+  // what it needs (`p2.spec.ts`: a second course, or a fixture switch)
+  // or is otherwise made independently green — this list is not a place
+  // to add a SECOND entry without the same kind of investigation that
+  // put this one here.
+  testIgnore: ['**/p2.spec.ts'],
   // One real network round trip per assertion, two independent browser
   // contexts, and a deliberate wait for a 15s server-side sync timer (see
   // e2e/p1.spec.ts) — this is not a fast suite, and 90s is a real budget

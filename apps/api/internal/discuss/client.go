@@ -15,12 +15,18 @@ import (
 // APIURL is where this client talks, written out in full, in source.
 //
 // It is a CONSTANT and not an environment variable, and that is a
-// deliberate answer to the mutant internal/server/no_key_transit_test.go
-// names by hand: "a proxy that calls its field k and reads its base URL
-// from an environment variable". A destination that lives in the
-// environment is a destination no source scan can see. This one is visible
-// to grep, and the allowlist that lets this file import net/http at all
-// REQUIRES it to be visible — see that test's outboundAllowlist.
+// deliberate answer to a mutant the key-transit gate once named by hand:
+// "a proxy that calls its field k and reads its base URL from an
+// environment variable". A destination that lives in the environment is a
+// destination no source scan can see.
+//
+// THE GATE THAT ONCE REQUIRED THIS IS GONE. internal/server/
+// no_key_transit_test.go — whose outboundAllowlist is what let this file
+// import net/http at all — was deleted at Task 11, and its successor
+// provider_key_never_leaks_test.go deliberately does NOT replace the
+// destination allowlist (see that file's PHẠM VI THẬT, point 3). Today
+// nothing would stop this constant becoming a variable. It stays a constant
+// anyway, and the reason above is still the reason.
 //
 // Tests override it through NewClientWithEndpoint, which takes the endpoint
 // as an explicit argument at the call site rather than reading it from
@@ -226,9 +232,19 @@ func (c *Client) Fetch(ctx context.Context, registryID string) (Thread, error) {
 	// It is the mirror image of the thing spec §1.4 forbids, which is this
 	// server READING a credential a client sent IN — see
 	// config.Config.GitHubToken for why the two are different in kind, and
-	// note that internal/server/no_key_transit_test.go bans `c.Get(
+	// note that the gate bans the header-READING call `c.Get(
 	// "authorization")` and not the word Authorization, precisely so that
-	// this distinction stays legible.
+	// this distinction stays legible. That gate is now internal/server/
+	// provider_key_never_leaks_test.go's keyBearingFields (the assertion was
+	// carried over verbatim when no_key_transit_test.go was deleted at Task
+	// 11).
+	//
+	// The line break inside that call is LOAD-BEARING, not formatting: the
+	// scan matches the needle on ONE line, so writing it whole here would
+	// make this comment trip the very gate it describes. Rephrasing is the
+	// documented answer (handler.go's own "NAMING NOTE, load-bearing" in
+	// internal/ai records five implementers who learned it the same way);
+	// loosening the needle is not.
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")

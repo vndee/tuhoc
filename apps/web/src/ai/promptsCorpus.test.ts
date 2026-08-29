@@ -21,10 +21,11 @@ import { CHAPTER_CONTEXT_LIMIT, chapterSystemPrompt, readableText } from './prom
  * chương của gói mẫu**, rồi hỏi phép chiếu cùng một câu hỏi.
  *
  * Nó cũng là chỗ **ba hằng số đo được** của kế hoạch được tính LẠI mỗi lần
- * chạy thay vì tin vào một ảnh chụp. Task 9b phải neo bằng ảnh chụp vì
- * `apps/vault/tsconfig.json` cố ý không có `types: ["node"]`; ở `apps/web` thì
- * `ai/noKeyLeak.test.ts` đã đọc thẳng cây nguồn bằng `node:fs`, nên ràng buộc
- * ấy không tồn tại ở đây và không có lý do gì để chấp nhận một ảnh chụp.
+ * chạy thay vì tin vào một ảnh chụp. Task 9b phải neo bằng ảnh chụp vì bộ test
+ * của kho khoá cố ý không có `types: ["node"]` (bề mặt phụ thuộc ở origin giữ
+ * key là bề mặt tấn công); cấu hình vitest của `apps/web` thì CÓ, nên một bài
+ * kiểm ở đây đọc thẳng cây nguồn bằng `node:fs` được — ràng buộc ấy không tồn
+ * tại ở đây, và không có lý do gì để chấp nhận một ảnh chụp.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -174,11 +175,14 @@ describe('gói mẫu thật + KaTeX thật', () => {
       flush();
     }
 
-    // Ba con số này là căn cứ của `CHAPTER_CONTEXT_LIMIT` (xem `prompts.ts`) và
-    // của `SESSION_CHAR_BUDGET` bên kho khoá (Task 9b). Chúng được ghi vào đây
-    // với dung sai 2%: gói mẫu là dữ liệu thật, và một lần sửa chính tả trong
-    // một chương không được làm đỏ cổng — nhưng một chương MỚI dài gấp rưỡi thì
-    // phải, vì cả hai ngưỡng được chọn dựa trên chúng.
+    // Ba con số này là căn cứ của `CHAPTER_CONTEXT_LIMIT` (xem `prompts.ts`).
+    // Chúng CŨNG từng là căn cứ của `SESSION_CHAR_BUDGET` bên kho khoá (Task
+    // 9b) — ngân sách ký tự mà Task 16 gỡ cùng kho khoá, vì người học nay bị
+    // trừ credit theo token thật ở máy chủ chứ không bị chặn theo một ngưỡng
+    // ký tự đoán trước trong trình duyệt. Chúng được ghi vào đây với dung sai
+    // 2%: gói mẫu là dữ liệu thật, và một lần sửa chính tả trong một chương
+    // không được làm đỏ cổng — nhưng một chương MỚI dài gấp rưỡi thì phải, vì
+    // ngưỡng còn lại được chọn dựa trên chúng.
     expect(longest).toBeGreaterThan(19_312 * 0.98);
     expect(longest).toBeLessThan(19_312 * 1.02);
     expect(sampleTotal).toBeGreaterThan(117_670 * 0.98);

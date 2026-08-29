@@ -4,6 +4,7 @@
 package server
 
 import (
+	"context"
 	"crypto/subtle"
 	"io"
 	"log"
@@ -18,6 +19,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/vndee/tuhoc-api/internal/ai"
 	"github.com/vndee/tuhoc-api/internal/apilog"
 	"github.com/vndee/tuhoc-api/internal/auth"
 	"github.com/vndee/tuhoc-api/internal/catalog"
@@ -348,7 +350,12 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// public read routes (Task 9) below — one handler over one usecase
 	// over one repo, per this file's own "extend the layer, don't split
 	// it" convention (see internal/catalog's own package doc).
-	catalogHandler := catalog.NewHandler(catalog.NewUsecase(catalog.NewRepo(deps.Pool)))
+	// The usecase is held in its own variable rather than inlined because
+	// the AI routes below reuse it (through courseQuerier) — one usecase
+	// over one repo over one pool, instead of a second equivalent stack
+	// built just for the read_course tool.
+	catalogUsecase := catalog.NewUsecase(catalog.NewRepo(deps.Pool))
+	catalogHandler := catalog.NewHandler(catalogUsecase)
 
 	// Public course-reading routes (Task 9): no auth in front of any of
 	// them — courses are free and public to read, spec §2.4's own decision.
@@ -393,5 +400,133 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	mountAdmin(fiber.MethodDelete, "/admin/courses/:slug", catalogHandler.Unpublish)
 	mountAdmin(fiber.MethodPost, "/admin/courses/:slug/rollback", catalogHandler.Rollback)
 
+	// AI routes (Pha 2, Task 11): the server-side tutor. All three sit
+	// behind auth.Require like every other stateful route in this file, and
+	// they have to — a turn spends the platform's provider budget and the
+	// learner's credit, and both are attributed to whoever the session says
+	// is calling.
+	//
+	// The DeepSeek client, the search provider, and the credit service are
+	// built ONCE and shared: they are stateless request-makers. The TOOLS
+	// are not built here, on purpose — see ai.TurnTools, which the handler
+	// calls per request because the web-search tool's per-turn budget is
+	// counted on the instance, and one shared instance would turn "3
+	// searches per turn" into "3 searches per process, for everyone".
+	//
+	// ai.NewProviderClient rather than ai.New: New takes an *http.Client,
+	// and an hc carrying a Timeout re-imposes a total-request cutoff (body
+	// reads included) underneath CompleteStream's idle/total watchdogs,
+	// which is exactly what those watchdogs replaced. NewProviderClient has
+	// no parameter for one, so this wiring cannot get it wrong.
+	//
+	// A deployment with no search key gets a nil provider, and web_search is
+	// simply not registered — an advertised tool that always fails still
+	// costs the learner a tool-call round to discover that.
+	//
+	// STARTUP SIGNAL (whole-branch review, A4). Both keys are read by
+	// config.Load with a bare os.Getenv — no default, no complaint — and
+	// cmd/api/main.go only ever insists on DATABASE_URL. Before these two
+	// lines, a deployment that never set them booted perfectly clean and
+	// then failed at the moment a learner pressed "Hỏi", reporting a
+	// PROVIDER FAILURE. That is the wrong sentence for the situation: a
+	// missing key is permanent and an operator fixes it in thirty seconds,
+	// while a provider outage is temporary and an operator waits. Making
+	// them indistinguishable costs whoever is on call the whole diagnosis.
+	//
+	// log.Printf and carry on, NOT log.Fatal: this mirrors the
+	// "discussions disabled" line above exactly, and for the same reason —
+	// the reader, the catalog, sync, stats and auth are all unaffected by a
+	// missing AI key, so refusing to boot would turn a partial
+	// misconfiguration into a total outage.
+	//
+	// The NAMES of the environment variables, never their values: the whole
+	// point of provider_key_never_leaks_test.go is that a key does not
+	// reach a log, and a helpful startup line is exactly where that rule
+	// gets broken by accident.
+	if cfg.DeepSeekAPIKey == "" {
+		log.Printf("server: AI disabled: DEEPSEEK_API_KEY is not set — " +
+			"POST /ai/chat will fail for every learner until it is")
+	}
+	var aiSearch ai.SearchProvider
+	if cfg.BraveAPIKey != "" {
+		aiSearch = ai.NewBrave(ai.DefaultBraveSearchEndpoint, cfg.BraveAPIKey, nil)
+	} else {
+		log.Printf("server: AI web search disabled: BRAVE_API_KEY is not set — " +
+			"the web_search tool is not registered for any turn")
+	}
+	aiHandler := ai.NewHandler(ai.HandlerDeps{
+		Client:  ai.NewProviderClient(cfg.DeepSeekBaseURL, cfg.DeepSeekAPIKey),
+		Credits: ai.NewService(deps.Pool),
+		Courses: courseQuerier{uc: catalogUsecase},
+		Search:  aiSearch,
+		// The learner is whoever the session cookie says, never anything in
+		// the request. Passed in as a function because internal/auth imports
+		// internal/ai (the signup grant), so internal/ai cannot import auth
+		// back — and because stating it here keeps the decision visible at
+		// the wiring site rather than buried in a struct field.
+		UserID: auth.UID,
+	})
+	// bodyLimit ahead of auth.Require on both bodied routes, same ordering
+	// and same reason as /sync and /events/batch above: an oversized body is
+	// refused without spending a pool connection on validating a session.
+	app.Post("/ai/chat", bodyLimit(ai.MaxChatBodyBytes), auth.Require(deps.Pool), aiHandler.Chat)
+	app.Get("/ai/credits", auth.Require(deps.Pool), aiHandler.Credits)
+	app.Get("/ai/config", auth.Require(deps.Pool), aiHandler.GetConfig)
+	app.Put("/ai/config", bodyLimit(ai.MaxConfigBodyBytes), auth.Require(deps.Pool), aiHandler.PutConfig)
+
+	// Admin AI routes (Task 17): the "Người dùng & credit" and "Bảng giá &
+	// prompt nền" CMS screens (spec §7). Same admin gate Task 8's catalog
+	// routes use — auth.Require then auth.RequireAdmin, in that order, the
+	// order RequireAdmin's own doc comment requires — and nothing else:
+	// unlike mountAdmin above, there is no adminOrToken door here, because
+	// there is no CLI tool analogous to `tuhoc publish` that needs one. A
+	// request that fails auth.Require gets 401; one that passes it but is
+	// not an admin's gets 403 from auth.RequireAdmin, never a silent 404 —
+	// see admin_handler_test.go's route-table-driven test in internal/ai,
+	// which walks this exact group via app.Stack() rather than a hand-typed
+	// list, so a route added here without updating that group is caught by
+	// construction.
+	adminAI := app.Group("/admin/ai", auth.Require(deps.Pool), auth.RequireAdmin(deps.Pool))
+	adminAI.Get("/users", aiHandler.AdminListUsers)
+	adminAI.Get("/users/:id", aiHandler.AdminGetUser)
+	adminAI.Post("/users/:id/credit", aiHandler.AdminAdjustCredit)
+	adminAI.Get("/pricing", aiHandler.AdminListPricing)
+	adminAI.Put("/pricing/:model", aiHandler.AdminUpdatePricing)
+	adminAI.Get("/settings", aiHandler.AdminGetSettings)
+	adminAI.Put("/settings", aiHandler.AdminUpdateSettings)
+
 	return app
+}
+
+// courseQuerier adapts internal/catalog's read side to the two-method
+// surface the read_course tool needs (ai.CourseQuerier).
+//
+// It lives HERE, in the composition root, rather than in internal/ai, so
+// that package keeps depending on nothing but the database and the two
+// providers. internal/ai already sits underneath internal/auth in the import
+// graph; giving it a second dependency on the whole catalog stack would put
+// a domain package in the middle of the wiring, which is this file's job.
+//
+// Both methods reach only PUBLISHED courses — the same rows any anonymous
+// reader can already fetch over GET /courses/:slug. The tool therefore adds
+// no read authority the learner did not already have; what it adds is the
+// model's ability to fetch them mid-answer.
+type courseQuerier struct {
+	uc *catalog.Usecase
+}
+
+func (q courseQuerier) Manifest(ctx context.Context, slug string) ([]byte, error) {
+	course, err := q.uc.GetPublished(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+	return course.ManifestJSON, nil
+}
+
+func (q courseQuerier) ChapterHTML(ctx context.Context, slug, chapterID string) (string, error) {
+	// Widgets and the version are dropped deliberately: a widget is an
+	// interactive HTML island for a browser to render, and the model reads
+	// prose. courseTool strips tags from what it gets back anyway.
+	html, _, _, err := q.uc.GetChapter(ctx, slug, chapterID)
+	return html, err
 }

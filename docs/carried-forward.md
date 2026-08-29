@@ -19,8 +19,9 @@ Ghi lại lúc kết thúc P1 (nhánh `p1-platform-core`, 37 commit, hợp nhấ
 **Món nợ này đóng bằng một QUYẾT ĐỊNH, không bằng mã.** Cookie phiên vốn đã là `SameSite=Lax`
 (`apps/api/internal/auth/handler.go:164,180`); C-3 chỉ cắn nếu chọn phương án **tên miền miễn phí** ở
 `docs/deploy.md` §0, thứ bắt buộc `None`. Chủ dự án đã có `duy.dev` và chốt `tuhoc.duy.dev` +
-`api.duy.dev` + `vault.duy.dev` — khác **origin** nhưng **cùng site**, nên `Lax` là đủ và **không cần
-đổi một dòng mã nào**.
+`api.duy.dev` — khác **origin** nhưng **cùng site**, nên `Lax` là đủ và **không cần
+đổi một dòng mã nào**. (Bố cục ấy từng có một tên miền con thứ ba, `vault.duy.dev`, cho kho khoá;
+Pha 2 Task 16 gỡ kho khoá. Lập luận "cùng site" không phụ thuộc vào số tên miền con.)
 
 Cái đã thêm là chỗ **ghi quyết định ấy lại** để nó không bị gỡ trong im lặng:
 `apps/api/internal/auth/csrf_samesite_test.go` — `TestSessionCookieIsNeverSameSiteNone`, hai nửa:
@@ -100,7 +101,8 @@ cd apps/web && bunx vitest run src/sync/crossTabSession.test.tsx
    — nếu không, "tab 2 không gửi gì" đúng vì **không còn gì để gửi**.
 4. Khẳng định phủ định **không bao giờ đi qua `waitFor`**: gọi thẳng `syncOnce()` rồi so số đếm.
 
-**Đối chứng đột biến (đã đo 2026-08-22, xem `.superpowers/sdd/2026-08-22-s4-rating/task-1-report.md`):**
+**Đối chứng đột biến (đã đo 2026-08-22; sổ thực thi nằm dưới `.superpowers/`, **không có trong git** —
+xem mục E ở cuối tệp này):**
 5/5 đột biến thật **chết**, đột biến đối chứng chỉ-sửa-chú-thích **sống**. Sửa mã ở đây thì **đo lại
 bằng đột biến**, đừng suy luận — bản đầu của bài kiểm số 2 dùng `waitFor` và **đã bị đo là vô dụng**:
 đột biến "xoá hẳn phần đăng ký nghe bus" **sống sót, xanh trong 15 091 ms**, vì `asyncUtilTimeout` của
@@ -236,7 +238,13 @@ import không" — vì không cổng tự động nào hỏi hộ. Khe hở này
 (Task 10 đã tự khai đúng nó ở dòng đầu mục "Concerns"); nó sinh ra từ việc chạy song song, nên nó
 thuộc về điều phối viên.
 
-## Giao thức kho khoá: dây bẫy quét CHỮ, không quét luồng dữ liệu (S2-F8)
+## Giao thức kho khoá: dây bẫy quét CHỮ, không quét luồng dữ liệu (S2-F8) — **HẾT HIỆU LỰC (Pha 2, Task 16)**
+
+> **Trạng thái: mục này KHÔNG còn là một luật đang chạy.** Pha 2 Task 16 gỡ `apps/vault`, nên không
+> còn giao thức nào để đọc bằng mắt và không còn phép quét nào trong sáu phép ấy. Giữ lại vì **hình
+> dạng của lỗ** là thứ sẽ quay lại nguyên vẹn ngay khi có một bí mật của người dùng đi qua một ranh
+> giới nào đó lần nữa — và vì nó đặt tên cho một lớp cổng mà repo này vẫn còn nhiều: **cổng quét CHỮ
+> không đo được LUỒNG DỮ LIỆU.**
 
 Hệ thống con 2 có sáu phép quét nguồn cưỡng chế lời hứa *"key không bao giờ đi qua máy chủ"*. Tất cả
 đều quét **chữ**. `const k = resp.value` mang key qua cả sáu mà không viết chữ "key" ở đâu.
@@ -312,9 +320,30 @@ trùng tên, khác nguồn.
 cài bước gán thật, bài ấy là bài đỏ đầu tiên họ gặp, và nó chỉ cho họ **nửa còn lại phải nối cùng
 lúc**: nhãn `registry` của `pages/Library.tsx`, và mục này.
 
-## *Confused deputy* của kho khoá — ĐÃ GIẢM THIỂU, CHƯA KHẮC PHỤC (S2-F9 · HC-3)
+## *Confused deputy* — **CÒN SỐNG, ĐỔI NẠN NHÂN sang `POST /ai/chat` (Pha 2, Task 16)** (S2-F9 · HC-3)
 
-**Trạng thái: `apps/vault/src/guard.ts` đang chạy. Lỗ vẫn còn. Đừng đọc mã ấy rồi tưởng nó đóng.**
+> **CƠ CHẾ CŨ ĐÃ CHẾT, LỖ THÌ KHÔNG.** `apps/vault/src/guard.ts` không còn chạy — nó bị xoá cùng
+> `apps/vault` ở Task 16. Nhưng đây là một mục **đang sống**, và nhan đề nói thế vì trong một sổ nợ,
+> nhan đề là thứ được lướt và được `grep`: một mục đọc thành "KHÔNG CÒN ÁP DỤNG" là một mục bị bỏ qua.
+>
+> **Câu hỏi gốc không đổi:** *một course độc chạy trong trang chính có bảo được nền tảng gọi hộ
+> không?* Course hạng `interactive` vẫn chạy JS trong trang chính, trang chính vẫn có phiên đăng
+> nhập, và `fetch('/ai/chat', { credentials: 'include' })` vẫn là một dòng. Thứ đổi là **nạn nhân**,
+> và nó đổi theo HAI hướng — nói một hướng thôi là mô tả nửa nhẹ hơn:
+>
+>   · **tiền** — nay nó đốt **credit của người học** thay vì key của họ. Hướng này ĐƯỢC giảm thiểu
+>     thật: hạn mức và phép trừ credit nằm ở MÁY CHỦ (`internal/ai/ratelimit.go`,
+>     `internal/ai/credits.go`), tức phía không ai sửa được từ trình duyệt — mạnh hơn hẳn một token
+>     bucket trong `localStorage` của một origin.
+>   · **ghi chú riêng tư** — **chuyển giao NGUYÊN VẸN, không được giảm thiểu chút nào.** Đó là món
+>     #1 trong danh sách dưới đây, nửa nghiêm trọng của HC-3. `RateLimiter` là *"a sliding-window
+>     **call** budget per user id"* (`ratelimit.go`): nó chặn **số lời gọi**, không chặn **số chữ**.
+>     Trong hạn mức, một course độc vẫn gửi đi được ~N lời nhắc/phút, **mỗi lời nhắc dài tuỳ ý** —
+>     y hệt bản Pha 1, chỉ đổi chỗ đặt bộ đếm.
+>
+> Ai chạm vào `POST /ai/chat` nên đọc hết **SÁU** ghi chú bên dưới (danh sách tự đánh số 1–6, và
+> chính nó mở đầu bằng chữ "sáu món"): chúng là sáu cách một lời gọi "hợp lệ" đi qua một cổng "đang
+> chạy". Món #1 là món chưa ai chạm tới.
 
 Kiến trúc origin riêng chặn được course độc **ĐỌC** key — trình duyệt cấm JS của origin này đọc
 `localStorage` của origin khác. Nó **KHÔNG** chặn được course độc **DÙNG** key: course hạng
@@ -365,7 +394,14 @@ mới đỏ. Bẫy thật của người gác là `guard.test.ts > BẪY TRUNG T
 ⇒ Bài học chung: **một dây bẫy còn xanh không có nghĩa nó còn đo thứ nó từng đo.** Khi mã dưới nó
 đổi, phải đo lại bằng đột biến, không suy luận.
 
-## Form nhập key sống trong iframe: chặn được NHÚNG, không chặn được SAO CHÉP (S2 Task 6)
+## Form nhập key sống trong iframe: chặn được NHÚNG, không chặn được SAO CHÉP (S2 Task 6) — **KHÔNG CÒN Ô NHẬP KEY (Pha 2, Task 16)**
+
+> **Trạng thái: không còn form nhập key nào trong sản phẩm.** Pha 2 gỡ `apps/vault`, và mục Trợ lý AI
+> ở Cài đặt nay chỉ hiện số dư credit và cấu hình agent — không `<input>` nào, và `pages/
+> Settings.test.tsx` khoá đúng điều đó lại. Giữ mục này vì kết luận của nó là một luật **thiết kế**,
+> không phải một chi tiết cài đặt: **bất kỳ ô nhập bí mật nào sống trong một iframe đều dạy người
+> dùng dán bí mật vào một ô họ không kiểm chứng được nguồn gốc.** Nó sẽ đúng lại ở đúng ngày ai đó
+> nghĩ tới một khung nhúng cho việc thanh toán, đăng nhập bên thứ ba, hay một key nào khác.
 
 `apps/vault/_headers` đặt `frame-ancestors`, và nó **đo được hai chiều trên bản dựng thật**: origin
 được phép thì nhúng và thấy ô nhập; origin khác thì rơi vào `chrome-error://chromewebdata/`.
@@ -377,7 +413,15 @@ một cái ô mà họ không có cách nào kiểm chứng nó chạy ở đâu
 
 Đây là **cố hữu với mọi thiết kế cất-bí-mật-trong-iframe**, không phải lỗi cài đặt. Nhưng Task 6 là
 lần đầu nó trở thành thật, vì trước đó chưa có ô nhập key nào. Ba hướng giảm thiểu đã được cân nhắc
-và **bác bỏ có lý do** — ghi ở `.superpowers/sdd/2026-08-22-s2-ai-byok/task-6-report.md` §9.
+và **bác bỏ có lý do**. Lý lẽ đầy đủ nằm trong sổ thực thi dưới `.superpowers/`, **không có trong
+git** (xem mục E ở cuối tệp này), nên kết luận được chép thẳng vào đây:
+
+1. *Hiện origin của khung ra trong chính khung* — vô dụng: kẻ chép giao diện in đúng dòng ấy.
+2. *Bắt người dùng mở kho khoá ở một tab riêng để nhìn thấy thanh địa chỉ* — đúng về an ninh, đổi lấy
+   một luồng cấu hình nhiều khả năng bị bỏ giữa chừng; không có dữ liệu để cân đánh đổi ấy.
+3. *Một chuỗi/hình do người dùng tự chọn hiện trong khung* (kiểu SiteKey của ngân hàng) — cần một chỗ
+   cất thứ hai ở origin kho khoá và một luồng thiết lập riêng, và bằng chứng ngoài đời cho thấy người
+   dùng không nhận ra khi nó VẮNG mặt.
 
 **Hai điều chưa kiểm được, ghi để không ai tưởng đã kiểm:** `_headers` **chưa từng được một Cloudflare
 Pages thật phục vụ**, và `apps/vault` **chưa có project Pages nào**. Phép đo hai chiều ở trên chạy
@@ -407,6 +451,70 @@ chuẩn, một `BroadcastChannel` **không nhận thông điệp của chính n�
 phát"*. Cookie đổi ngay khi `POST /auth/login` trả về; tín hiệu sớm nhất là vài câu lệnh sau đó. Đóng
 đúng cách cần phía server — ví dụ một định danh phiên trên mọi phản hồi để client đối chiếu.
 
+## Không cổng nào so `src/styles/*.css` với `dist/` (Pha 2, Task 16 vòng sửa 2)
+
+**Trạng thái: hở, và đã cắn HAI lần trong cùng một tệp.** Cả hai lần, một quy tắc CSS có thật trong
+nguồn **không có trong bản dựng**, và **`bun run build` XANH cả hai lần**.
+
+| lần | nguyên nhân | thiệt hại đo trên `dist/` |
+|---|---|---|
+| `c1aacde` → 2026-08-29 | dấu ĐÓNG chú thích không có dấu mở, ở cấp cao nhất | `.page-settings { max-width: 54rem }` biến mất |
+| `4c59fdc` (một commit) | đoạn văn nháp còn sót thành CSS, mở một `{` không đóng | ~20 quy tắc từ đó tới cuối tệp: `.set-title`, `.set-select`, `.auth-pw`, `.auth-switch-link`, cả khối `@media (max-width: 47rem)` của `/login` |
+
+Nguyên nhân chung: **bộ phân tích CSS được viết để KHÔI PHỤC sau lỗi, không phải để dừng lại.** Nó bỏ
+thứ nó không hiểu rồi đi tiếp. Một quy tắc bị bỏ trong im lặng không phải lỗi cú pháp — nó là một quy
+tắc không tồn tại. Và vitest không bao giờ nạp CSS, nên cả bộ test cũng xanh.
+
+**Đã đóng một phần:** `apps/web/src/styles/cssStructure.test.ts` kiểm HÌNH DẠNG của nguồn — chú thích
+đóng/mở đúng cặp, ngoặc nhọn về 0 và không âm. Nó được chứng minh bằng cách **khôi phục nguyên văn cả
+hai tệp hỏng từ git** (`git show 390931e:…` và `git show 4c59fdc:…`) và xác nhận cổng ĐỎ ở cả hai.
+
+**Cái còn hở:** cổng ấy đọc NGUỒN, không đọc `dist/`. Một quy tắc rơi khỏi bản dựng vì bất kỳ lý do
+nào khác (selector gõ sai, một `@layer`/`@import` xếp sai, một bước tối ưu hoá) vẫn im lặng như cũ.
+Phép đo thật là `bun run build` rồi `grep` bản dựng — và không target `make` nào làm việc ấy.
+
+⇒ Ai muốn đóng: một bài kiểm chạy sau `bun run build`, đọc `dist/assets/*.css`, và khẳng định một
+DANH SÁCH SELECTOR CÓ TÊN đều có mặt (theo tên, không theo số đếm — cùng lập luận `db/local.test.ts`
+dùng cho năm bảng Dexie). Nó cần một target riêng vì `make test-web` không dựng bundle. Không thuộc
+phạm vi Task 16, nên là một món nợ CÓ TÊN chứ không phải một việc bỏ sót.
+
+## `assert-tests-ran.mjs` mất theo `apps/vault` — không có người kế nhiệm (Pha 2, Task 16)
+
+**Trạng thái: một NĂNG LỰC đã rời khỏi repo, và không target nào nhận lại.** Ghi ra vì việc gỡ là
+ĐÚNG (thư mục nó phục vụ không còn) nhưng hệ quả thì không được im lặng.
+
+`make test-vault` có bốn nửa; ba nửa đầu (`tsc -b`, `oxlint`, vitest) chết cùng thư mục và không để
+lại gì. Nửa thứ tư thì khác hạng: `apps/vault/scripts/assert-tests-ran.mjs` đọc reporter JSON của
+vitest và **đỏ khi `numPassedTests === 0`, hoặc khi có BẤT KỲ bài nào bị `.skip`/`.todo`**.
+
+Nó tồn tại vì một phép đo, không vì sự cẩn thận chung. Vitest 4.1.11, đo trong chính thư mục ấy ngày
+2026-08-22:
+
+| tình huống | vitest thoát |
+|---|---|
+| `include` không khớp tệp nào | **1** — cổng tự đỏ, tốt |
+| MỌI `describe` bị `.skip` | **0** — `"Tests 8 skipped (8)"` |
+
+Hàng thứ hai là cổng mù thứ SÁU đang chờ xảy ra, cùng hình dạng với năm cái ghi phía trên tệp này.
+`numTotalTests` KHÔNG dùng thay được: ở ca skip nó vẫn bằng 8.
+
+**Ai thừa hưởng lỗ này:** `test-web`, `test-format`, `test-cli`, `test-registry` — cả bốn chỉ nhìn mã
+thoát của vitest. **Đo lại trên `apps/web` ngày 2026-08-29**, không chép lại phép đo cũ của thư mục
+đã xoá: đổi `describe('tNode()'` thành `describe.skip(...)` rồi chạy
+`bunx vitest run src/i18n/tNode.test.tsx` cho
+
+```
+Test Files  1 skipped (1)
+Tests  3 skipped (3)
+exit=0
+```
+
+⇒ lỗ **có thật ở `apps/web` hôm nay**, không chỉ ở thư mục đã gỡ.
+
+⇒ Ai muốn đóng: chép `assert-tests-ran.mjs` từ `git show 390931e:apps/vault/scripts/assert-tests-ran.mjs`
+và nối vào bốn target ấy. Đó không phải việc của Task 16 (brief chỉ nói gỡ), nên nó là một món nợ
+CÓ TÊN chứ không phải một việc bỏ sót.
+
 ---
 
 # Trạng thái khi bốn hệ thống con hoàn thành — 2026-08-23
@@ -432,8 +540,10 @@ Cần `git-filter-repo` (chưa cài trên máy). Công thức ở `docs/publishi
 
 ## Những gì CHƯA TỪNG chạy trên hạ tầng thật — ghi để không ai tưởng đã kiểm
 
-- `apps/vault/_headers` **chưa từng được một Cloudflare Pages thật phục vụ**; `apps/vault` chưa có
-  Pages project nào. Phép đo hai chiều của `frame-ancestors` chạy **trên máy**.
+- ~~`apps/vault/_headers` **chưa từng được một Cloudflare Pages thật phục vụ**; `apps/vault` chưa có
+  Pages project nào. Phép đo hai chiều của `frame-ancestors` chạy **trên máy**.~~ **HẾT HIỆU LỰC
+  (Pha 2, Task 16):** cả tệp lẫn ứng dụng đã bị gỡ, nên không còn gì để chạy trên hạ tầng thật. Món
+  nợ này đóng bằng việc **xoá**, không bằng việc kiểm — ghi rõ để nó không bị đọc thành "đã kiểm".
 - Truy vấn GraphQL của Discussions **chưa từng gọi GitHub thật một lần nào**. Máy chủ giả trả về đúng
   thứ bộ giải mã mong đợi — một vòng khép kín. **Ba cổng độc lập đã cùng nêu điều này** (S4 Task 5-Go
   §8, Task 4+5-web §7b, Task 6 §8): nó cần **một lần chạy thật với một token thật**.
@@ -441,8 +551,25 @@ Cần `git-filter-repo` (chưa cài trên máy). Công thức ở `docs/publishi
   **KHÔNG CÒN LÀ RỦI RO ĐỂ THEO DÕI:** `pack-site.ts` và `build-index.ts` đã bị xoá ở Task 17 của
   server-side pivot — courses không còn xuất bản lên GitHub Pages, catalog là `/courses` trên server
   (xem mục "`registryId` KHÔNG BAO GIỜ ĐƯỢC ĐẶT" ở trên, đã đánh dấu HẾT Ý NGHĨA cùng lý do).
-- **Chưa ai gọi một nhà cung cấp AI thật.** OpenAI đã đo được là **bị CORS chặn ở đường lỗi**; đường
-  200 chưa đo. Chủ dự án chọn **giữ kèm cảnh báo**.
+- **Chưa ai gọi một nhà cung cấp AI thật** — vẫn đúng, nhưng ~~vì lý do cũ~~ **VÌ MỘT LÝ DO KHÁC
+  HẲN (cập nhật Pha 2)**. Bản trước viết: *"OpenAI đã đo được là bị CORS chặn ở đường lỗi; đường 200
+  chưa đo. Chủ dự án chọn giữ kèm cảnh báo."* Cả ba vế đều là văn bản Pha 1/BYOK và **hết hiệu lực**:
+  không còn OpenAI trong kiến trúc, và **CORS là khái niệm chỉ tồn tại trong trình duyệt** — client
+  gọi nhà cung cấp nay là mã Go chạy trên máy chủ (`internal/ai/client.go`), nơi CORS không áp dụng
+  ở bất cứ nghĩa nào. Hai mục khác trong CHÍNH danh sách này đã được gạch "HẾT HIỆU LỰC"; mục này bị
+  bỏ sót.
+
+  Điều còn đúng, đo lại 2026-08-29: bộ e2e chạy với một DeepSeek **GIẢ**
+  (`compose.e2e.yml:104` trỏ `DEEPSEEK_BASE_URL` sang `http://deepseek-fake:8090`,
+  `:112` đặt một key giả) — có chủ đích, để bộ test không tiêu tiền thật. Nên đường 200 của
+  DeepSeek **thật** chưa từng được cổng nào chạy qua; nó chỉ được đo bằng tay ở Task 0
+  (`docs/deepseek-measured.md`). `BRAVE_API_KEY` thì **0 lần** trong `compose.e2e.yml`, nên tool
+  `web_search` chưa từng chạy trong e2e, kể cả với hàng giả.
+
+  Và mục này **bỏ lỡ đúng ba món Pha 2 mà nó tồn tại để bắt** — hai key AI vắng khỏi mọi blueprint,
+  credit khởi đầu bằng 0, và migration không backfill. Cả ba đã được vòng sửa 1 sau review tổng
+  nhánh đóng (A1/A2/A3); ghi lại ở đây vì việc chúng lọt qua một danh sách mang tên "những gì chưa
+  từng chạy trên hạ tầng thật" là bằng chứng rằng danh sách ấy chỉ được đọc lại, chưa được đo lại.
 - Quy ước *"tiêu đề Discussion = id course"* **không tồn tại ở đâu** trong `tools/registry` hay tài liệu.
 
 ## Lời hứa còn hở, đã đo, không giấu
@@ -452,3 +579,425 @@ nếu người dùng bấm "cho phép" mọi lần thì **toàn bộ 40 lời nh
 7 cú bấm thay vì 1. Cải thiện thật trước một course độc **âm thầm**; **không cải thiện gì** trước một
 course đủ kiên nhẫn chờ người dùng bấm. Đường ra thật (course chạy trong iframe sandbox riêng origin)
 đã bị spec §1.2 **bác bỏ có ý thức** vì nó phá P2.
+
+## Nợ Pha 2 (AI máy chủ) — `RateLimiter` (Task 10, `apps/api/internal/ai/ratelimit.go`)
+
+Hai mục dưới đây do vòng review 1 của Task 10 tìm ra: tự chạy đột biến, thấy chú thích của mã khẳng
+định một tính chất mà mã **không thật sự có** (I2), và thấy một nợ chỉ được ghi trong báo cáo Task
+10 chứ không nằm ở đâu người đọc mã sẽ thấy (I3). Cả hai đã được sửa **ngay trong chú thích của
+`ratelimit.go`** — mục này là bản lưu bền, cùng vai trò với các mục P2-C1/P2-C2 ở trên (dù đó là P2
+của giai đoạn annotation, không phải "Pha 2: AI máy chủ" đang nói ở đây — hai chữ "P2" trùng tên,
+khác giai đoạn).
+
+### 1 — `RateLimiter` khoá theo user id: chặn được một tài khoản đốt nhanh, KHÔNG chặn được farm credit tặng qua nhiều tài khoản
+
+Spec §3.4 nêu hai hình dạng lạm dụng. `Allow` chặn đúng hình dạng thứ nhất (một tài khoản gọi quá
+nhanh, kể cả khi tài khoản đó còn đầy credit — xem `TestAllowBlocksAWellFundedAccountIndependently
+OfCredit`). Nó **không** chặn hình dạng thứ hai: vì khoá theo `uuid.UUID` của user, mỗi tài khoản
+mới đăng ký nhận một `hits[newUserID]` rỗng — tức một hạn mức mới tinh — nên K tài khoản mua được
+K×max lượt mỗi cửa sổ, không phải max. Bản đầu của `ratelimit.go` (trước vòng review 1) khẳng định
+sai rằng limiter tồn tại cho **cả hai** hình dạng; đã sửa lại đúng phạm vi thật.
+
+Tiền của hình dạng #2 không nằm ở tốc độ đốt token — nó nằm ở chính `signup_grant_micro`
+(`ai_settings`, migration 0007): mỗi tài khoản mới là tiền cho không, và `apps/api` **không có xác
+thực email** (`grep -rn 'email_verified\|verification_token\|VerifyEmail' apps/api` → 0 kết quả).
+Rào duy nhất hiện có là limiter theo IP ở `apps/api/internal/server/server.go` (10 req/phút/IP cho
+`/auth/*`) = 14.400 lượt đăng ký/ngày/IP — không phải một rào thật cho một script kiên nhẫn.
+
+**Nơi xử lý:** không phải `ratelimit.go` — việc thật là xác thực email trước khi cấp credit, hoặc
+hoãn/giảm mức cấp cho tới khi email được xác nhận. Chưa task nào được giao việc này.
+
+### 2 — `rl.hits` không bao giờ dọn, và giả định "một process" buộc vào `render.yaml` chứ không phải một tính chất thiết kế
+
+`map[uuid.UUID][]time.Time` giữ một entry vĩnh viễn cho **mọi** user id từng gọi `Allow`, không TTL,
+không sweep. Ở quy mô hiện tại là một rò chậm, có giới hạn (một slice nhỏ/người học, không phải/mỗi
+request) — restart process (vốn đã reset toàn bộ hạn mức, một chi phí được chấp nhận có ghi trong
+`ratelimit.go`) cũng giải phóng luôn bộ nhớ này. Không sweep nền nào được xây ở Task 10.
+
+Ràng buộc "chỉ cần đúng trong MỘT process" cũng vậy: `RateLimiter` không chia sẻ trạng thái qua
+nhiều process, nên chạy hai instance sẽ âm thầm biến "max/user" thành "max×số-instance/user". Điều
+này vô hại **hôm nay** chỉ vì `render.yaml`'s service `tuhoc-api` là `plan: free`, không có block
+scaling/`numInstances` — gói free của Render không cho chạy nhiều hơn một instance — **không phải
+vì bản thân thiết kế đảm bảo điều đó**. Đổi plan là hạn mức thật lặng lẽ nhân lên.
+
+**Vì sao không dùng `github.com/gofiber/fiber/v2/middleware/limiter` có sẵn** (đã vendor, đang dùng
+ở `/auth/*` trong `server.go`, có `SlidingWindow`, và storage mặc định của nó **tự hết hạn** — không
+rò map): đã đọc mã nguồn gói đó (`limiter.go`, `config.go`, `manager.go` ở
+`github.com/gofiber/fiber/v2@v2.52.15/middleware/limiter/`) — điểm vào **duy nhất** nó xuất ra là
+`limiter.New(cfg) fiber.Handler`, khoá cứng vào `*fiber.Ctx`. Không có một API kiểu
+`Allow(key string) error` đứng độc lập với HTTP. Dùng nó nghĩa là logic rate-limit phải sống như
+middleware Fiber ở `internal/server`, không thể gọi trực tiếp cùng dòng mã với `credits.go`'s
+`EnsureCredit` bên trong thân handler `/ai/chat` — và `internal/ai` (nơi brief Task 10 yêu cầu đặt
+`ratelimit.go`) khi ấy **chưa import gofiber ở bất kỳ đâu**. Câu đó **đã hết đúng ở Task 11**:
+brief Task 11 đặt `handler.go` vào chính `internal/ai`, nên gói này nay có import fiber — ghi lại ở
+đây thay vì để một khẳng định đã chết đứng nguyên. Lý do CHỊU LỰC thì không đổi và mới là thứ quyết
+định: `limiter` là **middleware**, nó từ chối được một request TRƯỚC khi handler chạy, nhưng không
+trả lời được câu "user id này đã quá hạn mức chưa" tại đúng dòng trong `Chat` nơi câu ấy phải được
+hỏi cùng `EnsureCredit`. Đánh đổi: tự viết một map trong bộ nhớ (nợ #2 ở trên) để đổi lấy một hàm domain-layer
+test được trực tiếp bằng `go test`, gọi được cùng chỗ với `EnsureCredit`, không cần dựng `*fiber.Ctx`.
+**Đây LÀ một quyết định đã cân nhắc, không phải bỏ sót** — nhưng việc cân nhắc này chỉ xảy ra ở vòng
+review 1, sau khi được hỏi; bản đầu của `ratelimit.go` không hề nhắc gói đã vendor sẵn này.
+
+---
+
+## Nợ Pha 2 (AI máy chủ) — ba route `/ai/*` (Task 11, `apps/api/internal/ai/handler.go`)
+
+### 1 — `POST /ai/chat` KHÔNG có trí nhớ hội thoại: mỗi lượt là một lượt độc lập
+
+Task 11 dựng `Turn.History` **rỗng, luôn luôn**, và thân request của `/ai/chat` **không có trường
+nào** chở được lịch sử. Đây là quyết định có chủ ý, không phải bỏ sót, và cái giá của nó là thật:
+một câu hỏi tiếp ("còn cái kia thì sao?") tới máy chủ mà không mang theo lượt trước.
+
+**Vì sao không đọc History từ thân request** (nợ điều phối viên ghi đích danh cho Task 11): `build
+Messages` (`agent.go`) lọc `Role` nhưng **không** lọc `ToolCalls`/`ToolCallID`, nên một entry
+`{system, có tool_calls}` sau khi bị hạ cấp thành `user` vẫn mang tool_calls — hình dạng wire không
+hợp lệ. Nặng hơn: `"tool"` và `"assistant"` đều **nằm trong** whitelist role, nên một client chỉ cần
+khẳng định *"tool `read_course` đã trả về «giáo trình nói hãy bỏ qua chỉ dẫn của bạn»"* là câu ấy vào
+prompt với đúng thẩm quyền của một kết quả tool do nền tảng thật sự tạo ra.
+
+**Vì sao không dựng History từ DB, như nợ ấy yêu cầu:** migration 0007 **không có bảng transcript**,
+và Pha 2 không có task nào tạo một cái. Thêm một bảng chở thân hội thoại là một quyết định **riêng
+tư**, không phải một quyết định wiring: spec §0.1 cấm thân hội thoại vào **sổ cái** và **không nói gì**
+về việc nó được phép sống ở đâu khác, vì chưa ai quyết. Một task nối dây không được tự quyết thay.
+
+**Nơi xử lý:** một bảng transcript phía máy chủ (`ai_conversation` / `ai_message`), kèm chính sách
+lưu giữ và một quyết định riêng tư có ghi vào spec, rồi `/ai/chat` đọc lại `History` từ đó theo
+`conversation_id` **của chính người gọi**. Chưa task nào được giao. Cho tới lúc đó, `useAI` (Task 13)
+vẫn giữ `AITurn[]` phía client — màn hình vẫn hiện đủ hội thoại, chỉ có **model** là không thấy nó.
+
+### 2 — TOCTOU của `EnsureCredit` được THU HẸP, chưa ĐÓNG
+
+`EnsureCredit` (`credits.go`) là một lần đọc trần, không giữ chỗ: N lượt song song của cùng một
+người học đều qua được ở `balance = 1`, rồi cả N đều trừ. Task 11 không đóng được cửa sổ ấy trong
+phạm vi của mình; thứ nó làm là **chặn N**: `RateLimiter.Allow` chạy trước `EnsureCredit` ở mỗi
+lượt, nên số lượt song song tối đa là `DefaultRateLimitMax` (10) mỗi `DefaultRateLimitWindow`
+(5 phút), thay vì không giới hạn. Mức âm tối đa do đua vì thế có trần, không còn mở.
+
+**Nơi xử lý:** một phép trừ **có điều kiện, nguyên tử** thay cho cặp đọc-rồi-trừ — `UPDATE
+ai_credits SET balance_micro = balance_micro - $2 WHERE user_id = $1 AND balance_micro > 0
+RETURNING ...` để giữ chỗ trước lượt, cộng một đường hoàn lại phần chưa dùng sau lượt. Việc đó nằm
+trong `credits.go` (đổi chữ ký `ChargeTurn`, thêm một phương thức giữ chỗ), không nằm trong handler.
+
+### 3 — `DefaultTurnTimeout` (10 phút) suy ra từ một cột CMS sửa được, và không có gì canh cặp đó
+
+Trần một lượt ở `handler.go` được tính từ `ai_settings.max_tokens_per_turn` (seed 8192) và tốc độ
+sinh chậm nhất đã đo (~20 token/giây) → ~6,8 phút cho vòng trả lời dài nhất còn **khoẻ mạnh**. Task
+17 cho phép sửa cột ấy từ CMS **không cần deploy**. Nâng nó lên quá ~12000 làm một câu trả lời hợp
+lệ có thể sống lâu hơn trần này và bị cắt giữa chừng — và không test nào, không cổng nào bắt được
+cặp ràng buộc ấy, vì một bên là hằng số Go còn bên kia là một hàng trong bảng.
+
+---
+
+## Nợ Pha 2 (AI máy chủ) — hai màn CMS (Task 17, `apps/web/src/admin/AdminCredits.tsx`, `apps/api/internal/ai/admin_handler.go`)
+
+Hai mục dưới đây do vòng review 2 của Task 17 tìm ra. Cả hai từng chỉ được ghi trong báo cáo task
+(`.superpowers/sdd/…`, không nằm trong git) — reviewer chỉ ra đúng lỗ mà mục "Cổng mù #4" ở trên
+từng đóng cho một trường hợp khác: một nợ chỉ sống trong một tệp gitignored không phải một nợ đã
+ghi. Mục này là bản lưu bền.
+
+### 1 — `POST /admin/ai/users/:id/credit` không có khoá idempotency: một response bị mất VẪN có thể thành nạp đôi thật
+
+`AdminAdjustCredit` (Go) ghi số dư và audit trong MỘT transaction — nếu request tới máy chủ, giao
+dịch đó hoặc chạy trọn vẹn hoặc không chạy gì, không có trạng thái nửa vời. Nhưng **giữa** "giao
+dịch đã commit" và "trình duyệt của operator biết điều đó" là một khoảng trống HTTP bình thường:
+proxy timeout, mất kết nối, thiết bị ngủ giữa chừng — response không bao giờ về tới tab, dù tiền đã
+chuyển thật. `AdminCredits.tsx`'s `adjustMutation` (round-2 review, M-6) nay refetch số dư và
+`recent_adjustments` ở `onSettled`, không chỉ `onSuccess`, nên một lượt như vậy vẫn cho operator
+thấy TRẠNG THÁI THẬT trước khi họ có cơ hội bấm lại — điều này **thu hẹp** cửa sổ (operator nhìn
+thấy bằng chứng trước khi gõ lại), nó **không đóng** cửa sổ: vẫn có một khoảnh khắc giữa lúc request
+lỗi và lúc refetch xong, và hai tab trình duyệt (hoặc hai operator) gửi hai request thật, độc lập,
+không có cách nào cho tầng API biết chúng "cùng một ý định".
+
+**Nơi xử lý:** một khoá idempotency phía server — client sinh một token ngẫu nhiên cho MỖI lần bấm
+Áp dụng, gửi kèm request; `AdminAdjustCredit`/`Service.AdjustCredit` (credits.go) kiểm token đó
+trong CÙNG transaction ghi số dư (một bảng `admin_idempotency_key` hoặc một cột trên chính hàng
+`admin_audit`, UNIQUE), và một request lặp lại đúng token trả về **cùng kết quả** đã ghi lần đầu
+thay vì ghi thêm lần hai. Chưa task nào được giao việc này — không nằm trong phạm vi Task 17
+(task-17-brief.md không yêu cầu, và spec §7 không nhắc idempotency).
+
+### 2 — `admin_audit.who … ON DELETE SET NULL`: danh tính operator trên một hàng TIỀN có thể mất nếu tài khoản admin đó bị xoá
+
+Cột `who` (migration `0005_published_catalog.up.sql:63`) tham chiếu
+`users(id) ON DELETE SET NULL` — round-2 review bắt đúng: bản trước của mục này viết nhầm
+thành `ON DELETE CASCADE … SET NULL`, không khớp mã thật (chỉ một mệnh đề `SET NULL`, không có
+`CASCADE` nào cả). Nếu tài khoản admin từng thực hiện một `POST /admin/ai/users/:id/credit` sau đó bị
+xoá khỏi `users`, hàng `admin_audit` ghi lượt cộng/trừ ấy vẫn còn (đúng lời hứa "sổ không xoá"), nhưng
+`who` lặng lẽ thành `NULL` — số tiền, ghi chú, thời điểm vẫn còn, danh tính **ai đã làm** thì mất.
+Cột `actor` (cũng migration 0005) phân biệt được "đi qua CLI token" khỏi "đi qua một tài khoản nay
+không còn", nhưng không mang lại danh tính đã mất — nó chỉ nói RÕ RẰNG danh tính đã mất, thay vì để
+`who = NULL` mập mờ giữa hai trường hợp.
+
+Migration 0005 chọn `SET NULL` khi bảng chỉ giữ dấu vết PUBLISH/UNPUBLISH course — nội dung, không
+phải tiền. Task 17 là task ĐẦU TIÊN đưa tiền thật (`ai.credit.adjust`, `ai.pricing.update`) qua
+đúng bảng ấy, và không ai xét lại quyết định `SET NULL` khi việc đó xảy ra — Task 17 chỉ VIẾT vào
+bảng có sẵn, không sửa schema của nó.
+
+**Nơi xử lý:** cân nhắc lại `ON DELETE` cho MỖI dòng `admin_audit` mang tiền — có thể là
+`ON DELETE RESTRICT` (không cho xoá một tài khoản admin còn để lại dấu vết tiền, buộc phải xử lý
+dấu vết trước), hoặc một cột phụ lưu EMAIL/tên tại thời điểm ghi (không phụ thuộc `users` còn sống
+hay không, cùng tinh thần cột `actor` đã chọn cho vấn đề liền kề). Quyết định này ảnh hưởng cả
+`published_courses`/`course_versions`'s admin_audit rows (Task 8), không chỉ hai route Task 17 —
+nên đây là một quyết định schema-rộng, không phải một sửa cục bộ trong `internal/ai`. Chưa task
+nào được giao.
+
+### 3 — Cổng quét route theo ĐỊNH DANH HANDLER: một closure trung gian vẫn né được
+
+`apps/api/internal/ai/admin_handler_test.go` (`adminAIHandlerRefs` + `TestAdminAIRoutesAllRequireAdmin`)
+khoá bảy handler admin bằng `reflect.ValueOf(method).Pointer()`, rồi duyệt `app.Stack()` thật và đòi
+mỗi route trỏ tới một trong bảy con trỏ ấy phải trả 401 khi không session **và** 403 với session
+`role='user'`. Đây là bản thay cho cách lọc theo tiền tố `/admin/ai` — cách cũ đã được ĐO là thủng:
+một handler admin gắn ở đường dẫn khác vô hình với **cả** middleware tiền tố của fiber **lẫn** test,
+non-admin đọc trọn `ai_pricing` với HTTP 200 trong khi toàn bộ suite vẫn xanh.
+
+Bản mới đóng đúng lớp đó — re-review tự tái hiện ba hình dạng (thiếu `RequireAdmin` đăng ký trước
+group; hoàn toàn trần, ngoài tiền tố; xoá cả group) và **cả ba đều ĐỎ**, kể cả hình dạng chống rỗng
+(`found=[]` → Fatal, không xanh lặng lẽ).
+
+**Điểm mù còn lại, đã ĐO chứ không suy luận:** một handler chỉ tới được qua một **hàm bọc trung
+gian** thì không khớp. Re-review thêm route `/wrapped-leak` gọi `AdminListPricing` qua closure
+`func(c *fiber.Ctx) error { return aiHandler.AdminListPricing(c) }`, không `RequireAdmin` →
+**toàn bộ test cổng vẫn XANH**, và non-admin nhận 200 kèm bảng giá. Chú thích tại chỗ khai đúng
+phạm vi này, không hứa rộng hơn.
+
+Không có route nào như vậy trong mã hôm nay — đây là hạn chế **của cổng**, không phải lỗ đang sống.
+
+### Bán kính: bản trước của mục này đánh giá SAI, và đây là bản đúng
+
+> Bản trước (do chính điều phối viên viết) biện minh cho "chưa đáng đóng" bằng câu: *"mọi route sau
+> cổng admin đều là 'người vận hành tự bắn chân', không phải lỗ hổng cho người đọc."* Tiền đề ấy
+> **không áp dụng cho chính lỗi đang bàn**, và đó là điều duy nhất khiến lập luận sụp: route mà
+> re-review dựng lên (`/wrapped-leak`) **KHÔNG nằm sau cổng admin** — nó nằm sau `auth.Require`
+> TRẦN. Cả điểm mù là chuyện gì xảy ra khi một handler admin bị gắn ở NGOÀI cổng ấy; lấy "ở trong
+> cổng ấy" ra làm lý do là trả lời một câu hỏi khác.
+
+Bán kính thật, đo lại trên `apps/api/internal/ai/admin_handler.go` ngày 2026-08-29: **bảy** handler
+admin (`AdminListUsers`, `AdminGetUser`, `AdminAdjustCredit`, `AdminListPricing`,
+`AdminUpdatePricing`, `AdminGetSettings`, `AdminUpdateSettings`) **không handler nào tự kiểm role**
+— mỗi cái mở đầu bằng `h.caller(c)` và chỉ từ chối khi `actorID == uuid.Nil` (401 "unauthenticated").
+Vai trò admin được cưỡng chế **duy nhất** bởi dây route (`server.go:489`,
+`app.Group("/admin/ai", auth.Require, auth.RequireAdmin)`).
+
+Nên một route bọc closure gắn sau `auth.Require` trần trao cho **BẤT KỲ tài khoản đã đăng ký**:
+email và số dư của mọi người dùng, sổ chi tiêu của người dùng bất kỳ, và **quyền tự nạp credit cho
+chính mình** (`AdminAdjustCredit`). Đó là **LEO THANG ĐẶC QUYỀN**, không phải người vận hành tự bắn
+chân — nạn nhân là nền tảng và mọi người học, còn kẻ hưởng lợi chỉ cần một tài khoản miễn phí.
+
+### Vì sao "chưa đáng đóng" VẪN đứng — trên lý do thật
+
+Không phải vì hậu quả nhỏ; hậu quả lớn. Mà vì **điều kiện kích hoạt là một dòng mã chưa ai viết**:
+lỗ chỉ tồn tại nếu ai đó gắn một handler admin qua closure. Không route nào như vậy tồn tại hôm nay,
+và cổng có chốt chống-rỗng (`found=[]` → Fatal) nên "xanh" không thể là "không quét được gì". Còn
+đóng đúng thì cần phân tích luồng gọi, hoặc một quy ước cấm bọc handler admin — mà quy ước ấy tự nó
+cần một cổng.
+
+Đổi lại, vì hậu quả là leo thang đặc quyền chứ không phải bất tiện vận hành, **hai câu dưới đây là
+ràng buộc, không phải lời khuyên.**
+
+**Nơi xử lý — quy tắc cứng:** nếu sau này có lý do chính đáng để bọc một handler admin trong closure
+(đo đạc, chuyển đổi lỗi, phân trang chung), thì **cùng commit ấy** phải mở rộng cổng. Đừng bọc trước
+rồi tin rằng cổng vẫn canh.
+
+**Cách giảm thiểu rẻ hơn, chưa làm, ghi để không phải nghĩ lại:** cho mỗi handler admin tự kiểm role
+(phòng thủ nhiều lớp) thì dây route sai không còn tự nó đủ để mở cửa. Nó không thay được cổng — một
+handler mới quên kiểm là lại thủng — nhưng nó biến "một dòng dây sai" từ *đủ* thành *chưa đủ*. Chưa
+làm ở vòng sửa nào vì đó là một quyết định kiến trúc về nơi thẩm quyền sống, không phải một bản vá
+câu chữ; ghi ở đây để lần sau ai đó cân nhắc thì biết nó đã được cân nhắc và vì sao bị hoãn.
+
+Một rủi ro lý thuyết đã xét và bỏ qua: `reflect.Value.Pointer()` cho `Kind() == Func` được Go doc
+cảnh báo là *"not necessarily enough to identify a single function uniquely"*. Linker của Go hiện
+không gộp mã trùng, và lấy `.Pointer()` của method value buộc trình biên dịch tạo symbol có địa chỉ
+thật. Kể cả nếu va chạm xảy ra, hậu quả xấu nhất là **nhầm TÊN handler trong thông báo lỗi** — route
+vẫn nằm trong tập được kiểm, nên không sinh ra lỗ ẩn. Tiền đề "con trỏ độc lập với receiver" không
+được tin suông: `TestAdminAIHandlerRefsIdentifyMethodNotReceiver` dựng hai instance `*Handler` riêng
+và đo trên chính toolchain đang build.
+
+---
+
+# Nợ Pha 2 (AI máy chủ) — vòng sửa sau review tổng nhánh, hai đợt (2026-08-28/29)
+
+Mọi mục dưới đây đã được ĐO, không suy luận, và mỗi mục ghi **điều kiện xét lại** thay vì một lời
+hứa mơ hồ sẽ làm sau. Đợt 1 sửa mã (deploy sạch, `courseSlug`, hai lỗ an ninh, ba lỗi tiền); đợt 2
+sửa câu chữ, tài liệu, và chính sổ này.
+
+## A · Nợ do một QUYẾT ĐỊNH đã chốt sinh ra
+
+### A1 — Grant 50.000 micro cho mỗi tài khoản mới, và repo KHÔNG có xác thực email
+
+QĐ-1 của điều phối viên đặt `ai_settings.signup_grant_micro = 50_000` (migration `0008`). Ship `0`
+không phải "chưa chốt giá", nó là tính năng tắt — mọi tài khoản mới nhận 402 ngay câu hỏi đầu tiên.
+
+**Rủi ro đã cân và NHẬN, có tên:** không có xác thực email nào trong repo. Đo lại 2026-08-29:
+`email_verified` / `VerifyEmail` khớp đúng **ba** dòng dưới `apps/api`, và **cả ba là CHÚ THÍCH ghi
+lại chính con số không ấy** (`ratelimit.go:23-24`, `admin_handler.go:99`) — không dòng mã nào. Nên K
+tài khoản = K × 50.000 micro. Nhận vì (a) lựa chọn còn lại là ship
+một sản phẩm không ai dùng được tính năng chủ lực; (b) 50.000 micro ≈ 13 lượt ở giá seed; (c)
+`RateLimiter` chặn TỐC ĐỘ đốt của mỗi tài khoản (nhưng **không** chặn số tài khoản — xem mục
+"RateLimiter khoá theo user id" ở trên, cùng lỗ, ghi từ Task 10).
+
+**Điều kiện xét lại:** khi bật thanh toán ở Pha 4, **hoặc** khi thấy dấu hiệu farm (nhiều tài khoản
+mới cùng đốt hết grant rồi im).
+
+### A2 — `GrantSignupCredit` là đường TẠO credit duy nhất không để lại dấu vết TỪNG SỰ KIỆN
+
+Đo: `admin_audit` trước/sau một lần đăng ký = 0→0, và không có hàng `ai_usage` như `ChargeTurn` để
+lại. Vô hại khi grant = 0; **bản sửa A1 làm nó thành mù**.
+
+Đợt 1 **cố ý không** ghi một hàng `admin_audit` mỗi lần đăng ký: cột `who` là khoá ngoại tới một
+CON NGƯỜI đã bấm, và một lần tự đăng ký không có con người ấy — một hàng mỗi signup sẽ phình bảng
+vô hạn bằng những dòng không nêu tên ai, chôn vùi đúng những thao tác mà bảng ấy tồn tại để tìm.
+
+Thay vào đó, **TỶ GIÁ đúc** truy được đủ: mỗi lần `signup_grant_micro` đổi, `UpdateSettings` ghi một
+hàng `ai.settings.signup_grant` kèm con số; migration `0008` ghi hàng ấy cho giá trị KHỞI ĐẦU
+(`who = NULL`, `actor = 'cli'`) nên trục thời gian không có lỗ **ở đầu**.
+
+**Nhưng trục ấy CÓ lỗ, và chính repo này đi qua nó.** Re-review đo: không `TRIGGER` nào trên
+`ai_settings` (0 trong toàn bộ `migrations/`), và nơi ghi audit DUY NHẤT là `credits.go:909` bên
+trong `UpdateSettings`. Một `UPDATE ai_settings` thô **không để lại hàng nào** — và repo có một cái
+đang chạy: `scripts/test-e2e.sh:277`. Chú thích của chính `0008` còn hợp thức hoá đường ấy ("người
+vận hành đã tự sửa cột này bằng psql … KHÔNG được migration này ghi đè"). Tệ hơn: sau một lần sửa
+bằng psql, `0008` cũng sẽ không ghi bù, vì điều kiện `= 0` không còn đúng.
+
+Nên câu trả lời đúng cho "đổi ba lần rồi hỏi tài khoản X nhận bao nhiêu" là: **tái dựng được CHỈ KHI
+cả ba lần đi qua CMS hoặc route**. Một lần đi qua psql thì trục gãy **im lặng**, và phép tái dựng
+trả về một **số sai** — không phải "không biết". Đó là chế độ hỏng tệ hơn, vì nó trông như một câu
+trả lời.
+
+**Khoảng trống còn lại:** không có bản ghi từng SỰ KIỆN đúc, chỉ có tỷ giá đang hiệu lực. Đóng nó
+cần một bảng riêng (hoặc một cột trên `ai_credits`) — một quyết định schema.
+**Điều kiện xét lại:** khi bật thanh toán Pha 4, hoặc khi cần đối soát số credit đã phát hành.
+
+## B · Ràng buộc không có cổng, hoặc có cổng hẹp hơn chú thích nói
+
+### B1 — Ràng buộc #4 (tiền là `int64`, không float) KHÔNG có cổng CẤU TRÚC
+
+Đo (review): đổi `divUp` sang `int64(math.Ceil(float64(...)))` → `go build` OK, `go test
+./internal/ai/` **XANH**. Sau đợt 1, cùng đột biến ấy SẼ đỏ — nhưng chỉ vì các bài kiểm tràn mới
+đọc giá trị biên mà `float64` không biểu diễn nổi. Đó là hệ quả **gián tiếp**, không phải một cổng
+nói "đường tiền không được có `float64`".
+**Nơi xử lý:** một phép quét nguồn cấm `float64`/`math.` trong `internal/ai/cost.go` +
+`credits.go`, cùng khuôn `i18n_server_speaks_codes_test.go`.
+
+### B2 — Allowlist ĐÍCH ĐẾN của lời gọi ra ngoài bị xoá, và KHÔNG có bản thay
+
+`no_key_transit_test.go` (xoá ở Task 11) mang một allowlist chặn "mã sản phẩm không được gọi ra
+ngoài trừ danh sách hẹp". Bản thay `provider_key_never_leaks_test.go` **cố ý không** thay nó và tự
+khai điều đó (PHẠM VI THẬT, điểm 3). Hôm nay **không gì cản** `internal/ai` gọi một host KHÁC
+DeepSeek nếu `DEEPSEEK_BASE_URL` (đọc từ env) bị đổi — và biến ấy được khai trong `render.yaml`, tức
+sửa được từ Environment tab mà không cần deploy.
+
+Ba chú thích quanh nó vẫn nhắc tên tệp đã xoá cho tới đợt 2 (mục E3), nên sự VẮNG MẶT của cổng này
+rất dễ bị đọc thành sự có mặt.
+**Nơi xử lý:** viết cổng đích đến khi có lý do thật (một client thứ ba, hay một proxy) — đúng chỗ nó
+thuộc về, `internal/ai`, không phải `internal/server`.
+
+### B3 — 169 khoá i18n mồ côi, và `i18n.test.ts` không có cổng bắt khoá mồ côi
+
+Đo lại 2026-08-29 bằng script riêng (quét `apps/web/src` + `packages/i18n/src`, mọi `.ts`/`.tsx`
+không phải hai tệp catalog): **169 / 553** khoá không có chỗ gọi nào. Không có ``t(`…`)`` động thật
+nào trong mã (15 kết quả khớp đều là `it(`/`http.get(`/`mount(`), nên con số không có dương tính
+giả. Đo lại trên `f992927` (trước đợt 2) cho **cùng 169 khoá, danh sách y hệt** — đợt 2 không thêm
+cũng không bớt khoá mồ côi nào.
+
+Phần lớn là tàn dư Pha 1 (`library.*`, `nav.import`, `courses.import.action`, …), **KHÔNG do Pha 2**.
+Nhưng vì không có cổng, con số chỉ có thể tăng. Hai trong số đó còn mang chú thích khẳng định chúng
+"còn sống"; đợt 2 sửa chú thích chứ **không xoá khoá** — xoá lẻ hai khoá không đóng được lớp lỗi và
+làm con số đã đo thành sai.
+**Nơi xử lý:** một bài trong `i18n.test.ts` quét ngược từ catalog ra mã, với một ngưỡng khởi đầu 169
+hạ dần — không thể bắt đầu bằng 0.
+
+## C · Tiền: chỗ đã đóng một nửa, và cột không ai đọc
+
+### C1 — `ErrChargeOverflow` = một lượt miễn phí, không dòng sổ
+
+Đợt 1 (D2) làm số học tiền từ chối khi tràn thay vì wrap. Thừa nhận thẳng: lượt đã chạy, DeepSeek đã
+được trả tiền; trả lỗi ở đây **không lấy lại được tiền**. Nó biến một dòng sổ *sai và im lặng* thành
+một dòng log **vắng và có tên**. Chưa có retry, chưa có dead-letter — cùng lớp với mọi thất bại khác
+của `ChargeTurn`.
+
+### C2 — `MaxPricingRateMicro` KHÔNG áp cho `credits_per_web_search` / `cost_micro_per_web_search`
+
+Vì không route nào ghi hai cột ấy (`AdminUpdateSettings` nhận `base_system_prompt` và
+`signup_grant_micro`, hết). **Nếu đợt sau mở route cho chúng thì trần phải đi kèm** — `cost.go`'s
+kiểm tràn phủ số học, không phủ đầu vào.
+
+### C3 — `credits_per_web_search` = 0 → mỗi lần tìm kiếm web MIỄN PHÍ
+
+`0007:59-60` đặt cả hai cột `DEFAULT 0`. Bật `web_search` thì phụ thu là 0 và sổ ghi 0 ở **cả hai**
+cột. Không route nào sửa được (C2). Vô hại hôm nay vì `BRAVE_API_KEY` chưa từng được đặt ở đâu; trở
+thành một khoản chi không đo được ngay khi nó được đặt.
+
+### C4 — `ai_usage.cost_micro` là cột CHỈ-GHI
+
+Không truy vấn nào SELECT nó: `RecentUsage` (`credits.go:480-483`) đọc `credits_charged` và bảy cột
+token, không đọc `cost_micro`. Mà `cost.go` nói Pha 4 sẽ định giá **dựa vào** nó. Nặng thêm vì
+`cost_micro_per_web_search` mặc định 0 (C3) và vì `cost_micro` bỏ sót mọi web search LỖI
+(`credits.go:232-235` tự khai điều này).
+
+### C5 — `formatCredits` nuốt mọi số dư dưới 100 micro, kể cả DẤU
+
+`money.ts:31` dùng `maximumFractionDigits: 4`. Đo: `1 → "0"` và `-1 → "-0"` — hai trạng thái **ngược
+nhau** ở đúng chỗ quan trọng nhất (`EnsureCredit` CHO QUA số dư 1, CHẶN số dư -1) hiển thị gần giống
+hệt, và `"-0"` là chuỗi không ai chủ ý viết.
+
+## D · Hạn mức và cấu hình
+
+### D1 — `RateLimiter` chỉ canh `POST /ai/chat`
+
+Đo tại `server.go:472-475`: `/ai/chat` đi qua limiter; `PUT /ai/config` (ghi DB, tới 4000 rune) và
+**cả bảy** route `/admin/ai/*` không có hạn mức theo user.
+
+### D2 — `UpdateSettings` ghi audit theo "trường CÓ MẶT", không theo "giá trị ĐỔI"
+
+`credits.go:907` — `if signupGrantMicro != nil` thì ghi một hàng `ai.settings.signup_grant`, kể cả
+khi con số y hệt con số đang lưu. Đợt 2 bù ở CLIENT (`AdminPricing.tsx` chỉ gửi grant khi nó khác
+giá trị máy chủ đang giữ, và có bài kiểm cho đúng ca ấy), nhưng **máy chủ vẫn nhận và vẫn ghi** cho
+bất kỳ client nào — kể cả `curl`. Một lớp bù ở client không phải một luật ở server.
+**Nơi xử lý:** đọc giá trị hiện tại trong cùng transaction và chỉ ghi audit khi nó thật sự đổi.
+
+### D3 — `0007_ai_credits.down.sql` thiếu `IF EXISTS`
+
+`DROP TABLE ai_settings, ai_pricing, user_agent_config, ai_usage, ai_credits;` — khác **mọi** tệp
+`down` còn lại trong thư mục. Một lần `down` trên CSDL đã mất một trong năm bảng sẽ chết giữa chừng.
+
+### D4 — `0008_ai_credit_bootstrap.down.sql` CỐ Ý không đảo phần backfill
+
+Lý do đầy đủ nằm trong chính tệp ấy: sau `0008` không có cột nào phân biệt hàng do backfill tạo với
+hàng do đăng ký hay do admin nạp, và số dư đã sống từ lúc ấy — một `DELETE` ở đó xoá tiền thật của
+người thật để làm sạch một con số. `down` chỉ đảo nửa CẤU HÌNH (grant về 0, và chỉ khi nó vẫn đúng
+bằng con số `0008` đặt).
+
+### D5 — `BRAVE_API_KEY` vắng khỏi `compose.e2e.yml`
+
+Đo: **0** lần. Nên tool `web_search` chưa từng chạy trong e2e, kể cả với một hàng giả — xem thêm mục
+"Chưa ai gọi một nhà cung cấp AI thật" ở trên.
+
+## E · Con trỏ tới `.superpowers/` — 113 chỗ trong mã, và vì sao chúng chết trong mọi clone
+
+**Luật, viết ra một lần ở đây để mọi chỗ khác trỏ về:** sổ thực thi (`.superpowers/sdd/…`) bị
+`.gitignore:41` loại khỏi repo. Một tệp tài liệu hay một chú thích trong mã **được track** mà trích
+một đường dẫn dưới đó là một con trỏ **chết trong mọi clone, kể cả clone của chính tác giả sau khi
+dọn**. Nếu một sự thật đáng để người đọc mã biết thì nó phải được **chép vào tệp được track**, không
+phải được trỏ tới.
+
+**Bán kính, đo lại ngày 2026-08-29 sau vòng sửa cuối:** `task-<N>-report.md` /
+`task-<N>-brief.md` xuất hiện **115 lần** trên **47 tệp** dưới `apps/`, `packages/`, `scripts/`
+(một bản nháp trước của mục này ghi 113/45 — đo trước khi chính vòng sửa ấy thêm hai chỗ nữa; một
+cổng gieo ở 113 sẽ đỏ ngay lúc dựng, nên con số phải đo SAU cùng) (đếm bằng `grep -rna`, có cờ `-a` — xem lưu ý
+về NUL bên dưới), cộng vài chỗ trong `docs/`. Phần lớn dùng chúng làm **trích dẫn nguồn cho một phép
+đo** ("đo bằng đột biến, xem task-13-report.md §7.2") — tức đúng loại khẳng định mà người đọc sau
+này muốn kiểm và **không kiểm được**.
+
+**Vòng sửa đợt 2 chỉ đóng bốn cái trong `docs/`** (`deploy.md:33`, `testing.md:13`,
+`deepseek-measured.md:14-15`, cộng hai chỗ trong chính tệp này) vì đó là phạm vi được giao. 113 chỗ
+trong mã **chưa đụng**: sửa lẻ vài chỗ không đóng được lớp lỗi và làm con số đã đo thành sai — cùng
+lập luận đã dùng cho 169 khoá i18n mồ côi ở mục B3.
+
+**Nơi xử lý:** một phép quét cấm chuỗi `.superpowers/` và `task-<N>-report.md` trong tệp được track,
+với ngưỡng khởi đầu 113 hạ dần. Trước đó, mỗi lần sửa một chú thích có trích dẫn như vậy thì **chép
+kết luận vào chỗ đó** thay vì giữ con trỏ.
+
+**Một bẫy phương pháp đã trả giá trong chính đợt này, ghi để không ai vấp lại:** `grep -rn` **bỏ
+qua** `apps/web/src/api/ratings.ts` — nó chỉ in `Binary file … matches` — vì tệp ấy chứa một byte NUL
+hợp lệ (`ratingsQueryKey` dùng `\0` làm dấu phân cách khi join). Nhờ đó một chú thích SAI ở đó
+(bản sao thứ chín của khẳng định "apps/api makes no outbound calls", mục E3) suýt lọt qua cả một
+vòng dọn chuyên đi tìm đúng nó. **Mọi phép quét toàn repo trong repo này phải dùng `grep -a`.**

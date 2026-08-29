@@ -15,7 +15,6 @@ import { useLanguage } from '../i18n/LanguageProvider';
 import type { Chapter, Part } from '../course/types';
 import { startHeartbeat } from '../progress/heartbeat';
 import { useProgress } from '../progress/useProgress';
-import { useVaultFrame } from '../shell/VaultFrame';
 import { useThemeContext } from '../theme/ThemeContext';
 import { setChapterContextSource } from './getContext';
 import { injectExerciseCheckboxes } from './injectExerciseCheckboxes';
@@ -179,7 +178,8 @@ export function ChapterView({
    * Hệ thống con 2, Task 7 + 8. Trợ lý AI có ĐÚNG HAI lối vào từ chương này —
    * hỏi về cả chương, và "Đào sâu" một đoạn bôi đen — nên chúng là hai nhánh
    * của MỘT trạng thái, không phải hai cờ. Hai cờ cho phép cả hai panel mở
-   * cùng lúc, và hai panel cùng gọi kho khoá là hai hoá đơn cho một câu hỏi.
+   * cùng lúc, và hai panel cùng gọi máy chủ là hai lần trừ credit cho một câu
+   * hỏi.
    *
    * Lời nhắc được dựng **lúc mở**, không phải mỗi lần render: nó đọc cả cây
    * chương, và dựng lại nó ở mỗi lần gõ một ký tự vào ô câu hỏi là quét ~20.000
@@ -188,11 +188,6 @@ export function ChapterView({
   const [ai, setAi] = useState<
     { kind: 'chapter'; system: string } | { kind: 'dive'; excerpt: SelectionExcerpt } | null
   >(null);
-  /** `null` ⇒ bản dựng này không có kho khoá; khi ấy KHÔNG mời gì cả. Một nút
-   *  dẫn tới một câu "tính năng này không có" tệ hơn là không có nút. */
-  const { origin: vaultOrigin } = useVaultFrame();
-  const aiReady = vaultOrigin !== null;
-
   const askAboutChapter = useCallback(() => {
     const root = annotationContent.root;
     if (!root) return;
@@ -646,54 +641,95 @@ export function ChapterView({
           content={annotationContent}
           railEl={railEl}
           notesSlotEl={notesSlotEl}
-          onDeepDive={aiReady ? (excerpt) => setAi({ kind: 'dive', excerpt }) : undefined}
+          onDeepDive={(excerpt) => setAi({ kind: 'dive', excerpt })}
           onDoneChapterIdsChange={setDoneChapterIds}
         />
       )}
-      {aiReady && (
-        <>
-          {/*
-            BONG BÓNG NỔI, không phải một nút nằm trong dòng chữ.
+      {/*
+        HAI LỐI VÀO AI LUÔN CÓ MẶT, KHÔNG CÒN CỜ NÀO GÁC CHÚNG.
 
-            Nút này vốn đứng ở cuối phần nội dung, nên muốn hỏi về chương thì
-            phải cuộn xuống tận đấy tìm nó — hoặc bôi đen một đoạn, thứ chỉ hợp
-            khi câu hỏi thuộc về đúng đoạn ấy. Người dùng nói đúng: phải mở được
-            BẤT KỲ LÚC NÀO.
+        Pha 1 gác chúng sau một cờ `aiReady`, và cờ ấy đo đúng một thứ: bản
+        dựng này CÓ được cấu hình origin của kho khoá hay không — một biến môi
+        trường lúc dựng. Một bản dựng thiếu nó thì không có chỗ nào để cắm key,
+        nên một nút dẫn tới câu "tính năng này không có" tệ hơn là không có nút.
 
-            Ẩn khi panel đang mở: một bong bóng "mở chat" nổi ngay cạnh khung
-            chat đang mở là một nút không làm gì.
-          */}
-          {ai === null && (
-            <button
-              type="button"
-              className="ai-launch ai-launch-fab"
-              onClick={askAboutChapter}
-              disabled={annotationContent.root === null}
-              aria-label={t('reader.askAi')}
-              title={t('reader.askAi')}
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                <path
-                  d="M17 9.5c0 3.2-3.1 5.8-7 5.8-.9 0-1.7-.1-2.5-.4L3 16.5l1.3-3.2A5.4 5.4 0 013 9.5C3 6.3 6.1 3.7 10 3.7s7 2.6 7 5.8z"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-          )}
-          {ai?.kind === 'chapter' && (
-            <AskPanel heading={t('reader.askHeading')} system={ai.system} onClose={closeAi} />
-          )}
-          {ai?.kind === 'dive' && (
-            <DeepDive
-              courseTitle={courseTitle}
-              chapterTitle={chapter.title}
-              excerpt={ai.excerpt}
-              onClose={closeAi}
+        Pha 2 KHÔNG CÓ trạng thái tương ứng: AI chạy trên máy chủ của chính ứng
+        dụng này, cùng origin, cùng phiên cookie — không biến build nào bật tắt
+        nó, nên không bản dựng nào thiếu nó. Thứ CÓ THỂ thiếu là credit, và đó
+        là câu trả lời của MÁY CHỦ chứ không phải của bản dựng: `useAI` trả mã
+        `NoCredit`, `AskPanel` đổi thành lời mời nạp. Một cờ hằng-đúng giữ lại
+        ở đây sẽ là một nhánh `false` mà không bài kiểm nào tới được.
+      */}
+      {/*
+        BONG BÓNG NỔI, không phải một nút nằm trong dòng chữ.
+
+        Nút này vốn đứng ở cuối phần nội dung, nên muốn hỏi về chương thì
+        phải cuộn xuống tận đấy tìm nó — hoặc bôi đen một đoạn, thứ chỉ hợp
+        khi câu hỏi thuộc về đúng đoạn ấy. Người dùng nói đúng: phải mở được
+        BẤT KỲ LÚC NÀO.
+
+        Ẩn khi panel đang mở: một bong bóng "mở chat" nổi ngay cạnh khung
+        chat đang mở là một nút không làm gì.
+      */}
+      {ai === null && (
+        <button
+          type="button"
+          className="ai-launch ai-launch-fab"
+          onClick={askAboutChapter}
+          disabled={annotationContent.root === null}
+          aria-label={t('reader.askAi')}
+          title={t('reader.askAi')}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M17 9.5c0 3.2-3.1 5.8-7 5.8-.9 0-1.7-.1-2.5-.4L3 16.5l1.3-3.2A5.4 5.4 0 013 9.5C3 6.3 6.1 3.7 10 3.7s7 2.6 7 5.8z"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinejoin="round"
             />
-          )}
-        </>
+          </svg>
+        </button>
+      )}
+      {/*
+        `courseSlug={courseId}` TRÊN CẢ HAI, và nó là nửa còn thiếu của cả
+        tính năng AI, không phải một tinh chỉnh.
+
+        Cho tới vòng sửa sau review tổng nhánh Pha 2 (mục B), không component
+        nào ở đây truyền prop này. Nó tồn tại suốt chuỗi — `DeepDive` →
+        `AskPanel` → `useAI` — với mặc định `''`, nên mọi lượt hỏi của mọi
+        người học gửi `course_slug: ""`. Hệ quả ở phía máy chủ:
+        `agent.go`'s nhánh gắn ngữ cảnh course là NHÁNH CHẾT trong sản xuất,
+        và vì `read_course` khai `"required":["slug"]` mà không tool nào liệt
+        kê được course, model không có nguồn nào để biết một slug hợp lệ —
+        trong khi tool ấy BẬT MẶC ĐỊNH (migration 0007 seed
+        `tools_enabled = '{read_course}'`) và màn cài đặt hiện nó như một
+        tính năng đang chạy.
+
+        `courseId` LÀ slug của catalog, không phải một id nội bộ nào khác:
+        `loadChapter(courseId, …)` → `fetchChapter` → `GET /courses/:slug/…`
+        (`src/api/catalog.ts`). Cùng một chuỗi, hai tên gọi.
+
+        VÌ SAO KHÔNG PHẢI MỘT PROP MỚI: component này đã cầm `courseId` cho
+        mọi thứ khác nó làm (fetch chương, dựng link pager, viết lại URL tài
+        nguyên). Thêm một prop `courseSlug` song song chỉ tạo ra hai nguồn
+        sự thật cho cùng một giá trị, và một trong hai sẽ lệch.
+      */}
+      {ai?.kind === 'chapter' && (
+        <AskPanel
+          heading={t('reader.askHeading')}
+          system={ai.system}
+          courseSlug={courseId}
+          onClose={closeAi}
+        />
+      )}
+      {ai?.kind === 'dive' && (
+        <DeepDive
+          courseTitle={courseTitle}
+          chapterTitle={chapter.title}
+          courseSlug={courseId}
+          excerpt={ai.excerpt}
+          onClose={closeAi}
+        />
       )}
       {(prevChapter || nextChapter) && (
         <div className="pager">

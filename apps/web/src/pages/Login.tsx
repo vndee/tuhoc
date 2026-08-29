@@ -339,8 +339,17 @@ export function Login() {
             CÂU TRẢ LỜI CHO "TÔI CÓ PHẢI ĐĂNG KÝ KHÔNG" — và nó là KHÔNG.
 
             Panel bên trái đã nói HẾT lợi ích của việc đăng nhập (nhan đề + ba
-            gạch đầu dòng: đọc miễn phí không cần tài khoản, key riêng, tiến độ
-            + ghi chú theo bạn qua thiết bị). fix-round-1 (task-14) từng rút câu
+            gạch đầu dòng, đọc từ chính mảng ở `:275`: đọc miễn phí không cần
+            tài khoản; trợ lý AI chạy trên máy chủ của nền tảng, trả bằng
+            credit; tiến độ + ghi chú theo bạn qua thiết bị).
+
+            Bản trước của chú thích này gọi gạch thứ hai là "key riêng" — câu
+            chữ Pha 1, đã đổi ở Task 15 trong CHÍNH tệp render nó
+            (`login.point.ownKey` nay nói ngược lại: "không cần key của riêng
+            bạn"). Tên KHOÁ giữ nguyên nên chú thích trôi mà không ai vấp
+            (review tổng nhánh Pha 2, F4).
+
+            fix-round-1 (task-14) từng rút câu
             này xuống còn một vế nói lại đúng lợi ích ấy — vẫn là lặp, chỉ lặp
             với MỘT bullet thay vì lặp với cả panel. fix-round-2 đổi góc: câu ở
             đây không nói lợi ích nữa, nó nói thứ panel bên trái không nói —

@@ -23,7 +23,9 @@ import (
 //     cross-site, which forces SameSite=None.
 //
 // The project owner already owns duy.dev and has settled on
-// tuhoc.duy.dev + vault.duy.dev. Same site. Lax is sufficient. C-3 is
+// tuhoc.duy.dev + api.duy.dev. Same site. Lax is sufficient. (Phase 1
+// planned a third subdomain for the key vault; Pha 2 Task 16 deleted it,
+// and this argument never depended on the count.) C-3 is
 // therefore closed by a DECISION, and this file is that decision written
 // down in the only form that survives six months: a test.
 //
@@ -107,8 +109,11 @@ const sameSiteScanSentinel = "apps/api/internal/auth/handler.go"
 // sentinel above.
 const minGoFilesForSameSiteScan = 20
 
-// sameSiteSkippedDirs mirrors no_key_transit_test.go's list, and `.claude`
-// is mandatory rather than tidy: the main checkout keeps every agent's
+// sameSiteSkippedDirs mirrors the skip list the key-transit gate carried;
+// that file (no_key_transit_test.go) was deleted at Task 11 and the list
+// lives on in its successor, internal/server/provider_key_never_leaks_test
+// .go's providerKeySkippedDirs — mirror THAT one if this ever drifts.
+// `.claude` is mandatory rather than tidy: the main checkout keeps every agent's
 // worktree under .claude/worktrees/agent-*/, each a full copy of the repo,
 // so without this the scan reads other agents' code and reports failures
 // at their paths.

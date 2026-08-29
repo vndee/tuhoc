@@ -53,13 +53,22 @@ services:
       # Paste in the Neon pooled connection string (see docs/deploy.md).
       - key: DATABASE_URL
         sync: false
-      # GITHUB_TOKEN is a secret, and the only one this server holds that is
-      # its OWN rather than a user's: a read-only, fine-grained PAT scoped
-      # to the registry repository's Discussions, used to embed those
-      # threads on course pages. It is NOT an exception to the promise that
-      # a reader's AI provider key never touches this server — see the
-      # comment at its declaration in apps/api/internal/config/config.go,
-      # and .env.example for the three ways the two differ.
+      # GITHUB_TOKEN is a read-only, fine-grained PAT scoped to the registry
+      # repository's Discussions, used to embed those threads on course
+      # pages. It belongs to the PLATFORM, not to any reader.
+      #
+      # This comment used to add "It is NOT an exception to the promise that
+      # a reader's AI provider key never touches this server". That promise
+      # died at Task 11: the AI agent now runs on this server against ONE
+      # DeepSeek account the platform pays for (DEEPSEEK_API_KEY, below), so
+      # there is no longer a no-provider-key rule for this token to be an
+      # exception to. What survives, and is the reason the distinction was
+      # ever drawn, is narrower and still true: this server never accepts a
+      # THIRD PARTY'S key from a request — enforced by
+      # apps/api/internal/server/provider_key_never_leaks_test.go's
+      # TestNoRequestStructAcceptsAKey. See config.go's own comment on this
+      # field, and .env.example, for how the platform's own secrets differ
+      # from a reader's.
       #
       # `sync: false` for the same reason as DATABASE_URL: Render prompts
       # once and never reads it back from this file.
@@ -102,3 +111,37 @@ services:
       # filled in.
       - key: ADMIN_TOKEN
         sync: false
+      # --- AI (hệ thống con Pha 2) ------------------------------------
+      #
+      # BA BIẾN NÀY VẮNG MẶT KHỎI TỆP NÀY CHO TỚI VÒNG SỬA SAU REVIEW TỔNG
+      # NHÁNH PHA 2 (mục A3), và cái giá của việc ấy là im lặng tuyệt đối:
+      # `sync: false` LÀ dòng khiến Render HỎI một giá trị lúc tạo
+      # Blueprint. Không có dòng ấy thì Render không hỏi, người vận hành
+      # không có gì để điền, và API khởi động sạch sẽ rồi chết đúng lúc một
+      # người học bấm "Hỏi" — với một câu báo lỗi nói rằng NHÀ CUNG CẤP
+      # trục trặc, không phải rằng key chưa được đặt.
+      #
+      # (server.go nay cũng log một dòng cảnh báo lúc khởi động khi thiếu
+      # key — nhưng một dòng log chỉ giúp người đã đi tìm; dòng `sync: false`
+      # dưới đây là thứ hỏi TRƯỚC khi có gì để đi tìm.)
+      #
+      # DEEPSEEK_API_KEY: key của NỀN TẢNG, không phải của người học (lời
+      # hứa "key của người đọc không bao giờ chạm máy chủ này" đã được thay
+      # bằng kiến trúc mới ở Task 11 — xem .env.example cho ba điểm khác
+      # nhau). Để trống là trạng thái HỢP LỆ: tính năng AI suy giảm thành
+      # "chưa cấu hình", mọi phần còn lại của ứng dụng không bị ảnh hưởng.
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      # BRAVE_API_KEY: chỉ bật riêng tool web_search. Để trống thì agent vẫn
+      # trả lời được bằng các tool khác.
+      - key: BRAVE_API_KEY
+        sync: false
+      # DEEPSEEK_BASE_URL KHÔNG phải bí mật, và ĐỂ TRỐNG là đúng cho mọi
+      # triển khai bình thường: config.Load rơi về DefaultDeepSeekBaseURL
+      # (apps/api/internal/config/config.go). Khai ở đây với value rỗng —
+      # cùng hình dạng GITHUB_DISCUSSIONS_REPO ở trên — để biến này HIỆN
+      # trong Environment tab cho ai cần trỏ sang một proxy hay một endpoint
+      # giả lập, chứ KHÔNG ghim một URL cứng vào tệp này: ghim tức là tạo
+      # một bản sao của hằng số Go, và bản sao ấy sẽ lệch lặng lẽ.
+      - key: DEEPSEEK_BASE_URL
+        value: ""

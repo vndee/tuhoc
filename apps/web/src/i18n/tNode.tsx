@@ -21,11 +21,11 @@ import { Fragment, type ReactNode } from 'react';
  * lại ở chỗ vẽ:
  *
  * ```ts
- * 'settings.ai.blurb': (vault: string) => `Key của bạn được cất trong ${vault} — một trang riêng.`,
- * 'settings.ai.blurb': (vault: string) => `Your key lives in the ${vault} — a separate page.`,
+ * 'ann.orphan.barWhat': (quote: string) => `Gắn lại: ${quote}`,
+ * 'ann.orphan.barWhat': (quote: string) => `Reattaching: ${quote}`,
  * ```
  *
- * Ba lợi ích, và cả ba đều mất nếu cắt câu thành `blurb.part1/part2/part3`:
+ * Ba lợi ích, và cả ba đều mất nếu cắt câu thành `barWhat.part1/part2`:
  *
  *   1. **trật tự từ đổi được theo ngôn ngữ** — chỗ trống nằm ở đâu là việc của
  *      bản dịch, không phải của JSX;
@@ -65,7 +65,7 @@ export function tNode<K extends MessageKey>(
   const marks = parts.map((_, i) => `${MARK}${String(i)}${MARK}`) as unknown as MessageArgs<Messages[K]>;
   const rendered = t(lang, key, ...marks);
 
-  // `split` với một nhóm bắt xen kẽ chữ và chỉ số: ['Key của bạn ', '0', ' — một trang riêng.'].
+  // `split` với một nhóm bắt xen kẽ chữ và chỉ số: ['Gắn lại: ', '0', ''].
   const pieces = rendered.split(SPLIT);
   return pieces.map((piece, i) =>
     i % 2 === 1 ? (

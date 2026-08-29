@@ -59,8 +59,11 @@
 // with a token-level scan of every non-test .go file under apps/api,
 // TestServerSpeaksNoVietnamese — deliberately with NO per-package
 // exemption, and its own header explains why: a "this package is
-// different" carve-out is exactly the shape no_key_transit_test.go (right
-// next to it) already rejected once. Adding one here — even with a
+// different" carve-out is exactly the shape the key-transit gate that used
+// to sit next to it already rejected once (that file,
+// no_key_transit_test.go, was deleted at Task 11 — its successor
+// provider_key_never_leaks_test.go carries the same no-per-package-exemption
+// rule forward). Adding one here — even with a
 // justification attached to allowedVietnameseInProduction — would make
 // this the SECOND file to try that argument, not the first, and it would
 // still fail for the same reason: this Finding.Detail can reach a reader

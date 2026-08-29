@@ -79,120 +79,70 @@ export const en: Messages = {
   'settings.appearance.themeNowDark': 'Currently using the dark theme.',
 
   /** Rewritten at fix-round-1 (task-14) — see vi.ts's comment. */
-  'settings.localData.blurb': 'Notes live in this browser. Courses aren’t downloaded as packages — they’re read straight from the server.',
+  // E5 of the whole-branch review: the previous sentence named only the
+  // browser copy, in the one section a user reads to find out what the
+  // platform keeps. Notes also sync to the server (`POST /sync` →
+  // `sync/usecase.go` → the `annotations` table from migration 0001), which
+  // is exactly what `login.point.sync` already promises — see the vi
+  // catalog's comment on this key.
+  'settings.localData.blurb':
+    'Notes live in two places: a copy in this browser, and a copy synced to the server under your account — so signing in on another device still shows all of them. Courses aren’t downloaded as packages: they’re read straight from the server.',
   'settings.localData.clearedOnSignOut':
     'The local database is named after the BROWSER, not the user — so it is wiped whenever a different person signs in, even if nobody signed out.',
   'settings.localData.kept': 'Language and theme stay: they belong to the device.',
 
+  /* AI section — Phase 2 (task-14): credit + agent config replace the key
+     vault frame. See vi.ts for the full rationale; no string below may say
+     "key", "vault", or "separate address" again — all three went false the
+     moment AI moved server-side (Task 11). */
+
   'settings.ai.title': 'AI assistant',
-  /**
-   * Chỗ trống nằm ở VỊ TRÍ KHÁC so với bản tiếng Việt, và đó chính là lý do câu
-   * này là một khoá chứ không phải ba mảnh ghép trong JSX.
-   */
-  'settings.ai.blurb': (vault: string) => `Runs on your own key, kept in the ${vault} at a separate address.`,
-  'settings.ai.blurbVault': 'key vault',
-  'settings.ai.keyStays':
-    'Your key never leaves this browser, is never synced, and never passes through our servers.',
-  'settings.ai.unavailable':
-    'This build has no key vault, so the AI assistant is unavailable. That is a deployment configuration gap, not a problem with your account — reading the course still works normally.',
-  'settings.ai.open': 'Open the key vault',
+  'settings.ai.blurb':
+    'The AI assistant runs on our own servers and is paid for with your account credit — there is no key left for you to paste or keep.',
 
-  /** Chỗ trống là ORIGIN THẬT — xem lý do đầy đủ ở `vi.ts`. */
-  'settings.ai.frameLabel': (origin: string) =>
-    `The key vault runs at ${origin} — a different address, apart from the lesson page.`,
-  'settings.ai.frameOpen': 'The key vault is open on the layer above. Press "Close" there to come back to this page.',
+  /* `CreditPanel.tsx` — balance and recent usage, GET /ai/credits */
 
-  'settings.ai.budgetTitle': 'Per-session limit',
-  'settings.ai.budgetBody':
-    'The key vault enforces a character budget for each session. Spend it and the vault asks again, right there in the frame, with the log of what has already left the machine beside the question — that number matters most at exactly the moment you click. The budget cannot stop a patient hostile course; it only makes that course go through your hands.',
+  'settings.ai.creditTitle': 'Credit',
+  'settings.ai.creditBalanceLabel': 'Available credit',
+  'settings.ai.creditLoading': 'Reading your balance…',
+  'settings.ai.creditError': 'Could not read your credit balance. Try reloading the page.',
+  'settings.ai.usageTitle': 'Recent usage',
+  'settings.ai.usageEmpty': 'No charged questions yet.',
+  'settings.ai.usageColWhen': 'When',
+  'settings.ai.usageColModel': 'Model',
+  'settings.ai.usageColTokensIn': 'Tokens in',
+  'settings.ai.usageColTokensCached': 'Tokens in (cached)',
+  'settings.ai.usageColTokensOut': 'Tokens out',
+  'settings.ai.usageColToolCalls': 'Tool calls',
+  'settings.ai.usageColWebSearches': 'Web searches',
+  'settings.ai.usageColCredits': 'Credit charged',
 
-  /* ══════════════════════════════════════════════════════════════════════ *
-   * KHO KHOÁ (`apps/vault`)
-   * ══════════════════════════════════════════════════════════════════════ */
+  /* `AgentConfigPanel.tsx` — personal prompt and tool toggles,
+     GET/PUT /ai/config */
 
-  'vault.guard.needsConsent': 'The first call of a session needs one confirming click inside the key vault panel.',
-  'vault.guard.unmeasurable': 'The key vault could not measure the length of this prompt, so it refused to send it.',
-  'vault.guard.promptTooLong': 'This prompt is longer than an entire session budget, so the key vault will not send it.',
-  'vault.guard.budgetSpent': 'This session has spent its character budget. Confirm again in the key vault panel.',
-  'vault.guard.rateLimited': 'The key vault is rate-limiting so nobody can make calls on your key.',
-  'vault.guard.bucketWriteFailed': 'The key vault could not record the rate-limit state, so it refused this call.',
-  'vault.guard.budgetWriteFailed': 'The key vault could not record the character budget, so it refused this call.',
-
-  'vault.keystore.missingProviderOrModel': 'writeConfig: providerId or model is missing.',
-  'vault.keystore.emptyKey': 'writeConfig: empty key — the key vault does not store an unusable configuration.',
-
-  'vault.protocol.version': (version: string) => `The key vault speaks protocol v${version}.`,
-  'vault.protocol.unsupported': 'Not supported.',
-  'vault.protocol.badChatShape': 'The chat request does not match the protocol shape.',
-  'vault.provider.unknown': 'The key vault does not know this provider.',
-  'vault.provider.notConfigured': 'No key is plugged into the key vault.',
-  'vault.provider.callFailed': 'The key vault could not complete the call to the provider.',
-  'vault.provider.unreachable': 'Could not reach the provider from the browser (network or CORS).',
-  'vault.provider.badKey': 'The key was rejected.',
-  'vault.provider.rateLimited': 'The provider is rate-limiting.',
-
-  'vault.boot.originRequired': 'VITE_APP_ORIGIN is required — the key vault refuses to run without knowing whom to trust.',
-  'vault.boot.originShape': (received: string) =>
-    `VITE_APP_ORIGIN must be a proper origin (scheme://host[:port]) — no trailing "/", no path, no "*". Received ${received}.`,
-
-  /** Ngắn ngang bản tiếng Việt: `settings.test.ts` ghim độ dài lời nhắc thử. */
-  'vault.settings.testPrompt': 'Answer in exactly one word: OK',
-  'vault.settings.openaiWarning':
-    'Measured warning (2026-08-22): OpenAI blocks its text-generation endpoint with CORS when called directly from a browser — their error responses carry no Access-Control-Allow-Origin. The success path has not been measured, so OpenAI may not work here, and if it does, a wrong key will show up as "could not reach the provider" rather than "the key was rejected". Try "Test the connection" before trusting it. DeepSeek, OpenRouter, Groq and Anthropic have all been measured to work directly from a browser.',
-  /* Shown only when this page is NOT inside a frame — see vi.ts for the why. */
-  'vault.standalone.notice':
-    'This is the key vault, and it is built to sit inside the study app rather than be opened on its own. Opened on its own it can still store and erase a key, but there are no lessons here.',
-  'vault.standalone.back': 'Back to the study app',
-  'vault.settings.title': 'An AI assistant running on your own key',
-  'vault.settings.why':
-    'The key field lives inside this frame, and this frame is a separate page on a separate origin. The browser forbids code on the lesson page from reading anything here — including the field below, including where the key is kept. The lesson page only sends questions in and receives text back; it never sees the key. That is why this field is not on the settings page outside.',
-  'vault.settings.providerLabel': 'Provider',
-  'vault.settings.modelLabel': 'Model',
-  'vault.settings.modelHint': 'Leave it alone unless you have a specific reason to change it.',
-  'vault.settings.keyPlaceholder': 'Paste your key here',
-  'vault.settings.keyLabel': 'Your key',
-  'vault.settings.keyHint':
-    'The key stays in this browser, on this device. It is not synced, it never passes through our servers, and there is no way to recover it if you delete it — keep the original on your provider’s site.',
-  'vault.settings.save': 'Save the key on this device',
-  'vault.settings.test': 'Test the connection',
-  'vault.settings.clear': 'Delete the key from this device',
-  'vault.settings.currentKey': (providerId: string, model: string) =>
-    `This device already has a key: ${providerId} · ${model}.`,
-  'vault.settings.noKey': 'This device has no key yet.',
-  'vault.settings.noKeyTyped': 'No key has been pasted into the field above.',
-  'vault.settings.noModel': 'No model name.',
-  'vault.settings.saved': 'The key is saved in this browser. Press "Test the connection" to be sure it works.',
-  'vault.settings.clearArmed': 'Press again to delete',
-  'vault.settings.clearWarning': 'Press again to delete the key from this browser for good. There is no way back.',
-  'vault.settings.cleared': 'The key has been deleted from this browser.',
-  'vault.settings.noKeyAnywhere': 'No key was pasted, and this device has no saved key for the selected provider.',
-  'vault.settings.needsConsent':
-    'The key vault has not been confirmed in this session. Press "Allow for this session" just below, then try again.',
-  'vault.settings.denied': 'The key vault is refusing this call.',
-  'vault.settings.calling': 'Calling the provider…',
-  'vault.settings.emptyReply': 'The provider answered, but the model returned no text. Try another model.',
-  'vault.settings.reply': (reply: string) => `The provider answered. The model said: «${reply}»`,
-  'vault.settings.openaiHint': (message: string) =>
-    `${message} (With OpenAI, see the CORS warning above — this error may not be about your key.)`,
-
-  'vault.log.title': 'What the AI assistant has sent',
-  'vault.log.blurb':
-    'The log records when, and HOW MANY CHARACTERS, were sent. Prompt contents are not recorded here — a second copy of your private notes sitting next to your key is exactly what this key vault refuses to create.',
-  'vault.log.empty': 'No calls yet.',
-  'vault.log.total': (chars: string, calls: string) =>
-    `${chars} characters have left this device in total, across ${calls} calls.`,
-  'vault.log.entry': (when: string, chars: string, provider: string) => `${when} · ${chars} characters sent · ${provider}`,
-  'vault.log.unknownProvider': 'unknown provider',
-  'vault.log.denied': (rateLimited: string, needsConsent: string) =>
-    `The key vault REFUSED ${rateLimited} calls for exceeding the rate limit and ${needsConsent} calls for not being confirmed.`,
-  'vault.log.clear': 'Clear the log',
-  'vault.consent.askAgainTitle': 'The AI assistant asks to keep calling on your key',
-  'vault.consent.askTitle': 'The AI assistant wants to call out on your key',
-  'vault.consent.askAgainBody':
-    'The key vault stopped and asked again before sending more. The log just below shows how much text has left this device — look at it before pressing this time, because every press opens the way for roughly that much again. If the number is larger than what you remember asking, do not press.',
-  'vault.consent.askBody':
-    'The lesson page has asked the key vault to call an AI provider. The key vault lets no call out until you press the button below, and that press only holds for the current session.',
-  'vault.consent.allow': 'Allow for this session',
+  'settings.ai.configTitle': 'Agent configuration',
+  'settings.ai.configBlurb':
+    'Your personal prompt is added to EVERY question you ask — use it to tell the assistant how you want to be answered.',
+  'settings.ai.configLoading': 'Reading configuration…',
+  'settings.ai.configError': 'Could not read the agent configuration. Try reloading the page.',
+  'settings.ai.promptLabel': 'Your personal prompt',
+  'settings.ai.promptPlaceholder': 'For example: always answer briefly, with a Python example.',
+  'settings.ai.promptCounter': (count: string, max: string) => `${count} / ${max} characters`,
+  'settings.ai.promptTooLong':
+    'This prompt is longer than the allowed limit. Shorten it to save — the server will reject anything longer than this even if you press Save.',
+  'settings.ai.toolsTitle': 'Agent tools in use',
+  // E4 of the whole-branch review — see the vi catalog's comment on these
+  // two keys for the full reasoning, including why the toggle stays
+  // clickable rather than becoming `disabled`.
+  'settings.ai.toolUnavailable': 'not configured on this server',
+  'settings.ai.toolsUnavailableNote':
+    'A tool marked "not configured on this server" still saves your preference, but the server is not set up to run it — the assistant will skip it until an administrator switches it on.',
+  'settings.ai.toolReadCourse': 'Read course content',
+  'settings.ai.toolWebSearch': 'Search the web',
+  'settings.ai.save': 'Save configuration',
+  'settings.ai.saved': 'Saved.',
+  'settings.ai.saveUnknownTool': 'One of the listed tools no longer exists. Reload the page and try again.',
+  'settings.ai.saveRejected': 'The server rejected this configuration. Try again in a moment.',
 
   /* ══════════════════════════════════════════════════════════════════════ *
    * VỎ ỨNG DỤNG (`shell/`)
@@ -208,6 +158,7 @@ export const en: Messages = {
   'account.settings': 'Settings',
   'nav.dashboard': 'Dashboard',
   'nav.library': 'Library',
+  /** ORPHAN — no caller in `apps/web/src`. See the vi catalog's comment. */
   'nav.import': 'Import a course',
 
   'sidebar.searchPlaceholder': 'Find a chapter…',
@@ -234,12 +185,6 @@ export const en: Messages = {
   'error.boundary.body':
     'The rest of the app is still running. Reloading the page is usually enough; if the error comes back, the details below are what to include in a bug report.',
   'error.boundary.reload': 'Reload the page',
-
-  'vault.frame.configError': '[key vault] misconfigured, the AI feature is off:',
-  'vault.frame.overlayLabel': (origin: string) =>
-    `Key vault — this frame runs at ${origin}, apart from the lesson page`,
-  'vault.frame.close': 'Close',
-  'vault.frame.title': 'Key vault',
 
   /* ══════════════════════════════════════════════════════════════════════ *
    * TRANG (`pages/`)
@@ -312,14 +257,15 @@ export const en: Messages = {
   'progress.course.minutes': (minutes: string) => `${minutes} minutes studied`,
 
   'login.pitch.headline': 'Courses are open to everyone.',
+  /** `login.pitch.lede` and `login.point.ownKey` rewritten at task-15 — see vi.ts's comment. */
   'login.pitch.lede':
-    'Open a course and start reading right away — nothing to install, nothing to download. Highlight a passage to take a note right on the page, or ask the AI assistant using your own key.',
+    'Open a course and start reading right away — nothing to install, nothing to download. Highlight a passage to take a note right on the page, or ask the AI assistant right there.',
   /* Tên riêng "Tự học" KHÔNG đi vào đây: bài "en còn tiếng Việt" ở
      `i18n.test.ts` cho phép đúng hai khoá (`app.name`, `lang.name.vi`), và một
      nhãn trợ năng không đáng làm danh sách ấy dài thêm. */
   'login.pitch.aria': 'What this platform does',
   'login.point.free': 'Read every course free — no account needed',
-  'login.point.ownKey': 'An AI assistant on your own key, and the key never passes through our servers',
+  'login.point.ownKey': 'An AI assistant on our own servers, paid for with credit — no key of your own needed',
   'login.point.sync': 'Sign in and your progress and notes follow you across devices',
 
   'login.title': 'Sign in',
@@ -358,7 +304,7 @@ export const en: Messages = {
   'courses.loading': 'Loading the catalog…',
   'courses.empty': 'No courses have been published yet.',
   'courses.list.aria': 'Course catalog',
-  /** Last user: `pages/Library.tsx`'s `EmptyLibrary` — see vi.ts's comment. */
+  /** ORPHAN — `pages/Library.tsx` no longer exists. See vi.ts's comment. */
   'courses.import.action': 'Import a package',
   'library.loading': 'Loading your library…',
   'library.empty.headingOffline': 'No courses on this device',
@@ -488,29 +434,53 @@ export const en: Messages = {
   'ai.panel.expand': 'Expand the ask panel',
   'ai.panel.resize': 'Drag to resize the panel',
   'ai.panel.collapse': 'Collapse the ask panel',
-  'ai.panel.newThread': 'New conversation',
+  // NOT "New conversation" (Phase 1's wording) — review round 1: the server
+  // has no memory of any earlier turn (see useAI.ts's doc comment), so a
+  // label implying a "conversation" that this button then "renews" claims a
+  // continuity that was never there. It only clears what is drawn on screen.
+  'ai.panel.newThread': 'Clear all',
   'ai.panel.thinking': 'Thinking…',
-  'ai.panel.needsSetup':
-    'The AI assistant runs on your own key, and this device has none yet. The key is kept in the key vault — a separate page at a separate address, so a course cannot read it.',
-  'ai.panel.openSettings': 'Open the settings page',
-  'ai.panel.unavailable':
-    'This build has no key vault, so the AI assistant is unavailable. That is a deployment configuration gap, not a problem with your account — reading the course still works normally.',
-  'ai.panel.probeFailed': 'Could not ask the key vault whether a key is plugged in. You can still try asking.',
+  // Persistent, not tied to any error — the panel says this BEFORE anything
+  // has gone wrong, because it is true on the very first question too. See
+  // useAI.ts's doc comment for why the server has no cross-turn memory.
+  'ai.panel.noMemory': 'Each question stands on its own — the assistant does not remember earlier questions.',
+  // `ai.panel.noCredit` is Phase 2's replacement for the Phase 1 pair
+  // `needsSetup`/`unavailable` (removed — see `git log` on this file):
+  // there is no per-device key to plug in anymore and no build variant
+  // without the AI routes, so neither of those two states can occur. The
+  // one blocking state left is running out of platform-issued credit.
+  // The previous wording pointed at a top-up button that does not exist
+  // (whole-branch review, E1): `/settings` shows a balance and a spend
+  // ledger and nothing else — billing is Phase 4 (spec §7). See the vi
+  // catalog's comment on these two keys for the full reasoning, including
+  // why the button stays but its label changes.
+  'ai.panel.noCredit':
+    'You are out of AI credit on this account. Billing is not open yet, so you cannot top up yourself — ask an administrator to add more.',
+  'ai.panel.openSettings': 'View balance and usage',
   'ai.panel.questionLabel': 'Your question',
   'ai.panel.questionPlaceholder': 'Ask about the chapter you are reading…',
   'ai.panel.stop': 'Stop',
   'ai.panel.ask': 'Ask',
   'ai.deepDive.heading': 'Go deeper',
-  'ai.error.unavailable': 'This build has no key vault, so AI is unavailable.',
-  'ai.error.notConfigured': 'No key is plugged into the key vault on this device.',
-
-  'ai.vault.originShape': (received: string) =>
-    `VITE_VAULT_ORIGIN must be a proper origin (scheme://host[:port]) — no trailing "/", no path, no "*". Received ${received}.`,
-  'ai.vault.frameDetached': 'The key vault frame was detached while a call was in flight.',
-  'ai.vault.abortedBeforeSend': 'Cancelled before anything was sent.',
-  'ai.vault.abortedByUser': 'Cancelled by the reader.',
-  'ai.vault.timeout': (ms: string) =>
-    `The key vault did not answer within ${ms} ms. Did the frame load, and is the origin right?`,
+  // Mười khoá dưới đây ứng với mười `ServerAIErrorCode` (`ai/serverClient.
+  // ts`) — xem `useAI.ts`'s `describeFailure` cho quy tắc "mã nào dịch ra
+  // câu nào", và VÌ SAO không câu nào ở đây là chuỗi thô server gửi.
+  'ai.error.noCredit': 'You are out of AI credit. Billing is not open yet — ask an administrator to add more.',
+  'ai.error.rateLimited': 'You are asking a bit fast — wait a moment and try again.',
+  'ai.error.providerFailed': 'The AI provider could not complete this turn. Try again in a moment.',
+  'ai.error.toolBudgetExhausted':
+    'This question needed more lookup steps than this turn allows. Try asking something more specific, or turn off a tool.',
+  'ai.error.unauthenticated': 'Your session has expired. Sign in again to keep asking.',
+  // Own message, pulled OUT of the shared bucket below (review round 1):
+  // unlike Internal/InvalidBody/etc., a learner (or a shorter chapter
+  // context) can actually fix this by asking something shorter.
+  'ai.error.fieldTooLong': 'Your question is too long, including the reading context. Ask something shorter, or select less text.',
+  'ai.error.network': 'Could not reach the server. Check your connection and try again.',
+  'ai.error.aborted': 'Cancelled.',
+  // Chung cho `InvalidBody`/`FieldRequired`/`UnknownTool`/`Internal` — bốn
+  // mã báo lỗi ở chính trang chính hoặc máy chủ, không phải điều người học
+  // gây ra hay có một hành động cụ thể để sửa.
+  'ai.error.requestRejected': 'The request was rejected. Try again in a moment.',
 
   /**
    * Câu vai BẢO MÔ HÌNH TRẢ LỜI BẰNG NGÔN NGỮ NÀO — nên bản này không phải một
@@ -752,6 +722,17 @@ export const en: Messages = {
 
   /* ── quản trị — /admin ──────────────────────────────────────────────── */
 
+  /**
+   * `AdminNav.tsx` — shared sub-nav across the three `/admin/*` screens.
+   * Task 17 adds these three keys alongside `AdminCredits`/`AdminPricing`,
+   * so `AdminCourses` (Task 8/15) and the two new screens can reach each
+   * other.
+   */
+  'admin.nav.aria': 'Admin sections',
+  'admin.nav.courses': 'Courses',
+  'admin.nav.credits': 'Users & credit',
+  'admin.nav.pricing': 'Pricing & base prompt',
+
   'admin.title': 'Course administration',
   'admin.lede': 'Publish, unpublish, or roll back a course — the same validation rules `tuhoc pack` runs on the command line.',
   'admin.loading': 'Loading the list…',
@@ -792,4 +773,80 @@ export const en: Messages = {
   'admin.error.unknown': 'An unknown error occurred.',
   'admin.error.unreachable':
     'Could not connect to the server. You may be offline, or the server may be misconfigured (CORS/DNS).',
+
+  /* ══════════════════════════════════════════════════════════════════════ *
+   * AI ADMIN — Task 17, spec §7: `admin/AdminCredits.tsx` ("Users &
+   * credit") and `admin/AdminPricing.tsx` ("Pricing & base prompt"), both
+   * talking to the seven `/admin/ai/*` routes
+   * (`apps/api/internal/ai/admin_handler.go`).
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  'admin.ai.credits.title': 'Users & credit',
+  'admin.ai.credits.lede':
+    "Find a user, see their balance and usage ledger, and add or remove credit by hand — every manual adjustment requires a note and is recorded in the operations log.",
+  'admin.ai.credits.searchLabel': 'Search by email',
+  'admin.ai.credits.searchPlaceholder': 'e.g. jane@example.test',
+  'admin.ai.credits.searchButton': 'Search',
+  'admin.ai.credits.loading': 'Loading…',
+  'admin.ai.credits.empty': 'No matching users found.',
+  'admin.ai.credits.colEmail': 'Email',
+  'admin.ai.credits.colRole': 'Role',
+  'admin.ai.credits.colBalance': 'Credit balance',
+  'admin.ai.credits.colActions': 'Actions',
+  'admin.ai.credits.selectButton': 'View details',
+  'admin.ai.credits.adjustTitle': 'Add or remove credit by hand',
+  'admin.ai.credits.amountLabel': 'Amount (credits)',
+  'admin.ai.credits.directionLabel': 'Direction',
+  'admin.ai.credits.directionAdd': 'Add',
+  'admin.ai.credits.directionSubtract': 'Remove',
+  'admin.ai.credits.noteLabel': 'Note (required)',
+  'admin.ai.credits.notePlaceholder': 'Why you are adjusting this — required, and recorded in the operations log.',
+  'admin.ai.credits.adjustSubmit': 'Apply',
+  'admin.ai.credits.adjustSubmitting': 'Applying…',
+  'admin.ai.credits.adjustSuccess': 'Balance updated.',
+  'admin.ai.credits.usageTitle': 'Recent usage',
+  'admin.ai.credits.usageEmpty': 'No charged turns yet.',
+  'admin.ai.credits.adjustmentsTitle': 'Manual adjustment history',
+  'admin.ai.credits.adjustmentsEmpty': 'No manual adjustments for this account yet.',
+  'admin.ai.credits.colWho': 'Acted by',
+  'admin.ai.credits.colNote': 'Note',
+
+  'admin.ai.pricing.title': 'Pricing & base prompt',
+  'admin.ai.pricing.lede':
+    "Edit the per-model credit conversion table and the agent's base prompt — changes take effect on the very next turn, no deploy required.",
+  'admin.ai.pricing.tableTitle': 'Credit conversion table',
+  'admin.ai.pricing.loading': 'Loading…',
+  'admin.ai.pricing.colModel': 'Model',
+  'admin.ai.pricing.colCostIn': 'Cost in (/1K)',
+  'admin.ai.pricing.colCostCachedIn': 'Cost cache-in (/1K)',
+  'admin.ai.pricing.colCostOut': 'Cost out (/1K)',
+  'admin.ai.pricing.colCreditsIn': 'Credits in (/1K)',
+  'admin.ai.pricing.colCreditsCachedIn': 'Credits cache-in (/1K)',
+  'admin.ai.pricing.colCreditsOut': 'Credits out (/1K)',
+  'admin.ai.pricing.colUpdatedAt': 'Updated at',
+  'admin.ai.pricing.colActions': 'Actions',
+  'admin.ai.pricing.rowNotePlaceholder': 'Why this rate changed (optional)',
+  'admin.ai.pricing.save': 'Save',
+  'admin.ai.pricing.saving': 'Saving…',
+  'admin.ai.pricing.saved': 'Saved.',
+  'admin.ai.pricing.promptTitle': 'Base prompt & signup grant',
+  'admin.ai.pricing.promptBlurb':
+    "This prompt runs BEFORE every user's own personal prompt — it holds the tutor persona and the safety boundary, and must never be empty.",
+  'admin.ai.pricing.promptLabel': 'Base prompt',
+  'admin.ai.pricing.promptEmptyWarning': "The base prompt must not be empty — it is the agent's safety boundary.",
+  'admin.ai.pricing.promptNoteLabel': 'Note (optional)',
+
+  // The signup-grant field (`ai_settings.signup_grant_micro`). See the vi
+  // catalog's comment on the same three keys for why it shares the base
+  // prompt's form instead of getting its own Save button.
+  'admin.ai.pricing.grantLabel': 'Signup grant (micro-credit)',
+  'admin.ai.pricing.grantHint':
+    'Every new account receives this much during signup. Setting it to 0 switches the grant OFF: a new account is blocked on its very first question until someone tops it up by hand.',
+  'admin.ai.pricing.grantInvalid': (max: string) => `Must be a whole number, 0 or more, at most ${max}.`,
+
+  'admin.ai.error.fieldRequired': 'A required field is missing.',
+  'admin.ai.error.amountRequired': 'The amount must not be empty or zero.',
+  'admin.ai.error.amountOutOfRange': 'That amount is outside what a single adjustment allows.',
+  'admin.ai.error.fieldTooLong': 'That text is longer than allowed.',
+  'admin.ai.error.notFound': 'Not found.',
 };
