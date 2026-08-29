@@ -41,20 +41,30 @@ type Config struct {
 	// CookieSecure controls the Secure attribute on session cookies.
 	CookieSecure bool
 
-	// ── THE FIRST SECRET THIS SERVER HAS EVER HELD ───────────────────────
+	// ── THE FIRST SECRET THIS SERVER EVER HELD ──────────────────────────
 	//
 	// GitHubToken is THIS SERVER'S OWN credential to GitHub. It is not a
-	// user's credential to anybody, and it is emphatically NOT the kind of
-	// key spec §1.4 and §3.2 are about.
+	// user's credential to anybody.
 	//
-	// Read this before citing it as a precedent, because somebody will:
+	// HISTORY MATTERS HERE, so read the tense. When this field was written
+	// it was the ONLY secret the server held, and this comment existed to
+	// stop it being cited as a precedent for widening spec §3.2's Pha 1
+	// promise:
 	//
-	//	§3.2's promise — "a user's AI provider key never touches the
-	//	platform's server: not in transit, not in process memory, not in a
-	//	log, not in the database, not in a sync payload. No exceptions, no
-	//	fallback path." — IS NOT WIDENED BY THIS FIELD, not by one inch.
+	//	"a user's AI provider key never touches the platform's server:
+	//	not in transit, not in process memory, not in a log, not in the
+	//	database, not in a sync payload. No exceptions, no fallback path."
 	//
-	// The two are different in kind, not in degree:
+	// THAT PROMISE IS RETIRED. Pha 2 (spec 2026-08-25-server-side-pivot.md
+	// §0.1, Task 11) moved the agent onto this server, against ONE DeepSeek
+	// account the platform pays for — see DeepSeekAPIKey below, where the
+	// trade is written out. So this field is no longer the sole secret, and
+	// no longer needs defending against a rule that no longer exists.
+	//
+	// What survives is the narrower rule the three bullets below actually
+	// establish, and it is still load-bearing: the platform may hold ITS
+	// OWN credentials, and never a third party's, arriving from a request.
+	// That half is enforced, see the scan note further down.
 	//
 	//   - Whose secret it is. A provider key belongs to the reader; the
 	//     platform is not a party to it, and holding it would make the
@@ -71,14 +81,27 @@ type Config struct {
 	//     arrives from the deployment environment and no request can supply,
 	//     replace, or read it.
 	//
-	// The three source scans in internal/server/no_key_transit_test.go stay
-	// GREEN on this field, and that is a measured fact rather than a hope:
-	// it carries no JSON tag, so it can never be bound from a request body;
-	// nothing reads it out of a header; and it names no AI provider. The one
-	// scan Discussions does move — the outbound-call scan — is moved by
-	// internal/discuss/client.go importing net/http, NOT by this field, and
-	// it is answered with a narrow allowlist there rather than by deleting
-	// the scan. See that test's own allowlist and its comment.
+	// WHICH GATE ACTUALLY WATCHES THIS FIELD, as of Pha 2.
+	// internal/server/no_key_transit_test.go — which this comment used to
+	// cite as staying GREEN here — WAS DELETED at Task 11 and replaced by
+	// internal/server/provider_key_never_leaks_test.go. That file's own
+	// header explains the replacement: the old test's central claim ("this
+	// server never receives a provider key at all") became false the moment
+	// DeepSeekAPIKey existed, so it could not simply be extended.
+	//
+	// What the replacement still enforces on this field: it carries no JSON
+	// tag, so it can never be bound from a request body, and nothing reads
+	// it out of a header — TestNoRequestStructAcceptsAKey checks exactly
+	// that, and it is the assertion carried over VERBATIM from the deleted
+	// file rather than rewritten.
+	//
+	// What NO gate enforces any more, stated because its absence is easy to
+	// mistake for its presence: the old file also carried an outbound-call
+	// DESTINATION allowlist, which is what once made "internal/discuss
+	// imports net/http" a thing a test had to be told about. That allowlist
+	// was deleted whole and has no replacement (the new file's PHẠM VI THẬT
+	// point 3 says so in its own words). Nothing today stops apps/api from
+	// calling a host nobody vetted.
 	//
 	// Empty means Discussions are switched off: the endpoint degrades to
 	// "not loaded" instead of failing, exactly as an unset DATABASE_URL

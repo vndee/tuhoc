@@ -12,12 +12,17 @@
 -- for the same reason: see repo.go.
 --
 -- registry_id is text with NO foreign key, and that is deliberate rather
--- than an omission. The registry is not in this database: it is a static
--- index.json published by a separate repo (subsystem 3), and the API
--- deliberately never fetches it — apps/api product code makes no outbound
--- calls at all, a promise enforced by
--- apps/api/internal/server/no_key_transit_test.go. So there is nothing
--- here to reference.
+-- than an omission. The registry is not in this database, and this API
+-- deliberately never fetches it, so there is nothing here to reference.
+--
+-- This comment used to justify that with "apps/api product code makes no
+-- outbound calls at all, a promise enforced by
+-- apps/api/internal/server/no_key_transit_test.go". BOTH halves are dead as
+-- of Pha 2: that test file was deleted at Task 11, and apps/api DOES make
+-- outbound calls now (internal/ai to DeepSeek and Brave, internal/discuss
+-- to GitHub). What is still true is the narrower fact this column depends
+-- on — nothing in this API reads the registry index — and it is true
+-- because no code does it, not because a gate forbids it.
 --
 -- The consequence is stated plainly because it shapes the layer above:
 -- this column cannot prove an id is a real registry course. Two things

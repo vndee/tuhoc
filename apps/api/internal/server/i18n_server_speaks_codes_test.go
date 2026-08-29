@@ -48,8 +48,9 @@ import (
 //
 // PHẠM VI: mọi tệp `.go` KHÔNG PHẢI test dưới `apps/api`, kể cả gói chưa tồn
 // tại lúc viết dòng này. Một danh sách gói được phép là đúng hình dạng cổng mù
-// mà `no_key_transit_test.go` bên cạnh đã bác một lần rồi ("đừng loại trừ cả
-// gói").
+// mà cổng key-transit đã bác một lần rồi ("đừng loại trừ cả gói"). Tệp ấy
+// (`no_key_transit_test.go`) đã bị XOÁ ở Task 11 — nó không còn "bên cạnh" —
+// và bản thay `provider_key_never_leaks_test.go` giữ nguyên nguyên tắc ấy.
 
 // Ký tự chỉ xuất hiện trong CHỮ Latin có dấu — không bao giờ trong mã định
 // danh hay chuỗi kỹ thuật của repo này.
@@ -122,7 +123,10 @@ func productionGoFiles(t *testing.T) []string {
 }
 
 // apiRoot neo ở `apps/api` bằng cách đi ngược lên tìm `go.mod`. KHÔNG có
-// đường lui im lặng, cùng lý do `repoRoot` ở `no_key_transit_test.go` nêu.
+// đường lui im lặng, cùng lý do `providerKeyRepoRoot`
+// (`provider_key_never_leaks_test.go`) nêu — lập luận ấy ra đời ở
+// `no_key_transit_test.go`, tệp đã bị xoá ở Task 11, và được chép nguyên vào
+// tệp thay nó.
 func apiRoot(t *testing.T) string {
 	t.Helper()
 
