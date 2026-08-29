@@ -1455,6 +1455,14 @@ html[data-theme='dark'] #app:not(.reading) .set-identity-avatar {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+/* Nhãn "chưa bật trên máy chủ này" (E4). CỐ Ý không làm mờ cả cái nút: công
+   tắc vẫn bấm được và lựa chọn vẫn lưu được — thứ bị hạ cấp là mức chú ý của
+   dòng chữ phụ, không phải khả năng thao tác. */
+#app:not(.reading) .set-tool-off {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    THANH TRÊN CHẠY SUỐT BỀ NGANG — thanh bên nằm DƯỚI nó
    ══════════════════════════════════════════════════════════════════════════

@@ -124,6 +124,12 @@ export const en: Messages = {
   'settings.ai.promptTooLong':
     'This prompt is longer than the allowed limit. Shorten it to save — the server will reject anything longer than this even if you press Save.',
   'settings.ai.toolsTitle': 'Agent tools in use',
+  // E4 of the whole-branch review — see the vi catalog's comment on these
+  // two keys for the full reasoning, including why the toggle stays
+  // clickable rather than becoming `disabled`.
+  'settings.ai.toolUnavailable': 'not configured on this server',
+  'settings.ai.toolsUnavailableNote':
+    'A tool marked "not configured on this server" still saves your preference, but the server is not set up to run it — the assistant will skip it until an administrator switches it on.',
   'settings.ai.toolReadCourse': 'Read course content',
   'settings.ai.toolWebSearch': 'Search the web',
   'settings.ai.save': 'Save configuration',

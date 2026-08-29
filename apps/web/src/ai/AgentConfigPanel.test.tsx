@@ -18,7 +18,7 @@ import { AgentConfigPanel } from './AgentConfigPanel';
  * `configRequest`:
  *
  *   GET  200 { system_prompt, tools_enabled, available_tools,
- *              max_system_prompt_chars }
+ *              unavailable_tools, max_system_prompt_chars }
  *   PUT  gửi { system_prompt, tools_enabled } — CẢ HAI bắt buộc (con trỏ
  *        phía Go: thiếu một trong hai ⇒ `FieldRequired`, KHÔNG hiểu ngầm
  *        là "giữ nguyên").
@@ -118,6 +118,67 @@ describe('AgentConfigPanel — tải cấu hình', () => {
     // Đối chứng phụ, giữ lại từ bản trước: hai bản dịch phải thật sự khác
     // nhau (bắt được nếu ai đó gán trùng khoá dịch cho cả hai tool).
     expect(t('vi', 'settings.ai.toolReadCourse')).not.toBe(t('vi', 'settings.ai.toolWebSearch'));
+  });
+
+  /**
+   * E4 của review tổng nhánh Pha 2.
+   *
+   * `KnownToolNames()` (Go) trả CẢ HAI tool bất kể `BRAVE_API_KEY` có được
+   * đặt hay không — chú thích của chính nó gọi trạng thái ấy là "this tool
+   * is off right now". Giao diện KHÔNG BAO GIỜ nói câu đó: người học bật
+   * `web_search`, lưu thành công (200), tải lại thấy vẫn bật, và không lượt
+   * tìm kiếm nào từng chạy. `unavailable_tools` là nửa máy chủ; ba khẳng
+   * định dưới đây là nửa giao diện.
+   */
+  it('một tool máy chủ chưa cấu hình được ĐÁNH DẤU, và vẫn bấm được', async () => {
+    mockConfigGet({ ...BASE_CONFIG, unavailable_tools: ['web_search'] });
+    render(wrap(<AgentConfigPanel />));
+    await screen.findByTestId('agent-tool-web_search');
+
+    // 1. Nhãn phụ nằm đúng trên tool KHÔNG chạy được, và KHÔNG nằm trên tool
+    //    chạy được — một cài đặt đánh dấu cả hai cũng "hiện cảnh báo".
+    expect(screen.getByTestId('agent-tool-unavailable-web_search')).toHaveTextContent(
+      t('vi', 'settings.ai.toolUnavailable'),
+    );
+    expect(screen.queryByTestId('agent-tool-unavailable-read_course')).toBeNull();
+
+    // 2. Câu giải thích chỉ hiện khi có ít nhất một tool như vậy.
+    expect(screen.getByTestId('agent-tools-unavailable-note')).toHaveTextContent(
+      t('vi', 'settings.ai.toolsUnavailableNote'),
+    );
+
+    // 3. NỬA DỄ MẤT NHẤT: công tắc vẫn bấm được. Lựa chọn lưu bền và sống
+    //    lâu hơn cái key còn thiếu — khoá nó lại sẽ bắt mọi người học bấm
+    //    lại vào ngày người vận hành đặt key.
+    const toggle = screen.getByTestId('agent-tool-web_search');
+    expect(toggle).not.toBeDisabled();
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('không tool nào chưa cấu hình thì KHÔNG có nhãn phụ lẫn câu giải thích nào', async () => {
+    mockConfigGet({ ...BASE_CONFIG, unavailable_tools: [] });
+    render(wrap(<AgentConfigPanel />));
+    await screen.findByTestId('agent-tool-web_search');
+
+    expect(screen.queryByTestId('agent-tool-unavailable-web_search')).toBeNull();
+    expect(screen.queryByTestId('agent-tools-unavailable-note')).toBeNull();
+  });
+
+  /**
+   * MỘT MÁY CHỦ CŨ hơn client không gửi `unavailable_tools`. Khi ấy màn hình
+   * KHÔNG được đoán bừa theo chiều nào — nó chỉ mất lớp thông tin mới, đúng
+   * cách nó hành xử trước khi trường này ra đời. Cùng luật
+   * `max_pricing_rate_micro` đã theo ở `AdminPricing.tsx`.
+   */
+  it('máy chủ không gửi `unavailable_tools` thì không đánh dấu gì cả', async () => {
+    mockConfigGet(BASE_CONFIG);
+    render(wrap(<AgentConfigPanel />));
+    await screen.findByTestId('agent-tool-web_search');
+
+    expect(screen.queryByTestId('agent-tool-unavailable-web_search')).toBeNull();
+    expect(screen.queryByTestId('agent-tools-unavailable-note')).toBeNull();
   });
 
   it('lỗi tải cấu hình (500) hiện một câu, không phải một form trắng', async () => {

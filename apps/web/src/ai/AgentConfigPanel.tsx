@@ -14,7 +14,7 @@ import { useLanguage } from '../i18n/LanguageProvider';
  * (`apps/api/internal/ai/handler.go`), KHÔNG đoán tên trường:
  *
  *   GET  200 { system_prompt, tools_enabled, available_tools,
- *              max_system_prompt_chars }
+ *              unavailable_tools, max_system_prompt_chars }
  *   PUT  nhận { system_prompt, tools_enabled } — CẢ HAI bắt buộc: phía Go
  *        khai chúng là CON TRỎ đúng để "vắng" khác "rỗng" — thiếu MỘT trong
  *        hai trả `FieldRequired`, không có nghĩa ngầm "giữ nguyên trường
@@ -41,6 +41,15 @@ interface ConfigWire {
   readonly system_prompt: string;
   readonly tools_enabled: readonly string[];
   readonly available_tools: readonly string[];
+  /**
+   * TẬP CON của `available_tools`: những tool máy chủ này KHÔNG có runner
+   * (`TurnTools` phía Go, ví dụ `web_search` khi thiếu `BRAVE_API_KEY`).
+   *
+   * TÙY CHỌN vì một máy chủ CŨ hơn client không gửi trường này — khi ấy
+   * màn hình không vẽ nhãn nào, đúng cách nó hành xử trước khi trường này
+   * ra đời, chứ KHÔNG đoán bừa rằng mọi tool đều chạy được.
+   */
+  readonly unavailable_tools?: readonly string[];
   readonly max_system_prompt_chars: number;
 }
 
@@ -53,6 +62,7 @@ interface AgentConfigInfo {
   readonly systemPrompt: string;
   readonly toolsEnabled: readonly string[];
   readonly availableTools: readonly string[];
+  readonly unavailableTools: readonly string[];
   readonly maxSystemPromptChars: number;
 }
 
@@ -62,6 +72,7 @@ async function fetchConfig(): Promise<AgentConfigInfo> {
     systemPrompt: wire.system_prompt,
     toolsEnabled: wire.tools_enabled,
     availableTools: wire.available_tools,
+    unavailableTools: wire.unavailable_tools ?? [],
     maxSystemPromptChars: wire.max_system_prompt_chars,
   };
 }
@@ -261,11 +272,26 @@ export function AgentConfigPanel() {
           )}
         </div>
 
+        {/*
+          E4 của review tổng nhánh Pha 2. Trước bản này màn hình vẽ một công
+          tắc cho MỌI tên trong `available_tools` và không nói gì thêm —
+          nên trên một bản triển khai không có `BRAVE_API_KEY`, người học
+          bật `web_search`, lưu thành công, rồi không gì xảy ra, mãi mãi.
+          Chú thích của `KnownToolNames` phía Go tự gọi trạng thái ấy là
+          "this tool is off right now"; giao diện chưa bao giờ nói câu đó.
+
+          CÔNG TẮC VẪN BẤM ĐƯỢC, không `disabled`: lựa chọn được lưu bền và
+          sống lâu hơn cái key còn thiếu (xem doc comment của
+          `UnavailableTools` phía Go). Khoá công tắc lại sẽ biến "hôm nay
+          chưa chạy được" thành "bạn không được phép chọn", và lúc người vận
+          hành đặt key thì mọi người học phải tự bấm lại.
+        */}
         <div className="set-field">
           <p className="set-label">{t('settings.ai.toolsTitle')}</p>
           <div className="set-tool-list">
             {query.data.availableTools.map((name) => {
               const enabled = draftTools.has(name);
+              const unavailable = query.data.unavailableTools.includes(name);
               return (
                 <button
                   key={name}
@@ -279,10 +305,21 @@ export function AgentConfigPanel() {
                   }}
                 >
                   {toolLabel(name, t)}
+                  {unavailable && (
+                    <span className="set-tool-off" data-testid={`agent-tool-unavailable-${name}`}>
+                      {' '}
+                      ({t('settings.ai.toolUnavailable')})
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
+          {query.data.unavailableTools.length > 0 && (
+            <p className="set-note set-note-warn" data-testid="agent-tools-unavailable-note">
+              {t('settings.ai.toolsUnavailableNote')}
+            </p>
+          )}
         </div>
 
         {saveMutation.isError && (

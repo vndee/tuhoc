@@ -96,8 +96,42 @@ const (
 // enabled but not registered is simply never advertised to the model
 // (enabledTools, agent.go, skips it), which is the correct behavior for
 // "this tool is off right now".
+//
+// WHAT THIS COMMENT USED TO GET AWAY WITH (whole-branch review, E4): it
+// called that state "this tool is off right now" while nothing ever SAID SO
+// to the person the state is about. GET /ai/config served this list as
+// available_tools, the settings screen drew a toggle per entry, and a
+// learner on a deployment with no BRAVE_API_KEY could switch web_search on,
+// get a 200, reload to find it still on, and never see a single search
+// happen. unavailableToolNames below is the other half — the one that makes
+// the sentence above true at the boundary rather than only in this comment.
 func KnownToolNames() []string {
 	return []string{ToolNameReadCourse, ToolNameWebSearch}
+}
+
+// unavailableToolNames is every KNOWN name that this deployment has no
+// runner registered for, in the same stable order.
+//
+// It asks TurnTools rather than re-deriving the condition from h.search:
+// TurnTools is the single place that decides what a turn can actually run,
+// and a second copy of "web_search needs a non-nil SearchProvider" here
+// would be a rule kept in two files that must agree forever. Building one
+// throwaway tool set per GET /ai/config is the price, and it is the same
+// work one turn already does.
+//
+// The distinction this draws is NOT "known vs unknown" (PutConfig still
+// accepts every known name, whether or not it is wired — the preference is
+// durable, see above). It is "you can switch this on, and on this
+// deployment it will do nothing until an operator sets the key".
+func (h *Handler) unavailableToolNames() []string {
+	registered := TurnTools(h.courses, h.search, h.maxSearches)
+	var out []string
+	for _, name := range KnownToolNames() {
+		if _, ok := registered[name]; !ok {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // MaxSystemPromptChars caps user_agent_config.system_prompt, in CHARACTERS
@@ -929,9 +963,18 @@ func (h *Handler) Credits(c *fiber.Ctx) error {
 // keeping a second copy that can drift from this one. The server stays the
 // only place the rules are enforced.
 type configResponse struct {
-	SystemPrompt         string   `json:"system_prompt"`
-	ToolsEnabled         []string `json:"tools_enabled"`
-	AvailableTools       []string `json:"available_tools"`
+	SystemPrompt   string   `json:"system_prompt"`
+	ToolsEnabled   []string `json:"tools_enabled"`
+	AvailableTools []string `json:"available_tools"`
+	// UnavailableTools is the subset of AvailableTools this deployment has
+	// no runner for (whole-branch review, E4). It is a SUBSET rather than a
+	// replacement for AvailableTools on purpose: the toggle must still be
+	// drawn and must still be flippable, because the stored preference
+	// outlives the missing key — the operator sets BRAVE_API_KEY, restarts,
+	// and every learner who had already switched web_search on gets it,
+	// with nothing to re-click. What changes is that the screen can now say
+	// so instead of showing a switch that silently does nothing.
+	UnavailableTools     []string `json:"unavailable_tools"`
 	MaxSystemPromptChars int      `json:"max_system_prompt_chars"`
 }
 
@@ -958,7 +1001,7 @@ func (h *Handler) GetConfig(c *fiber.Ctx) error {
 	if err != nil {
 		return h.internal(c, "ai.GetConfig", err)
 	}
-	return c.JSON(newConfigResponse(stored))
+	return c.JSON(newConfigResponse(stored, h.unavailableToolNames()))
 }
 
 // PutConfig serves PUT /ai/config.
@@ -1020,7 +1063,7 @@ func (h *Handler) PutConfig(c *fiber.Ctx) error {
 	if err != nil {
 		return h.internal(c, "ai.PutConfig/readback", err)
 	}
-	return c.JSON(newConfigResponse(saved))
+	return c.JSON(newConfigResponse(saved, h.unavailableToolNames()))
 }
 
 // NAMING NOTE, load-bearing: this parameter is called `stored` rather than
@@ -1034,16 +1077,20 @@ func (h *Handler) PutConfig(c *fiber.Ctx) error {
 // is to rephrase rather than to loosen it. Five earlier implementers in this
 // run tripped the same wire; a sixth line in this file tripped it a second
 // time while explaining the first.
-func newConfigResponse(stored AgentConfig) configResponse {
+func newConfigResponse(stored AgentConfig, unavailable []string) configResponse {
 	tools := stored.ToolsEnabled
 	if tools == nil {
 		// Never null on the wire — same array rule internal/catalog keeps.
 		tools = []string{}
 	}
+	if unavailable == nil {
+		unavailable = []string{}
+	}
 	return configResponse{
 		SystemPrompt:         stored.SystemPrompt,
 		ToolsEnabled:         tools,
 		AvailableTools:       KnownToolNames(),
+		UnavailableTools:     unavailable,
 		MaxSystemPromptChars: MaxSystemPromptChars,
 	}
 }

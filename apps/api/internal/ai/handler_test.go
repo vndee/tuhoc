@@ -948,6 +948,69 @@ func TestAIHandlerFlows(t *testing.T) {
 	})
 
 	// ------------------------------------------------------------------
+	// E4 of the whole-branch review: a tool the deployment cannot actually
+	// run must SAY so, not merely behave as if the learner never asked.
+	//
+	// Both halves are asserted, and the second is the one that goes stale
+	// first: an implementation that reports every known tool as
+	// unavailable would pass the "web_search is listed" half on its own.
+	// ------------------------------------------------------------------
+	t.Run("GET /ai/config names the tools this deployment has no runner for", func(t *testing.T) {
+		uid := newUser(t, pool, "config-unavailable", 17100)
+
+		// No Search — exactly the shape of a deploy with no BRAVE_API_KEY.
+		// TurnTools registers no web_search runner for it, and until this
+		// field existed the settings screen had no way to know.
+		noSearch := newAIApp(t, uid, ai.HandlerDeps{Credits: credits, Courses: fakeCourses{}})
+		resp, raw := doJSON(t, noSearch, http.MethodGet, "/ai/config", nil)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("want 200 got %d body=%s", resp.StatusCode, raw)
+		}
+		var got struct {
+			AvailableTools   []string `json:"available_tools"`
+			UnavailableTools []string `json:"unavailable_tools"`
+		}
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatalf("decode: %v (%s)", err, raw)
+		}
+		if !slices.Equal(got.UnavailableTools, []string{ai.ToolNameWebSearch}) {
+			t.Fatalf("with no SearchProvider, unavailable_tools must be exactly %v, got %v",
+				[]string{ai.ToolNameWebSearch}, got.UnavailableTools)
+		}
+		// Still ADVERTISED: the toggle has to keep existing, because the
+		// stored preference outlives the missing key. Losing this half
+		// would turn "we cannot run it today" into "you may not ask for
+		// it", and re-enabling the key would then need every learner to
+		// re-click.
+		if want := ai.KnownToolNames(); !slices.Equal(got.AvailableTools, want) {
+			t.Fatalf("available_tools must stay the full known list: want %v got %v", want, got.AvailableTools)
+		}
+
+		// The other side of the same measurement: with a provider wired,
+		// the list is EMPTY, never null on the wire.
+		withSearch := newAIApp(t, uid, ai.HandlerDeps{
+			Credits: credits, Courses: fakeCourses{}, Search: &fakeSearch{},
+		})
+		resp2, raw2 := doJSON(t, withSearch, http.MethodGet, "/ai/config", nil)
+		if resp2.StatusCode != http.StatusOK {
+			t.Fatalf("want 200 got %d body=%s", resp2.StatusCode, raw2)
+		}
+		var got2 struct {
+			UnavailableTools []string `json:"unavailable_tools"`
+		}
+		if err := json.Unmarshal(raw2, &got2); err != nil {
+			t.Fatalf("decode: %v (%s)", err, raw2)
+		}
+		if got2.UnavailableTools == nil || len(got2.UnavailableTools) != 0 {
+			t.Fatalf("with a SearchProvider wired, unavailable_tools must be an empty array, got %v",
+				got2.UnavailableTools)
+		}
+		if !bytes.Contains(raw2, []byte(`"unavailable_tools":[]`)) {
+			t.Fatalf("unavailable_tools must be [] on the wire, never null: %s", raw2)
+		}
+	})
+
+	// ------------------------------------------------------------------
 	// Step 4 — GET /ai/credits never shows another learner's money.
 	// ------------------------------------------------------------------
 	t.Run("GET /ai/credits shows only the caller's balance and ledger", func(t *testing.T) {

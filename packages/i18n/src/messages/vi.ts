@@ -160,6 +160,19 @@ export const vi = {
   'settings.ai.promptTooLong':
     'Lời nhắc dài hơn mức cho phép. Rút ngắn để lưu được — máy chủ sẽ từ chối bản dài hơn mức này dù bạn có bấm Lưu.',
   'settings.ai.toolsTitle': 'Công cụ agent được dùng',
+  /* E4 của review tổng nhánh: `web_search` là một công tắc LUÔN HIỆN mà một
+   * bản triển khai không có `BRAVE_API_KEY` KHÔNG BAO GIỜ chạy được. Người
+   * học bật nó, lưu thành công, và không gì xảy ra — mãi mãi, không một
+   * dòng chữ nào. `GET /ai/config` nay trả thêm `unavailable_tools`; hai
+   * khoá dưới đây là nửa còn lại.
+   *
+   * Công tắc VẪN BẤM ĐƯỢC (không `disabled`): lựa chọn được lưu bền và sống
+   * lâu hơn cái key còn thiếu — người vận hành đặt key, khởi động lại, và
+   * mọi người học đã bật sẵn có nó ngay, không phải bấm lại. Nhãn phụ nói
+   * đúng một điều: hôm nay bấm cũng không chạy. */
+  'settings.ai.toolUnavailable': 'chưa bật trên máy chủ này',
+  'settings.ai.toolsUnavailableNote':
+    'Công cụ có nhãn "chưa bật trên máy chủ này" vẫn lưu được lựa chọn của bạn, nhưng máy chủ chưa được cấu hình để chạy nó — trợ lý sẽ bỏ qua cho tới khi quản trị viên bật.',
   'settings.ai.toolReadCourse': 'Đọc nội dung khoá học',
   'settings.ai.toolWebSearch': 'Tìm kiếm trên web',
   'settings.ai.save': 'Lưu cấu hình',
