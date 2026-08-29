@@ -30,7 +30,9 @@ Config files this doc walks through:
 - `.env.example` (repo root) — every env var either side reads
 - `apps/web/public/_redirects` — Pages SPA fallback (ships inside `dist/`)
 
-Every command below was actually run against a local stand-in (a throwaway Postgres container, `docker build`, `bun run build`, `flyctl`/`wrangler` CLIs) unless marked **[unverified — needs a live account]**. See task-16-report.md for the raw exit codes.
+Every command below was actually run against a local stand-in (a throwaway Postgres container, `docker build`, `bun run build`, `flyctl`/`wrangler` CLIs) unless marked **[unverified — needs a live account]**. Each such command is quoted inline with its own exit code where it matters.
+
+> The previous version of this line said "See task-16-report.md for the raw exit codes." That file is not in this repository and never was: execution reports live under `.superpowers/`, which `.gitignore` excludes, so the pointer was dead in every clone including this one. Same class as the two pointers `docs/testing.md` and `docs/deepseek-measured.md` carried — see `docs/carried-forward.md`'s note on why `.superpowers/` paths must not be cited from tracked docs.
 
 ---
 
@@ -144,11 +146,13 @@ $ echo $?
 0
 ```
 
-`\dt` afterward showed exactly the 7 tables `0001_init.up.sql` defines (`annotations`, `courses`, `events`, `progress`, `schema_migrations`, `sessions`, `users`).
+At the time that was run, `0001_init.up.sql` was the only migration, and `\dt` afterward showed its 6 tables plus `schema_migrations` (`annotations`, `courses`, `events`, `progress`, `schema_migrations`, `sessions`, `users`).
+
+**A clean migrate today produces far more than that**, and this line used to say "exactly the 7 tables" without the qualifier — an operator comparing `\dt` against it would conclude the migration was broken. Counting the migrations in `apps/api/migrations/` as they stand: `0001` adds 6 tables; `0002` adds `course_packages` and `0006` drops it again (net 0); `0004` adds `course_ratings`; `0005` adds `published_courses`, `published_chapters`, `published_assets`, `published_widgets`, `course_versions`, `admin_audit`; `0007` adds `ai_credits`, `ai_usage`, `user_agent_config`, `ai_pricing`, `ai_settings`; `0008` adds none (it seeds and backfills). That is **18 tables plus `schema_migrations`**. Do not treat the list above as a checklist — read the migration files, which are the only thing that stays correct as more land.
 
 ### Subsequent migrations
 
-When a later task adds `apps/api/migrations/0002_*.up.sql` (and a matching `.down.sql`):
+When a later migration lands (this doc was written when `0001` was the newest; the repo is at `0008` as of Pha 2), with its matching `.down.sql`:
 
 1. Merge/deploy the migration files (they ship inside the repo — no separate artifact).
 2. Run the same command again, before or as part of rolling out the API build that depends on the new schema:
@@ -197,7 +201,7 @@ Both share the same free-tier caveat: **the container sleeps after inactivity an
    - `DATABASE_URL` — paste the **pooled** Neon connection string from §2 (not the direct one; that's only for the migration command).
    - `DEEPSEEK_API_KEY` — the platform's own DeepSeek key. **Leaving it blank ships an API whose AI feature is dead**: the service boots clean, `/healthz` is green, and the failure only appears when a learner presses "Hỏi". See §8.
    - `BRAVE_API_KEY` — enables the agent's `web_search` tool only. Blank is a supported state; the agent still answers using its other tools.
-   - `GITHUB_TOKEN` — Discussions. Blank is supported (§5c).
+   - `GITHUB_TOKEN` — the read-only PAT that lets the API embed GitHub Discussions on course pages (§8's table). Blank is supported and is the correct value today: there is no public registry repository yet, so the discussions panel simply reports "not loaded" (§5c explains why that repository does not exist).
    - `ADMIN_TOKEN` — the CLI publish door (§4c). Blank is supported and fails closed.
 
    The API logs a startup warning naming each missing AI key, so `render logs` immediately after the first deploy tells you whether you filled these in.
@@ -237,7 +241,7 @@ The admin publish API (`PUT`/`DELETE /admin/courses/{slug}` and friends) has **t
 
 | Door | Credential | Opens | Set where |
 |---|---|---|---|
-| CLI / scripted publish | `ADMIN_TOKEN` (a shared secret, `Authorization: Bearer <token>`) | Every admin route, with no login session at all — `who = nil`, logged in `admin_audit` as `actor = 'cli'`. What `tuhoc-cli publish` and `scripts/test-e2e.sh`'s seed step use. | Render: Environment tab (`sync: false` in `render.yaml`). Fly: `flyctl secrets set ADMIN_TOKEN=...` — never `fly.toml`'s committed `[env]` block. Local dev: `.env`/shell env. See `.env.example` for the full explanation. |
+| CLI / scripted publish | `ADMIN_TOKEN` (a shared secret, `Authorization: Bearer <token>`) | The four `/admin/courses*` routes ONLY (publish, list, unpublish, rollback), with no login session at all — `who = nil`, logged in `admin_audit` as `actor = 'cli'`. What `tuhoc-cli publish` and `scripts/test-e2e.sh`'s seed step use. **It does NOT open `/admin/ai/*`** (the AI pricing, settings and credit routes): `server.go` mounts that group behind `auth.Require + auth.RequireAdmin` with no `adminOrToken` at all, deliberately — money routes want a named human, not a shared secret. This row used to claim "every admin route"; an operator who set `ADMIN_TOKEN` and believed it would never reach `/admin/ai/settings`. | Render: Environment tab (`sync: false` in `render.yaml`). Fly: `flyctl secrets set ADMIN_TOKEN=...` — never `fly.toml`'s committed `[env]` block. Local dev: `.env`/shell env. See `.env.example` for the full explanation. |
 | Admin login (`/admin` in the web app) | A real user account with `users.role = 'admin'` | The same admin routes, via a normal signed-in session — `who = <that user's id>`, logged as `actor = 'user'`. What a human clicks through in the browser. | The one SQL statement below. |
 
 `adminTokenMatches` (`apps/api/internal/server/server.go`) treats an unconfigured `ADMIN_TOKEN` as "never matches" rather than comparing against an empty string, so an unset token cannot be defeated by an empty `Authorization` header — the CLI door fails closed, not open, when nobody has chosen a value yet. The admin-login door has no equivalent bootstrap at all: `users.role` defaults to `'user'` on every signup (`0005_published_catalog.up.sql`), so even the very first account created on a fresh deploy is an ordinary reader, not an admin. Both doors are closed by design; getting through either one is the step this section fills in.
@@ -316,7 +320,22 @@ No `wrangler pages project validate` or equivalent config-lint command exists in
 
 ---
 
-## 5b. The key vault (`apps/vault`) — **RETIRED, there is no third deployable**
+## 5c. Catalog registry — **đã nghỉ hưu, không còn `VITE_REGISTRY_URL`**
+
+**Cơ chế mục này từng mô tả không còn tồn tại.** Bản trước của §5c nói nền tảng đọc catalog từ một
+tệp `index.json` phục vụ qua GitHub Pages của repo registry, đọc trực tiếp từ trình duyệt bằng
+`VITE_REGISTRY_URL` và `apps/web/src/registry/index.ts`'s `PUBLIC_REGISTRY_BASE`. Module đó đã bị
+xoá (Task 13) khi pivot server-side dọn sạch: catalog giờ là `GET /courses` — phục vụ bởi chính
+`apps/api` từ Postgres (xem §0 và `apps/web/src/api/catalog.ts`) — không còn một `index.json` nào để
+trỏ tới, và không trình duyệt nào gọi thẳng ra GitHub Pages nữa. `VITE_REGISTRY_URL` không còn được
+đọc ở bất kỳ đâu trong mã; đừng đặt biến này ở host nào cả — final whole-branch review, M6 xoá nó
+khỏi `.env.example`/`apps/web/src/vite-env.d.ts` cùng lúc với đoạn này.
+
+`.github/workflows/registry.yml` vẫn còn (xem chú thích đầu tệp đó), nhưng vai trò của nó đã đổi:
+một cổng CI tiện lợi kiểm gói trước khi merge PR vào repo nguồn cộng đồng, không còn là nơi xuất bản
+catalog nào cả — cổng thật cho việc publish giờ nằm ở server (`PUT /admin/courses/:slug`, §4c).
+
+## 5d. The key vault (`apps/vault`) — **RETIRED, there is no third deployable**
 
 **The mechanism this section described no longer exists.** Phase 1 kept each reader's own AI provider
 key in their own browser, at a **separate origin** — a second Vite app (`apps/vault`) deployed as its
@@ -342,21 +361,6 @@ Also carried forward, so it is not rediscovered as a surprise: `apps/vault/_head
 by a real Cloudflare Pages deployment** and `apps/vault` never had a Pages project. The two-way
 `frame-ancestors` measurement in the S2 report ran locally. Nothing in this repo has ever proven that
 `_headers` file works in production.
-
-## 5c. Catalog registry — **đã nghỉ hưu, không còn `VITE_REGISTRY_URL`**
-
-**Cơ chế mục này từng mô tả không còn tồn tại.** Bản trước của §5c nói nền tảng đọc catalog từ một
-tệp `index.json` phục vụ qua GitHub Pages của repo registry, đọc trực tiếp từ trình duyệt bằng
-`VITE_REGISTRY_URL` và `apps/web/src/registry/index.ts`'s `PUBLIC_REGISTRY_BASE`. Module đó đã bị
-xoá (Task 13) khi pivot server-side dọn sạch: catalog giờ là `GET /courses` — phục vụ bởi chính
-`apps/api` từ Postgres (xem §0 và `apps/web/src/api/catalog.ts`) — không còn một `index.json` nào để
-trỏ tới, và không trình duyệt nào gọi thẳng ra GitHub Pages nữa. `VITE_REGISTRY_URL` không còn được
-đọc ở bất kỳ đâu trong mã; đừng đặt biến này ở host nào cả — final whole-branch review, M6 xoá nó
-khỏi `.env.example`/`apps/web/src/vite-env.d.ts` cùng lúc với đoạn này.
-
-`.github/workflows/registry.yml` vẫn còn (xem chú thích đầu tệp đó), nhưng vai trò của nó đã đổi:
-một cổng CI tiện lợi kiểm gói trước khi merge PR vào repo nguồn cộng đồng, không còn là nơi xuất bản
-catalog nào cả — cổng thật cho việc publish giờ nằm ở server (`PUT /admin/courses/:slug`, §4c).
 
 ## 6. Free-tier realities: cold starts, stacked
 
@@ -410,6 +414,8 @@ Both builds exited 0 — the failure mode isn't a build error, it's a container 
 | `DEEPSEEK_API_KEY` | **Yes — and a different risk class from the rows above** | Render: Environment tab (`sync: false`). Fly: `flyctl secrets set DEEPSEEK_API_KEY=...` (never in `fly.toml`'s `[env]`). | The platform's own credential to DeepSeek — see the note right after this table for what makes this different from `ADMIN_TOKEN`/`GITHUB_TOKEN`, and the revocation path if it leaks. Unset is a valid state: the AI feature degrades to "not configured" rather than the API refusing to boot. |
 | `DEEPSEEK_BASE_URL` | No | `render.yaml` / `fly.toml` `[env]`, or leave unset | Defaults to `https://api.deepseek.com` (`config.DefaultDeepSeekBaseURL`) — normal deploys never need to set this at all. Only exists for pointing at a proxy or a test double. |
 | `BRAVE_API_KEY` | **Yes — same risk class as `DEEPSEEK_API_KEY`** | Render: Environment tab (`sync: false`). Fly: `flyctl secrets set BRAVE_API_KEY=...` (never in `fly.toml`'s `[env]`). | The platform's own credential to the Brave Search API (the agent's web-search tool — spec §3.2). Unset just switches that one tool off. See the note below the table. |
+| `GITHUB_TOKEN` | **Yes** | Render: Environment tab (`sync: false` in `render.yaml`). Fly: `flyctl secrets set GITHUB_TOKEN=...` (never in `fly.toml`'s `[env]`). | A read-only, fine-grained PAT scoped to the registry repository's Discussions — the platform's OWN credential, against PUBLIC data, so a leak costs nothing that is not already public. Unset is the correct value today (§5c). Was missing from this table entirely until the Pha 2 review fix round, while §4a's step 4 already told operators to fill it in. |
+| `GITHUB_DISCUSSIONS_REPO` | No | `render.yaml` `[env]` (ships as `""`) / `fly.toml` `[env]` | Names the repository whose Discussions get embedded, as `"owner/name"`. Deliberately separate from the token: a token says who we are, not what we may read. Empty switches Discussions off, same as an empty `GITHUB_TOKEN`. |
 | `CORS_ORIGIN` | No, but environment-specific | `render.yaml` `[env]` / `fly.toml` `[env]` — both ship with an obvious `REPLACE-WITH-PAGES-ORIGIN` placeholder | Not a credential, but must be your *exact* production origin, not the placeholder, or CORS silently rejects the web app. |
 | `PORT` | No | `render.yaml` / `fly.toml` `[env]` | Fixed at `8080`, matches the Dockerfile's `EXPOSE`. |
 | `COOKIE_SECURE` | No | `render.yaml` / `fly.toml` `[env]` | Ships as `"true"` already — production is always https on both sides. |

@@ -8,10 +8,18 @@ doc is only about the one that's different in kind:
 
 Brings up the real API + Postgres, serves the real **production build**
 of the web app, and drives both with a real browser (Playwright) to prove
-the whole stack works together — see `apps/web/e2e/p1.spec.ts`,
-`apps/web/e2e/widget.spec.ts`, `apps/web/e2e/s2.spec.ts` (below) and
-`.superpowers/sdd/2026-08-19-p1-platform-core/task-17-report.md` for what
-it actually checks and why.
+the whole stack works together. For what each spec actually checks and why,
+read the spec files themselves — `apps/web/e2e/p1.spec.ts`,
+`apps/web/e2e/widget.spec.ts`, `apps/web/e2e/s2.spec.ts` (below) — and
+`scripts/test-e2e.sh`, whose comments carry the reasoning for every step of
+the harness.
+
+> This paragraph used to end with a fourth pointer, to
+> `.superpowers/sdd/2026-08-19-p1-platform-core/task-17-report.md`. That
+> directory does not exist, and `.superpowers/` is excluded by
+> `.gitignore`, so the pointer was dead in every clone — twice over.
+> Execution reports are not part of this repository; anything a reader of a
+> tracked doc needs must live in a tracked file.
 
 **Three spec files actually run**, and they are gates for different things:
 `p1.spec.ts` (the reader — including the course table of contents, inherited

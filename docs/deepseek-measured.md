@@ -10,11 +10,17 @@ Task 9 (streaming + trừ credit) đều được viết QUANH bốn kết quả
 xoá hay rút gọn — cổng đó canh cả cấp "cả tệp" lẫn cấp "từng mục", xem chú
 thích trong tệp test đó cho needle của từng mục).
 
-Đo hai lượt: điều phối viên Pha 2 đo trước bằng curl thô, kết quả nằm ở
-`.superpowers/sdd/2026-08-28-pha2-ai-may-chu/task-0-measurements-raw.md`. Task
-0 (tệp báo cáo: `.superpowers/sdd/2026-08-28-pha2-ai-may-chu/task-0-report.md`)
-đo lại độc lập, một lượt gọi cho mỗi mục, và xác nhận cả bốn khớp — trừ một
-khác biệt về ĐỘ ỔN ĐỊNH ghi ở mục 3.
+Đo hai lượt: điều phối viên Pha 2 đo trước bằng curl thô; Task 0 đo lại độc
+lập, một lượt gọi cho mỗi mục, và xác nhận cả bốn khớp — trừ một khác biệt về
+ĐỘ ỔN ĐỊNH ghi ở mục 3.
+
+> Hai lượt đo ấy được ghi trong sổ thực thi dưới `.superpowers/sdd/…`, thư mục
+> mà `.gitignore` loại (`docs/carried-forward.md` khai cùng ranh giới này ở
+> ngay dòng thứ năm của nó). Bản trước của đoạn này trỏ tên hai tệp cụ thể
+> trong đó mà KHÔNG khai điều ấy, nên chúng đọc như hai con trỏ có thể mở
+> được, và chết trong mọi clone. Tệp NÀY là bản lưu bền của phần còn giá
+> trị — bốn con số dưới đây phải tự đứng được, không cần một tệp ngoài git
+> để đọc hiểu.
 
 ---
 
