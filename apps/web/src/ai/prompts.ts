@@ -29,8 +29,18 @@ import type { NormMap } from '../annotations/normalize';
  * encoding="application/x-tex">` của chính nó. Một định nghĩa "cái gì đáng
  * đọc", hai người đọc.
  *
- * Tệp này KHÔNG chạm tới bí mật của người dùng và không được phép chạm. Nó
- * dựng chữ; kho khoá ở origin khác là bên duy nhất cầm bí mật.
+ * Tệp này KHÔNG chạm tới bí mật nào, và không được phép chạm. Nó dựng CHỮ,
+ * hết.
+ *
+ * Câu ấy từng có một vế thứ hai: *"kho khoá ở origin khác là bên duy nhất cầm
+ * bí mật"* — đúng ở Pha 1, sai từ Task 16. Không còn kho khoá, và bí mật duy
+ * nhất còn liên quan tới AI là key CỦA NỀN TẢNG, sống trong biến môi trường
+ * của máy chủ (`config.Config.DeepSeekAPIKey`) — trình duyệt chưa từng và sẽ
+ * không bao giờ thấy nó. Ràng buộc ở đây vì thế MẠNH HƠN chứ không yếu đi: ở
+ * Pha 1 nó là "đừng cầm bí mật, đã có bên khác cầm"; nay nó là "không có bí
+ * mật nào ở phía này để cầm". Chuỗi duy nhất tệp này dựng ra rồi gửi đi là
+ * lời nhắc, và nó đi kèm cookie phiên như mọi lời gọi khác của
+ * `api/client.ts`.
  */
 
 /**
