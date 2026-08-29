@@ -87,14 +87,27 @@ const defaultTimeout = 90 * time.Second
 // choice to keep go.mod at ten direct deps.
 //
 // baseURL and apiKey are unexported plain strings, not a config.Config and
-// not fields named DeepSeekAPIKey/BraveAPIKey. That is a deliberate choice,
-// not an oversight: apps/api/internal/server/provider_key_never_leaks_test.go
-// documents its own blind spot in PHẠM VI THẬT point 2 — it only matches
-// those two exact names (plus a bare `cfg` value). Reusing those names here
-// would light the gate up; using this package's own names instead means the
-// leak-freedom of this file has to hold on its own, checked directly by
-// TestCompleteErrorNeverContainsKey in client_test.go, rather than by
-// borrowing a gate built for a different package's field names.
+// not fields named DeepSeekAPIKey/BraveAPIKey. That was a deliberate choice,
+// not an oversight, and it came with an obligation this package owes itself:
+// the leak-freedom of this file has to hold on its own, checked directly by
+// behavioural tests in this package rather than by borrowing a gate built
+// for another package's field names.
+//
+// STATUS OF THAT OBLIGATION (whole-branch review, C1). It was being paid on
+// two of the three provider calls — Complete (TestCompleteErrorNeverContainsKey,
+// client_test.go) and Brave.Search (TestBraveSearchErrorNeverContainsKey,
+// brave_test.go) — and NOT on CompleteStream, which is the only one POST
+// /ai/chat actually uses. It is now paid on all three:
+// TestCompleteStreamErrorNeverContainsKey (stream_test.go) walks all thirteen
+// externally-reachable error returns of CompleteStream.
+//
+// The structural gate no longer has to be taken on faith either:
+// provider_key_never_leaks_test.go grew a third needle, `apikey`, precisely
+// so the cross-package rename this comment describes stops being its blind
+// spot. Both layers were measured against the same mutation
+// (`c.apiKey` spliced into stream.go's real network-error return) and both
+// go red on it. Neither replaces the other: the gate sees one line in one
+// file, the behavioural tests see real error VALUES.
 type Client struct {
 	baseURL string
 	apiKey  string
