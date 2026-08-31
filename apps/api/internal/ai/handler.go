@@ -800,8 +800,31 @@ func streamTurn(w *bufio.Writer, agent *Agent, turn Turn, credits *Service,
 	if runErr != nil {
 		// The server's own record keeps the FULL wrapped cause — this is
 		// the log half of the split the error event's redaction makes.
-		// Metadata and the error only: never the question, never the
-		// answer (spec §0.1, and Task 12's gate).
+		// Metadata and the error only: nothing in THIS package's own code
+		// puts the question or the answer into runErr (spec §0.1, and
+		// Task 12's gate, which proves that half by mutation).
+		//
+		// That is the honest scope, and it is narrower than "never the
+		// question, never the answer", which is what this comment used to
+		// claim. runErr can carry text this package did not author:
+		// CompleteStream and Complete wrap DeepSeek's own error.message
+		// verbatim (bounded by truncateProviderMessage, client.go), so if
+		// the provider ever quoted the rejected request back at us, that
+		// quote would land here unfiltered. Nothing between the wrap and
+		// this call inspects what the provider's text contains.
+		//
+		// MEASURED, docs/deepseek-measured.md §6: 11 deliberate error
+		// paths, a sentinel placed only inside messages[].content, and the
+		// sentinel came back in ZERO of them. DeepSeek's deserializer does
+		// echo scalar field values (`role`, `tools[].type`, `max_tokens`),
+		// but when the bad field IS the content field it describes the
+		// type instead of dumping the value. Two classes stay unmeasured
+		// on purpose — a content-policy rejection (triggering one means
+		// composing content in order to get it refused) and 429 — so this
+		// is evidence, not a guarantee, and it is a snapshot of a third
+		// party's API, not a contract. Accepted with the reasoning in
+		// docs/carried-forward.md; revisit if DeepSeek changes its error
+		// shape or if a policy rejection is ever observed in the wild.
 		slog.Error("ai turn failed",
 			"op", "ai.Chat/turn", "user", uid.String(), "model", model, "err", runErr.Error())
 

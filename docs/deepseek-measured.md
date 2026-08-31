@@ -218,3 +218,86 @@ xác nhận cùng shape `usage` cơ bản, KHÔNG có `completion_tokens_details
 Ghi lại vì nó cho thấy `completion_tokens_details.reasoning_tokens` là
 TUỲ MODEL/TUỲ LƯỢT, không phải một trường luôn có mặt — mã đọc `usage`
 không được giả định trường này tồn tại.
+
+---
+
+## 6. Thân lỗi có bao giờ trích lại nội dung request không? — đo 11 ca, KHÔNG
+
+Câu hỏi này không phải tò mò: `client.go` và `stream.go` bọc `error.message`
+của DeepSeek **nguyên văn** (đã cắt bằng `truncateProviderMessage`) vào error
+Go, và error ấy đi tới `slog.Error("ai turn failed", …, "err", runErr.Error())`
+ở `handler.go` — tức **vào apilog**. Nếu DeepSeek từng trích lại một mảnh của
+request bị từ chối, mảnh đó mang nội dung người học và đi thẳng vào log máy chủ
+mà không qua bộ lọc nào. Cổng `apilog/no_ai_bodies_test.go` khai đúng lỗ này
+trong doc comment của nó ("One shape is DELIBERATELY left untested here") và
+để lại cho một task sau — đây là task ấy.
+
+**Cách đo:** một sentinel `ZQXJV-SENTINEL-7731-KHOAHOC` đặt **chỉ** bên trong
+`messages[].content` (và một lần trong `tools[].function.description`), rồi cố
+tình gây lỗi bằng 11 đường khác nhau, kiểm sentinel có xuất hiện trong thân lỗi
+trả về không. Đo ngày 2026-08-29.
+
+| # | Cách gây lỗi | HTTP | Sentinel trong thân lỗi |
+|---|---|---|---|
+| 1 | model không tồn tại | 400 | không |
+| 2 | `temperature: 99` | 400 | không |
+| 3 | `max_tokens: -5` | 400 | không |
+| 4 | `role` không hợp lệ | 400 | không |
+| 5 | `content` sai kiểu (object thay vì string) | 400 | không |
+| 6 | `tool_choice: "required"` ở thinking mode | 400 | không |
+| 7 | API key sai | 401 | không |
+| 8 | `tool_calls[].arguments` là JSON hỏng | 400 | không |
+| 9 | message `role: "tool"` mồ côi | 400 | không |
+| 10 | `tools[].type` sai variant | 400 | không |
+| 11 | prompt ~1,68 triệu ký tự | **200** | không (xem ghi chú) |
+
+**Kết luận: không có bằng chứng DeepSeek trích lại nội dung.** Nhưng bức tranh
+có sắc thái, và sắc thái mới là thứ đáng ghi:
+
+**DeepSeek CÓ echo giá trị request — nhưng chỉ ở trường vô hướng.** Bộ giải mã
+(serde của Rust) trả về nguyên văn giá trị sai cho enum và số:
+
+```
+messages[0].role: unknown variant `khong-hop-le`, expected one of `system`, `user`, …
+tools[0].type: unknown variant `khong-phai-function`, expected `function`
+max_tokens: invalid value: integer `-5`, expected u32
+```
+
+**Nhưng khi trường sai CHÍNH LÀ chỗ mang nội dung, nó mô tả kiểu, không đổ giá
+trị** — đây là điểm dữ liệu quan trọng nhất của cả bảng:
+
+```
+messages[0]: content should be a string or a list
+```
+
+Lỗi ngữ nghĩa (khác lỗi giải mã) là **câu cố định, không mang giá trị nào**:
+`"Messages with role 'tool' must be a response to a preceding message with
+'tool_calls'"`, `"Thinking mode does not support this tool_choice"`.
+
+**DeepSeek tự che key của chính nó:** `"Authentication Fails, Your api key:
+****0000 is invalid"` — key bị mask ở phía họ, không chỉ phía ta.
+
+**Hai ghi chú về ca #11.** Nó **không** trả lỗi: `deepseek-v4-flash` nhận ~1,68
+triệu ký tự và trả HTTP 200 kèm một câu trả lời bình thường. Nên ca "vượt cửa
+sổ ngữ cảnh" — chỗ khả dĩ nhất một API trích lại đầu vào — **vẫn chưa đo được**
+bằng đường này. Và nó tốn tiền thật (~420k token đầu vào): một phép đo chọn sai
+kích thước, ghi lại để người sau đừng lặp.
+
+### Thứ phép đo này KHÔNG chứng minh
+
+- **Từ chối vì chính sách nội dung** — đúng hình dạng mà doc comment của cổng
+  gọi là "the plausible shape". Không đo, **có chủ ý**: kích hoạt nó đòi soạn
+  nội dung cốt để bị từ chối. Đây là lỗ còn lại thật sự, không phải chỗ bỏ quên.
+- **Hạn mức / hết quota** (429) — không kích hoạt được theo yêu cầu.
+- Hành vi tương lai: đây là ảnh chụp một API bên thứ ba ở một ngày, không phải
+  một hợp đồng. DeepSeek đổi câu chữ lỗi lúc nào cũng được, không báo ai.
+
+### Vì sao vẫn GIỮ `error.message` trong lỗi
+
+Phép đo cho thấy các thông điệp này chính là thứ người vận hành cần: *"The
+supported API model names are …, but you passed …"* nói thẳng vấn đề. Bỏ trường
+`message` đi sẽ mất toàn bộ khả năng chẩn đoán ấy để đổi lấy một lợi ích riêng
+tư **không đo được**. Trần 200 rune của `truncateProviderMessage` cũng hoá ra
+được hiệu chỉnh đúng: thông điệp hữu ích dài nhất quan sát được là 139 ký tự,
+dài nhất nói chung là ~160 — nằm gọn dưới trần, nên trần đang cắt đúng thứ nó
+sinh ra để cắt (thân lỗi khổng lồ), không cắt nhầm thứ hữu ích.
