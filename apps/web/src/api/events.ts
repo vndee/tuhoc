@@ -43,6 +43,30 @@
  * at the front of the queue for the next attempt instead of dropping it —
  * see its own doc comment for how that interacts with events queued
  * while the failed request was still in flight.
+ *
+ * ## `resetEventQueue` — the account-handoff hole this module shipped with
+ *
+ * This queue is a module-level singleton (see the doc on `queue` below),
+ * which means it does not belong to any one account any more than
+ * `db/local.ts`'s tables did before `clearLocalData()` existed, or the
+ * note draft in `localStorage` did before `test/accountHandoff.test.tsx`
+ * was written to prove it (see that file's own header). Task 8's first
+ * cut of this module left the queue with no reset at all: an event A
+ * queued and never flushed survived `useLogout()` untouched, and the next
+ * `startEventFlusher()` tick — restarted under B's session the instant B
+ * signed in on the same tab — would POST it to `/events/batch` under B's
+ * cookie, silently attributing A's study minutes to B (the server has no
+ * per-row ownership check of its own; `EventsBatch` writes every row with
+ * `auth.UID(c)`, the session's account). `resetEventQueue` exists to be
+ * the third half `auth/session.ts`'s `clearSession()` — this codebase's
+ * established single truth point for ending a session (ruling P2-F18) —
+ * calls unconditionally, alongside the durable and query-cache halves it
+ * already cleared. See `test/eventQueueHandoff.test.tsx` for the
+ * end-to-end proof and `auth/session.ts`'s own doc for why the clearing
+ * happens there and not here, and why a BEST-EFFORT FLUSH has to happen
+ * first, in `useLogout.ts`, while the departing account's cookie is still
+ * valid — clearing alone would needlessly discard a heartbeat that could
+ * have been recorded under its own account.
  */
 
 import { api } from './client';
@@ -82,6 +106,36 @@ let queue: StudyEvent[] = [];
  * reject. */
 export function queueEvent(event: StudyEvent): void {
   queue.push(event);
+}
+
+/**
+ * Drops every event currently sitting in the queue, unconditionally.
+ * Synchronous, like `queueEvent` — there is nothing to await, only an
+ * array reference to replace.
+ *
+ * The ONE caller this is meant for is `auth/session.ts`'s `clearSession()`
+ * — see this module's own header for why a departing account's residual
+ * queue must never survive into the next account's session. Called from
+ * anywhere else, this silently discards whatever a learner's browser was
+ * about to report as study time, which is why `session.test.ts`'s
+ * "no third way to end a session" tripwire watches this name the same way
+ * it already watches `clearLocalData`/`resetSessionScopedQueries`.
+ *
+ * Deliberately does NOT attempt a flush first. `flushEvents` and
+ * `resetEventQueue` are two separate, ordered steps by design (see
+ * `auth/session.ts`'s `clearSession()` doc and `auth/useLogout.ts`'s
+ * `bestEffortFinalFlush`) — merging them here would make it impossible
+ * for a caller to run the flush EARLIER, while a cookie the flush needs
+ * is still valid, and reset LATER, after that cookie is already gone.
+ *
+ * Does NOT cancel or otherwise affect a `flushEvents()` call already in
+ * flight when this runs: that call already took its own snapshot of the
+ * queue before this replaces it (see `flushEvents`'s own doc on why),
+ * so an in-flight request is unaffected — only events still sitting in
+ * the queue at the moment this is called are dropped.
+ */
+export function resetEventQueue(): void {
+  queue = [];
 }
 
 /**
