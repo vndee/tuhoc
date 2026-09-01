@@ -95,10 +95,12 @@ async function parseBody(res: Response): Promise<unknown> {
  * have said the opposite about an endpoint whose whole design is that
  * repeating it changes nothing.
  *
- * No `DELETE`: nothing in this app removes a rating, and a verb with no
- * caller is a door nobody is watching.
+ * `PATCH` and `DELETE` joined for `annotations.ts` (Task 5):
+ * `PATCH /annotations/:id` edits `note` and/or `anchor` in place, and
+ * `DELETE /annotations/:id` is a REAL delete — migration 0009 dropped the
+ * tombstone column, so there is no soft-delete verb to reach for instead.
  */
-type Method = 'GET' | 'POST' | 'PUT';
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 async function send(
   method: Method,
@@ -253,6 +255,24 @@ export const api = {
    */
   put: async (path: string, body?: unknown, options: RequestOptions = {}): Promise<void> => {
     await request<unknown>('PUT', path, body, options);
+  },
+  /**
+   * A partial write. Unlike `put`, kept generic over `T`: today's one
+   * caller (`PATCH /annotations/:id`) answers 204, but a future PATCH
+   * endpoint answering an updated resource is a plausible addition, not a
+   * hypothetical this client has any evidence against — see `Method`'s
+   * doc comment for the pair this joined with.
+   */
+  patch: <T,>(path: string, body?: unknown, options: RequestOptions = {}): Promise<T> =>
+    request<T>('PATCH', path, body, options),
+  /**
+   * Typed `Promise<void>`, same reasoning as `put` above: its only caller
+   * today (`DELETE /annotations/:id`) answers 204 with no body, so a
+   * generic `T` would hand back an `undefined` wearing a type it does not
+   * have.
+   */
+  del: async (path: string, options: RequestOptions = {}): Promise<void> => {
+    await request<unknown>('DELETE', path, undefined, options);
   },
 };
 
