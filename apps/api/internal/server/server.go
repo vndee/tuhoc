@@ -28,6 +28,7 @@ import (
 	"github.com/vndee/tuhoc-api/internal/pkgcheck"
 	"github.com/vndee/tuhoc-api/internal/rating"
 	"github.com/vndee/tuhoc-api/internal/stats"
+	"github.com/vndee/tuhoc-api/internal/userdata"
 	// appsync is internal/sync under an explicit alias, not its default
 	// package name ("sync"): that name collides with the standard
 	// library's own "sync" package (sync.Mutex etc.), and this file is
@@ -294,6 +295,15 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	syncHandler := appsync.NewHandler(appsync.NewUsecase(appsync.NewRepo(deps.Pool)))
 	app.Get("/sync", auth.Require(deps.Pool), syncHandler.Pull)
 	app.Post("/sync", bodyLimit(appsync.MaxPushBytes), auth.Require(deps.Pool), syncHandler.Push)
+
+	// Progress routes (Pha 3, Task 1). The REST replacement for the
+	// progress half of /sync: the browser is no longer local-first, so
+	// there is no outbox and no LWW timestamp for a client to carry — see
+	// internal/userdata's own doc comment. Mounted behind the same
+	// auth.Require(deps.Pool) entry point as every route below.
+	userdataHandler := userdata.NewHandler(userdata.NewUsecase(userdata.NewRepo(deps.Pool)))
+	app.Get("/progress", auth.Require(deps.Pool), userdataHandler.ListProgress)
+	app.Put("/progress", auth.Require(deps.Pool), userdataHandler.PutProgress)
 
 	// Stats routes (Task 8). Mounted behind auth.Require(deps.Pool) — the
 	// same brief-mandated entry point and ruling (F3) as sync's routes
