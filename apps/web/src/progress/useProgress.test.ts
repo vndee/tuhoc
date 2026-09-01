@@ -107,16 +107,65 @@ describe('useProgress — ghi lạc quan (Query + mutation, không còn outbox)'
     await waitFor(() => expect(result.current.isRead('c1')).toBe(false));
   });
 
-  it('lật hai lần nhanh kết thúc ở trạng thái cuối', async () => {
+  it('lật hai lần nhanh kết thúc ở trạng thái cuối — không bị một GET /progress đang bay đè lên', async () => {
+    // Dựng ĐÚNG cái đua `onMutate`'s `cancelQueries` phải thắng, tách khỏi
+    // hiệu ứng "rồi cũng đúng thôi" của `onSettled`'s invalidate+refetch:
+    // giữ CẢ BA request (GET /progress lần mount, và cả hai PUT) treo lơ
+    // lửng, có kiểm soát — không cái nào trong chúng được phép tự resolve
+    // và làm nhòe thời điểm ta thực sự muốn quan sát.
+    let resolveInitialFetch: (rows: ProgressRow[]) => void = () => {};
+    vi.mocked(fetchProgress).mockReturnValueOnce(
+      new Promise<ProgressRow[]>((resolve) => {
+        resolveInitialFetch = resolve;
+      }),
+    );
+    let resolvePut1: () => void = () => {};
+    let resolvePut2: () => void = () => {};
+    vi.mocked(putProgress)
+      .mockReturnValueOnce(new Promise<void>((r) => (resolvePut1 = r)))
+      .mockReturnValueOnce(new Promise<void>((r) => (resolvePut2 = r)));
+
     const { result } = renderHook(() => useProgress('c'), { wrapper });
-    await waitFor(() => expect(result.current.isRead('c1')).toBe(false));
+    // Đúng false ngay từ đầu — `rows` mặc định rỗng khi query còn pending,
+    // không cần chờ lần fetch đầu tiên trả lời để bắt đầu lật.
+    expect(result.current.isRead('c1')).toBe(false);
 
     act(() => {
       result.current.toggleRead('c1');
       result.current.toggleRead('c1');
     });
+    // Cả hai PUT đã lên đường (đang treo), và bản vá lạc quan trong cache
+    // đã đúng — nhưng CHƯA mutation nào settle, nên `onSettled`'s
+    // invalidate+refetch chưa hề chạy. Đây là khoảnh khắc DUY NHẤT nơi
+    // hiệu ứng của `cancelQueries` (có hay không) còn quan sát được trước
+    // khi cơ chế tự-sửa của `onSettled` xoá dấu vết của nó.
+    //
+    // `waitFor`, không phải một khẳng định đồng bộ ngay sau `act()`: gọi
+    // `mutationFn` (nên `putProgress`) là việc `onMutate` — một hàm `async`
+    // — làm SAU khi promise của chính nó resolve, tức trễ ít nhất một
+    // microtask so với việc gọi `mutate()`, bất kể `cancelQueries` có mặt
+    // hay không. Đây là độ trễ CỦA REACT QUERY, không phải điều bài này
+    // đang đo.
+    await waitFor(() => expect(vi.mocked(putProgress)).toHaveBeenCalledTimes(2));
+
+    // GET /progress lần đầu GIỜ MỚI trả lời — với dữ liệu MÂU THUẪN với kết
+    // quả đúng của hai cú lật (nó nói "đã đọc"), y hệt một response cũ tới
+    // muộn sau khi hai cú lật đã chạy. Nếu `onMutate` không `cancelQueries`
+    // request này TRƯỚC khi vá cache, dispatch 'success' của nó sẽ đè lên
+    // cả hai bản vá lạc quan NGAY BÂY GIỜ — trước khi bất cứ PUT nào kịp
+    // settle để tự sửa lại. Đây là bài kiểm tra thật của ruling đó.
+    await act(async () => {
+      resolveInitialFetch([row({ chapterId: 'c1', done: true })]);
+    });
+    expect(result.current.isRead('c1')).toBe(false);
+
+    // Dọn dẹp: để cả hai PUT settle bình thường, không rơi vào "unhandled
+    // rejection"/promise treo mãi khi test kết thúc.
+    await act(async () => {
+      resolvePut1();
+      resolvePut2();
+    });
     await waitFor(() => expect(result.current.isRead('c1')).toBe(false));
-    expect(vi.mocked(putProgress)).toHaveBeenCalledTimes(2);
   });
 
   it('R2: cache lạc quan có updatedAt tạm, nhưng putProgress KHÔNG bao giờ nhận nó', async () => {

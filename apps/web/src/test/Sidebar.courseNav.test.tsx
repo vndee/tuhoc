@@ -27,7 +27,16 @@ const manifest: Manifest = {
   ],
 };
 
-const server = setupServer();
+const server = setupServer(
+  // Task 6, Pha 3: `Sidebar.tsx:53` calls `useProgress(courseId ?? '')`
+  // unconditionally (not gated by auth), so `GET /progress` fires on
+  // every render site in this file, not just the one test that seeds a
+  // "chapter already read" row — see `reader/ChapterView.test.tsx`'s and
+  // `test/CourseHome.test.tsx`'s server setup for the same baseline
+  // handler. No progress by default; the one test that needs a specific
+  // row overrides this with `server.use(...)`.
+  http.get('/progress', () => HttpResponse.json({ progress: [] })),
+);
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 beforeEach(async () => {
