@@ -1001,3 +1001,51 @@ qua** `apps/web/src/api/ratings.ts` — nó chỉ in `Binary file … matches` �
 hợp lệ (`ratingsQueryKey` dùng `\0` làm dấu phân cách khi join). Nhờ đó một chú thích SAI ở đó
 (bản sao thứ chín của khẳng định "apps/api makes no outbound calls", mục E3) suýt lọt qua cả một
 vòng dọn chuyên đi tìm đúng nó. **Mọi phép quét toàn repo trong repo này phải dùng `grep -a`.**
+
+## Text của nhà cung cấp đi vào apilog: ĐÃ ĐO, chấp nhận có điều kiện (Task 12 → follow-up)
+
+**Hình dạng.** `client.go` và `stream.go` bọc `error.message` của DeepSeek **nguyên văn** (cắt bằng
+`truncateProviderMessage`, trần 200 rune) vào error Go; error ấy tới
+`slog.Error("ai turn failed", …, "err", runErr.Error())` ở `handler.go` — tức **vào apilog**. Giữa
+chỗ bọc và chỗ ghi log **không có gì kiểm nội dung mà nhà cung cấp tự viết**. Nếu DeepSeek trích lại
+một mảnh request bị từ chối (từ chối vì chính sách nội dung là hình dạng khả dĩ nhất), mảnh đó mang
+nội dung người học và vào log không qua lọc.
+
+Cổng `apilog/no_ai_bodies_test.go` khai đúng lỗ này trong doc comment ("One shape is DELIBERATELY
+left untested here") và để lại — task này là chỗ trả lời.
+
+**Đã đo (docs/deepseek-measured.md §6, ngày 2026-08-29):** sentinel đặt **chỉ** trong
+`messages[].content`, 11 đường gây lỗi khác nhau (model sai, `temperature` ngoài dải, `max_tokens`
+âm, `role` sai, `content` sai kiểu, `tool_choice` không hỗ trợ, key sai, `tool_calls.arguments` hỏng,
+message `tool` mồ côi, `tools[].type` sai variant, prompt 1,68 triệu ký tự). **Sentinel xuất hiện
+trong 0/11.**
+
+Sắc thái đáng giữ: DeepSeek **có** echo giá trị request — nhưng chỉ ở **trường vô hướng** (serde của
+Rust trả nguyên văn variant enum và số). Khi trường sai **chính là chỗ mang nội dung**, nó mô tả kiểu
+thay vì đổ giá trị (`messages[0]: content should be a string or a list`). Lỗi ngữ nghĩa là câu cố
+định, không mang giá trị nào. Và DeepSeek **tự che key của chính nó** (`Your api key: ****0000`).
+
+**Quyết định: GIỮ `error.message`, không lọc thêm.** Vì (a) phép đo không tìm được đường rò nào;
+(b) chính các thông điệp ấy là thứ người vận hành cần — *"The supported API model names are …, but
+you passed …"* nói thẳng vấn đề, bỏ đi là mất toàn bộ khả năng chẩn đoán để đổi lấy một lợi ích riêng
+tư không đo được; (c) trần 200 rune hoá ra được hiệu chỉnh đúng — thông điệp hữu ích dài nhất quan
+sát được là 139 ký tự, dài nhất nói chung ~160, nên trần đang cắt đúng thứ nó sinh ra để cắt.
+
+**Cái này KHÔNG đóng — hai lớp còn lại, không đo có chủ ý:**
+1. **Từ chối vì chính sách nội dung** — đúng hình dạng đáng lo nhất. Kích hoạt nó đòi soạn nội dung
+   cốt để bị từ chối, nên không đo. Đây là lỗ thật, không phải chỗ bỏ quên.
+2. **429 / hết quota** — không kích hoạt được theo yêu cầu.
+
+Và đây là **ảnh chụp một API bên thứ ba ở một ngày, không phải hợp đồng**. DeepSeek đổi câu chữ lỗi
+lúc nào cũng được, không báo ai. Không cổng nào ở phía ta phát hiện được việc đó.
+
+**Điều kiện xét lại:** (a) quan sát thấy một lần từ chối vì chính sách nội dung trong log thật —
+đọc `message` của nó trước khi làm gì khác; (b) DeepSeek đổi hình dạng thân lỗi; (c) đổi nhà cung
+cấp. Khi ấy cách đóng rẻ nhất là **chỉ giữ `type`/`code`, bỏ `message`** ở đường log (giữ `message`
+cho error trả về caller nếu vẫn cần phân biệt), vì `type`/`code` mang đủ thông tin phân loại mà
+không mang chữ tự do nào.
+
+**Một chỗ hồ sơ đã sửa cùng lúc:** chú thích tại `handler.go` từng khẳng định `slog.Error` ghi
+*"never the question, never the answer"* — không đúng vô điều kiện, vì `runErr` mang được text mà
+gói này không viết ra. Nay nó nói đúng phạm vi: **không mã nào trong gói này** đưa câu hỏi hay câu
+trả lời vào `runErr`, và phần còn lại là rủi ro đã đo, đã ghi.

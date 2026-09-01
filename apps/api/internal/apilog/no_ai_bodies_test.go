@@ -78,9 +78,18 @@
 // this gate's two fixtures (answerStep, failStep — both of which use
 // FIXED, hand-written error strings specifically so a red result can only
 // mean streamTurn's own code reached into conversation content, never that
-// the fake provider handed it some) can settle by adding a case. Recorded
-// as an open, out-of-scope-for-this-task item in task-12-report.md rather
-// than guessed at here.
+// the fake provider handed it some) can settle by adding a case.
+//
+// FOLLOWED UP, and the answer is in tracked files now: measurement in
+// docs/deepseek-measured.md §6 (11 deliberate error paths, a sentinel in
+// messages[].content, zero echoes) and the decision to accept the residual
+// in docs/carried-forward.md. Two classes remain unmeasured on purpose —
+// a content-policy rejection and 429. This gate's scope did not change.
+//
+// (An earlier version of this comment pointed at task-12-report.md for
+// that record. That file lives under .superpowers/, which is gitignored,
+// so the pointer resolved to nothing in every clone — the same dead-pointer
+// class this run kept re-learning. Both replacements above are tracked.)
 //
 // STRUCTURE (TestAPILogCallSitesNeverNameConversationBodyArgs) scans every
 // non-test .go file under apps/api for a call into the log destination
@@ -644,11 +653,11 @@ var forbiddenAPILogArgRe = func() map[string]*regexp.Regexp {
 //     four named levels (not `slog\.` bare) so it does not also match
 //     `slog.Default(` (apilog.go:22, a logger constructor, not a sink).
 //
-// Checked by hand before enabling (see task-12-report.md's round-1 section
-// for the exact counts): on today's source, widening from 25 matched
-// lines to 38 introduces ZERO new false positives — none of the 13 newly
-// matched lines (8 `.internal(`, 5 raw `slog.*(`) carries any of the six
-// forbidden words on the same line.
+// Checked by hand before enabling: widening the union to all three shapes
+// introduced ZERO new false positives — no newly matched line carried any
+// of the six forbidden words on the same line. (The exact counts that
+// check was run against have since drifted; see the floor comment below
+// for today's numbers and for why the gate does not depend on them.)
 var apilogCallRe = regexp.MustCompile(
 	`\bapilog\.[a-z_][a-z0-9_]*\(` +
 		`|\.internal\(` +
@@ -658,18 +667,22 @@ var apilogCallRe = regexp.MustCompile(
 // fail-closed floor task-12-brief.md's own "Khuôn 1" names (task 9's
 // silent-empty-loop) applied to THIS scan: a broken path or an
 // over-eager directory filter that makes the walk below read zero files
-// must turn this gate RED, not leave it vacuously green forever. Measured
-// 2026-08-29 (after the round-1 widening of apilogCallRe above): apps/api
-// has 37 non-test .go files (`find apps/api -name '*.go' ! -name
-// '*_test.go' | wc -l`) and 38 lines matching apilogCallRe's three-shape
-// union (`grep -rnE '(apilog\.[A-Za-z_][A-Za-z0-9_]*\(|\.internal\(|slog\.
-// (Error|Warn|Info|Debug)\()' --include='*.go' . | grep -v _test.go | wc
-// -l`, run from apps/api — up from 25 before the widening, since that
-// count only ever saw the `apilog\.` shape). Both floors below sit well
-// under the measured numbers so one legitimate file deletion or one call
-// site's removal never trips them on its own; the REAL check for "still
-// finding real call sites" is the sentinel list, same split
-// provider_key_never_leaks_test.go's own floor/sentinel pair keeps.
+// must turn this gate RED, not leave it vacuously green forever.
+//
+// Re-measured 2026-08-29, end of Pha 2: apps/api has 38 non-test .go files
+// and 48 lines matching apilogCallRe's three-shape union (25 `apilog.`,
+// 17 `.internal(`, 6 raw `slog.*(`). An earlier version of this comment
+// said 37 and 38 — both true when written, both since outgrown by the
+// phase's own fix rounds. THAT DRIFT IS EXPECTED AND HARMLESS, and saying
+// so is the point of this paragraph: these numbers are DESCRIPTIVE, not
+// assertions. Nothing re-derives them, nothing fails when they move.
+//
+// The load-bearing part is the two floors below, and they are deliberately
+// far under the measured numbers (20 vs 38, 25 vs 48) so that one
+// legitimate file deletion or one call site's removal never trips them on
+// its own. The REAL check for "still finding real call sites" is the
+// sentinel list, the same floor/sentinel split
+// provider_key_never_leaks_test.go keeps.
 const (
 	minProductGoFilesForAPILogArgScan = 20
 	minAPILogCallSitesFound           = 25
