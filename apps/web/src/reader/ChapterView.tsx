@@ -1018,6 +1018,20 @@ function AuthedReaderExtras({
 
   return (
     <>
+      {/* Task 6, Pha 3 — `useProgress`'s `toggleRead`/`toggleEx` now write
+          optimistically; this is the ONE place that failure surfaces. Not a
+          toast (this codebase has none — see `ErrorBoundary.tsx`,
+          `AdminCredits.tsx`, `AdminPricing.tsx` for the same `role="alert"`
+          convention this reuses), and not portalled: it renders right where
+          the tap that failed happened, the same "next to the thing that
+          failed" placement every other inline error in this app uses.
+          `lib-notice-server` is `registry/Rating.tsx`'s own save-failure
+          class, reused as-is rather than inventing a reader-scoped twin. */}
+      {progress.saveError && (
+        <p role="alert" className="lib-notice-server">
+          {t('progress.saveFailed')}
+        </p>
+      )}
       {/* Last in the chapter pipeline (innerHTML → renderKatex → widgets →
           checkboxes → normalize/resolve/paint → toolbar): it watches
           `selectionchange` and does nothing at all until the reader selects

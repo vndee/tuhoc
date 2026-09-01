@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Sidebar } from '../shell/Sidebar';
 import type { Manifest } from '../course/types';
-import { clearLocalData, db } from '../db/local';
+import { clearLocalData } from '../db/local';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 
 const manifest: Manifest = {
@@ -92,8 +92,17 @@ describe('Sidebar real course outline', () => {
   });
 
   it('marks chapters read in local progress with the done class inside #nav (Ruling F4 / debt #1)', async () => {
-    server.use(http.get('/courses/demo', () => HttpResponse.json(manifest)));
-    await db.progress.put({ courseId: 'demo', chapterId: 'c2', status: 'read', done: true, updatedAt: new Date().toISOString() });
+    // Task 6, Pha 3: "read" now comes from `GET /progress` (the server),
+    // not a pre-seeded Dexie row — see `reader/ChapterView.test.tsx`'s
+    // server setup for the same change.
+    server.use(
+      http.get('/courses/demo', () => HttpResponse.json(manifest)),
+      http.get('/progress', () =>
+        HttpResponse.json({
+          progress: [{ courseId: 'demo', chapterId: 'c2', status: 'read', done: true, updatedAt: new Date().toISOString() }],
+        }),
+      ),
+    );
     renderSidebar('/c/demo');
 
     const nav = document.getElementById('nav')!;

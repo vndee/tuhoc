@@ -143,9 +143,22 @@ function catalogEntry(slug: string, title: string) {
   return { slug, title, lang: 'vi', description: '', version: 1 };
 }
 
-/** Một hàng progress cục bộ — nguồn DUY NHẤT của "chương nào đã đọc" (ruling F5). */
+/**
+ * Task 6, Pha 3 touched `useProgress` ONLY — `progress/recent.ts`'s
+ * `useLastStudiedCourseId` (which `Dashboard.tsx` uses to pick WHICH course
+ * to show, per that file's own "Nguồn danh sách" doc section) still reads
+ * `db.progress` via Dexie's `liveQuery` directly, untouched, a later task's
+ * job. So `markRead` has to satisfy BOTH readers now, not swap one for the
+ * other: the Dexie write (unchanged) is what makes `ContinueCard`'s course
+ * get PICKED at all; the `GET /progress` handler (new) is what makes
+ * `useProgress`'s `doneChapterIds`/`partStats` — read counts, "chương kế
+ * tiếp" — correct for whichever course that picks.
+ */
+let progressRows: Array<{ courseId: string; chapterId: string; status: string; done: boolean; updatedAt: string }> = [];
 async function markRead(courseId: string, chapterId: string, updatedAt = new Date().toISOString()) {
   await db.progress.put({ courseId, chapterId, status: 'read', done: true, updatedAt });
+  progressRows.push({ courseId, chapterId, status: 'read', done: true, updatedAt });
+  server.use(http.get('/progress', () => HttpResponse.json({ progress: progressRows })));
 }
 
 function note(overrides: Partial<AnnotationRow> & Pick<AnnotationRow, 'id'>): AnnotationRow {
@@ -166,6 +179,12 @@ beforeEach(() => {
   // The default catalog. Tests that care about the catalog itself
   // override this; the rest get a learner who holds one course.
   server.use(http.get('/courses', () => HttpResponse.json([catalogEntry('so-dau-phay-dong', 'Số dấu phẩy động')])));
+  // Task 6, Pha 3: `ContinueCard` calls `useProgress` unconditionally once
+  // it has a course to show, so `GET /progress` fires on every test that
+  // reaches one — default to "nothing read yet"; `markRead` (above)
+  // re-registers this handler with real rows for tests that need them.
+  progressRows = [];
+  server.use(http.get('/progress', () => HttpResponse.json({ progress: progressRows })));
 });
 beforeEach(clearAll);
 afterEach(clearAll);
@@ -197,11 +216,17 @@ function cta(): HTMLElement {
 }
 
 describe('Học tiếp — MỘT hành động', () => {
-  it('mở đúng chương đang dở, và biết được điều đó KHÔNG cần mạng (ruling F5)', async () => {
+  it('mở đúng chương đang dở, không cần đợi /stats hay /courses (ruling F5, thu hẹp bởi Task 6/Pha 3)', async () => {
+    // Ruling F5 gốc (trước Pha 3): trang này biết "chương nào đang dở" HOÀN
+    // TOÀN không cần mạng — nguồn là `db.progress` cục bộ. Task 6 xoá tiền đề
+    // đó CÓ CHỦ Ý: đây chính là "đưa dữ liệu lên máy chủ" mà tên nhánh
+    // (`pha3/du-lieu-len-may-chu`) nói — `useProgress` nay đọc `GET /progress`,
+    // nên biết chương đang dở KHÔNG còn free về mạng nữa. Điều ruling F5 vẫn
+    // còn giữ được, và bài này còn canh: mở đúng chương đang dở KHÔNG cần đợi
+    // `/stats` (biểu đồ/chuỗi ngày) hay `/courses` (toàn bộ danh mục) trả lời —
+    // hai lời gọi đó không bao giờ resolve dưới đây, và `/progress` (một
+    // request nhẹ hơn nhiều) vẫn đủ để dựng thẻ.
     server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(4))));
-    // Ngoại tuyến: cả hai lời gọi mạng đều không bao giờ trả lời. Một trang chủ
-    // học "mình có khoá nào" CHỈ từ máy chủ sẽ không có gì để mời đọc tiếp —
-    // ruling F5 tồn tại đúng để chuyện ấy không xảy ra.
     server.use(http.get('/stats', () => new Promise(() => {})));
     server.use(http.get('/courses', () => new Promise(() => {})));
     await markRead('demo', 'ch-1');

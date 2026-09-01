@@ -43,6 +43,28 @@ afterAll(() => configure({ asyncUtilTimeout: defaultAsyncUtilTimeout }));
 beforeEach(clearLocalData);
 afterEach(clearLocalData);
 
+/**
+ * Task 6, Pha 3 touched `useProgress` ONLY — `pages/Progress.tsx`'s
+ * `useLocalProgress` (the "which courses has this reader ever touched"
+ * list — see that file's own "Nguồn danh sách" doc section) still reads
+ * `db.progress` via Dexie's `liveQuery` directly, untouched, a later
+ * task's job. So a row's Dexie write is still what makes it show up in the
+ * list at all; the new `GET /progress` handler is what makes `useProgress`
+ * (called per-row for `partStats` — chapter counts, the percent bar)
+ * correct for it. `markRead` does both, so every call site below only has
+ * to say what changed, not which of the two systems needs to hear about it.
+ */
+let progressRows: Array<{ courseId: string; chapterId: string; status: string; done: boolean; updatedAt: string }> = [];
+beforeEach(() => {
+  progressRows = [];
+  server.use(http.get('/progress', () => HttpResponse.json({ progress: progressRows })));
+});
+async function markRead(courseId: string, chapterId: string, updatedAt: string) {
+  await db.progress.put({ courseId, chapterId, status: 'read', done: true, updatedAt });
+  progressRows.push({ courseId, chapterId, status: 'read', done: true, updatedAt });
+  server.use(http.get('/progress', () => HttpResponse.json({ progress: progressRows })));
+}
+
 function demoManifest(chapterCount: number): Manifest {
   return {
     id: 'demo',
@@ -254,14 +276,16 @@ describe('Tiến độ — theo khoá học', () => {
       courses: [{ courseId: 'demo', minutes: 75.4, chaptersDone: 1 }],
     });
     for (const id of ['ch-1', 'ch-2', 'ch-3']) {
-      await db.progress.put({ courseId: 'demo', chapterId: id, status: 'read', done: true, updatedAt: '2026-08-20T00:00:00Z' });
+      await markRead('demo', id, '2026-08-20T00:00:00Z');
     }
 
     renderProgress();
 
     const row = (await screen.findByRole('listitem')) as HTMLElement;
-    // `findBy*`: `useProgress` là một `liveQuery` của Dexie, nên hàng xuất hiện
-    // TRƯỚC khi số chương cục bộ về. Chờ ở đây là chờ đúng chuỗi ấy.
+    // `findBy*`: `useLocalProgress` (Dexie `liveQuery`) is what makes the
+    // row appear at all; `useProgress` (`GET /progress`) is what fills in
+    // its chapter count, a separate async round trip — the row can exist
+    // before that count lands.
     expect(await within(row).findByText('3/4 chương')).toBeInTheDocument();
     expect(within(row).getByRole('img', { name: '75% hoàn thành' })).toBeInTheDocument();
     // `minutes` thì ngược lại — nó CHỈ tồn tại ở máy chủ, nên nó tới từ /stats.
@@ -276,7 +300,7 @@ describe('Tiến độ — theo khoá học', () => {
     // đọc thẳng `db.progress` thay vì tin máy chủ biết hết.
     server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(2))));
     stub(EMPTY_STATS);
-    await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: '2026-08-20T00:00:00Z' });
+    await markRead('demo', 'ch-1', '2026-08-20T00:00:00Z');
 
     renderProgress();
 
@@ -291,8 +315,8 @@ describe('Tiến độ — theo khoá học', () => {
     // `0/0` sẽ vẽ ra một thanh rỗng cho một người đã đọc mười chương.
     server.use(http.get('/courses/demo', () => new HttpResponse(null, { status: 404 })));
     stub(EMPTY_STATS);
-    await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: '2026-08-20T00:00:00Z' });
-    await db.progress.put({ courseId: 'demo', chapterId: 'ch-2', status: 'read', done: true, updatedAt: '2026-08-20T00:00:00Z' });
+    await markRead('demo', 'ch-1', '2026-08-20T00:00:00Z');
+    await markRead('demo', 'ch-2', '2026-08-20T00:00:00Z');
 
     renderProgress();
 

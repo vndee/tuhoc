@@ -78,6 +78,20 @@ const WIDGETS = [{ name: 'dao-ham', html: '<p>widget đạo hàm</p>' }];
 
 const CHAPTER_2_HTML = '<h1 class="ch-title">Chương hai</h1><p>nội dung khác</p>';
 
+/**
+ * Task 6, Pha 3: `useProgress` (mounted by `AuthedReaderExtras`, same as
+ * `/me` below) now reads/writes `GET`/`PUT /progress` instead of Dexie's
+ * `db.progress`/`db.outbox` — every `#mark-btn`/exercise-checkbox test in
+ * this file needs these to resolve. Backed by this in-memory array rather
+ * than a handler that always answers `[]`: `onSettled` (`useProgress.ts`)
+ * invalidates and REFETCHES after every mutation, so a `GET` that ignores
+ * what was just `PUT` would clobber the very write a test is trying to
+ * observe the instant that refetch lands — the same trap
+ * `progress/useProgress.test.ts`'s own mock avoids the same way. Reset in
+ * this file's `beforeEach`, below.
+ */
+let progressRows: Array<{ courseId: string; chapterId: string; status: string; done: boolean; updatedAt: string }>;
+
 const server = setupServer(
   http.get('/courses/demo/chapters/c1', () => HttpResponse.json({ html: FRAGMENT, widgets: WIDGETS })),
   http.get('/courses/demo/chapters/c2', () => HttpResponse.json({ html: CHAPTER_2_HTML, widgets: [] })),
@@ -88,6 +102,17 @@ const server = setupServer(
   // behaviour as before; the handful of tests that care about the OTHER
   // shape (Task 12's own block, below) override this with `server.use`.
   http.get('/me', () => HttpResponse.json({ id: 'u1', email: 'a@vi.vn', name: 'Người học' })),
+  http.get('/progress', () => HttpResponse.json({ progress: progressRows })),
+  http.put('/progress', async ({ request }) => {
+    const body = (await request.json()) as { courseId: string; chapterId: string; status: string; done: boolean };
+    const idx = progressRows.findIndex(
+      (r) => r.courseId === body.courseId && r.chapterId === body.chapterId && r.status === body.status,
+    );
+    const saved = { ...body, updatedAt: new Date().toISOString() };
+    if (idx === -1) progressRows.push(saved);
+    else progressRows[idx] = saved;
+    return new HttpResponse(null, { status: 204 });
+  }),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
@@ -146,6 +171,7 @@ describe('ChapterView', () => {
   let renderKatex: Mock<(root: ParentNode) => void>;
 
   beforeEach(() => {
+    progressRows = [];
     renderKatex = vi.fn<(root: ParentNode) => void>();
     // `initViz`/`REDRAWS`/`VIZ` are still part of `window.CourseKit`'s type
     // (packages/course-kit/runtime.js still attaches them — see
@@ -579,7 +605,11 @@ describe('ChapterView', () => {
       expect(markBtn.querySelector('.mk-lbl')!.textContent).toBe('Đánh dấu đã học');
     });
 
-    it('clicking #mark-btn marks the chapter read: flips icon/label/class AND writes local progress + outbox', async () => {
+    it('clicking #mark-btn marks the chapter read: flips icon/label/class AND PUTs the new progress row', async () => {
+      // Task 6, Pha 3: the write this button makes is now a `PUT /progress`
+      // (`useProgress`'s optimistic mutation), not a Dexie write + outbox
+      // enqueue — see this file's server setup (`progressRows`) for where
+      // that PUT lands.
       await renderChapterAndSettle();
 
       const markBtn = document.getElementById('mark-btn')!;
@@ -593,9 +623,8 @@ describe('ChapterView', () => {
       // the button's accessible name.
       expect(markBtn.getAttribute('aria-label')).toBe('Bỏ đánh dấu đã học');
 
-      const row = await db.progress.get(['demo', 'c1', 'read']);
-      expect(row).toMatchObject({ courseId: 'demo', chapterId: 'c1', status: 'read', done: true });
-      expect(await db.outbox.count()).toBe(1);
+      await waitFor(() => expect(progressRows).toHaveLength(1));
+      expect(progressRows[0]).toMatchObject({ courseId: 'demo', chapterId: 'c1', status: 'read', done: true });
     });
 
     it('clicking #mark-btn a second time unmarks it again', async () => {
@@ -611,7 +640,9 @@ describe('ChapterView', () => {
     });
 
     it('reflects a chapter already marked read before this component mounted', async () => {
-      await db.progress.put({ courseId: 'demo', chapterId: 'c1', status: 'read', done: true, updatedAt: new Date().toISOString() });
+      // Task 6, Pha 3: "already marked read" now means the server's `GET
+      // /progress` says so, not a pre-seeded Dexie row.
+      progressRows.push({ courseId: 'demo', chapterId: 'c1', status: 'read', done: true, updatedAt: new Date().toISOString() });
 
       await renderChapterAndSettle();
 
@@ -1078,16 +1109,16 @@ describe('ChapterView', () => {
       expect(checkboxes).toHaveLength(2);
     });
 
-    it('checking a box writes "ex:<index>" progress (0-based, DOM order) to local storage + outbox', async () => {
+    it('checking a box PUTs "ex:<index>" progress (0-based, DOM order)', async () => {
+      // Task 6, Pha 3: this write is now `PUT /progress`, not a Dexie row —
+      // see the `#mark-btn` block above for the same change.
       await renderChapterAndSettle();
 
       const checkboxes = Array.from(document.querySelectorAll<HTMLInputElement>('.box.ex .box-h input[type="checkbox"]'));
       fireEvent.click(checkboxes[1]);
 
-      await waitFor(async () => {
-        const row = await db.progress.get(['demo', 'c1', 'ex:1']);
-        expect(row).toMatchObject({ status: 'ex:1', done: true });
-      });
+      await waitFor(() => expect(progressRows).toHaveLength(1));
+      expect(progressRows[0]).toMatchObject({ courseId: 'demo', chapterId: 'c1', status: 'ex:1', done: true });
     });
 
     it('does not double-inject across a StrictMode double-mount', async () => {

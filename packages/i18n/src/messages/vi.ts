@@ -325,6 +325,16 @@ export const vi = {
   'progress.lede': 'Số liệu học tập của bạn, kể thành câu.',
   'progress.loading': 'Đang tải tiến độ…',
   'progress.error': 'Chưa lấy được tiến độ. Số liệu nằm trên máy chủ, nên phần này cần mạng.',
+  /**
+   * Task 6, Pha 3: `useProgress.ts`'s `toggleRead`/`toggleEx` giờ ghi lạc
+   * quan lên `PUT /progress` — khi request đó hỏng, ô đã lật LÙI LẠI giá
+   * trị cũ (không giữ một lời nói dối), và câu này là lời giải thích duy
+   * nhất người học thấy, vẽ ngay cạnh nút vừa bấm (`reader/ChapterView.tsx`'s
+   * `AuthedReaderExtras`, `role="alert"`) — không phải toast, kho này không
+   * có hệ thống đó (xem `ErrorBoundary.tsx`/`AdminCredits.tsx` cho cùng quy
+   * ước). Cùng tông "Chưa lưu được X." với `rating.error.unknown` ở trên.
+   */
+  'progress.saveFailed': 'Chưa lưu được tiến độ của bạn.',
   'progress.sentence': (minutes: string, streak: string) =>
     `Bạn đã học ${minutes} phút, với chuỗi ${streak} ngày liên tục.`,
   'progress.sentenceNoStreak': (minutes: string) =>
