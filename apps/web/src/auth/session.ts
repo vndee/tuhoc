@@ -1,4 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
+import { resetEventQueue } from '../api/events';
 import { resetSessionScopedQueries } from '../api/useMe';
 import { clearLocalData, readSessionVerifiedAt } from '../db/local';
 import { announceSessionUser } from './sessionIdentity';
@@ -16,7 +17,22 @@ import { announceSessionUser } from './sessionIdentity';
  *     the module-level `queryClient` in `App.tsx`, which really does hold
  *     user data (`['stats']`, `['course', …]`, every progress-derived entry).
  *
- * Both call sites happened to be correct. That is not the point.
+ * Task 8's fix round (Pha 3) added a third, after a review caught this
+ * function NOT calling it:
+ *
+ *   - `resetEventQueue()` (`../api/events`) — the queued-but-unflushed half:
+ *     `api/events.ts`'s in-memory `queue`, which can hold up to one flush
+ *     interval's worth of heartbeats at the exact moment a session ends.
+ *     Unlike the other two, this is NOT durable and NOT React state — it
+ *     is a plain module-level array — but it is exactly as much "this
+ *     account's data left in the browser" as the other two are, and an
+ *     unreset queue leaking into the NEXT signed-in account's session is
+ *     the identical failure shape ruling P2-F18 names for the other two
+ *     (see `api/events.ts`'s own header and
+ *     `test/eventQueueHandoff.test.tsx` for the end-to-end proof this
+ *     function's own test suite now pins).
+ *
+ * Every call site happened to be correct once it existed. That is not the point.
  * *"Two truth points, remember to call both"* is the exact SHAPE of the
  * cross-account leak fixed in `97a6e02`, one level up: there, a second store
  * of user content (the note draft in `localStorage`) was opened that the
@@ -38,19 +54,30 @@ import { announceSessionUser } from './sessionIdentity';
  * not seed `me`. Both call sites need those, but they need them with
  * different values and, in `useLogout`'s case, in a more elaborate order that
  * this function has no business knowing (a bounded final flush, two epoch
- * bumps, `POST /auth/logout`). This is the clearing step only — the semantics
- * of clearing are unchanged from the two calls it replaces, including their
- * order.
+ * bumps, `POST /auth/logout`). It also does not attempt to FLUSH
+ * `api/events.ts`'s queue before dropping it — a best-effort flush needs the
+ * departing account's cookie to still be valid, which is a fact only
+ * `useLogout.ts` (not `Login.tsx`'s arriving-account path, and not this
+ * function, called from both) can know; see `useLogout.ts`'s
+ * `bestEffortFinalFlush` for where that flush happens, strictly BEFORE this
+ * function is ever called. This is the clearing step only — the semantics of
+ * clearing are unchanged from the calls it replaces, including their order.
  *
  * **Order, which is load-bearing and is the reason this is one function
- * rather than two exports.** `clearLocalData()` first and awaited, then the
- * query cache. Both call sites already did exactly this, for reasons written
- * out at each of them: the durable rows must be gone before anything can read
- * or push them, and the cache reset must land before the caller seeds `me` on
- * the very next line, or it would wipe the seed it is supposed to leave
- * behind.
+ * rather than separate exports.** `clearLocalData()` first and awaited, then
+ * the query cache, then the event queue. The first two: both call sites
+ * already did exactly this before this function existed, for reasons written
+ * out at each of them — the durable rows must be gone before anything can
+ * read or push them, and the cache reset must land before the caller seeds
+ * `me` on the very next line, or it would wipe the seed it is supposed to
+ * leave behind. The event-queue reset is placed last and is, unlike the
+ * first two, NOT order-dependent on anything else here — it is a bare
+ * in-memory array with no reader racing it and no seed for it to clobber —
+ * so it is simply appended after the two steps whose order genuinely
+ * matters, rather than interleaved among them.
  *
- * The tripwire that keeps a third call site from quietly appearing lives in
+ * The tripwire that keeps a third call site from quietly appearing — for
+ * ANY of the three halves above, `resetEventQueue()` included — lives in
  * `./session.test.ts`, next to this function's own tests.
  */
 export async function clearSession(queryClient: QueryClient): Promise<void> {
@@ -85,6 +112,13 @@ export async function clearSession(queryClient: QueryClient): Promise<void> {
   announceSessionUser(null);
   await clearLocalData();
   resetSessionScopedQueries(queryClient);
+  // Unconditional, and never preceded by an attempted flush HERE — see
+  // this function's own "What it deliberately does NOT do" above. Whatever
+  // a departing account's queue still holds at this point is dropped,
+  // whether or not `useLogout.ts`'s own best-effort flush (which runs
+  // strictly before this function, while the cookie was still valid)
+  // managed to send it.
+  resetEventQueue();
 }
 
 /**

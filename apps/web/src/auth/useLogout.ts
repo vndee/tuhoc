@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import { flushEvents } from '../api/events';
 import { meQueryKey } from '../api/useMe';
 import { stopSync, syncOnce, waitForInFlight } from '../sync/engine';
 import { clearSession } from './session';
@@ -54,10 +55,28 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | undefined>
  * "genuinely subsumed" — the cycle we waited for already did a full
  * push+pull, so there is nothing left for a second one to usefully add
  * beyond a fast, empty-outbox no-op.
+ *
+ * `flushEvents()` (`../api/events`) joined this, LAST, as Task 8's fix
+ * round: `api/events.ts`'s in-memory study-event queue is exactly the
+ * same "must leave while the cookie is still valid or never leave at
+ * all" shape as the outbox push above it, and it was the one review
+ * caught this function NOT doing at all — see that module's own header
+ * and `auth/session.ts`'s `clearSession()` (the unconditional half of
+ * this fix: whatever this call did not manage to send, `clearSession()`
+ * drops rather than lets leak into the next signed-in account). Ordered
+ * after `syncOnce()`, not interleaved with it: the two touch unrelated
+ * server resources (`/sync` vs `/events/batch`, exactly the same
+ * independence `sync/engine.ts`'s `flushOutbox` doc comment gives for why
+ * THOSE two are separate request sequences), so there is no ordering
+ * requirement between them — `flushEvents()` never rejects (it swallows
+ * and re-queues its own failure internally; see its own doc), so it needs
+ * no `try`/`catch` here to keep this function's "failure here must not
+ * block logout" contract.
  */
 async function bestEffortFinalFlush(): Promise<void> {
   await waitForInFlight();
   await syncOnce();
+  await flushEvents();
 }
 
 /**
@@ -78,11 +97,14 @@ async function bestEffortFinalFlush(): Promise<void> {
  *     used to have" below for why that matters on its own, independent of
  *     step 2's best-effort wait.
  *  2. `bestEffortFinalFlush()` — waits for anything already in flight, then
- *     attempts its own push+pull, bounded to `LOGOUT_SYNC_TIMEOUT_MS` total
- *     (Minor finding: a hung connection must not hold the logout UI
+ *     attempts its own push+pull PLUS a flush of `api/events.ts`'s queued
+ *     study events (Task 8's fix round), bounded to `LOGOUT_SYNC_TIMEOUT_MS`
+ *     total (Minor finding: a hung connection must not hold the logout UI
  *     hostage). A normal failure (network down, 5xx, or simply timing out)
- *     is swallowed by `withTimeout`/`syncOnce`'s own existing swallowing —
- *     local state is still cleared unconditionally afterward regardless.
+ *     is swallowed by `withTimeout`/`syncOnce`/`flushEvents`'s own existing
+ *     swallowing — local state (including the event queue — see step 5's
+ *     `clearSession()`) is still cleared unconditionally afterward
+ *     regardless.
  *  3. `stopSync()` AGAIN — fix-round-2, see "The abandoned-cycle gap"
  *     below. This is not a redundant repeat of step 1 (`stopSync` is
  *     idempotent w.r.t. its timer/listener side, but its epoch bump is
@@ -101,14 +123,15 @@ async function bestEffortFinalFlush(): Promise<void> {
  *     blipped on the way out.
  *  5. `clearSession()` (./session.ts) — unconditionally, regardless of
  *     whether steps 2 or 4 succeeded. See the paragraph below for why that
- *     is the right trade-off, not just the safe-looking one. It clears BOTH
- *     halves of what this session left on the machine — every local table
- *     and user-content `localStorage` key via `clearLocalData()`, then the
- *     session-scoped query cache — through one call, so neither half can be
- *     forgotten here, at the one call site where forgetting it fails
- *     silently (ruling P2-F18). It calls the shared helpers rather than
- *     spelling out a table list, so a table added to `LocalDB`'s schema is
- *     covered automatically.
+ *     is the right trade-off, not just the safe-looking one. It clears ALL
+ *     THREE halves of what this session left on the machine — every local
+ *     table and user-content `localStorage` key via `clearLocalData()`, the
+ *     session-scoped query cache, and (Task 8's fix round) whatever
+ *     `api/events.ts`'s queue still held after step 2's best-effort flush —
+ *     through one call, so no half can be forgotten here, at the one call
+ *     site where forgetting one fails silently (ruling P2-F18). It calls
+ *     the shared helpers rather than spelling out a table list, so a table
+ *     added to `LocalDB`'s schema is covered automatically.
  *  6. Reset the shared `me` query to `null` and navigate to `/login`.
  *     `src/pages/Login.tsx` goes through the same door on the way IN — the
  *     two together are what make "this browser shows one user at a time"
@@ -202,9 +225,10 @@ export function useLogout(): () => Promise<void> {
       // happens via the steps below.
     }
 
-    // Both halves of "this browser no longer belongs to that session", through
-    // the one door at `./session.ts` (ruling P2-F18) — the durable tables and
-    // `localStorage` keys, and then the query cache.
+    // All three halves of "this browser no longer belongs to that session",
+    // through the one door at `./session.ts` (ruling P2-F18) — the durable
+    // tables and `localStorage` keys, the query cache, and (Task 8's fix
+    // round) whatever `api/events.ts`'s queue still held.
     //
     // The cache reset is not decoration, and it is why the clearing is one
     // call rather than `clearLocalData()` alone. The `me` entry is not the

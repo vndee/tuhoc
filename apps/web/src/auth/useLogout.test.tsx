@@ -5,6 +5,7 @@ import { setupServer } from 'msw/node';
 import type { ReactNode } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as eventsModule from '../api/events';
 import { meQueryKey } from '../api/useMe';
 import { clearLocalData, db } from '../db/local';
 import * as engine from '../sync/engine';
@@ -137,6 +138,40 @@ describe('useLogout', () => {
 
     expect(callOrder).toEqual(['syncOnce', 'logout']);
     syncOnceSpy.mockRestore();
+  });
+
+  // Critical finding (Task 8 review): `api/events.ts`'s in-memory study-event
+  // queue was never given a chance to leave the browser BEFORE the session
+  // cookie died — the account-handoff leak this closes is proven separately
+  // in `test/eventQueueHandoff.test.tsx`. This test proves the narrower,
+  // ORDERING half of that fix in isolation: `flushEvents()` must be called,
+  // and it must be called while `POST /auth/logout` has not yet run — the
+  // exact same reasoning the `syncOnce` ordering test above gives, one line
+  // down: a flush attempted AFTER the cookie is invalidated has no session
+  // left to succeed under.
+  it('flushes the study-event queue (flushEvents) BEFORE calling POST /auth/logout — same reasoning as the outbox flush', async () => {
+    vi.spyOn(engine, 'syncOnce').mockResolvedValue(undefined);
+    const callOrder: string[] = [];
+    const flushEventsSpy = vi.spyOn(eventsModule, 'flushEvents').mockImplementation(async () => {
+      callOrder.push('flushEvents');
+    });
+    server.use(
+      http.post('/auth/logout', () => {
+        callOrder.push('logout');
+        return new HttpResponse(null, { status: 200 });
+      }),
+    );
+
+    const queryClient = new QueryClient();
+    const { result } = renderHook(() => useLogout(), { wrapper: wrapper(queryClient) });
+
+    await act(async () => {
+      await result.current();
+    });
+
+    expect(flushEventsSpy).toHaveBeenCalled();
+    expect(callOrder).toEqual(['flushEvents', 'logout']);
+    vi.restoreAllMocks();
   });
 
   it('still clears local tables and navigates to /login even when POST /auth/logout fails (network error)', async () => {

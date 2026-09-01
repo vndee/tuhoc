@@ -4,15 +4,46 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as ts from 'typescript';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Same shape as `sync/engine.test.ts`'s `vi.mock('../api/navigation', ...)`
+// and `api/events.test.ts`'s own `vi.mock('./client', ...)`: mocked at the
+// network boundary so this file can assert exactly whether the event queue
+// was still populated (i.e. `flushEvents()` would still have something to
+// send) without a real network anywhere in it.
+vi.mock('../api/client', () => ({
+  api: { post: vi.fn() },
+}));
+
+import { api } from '../api/client';
+import { flushEvents, queueEvent } from '../api/events';
 import { meQueryKey } from '../api/useMe';
 import { clearLocalData, db, rememberSessionVerified, setProgress, USER_CONTENT_KEYS } from '../db/local';
 import { clearSession, OFFLINE_READ_MAX_AGE_MS, offlineSessionIsUsable } from './session';
 
-beforeEach(clearLocalData);
+beforeEach(async () => {
+  await clearLocalData();
+  vi.mocked(api.post).mockReset();
+  vi.mocked(api.post).mockResolvedValue(undefined);
+});
 afterEach(clearLocalData);
 
 describe('clearSession — the one door out of a session', () => {
+  // Critical finding (Task 8 review): `api/events.ts`'s in-memory
+  // study-event queue is a THIRD half of ending a session, alongside the
+  // durable Dexie/localStorage half and the in-memory query-cache half
+  // this file already tests above and below. Proven end-to-end (real
+  // `useLogout`, real `<Login>`) in `test/eventQueueHandoff.test.tsx`;
+  // this is the narrow claim `clearSession()` itself makes.
+  it('empties the queued-but-unflushed study-event half too — a heartbeat that never got flushed does not survive', async () => {
+    queueEvent({ courseId: 'c', chapterId: 'ch1', kind: 'heartbeat', meta: {}, at: '2026-08-21T00:00:00.000Z' });
+
+    await clearSession(new QueryClient());
+
+    await flushEvents();
+    expect(vi.mocked(api.post)).not.toHaveBeenCalled();
+  });
+
   it('empties the durable half: every local table, and the keys holding the user’s own words', async () => {
     await setProgress('c', 'ch', 'read', true);
     await db.annotations.put({
@@ -150,7 +181,7 @@ function label(file: string): string {
 }
 
 /**
- * The two halves of ending a session, and the ONLY files allowed to name
+ * The three halves of ending a session, and the ONLY files allowed to name
  * each one: the module that defines it, and `auth/session.ts`, which is the
  * door.
  *
@@ -160,6 +191,15 @@ function label(file: string): string {
  * and not the other, and be correct on the day it is written — which is
  * exactly the state this ruling was made about. Every "correct today, with
  * nothing pinning it" item in this phase has eventually broken.
+ *
+ * `resetEventQueue` (Task 8's fix round) is the newest entry, and the exact
+ * shape of what this array exists to prevent: Task 8's original diff built
+ * `api/events.ts`'s in-memory queue with no third half wired into this
+ * door at all, not merely wired into the wrong place — the review that
+ * caught it is `test/eventQueueHandoff.test.tsx`'s own header. Watching
+ * the name here is what stops a FUTURE call site from "fixing" a similar
+ * leak by importing `resetEventQueue` directly instead of routing through
+ * `clearSession()`.
  */
 const SESSION_CLEARERS: readonly { readonly name: string; readonly allowedIn: readonly string[]; readonly why: string }[] = [
   {
@@ -171,6 +211,11 @@ const SESSION_CLEARERS: readonly { readonly name: string; readonly allowedIn: re
     name: 'resetSessionScopedQueries',
     allowedIn: [join('apps', 'web', 'src', 'api', 'useMe.ts'), join('apps', 'web', 'src', 'auth', 'session.ts')],
     why: 'the in-memory half of ending a session — call clearSession() from src/auth/session.ts, which also clears the durable stores',
+  },
+  {
+    name: 'resetEventQueue',
+    allowedIn: [join('apps', 'web', 'src', 'api', 'events.ts'), join('apps', 'web', 'src', 'auth', 'session.ts')],
+    why: 'the queued-but-unflushed study-event half of ending a session — call clearSession() from src/auth/session.ts, which also clears the other two halves',
   },
 ];
 

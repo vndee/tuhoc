@@ -9,7 +9,7 @@ vi.mock('./client', () => ({
 }));
 
 import { api } from './client';
-import { flushEvents, queueEvent, startEventFlusher, type StudyEvent } from './events';
+import { flushEvents, queueEvent, resetEventQueue, startEventFlusher, type StudyEvent } from './events';
 
 function ev(courseId: string): StudyEvent {
   return { courseId, chapterId: 'ch1', kind: 'heartbeat', meta: {}, at: '2026-09-01T00:00:00.000Z' };
@@ -23,6 +23,13 @@ beforeEach(() => {
   vi.mocked(api.post).mockReset();
   vi.mocked(api.post).mockResolvedValue(undefined);
   setHidden(false);
+  // Minor finding (Task 8 review): these blocks share the module-level
+  // `queue` with no reset between tests — a reordered or newly-inserted
+  // test could otherwise silently inherit whatever a previous test left
+  // queued (e.g. the keep-on-failure test's `ev('c1')`, which the queue
+  // itself is not supposed to drop). `resetEventQueue` makes that
+  // trivial to guard against now that it exists for the logout fix below.
+  resetEventQueue();
 });
 
 afterEach(() => {
@@ -79,6 +86,49 @@ describe('queueEvent / flushEvents', () => {
     await flushEvents();
     expect(vi.mocked(api.post)).toHaveBeenCalledTimes(2);
     expect(vi.mocked(api.post).mock.calls[1][1]).toEqual({ events: [ev('c2')] });
+  });
+});
+
+// Critical finding (Task 8 review): this queue is a module-level
+// singleton for exactly one browser session (see this module's own
+// header) — but nothing reset it on an account handoff, so an event A
+// queued and never flushed would survive `useLogout()`/`clearSession()`
+// and go out under B's cookie the next time the flusher ticked. Proven
+// end-to-end (real `useLogout`, real `<Login>`) in
+// `test/eventQueueHandoff.test.tsx`; this is the narrow unit contract
+// `auth/session.ts`'s `clearSession()` now relies on.
+describe('resetEventQueue', () => {
+  it('empties the queue — a subsequent flushEvents() sends nothing', async () => {
+    queueEvent(ev('c1'));
+    resetEventQueue();
+
+    await flushEvents();
+    expect(vi.mocked(api.post)).not.toHaveBeenCalled();
+  });
+
+  it('does not touch a batch already in flight — only what is still queued', async () => {
+    let resolvePost!: () => void;
+    vi.mocked(api.post).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePost = () => resolve(undefined);
+        }),
+    );
+
+    queueEvent(ev('c1'));
+    const flushing = flushEvents();
+    // Arrives (and is reset away) WHILE c1's request is already in flight.
+    queueEvent(ev('c2'));
+    resetEventQueue();
+    resolvePost();
+    await flushing;
+
+    expect(vi.mocked(api.post)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(api.post).mock.calls[0][1]).toEqual({ events: [ev('c1')] });
+
+    // c2 was reset away before it could ever be sent.
+    await flushEvents();
+    expect(vi.mocked(api.post)).toHaveBeenCalledTimes(1);
   });
 });
 
