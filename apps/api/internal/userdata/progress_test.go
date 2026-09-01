@@ -10,6 +10,7 @@ package userdata_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -177,6 +178,29 @@ func mustParseTime(t *testing.T, s string) time.Time {
 	return parsed
 }
 
+// pgNow reads Postgres's OWN now() through pool — the same clock
+// repo.go's upsertProgressSQL uses to stamp updated_at (`VALUES
+// (...,now())`). TestPutProgressStampsServerTime needs a "before" baseline
+// to compare updatedAt against, and that baseline MUST come from this same
+// clock: the test process runs on the host, while store.TestPool's
+// container is a separate machine (in CI, often literally a different
+// physical clock) — time.Now() from the host and now() from inside the
+// container are two different clocks that can differ by milliseconds on a
+// cold container start, which is exactly what made this test flake once
+// (see the fix commit this comment was added in). Reading the baseline
+// through the SAME pool the handler itself writes through keeps both sides
+// of the comparison on one clock, so the assertion measures only what it
+// claims to measure: whether the server stamps updated_at, not whether two
+// unrelated clocks agree.
+func pgNow(t *testing.T, pool *pgxpool.Pool) time.Time {
+	t.Helper()
+	var now time.Time
+	if err := pool.QueryRow(context.Background(), "SELECT now()").Scan(&now); err != nil {
+		t.Fatalf("SELECT now(): %v", err)
+	}
+	return now
+}
+
 // Client KHÔNG gửi updatedAt. Đó là khác biệt lớn nhất so với POST /sync,
 // nơi mỗi hàng mang updatedAt của chính nó vì hàng có thể đã nằm hàng đợi
 // nhiều ngày. Không còn hàng đợi thì "lúc nào" là lúc server nhận — và để
@@ -186,7 +210,10 @@ func TestPutProgressStampsServerTime(t *testing.T) {
 	app := newTestApp(pool)
 	cookie := registerUser(t, app, "stamp")
 
-	before := time.Now().UTC()
+	// before comes from Postgres's OWN clock (via the same pool the
+	// handler writes through), not the test process's — see pgNow's doc
+	// comment for why a host-clock baseline flaked here once.
+	before := pgNow(t, pool)
 	putProgress(t, app, cookie, `{"courseId":"c","chapterId":"c1","status":"read","done":true}`, http.StatusNoContent)
 
 	rows := getProgress(t, app, cookie)
@@ -195,7 +222,7 @@ func TestPutProgressStampsServerTime(t *testing.T) {
 	}
 	updatedAt := mustParseTime(t, rows[0].UpdatedAt)
 	if updatedAt.Before(before) {
-		t.Errorf("updatedAt = %v, sớm hơn lúc gửi request %v — server không tự đóng dấu", updatedAt, before)
+		t.Errorf("updatedAt = %v, sớm hơn mốc now() của chính Postgres %v — server không tự đóng dấu", updatedAt, before)
 	}
 }
 
