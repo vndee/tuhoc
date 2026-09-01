@@ -5,7 +5,9 @@ import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, afterAll, afterEach, beforeAll } from 'vitest';
+import type { Ann } from '../api/annotations';
 import { meQueryKey, type Me } from '../api/useMe';
+import { clearLocalData, db } from '../db/local';
 import { t } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 import { ThemeProvider } from '../theme/ThemeContext';
@@ -42,6 +44,22 @@ function mockAiRoutes(): void {
 }
 
 /**
+ * Task 9: `LocalDataSection` (mục "Dữ liệu trên máy") nay đếm ghi chú qua
+ * `GET /annotations` — mọi bài dựng `<Settings/>` chạm khối này, nên `msw`
+ * cần một handler mặc định lành mạnh, cùng khuôn `mockAiRoutes` ở trên.
+ * `renderSettings`'s `annotations` param (mặc định `[]`) đi thẳng vào đây,
+ * chứ không phải một lời gọi `mockLocalDataRoutes` rời sau đó — hai lệnh
+ * `server.use(...)` liên tiếp cho CÙNG một path thì cái sau thắng, nên gọi
+ * rời sẽ lặng lẽ ghi đè danh sách bài kiểm vừa yêu cầu bằng `[]` của
+ * `renderSettings`. Bài canh riêng ở `describe` cuối tệp truyền một danh
+ * sách khác qua tham số này để phân biệt "đọc /annotations" với "đọc
+ * db.annotations.count() cục bộ".
+ */
+function mockLocalDataRoutes(annotations: readonly Ann[] = []): void {
+  server.use(http.get('/annotations', () => HttpResponse.json({ annotations })));
+}
+
+/**
  * `state` mặc định là `FROM_AI_INVITE` — ý định mà lời mời "Mở trang cấu hình"
  * của `ai/AskPanel.tsx` gắn vào lần điều hướng khi hết credit
  * (`needsSetup`/`ai.panel.noCredit`) — vì gần như mọi bài dưới đây kiểm mục
@@ -54,8 +72,9 @@ function mockAiRoutes(): void {
  */
 const FROM_AI_INVITE = { section: 'ai' } as const;
 
-function renderSettings(me: Me | null = SIGNED_IN, state: unknown = FROM_AI_INVITE) {
+function renderSettings(me: Me | null = SIGNED_IN, state: unknown = FROM_AI_INVITE, annotations: readonly Ann[] = []) {
   mockAiRoutes();
+  mockLocalDataRoutes(annotations);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   queryClient.setQueryData(meQueryKey, me);
   return render(
@@ -332,5 +351,63 @@ describe('Cài đặt — cửa đăng xuất', () => {
     // tiến độ trên máy này (xem `auth/useLogout.ts`), và một nút làm điều đó mà
     // không nói ra là một cái bẫy — nhất là trên máy dùng chung.
     expect(screen.getByText(new RegExp(t('vi', 'settings.account.signOutWarning').slice(0, 24), 'i'))).toBeInTheDocument();
+  });
+});
+
+/**
+ * TASK 9 — "Dữ liệu trên máy" đếm ghi chú từ `GET /annotations`, không từ
+ * `db.annotations.count()`.
+ *
+ * `LocalDataSection` từng đọc thẳng Dexie (`useLocalFootprint`'s
+ * `db.annotations.count()`) — số ĐÚNG cho một thế giới nơi ghi chú chỉ tồn tại
+ * cục bộ cho tới khi outbox flush. Sau Task 7, ghi chú đã là dữ liệu MÁY CHỦ
+ * (TanStack Query qua `api/annotations.ts`, cùng cache `annotationsQueryKey()`
+ * mà `useAnnotations`/`progress/recent.ts` dùng) — Dexie có thể mang một con
+ * số CŨ (ghi chú xoá ở máy khác vẫn còn hàng ở đây, hoặc ngược lại), nên
+ * `db.annotations.count()` không còn là câu trả lời đúng cho "máy này đang
+ * giữ bao nhiêu ghi chú của TÔI" nữa.
+ *
+ * Bài dưới đây gieo Dexie với một con số CỐ Ý KHÁC con số `GET /annotations`
+ * trả về — nếu trang còn đọc Dexie, nó sẽ hiện con số Dexie (5), không phải
+ * con số máy chủ (2).
+ */
+function ann(id: string): Ann {
+  return {
+    id,
+    courseId: 'demo',
+    chapterId: 'ch-1',
+    anchor: { exact: 'x', color: 'y' },
+    note: `ghi chú ${id}`,
+    createdAt: '2026-08-01T00:00:00Z',
+    updatedAt: '2026-08-01T00:00:00Z',
+  };
+}
+
+describe('Cài đặt — "Dữ liệu trên máy" đếm ghi chú từ GET /annotations', () => {
+  afterEach(async () => {
+    await clearLocalData();
+  });
+
+  it('số ghi chú hiện ra khớp với /annotations, KHÔNG khớp với db.annotations.count() cục bộ', async () => {
+    // Dexie cục bộ giữ 5 hàng — một con số Dexie CỐ Ý sai để bài này phân
+    // biệt được "đọc /annotations" với "vẫn đọc Dexie mà tình cờ đúng".
+    for (let i = 0; i < 5; i += 1) {
+      await db.annotations.put({
+        id: `local-${i}`,
+        courseId: 'demo',
+        chapterId: 'ch-1',
+        anchor: {},
+        note: `local ${i}`,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+        deletedAt: null,
+      });
+    }
+    renderSettings(SIGNED_IN, FROM_AI_INVITE, [ann('a'), ann('b')]);
+
+    const stat = await screen.findByText('2');
+    expect(stat).toHaveClass('set-stat-v');
+    // ĐỐI CHỨNG: con số Dexie (5) không có mặt ở đâu trên trang.
+    expect(screen.queryByText('5')).not.toBeInTheDocument();
   });
 });

@@ -4,8 +4,9 @@ import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
+import type { Ann } from '../api/annotations';
 import { meQueryKey } from '../api/useMe';
-import { type AnnotationRow, clearLocalData, db } from '../db/local';
+import { clearLocalData } from '../db/local';
 import { Dashboard } from '../pages/Dashboard';
 import type { Manifest } from '../course/types';
 import { LanguageProvider } from '../i18n/LanguageProvider';
@@ -146,22 +147,31 @@ function catalogEntry(slug: string, title: string) {
 /**
  * Task 6, Pha 3 touched `useProgress` ONLY — `progress/recent.ts`'s
  * `useLastStudiedCourseId` (which `Dashboard.tsx` uses to pick WHICH course
- * to show, per that file's own "Nguồn danh sách" doc section) still reads
- * `db.progress` via Dexie's `liveQuery` directly, untouched, a later task's
- * job. So `markRead` has to satisfy BOTH readers now, not swap one for the
- * other: the Dexie write (unchanged) is what makes `ContinueCard`'s course
- * get PICKED at all; the `GET /progress` handler (new) is what makes
- * `useProgress`'s `doneChapterIds`/`partStats` — read counts, "chương kế
- * tiếp" — correct for whichever course that picks.
+ * to show, per that file's own "Nguồn danh sách" doc section) used to still
+ * read `db.progress` via Dexie's `liveQuery` directly, so `markRead` wrote
+ * BOTH: a Dexie row (for `ContinueCard`'s course to get PICKED) and a
+ * `GET /progress` handler (for `useProgress`'s counts). Task 9, Pha 3 moved
+ * `useLastStudiedCourseId` onto the same `GET /progress` `useQuery` cache
+ * `useProgress` already used — one source, not two — so `markRead` writes
+ * only the mock now; the Dexie write it used to make is gone, not merely
+ * unread.
  */
 let progressRows: Array<{ courseId: string; chapterId: string; status: string; done: boolean; updatedAt: string }> = [];
-async function markRead(courseId: string, chapterId: string, updatedAt = new Date().toISOString()) {
-  await db.progress.put({ courseId, chapterId, status: 'read', done: true, updatedAt });
+function markRead(courseId: string, chapterId: string, updatedAt = new Date().toISOString()) {
   progressRows.push({ courseId, chapterId, status: 'read', done: true, updatedAt });
   server.use(http.get('/progress', () => HttpResponse.json({ progress: progressRows })));
 }
 
-function note(overrides: Partial<AnnotationRow> & Pick<AnnotationRow, 'id'>): AnnotationRow {
+/**
+ * Một hàng `GET /annotations` (`api/annotations.ts`'s `Ann` — không có
+ * `deletedAt`: máy chủ xoá THẬT, migration 0009). Task 9 trước đây dựng ghi
+ * chú bằng `db.annotations.put(...)` (bản `AnnotationRow` của Dexie, có
+ * `deletedAt` làm bia mộ) vì `Dashboard.tsx`'s `RecentNotes` từng đọc thẳng
+ * Dexie; nay nó đọc `GET /annotations` qua `progress/recent.ts`'s
+ * `useRecentNotes`, nên hàng ở đây phải là hình dạng máy chủ trả về, và
+ * `seedNote` (bên dưới) đăng ký nó vào mock, không phải vào Dexie.
+ */
+function note(overrides: Partial<Ann> & Pick<Ann, 'id'>): Ann {
   return {
     courseId: 'demo',
     chapterId: 'ch-1',
@@ -169,9 +179,14 @@ function note(overrides: Partial<AnnotationRow> & Pick<AnnotationRow, 'id'>): An
     note: 'ghi chú',
     createdAt: '2026-08-01T00:00:00Z',
     updatedAt: '2026-08-01T00:00:00Z',
-    deletedAt: null,
     ...overrides,
   };
+}
+
+let annotationRows: Ann[] = [];
+function seedNote(overrides: Partial<Ann> & Pick<Ann, 'id'>): void {
+  annotationRows.push(note(overrides));
+  server.use(http.get('/annotations', () => HttpResponse.json({ annotations: annotationRows })));
 }
 
 beforeEach(() => {
@@ -185,6 +200,12 @@ beforeEach(() => {
   // re-registers this handler with real rows for tests that need them.
   progressRows = [];
   server.use(http.get('/progress', () => HttpResponse.json({ progress: progressRows })));
+  // Task 9, Pha 3: `RecentNotes` calls `useRecentNotes` unconditionally on
+  // every render, so `GET /annotations` fires on every test too — default to
+  // "no notes yet"; `seedNote` (above) re-registers this handler with real
+  // rows for the tests in "Học tiếp — ghi chú gần đây".
+  annotationRows = [];
+  server.use(http.get('/annotations', () => HttpResponse.json({ annotations: annotationRows })));
 });
 beforeEach(clearAll);
 afterEach(clearAll);
@@ -343,13 +364,9 @@ describe('Học tiếp — ghi chú gần đây', () => {
   it('liệt kê ghi chú mới nhất trước, mỗi ghi chú mở đúng chương của nó', async () => {
     server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(4))));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
-    await markRead('demo', 'ch-1');
-    await db.annotations.put(
-      note({ id: 'a-cu', chapterId: 'ch-1', note: 'ghi chú cũ', updatedAt: '2026-08-10T08:00:00Z' }),
-    );
-    await db.annotations.put(
-      note({ id: 'a-moi', chapterId: 'ch-3', note: 'ghi chú mới', updatedAt: '2026-08-21T08:00:00Z' }),
-    );
+    markRead('demo', 'ch-1');
+    seedNote({ id: 'a-cu', chapterId: 'ch-1', note: 'ghi chú cũ', updatedAt: '2026-08-10T08:00:00Z' });
+    seedNote({ id: 'a-moi', chapterId: 'ch-3', note: 'ghi chú mới', updatedAt: '2026-08-21T08:00:00Z' });
 
     renderDashboard();
 
@@ -365,17 +382,20 @@ describe('Học tiếp — ghi chú gần đây', () => {
     expect(rows[0]).toHaveTextContent('một đoạn được bôi đen');
   }, OVERSUBSCRIBED_MS);
 
-  it('ghi chú đã xoá là BIA MỘ, không phải một hàng để hiển thị', async () => {
-    // `deletedAt` khác null vẫn nằm trong bảng để lan sang thiết bị khác
-    // (`db/local.ts`'s `AnnotationRow`). Vẽ nó ra là dựng lại thứ người dùng
-    // vừa xoá, trên chính màn hình đầu tiên họ nhìn thấy.
+  it('một ghi chú đã xoá không còn ở đây để hiển thị — máy chủ đã xoá THẬT, không còn bia mộ nào để lọc', async () => {
+    // Trước Task 9 (và trước Task 7's chuyển đổi `useAnnotations`), một ghi
+    // chú đã xoá vẫn còn HÀNG trong `db.annotations` — `deletedAt` khác null
+    // là bia mộ, phải lọc ở CLIENT (xem git history của bài này). Sau Task 5/7:
+    // migration 0009 gỡ hẳn cột tombstone, `DELETE /annotations/:id` là một
+    // xoá THẬT, và `Ann` (`api/annotations.ts`) không có `deletedAt` nữa —
+    // `GET /annotations` không bao giờ trả một hàng đã xoá. Việc lọc mà bài
+    // này từng canh nay là một bất biến của MÁY CHỦ: mock dưới đây chỉ gieo
+    // ghi chú còn sống, đúng hình dạng một máy chủ thật sẽ trả sau khi ghi chú
+    // kia đã bị xoá.
     server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(4))));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
-    await markRead('demo', 'ch-1');
-    await db.annotations.put(note({ id: 'a-song', note: 'còn sống', updatedAt: '2026-08-10T08:00:00Z' }));
-    await db.annotations.put(
-      note({ id: 'a-xoa', note: 'đã xoá rồi', updatedAt: '2026-08-21T08:00:00Z', deletedAt: '2026-08-21T09:00:00Z' }),
-    );
+    markRead('demo', 'ch-1');
+    seedNote({ id: 'a-song', note: 'còn sống', updatedAt: '2026-08-10T08:00:00Z' });
 
     renderDashboard();
 
