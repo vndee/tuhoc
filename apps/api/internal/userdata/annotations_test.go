@@ -208,3 +208,24 @@ func TestCreateAnnotationRejectsDuplicateID(t *testing.T) {
 		t.Errorf("note = %q — lần POST thứ hai đã ghi đè", got)
 	}
 }
+
+// --- code review fix: a POST missing `anchor` (absent key OR explicit
+// null) must be a 400 from usecase validation, not a 500 from the
+// annotations.anchor jsonb NOT NULL constraint failing at INSERT. `{}` is
+// a syntactically valid anchor and must still be accepted — this package
+// carries anchor opaquely by design (see repo.go's AnnotationRow doc
+// comment) and has no business judging its shape beyond "present". ---
+
+func TestCreateAnnotationRejectsMissingAnchor(t *testing.T) {
+	env := newTestEnv(t)
+
+	idAbsent := uuid.NewString()
+	env.post(t, "/annotations", `{"id":"`+idAbsent+`","courseId":"c","chapterId":"c1","note":"x"}`, 400)
+
+	idNull := uuid.NewString()
+	env.post(t, "/annotations", `{"id":"`+idNull+`","courseId":"c","chapterId":"c1","anchor":null,"note":"x"}`, 400)
+
+	if rows := env.getAnnotations(t, ""); len(rows) != 0 {
+		t.Fatalf("400 vẫn ghi %d hàng — anchor thiếu hoặc null phải bị chặn trước khi chạm CSDL", len(rows))
+	}
+}
