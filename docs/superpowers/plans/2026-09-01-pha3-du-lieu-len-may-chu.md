@@ -36,9 +36,11 @@ Mọi task đều chịu những dòng này; chúng không lặp lại trong t�
    thuật>"}`. Trường `"code"` là biệt lệ của `internal/ai` vì web phải dịch
    riêng từng dạng hỏng của AI; hai endpoint của pha này không cần — người học
    chỉ thấy một toast "chưa lưu được" do web dịch.
-4. **Mọi phép quét toàn repo dùng `grep -a`.** `apps/web/src/api/ratings.ts`
-   chứa một byte NUL hợp lệ; `grep` không có `-a` xếp nó là nhị phân và **giấu
-   mất dòng**. Bài học Pha 2, đã suýt để lọt bản sao thứ chín của một khẳng định
+4. **Mọi phép quét toàn repo dùng `grep -a`.** HAI tệp chứa byte NUL hợp lệ —
+   `apps/web/src/api/ratings.ts` và `apps/web/src/annotations/MarginCards.tsx` —
+   và `grep` không có `-a` xếp chúng là nhị phân, **giấu mất dòng**. Đo ở Task 9:
+   bảng chứng cứ của một task đã sót đúng `MarginCards.tsx` vì lý do này. `git grep`
+   không dính bẫy ấy. Bài học Pha 2, đã suýt để lọt bản sao thứ chín của một khẳng định
    sai.
 5. **Chẩn đoán của editor đứng sau thực tế.** Tin `go build` / `go test` /
    `bun run typecheck`, không tin gạch đỏ trong IDE.
