@@ -279,21 +279,22 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// end, ahead of Task 7/8's routes depending on the same pattern.
 	app.Get("/me", auth.RequireWithUsecase(authUsecase), authHandler.Me)
 
-	// Sync routes (Task 7). These deliberately mount behind
+	// Sync route (Task 7; Pha 3 Task 3 cut GET /sync — see
+	// internal/sync/handler.go's package note for why POST /sync alone
+	// survives and for how long). It deliberately mounts behind
 	// auth.Require(deps.Pool) — the brief-mandated entry point named in
 	// ruling F3 — rather than auth.RequireWithUsecase(authUsecase) as /me
 	// does above: the task brief names auth.Require(pool) specifically as
-	// the interface Task 7 depends on, so these routes are what actually
+	// the interface Task 7 depends on, so this route is what actually
 	// exercises that exact entry point (RequireWithUsecase is only an
 	// internal optimization /me's own wiring uses to avoid building a
 	// second, equivalent auth Usecase/Repo pair over the same pool).
 	//
-	// POST carries bodyLimit(appsync.MaxPushBytes) ahead of the auth
+	// bodyLimit(appsync.MaxPushBytes) is mounted ahead of the auth
 	// middleware: this route has no use for POST /courses's 21 MiB app
 	// ceiling and never did, and putting the limit first means an
-	// oversized body never reaches the pool. GET has no body to limit.
+	// oversized body never reaches the pool.
 	syncHandler := appsync.NewHandler(appsync.NewUsecase(appsync.NewRepo(deps.Pool)))
-	app.Get("/sync", auth.Require(deps.Pool), syncHandler.Pull)
 	app.Post("/sync", bodyLimit(appsync.MaxPushBytes), auth.Require(deps.Pool), syncHandler.Push)
 
 	// Progress routes (Pha 3, Task 1). The REST replacement for the

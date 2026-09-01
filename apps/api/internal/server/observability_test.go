@@ -167,9 +167,15 @@ func TestInternalServerErrorsAreLoggedWithTheirWrappedCause(t *testing.T) {
 		"updatedAt": "2026-08-20T10:00:00Z",
 	}
 
-	// --- progress gone: sync.Push, sync.Pull, and the THIRD of Stats'
-	// three repo calls (CompletedChaptersByCourse), which is the only one
-	// of the three that reads `progress`.
+	// --- progress gone: sync.Push, userdata.ListProgress, and the THIRD of
+	// Stats' three repo calls (CompletedChaptersByCourse), which is the
+	// only one of the three that reads `progress`.
+	//
+	// This block used to also drive GET /sync (sync.Pull) through the same
+	// dropped table; Pha 3 Task 3 deleted that route (see
+	// internal/sync/handler.go's package note), and GET /progress
+	// (internal/userdata, Pha 3 Task 1) is its replacement here — the
+	// other HTTP-reachable reader of `progress` besides /stats.
 	dropTable(t, pool, "progress")
 
 	resp, body := doTestRequest(t, app, http.MethodPost, "/sync",
@@ -177,9 +183,9 @@ func TestInternalServerErrorsAreLoggedWithTheirWrappedCause(t *testing.T) {
 	assert500LoggedAndOpaque(t, "POST /sync", resp, body, logs.take(),
 		"sync.Push", "sync: upsert progress (course=", "sync push failed")
 
-	resp, body = doTestRequest(t, app, http.MethodGet, "/sync", nil, cookie)
-	assert500LoggedAndOpaque(t, "GET /sync", resp, body, logs.take(),
-		"sync.Pull", "sync: pull progress", "sync pull failed")
+	resp, body = doTestRequest(t, app, http.MethodGet, "/progress", nil, cookie)
+	assert500LoggedAndOpaque(t, "GET /progress", resp, body, logs.take(),
+		"userdata.ListProgress", "userdata: list progress", "list progress failed")
 
 	resp, body = doTestRequest(t, app, http.MethodGet, "/stats", nil, cookie)
 	assert500LoggedAndOpaque(t, "GET /stats (completed chapters)", resp, body, logs.take(),
