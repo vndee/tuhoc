@@ -66,8 +66,12 @@ Mọi task đều chịu những dòng này; chúng không lặp lại trong t�
 
 **`POST /sync` là mã chết theo lịch, không phải mã sống.** Sau Task 11, không
 bản web nào còn gọi nó **trừ** shim flush-một-lần chạy đúng một lần cho mỗi
-trình duyệt đã từng cài bản cũ. Điều kiện xoá: khi `apilog` cho thấy 0 request
-tới `POST /sync` trong 30 ngày liên tiếp. Ghi vào `docs/carried-forward.md` ở
+trình duyệt đã từng cài bản cũ. Điều kiện xoá: khi **access log** (middleware `logger`
+của fiber, ghi ra stdout — trên Render là log nền tảng) cho thấy 0 request tới
+`POST /sync` trong 30 ngày liên tiếp. **Không phải `apilog`**: gói ấy chỉ ghi lỗi
+5xx (`apilog.Internal`), nên một cú POST THÀNH CÔNG không bao giờ xuất hiện ở đó —
+một điều kiện đo bằng `apilog` sẽ luôn thoả ngay ngày đầu và xoá mất endpoint
+trong khi trình duyệt vẫn đang flush qua nó. Ghi vào `docs/carried-forward.md` ở
 Task 15 kèm câu truy vấn để kiểm, chứ không phải một dòng "dọn sau".
 
 **Cửa sổ ấy có một lỗ, và nó được chấp nhận có ý thức:** người dùng nào không mở

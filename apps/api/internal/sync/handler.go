@@ -13,7 +13,14 @@
 // unsent work and silent loss — so this package stays alive to receive it.
 //
 // The condition for deleting this package: zero POST /sync requests
-// recorded in apilog over 30 consecutive days. That is a scheduling
+// recorded in the access log (fiber's middleware/logger, wired in
+// server.go via Deps.LogOutput — every request gets a line there,
+// success or failure, and on Render that log is the platform log) over
+// 30 consecutive days. Not apilog: that package only ever records a 5xx
+// (see apilog.Internal), so a successful POST /sync — the ordinary case,
+// a browser's flush that actually worked — never appears there, and
+// "zero entries in apilog" would already be true on day one even while
+// browsers were still flushing through this route. That is a scheduling
 // decision, not a code change — once every upgrading browser has had its
 // one-time flush window, there is nothing left calling this route and it
 // can be removed the same way GET /sync was cut here.
