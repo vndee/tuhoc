@@ -1,8 +1,11 @@
-// Package sync implements the two multi-device sync endpoints (GET /sync,
-// POST /sync) and the last-write-wins (LWW) conflict rule they share. Like
-// auth, it is split by concern: this file (repo.go) is the only one that
-// speaks SQL — usecase.go holds validation/orchestration and handler.go
-// holds HTTP concerns.
+// Package sync implements POST /sync — the one route this package has
+// left — and the last-write-wins (LWW) conflict rule it applies. It used
+// to implement GET /sync too; Pha 3 Task 3 deleted that route, along with
+// this package's cursor machinery, because the browser stopped polling it
+// (see handler.go's package note for why this package still exists at
+// all, and the schedule for when it won't). Like auth, it is split by
+// concern: this file (repo.go) is the only one that speaks SQL — usecase.go
+// holds validation/orchestration and handler.go holds HTTP concerns.
 //
 // Naming note: this package's own name ("sync") intentionally matches its
 // directory, per the task brief and this repo's existing convention (see
@@ -28,11 +31,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ProgressRow is the subset of a progress row this package reads and
-// writes. UserID is deliberately absent from the struct used for pull
-// results (the caller already knows it — it's the authenticated user) and,
-// for push, is passed as a separate argument (never taken from client
-// input) — see PushBatch.
+// ProgressRow is the subset of a progress row this package writes via
+// PushBatch (it used to also carry Pull's read results — see repo.go's
+// package note; that reader is gone now). UserID is deliberately absent
+// from the struct itself: PushBatch takes it as a separate argument, never
+// taken from client input — see that method.
 type ProgressRow struct {
 	CourseID  string
 	ChapterID string
@@ -41,27 +44,25 @@ type ProgressRow struct {
 	UpdatedAt time.Time
 }
 
-// AnnotationRow is the subset of an annotations row this package reads and
-// writes. Anchor is carried as json.RawMessage end to end (HTTP body ->
-// here -> jsonb column and back) without ever being unmarshaled into a Go
-// struct, since this package has no reason to understand its shape.
+// AnnotationRow is the subset of an annotations row this package writes
+// via PushBatch (it used to also carry Pull's read results — see repo.go's
+// package note; that reader is gone now). Anchor is carried as
+// json.RawMessage end to end (HTTP body -> here -> jsonb column) without
+// ever being unmarshaled into a Go struct, since this package has no
+// reason to understand its shape.
 //
 // DeletedAt's meaning changed under Pha 3 Task 2 (migration 0009 dropped
 // annotations.deleted_at — see internal/userdata, the REST replacement
 // this column's removal was actually for). It used to be a literal
-// tombstone column value round-tripped end to end; now it exists ONLY on
-// the way IN, as what handler.go's Push parses out of an incoming batch
-// item. A non-nil DeletedAt on an item PushBatch receives means "the
-// client says this row is deleted" and is translated into a real SQL
-// DELETE (see deleteAnnotationSQL below) rather than written anywhere —
-// there is no column left to write it to. A row this package reads back
-// out via PullAnnotations therefore always has DeletedAt == nil: a
-// genuinely deleted annotation is not IN the table to be pulled at all
-// anymore, so there is nothing to represent "this one's a tombstone" on.
-// Propagating that absence as a delete EVENT to other devices over
-// GET /sync is a later task's problem (this task's brief explicitly
-// leaves the pull path alone beyond what's needed to keep it running
-// against the post-0009 schema).
+// tombstone column value round-tripped end to end (written by PushBatch,
+// read back by PullAnnotations); now — with PullAnnotations deleted
+// alongside the rest of GET /sync (Pha 3 Task 3) — it exists ONLY on the
+// way IN, as what handler.go's Push parses out of an incoming batch item.
+// A non-nil DeletedAt on an item PushBatch receives means "the client says
+// this row is deleted" and is translated into a real SQL DELETE (see
+// deleteAnnotationSQL below) rather than written anywhere — there is no
+// column left to write it to, and no pull path left to read it back out
+// of either way.
 type AnnotationRow struct {
 	ID        uuid.UUID
 	CourseID  string
@@ -161,81 +162,6 @@ const deleteAnnotationSQL = `
 DELETE FROM annotations
 WHERE id = $1 AND user_id = $2 AND $3 > updated_at;
 `
-
-// PullProgress returns every progress row belonging to userID with
-// updated_at strictly after since — including rows with done=false, which
-// a filtered query would wrongly hide: a device that marks a chapter
-// unread needs that reversal to propagate to other devices exactly like
-// any other change, not be treated as if nothing happened.
-func (r *Repo) PullProgress(ctx context.Context, userID uuid.UUID, since time.Time) ([]ProgressRow, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT course_id, chapter_id, status, done, updated_at
-		 FROM progress
-		 WHERE user_id = $1 AND updated_at > $2
-		 ORDER BY updated_at ASC`,
-		userID, since,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("sync: pull progress: %w", err)
-	}
-	defer rows.Close()
-
-	out := []ProgressRow{}
-	for rows.Next() {
-		var p ProgressRow
-		if err := rows.Scan(&p.CourseID, &p.ChapterID, &p.Status, &p.Done, &p.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("sync: scan progress row: %w", err)
-		}
-		out = append(out, p)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("sync: pull progress: %w", err)
-	}
-	return out, nil
-}
-
-// PullAnnotations returns every annotation row belonging to userID with
-// updated_at strictly after since.
-//
-// It used to also select deleted_at, so a tombstoned row still came back
-// (rather than being hidden) and a deletion made on one device could
-// propagate to other devices as a deletion event. Migration 0009 (Pha 3
-// Task 2) dropped that column — this SELECT no longer names it, because
-// there is nothing left in the row to name — so a deleted annotation is
-// simply not present in this result at all anymore, indistinguishable
-// from one that never existed. That is a real behavior change for
-// GET /sync's tombstone propagation, and it is INTENTIONALLY left as-is
-// here: this task's brief scopes the pull side to "whatever the running
-// code needs to keep working against the new schema", not a redesign of
-// how deletions propagate to pull — that is a later task's problem. Every
-// AnnotationRow this method returns has DeletedAt == nil (see that
-// field's own doc comment on the struct).
-func (r *Repo) PullAnnotations(ctx context.Context, userID uuid.UUID, since time.Time) ([]AnnotationRow, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT id, course_id, chapter_id, anchor, note, created_at, updated_at
-		 FROM annotations
-		 WHERE user_id = $1 AND updated_at > $2
-		 ORDER BY updated_at ASC`,
-		userID, since,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("sync: pull annotations: %w", err)
-	}
-	defer rows.Close()
-
-	out := []AnnotationRow{}
-	for rows.Next() {
-		var a AnnotationRow
-		if err := rows.Scan(&a.ID, &a.CourseID, &a.ChapterID, &a.Anchor, &a.Note, &a.CreatedAt, &a.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("sync: scan annotation row: %w", err)
-		}
-		out = append(out, a)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("sync: pull annotations: %w", err)
-	}
-	return out, nil
-}
 
 // PushBatch applies every progress and annotation item in one transaction:
 // either the whole batch commits or none of it does, so a client's outbox

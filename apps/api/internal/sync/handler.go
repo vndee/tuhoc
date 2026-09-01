@@ -1,3 +1,30 @@
+// This package is dead code on a schedule, not dead code.
+//
+// Pha 3 replaced the old cursor+outbox sync protocol (GET/POST /sync) with
+// plain REST resources — GET/PUT /progress (internal/userdata, Task 1) and
+// the four /annotations verbs (internal/userdata, Task 2) — because the
+// browser is no longer local-first. Every new read and write in the web
+// client goes through those instead. GET /sync itself is deleted (Pha 3
+// Task 3): there is no client left that calls it.
+//
+// POST /sync survives on purpose. An upgrading browser flushes its old
+// offline outbox through it exactly once, before deleting its own local
+// database, and that flush is the only thing standing between a learner's
+// unsent work and silent loss — so this package stays alive to receive it.
+//
+// The condition for deleting this package: zero POST /sync requests
+// recorded in apilog over 30 consecutive days. That is a scheduling
+// decision, not a code change — once every upgrading browser has had its
+// one-time flush window, there is nothing left calling this route and it
+// can be removed the same way GET /sync was cut here.
+//
+// What that schedule does NOT cover, stated plainly rather than glossed
+// over: a user who does not open the upgraded app within that 30-day
+// window loses whatever sat unflushed in their local outbox. That is a
+// known, accepted hole — closed by CHOOSING WHEN this package is safe to
+// delete (a wide enough margin that any real user has shown up at least
+// once), not by anything this code does. See docs/carried-forward.md for
+// the fuller accounting of what Pha 3 carries forward.
 package sync
 
 import (
@@ -106,71 +133,6 @@ type pushResponse struct {
 	Applied int `json:"applied"`
 }
 
-type pullResponse struct {
-	Progress    []progressItem   `json:"progress"`
-	Annotations []annotationItem `json:"annotations"`
-	Cursor      string           `json:"cursor"`
-}
-
-// Pull handles GET /sync?since=<RFC3339Nano>. It is mounted behind
-// auth.Require, so auth.UID(c) is always populated by the time this runs.
-//
-// since being absent or the empty string means "the beginning of time":
-// every row the user has ever written is returned, and is how a device
-// syncing for the first time (or after local storage was wiped) bootstraps
-// its full state. A since value that is present but fails to parse as
-// RFC3339Nano is a client error (400), not treated the same as absent —
-// silently falling back to "everything" on a typo would let a broken
-// client's every request quietly become a full resync without ever
-// noticing.
-func (h *Handler) Pull(c *fiber.Ctx) error {
-	since := time.Time{}
-	if raw := c.Query("since"); raw != "" {
-		parsed, err := time.Parse(timeLayout, raw)
-		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid since: must be RFC3339Nano"})
-		}
-		since = parsed
-	}
-
-	progress, annotations, cursor, err := h.uc.Pull(c.Context(), auth.UID(c), since)
-	if err != nil {
-		apilog.Internal(c, "sync.Pull", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "sync pull failed"})
-	}
-
-	resp := pullResponse{
-		Progress:    make([]progressItem, len(progress)),
-		Annotations: make([]annotationItem, len(annotations)),
-	}
-	for i, p := range progress {
-		resp.Progress[i] = progressItem{
-			CourseID:  p.CourseID,
-			ChapterID: p.ChapterID,
-			Status:    p.Status,
-			Done:      p.Done,
-			UpdatedAt: p.UpdatedAt.UTC().Format(timeLayout),
-		}
-	}
-	for i, a := range annotations {
-		resp.Annotations[i] = annotationItem{
-			ID:        a.ID.String(),
-			CourseID:  a.CourseID,
-			ChapterID: a.ChapterID,
-			Anchor:    a.Anchor,
-			Note:      a.Note,
-			CreatedAt: a.CreatedAt.UTC().Format(timeLayout),
-			UpdatedAt: a.UpdatedAt.UTC().Format(timeLayout),
-			DeletedAt: formatOptionalTime(a.DeletedAt),
-		}
-	}
-	if !cursor.IsZero() {
-		resp.Cursor = cursor.UTC().Format(timeLayout)
-	}
-
-	return c.Status(fiber.StatusOK).JSON(resp)
-}
-
 // Push handles POST /sync {"progress":[...],"annotations":[...]}. It is
 // mounted behind auth.Require, so auth.UID(c) is always populated by the
 // time this runs.
@@ -257,12 +219,4 @@ func (h *Handler) Push(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(pushResponse{Applied: applied})
-}
-
-func formatOptionalTime(t *time.Time) *string {
-	if t == nil {
-		return nil
-	}
-	s := t.UTC().Format(timeLayout)
-	return &s
 }
