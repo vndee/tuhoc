@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { BrowserRouter, useLocation } from 'react-router-dom';
+import { startEventFlusher } from './api/events';
 import { useMe } from './api/useMe';
 import { LanguageProvider } from './i18n/LanguageProvider';
 import { LanguageSwitcher } from './i18n/LanguageSwitcher';
@@ -137,17 +138,32 @@ function AppShell() {
  * comments in src/sync/engine.ts) — calling `startSync()` on every render
  * where `meQuery.data` is still the same signed-in user is a safe no-op,
  * not a second interval stacking on top of the first.
+ *
+ * Task 8 (Pha 3) adds `startEventFlusher()` (`./api/events.ts`) right
+ * alongside `startSync()`, gated by the exact same `userId` — a
+ * heartbeat can only be queued from a chapter route, which sits behind
+ * `<RequireAuth>`, so there is nothing to flush before this same
+ * condition is true anyway, and gating it identically means a logout
+ * that stops the sync loop stops the flusher in the same tick rather
+ * than leaving it posting against a session that just died. Unlike
+ * `startSync`/`stopSync`, `startEventFlusher` is NOT a module-level
+ * singleton (see its own doc comment) — its teardown is whatever THIS
+ * effect's own call returned, captured in `stopFlusher` below, not a
+ * shared top-level `stopEventFlusher()`.
  */
 function useSyncLifecycle(): void {
   const meQuery = useMe();
   const userId = meQuery.data?.id ?? null;
 
   useEffect(() => {
+    let stopFlusher: (() => void) | null = null;
     if (userId !== null) {
       startSync();
+      stopFlusher = startEventFlusher();
     }
     return () => {
       stopSync();
+      stopFlusher?.();
     };
   }, [userId]);
 }
