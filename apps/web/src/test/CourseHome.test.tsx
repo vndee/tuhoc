@@ -40,6 +40,12 @@ const server = setupServer(
   // it, so a default authenticated `/me` here keeps them describing the same
   // behaviour as before; Task 12's own block overrides it per-test.
   http.get('/me', () => HttpResponse.json({ id: 'u1', email: 'a@vi.vn', name: 'Người học' })),
+  // Task 6, Pha 3: `useProgress` (behind `Sidebar`'s `doneChapterIds`) now
+  // reads `GET /progress` instead of a local `db.progress` row — see
+  // `reader/ChapterView.test.tsx`'s server setup for the same change. No
+  // progress by default; the one test that needs a chapter already marked
+  // read overrides this with `server.use(...)`.
+  http.get('/progress', () => HttpResponse.json({ progress: [] })),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
@@ -122,8 +128,16 @@ describe('CourseHome', () => {
   });
 
   it('marks chapters read in LOCAL progress (Ruling F4 / debt #1 — real data, not a prop) with the "done" class', async () => {
-    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(3))));
-    await db.progress.put({ courseId: 'demo', chapterId: 'ch-2', status: 'read', done: true, updatedAt: new Date().toISOString() });
+    server.use(
+      http.get('/courses/demo', () => HttpResponse.json(buildManifest(3))),
+      // Task 6, Pha 3: "already read" now comes from the server, not a
+      // pre-seeded Dexie row.
+      http.get('/progress', () =>
+        HttpResponse.json({
+          progress: [{ courseId: 'demo', chapterId: 'ch-2', status: 'read', done: true, updatedAt: new Date().toISOString() }],
+        }),
+      ),
+    );
 
     renderCourseHome();
 
@@ -135,9 +149,15 @@ describe('CourseHome', () => {
     expect(links.find((a) => a.getAttribute('data-ch') === 'ch-3')?.className).not.toContain('done');
   });
 
-  it('does NOT mark a chapter done from a DIFFERENT course\'s local progress row (courseId scoping)', async () => {
-    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(3))));
-    await db.progress.put({ courseId: 'other-course', chapterId: 'ch-2', status: 'read', done: true, updatedAt: new Date().toISOString() });
+  it('does NOT mark a chapter done from a DIFFERENT course\'s progress row (courseId scoping)', async () => {
+    server.use(
+      http.get('/courses/demo', () => HttpResponse.json(buildManifest(3))),
+      http.get('/progress', () =>
+        HttpResponse.json({
+          progress: [{ courseId: 'other-course', chapterId: 'ch-2', status: 'read', done: true, updatedAt: new Date().toISOString() }],
+        }),
+      ),
+    );
 
     renderCourseHome();
 
@@ -220,8 +240,14 @@ describe('Task 12 — tiến độ chỉ hiện khi có phiên', () => {
   });
 
   it('người đọc ĐÃ đăng nhập: cùng dòng tiến độ ấy hiện đúng trên trang', async () => {
-    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(4))));
-    await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: new Date().toISOString() });
+    server.use(
+      http.get('/courses/demo', () => HttpResponse.json(buildManifest(4))),
+      http.get('/progress', () =>
+        HttpResponse.json({
+          progress: [{ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: new Date().toISOString() }],
+        }),
+      ),
+    );
 
     renderCourseHome();
     await screen.findByRole('heading', { name: 'Khóa học demo' });

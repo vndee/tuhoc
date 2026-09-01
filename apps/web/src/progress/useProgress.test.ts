@@ -1,98 +1,240 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { clearLocalData, db } from '../db/local';
+import { createElement, type ReactNode } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fetchProgress, putProgress, type ProgressRow } from '../api/progress';
 import { useProgress } from './useProgress';
 
-async function clearAll() {
-  await clearLocalData();
+// Task 6: the hook's data layer moved from Dexie's `liveQuery` (this
+// file's pre-Task-6 version drove everything off `db.progress`/`db.outbox`
+// — see git history) to TanStack Query over Task 5's `api/progress.ts`.
+// Every wire-level shape/error-handling concern (`assertProgress`,
+// `MalformedProgressError`, the exact PUT/GET bytes) is already covered by
+// `api/progress.test.ts` via MSW; this file mocks `putProgress`/
+// `fetchProgress` directly at the module boundary instead, because it is
+// testing the HOOK's own logic — optimistic patch, rollback, stable
+// identities — not the HTTP contract underneath it.
+vi.mock('../api/progress', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/progress')>();
+  return {
+    ...actual,
+    fetchProgress: vi.fn(),
+    putProgress: vi.fn(),
+  };
+});
+
+function row(over: Partial<ProgressRow> = {}): ProgressRow {
+  return {
+    courseId: 'c',
+    chapterId: 'c1',
+    status: 'read',
+    done: true,
+    updatedAt: '2026-01-01T00:00:00Z',
+    ...over,
+  };
 }
 
-beforeEach(clearAll);
-afterEach(clearAll);
+// Plain `React.createElement` (no JSX) — this file stays `.ts`, per the
+// task brief's own file list, and `.ts` cannot parse JSX syntax.
+let queryClient: QueryClient;
+function wrapper({ children }: { children: ReactNode }) {
+  return createElement(QueryClientProvider, { client: queryClient }, children);
+}
 
-describe('useProgress — reading a chapter', () => {
-  it('starts with isRead false for a chapter with no progress row', () => {
-    const { result } = renderHook(() => useProgress('c1'));
-    expect(result.current.isRead('ch1')).toBe(false);
+/**
+ * `serverRows` is a tiny in-memory stand-in for the backend `putProgress`
+ * writes to and `fetchProgress` reads from. `onSettled` (see useProgress.ts)
+ * always invalidates and refetches after a mutation, real backend or not —
+ * a `fetchProgress` mock that always resolves `[]`, independent of what
+ * was just PUT, would make every test that toggles-then-awaits-settling
+ * flake: the refetch would clobber the very row the test just wrote, for a
+ * reason that has nothing to do with the hook (an unrealistic double). Mirroring
+ * the two functions against one shared array is what a real server does for
+ * free and keeps these tests honest about what "settled" means.
+ */
+let serverRows: ProgressRow[];
+
+beforeEach(() => {
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  serverRows = [];
+  vi.mocked(fetchProgress)
+    .mockReset()
+    .mockImplementation(async () => serverRows.map((r) => ({ ...r })));
+  vi.mocked(putProgress)
+    .mockReset()
+    .mockImplementation(async (put) => {
+      const idx = serverRows.findIndex(
+        (r) => r.courseId === put.courseId && r.chapterId === put.chapterId && r.status === put.status,
+      );
+      const saved: ProgressRow = { ...put, updatedAt: new Date().toISOString() };
+      if (idx === -1) serverRows.push(saved);
+      else serverRows[idx] = saved;
+    });
+});
+
+/* ========================================================================
+ * GHI LẠC QUAN — ba kịch bản bắt buộc của brief (Step 1–3), verbatim.
+ * ======================================================================== */
+
+describe('useProgress — ghi lạc quan (Query + mutation, không còn outbox)', () => {
+  it('toggleRead lật trạng thái ngay lập tức, không chờ server', async () => {
+    let resolvePut: () => void = () => {};
+    vi.mocked(putProgress).mockReturnValueOnce(
+      new Promise<void>((r) => {
+        resolvePut = r;
+      }),
+    );
+
+    const { result } = renderHook(() => useProgress('c'), { wrapper });
+    await waitFor(() => expect(result.current.isRead('c1')).toBe(false));
+
+    act(() => result.current.toggleRead('c1'));
+    expect(result.current.isRead('c1')).toBe(true); // chưa resolve — đây là phần "lạc quan"
+
+    await act(async () => {
+      resolvePut();
+    });
   });
 
-  it('toggleRead writes a local progress row AND enqueues it in the outbox (offline-first contract)', async () => {
-    const { result } = renderHook(() => useProgress('c1'));
+  it('put hỏng thì trạng thái quay về giá trị cũ', async () => {
+    vi.mocked(putProgress).mockRejectedValueOnce(new Error('mạng hỏng'));
+    const { result } = renderHook(() => useProgress('c'), { wrapper });
+    await waitFor(() => expect(result.current.isRead('c1')).toBe(false));
+
+    act(() => result.current.toggleRead('c1'));
+    await waitFor(() => expect(result.current.isRead('c1')).toBe(false));
+  });
+
+  it('lật hai lần nhanh kết thúc ở trạng thái cuối', async () => {
+    const { result } = renderHook(() => useProgress('c'), { wrapper });
+    await waitFor(() => expect(result.current.isRead('c1')).toBe(false));
 
     act(() => {
-      result.current.toggleRead('ch1');
+      result.current.toggleRead('c1');
+      result.current.toggleRead('c1');
     });
-
-    await waitFor(() => expect(result.current.isRead('ch1')).toBe(true));
-
-    const row = await db.progress.get(['c1', 'ch1', 'read']);
-    expect(row).toMatchObject({ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true });
-
-    const outboxRows = await db.outbox.toArray();
-    expect(outboxRows).toHaveLength(1);
-    expect(outboxRows[0]).toMatchObject({ table: 'progress', row: { courseId: 'c1', chapterId: 'ch1', status: 'read', done: true } });
+    await waitFor(() => expect(result.current.isRead('c1')).toBe(false));
+    expect(vi.mocked(putProgress)).toHaveBeenCalledTimes(2);
   });
 
-  it('toggling a second time marks the chapter unread again, with a SECOND outbox entry', async () => {
-    const { result } = renderHook(() => useProgress('c1'));
+  it('R2: cache lạc quan có updatedAt tạm, nhưng putProgress KHÔNG bao giờ nhận nó', async () => {
+    const { result } = renderHook(() => useProgress('c'), { wrapper });
+    await waitFor(() => expect(result.current.isRead('c1')).toBe(false));
+
+    act(() => result.current.toggleRead('c1'));
+
+    // Bản vá lạc quan trong cache có updatedAt — đó là điều làm `isRead` đúng
+    // NGAY LẬP TỨC, không cần chờ mutationFn (đồng bộ, kiểm tra được ngay).
+    const cached = queryClient.getQueryData<ProgressRow[]>(['progress']);
+    expect(cached?.find((r) => r.chapterId === 'c1')?.updatedAt).toEqual(expect.any(String));
+
+    // Nhưng thứ THỰC SỰ gửi lên máy chủ (mutationFn, chạy sau một microtask)
+    // thì đúng bốn trường, không updatedAt — putProgress's own variables
+    // argument is the ONLY thing that reaches the wire (`api/progress.ts`'s
+    // `putProgress` param type is `Omit<ProgressRow, 'updatedAt'>`).
+    await waitFor(() => expect(vi.mocked(putProgress)).toHaveBeenCalled());
+    const sent = vi.mocked(putProgress).mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(sent).toEqual({ courseId: 'c', chapterId: 'c1', status: 'read', done: true });
+    expect(sent).not.toHaveProperty('updatedAt');
+  });
+
+  it('saveError bật lên khi put hỏng, và tắt lại ở lần lật kế tiếp', async () => {
+    vi.mocked(putProgress).mockRejectedValueOnce(new Error('mạng hỏng'));
+    const { result } = renderHook(() => useProgress('c'), { wrapper });
+    await waitFor(() => expect(result.current.saveError).toBe(false));
+
+    act(() => result.current.toggleRead('c1'));
+    await waitFor(() => expect(result.current.saveError).toBe(true));
+
+    vi.mocked(putProgress).mockResolvedValueOnce(undefined);
+    act(() => result.current.toggleRead('c1'));
+    await waitFor(() => expect(result.current.saveError).toBe(false));
+  });
+});
+
+/* ========================================================================
+ * HỢP ĐỒNG CŨ — isRead/exDone/doneChapterIds/partStats/nhận diện hàm ổn
+ * định, giữ nguyên qua kiến trúc mới (CourseNav/Dashboard/ChapterView
+ * không phải sửa).
+ * ======================================================================== */
+
+describe('useProgress — đọc chương', () => {
+  it('isRead false khi chưa có hàng tiến độ nào', async () => {
+    const { result } = renderHook(() => useProgress('c'), { wrapper });
+    await waitFor(() => expect(result.current.isRead('ch1')).toBe(false));
+  });
+
+  it('toggleRead rồi toggleRead lần nữa quay lại false, gửi hai PUT khác `done`', async () => {
+    const { result } = renderHook(() => useProgress('c'), { wrapper });
+    await waitFor(() => expect(result.current.isRead('ch1')).toBe(false));
 
     act(() => result.current.toggleRead('ch1'));
     await waitFor(() => expect(result.current.isRead('ch1')).toBe(true));
+    // Để mutation đầu SETTLE hẳn (mutationFn + onSettled's invalidate/refetch)
+    // trước khi lật lần hai — nếu không, `isRead` (đã đúng, lạc quan) và
+    // trạng thái máy chủ giả lập có thể tạm thời lệch nhau một nhịp.
+    await waitFor(() => expect(serverRows).toHaveLength(1));
 
     act(() => result.current.toggleRead('ch1'));
     await waitFor(() => expect(result.current.isRead('ch1')).toBe(false));
 
-    const outboxRows = await db.outbox.toArray();
-    expect(outboxRows).toHaveLength(2);
-    expect(outboxRows[1].row).toMatchObject({ done: false });
+    expect(vi.mocked(putProgress).mock.calls.map((c) => c[0].done)).toEqual([true, false]);
   });
 
-  it('doneChapterIds reflects exactly the chapters marked read for THIS course, nothing else', async () => {
-    const { result } = renderHook(() => useProgress('c1'));
+  it('doneChapterIds phản ánh đúng các chương đã đọc của KHOÁ NÀY, không hơn không kém', async () => {
+    const { result } = renderHook(() => useProgress('c'), { wrapper });
+    await waitFor(() => expect(result.current.isRead).toBeDefined());
 
     act(() => result.current.toggleRead('ch1'));
     act(() => result.current.toggleRead('ch2'));
     await waitFor(() => expect(result.current.doneChapterIds.has('ch1')).toBe(true));
     await waitFor(() => expect(result.current.doneChapterIds.has('ch2')).toBe(true));
-
     expect(result.current.doneChapterIds.size).toBe(2);
   });
 
-  it('data is scoped by courseId: a progress row for a DIFFERENT course never leaks into isRead/doneChapterIds', async () => {
-    await db.progress.put({ courseId: 'other-course', chapterId: 'ch1', status: 'read', done: true, updatedAt: new Date().toISOString() });
+  it('dữ liệu tách theo courseId: một hàng của khoá KHÁC không lọt vào isRead/doneChapterIds', async () => {
+    serverRows.push(row({ courseId: 'other-course', chapterId: 'ch1' }));
 
-    const { result } = renderHook(() => useProgress('c1'));
+    const { result } = renderHook(() => useProgress('c'), { wrapper });
+    await waitFor(() => expect(vi.mocked(fetchProgress)).toHaveBeenCalled());
 
-    // Give the live query a tick to settle (it starts async).
-    await waitFor(() => expect(result.current.isRead).toBeDefined());
     expect(result.current.isRead('ch1')).toBe(false);
     expect(result.current.doneChapterIds.has('ch1')).toBe(false);
   });
 
-  it('reacts to a progress row written from OUTSIDE the hook (e.g. the sync engine pulling a remote update)', async () => {
-    const { result } = renderHook(() => useProgress('c1'));
+  it('phản ứng với một hàng tiến độ tới từ NGOÀI hook (một GET /progress khác vừa trả về)', async () => {
+    const { result } = renderHook(() => useProgress('c'), { wrapper });
     expect(result.current.isRead('ch1')).toBe(false);
 
-    await db.progress.put({ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: new Date().toISOString() });
+    queryClient.setQueryData<ProgressRow[]>(['progress'], [row({ chapterId: 'ch1' })]);
 
     await waitFor(() => expect(result.current.isRead('ch1')).toBe(true));
   });
 });
 
-describe('useProgress — exercises', () => {
-  it('exDone/toggleEx use the "ex:<n>" status string, independent per exercise index', async () => {
-    const { result } = renderHook(() => useProgress('c1'));
+describe('useProgress — bài tập', () => {
+  it('exDone/toggleEx dùng chuỗi "ex:<n>", độc lập theo từng chỉ số bài tập', async () => {
+    const { result } = renderHook(() => useProgress('c'), { wrapper });
+    await waitFor(() => expect(result.current.isRead).toBeDefined());
 
     act(() => result.current.toggleEx('ch1', 0));
     await waitFor(() => expect(result.current.exDone('ch1', 0)).toBe(true));
     expect(result.current.exDone('ch1', 1)).toBe(false);
 
-    const row = await db.progress.get(['c1', 'ch1', 'ex:0']);
-    expect(row).toMatchObject({ status: 'ex:0', done: true });
+    await waitFor(() => expect(vi.mocked(putProgress)).toHaveBeenCalled());
+    expect(vi.mocked(putProgress).mock.calls[0]?.[0]).toEqual({
+      courseId: 'c',
+      chapterId: 'ch1',
+      status: 'ex:0',
+      done: true,
+    });
   });
 
-  it('toggling exercise n does not affect chapter isRead, and vice versa', async () => {
-    const { result } = renderHook(() => useProgress('c1'));
+  it('lật bài tập n không ảnh hưởng isRead của chương, và ngược lại', async () => {
+    const { result } = renderHook(() => useProgress('c'), { wrapper });
+    await waitFor(() => expect(result.current.isRead).toBeDefined());
 
     act(() => result.current.toggleEx('ch1', 0));
     await waitFor(() => expect(result.current.exDone('ch1', 0)).toBe(true));
@@ -105,10 +247,9 @@ describe('useProgress — exercises', () => {
 });
 
 describe('useProgress — partStats', () => {
-  it('counts distinct read chapters and distinct done exercises correctly across toggles', async () => {
-    const { result } = renderHook(() => useProgress('c1'));
-
-    expect(result.current.partStats).toEqual({ chaptersRead: 0, exercisesDone: 0 });
+  it('đếm đúng số chương đã đọc và số bài tập đã xong, kể cả khi bỏ đánh dấu', async () => {
+    const { result } = renderHook(() => useProgress('c'), { wrapper });
+    await waitFor(() => expect(result.current.partStats).toEqual({ chaptersRead: 0, exercisesDone: 0 }));
 
     act(() => result.current.toggleRead('ch1'));
     act(() => result.current.toggleRead('ch2'));
@@ -124,19 +265,22 @@ describe('useProgress — partStats', () => {
     await waitFor(() => expect(result.current.partStats).toEqual({ chaptersRead: 1, exercisesDone: 1 }));
   });
 
-  it('does not count a different course\'s rows toward this hook instance\'s partStats', async () => {
-    await db.progress.put({ courseId: 'other-course', chapterId: 'chX', status: 'read', done: true, updatedAt: new Date().toISOString() });
+  it('không đếm hàng của khoá khác vào partStats của instance này', async () => {
+    serverRows.push(row({ courseId: 'other-course', chapterId: 'chX' }));
 
-    const { result } = renderHook(() => useProgress('c1'));
+    const { result } = renderHook(() => useProgress('c'), { wrapper });
+    await waitFor(() => expect(vi.mocked(fetchProgress)).toHaveBeenCalled());
+
     act(() => result.current.toggleRead('ch1'));
-
     await waitFor(() => expect(result.current.partStats.chaptersRead).toBe(1));
   });
 });
 
-describe('useProgress — stable action identities', () => {
-  it('toggleRead/toggleEx/isRead/exDone keep the same function identity across re-renders (safe as an effect dependency)', () => {
-    const { result, rerender } = renderHook(() => useProgress('c1'));
+describe('useProgress — nhận diện hàm ổn định', () => {
+  it('toggleRead/toggleEx/isRead/exDone giữ cùng identity qua các lần render lại (an toàn làm dependency của effect)', async () => {
+    const { result, rerender } = renderHook(() => useProgress('c'), { wrapper });
+    await waitFor(() => expect(result.current.isRead).toBeDefined());
+
     const first = result.current;
     rerender();
     const second = result.current;

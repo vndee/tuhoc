@@ -225,6 +225,8 @@ export const en: Messages = {
   'progress.lede': 'Your study figures, told as a sentence.',
   'progress.loading': 'Loading your progress…',
   'progress.error': 'Could not load progress. These figures live on the server, so this part needs a connection.',
+  /** See vi.ts's comment — Task 6, Pha 3's optimistic `toggleRead`/`toggleEx` rollback message. */
+  'progress.saveFailed': 'Your progress was not saved.',
   'progress.sentence': (minutes: string, streak: string) =>
     `You have studied ${minutes} minutes, on a ${streak}-day streak.`,
   'progress.sentenceNoStreak': (minutes: string) =>
