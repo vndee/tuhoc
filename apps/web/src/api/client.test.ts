@@ -216,6 +216,50 @@ describe('api.get/api.post', () => {
 });
 
 /**
+ * `patch`/`del` join `get`/`post`/`put` for Task 5's `annotations.ts`:
+ * `PATCH /annotations/:id` and `DELETE /annotations/:id` both answer 204
+ * with no body. `del` is typed `Promise<void>` for the identical reason
+ * `put` already is (see `api.put`'s own doc comment) — its only caller
+ * today is a 204 endpoint, so a generic `T` would hand back an `undefined`
+ * wearing a type it does not have. `patch` keeps `<T>` because unlike
+ * `del`, a PATCH that answers a body is a plausible future endpoint, not a
+ * hypothetical one this client has any evidence against.
+ */
+describe('api.patch/api.del', () => {
+  it('api.del resolves with undefined on a 204 with no body, without throwing NotJsonError', async () => {
+    server.use(http.delete('/annotations/x', () => new HttpResponse(null, { status: 204 })));
+    await expect(api.del('/annotations/x')).resolves.toBeUndefined();
+  });
+
+  it('api.patch sends the PATCH method and the body as JSON', async () => {
+    server.use(
+      http.patch('/annotations/x', async ({ request }) => {
+        expect(request.method).toBe('PATCH');
+        expect(request.headers.get('content-type')).toMatch(/application\/json/);
+        await expect(request.json()).resolves.toEqual({ note: 'a' });
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await expect(api.patch('/annotations/x', { note: 'a' })).resolves.toBeUndefined();
+  });
+
+  it('api.patch resolves with the parsed JSON body when the endpoint answers one — <T> is not dead code', async () => {
+    server.use(http.patch('/echo', () => HttpResponse.json({ ok: true })));
+    await expect(api.patch<{ ok: boolean }>('/echo', {})).resolves.toEqual({ ok: true });
+  });
+
+  it('a non-2xx PATCH rejects with ApiError, same as every other verb', async () => {
+    server.use(http.patch('/broken-patch', () => HttpResponse.json({ error: 'nope' }, { status: 404 })));
+    await expect(api.patch('/broken-patch', {})).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('a non-2xx DELETE rejects with ApiError, same as every other verb', async () => {
+    server.use(http.delete('/broken-delete', () => HttpResponse.json({ error: 'nope' }, { status: 404 })));
+    await expect(api.del('/broken-delete')).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+/**
  * The classifier `<RequireAuth>` leans on to tell "the server said no" from
  * "no server said anything" (Task 7b). Every case here is a REAL failure
  * driven through the real `api.get`, not a hand-built error object: the
