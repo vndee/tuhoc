@@ -2,6 +2,7 @@ package userdata
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -43,4 +44,51 @@ func (uc *Usecase) PutProgress(ctx context.Context, userID uuid.UUID, row Progre
 		return fmt.Errorf("%w: (course=%q chapter=%q status=%q) missing a required field", ErrInvalidProgress, row.CourseID, row.ChapterID, row.Status)
 	}
 	return uc.repo.UpsertProgress(ctx, userID, row)
+}
+
+// ErrInvalidAnnotation is returned by Usecase.CreateAnnotation when a
+// required field is missing or row.ID is the zero uuid. It is checked
+// with errors.Is by handler.go to produce a 400, the same split
+// ErrInvalidProgress draws for PUT /progress.
+var ErrInvalidAnnotation = errors.New("userdata: invalid annotation item")
+
+// ListAnnotations returns every annotation row belonging to userID,
+// optionally filtered to one courseID (courseID == "" means every
+// course — see Repo.ListAnnotations).
+func (uc *Usecase) ListAnnotations(ctx context.Context, userID uuid.UUID, courseID string) ([]AnnotationRow, error) {
+	return uc.repo.ListAnnotations(ctx, userID, courseID)
+}
+
+// CreateAnnotation validates row and, if valid, writes it under userID's
+// identity. userID comes from auth.UID (the handler's job to supply, from
+// the authenticated session) — it is never taken from the request body,
+// same as PutProgress.
+//
+// row.ID must not be uuid.Nil: an annotation whose id could never be
+// looked back up (or, worse, one that every client forgetting to generate
+// an id collides on) is unaddressable in exactly the way an empty
+// CourseID/ChapterID is for progress.
+//
+// ErrDuplicateAnnotation from the repo layer is returned as-is, not
+// wrapped further, mirroring auth.Usecase.Register's handling of
+// ErrEmailTaken, so handler.go can errors.Is against it directly.
+func (uc *Usecase) CreateAnnotation(ctx context.Context, userID uuid.UUID, row AnnotationRow) error {
+	if row.ID == uuid.Nil || row.CourseID == "" || row.ChapterID == "" {
+		return fmt.Errorf("%w: (id=%s course=%q chapter=%q) missing a required field", ErrInvalidAnnotation, row.ID, row.CourseID, row.ChapterID)
+	}
+	return uc.repo.CreateAnnotation(ctx, userID, row)
+}
+
+// PatchAnnotation passes straight through to the repo layer: there is no
+// business validation to apply beyond the repo's own owner-scoped WHERE
+// clause (see Repo.PatchAnnotation), and note/anchor's "nil means leave
+// untouched" contract is a repo-layer SQL detail, not a usecase rule.
+func (uc *Usecase) PatchAnnotation(ctx context.Context, userID, id uuid.UUID, note *string, anchor json.RawMessage) (bool, error) {
+	return uc.repo.PatchAnnotation(ctx, userID, id, note, anchor)
+}
+
+// DeleteAnnotation passes straight through to the repo layer — same
+// reasoning as PatchAnnotation above.
+func (uc *Usecase) DeleteAnnotation(ctx context.Context, userID, id uuid.UUID) (bool, error) {
+	return uc.repo.DeleteAnnotation(ctx, userID, id)
 }

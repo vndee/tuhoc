@@ -305,6 +305,17 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	app.Get("/progress", auth.Require(deps.Pool), userdataHandler.ListProgress)
 	app.Put("/progress", auth.Require(deps.Pool), userdataHandler.PutProgress)
 
+	// Annotation routes (Pha 3, Task 2). The REST replacement for the
+	// annotations half of /sync, same non-local-first reasoning as
+	// /progress above — plus a real DELETE, since migration 0009 dropped
+	// annotations.deleted_at: this package never writes a tombstone,
+	// unlike internal/sync's push path (see that package's repo.go for how
+	// it now translates an incoming tombstone into a real delete instead).
+	app.Get("/annotations", auth.Require(deps.Pool), userdataHandler.ListAnnotations)
+	app.Post("/annotations", auth.Require(deps.Pool), userdataHandler.CreateAnnotation)
+	app.Patch("/annotations/:id", auth.Require(deps.Pool), userdataHandler.PatchAnnotation)
+	app.Delete("/annotations/:id", auth.Require(deps.Pool), userdataHandler.DeleteAnnotation)
+
 	// Stats routes (Task 8). Mounted behind auth.Require(deps.Pool) — the
 	// same brief-mandated entry point and ruling (F3) as sync's routes
 	// above, exercised directly by stats_test.go's own 401 case.
