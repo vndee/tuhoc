@@ -67,6 +67,26 @@
  * first, in `useLogout.ts`, while the departing account's cookie is still
  * valid — clearing alone would needlessly discard a heartbeat that could
  * have been recorded under its own account.
+ *
+ * ## `queueGeneration` — the fix above still leaked, one layer down
+ *
+ * A scoped re-review of the `resetEventQueue` fix caught a residual race
+ * `resetEventQueue` alone does not close: `useLogout.ts`'s best-effort
+ * flush runs inside `withTimeout(…, LOGOUT_SYNC_TIMEOUT_MS)`, which races
+ * the OUTER promise only — it never cancels the underlying request (no
+ * `AbortController` anywhere in `api/client.ts`). A flush still pending
+ * when that 5s bound elapses is ABANDONED, not cancelled, and keeps
+ * running while logout clears everything, `resetEventQueue()` included.
+ * If that abandoned request's response arrives LATE, as a FAILURE, the
+ * pre-fix `catch` block reinjected its batch into whatever `queue`
+ * CURRENTLY held — which, on a same-tab handoff, can already belong to a
+ * different, already signed-in account. `queueGeneration` (see its own
+ * doc, right below `queue`) closes this the way `sync/engine.ts`'s
+ * `syncEpoch` already closes the identical shape of bug for outbox
+ * pushes: a flush stamps the current generation before it awaits the
+ * network, and only reinjects on failure if that generation is still
+ * current — a `resetEventQueue()` in between means the batch is dropped,
+ * not written back.
  */
 
 import { api } from './client';
@@ -99,6 +119,37 @@ export interface StudyEvent {
  */
 let queue: StudyEvent[] = [];
 
+/**
+ * Bumped by `resetEventQueue()`, never anywhere else. `flushEvents`
+ * captures the CURRENT value once, at the moment it starts (before its
+ * network call), and compares that captured value against the CURRENT
+ * `queueGeneration` immediately before writing a failed batch BACK into
+ * `queue` — not before the network call itself, which is harmless to let
+ * finish. If the two differ, `resetEventQueue()` ran while this flush's
+ * request was still in flight, and the failed batch is DROPPED instead
+ * of written.
+ *
+ * This is `sync/engine.ts`'s `syncEpoch` mechanism, verbatim in shape:
+ * that module's own doc comment names the exact failure this closes —
+ * `stopSync()` (there) / `resetEventQueue()` (here) only stops FUTURE
+ * work; neither can un-schedule a network request already in flight, and
+ * `api/client.ts`'s `send()` has no `AbortController` to cancel one with.
+ * `withTimeout` in `auth/useLogout.ts`'s `bestEffortFinalFlush` only races
+ * the OUTER promise — a flush that is still pending when the 5s bound
+ * elapses is ABANDONED, not cancelled, and keeps running in the
+ * background while logout moves on and clears everything, including this
+ * queue. Without a generation check, that abandoned request's eventual
+ * FAILURE would reinject A's batch into whatever `queue` holds by the
+ * time the `catch` runs — which, on a same-tab handoff, can already be
+ * B's own freshly-queued events (see `test/eventQueueHandoff.test.tsx`'s
+ * second scenario for the end-to-end proof). A stale generation means
+ * those events belong to a session that is gone; dropping them is the
+ * correct outcome, not a compromise — A's best-effort chance to flush
+ * already happened, while the cookie was still valid, in
+ * `bestEffortFinalFlush()`.
+ */
+let queueGeneration = 0;
+
 /** Appends one event to the in-memory queue. Synchronous, and never
  * touches the network — batching is entirely `flushEvents`'s job — so a
  * caller (`progress/heartbeat.ts`'s tick) can call this from a plain
@@ -128,14 +179,22 @@ export function queueEvent(event: StudyEvent): void {
  * for a caller to run the flush EARLIER, while a cookie the flush needs
  * is still valid, and reset LATER, after that cookie is already gone.
  *
- * Does NOT cancel or otherwise affect a `flushEvents()` call already in
- * flight when this runs: that call already took its own snapshot of the
- * queue before this replaces it (see `flushEvents`'s own doc on why),
- * so an in-flight request is unaffected — only events still sitting in
- * the queue at the moment this is called are dropped.
+ * Does NOT cancel a `flushEvents()` call already in flight when this
+ * runs — there is no `AbortController` to cancel it with (see
+ * `queueGeneration`'s own doc) — and does not affect that call's SUCCESS
+ * path: it already took its own snapshot of the queue before this
+ * replaces it (see `flushEvents`'s own doc on why), so a request that
+ * goes on to succeed still deletes exactly the batch it sent, nothing
+ * more. What this DOES affect is that call's FAILURE path: bumping
+ * `queueGeneration` here is what makes a batch belonging to an abandoned,
+ * still-in-flight request DROPPABLE rather than reinjected into
+ * whichever session's queue happens to exist by the time that request's
+ * late failure arrives — see `queueGeneration`'s own doc for the full
+ * mechanism and why this mirrors `sync/engine.ts`'s `syncEpoch`.
  */
 export function resetEventQueue(): void {
   queue = [];
+  queueGeneration += 1;
 }
 
 /**
@@ -160,16 +219,39 @@ export function resetEventQueue(): void {
  * also means a heartbeat is never resent out of order and never
  * duplicated: the next successful flush sends the old batch followed by
  * whatever queued since, in the order each was recorded.
+ *
+ * That reinjection is GATED on `queueGeneration` (see its own doc): if
+ * `resetEventQueue()` ran at any point between this call starting and its
+ * failure being observed — an account handoff during the network round
+ * trip — the captured generation no longer matches, and the batch is
+ * DROPPED instead of written back. Those events belong to a session that
+ * has already ended; the caller (`auth/useLogout.ts`'s
+ * `bestEffortFinalFlush`) already gave them their one best-effort chance
+ * to leave while that session's cookie was still valid.
  */
 export async function flushEvents(): Promise<void> {
   if (queue.length === 0) return;
 
   const batch = queue;
+  const generation = queueGeneration;
   queue = [];
 
   try {
     await api.post('/events/batch', { events: batch });
   } catch (err) {
+    if (generation !== queueGeneration) {
+      // An account handoff (`resetEventQueue()`) happened while this
+      // request was in flight — see `queueGeneration`'s own doc. `queue`
+      // may already belong to a completely different, newly signed-in
+      // session; reinjecting `batch` into it would be the exact
+      // cross-account leak this guard exists to prevent, so the batch is
+      // dropped here rather than written back.
+      console.error(
+        'tuhoc events: a flush failed after an account handoff ran while it was still in flight; dropping the abandoned batch instead of risking it leaking into the next session',
+        err,
+      );
+      return;
+    }
     queue = [...batch, ...queue];
     // Same defensive posture as `progress/heartbeat.ts`'s own tick: this
     // runs off a bare `setInterval` callback (see `startEventFlusher`)

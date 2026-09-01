@@ -30,7 +30,7 @@ import { setupServer } from 'msw/node';
 import { useEffect } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { flushEvents, queueEvent, startEventFlusher, type StudyEvent } from '../api/events';
+import { flushEvents, queueEvent, resetEventQueue, startEventFlusher, type StudyEvent } from '../api/events';
 import { useMe } from '../api/useMe';
 import { useLogout } from '../auth/useLogout';
 import { clearLocalData } from '../db/local';
@@ -146,6 +146,7 @@ afterAll(() => server.close());
 
 beforeEach(async () => {
   await clearLocalData();
+  resetEventQueue();
   currentAccountId = 'u-a';
   batches = [];
 });
@@ -201,4 +202,99 @@ describe('one browser, two accounts — the study-event queue must not survive t
     const underB = batches.filter((b) => b.accountId === 'u-b');
     expect(underB).toEqual([]);
   }, 20_000);
+
+  // Scoped re-review finding: the test above only drives the PROMPT-failure
+  // case — the mock rejects synchronously, inside the same microtask chain
+  // as the flush call, so `flushEvents`'s `catch` always runs BEFORE
+  // `clearSession()` has any chance to run. It never exercises the
+  // "abandoned, not cancelled" shape `useLogout.ts`'s own doc comment names
+  // for `bestEffortFinalFlush`: `withTimeout(bestEffortFinalFlush(),
+  // LOGOUT_SYNC_TIMEOUT_MS)` only races the OUTER promise — it does not
+  // cancel the underlying `fetch` (no `AbortController` wired through
+  // `api/client.ts`'s `send()`) — so a request still pending when the 5s
+  // bound elapses keeps running in the background while logout moves on
+  // and clears everything, INCLUDING (Task 8's own fix) the event queue.
+  // If that abandoned request later resolves as a FAILURE, its `catch`
+  // used to write A's batch straight into whatever `queue` currently held
+  // — which by then can belong to a completely different, already
+  // signed-in B. This test holds that failure open across the ENTIRE
+  // logout→login handoff and releases it only after B has queued her own
+  // event, so the `catch` genuinely runs on the far side of both
+  // `clearSession()` calls (logout's own, and `Login.tsx`'s).
+  it(
+    'A’s routine flush is still in flight when the 5s logout bound elapses; if it later fails AFTER B has signed in and queued her own event, A’s stale batch is dropped instead of leaking into B’s queue',
+    async () => {
+      queueEvent(aStrayHeartbeat());
+
+      let releaseAsFlushAsFailure: (() => void) | undefined;
+      const gate = new Promise<void>((resolve) => {
+        releaseAsFlushAsFailure = resolve;
+      });
+      let aFlushRequested = false;
+      // Overrides the module-level `/events/batch` handler above for this
+      // test only (`server.resetHandlers()` in `afterEach` restores it).
+      // ONLY the FIRST request (A's pre-logout flush attempt) hangs until
+      // released and then fails — every LATER request (this test's own
+      // final `flushEvents()` call, standing in for B's next flusher tick)
+      // must behave like a normal, immediately-successful server, or the
+      // test could not tell "the abandoned request's catch dropped A's
+      // stale batch" apart from "every request in this test failed and
+      // nothing was ever recorded".
+      let firstEventsBatchCall = true;
+      server.use(
+        http.post('/events/batch', async ({ request }) => {
+          if (firstEventsBatchCall) {
+            firstEventsBatchCall = false;
+            aFlushRequested = true;
+            await gate;
+            return HttpResponse.error();
+          }
+          const body = (await request.json()) as { events: StudyEvent[] };
+          batches.push({ accountId: currentAccountId, events: body.events });
+          return HttpResponse.json({ accepted: body.events.length });
+        }),
+      );
+
+      render(<Browser />);
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Đăng xuất' })).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Đăng xuất' }));
+      await waitFor(() => expect(aFlushRequested).toBe(true));
+
+      // Deliberately do NOT release the gate yet. Real time, not fake
+      // timers — same reasoning `useLogout.test.tsx`'s own "abandoned,
+      // not cancelled" test gives: fake-indexeddb schedules its callbacks
+      // through a real `setImmediate`, faking the clock around a real
+      // Dexie transaction is a documented deadlock in this codebase, and
+      // the actual 5s bound has to genuinely elapse for `withTimeout` to
+      // genuinely give up rather than this test merely assuming it would.
+      // `useLogout()`'s own `LOGOUT_SYNC_TIMEOUT_MS` (5s) is what bounds
+      // this wait; `waitFor`'s 10s covers it with margin.
+      await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument(), { timeout: 10_000 });
+
+      await bSignsIn();
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Đăng xuất' })).toBeInTheDocument());
+
+      // B is signed in. Queue HER OWN event BEFORE releasing A's abandoned
+      // request — this ordering is the whole point: the eventual `catch`
+      // must run against a queue that already holds a different session's
+      // data, not an empty one.
+      queueEvent({ courseId: 'course-belongs-to-b', chapterId: 'ch1', kind: 'heartbeat', meta: {}, at: '2026-09-01T00:05:00.000Z' });
+
+      // NOW let A's long-abandoned request resolve — as a FAILURE, the
+      // exact case the reviewer's scenario names.
+      releaseAsFlushAsFailure!();
+      // A turn of the event loop for the rejected promise's `.catch` to
+      // actually run inside `flushEvents()`.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      // "Let the flusher run" once more, for whatever is left queued.
+      await flushEvents();
+
+      const underB = batches.filter((b) => b.accountId === 'u-b');
+      expect(underB).toHaveLength(1);
+      expect(underB[0].events.map((e) => e.courseId)).toEqual(['course-belongs-to-b']);
+    },
+    20_000,
+  );
 });
