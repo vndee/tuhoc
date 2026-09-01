@@ -429,7 +429,20 @@ func TestSyncFlows(t *testing.T) {
 		}
 	})
 
-	t.Run("pull includes tombstoned annotations and done=false progress", func(t *testing.T) {
+	// Renamed and rewritten for Pha 3 Task 2 (migration 0009 dropped
+	// annotations.deleted_at — see internal/userdata, the REST replacement
+	// this column's removal was for). Before that migration, a pushed
+	// tombstone still occupied a row (deleted_at set) and GET /sync
+	// returned it WITH a deletedAt, so other devices could see the
+	// deletion as an event. Now PushBatch translates a DeletedAt-bearing
+	// item into a real DELETE (see repo.go's deleteAnnotationSQL and its
+	// own doc comment) — there is no tombstone row left to return, so this
+	// subtest's own acceptance criterion flips: the annotation must be
+	// GONE from GET /sync, not present-with-deletedAt. Propagating that
+	// absence to other devices as a delete EVENT is explicitly a later
+	// task's problem (this task's brief scopes the pull side to "keep it
+	// running against the new schema", not a redesign).
+	t.Run("a pushed tombstone hard-deletes the annotation; done=false progress still propagates", func(t *testing.T) {
 		app := newTestApp(pool)
 		cookie, _ := registerUser(t, app, "tomb")
 
@@ -447,6 +460,11 @@ func TestSyncFlows(t *testing.T) {
 		if delResp.StatusCode != http.StatusOK {
 			t.Fatalf("delete (tombstone) push: want 200 got %d body=%s", delResp.StatusCode, delRaw)
 		}
+		var delOut pushOut
+		mustUnmarshal(t, delRaw, &delOut)
+		if delOut.Applied != 1 {
+			t.Fatalf("delete push: want applied=1 (the row existed and the delete's updated_at is newer) got %d", delOut.Applied)
+		}
 
 		unmarkResp, unmarkRaw := doRequest(t, app, http.MethodPost, "/sync",
 			pushBody([]map[string]any{progressPushItem("c1", "ch2", "read", false, now)}, nil), cookie)
@@ -461,17 +479,10 @@ func TestSyncFlows(t *testing.T) {
 		var pull pullOut
 		mustUnmarshal(t, getRaw, &pull)
 
-		gotTombstone := false
 		for _, a := range pull.Annotations {
 			if a.ID == annID.String() {
-				if a.DeletedAt == nil {
-					t.Fatalf("tombstone missing deletedAt in GET /sync response")
-				}
-				gotTombstone = true
+				t.Fatalf("deleted annotation %s still present in GET /sync (deletedAt=%v) — a real DELETE must not leave a row behind", annID, a.DeletedAt)
 			}
-		}
-		if !gotTombstone {
-			t.Fatalf("tombstoned annotation missing entirely from GET /sync — deletions must propagate")
 		}
 
 		gotUnmarked := false
@@ -1023,5 +1034,71 @@ func mustUnmarshal(t *testing.T, raw []byte, v any) {
 	t.Helper()
 	if err := json.Unmarshal(raw, v); err != nil {
 		t.Fatalf("unmarshal %s: %v", raw, err)
+	}
+}
+
+// TestPushAnnotationTombstoneHardDeletes is Pha 3 Task 2's dedicated
+// regression test for the ruling that task carries beyond its own brief:
+// migration 0009 dropped annotations.deleted_at (see internal/userdata,
+// the REST replacement that column's removal was actually for), and
+// internal/sync's push path — this package, still depended on by the
+// browser's one-time old-outbox flush — had to be adapted to keep working
+// without it. This test proves the exact translation PushBatch and
+// deleteAnnotationSQL now perform (see repo.go): an incoming annotation
+// item whose deletedAt is non-null becomes a REAL DELETE of that row,
+// never a write to a marker column, and — the failure mode the ruling
+// names explicitly — never lets the row come back. Dropping a queued
+// deletedAt on the floor during the browser's old-outbox flush would
+// resurrect a note the learner deleted, silently; this is the test that
+// would catch it if a future change reintroduced that bug.
+func TestPushAnnotationTombstoneHardDeletes(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool)
+	cookie, _ := registerUser(t, app, "hard-delete")
+
+	now := nowUTC()
+	annID := uuid.New()
+
+	// Push 1: create the annotation.
+	createResp, createRaw := doRequest(t, app, http.MethodPost, "/sync",
+		pushBody(nil, []map[string]any{annotationPushItem(annID, "c1", "ch1", map[string]any{"pos": 1}, "my note", now, now, nil)}), cookie)
+	if createResp.StatusCode != http.StatusOK {
+		t.Fatalf("push (create): want 200 got %d body=%s", createResp.StatusCode, createRaw)
+	}
+	var createOut pushOut
+	mustUnmarshal(t, createRaw, &createOut)
+	if createOut.Applied != 1 {
+		t.Fatalf("push (create): want applied=1 (fresh insert) got %d", createOut.Applied)
+	}
+
+	// Push 2: the SAME id, this time carrying deletedAt — exactly what a
+	// browser flushing its old offline outbox sends for a note the
+	// learner deleted before upgrading off local-first storage (see this
+	// task's ruling).
+	deletedAt := now.Add(time.Minute)
+	delResp, delRaw := doRequest(t, app, http.MethodPost, "/sync",
+		pushBody(nil, []map[string]any{annotationPushItem(annID, "c1", "ch1", map[string]any{"pos": 1}, "my note", now, deletedAt, &deletedAt)}), cookie)
+	if delResp.StatusCode != http.StatusOK {
+		t.Fatalf("push (tombstone): want 200 got %d body=%s", delResp.StatusCode, delRaw)
+	}
+	var delOut pushOut
+	mustUnmarshal(t, delRaw, &delOut)
+	if delOut.Applied != 1 {
+		t.Fatalf("push (tombstone): want applied=1 (the delete matched the row created above) got %d — the translation did not run", delOut.Applied)
+	}
+
+	// Confirm the row is gone — not resurrected — on the read path
+	// available to this test: GET /sync, the only route this package
+	// exposes to read a row back.
+	getResp, getRaw := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("get: want 200 got %d body=%s", getResp.StatusCode, getRaw)
+	}
+	var pull pullOut
+	mustUnmarshal(t, getRaw, &pull)
+	for _, a := range pull.Annotations {
+		if a.ID == annID.String() {
+			t.Fatalf("annotation %s reappeared in GET /sync after its tombstone was pushed — the delete translation resurrected it instead of deleting it", annID)
+		}
 	}
 }
