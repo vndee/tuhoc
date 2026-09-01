@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -41,12 +42,26 @@ type ProgressRow struct {
 }
 
 // AnnotationRow is the subset of an annotations row this package reads and
-// writes. DeletedAt is a pointer because it is nullable: nil means "not
-// deleted", a non-nil value is a tombstone that must still propagate to
-// other devices (see Repo.PullAnnotations, which never filters it out).
-// Anchor is carried as json.RawMessage end to end (HTTP body -> here ->
-// jsonb column and back) without ever being unmarshaled into a Go struct,
-// since this package has no reason to understand its shape.
+// writes. Anchor is carried as json.RawMessage end to end (HTTP body ->
+// here -> jsonb column and back) without ever being unmarshaled into a Go
+// struct, since this package has no reason to understand its shape.
+//
+// DeletedAt's meaning changed under Pha 3 Task 2 (migration 0009 dropped
+// annotations.deleted_at — see internal/userdata, the REST replacement
+// this column's removal was actually for). It used to be a literal
+// tombstone column value round-tripped end to end; now it exists ONLY on
+// the way IN, as what handler.go's Push parses out of an incoming batch
+// item. A non-nil DeletedAt on an item PushBatch receives means "the
+// client says this row is deleted" and is translated into a real SQL
+// DELETE (see deleteAnnotationSQL below) rather than written anywhere —
+// there is no column left to write it to. A row this package reads back
+// out via PullAnnotations therefore always has DeletedAt == nil: a
+// genuinely deleted annotation is not IN the table to be pulled at all
+// anymore, so there is nothing to represent "this one's a tombstone" on.
+// Propagating that absence as a delete EVENT to other devices over
+// GET /sync is a later task's problem (this task's brief explicitly
+// leaves the pull path alone beyond what's needed to keep it running
+// against the post-0009 schema).
 type AnnotationRow struct {
 	ID        uuid.UUID
 	CourseID  string
@@ -60,10 +75,13 @@ type AnnotationRow struct {
 
 // Repo is the SQL-backed persistence layer for sync. It holds no business
 // rules — every method is a direct, single-purpose query, and PushBatch's
-// two upserts are copied verbatim from the task brief (byte-for-byte,
-// including the ON CONFLICT ... WHERE guards) rather than reconstructed,
-// since that SQL *is* the conflict-resolution rule this task exists to
-// implement.
+// two upserts were originally copied verbatim from the task brief
+// (byte-for-byte, including the ON CONFLICT ... WHERE guards) rather than
+// reconstructed, since that SQL *is* the conflict-resolution rule that
+// task existed to implement. upsertAnnotationSQL no longer mentions
+// deleted_at (Pha 3 Task 2's migration 0009 dropped the column), and
+// PushBatch now routes a deleted item to deleteAnnotationSQL instead — see
+// both consts' own doc comments below for the full reasoning.
 type Repo struct {
 	pool *pgxpool.Pool
 }
@@ -93,24 +111,55 @@ SET done=EXCLUDED.done, updated_at=EXCLUDED.updated_at
 WHERE EXCLUDED.updated_at > progress.updated_at;
 `
 
-// upsertAnnotationSQL is verbatim from the task brief. Unlike progress,
-// annotations conflict on id alone — id is a client-generated uuid, not
-// scoped to a user in the primary key — so nothing at the schema level
-// stops a request from naming an id that already belongs to another user.
-// The "AND annotations.user_id = EXCLUDED.user_id" clause is what closes
-// that hole: EXCLUDED.user_id is always the authenticated caller's own id
-// (see usecase.go's Push), so if the existing row's owner differs, the
-// WHERE fails, zero rows are affected, and the request silently no-ops
-// instead of overwriting (or revealing the existence of) another user's
-// annotation.
+// upsertAnnotationSQL was originally verbatim from the task brief; Pha 3
+// Task 2's migration 0009 dropped annotations.deleted_at, so the
+// deleted_at column and its EXCLUDED.deleted_at slot are gone from both
+// the column list and the SET clause — everything else, including the
+// WHERE guard below, is unchanged. PushBatch only ever runs this
+// statement for an item whose DeletedAt is nil; one that carries a
+// DeletedAt is routed to deleteAnnotationSQL instead (see PushBatch).
+//
+// Unlike progress, annotations conflict on id alone — id is a
+// client-generated uuid, not scoped to a user in the primary key — so
+// nothing at the schema level stops a request from naming an id that
+// already belongs to another user. The "AND annotations.user_id =
+// EXCLUDED.user_id" clause is what closes that hole: EXCLUDED.user_id is
+// always the authenticated caller's own id (see usecase.go's Push), so if
+// the existing row's owner differs, the WHERE fails, zero rows are
+// affected, and the request silently no-ops instead of overwriting (or
+// revealing the existence of) another user's annotation.
 const upsertAnnotationSQL = `
-INSERT INTO annotations (id,user_id,course_id,chapter_id,anchor,note,created_at,updated_at,deleted_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+INSERT INTO annotations (id,user_id,course_id,chapter_id,anchor,note,created_at,updated_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 ON CONFLICT (id) DO UPDATE
 SET anchor=EXCLUDED.anchor, note=EXCLUDED.note,
-    updated_at=EXCLUDED.updated_at, deleted_at=EXCLUDED.deleted_at
+    updated_at=EXCLUDED.updated_at
 WHERE EXCLUDED.updated_at > annotations.updated_at
   AND annotations.user_id = EXCLUDED.user_id;
+`
+
+// deleteAnnotationSQL is PushBatch's translation of an incoming tombstone
+// (an item whose DeletedAt != nil) now that annotations.deleted_at is
+// gone (migration 0009): rather than writing a marker column, the row is
+// hard-deleted for real.
+//
+// "id = $1 AND user_id = $2" is owner-scoped for the same reason
+// upsertAnnotationSQL's WHERE clause is: id alone carries no per-user
+// structure, so nothing else stops a request from naming another user's
+// annotation id.
+//
+// "$3 > updated_at" ($3 is the incoming item's UpdatedAt) is the same LWW
+// guard upsertAnnotationSQL applies, translated to a DELETE: a delete
+// queued on a device before a newer edit committed elsewhere (on another
+// device, or through internal/userdata's own PATCH /annotations/:id) must
+// not be able to win and erase that edit just because it happens to be
+// pushed later. Symmetrically, if the row was never pushed to the server
+// in the first place — created and deleted offline before ever syncing —
+// this simply matches zero rows: there is nothing to resurrect, because
+// there was never anything here for anyone to see.
+const deleteAnnotationSQL = `
+DELETE FROM annotations
+WHERE id = $1 AND user_id = $2 AND $3 > updated_at;
 `
 
 // PullProgress returns every progress row belonging to userID with
@@ -146,13 +195,24 @@ func (r *Repo) PullProgress(ctx context.Context, userID uuid.UUID, since time.Ti
 }
 
 // PullAnnotations returns every annotation row belonging to userID with
-// updated_at strictly after since — including tombstones (deleted_at !=
-// null), which a filtered query would wrongly hide: a deletion made on one
-// device must propagate to other devices as a deletion, not be silently
-// dropped so the row appears to just sit there unchanged.
+// updated_at strictly after since.
+//
+// It used to also select deleted_at, so a tombstoned row still came back
+// (rather than being hidden) and a deletion made on one device could
+// propagate to other devices as a deletion event. Migration 0009 (Pha 3
+// Task 2) dropped that column — this SELECT no longer names it, because
+// there is nothing left in the row to name — so a deleted annotation is
+// simply not present in this result at all anymore, indistinguishable
+// from one that never existed. That is a real behavior change for
+// GET /sync's tombstone propagation, and it is INTENTIONALLY left as-is
+// here: this task's brief scopes the pull side to "whatever the running
+// code needs to keep working against the new schema", not a redesign of
+// how deletions propagate to pull — that is a later task's problem. Every
+// AnnotationRow this method returns has DeletedAt == nil (see that
+// field's own doc comment on the struct).
 func (r *Repo) PullAnnotations(ctx context.Context, userID uuid.UUID, since time.Time) ([]AnnotationRow, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, course_id, chapter_id, anchor, note, created_at, updated_at, deleted_at
+		`SELECT id, course_id, chapter_id, anchor, note, created_at, updated_at
 		 FROM annotations
 		 WHERE user_id = $1 AND updated_at > $2
 		 ORDER BY updated_at ASC`,
@@ -166,7 +226,7 @@ func (r *Repo) PullAnnotations(ctx context.Context, userID uuid.UUID, since time
 	out := []AnnotationRow{}
 	for rows.Next() {
 		var a AnnotationRow
-		if err := rows.Scan(&a.ID, &a.CourseID, &a.ChapterID, &a.Anchor, &a.Note, &a.CreatedAt, &a.UpdatedAt, &a.DeletedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.CourseID, &a.ChapterID, &a.Anchor, &a.Note, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("sync: scan annotation row: %w", err)
 		}
 		out = append(out, a)
@@ -191,6 +251,22 @@ func (r *Repo) PullAnnotations(ctx context.Context, userID uuid.UUID, since time
 // and the returned count drops to 0 on the replay — the caller can tell a
 // genuine write from a no-op retry, but either way the stored data ends up
 // identical.
+//
+// An annotation item whose DeletedAt != nil is routed to
+// deleteAnnotationSQL instead of upsertAnnotationSQL — a real hard delete,
+// since migration 0009 dropped annotations.deleted_at and there is no
+// tombstone column left to upsert into. This is the one caller left that
+// still needs to accept a client-supplied deletedAt at all: a browser
+// upgrading off the old local-first outbox (apps/web's IndexedDB queue)
+// flushes it through POST /sync exactly once, and a queued item in that
+// flush can legitimately carry deletedAt != null — meaning "the learner
+// deleted this note" — which this method must not drop on the floor
+// (that would resurrect a note the learner deleted). Every OTHER counted
+// write in this function is a fresh insert or a genuine LWW-guarded
+// update; a delete is counted by the exact same rule
+// (tag.RowsAffected() summed below), via deleteAnnotationSQL's own LWW
+// guard (see that const's doc comment) rather than
+// upsertAnnotationSQL's.
 func (r *Repo) PushBatch(ctx context.Context, userID uuid.UUID, progress []ProgressRow, annotations []AnnotationRow) (int, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -214,10 +290,18 @@ func (r *Repo) PushBatch(ctx context.Context, userID uuid.UUID, progress []Progr
 	}
 
 	for _, a := range annotations {
-		tag, err := tx.Exec(ctx, upsertAnnotationSQL,
-			a.ID, userID, a.CourseID, a.ChapterID, a.Anchor, a.Note, a.CreatedAt, a.UpdatedAt, a.DeletedAt)
+		var (
+			tag pgconn.CommandTag
+			err error
+		)
+		if a.DeletedAt != nil {
+			tag, err = tx.Exec(ctx, deleteAnnotationSQL, a.ID, userID, a.UpdatedAt)
+		} else {
+			tag, err = tx.Exec(ctx, upsertAnnotationSQL,
+				a.ID, userID, a.CourseID, a.ChapterID, a.Anchor, a.Note, a.CreatedAt, a.UpdatedAt)
+		}
 		if err != nil {
-			return 0, fmt.Errorf("sync: upsert annotation (id=%s): %w", a.ID, err)
+			return 0, fmt.Errorf("sync: apply annotation (id=%s): %w", a.ID, err)
 		}
 		applied += int(tag.RowsAffected())
 	}
