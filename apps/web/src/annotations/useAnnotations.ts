@@ -1,16 +1,23 @@
 /**
- * The annotation store (P2 Task 4) — where the three previous modules meet
- * each other and the sync pipeline P1 built.
+ * The annotation store (P2 Task 4; rewired onto the server in Task 7, Pha 3)
+ * — where the three anchoring/painting modules meet the data layer.
  *
  * `./normalize` turns a rendered chapter into a flat string, `./anchor` turns
  * a quote into a `Range` in that chapter, `./painter` colours the `Range` in,
- * and `../db/local` + `../sync/engine` already know how to carry an
- * `AnnotationRow` to the server and back (`sync/engine.ts` routes
- * `table === 'annotations'` to `POST /sync`, and the Go `annotationItem` in
- * `apps/api/internal/sync/handler.go` matches `AnnotationRow` field for
- * field — ruling P2-F2: no migration, no server change). This file is the
- * only place any of that is wired together, and it is the first code in P2
- * that writes data a reader can lose.
+ * and `../api/annotations` (Task 5, Pha 3) is the client half of
+ * `GET/POST /annotations` and `PATCH/DELETE /annotations/:id` — the server is
+ * now the single source of truth, read through TanStack Query and written
+ * optimistically through a `useMutation`, in the exact shape Task 6 (Pha 3)
+ * established for `useProgress.ts`. This file is the only place any of that
+ * is wired together, and it is the first code in P2 that writes data a
+ * reader can lose — which is why "a failed write must not eat text the
+ * learner just typed" (see `draftOf` below) is a first-class concern here,
+ * not an afterthought.
+ *
+ * Annotations are HARD-deleted server-side (`../api/annotations`'s own doc:
+ * migration 0009 dropped the tombstone column) — there is no `deletedAt` on
+ * an `Ann` any more, on the wire or in the query cache. `remove()` below is a
+ * real `DELETE`, and every row this hook ever sees is, by construction, live.
  *
  * ---------------------------------------------------------------------
  * 1. Why there is no `for (a of anns) { paint(resolve(a)) }` here
@@ -60,10 +67,10 @@
  * 3. Orphans are data
  * ---------------------------------------------------------------------
  * `anchorToRange` returning `null` means "not found in THIS render", not "this
- * note is worthless". Nothing here deletes an orphan, tombstones it, or writes
- * anything at all about it: resolving is a read. It goes into `orphans` for
- * Task 7's panel to offer back to the reader, and a note orphaned today can
- * re-attach on its own tomorrow when the content changes again.
+ * note is worthless". Nothing here deletes an orphan or writes anything at
+ * all about it: resolving is a read. It goes into `orphans` for `OrphanPanel`
+ * to offer back to the reader, and a note orphaned today can re-attach on its
+ * own tomorrow when the content changes again.
  *
  * The one thing that must NOT be swallowed into an orphan is
  * `StaleNormMapError`. That is a caller bug in this file, not a statement
@@ -74,12 +81,16 @@
  * ---------------------------------------------------------------------
  * 4. Incremental, so re-renders do not re-paint
  * ---------------------------------------------------------------------
- * Every write goes through Dexie, and a `liveQuery` brings it back — including
- * writes made by `sync/engine.ts`'s `pull()` from another device. If each
- * emission re-resolved and re-painted the whole chapter, every new note would
- * add a second `<mark>` layer over every existing one (painting an id twice
- * nests rather than replaces) and `unpaint`-everything-first would cost
- * O(notes × nodes) each time.
+ * Every write lands in TanStack Query's cache — optimistically, the instant
+ * `create`/`updateNote`/`remove`/`reattach` is called, and again (for real)
+ * once the server confirms — and this hook's own `useQuery` subscription is
+ * what brings a change back into `rows`, including one written by an entirely
+ * different call site sharing the same `annotationsQueryKey(courseId)` cache
+ * entry (`queryClient.setQueryData` from anywhere notifies every subscriber).
+ * If each emission re-resolved and re-painted the whole chapter, every new
+ * note would add a second `<mark>` layer over every existing one (painting an
+ * id twice nests rather than replaces) and `unpaint`-everything-first would
+ * cost O(notes × nodes) each time.
  *
  * So the pass reconciles instead: it tracks which ids it has attempted and
  * against which anchor, paints only what is new, and unpaints only ids that
@@ -89,17 +100,25 @@
  * second run sees the same rows against the same content revision and has
  * nothing left to do.
  */
-import { liveQuery } from 'dexie';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { type AnnotationRow, db } from '../db/local';
+import {
+  type Ann,
+  annotationsQueryKey,
+  createAnnotation,
+  deleteAnnotation,
+  fetchAnnotations,
+  patchAnnotation,
+} from '../api/annotations';
 import { type Anchor, type AnchorColor, anchorToRange } from './anchor';
 import { isMapStale, type NormMap, normalizeContainer, rangeToFlat } from './normalize';
 import { type PaintItem, paintAll, unpaint } from './painter';
 
-/** One stored annotation, exactly as it lives in Dexie and on the wire.
- * Aliased rather than redeclared so this module and the sync engine can never
- * disagree about the row shape the server accepts. */
-export type Ann = AnnotationRow;
+/** Re-exported rather than redeclared so this module and `../api/annotations`
+ * can never disagree about the row shape the server accepts — the same
+ * aliasing reasoning the pre-Task-7 version of this file used for
+ * `AnnotationRow`, now pointed at the API layer instead of Dexie. */
+export type { Ann };
 
 /**
  * The chapter DOM this hook resolves and paints into.
@@ -125,27 +144,68 @@ export interface ChapterContent {
 
 export interface UseAnnotationsResult {
   /**
-   * Live (not tombstoned) annotations that currently HAVE a place in the
-   * rendered chapter, in the order they appear in it. Sorted by flat offset,
-   * ties broken by `createdAt` then `id` so the order is stable across
-   * renders.
+   * Live annotations that currently HAVE a place in the rendered chapter, in
+   * the order they appear in it. Sorted by flat offset, ties broken by
+   * `createdAt` then `id` so the order is stable across renders.
    */
   readonly list: readonly Ann[];
   /**
    * Live annotations whose anchor could not be found in this render, after
-   * both the exact and the fuzzy tier have had their turn. Not deleted, not
-   * tombstoned — Task 7's panel hands them back to the reader.
+   * both the exact and the fuzzy tier have had their turn. Not deleted —
+   * `OrphanPanel` hands them back to the reader.
    */
   readonly orphans: readonly Ann[];
-  /** Stores a new annotation and queues it for sync. Resolves to its id. */
+  /** Writes a new annotation OPTIMISTICALLY (it appears in `list`/`orphans`
+   * the instant this is called, before `POST /annotations` answers) and
+   * resolves to its id. The id is generated HERE, client-side, before the
+   * request is sent — so a retry of a request whose response was lost hits
+   * the server with the SAME id and gets back a 409 (already exists) rather
+   * than creating a duplicate note. */
   create(anchor: Anchor, note: string): Promise<string>;
-  /** Rewrites the note text. No-op for an unknown id. */
+  /** Rewrites the note text OPTIMISTICALLY. No-op for an unknown id. A
+   * failed save rolls the cache back to the previous text — see `draftOf`
+   * for why that rollback never erases what the learner was typing. */
   updateNote(id: string, note: string): Promise<void>;
-  /** Tombstones (`deletedAt`), never hard-deletes — the tombstone is what
-   * propagates the deletion to the reader's other devices. */
+  /** A real delete (the server hard-deletes — see this module's header), sent
+   * OPTIMISTICALLY: the row leaves `list`/`orphans` immediately and comes
+   * back if `DELETE /annotations/:id` fails. No-op for an unknown id. */
   remove(id: string): Promise<void>;
-  /** Points an existing note at a new quote — Task 7's "put it back here". */
+  /** Points an existing note at a new quote via `PATCH /annotations/:id`
+   * (never delete-then-create — that would hand the note a NEW id, and the
+   * id is what `./painter` and `MarginCards` use to tie a card to its
+   * highlight). No-op for an unknown id. */
   reattach(id: string, anchor: Anchor): Promise<void>;
+  /**
+   * The text to show in a compose box editing this note's `note` field:
+   * whatever was last passed to `updateNote` for this id, for as long as
+   * that write is in flight OR has failed and not yet been retried
+   * successfully; otherwise the CONFIRMED text from `list`/`orphans`; `''`
+   * for an id this hook does not know about.
+   *
+   * Exists because `updateNote`'s optimistic-with-rollback means a failed
+   * save reverts the cache to the pre-edit note — and a compose box that
+   * simply rendered `list[i].note` would have the text the learner just
+   * wrote yanked out from under them the moment the network call failed.
+   * The draft is tracked independently of the cache row for exactly that
+   * reason: it survives a rollback because rolling the CACHE back is not the
+   * same operation as erasing the DRAFT, and this hook never conflates them.
+   */
+  draftOf(id: string): string;
+  /**
+   * True while the MOST RECENT `updateNote`/`remove`/`reattach`/`create` is
+   * sitting on a failed write — i.e. the optimistic change this hook showed
+   * was rolled back. Additive, same contract as `useProgress.saveError`:
+   * cleared the moment another write starts (`useMutation` resets `isError`
+   * on every new `mutate`/`mutateAsync` call), so it never lingers past the
+   * next attempt. `SelectionToolbar` already has its own inline alert for a
+   * failed `create` (`ann.saveFailed`, next to the toolbar) — this field is
+   * for the writes that had NO such surface before Task 7:  editing or
+   * deleting a note, or re-attaching an orphan, all previously failed
+   * silently into `console.error`. `reader/ChapterView.tsx` is the one place
+   * that renders it (`notes.saveFailed`, `role="alert"`), the same
+   * "additive field, one render site" shape Task 6 used for progress.
+   */
+  readonly saveError: boolean;
 }
 
 /**
@@ -177,25 +237,7 @@ const DEFERRED_BUDGET_MS = 12;
  * 8 matches what `DEFERRED_BUDGET_MS` buys at the worst measured per-anchor
  * cost (~1,67 ms), so on the path that actually needs a budget the two
  * ceilings bind at roughly the same place. It is also where the measurement
- * puts the knee. Real chapter p1-5 with KaTeX, 200 non-overlapping notes ALL
- * needing the fuzzy tier, jsdom, three runs:
- *
- *     chunk   total          median task   longest task
- *       1     3.4–3.9 s      17 ms         29–85 ms
- *       4     1.0 s          20 ms         34–39 ms
- *       8     0.6–0.9 s      22–25 ms      45–198 ms
- *      16     0.4–0.5 s      31–43 ms      45–64 ms
- *     200     0.19–0.21 s    (one task of 190–210 ms)
- *
- * The shape of that table is the thing to understand before changing this
- * number: a chunk costs ~17 ms before it resolves a single anchor, because it
- * ends by rebuilding the `NormMap` (~12 ms on this chapter). That fixed cost
- * is why chunk=1 is 6× the total work, and why going below 4 is never right.
- * Above 8 the total keeps improving only by making individual tasks longer —
- * which is precisely what this is here to avoid. jsdom overstates DOM mutation
- * cost several-fold against a real browser (Task 3 measured 24–70 ms in jsdom
- * for an `unpaint` that is single-digit ms in Chrome), so treat the absolute
- * numbers as an upper bound and the SHAPE as the finding.
+ * puts the knee.
  */
 const DEFERRED_CHUNK_MAX = 8;
 
@@ -206,9 +248,15 @@ const DEFERRED_TIMEOUT_MS = 200;
 
 const COLORS: ReadonlySet<string> = new Set<AnchorColor>(['y', 'g', 'b', 'p']);
 
-/** Stable empty results, so a chapter with no annotations hands back the same
- * array identity on every render and cannot drive a caller's `useEffect` into
- * a loop. */
+/**
+ * One shared, module-level empty array. Used both as `useQuery`'s default
+ * (NOT `data: rows = []`, which builds a fresh `[]` on every render while the
+ * query has no data — see `useProgress.ts`'s identical ruling, whose
+ * measured failure mode was a `useEffect` that fired on every render and
+ * drove React into "Maximum update depth exceeded") and as the empty
+ * `list`/`orphans` result, so a chapter with nothing to show hands back the
+ * same array identity on every render.
+ */
 const NO_ROWS: readonly Ann[] = Object.freeze([]);
 
 /** Where a resolved annotation sits in the chapter, or `null` for an orphan.
@@ -253,11 +301,10 @@ function nowMs(): number {
 }
 
 /**
- * `AnnotationRow.anchor` is `unknown` all the way from the server's
- * `json.RawMessage`, so every read of it is defensive. An unusable colour
- * falls back to yellow rather than reaching `paintAll` as a class name nobody
- * styled — a highlight in the wrong colour is a cosmetic problem, an unstyled
- * one is invisible.
+ * `Ann.anchor` is `unknown` all the way from the server's `json.RawMessage`,
+ * so every read of it is defensive. An unusable colour falls back to yellow
+ * rather than reaching `paintAll` as a class name nobody styled — a highlight
+ * in the wrong colour is a cosmetic problem, an unstyled one is invisible.
  *
  * Exported for `./MarginCards`, which needs the SAME answer to colour a card's
  * left border: a card that disagreed with its own highlight about the note's
@@ -311,14 +358,14 @@ export function quoteOf(anchor: unknown, max: number): string {
  * Deliberately NOT `JSON.stringify(anchor)`: an anchor written here and the
  * same anchor echoed back by the server are equal values whose key order need
  * not match, and a signature that changed on a round trip would unpaint and
- * repaint every note after every pull. Deliberately not `updatedAt` either —
- * that changes when only the NOTE TEXT was edited, which must not disturb the
- * page.
+ * repaint every note after every refetch. Deliberately not `updatedAt` either
+ * — that changes when only the NOTE TEXT was edited, which must not disturb
+ * the page.
  */
 function signatureOf(anchor: unknown): string {
   const raw = anchor as { exact?: unknown; prefix?: unknown; suffix?: unknown } | null | undefined;
   const str = (value: unknown): string => (typeof value === 'string' ? value : '');
-  return `${str(raw?.exact)} ${str(raw?.prefix)} ${str(raw?.suffix)} ${colorOf(anchor)}`;
+  return `${str(raw?.exact)} ${str(raw?.prefix)} ${str(raw?.suffix)} ${colorOf(anchor)}`;
 }
 
 function samePlacements(a: ReadonlyMap<string, Placement>, b: ReadonlyMap<string, Placement>): boolean {
@@ -336,8 +383,8 @@ function samePlacements(a: ReadonlyMap<string, Placement>, b: ReadonlyMap<string
 }
 
 /** Sort key for two annotations that share a position (or have none): oldest
- * first, `id` as the final tie-break so the order never depends on Dexie's
- * iteration order. */
+ * first, `id` as the final tie-break so the order never depends on the
+ * server's own row order. */
 function byAge(a: Ann, b: Ann): number {
   if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1;
   if (a.id !== b.id) return a.id < b.id ? -1 : 1;
@@ -366,89 +413,167 @@ function scheduleDeferred(run: () => void): () => void {
   return () => clearTimeout(handle);
 }
 
-/** One local write: the row and its outbox entry land together or not at all.
- * Mirrors `setProgress` (`../db/local.ts`) exactly — there is no way for the
- * visible local state to change without an outbox entry to propagate it, and
- * no way for a queued mutation to exist whose local counterpart was never
- * written. */
-async function commit(row: Ann): Promise<void> {
-  await db.transaction('rw', db.annotations, db.outbox, async () => {
-    await db.annotations.put(row);
-    await db.outbox.add({ table: 'annotations', row });
-  });
-}
+/** The four writes this hook makes, folded into one `useMutation` — the exact
+ * shape `useProgress.ts` uses for its single write, extended to a
+ * discriminated union because annotations have four distinct server calls
+ * instead of `putProgress`'s one. One mutation, not four, so `saveError`
+ * below is a single flag with the same "cleared by the next write, whichever
+ * kind" semantics Task 6 established, rather than four flags a caller would
+ * have to OR together by hand. */
+type MutationVars =
+  | { readonly kind: 'create'; readonly row: Ann }
+  | { readonly kind: 'updateNote'; readonly id: string; readonly note: string }
+  | { readonly kind: 'remove'; readonly id: string }
+  | { readonly kind: 'reattach'; readonly id: string; readonly anchor: Anchor };
 
-/** Read-modify-write of one existing row, inside the same single transaction.
- * `updatedAt` is stamped by the caller BEFORE the transaction opens, at the
- * instant of the edit — the same reasoning as `setProgress`'s: an edit made
- * offline must not appear to have happened whenever it eventually reached the
- * database, or it beats a genuinely later edit from another device. */
-async function commitPatch(id: string, patch: (row: Ann) => Ann): Promise<void> {
-  await db.transaction('rw', db.annotations, db.outbox, async () => {
-    const existing = await db.annotations.get(id);
-    if (!existing) return;
-    const row = patch(existing);
-    await db.annotations.put(row);
-    await db.outbox.add({ table: 'annotations', row });
-  });
+/** Builds the row `onMutate` writes into the query cache — the optimistic
+ * half of each of the four writes above. `at` is stamped once by the caller
+ * (one instant for the whole `onMutate` call), the same reasoning
+ * `useProgress.ts`'s R2 ruling gives: the cache needs SOME `updatedAt` until
+ * the server's real one lands via `onSettled`'s invalidate, and a fresh
+ * per-call timestamp is what makes two rapid edits to the same note sort in
+ * the order they actually happened. */
+function applyOptimistic(rows: readonly Ann[], vars: MutationVars, at: string): Ann[] {
+  switch (vars.kind) {
+    case 'create':
+      return [...rows, vars.row];
+    case 'updateNote':
+      return rows.map((row) => (row.id === vars.id ? { ...row, note: vars.note, updatedAt: at } : row));
+    case 'remove':
+      return rows.filter((row) => row.id !== vars.id);
+    case 'reattach':
+      return rows.map((row) => (row.id === vars.id ? { ...row, anchor: vars.anchor, updatedAt: at } : row));
+  }
 }
 
 /**
  * Live annotations for one chapter, resolved against the rendered DOM and
  * painted into it, plus the four mutations that write them.
  *
- * Call this ONCE per chapter — it owns the painted `<mark>`s. Task 5's
- * toolbar, Task 6's margin cards and Task 7's orphan panel should receive this
- * result as a prop rather than each calling the hook again; two live instances
- * would each paint the same annotations.
+ * Call this ONCE per chapter — it owns the painted `<mark>`s. `SelectionToolbar`,
+ * `MarginCards` and `OrphanPanel` should receive this result as a prop rather
+ * than each calling the hook again; two live instances would each paint the
+ * same annotations.
  *
- * `content` is optional so the two-argument form in the task brief keeps
- * working for a caller that only needs the mutations. Without a `root` there
- * is no chapter to resolve against, so `list` and `orphans` both stay empty —
- * that is a statement about the absent DOM, not about the stored notes.
+ * `content` is optional so the two-argument form callers that only need the
+ * mutations (no chapter to resolve against) keep working. Without a `root`
+ * there is no chapter to resolve against, so `list` and `orphans` both stay
+ * empty — that is a statement about the absent DOM, not about the stored
+ * notes.
+ *
+ * ## One cache entry per course, filtered to this chapter client-side
+ *
+ * `annotationsQueryKey(courseId)` is what `useQuery` reads and what every
+ * mutation below patches — so every `useAnnotations(courseId, ...)` call
+ * site for the SAME course, whatever chapter it names, shares one cache
+ * entry (`fetchAnnotations(courseId)` answers every chapter of that course in
+ * one request — see `../api/annotations`'s own doc). `chapterId` filtering
+ * happens here, in JS, over that one shared array — the same split
+ * `useProgress.ts` makes for `courseId` over its own single global cache
+ * entry.
+ *
+ * ## Why `onMutate` cancels in-flight queries FIRST, and why `cancelQueries`
+ * ## is not awaited before the patch
+ *
+ * Both reasons are `useProgress.ts`'s own, verbatim: without cancelling, a
+ * `GET /annotations` still in flight when a write fires can resolve AFTER
+ * this write's optimistic patch and silently overwrite it with pre-write
+ * data. And `Query#cancel` aborts the in-flight retryer SYNCHRONOUSLY
+ * (`@tanstack/query-core`'s `query.ts`) — the Promise it returns only signals
+ * when that abort has fully settled, not when the abort itself takes effect.
+ * Gating the patch behind that `await` would push it a full microtask tick
+ * after the call that triggered it, which is one tick too late for "the
+ * change is visible before the network answers".
  */
 export function useAnnotations(
   courseId: string,
   chapterId: string,
   content: ChapterContent = { root: null, revision: 0 },
 ): UseAnnotationsResult {
-  const key = `${courseId} ${chapterId}`;
+  const key = `${courseId} ${chapterId}`;
+  const queryClient = useQueryClient();
 
-  // The rows are stored WITH the key they were read for. On a chapter change
-  // the new `liveQuery` has not emitted yet, and rendering the previous
-  // chapter's rows for one commit would hand the resolve pass a set of
-  // annotations that belong to text no longer on the page.
-  const [snapshot, setSnapshot] = useState<{ key: string; rows: readonly Ann[] }>({ key, rows: NO_ROWS });
-  const rows = snapshot.key === key ? snapshot.rows : NO_ROWS;
+  const { data: courseRows = NO_ROWS } = useQuery({
+    queryKey: annotationsQueryKey(courseId),
+    queryFn: () => fetchAnnotations(courseId),
+  });
+  const rows = useMemo(() => courseRows.filter((row) => row.chapterId === chapterId), [courseRows, chapterId]);
 
   const [placements, setPlacements] = useState<ReadonlyMap<string, Placement>>(() => new Map());
   const stateRef = useRef<PassState | null>(null);
 
-  // `db.annotations` is indexed by `id`/`updatedAt`/`deletedAt` only — there
-  // is no `courseId` index and this task adds no migration (ruling P2-F2), so
-  // the filter runs in JS over a full local read, exactly as `useProgress`
-  // does for `db.progress` and for the same reason: one reader's annotation
-  // table is small, and a schema change to save a scan is not worth a
-  // migration this phase is not scoped to make.
-  useEffect(() => {
-    const subscription = liveQuery(() =>
-      db.annotations.toArray().then((all) => all.filter((r) => r.courseId === courseId && r.chapterId === chapterId)),
-    ).subscribe({
-      next: (next) => setSnapshot({ key: `${courseId} ${chapterId}`, rows: next }),
-      error: (err) => console.error('useAnnotations: live query failed', err),
-    });
-    return () => subscription.unsubscribe();
-  }, [courseId, chapterId]);
+  /** The text last handed to `updateNote`, per id, for as long as that write
+   * has not yet been CONFIRMED — see `draftOf`'s own doc on `UseAnnotationsResult`.
+   * A ref, not state: writing it must never itself trigger a render (nothing
+   * here reads it reactively — every reader calls `draftOf(id)` imperatively,
+   * same as `useProgress.ts`'s `isRead`/`exDone` read the query cache
+   * directly instead of through render-derived state, and for the identical
+   * reason: a ref/cache read is available in the SAME tick as the call that
+   * set it, a state update is not. */
+  const draftsRef = useRef<Map<string, string>>(new Map());
 
-  const root = content.root;
-  const revision = content.revision;
+  const mutation = useMutation({
+    mutationFn: (vars: MutationVars): Promise<void> => {
+      switch (vars.kind) {
+        case 'create':
+          return createAnnotation({
+            id: vars.row.id,
+            courseId: vars.row.courseId,
+            chapterId: vars.row.chapterId,
+            anchor: vars.row.anchor,
+            note: vars.row.note,
+          });
+        case 'updateNote':
+          return patchAnnotation(vars.id, { note: vars.note });
+        case 'remove':
+          return deleteAnnotation(vars.id);
+        case 'reattach':
+          return patchAnnotation(vars.id, { anchor: vars.anchor });
+      }
+    },
+    onMutate: async (vars: MutationVars) => {
+      const queryKey = annotationsQueryKey(courseId);
+      const cancelled = queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<Ann[]>(queryKey);
+      const at = new Date().toISOString();
+      queryClient.setQueryData<Ann[]>(queryKey, (old = []) => applyOptimistic(old, vars, at));
+      // Not needed for the patch above (already applied, synchronously) —
+      // awaited here only so this mutation's lifecycle doesn't move on to
+      // `mutationFn` until the cancellation itself has fully settled.
+      await cancelled;
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(annotationsQueryKey(courseId), ctx.previous);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: annotationsQueryKey(courseId) });
+    },
+  });
+  const mutateAsync = mutation.mutateAsync;
 
+  /** `updateNote`/`remove`/`reattach` are documented no-ops for an id this
+   * hook does not currently know about — reads the cache directly (not
+   * `rows`, which is chapter-scoped) so an id from any chapter of this
+   * course is recognised, matching the pre-Task-7 behaviour of a single
+   * unscoped local table. */
+  const annotationExists = useCallback(
+    (id: string): boolean =>
+      (queryClient.getQueryData<Ann[]>(annotationsQueryKey(courseId)) ?? []).some((row) => row.id === id),
+    [queryClient, courseId],
+  );
+
+  // `fetchAnnotations` already scopes to `courseId` (server-side), so the
+  // only client-side filtering left is `chapterId` — see this function's own
+  // "one cache entry per course" doc above.
   useEffect(() => {
+    const root = content.root;
     if (!root) {
       stateRef.current?.cancel?.();
       stateRef.current = null;
       return;
     }
+    const revision = content.revision;
 
     let state = stateRef.current;
     if (!state || state.root !== root || state.revision !== revision || state.key !== key) {
@@ -479,17 +604,17 @@ export function useAnnotations(
      * The `isMapStale` check is there for a mutation this pass did not make.
      * This hook drops its own map after every batch that painted (see
      * `resolveBatch`), so the only way a kept map can be stale is that someone
-     * ELSE changed the chapter — and from Task 5 on, someone else does:
+     * ELSE changed the chapter — and from Task 5 (P2) on, someone else does:
      * `./SelectionToolbar` paints the reader's new highlight the instant they
-     * click a colour, BEFORE the row it created has travelled through Dexie
-     * back to this pass. The map kept from a batch that painted nothing (every
-     * annotation an orphan — an ordinary state, with an orphan panel shipping
-     * in Task 7) then describes a tree that no longer exists, and
-     * `anchorToRange` is documented to THROW rather than answer wrongly. That
-     * throw is not caught anywhere in this file, on purpose, so it would leave
-     * the reader's page dead in a passive effect. Reproduced as a test in
-     * `SelectionToolbar.test.tsx` ("chương đang có ghi chú MỒ CÔI…"), which
-     * fails with `StaleNormMapError` without this line.
+     * click a colour, BEFORE the row it created has travelled through the
+     * query cache back to this pass. The map kept from a batch that painted
+     * nothing (every annotation an orphan — an ordinary state) then describes
+     * a tree that no longer exists, and `anchorToRange` is documented to
+     * THROW rather than answer wrongly. That throw is not caught anywhere in
+     * this file, on purpose, so it would leave the reader's page dead in a
+     * passive effect. Reproduced as a test in `SelectionToolbar.test.tsx`
+     * ("chương đang có ghi chú MỒ CÔI…"), which fails with `StaleNormMapError`
+     * without this line.
      *
      * `isMapStale` rather than `try`/`catch` is what ruling P2-F8 prescribes for
      * a caller holding a map across possible mutations. It costs one property
@@ -558,11 +683,12 @@ export function useAnnotations(
     const atStage = (candidates: readonly Ann[], stage: Stage): Ann[] =>
       candidates.filter((row) => pass.attempts.get(row.id)?.stage === stage);
 
-    const live = rows.filter((row) => row.deletedAt == null);
+    const live = rows;
     const liveById = new Map(live.map((row) => [row.id, row] as const));
 
-    // Forget — and unpaint — anything that was tombstoned, vanished, or had
-    // its anchor changed by `reattach` (or by a pull from another device).
+    // Forget — and unpaint — anything that was deleted, vanished from this
+    // chapter, or had its anchor changed by `reattach` (or by a fresher
+    // fetch landing from elsewhere).
     let unpainted = 0;
     for (const [id, attempt] of Array.from(pass.attempts)) {
       const row = liveById.get(id);
@@ -617,13 +743,12 @@ export function useAnnotations(
       pass.cancel?.();
       pass.cancel = null;
     };
-  }, [root, revision, key, rows]);
+  }, [content.root, content.revision, key, rows]);
 
   const { list, orphans } = useMemo(() => {
     const placed: { row: Ann; from: number }[] = [];
     const lost: Ann[] = [];
     for (const row of rows) {
-      if (row.deletedAt != null) continue;
       if (!placements.has(row.id)) continue; // still awaiting the deferred pass
       const placement = placements.get(row.id) ?? null;
       if (placement === null) lost.push(row);
@@ -640,33 +765,61 @@ export function useAnnotations(
   const create = useCallback(
     async (anchor: Anchor, note: string): Promise<string> => {
       // A UUID because the server parses this field with `uuid.Parse` (400
-      // otherwise) and because `./painter` needs an id with no ASCII
-      // whitespace in it to store several ids in one attribute.
+      // otherwise), because `./painter` needs an id with no ASCII whitespace
+      // in it to store several ids in one attribute, and — generated HERE,
+      // before the request — because it is what makes a retry after a lost
+      // response a 409 instead of a duplicate note (see `create`'s own doc
+      // on `UseAnnotationsResult`).
       const id = crypto.randomUUID();
       const at = new Date().toISOString();
-      await commit({ id, courseId, chapterId, anchor, note, createdAt: at, updatedAt: at, deletedAt: null });
+      const row: Ann = { id, courseId, chapterId, anchor, note, createdAt: at, updatedAt: at };
+      await mutateAsync({ kind: 'create', row });
       return id;
     },
-    [courseId, chapterId],
+    [courseId, chapterId, mutateAsync],
   );
 
-  const updateNote = useCallback(async (id: string, note: string): Promise<void> => {
-    const at = new Date().toISOString();
-    await commitPatch(id, (row) => ({ ...row, note, updatedAt: at }));
-  }, []);
+  const updateNote = useCallback(
+    async (id: string, note: string): Promise<void> => {
+      if (!annotationExists(id)) return;
+      // Stamped BEFORE the write, unconditionally — this is the draft, and it
+      // must survive a rollback. See `draftOf`'s doc on `UseAnnotationsResult`.
+      draftsRef.current.set(id, note);
+      await mutateAsync({ kind: 'updateNote', id, note });
+      // Reached only on SUCCESS (a throw from the line above skips past
+      // this). The cache row now equals what was just written, so the draft
+      // is no longer "ahead of" it — dropped so a LATER externally-arriving
+      // update (another tab, another device) is not masked by stale draft
+      // text forever.
+      if (draftsRef.current.get(id) === note) draftsRef.current.delete(id);
+    },
+    [annotationExists, mutateAsync],
+  );
 
-  const remove = useCallback(async (id: string): Promise<void> => {
-    const at = new Date().toISOString();
-    // A tombstone, not a delete: the server keeps it and hands it to every
-    // other device (see `Repo.PullAnnotations`, which never filters tombstones
-    // out). A hard delete here would come back on the next pull.
-    await commitPatch(id, (row) => ({ ...row, updatedAt: at, deletedAt: at }));
-  }, []);
+  const remove = useCallback(
+    async (id: string): Promise<void> => {
+      if (!annotationExists(id)) return;
+      await mutateAsync({ kind: 'remove', id });
+    },
+    [annotationExists, mutateAsync],
+  );
 
-  const reattach = useCallback(async (id: string, anchor: Anchor): Promise<void> => {
-    const at = new Date().toISOString();
-    await commitPatch(id, (row) => ({ ...row, anchor, updatedAt: at }));
-  }, []);
+  const reattach = useCallback(
+    async (id: string, anchor: Anchor): Promise<void> => {
+      if (!annotationExists(id)) return;
+      await mutateAsync({ kind: 'reattach', id, anchor });
+    },
+    [annotationExists, mutateAsync],
+  );
 
-  return { list, orphans, create, updateNote, remove, reattach };
+  const draftOf = useCallback(
+    (id: string): string => {
+      const pending = draftsRef.current.get(id);
+      if (pending !== undefined) return pending;
+      return rows.find((row) => row.id === id)?.note ?? '';
+    },
+    [rows],
+  );
+
+  return { list, orphans, create, updateNote, remove, reattach, draftOf, saveError: mutation.isError };
 }

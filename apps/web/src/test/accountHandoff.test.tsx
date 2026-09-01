@@ -31,20 +31,21 @@
  * would quietly depend on the thing that must not exist.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { useEffect, useRef, useState } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { annotationsQueryKey } from '../api/annotations';
 import { type Anchor, type AnchorColor, selectionToAnchor } from '../annotations/anchor';
 import { type CardFocus, DRAFT_KEY, MarginCards } from '../annotations/MarginCards';
 import { normalizeContainer } from '../annotations/normalize';
-import { type ChapterContent, useAnnotations } from '../annotations/useAnnotations';
+import { type Ann, type ChapterContent, useAnnotations } from '../annotations/useAnnotations';
 import { RequireAuth } from '../auth/RequireAuth';
 import { useLogout } from '../auth/useLogout';
-import { type AnnotationRow, clearLocalData, db } from '../db/local';
+import { clearLocalData, db } from '../db/local';
 import { Login } from '../pages/Login';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 import { ThemeProvider } from '../theme/ThemeContext';
@@ -98,8 +99,64 @@ function makeAnchor(html: string, quote: string, color: AnchorColor = 'y'): Anch
   throw new Error(`makeAnchor: không neo được ${JSON.stringify(quote)}`);
 }
 
-async function seedNote(id: string, note: string): Promise<AnnotationRow> {
-  const row: AnnotationRow = {
+/**
+ * Task 7, Pha 3: `useAnnotations` (the ONE instance `<Reader>` below owns)
+ * reads/writes the server through `GET/POST /annotations` and
+ * `PATCH/DELETE /annotations/:id` now, not Dexie — the same shift
+ * `reader/ChapterView.test.tsx` already made. `annotationRows` stands in for
+ * the backend the same way that file's own array does; `patchCount` is this
+ * file's own witness for "was `updateNote` ever sent", since there is no
+ * `db.outbox` any more to count.
+ *
+ * `rowOwners`/`currentAccountId` exist because this file's whole subject is
+ * TWO ACCOUNTS, and a real `GET /annotations` (and every write endpoint) is
+ * scoped server-side to whoever the session cookie names — B's request never
+ * even reaches A's rows, no matter when it lands. `db.annotations` (the
+ * pre-Task-7 local store this replaces) had no such scoping of its own; the
+ * OLD version of this file's guarantee came entirely from `clearLocalData()`
+ * emptying the ONE shared local table on logout, with nothing left for a
+ * next account to inherit — including, incidentally, whatever the departing
+ * reader's own in-flight write was about to land. Post-Task-7, annotations
+ * are never cached locally at all, and a write dispatched a moment before a
+ * crash is a REAL in-flight `fetch` with no local table left to wipe out
+ * from under it — so the account boundary this file exists to test has moved
+ * to the SERVER, same as production, and the mock has to enforce it there or
+ * a stray write from a session that has already ended could still land and
+ * (worse) a test asserting "B never sees A's note" would only be passing by
+ * accident (both accounts sharing one course/chapter id in this fixture,
+ * with nothing here otherwise telling them apart). Defaults to `'u-a'`
+ * because every `seedNote` in this file seeds AS A, and A is always the
+ * first account in every scenario; `setMe`/`bSignsIn` are the two places it
+ * changes.
+ */
+let annotationRows: Ann[];
+let rowOwners: Map<string, string>;
+let currentAccountId: string;
+let patchCount: number;
+
+/** The one place `/me` is configured — every `server.use(http.get('/me', ...))`
+ * in the old version of this file is now this call, so `currentAccountId`
+ * can never drift out of step with what `/me` actually answers. */
+function setMe(user: { id: string; email: string; name: string } | null): void {
+  if (user) currentAccountId = user.id;
+  server.use(
+    user
+      ? http.get('/me', () => HttpResponse.json(user))
+      : http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })),
+  );
+}
+
+/** Upserts by `id`, matching Dexie's `put` semantics the pre-Task-7 version
+ * of this function relied on — some tests call this TWICE with the SAME id
+ * (once for A, once for "B's own sync brings the same chapter's row down"
+ * under the SAME id — the whole point of that scenario), and a plain `push`
+ * would leave two rows with one id in `annotationRows`. Owned by whoever is
+ * CURRENT when it is seeded, not a fixed account: every call in this file
+ * happens to run before any `setMe`/`bSignsIn` (so it is A's, matching
+ * `currentAccountId`'s own default) EXCEPT the one deliberate re-seed after
+ * B has signed in, which is exactly how that row becomes B's own. */
+function seedNote(id: string, note: string): Ann {
+  const row: Ann = {
     id,
     courseId: 'c1',
     chapterId: 'ch1',
@@ -107,9 +164,11 @@ async function seedNote(id: string, note: string): Promise<AnnotationRow> {
     note,
     createdAt: '2026-08-20T10:00:00.000Z',
     updatedAt: '2026-08-20T10:00:00.000Z',
-    deletedAt: null,
   };
-  await db.annotations.put(row);
+  const idx = annotationRows.findIndex((r) => r.id === id);
+  if (idx === -1) annotationRows.push(row);
+  else annotationRows[idx] = row;
+  rowOwners.set(id, currentAccountId);
   return row;
 }
 
@@ -176,8 +235,17 @@ function LoginRoute({ onArrive }: { onArrive: (draft: string | null) => void }) 
 }
 
 /** The browser: the reader at `/`, the sign-in page at `/login`, one query cache — the two routes an account handover actually passes through. */
-function Browser({ at = '/', onArriveAtLogin = () => {} }: { at?: string; onArriveAtLogin?: (draft: string | null) => void }) {
+function Browser({
+  at = '/',
+  onArriveAtLogin = () => {},
+  onQueryClient = () => {},
+}: {
+  at?: string;
+  onArriveAtLogin?: (draft: string | null) => void;
+  onQueryClient?: (client: QueryClient) => void;
+}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  onQueryClient(queryClient);
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={[at]}>
@@ -241,7 +309,48 @@ const server = setupServer(
   http.get('/sync', () => HttpResponse.json({ progress: [], annotations: [], cursor: 'c0' })),
   http.post('/events/batch', () => HttpResponse.json({ accepted: 0 })),
   http.post('/auth/logout', () => new HttpResponse(null, { status: 200 })),
-  http.post('/auth/login', () => HttpResponse.json({ id: 'u-b', email: 'b@example.com', name: 'B' })),
+  // Tied to the ACTUAL request resolving, not to `bSignsIn`'s own timing —
+  // the moment a real backend would start scoping requests to B's session.
+  http.post('/auth/login', () => {
+    currentAccountId = 'u-b';
+    return HttpResponse.json({ id: 'u-b', email: 'b@example.com', name: 'B' });
+  }),
+  http.get('/annotations', ({ request }) => {
+    const course = new URL(request.url).searchParams.get('course');
+    const rows = annotationRows.filter(
+      (r) => (course === null || r.courseId === course) && rowOwners.get(r.id) === currentAccountId,
+    );
+    return HttpResponse.json({ annotations: rows });
+  }),
+  http.post('/annotations', async ({ request }) => {
+    const body = (await request.json()) as { id: string; courseId: string; chapterId: string; anchor: unknown; note: string };
+    const at = new Date().toISOString();
+    annotationRows.push({ ...body, createdAt: at, updatedAt: at });
+    // Real backend: a row belongs to whoever's session created it.
+    rowOwners.set(body.id, currentAccountId);
+    return new HttpResponse(null, { status: 201 });
+  }),
+  // A real backend never applies a write to a row it does not consider
+  // CURRENTLY yours — the same ownership check `GET` makes. Without it, a
+  // write dispatched by A a moment before a crash (this file's `aPageDies`)
+  // and only actually delivered to the mock later — after B has signed in on
+  // the same browser — would silently land on the SAME id under B's account,
+  // exactly the cross-account write the whole file exists to rule out.
+  http.patch('/annotations/:id', async ({ request, params }) => {
+    const id = String(params.id);
+    const patch = (await request.json()) as { note?: string; anchor?: unknown };
+    if (rowOwners.get(id) !== currentAccountId) return new HttpResponse(null, { status: 404 });
+    patchCount += 1;
+    const idx = annotationRows.findIndex((r) => r.id === id);
+    if (idx === -1) return new HttpResponse(null, { status: 404 });
+    annotationRows[idx] = { ...annotationRows[idx], ...patch, updatedAt: new Date().toISOString() };
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.delete('/annotations/:id', ({ params }) => {
+    const id = String(params.id);
+    annotationRows = annotationRows.filter((r) => r.id !== id);
+    return new HttpResponse(null, { status: 204 });
+  }),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
@@ -253,6 +362,10 @@ beforeEach(async () => {
   window.localStorage.clear();
   document.body.innerHTML = '';
   setViewportWidth(WIDE);
+  annotationRows = [];
+  rowOwners = new Map();
+  currentAccountId = 'u-a';
+  patchCount = 0;
 });
 
 afterEach(async () => {
@@ -401,24 +514,38 @@ describe('one browser, two accounts — the note draft is the departing user’s
     await aTypesAPrivateNote(sharedId);
     await aPageDies();
 
-    render(<Browser at="/login" />);
+    let bsQueryClient: QueryClient | undefined;
+    render(<Browser at="/login" onQueryClient={(client) => (bsQueryClient = client)} />);
     await bSignsIn();
     await waitFor(() => expect(screen.getByTestId('chapter')).toBeInTheDocument());
+    // `patchCount` so far is A's OWN legitimate flush-on-unmount from
+    // `aPageDies()` (saving A's own note, nothing to do with adoption) —
+    // reset it here so the assertion below is scoped to what happens in B's
+    // session, which is the only thing this test is about.
+    patchCount = 0;
 
     // B's own sync brings down B's own note for the same chapter, into the
     // reader B already has open — the moment the recovery effect looks for
-    // a row to give the stashed draft to.
+    // a row to give the stashed draft to. `seedNote` is a plain mutation of
+    // the mock's own array, not a real `POST`/`PATCH` — so, unlike Dexie's
+    // `liveQuery` (reactive to any local write), the already-mounted
+    // `useQuery` has no trigger of its own to notice it: `invalidateQueries`
+    // is what a real sync cycle would call once it had written the row, and
+    // is the most direct stand-in available here.
     await seedNote(sharedId, '');
+    await act(async () => {
+      await bsQueryClient!.invalidateQueries({ queryKey: annotationsQueryKey('c1') });
+    });
     await waitForCards(1);
     // The effect is keyed on `list`; give it a turn of the loop to fire.
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect((await db.annotations.get(sharedId))?.note).toBe('');
+    expect(annotationRows.find((r) => r.id === sharedId)?.note).toBe('');
     expect(within(cardFor(sharedId)).queryByText(A_PRIVATE)).toBeNull();
-    // The sharper harm: adoption goes through `updateNote`, which enqueues
-    // an outbox row — A's words would be POSTed into B's server account
-    // under B's cookie on the next cycle.
-    expect(await db.outbox.count()).toBe(0);
+    // The sharper harm: adoption goes through `updateNote`, which would have
+    // sent a `PATCH /annotations/:id` — A's words would be POSTed into B's
+    // server account under B's cookie on the next cycle.
+    expect(patchCount).toBe(0);
   }, 20_000);
 });
 
@@ -453,7 +580,7 @@ function coldLoad(at = '/'): void {
  */
 describe('one browser, two accounts — reading offline must never open the previous account’s reader', () => {
   it('positive control: A’s own device, A’s own session, network dead — A reads their own note', async () => {
-    server.use(http.get('/me', () => HttpResponse.json(A)));
+    setMe(A);
     const row = await seedNote('44444444-4444-4444-8444-444444444444', A_PRIVATE);
 
     render(<GuardedBrowser />);
@@ -471,7 +598,7 @@ describe('one browser, two accounts — reading offline must never open the prev
   }, 20_000);
 
   it('A signs out, then the network dies: a cold load shows the outage, not A’s reader', async () => {
-    server.use(http.get('/me', () => HttpResponse.json(A)));
+    setMe(A);
     await seedNote('55555555-5555-4555-8555-555555555555', A_PRIVATE);
 
     render(<GuardedBrowser />);
@@ -495,7 +622,7 @@ describe('one browser, two accounts — reading offline must never open the prev
     // The full handover, and the one that matters: the offline door is OPEN
     // for B (B has a live local session, so the feature works for them) and
     // what is behind it is B's own empty local database.
-    server.use(http.get('/me', () => HttpResponse.json(A)));
+    setMe(A);
     await seedNote('66666666-6666-4666-8666-666666666666', A_PRIVATE);
 
     render(<GuardedBrowser />);
@@ -504,7 +631,7 @@ describe('one browser, two accounts — reading offline must never open the prev
     fireEvent.click(screen.getByRole('button', { name: 'Đăng xuất' }));
     await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument(), { timeout: 10_000 });
 
-    server.use(http.get('/me', () => HttpResponse.json(B)));
+    setMe(B);
     await bSignsIn();
     await waitFor(() => expect(screen.getByTestId('chapter')).toBeInTheDocument());
 
@@ -524,13 +651,13 @@ describe('one browser, two accounts — reading offline must never open the prev
     // The bound on how long a device may stand in for the server: not a
     // timer, the first HTTP response that arrives. A dead cookie plus a
     // live network is a closed door on the very next load.
-    server.use(http.get('/me', () => HttpResponse.json(A)));
+    setMe(A);
     await seedNote('77777777-7777-4777-8777-777777777777', A_PRIVATE);
 
     render(<GuardedBrowser />);
     await waitForCards(1);
 
-    server.use(http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
+    setMe(null);
     coldLoad();
 
     await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument());

@@ -1032,6 +1032,20 @@ function AuthedReaderExtras({
           {t('progress.saveFailed')}
         </p>
       )}
+      {/* Task 7, Pha 3 — the same additive-field/one-render-site shape as
+          `progress.saveError` right above, for `useAnnotations`'s
+          `updateNote`/`remove`/`reattach`: before this task a failed one of
+          those three went straight to `console.error`, with nothing on the
+          page saying the write did not land. `create`'s own failure already
+          has a surface (`SelectionToolbar`'s inline `ann.saveFailed`, right
+          next to the toolbar), which is why this is a SEPARATE string
+          (`notes.saveFailed`) rather than reusing that one — two different
+          events that can, harmlessly, both be true at once. */}
+      {annotations.saveError && (
+        <p role="alert" className="lib-notice-server">
+          {t('notes.saveFailed')}
+        </p>
+      )}
       {/* Last in the chapter pipeline (innerHTML → renderKatex → widgets →
           checkboxes → normalize/resolve/paint → toolbar): it watches
           `selectionchange` and does nothing at all until the reader selects

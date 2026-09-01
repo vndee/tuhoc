@@ -26,6 +26,7 @@
  *      replacement text happens to have the same length, and anchors the
  *      reader's next note against text that is no longer on the page.
  */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { readFileSync } from 'node:fs';
@@ -33,7 +34,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { useEffect, useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearLocalData, db } from '../db/local';
+import { createAnnotation, deleteAnnotation, fetchAnnotations, patchAnnotation } from '../api/annotations';
 import { readSampleCourseFile, SAMPLE_CHAPTER } from '../test/sampleCourse';
 import { type Anchor, type AnchorColor, selectionToAnchor } from './anchor';
 import { flatToDom, normalizeContainer } from './normalize';
@@ -47,6 +48,24 @@ import {
 } from './SelectionToolbar';
 import { type Ann, type ChapterContent, type UseAnnotationsResult, useAnnotations } from './useAnnotations';
 import { LanguageProvider } from '../i18n/LanguageProvider';
+
+// Task 7, Pha 3: `useAnnotations` reads/writes the server through
+// `../api/annotations` now, not Dexie — and `Harness`/`RealChapterHarness`
+// below call the REAL hook unconditionally (even the tests that pass a
+// `stubStore` for the toolbar itself still mount it, to keep `hook.api`
+// populated for the sections that read it). So every test in this file needs
+// a working fake of that module, the same shape
+// `useAnnotations.test.tsx`/`progress/useProgress.test.ts` already use.
+vi.mock('../api/annotations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/annotations')>();
+  return {
+    ...actual,
+    fetchAnnotations: vi.fn(),
+    createAnnotation: vi.fn(),
+    patchAnnotation: vi.fn(),
+    deleteAnnotation: vi.fn(),
+  };
+});
 
 const CHAPTER = [
   '<h2>Entropy</h2>',
@@ -72,6 +91,14 @@ const Q1_OVERLAP = 'Entropy đo lượng thông tin';
  * uses. */
 const hook = { api: null as unknown as UseAnnotationsResult };
 
+/** A fresh cache per test, and the fake "server" `fetchAnnotations`/
+ * `createAnnotation`/`patchAnnotation`/`deleteAnnotation` read from and write
+ * to — the same shape `useAnnotations.test.tsx`'s own `queryClient`/
+ * `serverRows` use, and the reason is identical: `onSettled` refetches after
+ * every real write the "kho ghi chú thật" section below makes. */
+let queryClient: QueryClient;
+let serverRows: Ann[];
+
 function stubStore(create: ToolbarStore['create']): ToolbarStore {
   return { create, list: [], orphans: [] };
 }
@@ -88,7 +115,6 @@ function annRow(id: string): Ann {
     note: '',
     createdAt: '2026-08-20T10:00:00.000Z',
     updatedAt: '2026-08-20T10:00:00.000Z',
-    deletedAt: null,
   };
 }
 
@@ -97,17 +123,37 @@ function annRow(id: string): Ann {
  * React never gives children to, then a `revision` bump — and mounts the
  * toolbar over it.
  *
- * `store` is either a stub (so a test can watch `create` and leave it pending)
- * or the real `useAnnotations` result (so the paint/handover integration is
- * exercised for real, against fake-indexeddb).
+ * Split into two components — `StubHarness`/`LiveHarness` — rather than one
+ * component that conditionally uses a stub or the real `useAnnotations`
+ * result, for a reason that is about ASYNC NOISE, not the Rules of Hooks: a
+ * `useAnnotations` instance fetches through `../api/annotations` on mount
+ * regardless of whether anything ends up reading its `list`/`orphans` (the
+ * resolve/paint effect is what is gated on `content.root`, not the query
+ * itself). A `stubStore` test never reads that instance's result at all — the
+ * old single-`Harness` version called it anyway, purely to keep `hook.api`
+ * populated for the tests that DO want it — and that spare, unread fetch
+ * turned out not to be free: jsdom fires its OWN 'selectionchange' for a
+ * programmatic selection change asynchronously, on a later task (documented
+ * on `selectSilently` below), independent of the one `select()` dispatches
+ * synchronously. With the spare fetch's extra pending microtask in the mix,
+ * that delayed native event was landing INSIDE the `Esc`-test's
+ * `await act(async () => { dispatch Escape })` window often enough to reopen
+ * the toolbar it had just closed (still seeing the same live selection) —
+ * reproduced directly: 8/10 runs red with the spare `useAnnotations` call in
+ * place, 0/10 without it, 10/10 green before Task 7 (Pha 3) gave this hook a
+ * query to run in the first place. Splitting the harness removes the spare
+ * fetch for every `stubStore` test — the actual bug this traces to is a
+ * pre-existing jsdom timing hazard in `SelectionToolbar.tsx` this task's
+ * brief forbids touching, not something wrong with the toolbar's Esc
+ * handling itself.
  */
-function Harness({
+function StubHarness({
   html,
   store,
   onRequestNote,
 }: {
   html: string;
-  store?: ToolbarStore;
+  store: ToolbarStore;
   onRequestNote?: (id: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -118,16 +164,70 @@ function Harness({
     el.innerHTML = html;
     setContent((prev) => ({ root: el, revision: prev.revision + 1 }));
   }, [html]);
-  const live = useAnnotations('c1', 'ch1', store ? { root: null, revision: 0 } : content);
+  return (
+    <>
+      <div ref={ref} data-testid="chapter" />
+      <p data-testid="outside">Ngoài chương: chân trang</p>
+      <LanguageProvider>
+        <SelectionToolbar content={content} store={store} onRequestNote={onRequestNote} />
+      </LanguageProvider>
+    </>
+  );
+}
+
+/** The real `useAnnotations` result — for the "kho ghi chú thật" section,
+ * where the paint/handover integration is exercised for real, against the
+ * mocked `../api/annotations` this file's `beforeEach` wires up. */
+function LiveHarness({ html, onRequestNote }: { html: string; onRequestNote?: (id: string) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [content, setContent] = useState<ChapterContent>({ root: null, revision: 0 });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.innerHTML = html;
+    setContent((prev) => ({ root: el, revision: prev.revision + 1 }));
+  }, [html]);
+  const live = useAnnotations('c1', 'ch1', content);
   hook.api = live;
   return (
     <>
       <div ref={ref} data-testid="chapter" />
       <p data-testid="outside">Ngoài chương: chân trang</p>
       <LanguageProvider>
-        <SelectionToolbar content={content} store={store ?? live} onRequestNote={onRequestNote} />
+        <SelectionToolbar content={content} store={live} onRequestNote={onRequestNote} />
       </LanguageProvider>
     </>
+  );
+}
+
+function Harness({
+  html,
+  store,
+  onRequestNote,
+}: {
+  html: string;
+  store?: ToolbarStore;
+  onRequestNote?: (id: string) => void;
+}) {
+  return store ? (
+    <StubHarness html={html} store={store} onRequestNote={onRequestNote} />
+  ) : (
+    <LiveHarness html={html} onRequestNote={onRequestNote} />
+  );
+}
+
+/** Every render needs a `QueryClientProvider` — `LiveHarness` calls the real
+ * `useAnnotations`, and `StubHarness` costs nothing extra by also having one
+ * in its (unused) tree. Wrapped ONE level above `Harness` rather than at each
+ * of this file's ~25 `render(<HarnessRoot .../>)`/`rerender(...)` call sites.
+ * `rerender` reuses this same outer element (same type, same position in the
+ * tree), so the `queryClient` a test set up in `beforeEach` stays the one in
+ * effect across a `rerender` too. */
+function HarnessRoot(props: Parameters<typeof Harness>[0]) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <Harness {...props} />
+    </QueryClientProvider>
   );
 }
 
@@ -246,12 +346,12 @@ function layersOf(root: HTMLElement, id: string): number {
 }
 
 /** A row that cannot possibly be found in the fixture chapter, put straight
- * into Dexie the way `sync/engine.ts`'s `pull()` puts a row from another
- * device. Empty context on purpose: `fuzzyFind` needs a prefix or suffix
- * occurrence to have anywhere to look, so this settles as an orphan without
- * spending the fuzzy tier. */
-async function seedOrphan(): Promise<void> {
-  await db.annotations.put({
+ * into `serverRows` the way a row from another device already sitting on the
+ * server would arrive via `GET /annotations`. Empty context on purpose:
+ * `fuzzyFind` needs a prefix or suffix occurrence to have anywhere to look,
+ * so this settles as an orphan without spending the fuzzy tier. */
+function seedOrphan(): void {
+  serverRows.push({
     id: 'orphan-1',
     courseId: 'c1',
     chapterId: 'ch1',
@@ -259,7 +359,6 @@ async function seedOrphan(): Promise<void> {
     note: 'ghi chú cũ',
     createdAt: '2026-08-20T10:00:00.000Z',
     updatedAt: '2026-08-20T10:00:00.000Z',
-    deletedAt: null,
   });
 }
 
@@ -271,11 +370,37 @@ async function clickColour(name: RegExp | string): Promise<void> {
 
 beforeEach(() => {
   document.body.innerHTML = '';
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  serverRows = [];
+  vi.mocked(fetchAnnotations)
+    .mockReset()
+    .mockImplementation(async (courseId) =>
+      serverRows.filter((row) => courseId === undefined || row.courseId === courseId).map((row) => ({ ...row })),
+    );
+  vi.mocked(createAnnotation)
+    .mockReset()
+    .mockImplementation(async (row) => {
+      const at = new Date().toISOString();
+      serverRows.push({ ...(row as Ann), createdAt: at, updatedAt: at });
+    });
+  vi.mocked(patchAnnotation)
+    .mockReset()
+    .mockImplementation(async (id, patch) => {
+      const idx = serverRows.findIndex((row) => row.id === id);
+      if (idx === -1) return;
+      serverRows[idx] = { ...serverRows[idx], ...patch, updatedAt: new Date().toISOString() };
+    });
+  vi.mocked(deleteAnnotation)
+    .mockReset()
+    .mockImplementation(async (id) => {
+      serverRows = serverRows.filter((row) => row.id !== id);
+    });
 });
 
-afterEach(async () => {
+afterEach(() => {
   clearSelection();
-  await clearLocalData();
   vi.restoreAllMocks();
 });
 
@@ -285,7 +410,7 @@ afterEach(async () => {
 
 describe('hiện/ẩn theo vùng chọn', () => {
   it('bôi chọn văn xuôi trong chương → toolbar nổi lên với 4 nút màu + nút Ghi chú', async () => {
-    render(<Harness html={CHAPTER} store={stubStore(vi.fn())} />);
+    render(<HarnessRoot html={CHAPTER} store={stubStore(vi.fn())} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
 
     select(Q1);
@@ -307,7 +432,7 @@ describe('hiện/ẩn theo vùng chọn', () => {
   });
 
   it('một cú NHÁY chuột (selection rỗng) không hiện toolbar', async () => {
-    render(<Harness html={CHAPTER} store={stubStore(vi.fn())} />);
+    render(<HarnessRoot html={CHAPTER} store={stubStore(vi.fn())} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
 
     const paragraph = chapterRoot().querySelector('#p1')!;
@@ -320,7 +445,7 @@ describe('hiện/ẩn theo vùng chọn', () => {
   });
 
   it('vùng chọn NGOÀI chương không hiện toolbar', async () => {
-    render(<Harness html={CHAPTER} store={stubStore(vi.fn())} />);
+    render(<HarnessRoot html={CHAPTER} store={stubStore(vi.fn())} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
 
     const outside = screen.getByTestId('outside');
@@ -333,7 +458,7 @@ describe('hiện/ẩn theo vùng chọn', () => {
   });
 
   it('vùng chọn kéo TỪ TRONG chương RA NGOÀI cũng không hiện toolbar (không đoán ý người đọc)', async () => {
-    render(<Harness html={CHAPTER} store={stubStore(vi.fn())} />);
+    render(<HarnessRoot html={CHAPTER} store={stubStore(vi.fn())} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
 
     const inside = chapterRoot().querySelector('#p1')!.firstChild!;
@@ -349,7 +474,7 @@ describe('hiện/ẩn theo vùng chọn', () => {
   });
 
   it('vùng chọn nằm gọn trong một khối [data-viz] không hiện toolbar (không có gì để neo)', async () => {
-    render(<Harness html={CHAPTER} store={stubStore(vi.fn())} />);
+    render(<HarnessRoot html={CHAPTER} store={stubStore(vi.fn())} />);
     await waitFor(() => expect(chapterRoot().querySelector('[data-viz]')).not.toBeNull());
 
     const label = chapterRoot().querySelector('.ctrls label')!;
@@ -363,7 +488,7 @@ describe('hiện/ẩn theo vùng chọn', () => {
 
   it('Esc đóng toolbar và KHÔNG tạo gì', async () => {
     const create = vi.fn();
-    render(<Harness html={CHAPTER} store={stubStore(create)} />);
+    render(<HarnessRoot html={CHAPTER} store={stubStore(create)} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
     select(Q1);
     expect(toolbar()).not.toBeNull();
@@ -379,7 +504,7 @@ describe('hiện/ẩn theo vùng chọn', () => {
 
   it('bấm ra ngoài đóng toolbar và KHÔNG tạo gì', async () => {
     const create = vi.fn();
-    render(<Harness html={CHAPTER} store={stubStore(create)} />);
+    render(<HarnessRoot html={CHAPTER} store={stubStore(create)} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
     select(Q1);
     expect(toolbar()).not.toBeNull();
@@ -392,7 +517,7 @@ describe('hiện/ẩn theo vùng chọn', () => {
   });
 
   it('bôi chọn bằng BÀN PHÍM (Shift+mũi tên) cũng mở toolbar — selectionchange, không phải mouseup', async () => {
-    render(<Harness html={CHAPTER} store={stubStore(vi.fn())} />);
+    render(<HarnessRoot html={CHAPTER} store={stubStore(vi.fn())} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
 
     // A keyboard selection produces no mouse event at all: only the selection
@@ -409,7 +534,7 @@ describe('hiện/ẩn theo vùng chọn', () => {
 
 describe('không phá thao tác chọn thông thường', () => {
   it('không cướp focus khi hiện lên', async () => {
-    render(<Harness html={CHAPTER} store={stubStore(vi.fn())} />);
+    render(<HarnessRoot html={CHAPTER} store={stubStore(vi.fn())} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
     const outside = screen.getByTestId('outside');
     outside.setAttribute('tabindex', '0');
@@ -422,7 +547,7 @@ describe('không phá thao tác chọn thông thường', () => {
   });
 
   it('mousedown trên toolbar bị preventDefault — vùng chọn của người đọc sống sót cú bấm', async () => {
-    render(<Harness html={CHAPTER} store={stubStore(vi.fn())} />);
+    render(<HarnessRoot html={CHAPTER} store={stubStore(vi.fn())} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
     select(Q1);
 
@@ -433,7 +558,7 @@ describe('không phá thao tác chọn thông thường', () => {
   });
 
   it('Ctrl+C / Cmd+C không bị chặn và toolbar vẫn giữ nguyên vùng chọn', async () => {
-    render(<Harness html={CHAPTER} store={stubStore(vi.fn())} />);
+    render(<HarnessRoot html={CHAPTER} store={stubStore(vi.fn())} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
     const range = select(Q1);
 
@@ -464,7 +589,7 @@ describe('luồng tạo ghi chú', () => {
           settle = res;
         }),
     );
-    render(<Harness html={CHAPTER} store={stubStore(create)} />);
+    render(<HarnessRoot html={CHAPTER} store={stubStore(create)} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
     select(Q1);
 
@@ -496,7 +621,7 @@ describe('luồng tạo ghi chú', () => {
     // vitest and fails `tsc -b`, which is the gate that counts (P2-F7).
     const create = vi.fn(async (_anchor: Anchor, _note: string) => 'note-id');
     const onRequestNote = vi.fn();
-    render(<Harness html={CHAPTER} store={stubStore(create)} onRequestNote={onRequestNote} />);
+    render(<HarnessRoot html={CHAPTER} store={stubStore(create)} onRequestNote={onRequestNote} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
     select(Q2);
 
@@ -519,7 +644,7 @@ describe('luồng tạo ghi chú', () => {
     const create = vi.fn(async () => {
       throw new Error('quota exceeded');
     });
-    render(<Harness html={CHAPTER} store={stubStore(create)} />);
+    render(<HarnessRoot html={CHAPTER} store={stubStore(create)} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
     select(Q1);
 
@@ -542,7 +667,7 @@ describe('luồng tạo ghi chú', () => {
     // by nothing but that comment: reversing the two produced no failure
     // anywhere in the suite.
     const create = vi.fn(async (_anchor: Anchor, _note: string) => 'id-1');
-    render(<Harness html={CHAPTER} store={stubStore(create)} />);
+    render(<HarnessRoot html={CHAPTER} store={stubStore(create)} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
 
     select(Q1);
@@ -573,7 +698,7 @@ describe('luồng tạo ghi chú', () => {
     // pass (a `<details>` opened, a viz redrawn, an overlapping note painted),
     // and with 255 closed `<details class="deriv">` in this corpus it will.
     const create = vi.fn(async (_anchor: Anchor, _note: string) => 'real-1');
-    const { rerender } = render(<Harness html={CHAPTER} store={{ create, list: [], orphans: [] }} />);
+    const { rerender } = render(<HarnessRoot html={CHAPTER} store={{ create, list: [], orphans: [] }} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
 
     select(Q1);
@@ -584,7 +709,7 @@ describe('luồng tạo ghi chú', () => {
 
     // The store's verdict lands — as an ORPHAN, so `real-1` will never appear
     // in `list` at all.
-    rerender(<Harness html={CHAPTER} store={{ create, list: [], orphans: [annRow('real-1')] }} />);
+    rerender(<HarnessRoot html={CHAPTER} store={{ create, list: [], orphans: [annRow('real-1')] }} />);
 
     await waitFor(() => expect(pendingMarks()).toHaveLength(0));
     // Removing the layer put the chapter's text back exactly as it was —
@@ -599,9 +724,9 @@ describe('luồng tạo ghi chú', () => {
 // 4. The store, for real — where a stale NormMap bites
 // ===========================================================================
 
-describe('kho ghi chú thật (fake-indexeddb)', () => {
+describe('kho ghi chú thật (máy chủ giả lập qua api/annotations)', () => {
   it('HAI ghi chú liên tiếp: cả hai neo đúng chỗ, mỗi ghi chú đúng MỘT lớp mark', async () => {
-    render(<Harness html={CHAPTER} />);
+    render(<HarnessRoot html={CHAPTER} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
 
     select(Q1);
@@ -627,11 +752,11 @@ describe('kho ghi chú thật (fake-indexeddb)', () => {
     // No temporary optimistic mark survived the handover.
     expect(root.querySelectorAll('mark.ann[data-ann-id^="pending-"]')).toHaveLength(0);
     expect(hook.api.orphans).toHaveLength(0);
-    expect(await db.annotations.count()).toBe(2);
+    expect(serverRows).toHaveLength(2);
   });
 
   it('ghi chú thứ hai CHỒNG lên ghi chú thứ nhất vẫn đúng chỗ', async () => {
-    render(<Harness html={CHAPTER} />);
+    render(<HarnessRoot html={CHAPTER} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
 
     select(Q1);
@@ -663,8 +788,8 @@ describe('kho ghi chú thật (fake-indexeddb)', () => {
     // a lost note). With 255 closed `<details class="deriv">` in this corpus and
     // an orphan panel shipping in Task 7, "this chapter has an orphan in it" is
     // an ordinary Tuesday, not a corner.
-    await seedOrphan();
-    render(<Harness html={CHAPTER} />);
+    seedOrphan();
+    render(<HarnessRoot html={CHAPTER} />);
     await waitFor(() => expect(hook.api.orphans).toHaveLength(1));
 
     select(Q1);
@@ -680,7 +805,7 @@ describe('kho ghi chú thật (fake-indexeddb)', () => {
   });
 
   it('ghi chú trong <details> đang mở neo đúng đoạn của nó', async () => {
-    render(<Harness html={CHAPTER} />);
+    render(<HarnessRoot html={CHAPTER} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p4')).not.toBeNull());
 
     select(Q3);
@@ -700,12 +825,12 @@ describe('kho ghi chú thật (fake-indexeddb)', () => {
     // keyed on staleness alone happily answers from the chapter that is gone.
     const OLD = '<p id="q">Con mèo đen ngồi im trên mái nhà cũ.</p>';
     const NEW = '<p id="q">Con chó nâu chạy quanh trong sân sau.</p>';
-    const { rerender } = render(<Harness html={OLD} />);
+    const { rerender } = render(<HarnessRoot html={OLD} />);
     await waitFor(() => expect(chapterRoot().textContent).toContain('Con mèo'));
     select('Con mèo đen');
     clearSelection();
 
-    rerender(<Harness html={NEW} />);
+    rerender(<HarnessRoot html={NEW} />);
     await waitFor(() => expect(chapterRoot().textContent).toContain('Con chó'));
 
     select('chạy quanh');
@@ -941,7 +1066,11 @@ function RealChapterHarness({ html }: { html: string }) {
 describe('chương thật p1-3.html của gói mẫu, với KaTeX thật', () => {
   it('bôi chọn đoạn có CÔNG THỨC rồi bôi chọn tiếp: cả hai ghi chú đúng chữ, đúng một lớp', async () => {
     loadKatex();
-    render(<RealChapterHarness html={readSampleCourseFile(CHAPTER_FILE)} />);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RealChapterHarness html={readSampleCourseFile(CHAPTER_FILE)} />
+      </QueryClientProvider>,
+    );
     await waitFor(() => expect(chapterRoot().querySelectorAll('.katex').length).toBeGreaterThan(100));
 
     const root = chapterRoot();
@@ -990,7 +1119,7 @@ const COLOUR_ORDER: readonly AnchorColor[] = ['y', 'g', 'b', 'p'];
 
 describe('bảng màu', () => {
   it('đúng bốn màu của hợp đồng, theo thứ tự y-g-b-p', async () => {
-    render(<Harness html={CHAPTER} store={stubStore(vi.fn())} />);
+    render(<HarnessRoot html={CHAPTER} store={stubStore(vi.fn())} />);
     await waitFor(() => expect(chapterRoot().querySelector('#p1')).not.toBeNull());
     select(Q1);
 

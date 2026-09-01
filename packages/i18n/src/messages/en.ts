@@ -401,6 +401,11 @@ export const en: Messages = {
   'ann.deepDive': 'Go deeper',
   'ann.dismissAlert': 'Dismiss',
 
+  /** See vi.ts's comment — Task 7, Pha 3's optimistic `updateNote`/`remove`/
+   * `reattach` rollback message. Distinct from `ann.saveFailed` above, which
+   * is `SelectionToolbar`'s own message for a failed CREATE. */
+  'notes.saveFailed': 'Your note was not saved.',
+
   'ann.card.collapsed': '▸ Inside a collapsed block',
   'ann.card.offPage': '▸ Not shown on the page',
   'ann.card.emptyNote': '(no text yet)',
