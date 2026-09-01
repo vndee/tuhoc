@@ -7,7 +7,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import type { Chapter, Part } from '../course/types';
-import { clearLocalData, db } from '../db/local';
+import { clearLocalData } from '../db/local';
 import { t } from '../i18n';
 import { ThemeProvider } from '../theme/ThemeContext';
 import { ChapterView } from './ChapterView';
@@ -92,6 +92,28 @@ const CHAPTER_2_HTML = '<h1 class="ch-title">Chương hai</h1><p>nội dung khá
  */
 let progressRows: Array<{ courseId: string; chapterId: string; status: string; done: boolean; updatedAt: string }>;
 
+/**
+ * Task 7, Pha 3: `useAnnotations` (mounted by `AuthedReaderExtras`, same as
+ * `useProgress` above) now reads/writes `GET/POST /annotations` and
+ * `PATCH/DELETE /annotations/:id` instead of Dexie's `db.annotations`/
+ * `db.outbox` — the identical shift `progressRows` already made one task
+ * earlier, for the identical reason: `onSettled` (`useAnnotations.ts`)
+ * invalidates and REFETCHES after every write, so a `GET` that ignores what
+ * was just written would clobber the very write a test is trying to observe.
+ * Reset in this file's `beforeEach`, below. No `deletedAt` field — the server
+ * hard-deletes (see `../api/annotations`'s own header), so `DELETE` below
+ * really does remove the row rather than tombstoning it.
+ */
+let annotationRows: Array<{
+  id: string;
+  courseId: string;
+  chapterId: string;
+  anchor: unknown;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+}>;
+
 const server = setupServer(
   http.get('/courses/demo/chapters/c1', () => HttpResponse.json({ html: FRAGMENT, widgets: WIDGETS })),
   http.get('/courses/demo/chapters/c2', () => HttpResponse.json({ html: CHAPTER_2_HTML, widgets: [] })),
@@ -111,6 +133,30 @@ const server = setupServer(
     const saved = { ...body, updatedAt: new Date().toISOString() };
     if (idx === -1) progressRows.push(saved);
     else progressRows[idx] = saved;
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.get('/annotations', ({ request }) => {
+    const course = new URL(request.url).searchParams.get('course');
+    const rows = course === null ? annotationRows : annotationRows.filter((r) => r.courseId === course);
+    return HttpResponse.json({ annotations: rows });
+  }),
+  http.post('/annotations', async ({ request }) => {
+    const body = (await request.json()) as { id: string; courseId: string; chapterId: string; anchor: unknown; note: string };
+    const at = new Date().toISOString();
+    annotationRows.push({ ...body, createdAt: at, updatedAt: at });
+    return new HttpResponse(null, { status: 201 });
+  }),
+  http.patch('/annotations/:id', async ({ request, params }) => {
+    const id = String(params.id);
+    const patch = (await request.json()) as { note?: string; anchor?: unknown };
+    const idx = annotationRows.findIndex((r) => r.id === id);
+    if (idx === -1) return new HttpResponse(null, { status: 404 });
+    annotationRows[idx] = { ...annotationRows[idx], ...patch, updatedAt: new Date().toISOString() };
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.delete('/annotations/:id', ({ params }) => {
+    const id = String(params.id);
+    annotationRows = annotationRows.filter((r) => r.id !== id);
     return new HttpResponse(null, { status: 204 });
   }),
 );
@@ -172,6 +218,7 @@ describe('ChapterView', () => {
 
   beforeEach(() => {
     progressRows = [];
+    annotationRows = [];
     renderKatex = vi.fn<(root: ParentNode) => void>();
     // `initViz`/`REDRAWS`/`VIZ` are still part of `window.CourseKit`'s type
     // (packages/course-kit/runtime.js still attaches them — see
@@ -680,19 +727,15 @@ describe('ChapterView', () => {
       const toolbar = screen.getByRole('toolbar');
       fireEvent.click(within(toolbar).getByRole('button', { name: /vàng/i }));
 
-      // Painted on the click, before anything has been read back out of Dexie.
+      // Painted on the click, before the server has answered the POST.
       expect(container.querySelectorAll('mark.ann').length).toBeGreaterThan(0);
       expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
 
-      await waitFor(async () => expect(await db.annotations.count()).toBe(1));
-      const [row] = await db.annotations.toArray();
-      expect(row).toMatchObject({ courseId: 'demo', chapterId: 'c1', note: '', deletedAt: null });
+      await waitFor(() => expect(annotationRows).toHaveLength(1));
+      const [row] = annotationRows;
+      expect(row).toMatchObject({ courseId: 'demo', chapterId: 'c1', note: '' });
       expect((row.anchor as { exact: string; color: string }).exact).toBe('Nội dung A');
       expect((row.anchor as { exact: string; color: string }).color).toBe('y');
-      // The outbox entry is what carries it to the other device — Task 4 writes
-      // both in one transaction, and this is the first caller to prove it from
-      // the UI side.
-      expect(await db.outbox.count()).toBe(1);
 
       // The store takes the highlight over, and there is exactly ONE mark left:
       // no double paint from a second hook instance, no orphaned optimistic
@@ -834,13 +877,13 @@ describe('ChapterView', () => {
       fireEvent.change(box, { target: { value: 'xem lại chỗ này' } });
       fireEvent.blur(box);
 
-      await waitFor(async () => {
-        const [row] = await db.annotations.toArray();
+      await waitFor(() => {
+        const [row] = annotationRows;
         expect(row.note).toBe('xem lại chỗ này');
       });
-      // One row for the create, one for the note edit — the note reaches the
-      // other device the same way the highlight does.
-      expect(await db.outbox.count()).toBe(2);
+      // Still exactly one row — the note edit is a PATCH of the same id, not a
+      // second annotation.
+      expect(annotationRows).toHaveLength(1);
       expect(notesBtn().textContent).toBe('Ghi chú (1)');
     });
 
@@ -871,11 +914,11 @@ describe('ChapterView', () => {
       // and so the second paint happens against a map the first paint expired.
       await selectAndOpenToolbar('Nội dung B');
       fireEvent.click(within(screen.getByRole('toolbar')).getByRole('button', { name: /vàng/i }));
-      await waitFor(async () => expect(await db.annotations.count()).toBe(1));
+      await waitFor(() => expect(annotationRows).toHaveLength(1));
 
       await selectAndOpenToolbar('Nội dung A');
       fireEvent.click(within(screen.getByRole('toolbar')).getByRole('button', { name: /xanh lá/i }));
-      await waitFor(async () => expect(await db.annotations.count()).toBe(2));
+      await waitFor(() => expect(annotationRows).toHaveLength(2));
 
       await waitFor(() => expect(rail().querySelectorAll('[data-ann-card]')).toHaveLength(2));
 
@@ -938,7 +981,6 @@ describe('ChapterView', () => {
       note: 'ghi chú cần cứu',
       createdAt: '2026-08-19T09:30:00.000Z',
       updatedAt: '2026-08-19T09:30:00.000Z',
-      deletedAt: null,
     };
 
     // The margin-card column only exists above 1240px (`reader.css` hides
@@ -963,7 +1005,7 @@ describe('ChapterView', () => {
     }
 
     it('mồ côi hiện trong lề ghi chú — đúng MỘT bản, trong portal của ChapterView (P2-F1)', async () => {
-      await db.annotations.put(LOST);
+      annotationRows.push(LOST);
       await renderChapterAndSettle();
       await openOrphanList();
 
@@ -978,7 +1020,7 @@ describe('ChapterView', () => {
     });
 
     it('cột thẻ KHÔNG nói "chưa có ghi chú nào" khi ngay dưới nó có ghi chú mồ côi', async () => {
-      await db.annotations.put(LOST);
+      annotationRows.push(LOST);
       await renderChapterAndSettle();
       await openOrphanList();
 
@@ -991,7 +1033,7 @@ describe('ChapterView', () => {
     });
 
     it('nút đếm cả ghi chú mồ côi — nếu không, con số duy nhất nói về chúng lại đề "(0)"', async () => {
-      await db.annotations.put(LOST);
+      annotationRows.push(LOST);
       await renderChapterAndSettle();
 
       // The reader has exactly one note in this chapter. It could not be
@@ -1005,7 +1047,7 @@ describe('ChapterView', () => {
     });
 
     it('trong chế độ "Gắn lại", bôi chọn KHÔNG mở thanh công cụ tạo ghi chú mới — và mở lại được sau khi hủy', async () => {
-      await db.annotations.put(LOST);
+      annotationRows.push(LOST);
       await renderChapterAndSettle();
 
       // The positive precondition first, exactly as the pager test above does
@@ -1034,11 +1076,12 @@ describe('ChapterView', () => {
       // toolbar can be opened within a second, so this line is the proof that
       // suspending it did not leave it deaf.
       await selectAndOpenToolbar('Nội dung B');
-      expect(await db.outbox.count()).toBe(0);
+      // "Hủy" is a READ — nothing about the orphan changed on the server.
+      expect(annotationRows).toEqual([LOST]);
     });
 
     it('gắn lại qua giao diện thật: ghi chú về đúng chỗ mới, giữ nguyên chữ và màu, và rời khỏi mục mồ côi', async () => {
-      await db.annotations.put(LOST);
+      annotationRows.push(LOST);
       await renderChapterAndSettle();
 
       fireEvent.click(await openOrphanList());
@@ -1062,14 +1105,13 @@ describe('ChapterView', () => {
       // The rescued note keeps its own colour, not the toolbar's default.
       expect(mark.className).toContain('ann-p');
 
-      const row = await db.annotations.get('orphan-1');
+      // Still exactly one row, with the SAME id — a delete-then-create would
+      // have produced a second row (a new id) instead of a PATCH of this one.
+      expect(annotationRows).toHaveLength(1);
+      const row = annotationRows.find((r) => r.id === 'orphan-1');
       expect(row!.note).toBe('ghi chú cần cứu');
-      expect(row!.deletedAt).toBeNull();
       expect((row!.anchor as { exact: string; color: string }).exact).toBe('Nội dung A');
       expect((row!.anchor as { exact: string; color: string }).color).toBe('p');
-      // One outbox row for the reattach, and only that: nothing about an
-      // orphan is written until the reader asks for it.
-      expect(await db.outbox.count()).toBe(1);
     });
   });
 
@@ -1345,10 +1387,11 @@ describe('ChapterView', () => {
       await act(async () => {});
       expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
 
-      // And nothing was written anywhere on this device.
-      expect(await db.progress.count()).toBe(0);
-      expect(await db.annotations.count()).toBe(0);
-      expect(await db.outbox.count()).toBe(0);
+      // And nothing reached the server — Task 6/7, Pha 3: `useProgress`/
+      // `useAnnotations` no longer write to Dexie at all, so the meaningful
+      // check is the server-facing state these mocks stand in for.
+      expect(progressRows).toHaveLength(0);
+      expect(annotationRows).toHaveLength(0);
     });
 
     it('a signed-in reader sees no nudge, alongside the full session UI', async () => {

@@ -28,16 +28,40 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type AnnotationRow, clearLocalData, db } from '../db/local';
+import {
+  type Ann,
+  annotationsQueryKey,
+  createAnnotation,
+  deleteAnnotation,
+  fetchAnnotations,
+  patchAnnotation,
+} from '../api/annotations';
 import { type Anchor, type AnchorColor, selectionToAnchor } from './anchor';
 import { type CardFocus, DRAFT_KEY, MarginCards } from './MarginCards';
 import { normalizeContainer } from './normalize';
 import { PENDING_ID_PREFIX } from './SelectionToolbar';
 import { type ChapterContent, useAnnotations } from './useAnnotations';
 import { LanguageProvider } from '../i18n/LanguageProvider';
+
+// Task 7, Pha 3: `useAnnotations` (the ONE instance `Harness` below owns)
+// reads/writes the server through `../api/annotations` now, not Dexie's
+// `db.annotations`/`db.outbox` — the same shift `useAnnotations.test.tsx`/
+// `SelectionToolbar.test.tsx` already made. `serverRows` stands in for the
+// backend the way those files' own `serverRows` do.
+vi.mock('../api/annotations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/annotations')>();
+  return {
+    ...actual,
+    fetchAnnotations: vi.fn(),
+    createAnnotation: vi.fn(),
+    patchAnnotation: vi.fn(),
+    deleteAnnotation: vi.fn(),
+  };
+});
 
 /** Wide enough for the rail to exist at all — `reader.css` hides `#rail`
  * under `@media (max-width:1240px)`, and jsdom's own default is 1024, i.e.
@@ -95,9 +119,13 @@ function makeAnchor(html: string, quote: string, color: AnchorColor = 'y'): Anch
 }
 
 let seq = 0;
-async function seed(anchor: Anchor, note: string, at = '2026-08-20T10:00:00.000Z'): Promise<AnnotationRow> {
+/** Puts a row straight into `serverRows` — i.e. exactly what a row already on
+ * the server looks like when `Harness` mounts and fetches it for the first
+ * time (no `createAnnotation` call, no id collision with what the hook
+ * itself generates). */
+function seed(anchor: Anchor, note: string, at = '2026-08-20T10:00:00.000Z'): Ann {
   seq += 1;
-  const row: AnnotationRow = {
+  const row: Ann = {
     id: `n${seq}`,
     courseId: 'c1',
     chapterId: 'ch1',
@@ -105,19 +133,40 @@ async function seed(anchor: Anchor, note: string, at = '2026-08-20T10:00:00.000Z
     note,
     createdAt: at,
     updatedAt: at,
-    deletedAt: null,
   };
-  await db.annotations.put(row);
+  serverRows.push(row);
   return row;
 }
+
+/**
+ * A tiny in-memory stand-in for the backend `createAnnotation`/
+ * `patchAnnotation`/`deleteAnnotation` write to and `fetchAnnotations` reads
+ * from — same shape `useAnnotations.test.tsx`/`SelectionToolbar.test.tsx`
+ * use, for the identical reason: `onSettled` (`useAnnotations.ts`)
+ * invalidates and refetches after every mutation.
+ */
+let serverRows: Ann[];
+let queryClient: QueryClient;
 
 /**
  * Stands in for `ChapterView`: owns the `<div>` React never gives children
  * to, sets the chapter HTML into it imperatively, bumps a revision counter,
  * holds the ONE `useAnnotations` instance and the focused-card state, and
  * mounts `<MarginCards>` where the rail portal would put it.
+ *
+ * Wrapped in its own `QueryClientProvider` (the hook now reads/writes
+ * through TanStack Query — Task 7, Pha 3) rather than at each of this file's
+ * ~29 `render(<Harness .../>)`/`rerender(...)` call sites.
  */
 function Harness({ html, visible = true, onWrite }: { html: string; visible?: boolean; onWrite?: (id: string, text: string) => void }) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <HarnessBody html={html} visible={visible} onWrite={onWrite} />
+    </QueryClientProvider>
+  );
+}
+
+function HarnessBody({ html, visible = true, onWrite }: { html: string; visible?: boolean; onWrite?: (id: string, text: string) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [content, setContent] = useState<ChapterContent>({ root: null, revision: 0 });
   const [focus, setFocus] = useState<CardFocus | null>(null);
@@ -252,18 +301,44 @@ function unloadPage(): void {
   fireEvent(window, new Event('pagehide'));
 }
 
-beforeEach(async () => {
-  await clearLocalData();
+beforeEach(() => {
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  serverRows = [];
   window.localStorage.removeItem(DRAFT_KEY);
   document.body.innerHTML = '';
   setViewportWidth(WIDE);
   // Reset so ids are `n1`, `n2` in EVERY test, not `n3`, `n4` in the second
   // one — the ids are what the assertions below name.
   seq = 0;
+
+  vi.mocked(fetchAnnotations)
+    .mockReset()
+    .mockImplementation(async (courseId) =>
+      serverRows.filter((row) => courseId === undefined || row.courseId === courseId).map((row) => ({ ...row })),
+    );
+  vi.mocked(createAnnotation)
+    .mockReset()
+    .mockImplementation(async (row) => {
+      const at = new Date().toISOString();
+      serverRows.push({ ...(row as Ann), createdAt: at, updatedAt: at });
+    });
+  vi.mocked(patchAnnotation)
+    .mockReset()
+    .mockImplementation(async (id, patch) => {
+      const idx = serverRows.findIndex((row) => row.id === id);
+      if (idx === -1) return;
+      serverRows[idx] = { ...serverRows[idx], ...patch, updatedAt: new Date().toISOString() };
+    });
+  vi.mocked(deleteAnnotation)
+    .mockReset()
+    .mockImplementation(async (id) => {
+      serverRows = serverRows.filter((row) => row.id !== id);
+    });
 });
 
-afterEach(async () => {
-  await clearLocalData();
+afterEach(() => {
   setViewportWidth(1024);
   Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
   Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
@@ -369,17 +444,17 @@ describe('MarginCards — cột thẻ ghi chú', () => {
     await seed(makeAnchor(PROSE, Q_SECOND), 'giữ nguyên');
     render(<Harness html={PROSE} />);
     await waitForCards(2);
-    expect(await db.outbox.count()).toBe(0);
+    expect(vi.mocked(patchAnnotation)).not.toHaveBeenCalled();
 
     fireEvent.click(within(cardFor(row.id)).getByRole('button', { name: /Entropy/ }));
     const box = await screen.findByRole('textbox', { name: /ghi chú/i });
     fireEvent.change(box, { target: { value: 'xem lại chỗ này' } });
     fireEvent.blur(box);
 
-    await waitFor(async () => expect((await db.annotations.get(row.id))?.note).toBe('xem lại chỗ này'));
-    expect(await db.outbox.count()).toBe(1);
+    await waitFor(() => expect(serverRows.find((r) => r.id === row.id)?.note).toBe('xem lại chỗ này'));
+    expect(vi.mocked(patchAnnotation)).toHaveBeenCalledTimes(1);
     // Ghi chú kia không bị đụng tới.
-    expect((await db.annotations.get('n2'))?.note).toBe('giữ nguyên');
+    expect(serverRows.find((r) => r.id === 'n2')?.note).toBe('giữ nguyên');
   });
 
   it('trang bị ẩn đi giữa lúc đang gõ: ghi chú được ghi NGAY, không chờ hết debounce', async () => {
@@ -408,9 +483,9 @@ describe('MarginCards — cột thẻ ghi chú', () => {
     // debounce nổ.
     expect(writes).toEqual([[row.id, 'nhớ đọc lại']]);
 
-    await waitFor(async () => expect((await db.annotations.get(row.id))?.note).toBe('nhớ đọc lại'));
+    await waitFor(() => expect(serverRows.find((r) => r.id === row.id)?.note).toBe('nhớ đọc lại'));
     // Và ghi chú kia không bị đụng tới — flush chỉ ghi cái đang mở.
-    expect((await db.annotations.get('n2'))?.note).toBe('giữ nguyên');
+    expect(serverRows.find((r) => r.id === 'n2')?.note).toBe('giữ nguyên');
   });
 
   it('cửa sổ bị đóng (pagehide) mà chưa từng ẩn: vẫn ghi', async () => {
@@ -431,7 +506,7 @@ describe('MarginCards — cột thẻ ghi chú', () => {
     unloadPage();
 
     expect(writes).toEqual([[row.id, 'đóng cửa sổ']]);
-    await waitFor(async () => expect((await db.annotations.get(row.id))?.note).toBe('đóng cửa sổ'));
+    await waitFor(() => expect(serverRows.find((r) => r.id === row.id)?.note).toBe('đóng cửa sổ'));
   });
 
   it('ẩn rồi mới unload: ĐÚNG MỘT lần ghi, không phải hai dòng outbox', async () => {
@@ -444,7 +519,7 @@ describe('MarginCards — cột thẻ ghi chú', () => {
     const writes: [string, string][] = [];
     render(<Harness html={PROSE} onWrite={(id, text) => writes.push([id, text])} />);
     await waitForCards(2);
-    expect(await db.outbox.count()).toBe(0);
+    expect(vi.mocked(patchAnnotation)).not.toHaveBeenCalled();
 
     fireEvent.click(within(cardFor(row.id)).getByRole('button', { name: /Entropy/ }));
     const box = await screen.findByRole('textbox', { name: /ghi chú/i });
@@ -454,8 +529,8 @@ describe('MarginCards — cột thẻ ghi chú', () => {
     unloadPage();
 
     expect(writes).toEqual([[row.id, 'một lần thôi']]);
-    await waitFor(async () => expect((await db.annotations.get(row.id))?.note).toBe('một lần thôi'));
-    expect(await db.outbox.count()).toBe(1);
+    await waitFor(() => expect(serverRows.find((r) => r.id === row.id)?.note).toBe('một lần thôi'));
+    expect(vi.mocked(patchAnnotation)).toHaveBeenCalledTimes(1);
   });
 
   it('mỗi lần gõ được ghim NGAY vào localStorage — thứ duy nhất sống sót qua F5', async () => {
@@ -484,7 +559,7 @@ describe('MarginCards — cột thẻ ghi chú', () => {
     // Ghi được rồi thì bản ghim phải biến đi, nếu không lần mở chương sau sẽ
     // "phục hồi" một bản nháp đã cũ đè lên nội dung mới hơn.
     fireEvent.blur(box);
-    await waitFor(async () => expect((await db.annotations.get(row.id))?.note).toBe('nửa câu'));
+    await waitFor(() => expect(serverRows.find((r) => r.id === row.id)?.note).toBe('nửa câu'));
     expect(window.localStorage.getItem(DRAFT_KEY)).toBeNull();
   });
 
@@ -499,13 +574,13 @@ describe('MarginCards — cột thẻ ghi chú', () => {
     render(<Harness html={PROSE} />);
     await waitForCards(2);
 
-    await waitFor(async () => expect((await db.annotations.get(row.id))?.note).toBe('nhớ đọc lại'));
+    await waitFor(() => expect(serverRows.find((r) => r.id === row.id)?.note).toBe('nhớ đọc lại'));
     // Một dòng outbox: bản nháp phục hồi cũng phải đi đồng bộ như mọi sửa đổi
     // khác, không phải chỉ nằm lại trên máy này.
-    expect(await db.outbox.count()).toBe(1);
+    expect(vi.mocked(patchAnnotation)).toHaveBeenCalledTimes(1);
     expect(window.localStorage.getItem(DRAFT_KEY)).toBeNull();
     // Và ghi chú kia không bị đụng tới.
-    expect((await db.annotations.get('n2'))?.note).toBe('giữ nguyên');
+    expect(serverRows.find((r) => r.id === 'n2')?.note).toBe('giữ nguyên');
   });
 
   it('bản nháp của một ghi chú KHÔNG thuộc chương này được để nguyên, không nuốt mất', async () => {
@@ -520,10 +595,13 @@ describe('MarginCards — cột thẻ ghi chú', () => {
     await frame();
 
     expect(JSON.parse(window.localStorage.getItem(DRAFT_KEY) ?? 'null')).toEqual({ id: 'của-chương-khác', text: 'chưa lưu' });
-    expect(await db.outbox.count()).toBe(0);
+    expect(vi.mocked(patchAnnotation)).not.toHaveBeenCalled();
   });
 
-  it('xóa từ thẻ: hàng được tombstone (không xóa cứng) và highlight biến mất', async () => {
+  it('xóa từ thẻ: DELETE /annotations/:id thật (Task 7, Pha 3 — không còn tombstone) và highlight biến mất', async () => {
+    // Trước Task 7, `remove()` đóng dấu `deletedAt` (Dexie giữ hàng lại cho
+    // sync). Migration 0009 (Task 2) bỏ cột tombstone ở máy chủ, nên bây giờ
+    // đây là một DELETE thật — xem header của `../api/annotations`.
     const row = await seed(makeAnchor(PROSE, Q_FIRST), 'bỏ đi');
     await seed(makeAnchor(PROSE, Q_SECOND), 'giữ lại');
     render(<Harness html={PROSE} />);
@@ -534,8 +612,8 @@ describe('MarginCards — cột thẻ ghi chú', () => {
 
     await waitForCards(1);
     expect(marksFor(row.id)).toHaveLength(0);
-    const stored = await db.annotations.get(row.id);
-    expect(stored?.deletedAt).not.toBeNull();
+    expect(vi.mocked(deleteAnnotation)).toHaveBeenCalledWith(row.id);
+    expect(serverRows.find((r) => r.id === row.id)).toBeUndefined();
     expect(marksFor('n2')).toHaveLength(1);
   });
 
@@ -575,7 +653,7 @@ describe('MarginCards — cột thẻ ghi chú', () => {
     // Sửa được ngay trong tấm trượt — đó là toàn bộ lý do nó tồn tại.
     fireEvent.change(box, { target: { value: 'sửa trên máy nhỏ' } });
     fireEvent.blur(box);
-    await waitFor(async () => expect((await db.annotations.get('n1'))?.note).toBe('sửa trên máy nhỏ'));
+    await waitFor(() => expect(serverRows.find((r) => r.id === 'n1')?.note).toBe('sửa trên máy nhỏ'));
 
     fireEvent.click(within(sheet).getByRole('button', { name: /đóng/i }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -727,9 +805,15 @@ describe('MarginCards — cột thẻ ghi chú', () => {
     const box = await screen.findByRole('textbox', { name: /ghi chú/i });
     fireEvent.change(box, { target: { value: 'đang gõ dở' } });
 
-    // Một lần phát của cửa hàng, không đụng gì tới ghi chú đang mở: sửa ghi
-    // chú KIA thẳng trong Dexie, live query sẽ dựng một `list` mới.
-    await db.annotations.put({ ...other, note: 'hàng xóm đổi', updatedAt: '2026-08-20T11:00:00.000Z' });
+    // Một lần phát của cửa hàng, không đụng gì tới ghi chú đang mở: ghi thẳng
+    // vào cache của TanStack Query — đúng cái một GET /annotations khác trả
+    // về sẽ làm — cho ghi chú KIA, để `useQuery`'s subscription dựng một
+    // `list` mới.
+    act(() => {
+      queryClient.setQueryData<Ann[]>(annotationsQueryKey('c1'), (rows = []) =>
+        rows.map((r) => (r.id === other.id ? { ...r, note: 'hàng xóm đổi', updatedAt: '2026-08-20T11:00:00.000Z' } : r)),
+      );
+    });
     await waitFor(() => expect(within(cardFor('n2')).queryByText('hàng xóm đổi')).toBeInTheDocument());
 
     expect(box).toHaveValue('đang gõ dở');
@@ -784,7 +868,7 @@ describe('MarginCards — cột thẻ ghi chú', () => {
     await seed(makeAnchor(PROSE, Q_SECOND), 'hai');
     render(<Harness html={PROSE} />);
     await waitForCards(2);
-    expect(await db.outbox.count()).toBe(0);
+    expect(vi.mocked(patchAnnotation)).not.toHaveBeenCalled();
 
     fireEvent.click(within(cardFor('n1')).getByRole('button', { name: /Entropy/ }));
     const box = await screen.findByRole('textbox', { name: /ghi chú/i });
@@ -792,8 +876,8 @@ describe('MarginCards — cột thẻ ghi chú', () => {
     fireEvent.click(within(cardFor('n1')).getByRole('button', { name: 'Xong' }));
     await waitFor(() => expect(screen.queryByRole('textbox', { name: /ghi chú/i })).not.toBeInTheDocument());
 
-    expect(await db.outbox.count()).toBe(0);
-    expect((await db.annotations.get('n1'))?.updatedAt).toBe('2026-08-20T10:00:00.000Z');
+    expect(vi.mocked(patchAnnotation)).not.toHaveBeenCalled();
+    expect(serverRows.find((r) => r.id === 'n1')?.updatedAt).toBe('2026-08-20T10:00:00.000Z');
   });
 
   it('gõ cả một câu là MỘT lần ghi, không phải một lần cho mỗi phím', async () => {
@@ -811,8 +895,8 @@ describe('MarginCards — cột thẻ ghi chú', () => {
     }
     fireEvent.blur(box);
 
-    await waitFor(async () => expect((await db.annotations.get(row.id))?.note).toBe('xem lại'));
-    expect(await db.outbox.count()).toBe(1);
+    await waitFor(() => expect(serverRows.find((r) => r.id === row.id)?.note).toBe('xem lại'));
+    expect(vi.mocked(patchAnnotation)).toHaveBeenCalledTimes(1);
   });
 
   it('cột được cho chiều cao thật, nếu không rãnh sẽ sụp và thanh tab hết chỗ dính', async () => {

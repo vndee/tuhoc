@@ -613,6 +613,20 @@ export const vi = {
   'ann.deepDive': 'Đào sâu',
   'ann.dismissAlert': 'Đóng thông báo',
 
+  /**
+   * Task 7, Pha 3: `useAnnotations.ts`'s `updateNote`/`remove`/`reattach` giờ
+   * ghi lạc quan lên `PATCH`/`DELETE /annotations/:id` — trước Task 7, một
+   * request hỏng ở BA chỗ này chỉ vào `console.error`, người học không hề
+   * biết. Cache đã lùi lại giá trị cũ (đúng lẽ, không giữ một lời nói dối),
+   * và câu này là lời giải thích duy nhất người học thấy, vẽ trong
+   * `reader/ChapterView.tsx` (`role="alert"`) — cùng quy ước "một trường
+   * cộng thêm, một chỗ vẽ" `progress.saveFailed` đã dùng ở Task 6. KHÁC với
+   * `ann.saveFailed` ở trên: khoá đó là của `SelectionToolbar` khi TẠO ghi
+   * chú (bôi chọn) hỏng, khoá này là khi SỬA/XOÁ/GẮN LẠI một ghi chú đã có
+   * hỏng — hai sự kiện khác nhau, có thể cùng hiện một lúc, không sao.
+   */
+  'notes.saveFailed': 'Chưa lưu được ghi chú của bạn.',
+
   /* ── thẻ ghi chú bên lề (`annotations/MarginCards.tsx`) ────────────────── */
 
   'ann.card.collapsed': '▸ Đang thu gọn',
