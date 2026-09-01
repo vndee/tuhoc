@@ -68,10 +68,25 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | undefined>
  * server resources (`/sync` vs `/events/batch`, exactly the same
  * independence `sync/engine.ts`'s `flushOutbox` doc comment gives for why
  * THOSE two are separate request sequences), so there is no ordering
- * requirement between them — `flushEvents()` never rejects (it swallows
- * and re-queues its own failure internally; see its own doc), so it needs
- * no `try`/`catch` here to keep this function's "failure here must not
- * block logout" contract.
+ * requirement between them — `flushEvents()` never rejects (its own
+ * `catch` either re-queues the failed batch or drops it; see its own
+ * doc), so it needs no `try`/`catch` here to keep this function's
+ * "failure here must not block logout" contract.
+ *
+ * `flushEvents()` here is itself wrapped, ONE level up, in
+ * `withTimeout(bestEffortFinalFlush(), LOGOUT_SYNC_TIMEOUT_MS)` below —
+ * which races the OUTER promise only. A request still pending when that
+ * 5s bound elapses is ABANDONED, not cancelled (`api/client.ts` wires no
+ * `AbortController`), and keeps running while the rest of this hook moves
+ * on and clears local state. A scoped re-review caught that an abandoned
+ * flush's eventual FAILURE used to reinject its batch into whatever
+ * `api/events.ts`'s queue held by then — which, on a same-tab account
+ * handoff, can already belong to whoever signed in next. `api/events.ts`'s
+ * `queueGeneration` (mirroring `sync/engine.ts`'s own `syncEpoch`, for the
+ * identical reason) is what makes that batch DROPPABLE instead: dropped
+ * if `resetEventQueue()` ran while it was in flight, reinjected otherwise.
+ * Nothing here has to know which happened — that is the point of the
+ * guard living inside `flushEvents()` itself.
  */
 async function bestEffortFinalFlush(): Promise<void> {
   await waitForInFlight();
