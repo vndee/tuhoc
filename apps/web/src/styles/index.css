@@ -20,6 +20,11 @@
 @import '@fontsource/archivo-narrow/500.css';
 @import '@fontsource/archivo-narrow/600.css';
 @import '@fontsource/archivo-narrow/700.css';
+/* IBM Plex Sans ở lại CHỈ cho reader (`#app.reading`, bên dưới). Đây là mặt
+   chữ heading/UI mà `course-kit/reader.css` tự khai báo và người dùng đã duyệt
+   ("phần đọc content tôi thấy khá ổn rồi"). Trình duyệt chỉ tải tệp phông khi
+   có phần tử dùng nó, nên khung app không trả thêm byte nào cho dòng này. */
+@import '@fontsource-variable/ibm-plex-sans/index.css';
 @import '@course-kit/vendor/katex.css';
 @import '@course-kit/reader.css';
 @import './courses.css';
@@ -65,7 +70,11 @@
 :root {
   /* Sans hẹp cho NHÃN của khung app. Thân chữ của khung là `--font-serif`
      (tokens.css). `--serif` của reader.css KHÔNG bị ghi đè có chủ ý: đó là
-     mặt chữ thân bài trong chương, và chủ dự án nói phần đọc đã ổn. */
+     mặt chữ thân bài trong chương, và chủ dự án nói phần đọc đã ổn.
+     `--sans` thì phải ghi đè ở `:root` (reader.css cũng khai báo nó ở `:root`
+     và nạp trước) — nên reader lấy lại giá trị gốc của nó ở `#app.reading`
+     ngay dưới đây; đo trên trình duyệt thật khi thiếu dòng ấy: tiêu đề chương
+     ra Archivo Narrow, một thay đổi trong vùng đã được yêu cầu giữ nguyên. */
   --sans: var(--font-sans);
 
   --surface-1: #ffffff;
@@ -89,6 +98,12 @@
   --accent-soft: var(--color-brand-100);
 
   --shadow: var(--shadow-sm);
+}
+
+/* Reader giữ nguyên mặt chữ của chính nó — sao chép nguyên văn từ
+   `course-kit/reader.css` (dòng `--sans`), không phải một quyết định mới. */
+#app.reading {
+  --sans: "IBM Plex Sans Variable", "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 /* CHỈ `html[data-theme='dark']`, KHÔNG `@media (prefers-color-scheme)`.
