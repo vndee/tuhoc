@@ -919,6 +919,13 @@ export const vi = {
   'auth.error.unknown': 'Đã xảy ra lỗi không xác định. Vui lòng thử lại.',
   'auth.error.unreachable':
     'Không thể kết nối tới máy chủ. Có thể bạn đang ngoại tuyến, hoặc máy chủ đang bị cấu hình sai (CORS/DNS).',
+  // Task 11 (Pha 3): màn hình `<RequireAuth>` hiện ra khi KHÔNG có phản hồi
+  // nào tới cho `GET /me` — không phải một lỗi máy chủ đã trả lời (đã có
+  // `auth.error.unreachable` ở trên cho ca đó), mà là "trang này cần mạng để
+  // mở, và máy không biết bạn còn phiên hay không". Từ khoá riêng vì màn hình
+  // này không phải một lỗi ĐĂNG NHẬP — người xem nó có thể đã đăng nhập, chỉ
+  // là máy không hỏi lại được máy chủ để xác nhận.
+  'auth.needsNetwork': 'Cần có kết nối mạng để mở trang này. Vui lòng kiểm tra kết nối rồi thử lại.',
 
   /* ── danh mục registry (`registry/`) ───────────────────────────────────── */
 

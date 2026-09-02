@@ -1,34 +1,13 @@
-import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useSyncExternalStore, type ReactNode } from 'react';
+import { useRef, useSyncExternalStore, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { describeAuthError, serverAnswered } from '../api/client';
 import { useMe } from '../api/useMe';
-import { offlineSessionIsUsable, rememberSessionVerified } from './session';
 import { sessionWasSuperseded, subscribeToSessionChanges } from './sessionIdentity';
 import { useLanguage } from '../i18n/LanguageProvider';
 
 export interface RequireAuthProps {
   children: ReactNode;
 }
-
-/**
- * Cache key for "may this device open a protected page on its own
- * authority" — the local, durable answer, read only when no HTTP response
- * arrived.
- *
- * It is a query rather than a `useState`/`useEffect` pair so that
- * `resetSessionScopedQueries` (see `api/useMe.ts`) drops it along with
- * everything else belonging to a session that ends. A hand-rolled piece of
- * component state would be invisible to that, which is the shape of bug
- * this whole area keeps producing.
- *
- * Not exported: nothing outside this file seeds or invalidates it, and
- * `resetSessionScopedQueries` drops it by predicate rather than by key.
- * Exporting a non-component from a component module also costs a react
- * fast-refresh lint warning — the same call `e859459` made for
- * `coursesQueryKey`.
- */
-const offlineSessionQueryKey = ['offline-session'] as const;
 
 /**
  * Route guard for pages that require a signed-in user. `/login` itself is
@@ -49,8 +28,7 @@ const offlineSessionQueryKey = ['offline-session'] as const;
  *    blank frame, which is on screen for at most one paint (`useMe` sets
  *    `retry: false`, so pending never lasts more than one request; it
  *    does not hang forever on failure — see the error cases below).
- *  - data is a user: renders `children`, and records that this device held
- *    a confirmed session (see the effect below).
+ *  - data is a user: renders `children`.
  *  - data is `null` (GET /me answered 401 — nobody logged in) →
  *    `<Navigate>` to /login, carrying `state.from` so Login can send the
  *    visitor back where they were headed. This is also the second line of
@@ -60,9 +38,7 @@ const offlineSessionQueryKey = ['offline-session'] as const;
  *    `redirectOn401: false`, and renders the form rather than navigating).
  *  - the query ERRORED, which is where this splits in two, because
  *    "the server answered badly" and "no server answered" are different
- *    facts and collapsing them is what made spec §2.6's offline promise
- *    half-true (task-7-report.md §5.5 measured it in a real browser: a
- *    fully cached chapter, unreadable after F5 with the network off):
+ *    facts:
  *
  *      - a response DID arrive (500, 502, 429, …) → the inline Vietnamese
  *        message, exactly as before. Redirecting would masquerade an
@@ -71,45 +47,36 @@ const offlineSessionQueryKey = ['offline-session'] as const;
  *        not an offline device: a bad deploy must not silently flip every
  *        reader into local-only mode.
  *      - NO response arrived (offline, DNS failure, refused connection, a
- *        blocked request) → the honest state is "unknown", not "logged
- *        out". So this asks the DEVICE: did anybody sign in here recently
- *        (`offlineSessionIsUsable`)? If yes, render `children` — every
- *        network call inside them is failing anyway, so what they can show
- *        is precisely what Task 7 already put on this machine. If no,
- *        the same inline message as before.
+ *        blocked request) → a dedicated needs-network message
+ *        (`auth.needsNetwork`), unconditionally — see `authorizedOnce`
+ *        below for the ONE exception this makes, which is not a
+ *        reincarnation of the offline branch this task removed.
  *
- * **Why the optimistic branch cannot show one account's data to another,
- * which is the constraint this component is standing on** (see
- * `docs/carried-forward.md`, and `test/accountHandoff.test.tsx` for the
- * two-account proof):
- *
- *  1. The marker it consults is a `db.meta` row, so `clearLocalData()`
- *     erases it on BOTH auth transitions — sign-out via `useLogout`, and
- *     sign-in via `Login` — with no line written for it and nothing to
- *     remember. A browser that changed hands has no marker until the
- *     arriving user's own `GET /me` writes one.
- *  2. The marker holds an INSTANT and no identity. There is no name, no
- *     email, no id in it to render at anybody. What it unlocks is the rest
- *     of this browser's local database — emptied by the very same call.
- *  3. It never contradicts the server. A 401 is an answer and wins
- *     outright; the marker only ever fills a silence.
- *  4. It does not start sync. `App.tsx`'s `useSyncLifecycle` keys on
- *     `meQuery.data?.id`, which is `undefined` on this path — so nothing
- *     is pushed or pulled under a session nobody has confirmed.
- *
- * The residual case is written down rather than papered over: a browser
- * whose owner never signed out, handed to somebody else who is offline,
- * opens the owner's own cached reading for up to
- * `OFFLINE_READ_MAX_AGE_MS`. That is not an escalation — the same bytes
- * are in that profile's IndexedDB and readable with devtools either way,
- * and nothing new can be fetched — but it IS a change from the previous
- * behaviour, and the window (see `./session.ts`) is what bounds it.
+ * **Task 11 (Pha 3) removed the optimistic offline branch this guard used
+ * to have here** — `offlineSessionIsUsable`, the `sessionVerifiedAt`
+ * `localStorage` marker it read, and the effect that wrote it. That branch
+ * let a device with a recent-enough marker render `children` on a COLD page
+ * load even when no response ever arrived, on the theory that whatever was
+ * already cached locally (Task 7's pinned chapters, at the time) was still
+ * worth showing. The premise measurably stopped being true earlier in this
+ * same phase: Task 9 moved Dashboard's and Progress's own reads off local
+ * storage onto the server (see those pages' own doc comments), and Task 10
+ * removed Dexie — and the reader's own chapter fetch (`course/loader.ts`)
+ * has hit the server on every load since the server-side pivot. Measured
+ * before this task touched anything: no service worker, no precache
+ * anywhere in this app (`grep -arln 'serviceWorker\|workbox\|precache'
+ * apps/web/` returns nothing), so a COLD load with no response has nothing
+ * local left to show — the branch was admitting a visitor past this gate
+ * into a page with nothing on it to read. That is a real narrowing, not a
+ * free cleanup: before Task 9/10, a device with a recent marker could
+ * genuinely read its own cached Dashboard/Progress/chapter offline after a
+ * cold reload; after this phase it cannot, under any circumstance. See this
+ * task's report for the full accounting.
  */
 export function RequireAuth({ children }: RequireAuthProps) {
   const { t } = useLanguage();
   const location = useLocation();
   const meQuery = useMe();
-  const confirmedUserId = meQuery.data?.id ?? null;
 
   /**
    * Đã có tab khác đăng nhập bằng tài khoản khác chưa?
@@ -135,25 +102,6 @@ export function RequireAuth({ children }: RequireAuthProps) {
   );
 
   /**
-   * The ONE writer of the offline marker (pinned by `session.test.ts`).
-   *
-   * Keyed on the confirmed user's id, so it writes when a session is first
-   * confirmed on this device and not on every render. It fires only for a
-   * user `GET /me` actually returned — never for `null`, never for an
-   * error — so the marker cannot come to mean anything weaker than
-   * "the server confirmed somebody here at this instant".
-   *
-   * Fire-and-forget: an unwritable database (quota, a blocked upgrade)
-   * costs offline reading on the NEXT load, which is exactly the failure
-   * this app had before. It is not a reason to block the render of a page
-   * the server has just authorized.
-   */
-  useEffect(() => {
-    if (confirmedUserId === null) return;
-    void rememberSessionVerified();
-  }, [confirmedUserId]);
-
-  /**
    * Lần mount NÀY đã từng dựng `children` dưới một phiên được server xác nhận
    * chưa. Một `ref`, không phải state: nó chỉ đi một chiều false → true và
    * không được phép tự nó gây thêm một lần render.
@@ -164,32 +112,36 @@ export function RequireAuth({ children }: RequireAuthProps) {
    * nhất trong catalog tiếng Việt lọt được vào `#content`. Tức trang đọc đã
    * dựng xong rồi TỤT LẠI. Đường duy nhất tụt lại được là `<ChapterView>` bị
    * GỠ rồi DỰNG LẠI, và trên route ấy chỉ có một chỗ gỡ được cả cây: nhánh
-   * `return null` ngay dưới đây.
+   * cần-mạng ngay dưới đây, nếu nó thay `children` bằng thông báo mỗi lần
+   * `noResponseArrived` bật lên.
    *
    * Nó bị chạm tới bởi một lần `GET /me` làm mới KHÔNG NHẬN ĐƯỢC PHẢN HỒI —
    * mạng chớp, một request bị huỷ, server bận. `useMe` đặt `retry: false` nên
-   * một lần như thế đủ đẩy truy vấn sang `isError`, và trong lúc câu hỏi ngoại
-   * tuyến còn đang chạy thì guard trả `null`, gỡ sạch cây bên dưới. Ở trang
-   * đọc, "sạch" gồm cả canvas, mô phỏng đã dựng và vị trí cuộn.
+   * một lần như thế đủ đẩy truy vấn sang `isError`. Task 11 gỡ bước tra hỏi
+   * cục bộ bất đồng bộ mà nhánh này từng phải đợi (offline-session query cũ)
+   * — `authorizedOnce.current` giờ được đọc NGAY trong cùng lượt vẽ mà
+   * `noResponseArrived` bật lên, nên không còn khoảng trống nào giữa hai việc
+   * đó cho cây bị gỡ nữa: một trang đã cấp phép đứng yên tuyệt đối qua một
+   * lần `/me` hỏng thoáng qua. Ở trang đọc, "đứng yên" gồm cả canvas, mô
+   * phỏng đã dựng và vị trí cuộn.
+   *
+   * **Đây không phải nhánh ngoại tuyến mà Task 11 vừa gỡ, dù trông giống.**
+   * Khác biệt: nhánh cũ tra một dấu vết `localStorage` và có thể mở cửa cho
+   * một trang CHƯA TỪNG được vẽ ở lượt mount này (một lần tải lại nguội).
+   * `authorizedOnce.current` không tra gì bền cả — nó chỉ nhớ trong bộ nhớ,
+   * của MỘT LẦN MOUNT component này, rằng `children` ĐÃ đứng trên màn hình
+   * dưới một phiên server vừa xác nhận. Một lần tải lại nguội luôn bắt đầu
+   * với `authorizedOnce.current === false`, nên nhánh này không thể thay thế
+   * nhánh ngoại tuyến đã gỡ — nó chỉ giữ nguyên một trang ĐÃ MỞ, không mở một
+   * trang mới.
    */
   const authorizedOnce = useRef(false);
 
   const noResponseArrived = meQuery.isError && !serverAnswered(meQuery.error);
-  const offlineSession = useQuery({
-    queryKey: offlineSessionQueryKey,
-    queryFn: () => offlineSessionIsUsable(),
-    // Only asked when it can matter: on every other path the server has
-    // spoken, and what this device believes is irrelevant.
-    enabled: noResponseArrived,
-    retry: false,
-    staleTime: 0,
-    gcTime: 0,
-  });
 
-  // Đứng TRƯỚC mọi nhánh khác, kể cả `isPending` và nhánh ngoại tuyến lạc
-  // quan: khi một tài khoản khác đã chiếm phiên trên máy này, mọi câu trả lời
-  // mà tab này đang cầm đều thuộc về người trước. Không có câu hỏi nào ở dưới
-  // còn nghĩa.
+  // Đứng TRƯỚC mọi nhánh khác, kể cả `isPending`: khi một tài khoản khác đã
+  // chiếm phiên trên máy này, mọi câu trả lời mà tab này đang cầm đều thuộc
+  // về người trước. Không có câu hỏi nào ở dưới còn nghĩa.
   if (superseded) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
@@ -202,31 +154,15 @@ export function RequireAuth({ children }: RequireAuthProps) {
     if (!noResponseArrived) {
       return <p className="ch-lede">{describeAuthError(meQuery.error, t)}</p>;
     }
-    if (offlineSession.isPending) {
-      // MỘT TRANG ĐÃ ĐƯỢC CẤP PHÉP THÌ ĐỨNG YÊN. Trước đây nhánh này trả
-      // `null` cho mọi trường hợp, với lý do "một khung trắng còn hơn nhá một
-      // thông báo sự cố". Lý do ấy đúng cho lần tải ĐẦU TIÊN — lúc chưa có gì
-      // trên màn hình để mất — và sai cho một lần làm mới hỏng giữa chừng, nơi
-      // cái giá không phải một khung trắng mà là cả cây bên dưới bị gỡ.
-      //
-      // Nó KHÔNG nới quyền: `superseded` (một tài khoản khác đã chiếm phiên)
-      // vẫn chặn ở trên cùng, và một 401 thật vẫn là `meQuery.data == null` ở
-      // dưới. Nhánh này chỉ với tới được khi KHÔNG CÓ CÂU TRẢ LỜI NÀO, và nó
-      // giữ nguyên đúng thứ mà nhánh ngay dưới sẽ dựng lại ở tick sau nếu máy
-      // này còn dấu phiên. Nếu máy KHÔNG còn dấu ấy, thông báo sự cố chỉ tới
-      // chậm hơn một nhịp.
-      if (authorizedOnce.current) {
-        return <>{children}</>;
-      }
-      // Same trade as the pending branch above: one blank paint while the
-      // local read settles, rather than flashing an outage message at a
-      // reader who is about to get their chapter.
-      return null;
-    }
-    if (offlineSession.data === true) {
+    // KHÔNG CÓ CÂU TRẢ LỜI NÀO. `authorizedOnce.current` là ngoại lệ DUY
+    // NHẤT — xem doc comment của chính nó ngay trên đây cho việc vì sao nó
+    // không phải là nhánh ngoại tuyến đã gỡ. Mọi trường hợp khác: máy không
+    // biết phiên còn sống hay không, và đó là "cần mạng", không phải "đã
+    // đăng xuất".
+    if (authorizedOnce.current) {
       return <>{children}</>;
     }
-    return <p className="ch-lede">{describeAuthError(meQuery.error, t)}</p>;
+    return <p className="ch-lede">{t('auth.needsNetwork')}</p>;
   }
 
   if (meQuery.data == null) {
