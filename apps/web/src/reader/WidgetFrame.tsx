@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from 'react';
+
 export interface WidgetFrameProps {
   /** The widget's own name (the course package's `widgets/<name>/`). Doubles as the iframe's `title` — there is nothing else here worth a screen reader announcing. */
   name: string;
@@ -33,20 +35,58 @@ export interface WidgetFrameProps {
  * this component is for.
  *
  * Sizing: a `sandbox="allow-scripts"` iframe with no `allow-same-origin` is
- * cross-origin from the parent's point of view, so neither side can measure
- * the other — the widget cannot report its content height back, and this
- * page cannot reach in and read it. `.widget-frame` (reader-layout.css)
- * therefore gives every widget a fixed height rather than trying to fit its
- * content. That is an accepted limitation of the design, not a defect to
- * "fix" by relaxing the sandbox above.
+ * cross-origin from the parent's point of view, so this page cannot reach in
+ * and MEASURE the widget. `.widget-frame` (reader-layout.css) therefore gives
+ * every widget a fixed default height. An earlier version of this comment
+ * went one step further and said the widget could not report its height
+ * back either — that was wrong, and the paragraph above already had the
+ * answer: `postMessage` works fine out of an opaque origin. Measured on the
+ * first real course (58 canvas figures with controls and a readout row),
+ * roughly a third of them ran to 450–490px inside a 420px frame, and with
+ * macOS overlay scrollbars the clipped readout simply looked cut off.
+ *
+ * So the widget MAY tell us. Protocol, deliberately tiny:
+ *   `parent.postMessage({ type: 'tuhoc:widget-height', height: <px> }, '*')`
+ * The handler below accepts a message only when `event.source` is THIS
+ * iframe's own window (a widget cannot size a sibling, and no other frame on
+ * the page can size this one), reads nothing but a finite number out of it,
+ * and clamps it to 160–1400px so a hostile or buggy widget cannot collapse
+ * to nothing or push the chapter off the page. A widget that never sends
+ * anything keeps the CSS default — `fixtures/format-v2/valid-course`'s
+ * counter widget is exactly that, and it is still correct. Nothing about
+ * the sandbox attribute changes; this is the "postMessage from inside"
+ * path the paragraph above names, not a relaxation of it.
  */
+export const WIDGET_HEIGHT_MESSAGE = 'tuhoc:widget-height';
+const WIDGET_MIN_HEIGHT = 160;
+const WIDGET_MAX_HEIGHT = 1400;
+
 export function WidgetFrame({ name, html }: WidgetFrameProps) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      const frame = ref.current;
+      if (frame === null || event.source !== frame.contentWindow) return;
+      const data: unknown = event.data;
+      if (typeof data !== 'object' || data === null) return;
+      const { type, height: raw } = data as { type?: unknown; height?: unknown };
+      if (type !== WIDGET_HEIGHT_MESSAGE || typeof raw !== 'number' || !Number.isFinite(raw)) return;
+      setHeight(Math.min(WIDGET_MAX_HEIGHT, Math.max(WIDGET_MIN_HEIGHT, Math.round(raw))));
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+
   return (
     <iframe
+      ref={ref}
       className="widget-frame"
       title={name}
       sandbox="allow-scripts"
       srcDoc={html}
+      style={height === null ? undefined : { height }}
     />
   );
 }

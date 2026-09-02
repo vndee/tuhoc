@@ -1084,7 +1084,7 @@ export const vi = {
   'admin.nav.pricing': 'Bảng giá & prompt nền',
 
   'admin.title': 'Quản trị khoá học',
-  'admin.lede': 'Phát hành, gỡ, hoặc lùi phiên bản một khoá học — đi cùng bộ kiểm định mà `tuhoc pack` dùng ở dòng lệnh.',
+  'admin.lede': 'Phát hành, gỡ, hoặc lùi phiên bản một khoá học — đi cùng bộ kiểm định mà tuhoc pack dùng ở dòng lệnh.',
   'admin.loading': 'Đang tải danh sách…',
   'admin.empty': 'Chưa có khoá học nào được phát hành.',
 

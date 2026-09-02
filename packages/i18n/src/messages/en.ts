@@ -769,7 +769,7 @@ export const en: Messages = {
   'admin.nav.pricing': 'Pricing & base prompt',
 
   'admin.title': 'Course administration',
-  'admin.lede': 'Publish, unpublish, or roll back a course — the same validation rules `tuhoc pack` runs on the command line.',
+  'admin.lede': 'Publish, unpublish, or roll back a course — the same validation rules tuhoc pack runs on the command line.',
   'admin.loading': 'Loading the list…',
   'admin.empty': 'No courses have been published yet.',
 
