@@ -31,6 +31,30 @@
 //     course" for an empty/missing slug; it refuses with a sentence the
 //     model can read and act on (ask the learner which course, or try
 //     read_course's manifest first).
+//
+//  3. THE COURSE IS THE TURN'S, NOT THE MODEL'S (final whole-branch review,
+//     Important 4). The tool used to take `slug` as an argument, and
+//     agent.go injects the learner's current course only as ADVISORY PROSE
+//     ("When a tool needs a course slug and the learner has not clearly
+//     named a different course, use this one") — nothing compared the
+//     argument against Turn.CourseSlug. So the identity binding of
+//     condition 1 was airtight while the SCOPE inside that identity was
+//     model-steerable, and the learner-facing disclosure said otherwise:
+//     `ai.readsYourNotes` (packages/i18n, rendered unconditionally by
+//     AskPanel.tsx) promises reading "for this course".
+//
+//     That gap is not theoretical here. docs/carried-forward.md's S2-F9 is
+//     a LIVE debt: a hostile same-origin course can already drive
+//     POST /ai/chat under the learner's session, and tool_course.go reads a
+//     course's own prose unfiltered into the model's context. Steerable
+//     scope is the difference between "reads the notes for the course you
+//     are on" and "reads your notes for any course it can name".
+//
+//     So courseSlug is bound at construction from Turn.CourseSlug, exactly
+//     like userID, and the schema declares NO parameters at all — there is
+//     nothing left for anything to inject INTO, which is the same shape
+//     condition 1 already relies on rather than a second, weaker mechanism
+//     (validating an argument the model still gets to choose).
 package ai
 
 import (
@@ -118,58 +142,77 @@ const maxNotesToolOutputRunes = 12000
 // notesTool is the sole ToolRunner implementation in this file — the tool
 // named ToolNameReadMyNotes ("read_my_notes").
 type notesTool struct {
-	q      NotesQuerier
-	userID uuid.UUID
+	q          NotesQuerier
+	userID     uuid.UUID
+	courseSlug string
 }
 
-// NewNotesTool builds the "read_my_notes" ToolRunner, bound to userID at
-// construction — see this file's package doc comment, condition 1, for the
-// full reasoning. userID is a constructor argument and ONLY a constructor
-// argument: Definition declares no field that could carry an identity, and
-// Run never looks for one in argsJSON. There is no user_id for a model,
-// or for a hostile course's prose read into the model's context by
-// tool_course.go, to inject INTO.
-func NewNotesTool(q NotesQuerier, userID uuid.UUID) ToolRunner {
-	return &notesTool{q: q, userID: userID}
+// NewNotesTool builds the "read_my_notes" ToolRunner, bound to userID AND
+// to courseSlug at construction — see this file's package doc comment,
+// conditions 1 and 3, for the full reasoning. Both are constructor
+// arguments and ONLY constructor arguments: Definition declares no
+// parameters whatsoever, and Run never looks in argsJSON for either. There
+// is no user_id and no slug for a model, or for a hostile course's prose
+// read into the model's context by tool_course.go, to inject INTO.
+//
+// courseSlug is Turn.CourseSlug, threaded through TurnTools from the ONE
+// place that knows it (handler.go's Chat, from the request body's
+// course_slug field, already length-capped there). It may be "" — a
+// question asked from the home page — and Run refuses loudly in that case
+// rather than falling back to the model's opinion or to "every course".
+func NewNotesTool(q NotesQuerier, userID uuid.UUID, courseSlug string) ToolRunner {
+	return &notesTool{q: q, userID: userID, courseSlug: courseSlug}
 }
 
-// Definition declares exactly one argument: slug, required. No parameter
-// here can carry a learner identity — TestNotesToolSchemaHasNoUserParameter
-// scans the marshaled schema for "user"/"user_id"/"userId" and fails the
-// build the moment one appears, so this comment is a promise a test also
-// keeps.
+// Definition declares NO arguments at all: an empty object schema.
+//
+// It used to declare one — `slug`, required — and the final whole-branch
+// review removed it rather than validating it, for the reason condition 1
+// gives about user ids: a parameter that the model fills in is a parameter
+// something can steer, and the only argument that cannot be injected into
+// is the one that does not exist. Both facets this tool needs (WHO and
+// WHICH COURSE) now come from the turn.
+//
+// Two tests fail the build the moment either creeps back in:
+// TestNotesToolSchemaHasNoUserParameter scans the marshaled schema for
+// "user"/"user_id"/"userId", and TestNotesToolSchemaHasNoSlugParameter for
+// "slug" — so these comments are promises tests also keep.
+//
+// `"properties": map[string]any{}` is written out explicitly rather than
+// omitted: an object schema with no properties key at all is, to some
+// providers, an under-specified schema rather than a no-argument one.
 func (t *notesTool) Definition() Tool {
 	return Tool{
 		Type: "function",
 		Function: ToolFunction{
 			Name: ToolNameReadMyNotes,
-			Description: "Read the current learner's own progress and notes for one course: " +
-				"which chapters have been read, and any margin notes written, each shown with " +
-				"the passage it is anchored to. This always reads the learner asking the " +
-				"question — there is no way to target anyone else.",
+			Description: "Read the current learner's own progress and notes for the course they " +
+				"are reading right now: which chapters have been read, and any margin notes " +
+				"written, each shown with the passage it is anchored to. This always reads the " +
+				"learner asking the question, and always the course they currently have open — " +
+				"there is no way to target anyone else, or any other course. Takes no arguments.",
 			Parameters: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"slug": map[string]any{
-						"type":        "string",
-						"description": "The course's slug (its unique id in the catalog) to read progress and notes for.",
-					},
-				},
-				"required": []string{"slug"},
+				"type":       "object",
+				"properties": map[string]any{},
 			},
 		},
 	}
 }
 
-// notesToolArgs is exactly the JSON shape the model sends in
-// ToolCall.Function.Arguments. Deliberately narrow — no field here could
-// carry a learner identity even if the model tried to put one in "user_id"
-// or similar; json.Unmarshal silently ignores keys this struct does not
-// declare (proven by TestNotesToolReadsOnlyBoundUser, which sends "user_id"
-// alongside "slug" and asserts it changes nothing).
-type notesToolArgs struct {
-	Slug string `json:"slug"`
-}
+// notesToolArgs is exactly the JSON shape this tool reads out of
+// ToolCall.Function.Arguments: nothing. It has no fields, and that is the
+// whole point — json.Unmarshal silently ignores every key a struct does not
+// declare, so a model that sends `{"user_id":"...","slug":"..."}` anyway
+// (out of habit, or because a hostile course's prose told it to) changes
+// nothing about what is read. TestNotesToolReadsOnlyBoundUser and
+// TestNotesToolReadsOnlyTheTurnsCourse each send exactly that and assert it.
+//
+// Kept as a named type with a real Unmarshal call rather than dropped
+// entirely: the call is what still turns MALFORMED arguments into a
+// model-readable text error instead of silently accepting them, which is a
+// different property from "arguments are ignored" and has its own test
+// (TestNotesToolMalformedArgsJSONIsATextError).
+type notesToolArgs struct{}
 
 // Run decodes argsJSON, reads the BOUND learner's progress and notes for
 // slug, and ALWAYS returns (text, nil) — never (any, non-nil error) — for
@@ -186,14 +229,24 @@ func (t *notesTool) Run(ctx context.Context, argsJSON string) (string, error) {
 		return fmt.Sprintf("Error: could not parse arguments: %s", err), nil
 	}
 
-	slug := strings.TrimSpace(args.Slug)
-	if slug == "" {
-		// LOUD, not silent — condition 2 of this file's doc comment. A
-		// missing "slug" key and an explicit "" both land here (both
-		// TrimSpace to ""); neither one is treated as "every course",
-		// which is what a courseID == "" would mean to Repo.ListAnnotations
-		// (userdata/repo.go) if it ever reached that layer unchecked.
-		return "Error: slug is required — name the course to read progress and notes for.", nil
+	// THE TURN'S course, never the model's — condition 3. `args` is
+	// deliberately unused past the parse above; see notesToolArgs.
+	slug := strings.TrimSpace(t.courseSlug)
+
+	// isValidCourseSlug, not `!= ""` — the same test agent.go's
+	// buildMessages applies before it will even SHOW a course slug to the
+	// model (whole-branch review, C2). One definition of "slug-shaped" in
+	// this package, applied in both directions: a Turn.CourseSlug this
+	// package refuses to say is one it refuses to read.
+	//
+	// LOUD, not silent — condition 2. An empty or unusable course is never
+	// treated as "every course", which is exactly what a courseID == ""
+	// would mean to Repo.ListAnnotations (userdata/repo.go) if it reached
+	// that layer unchecked. The text names what the MODEL can do about it,
+	// since the model is the only reader this string has.
+	if !isValidCourseSlug(slug) {
+		return "Error: no course is open in this conversation, so there are no progress or notes to read. " +
+			"Ask the learner to open the course they mean, then ask again.", nil
 	}
 
 	progress, err := t.q.Progress(ctx, t.userID, slug)

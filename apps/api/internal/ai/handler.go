@@ -132,7 +132,7 @@ func KnownToolNames() []string {
 // the real one Chat makes — read_my_notes's own availability (below) does
 // not depend on its value, only on whether h.notes is nil.
 func (h *Handler) unavailableToolNames(uid uuid.UUID) []string {
-	registered := TurnTools(h.courses, h.search, h.maxSearches, h.notes, uid)
+	registered := TurnTools(h.courses, h.search, h.maxSearches, h.notes, uid, "")
 	var out []string
 	for _, name := range KnownToolNames() {
 		if _, ok := registered[name]; !ok {
@@ -389,7 +389,7 @@ func registerTool(m map[string]ToolRunner, r ToolRunner) {
 // read_my_notes exists as a ToolRunner it is already bound to a learner the
 // model cannot rename. See tool_notes.go's package doc comment for why that
 // binding has to happen at construction and nowhere later.
-func TurnTools(courses CourseQuerier, search SearchProvider, maxSearchesPerTurn int, notes NotesQuerier, userID uuid.UUID) map[string]ToolRunner {
+func TurnTools(courses CourseQuerier, search SearchProvider, maxSearchesPerTurn int, notes NotesQuerier, userID uuid.UUID, courseSlug string) map[string]ToolRunner {
 	tools := make(map[string]ToolRunner, 3)
 	if courses != nil {
 		registerTool(tools, NewCourseTool(courses))
@@ -398,7 +398,7 @@ func TurnTools(courses CourseQuerier, search SearchProvider, maxSearchesPerTurn 
 		registerTool(tools, NewSearchTool(search, maxSearchesPerTurn))
 	}
 	if notes != nil {
-		registerTool(tools, NewNotesTool(notes, userID))
+		registerTool(tools, NewNotesTool(notes, userID, courseSlug))
 	}
 	return tools
 }
@@ -701,7 +701,7 @@ func (h *Handler) Chat(c *fiber.Ctx) error {
 		// verified — read_my_notes (tool_notes.go) is bound to it at
 		// construction and reads no other value, ever, no matter what a
 		// tool_call's arguments claim.
-		Tools:    TurnTools(h.courses, h.search, h.maxSearches, h.notes, uid),
+		Tools:    TurnTools(h.courses, h.search, h.maxSearches, h.notes, uid, courseSlug),
 		Settings: settings,
 	}
 

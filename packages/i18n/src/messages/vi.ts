@@ -695,6 +695,13 @@ export const vi = {
   //
   // THƯỜNG TRỰC, cùng vị trí `ai.panel.noMemory` ngay trên: đúng ngay từ câu
   // hỏi đầu tiên, không đợi tool thật sự được gọi lượt nào.
+  //
+  // "cho khoá học này" LÚC RA MẮT LÀ SAI, và bản rà soát toàn nhánh (Quan
+  // trọng 4) sửa MÃ chứ không sửa câu: trước đó slug của course là một
+  // THAM SỐ DO MODEL CHỌN, còn course người học đang mở chỉ được nhắc như
+  // lời khuyên trong prompt. Nay nó được buộc lúc dựng tool từ
+  // Turn.CourseSlug và schema không còn tham số course nào — xem
+  // `apps/api/internal/ai/tool_notes.go`, điều kiện 3 trong doc comment.
   'ai.readsYourNotes':
     'Gia sư có thể đọc tiến độ và ghi chú của bạn cho khoá học này để trả lời sát hơn.',
   // `ai.panel.noCredit` thay cho cặp Pha 1 `needsSetup`/`unavailable` (đã bỏ
