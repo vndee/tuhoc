@@ -139,6 +139,12 @@ export const en: Messages = {
     'A tool marked "not configured on this server" still saves your preference, but the server is not set up to run it — the assistant will skip it until an administrator switches it on.',
   'settings.ai.toolReadCourse': 'Read course content',
   'settings.ai.toolWebSearch': 'Search the web',
+  // Task 12 (Phase 3) — third label for AgentConfigPanel.tsx's
+  // TOOL_LABEL_KEYS, alongside the two above. read_my_notes is ON BY
+  // DEFAULT (ai.readsYourNotes says so in the ask panel); this toggle is
+  // where it is actually turned off, and it deserves a readable label from
+  // day one, not the bare technical name "read_my_notes".
+  'settings.ai.toolReadMyNotes': 'Read your progress and notes',
   'settings.ai.save': 'Save configuration',
   'settings.ai.saved': 'Saved.',
   'settings.ai.saveUnknownTool': 'One of the listed tools no longer exists. Reload the page and try again.',
@@ -451,6 +457,19 @@ export const en: Messages = {
   // has gone wrong, because it is true on the very first question too. See
   // useAI.ts's doc comment for why the server has no cross-turn memory.
   'ai.panel.noMemory': 'Each question stands on its own — the assistant does not remember earlier questions.',
+  // DEFAULT-ON, AND THE LEARNER MUST BE TOLD (Task 12, Phase 3).
+  // read_my_notes (server-side tool, apps/api/internal/ai/tool_notes.go)
+  // reads the ASKING learner's own progress and notes for the open course —
+  // migration 0010 turns it on for every account, including ones that
+  // already existed. Default-on is the project owner's call; NOT telling
+  // the learner is a different decision nobody made — this sentence, plus
+  // the link to Settings right after it in AskPanel.tsx, is where that gets
+  // said and where it gets turned off.
+  //
+  // Persistent, same spot as ai.panel.noMemory just above: true from the
+  // very first question, before the tool has actually been called once.
+  'ai.readsYourNotes':
+    'The tutor can read your progress and notes for this course to answer more precisely.',
   // `ai.panel.noCredit` is Phase 2's replacement for the Phase 1 pair
   // `needsSetup`/`unavailable` (removed — see `git log` on this file):
   // there is no per-device key to plug in anymore and no build variant

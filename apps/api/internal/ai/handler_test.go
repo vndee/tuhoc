@@ -264,6 +264,37 @@ func (fakeCourses) ChapterHTML(ctx context.Context, slug, chapterID string) (str
 	return "<p>chapter text</p>", nil
 }
 
+// fakeNotes is an ai.NotesQuerier that never touches Postgres and records
+// the LAST userID/courseID it was actually called with — the read side of
+// the confused-deputy proof this file adds at the wiring layer
+// (TestChatBindsNotesToolToTheCallersOwnID): tool_notes_test.go proves the
+// tool itself never reads a smuggled identity; this proves the same thing
+// end to end, through the real POST /ai/chat handler and a real tool_call
+// round trip.
+type fakeNotes struct {
+	mu          sync.Mutex
+	progress    []ai.NotesProgressRow
+	notes       []ai.NotesAnnotationRow
+	gotUserID   uuid.UUID
+	gotCourseID string
+}
+
+func (f *fakeNotes) Progress(ctx context.Context, userID uuid.UUID, courseID string) ([]ai.NotesProgressRow, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.gotUserID = userID
+	f.gotCourseID = courseID
+	return f.progress, nil
+}
+
+func (f *fakeNotes) Notes(ctx context.Context, userID uuid.UUID, courseID string) ([]ai.NotesAnnotationRow, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.gotUserID = userID
+	f.gotCourseID = courseID
+	return f.notes, nil
+}
+
 // --- helpers ---------------------------------------------------------------
 
 // newAIApp mounts the three learner routes AND the seven Task 17 admin
@@ -620,7 +651,7 @@ func TestAIRoutesRejectRequestsWithoutASession(t *testing.T) {
 // a registration keyed by anything else produces a tool that is advertised
 // to the model and then never runs — no error, no log, nothing.
 func TestTurnToolsKeysMatchDefinitionNames(t *testing.T) {
-	tools := ai.TurnTools(fakeCourses{}, &fakeSearch{}, 2)
+	tools := ai.TurnTools(fakeCourses{}, &fakeSearch{}, 2, &fakeNotes{}, uuid.New())
 	if len(tools) == 0 {
 		t.Fatal("TurnTools returned no tools — this test would pass vacuously")
 	}
@@ -631,7 +662,7 @@ func TestTurnToolsKeysMatchDefinitionNames(t *testing.T) {
 				"never run", key, got)
 		}
 	}
-	for _, want := range []string{ai.ToolNameReadCourse, ai.ToolNameWebSearch} {
+	for _, want := range []string{ai.ToolNameReadCourse, ai.ToolNameWebSearch, ai.ToolNameReadMyNotes} {
 		if _, ok := tools[want]; !ok {
 			t.Fatalf("tool %q missing from a fully-configured tool set: %v", want, tools)
 		}
@@ -643,12 +674,26 @@ func TestTurnToolsKeysMatchDefinitionNames(t *testing.T) {
 // cannot run would spend the learner's tokens on a tool_call that always
 // comes back as an error string.
 func TestTurnToolsOmitWebSearchWhenNoProviderIsConfigured(t *testing.T) {
-	tools := ai.TurnTools(fakeCourses{}, nil, 2)
+	tools := ai.TurnTools(fakeCourses{}, nil, 2, &fakeNotes{}, uuid.New())
 	if _, ok := tools[ai.ToolNameWebSearch]; ok {
 		t.Fatal("web_search was registered with no SearchProvider behind it")
 	}
 	if _, ok := tools[ai.ToolNameReadCourse]; !ok {
 		t.Fatal("read_course must still be registered when only search is unconfigured")
+	}
+}
+
+// TestTurnToolsOmitNotesWhenQuerierIsNil is read_my_notes's own half of the
+// test above: a Notes wiring mistake must make the tool silently
+// unavailable (never advertised), not panic the first time a learner's
+// turn actually calls it — see HandlerDeps.Notes's own doc comment.
+func TestTurnToolsOmitNotesWhenQuerierIsNil(t *testing.T) {
+	tools := ai.TurnTools(fakeCourses{}, nil, 2, nil, uuid.New())
+	if _, ok := tools[ai.ToolNameReadMyNotes]; ok {
+		t.Fatal("read_my_notes was registered with no NotesQuerier behind it")
+	}
+	if _, ok := tools[ai.ToolNameReadCourse]; !ok {
+		t.Fatal("read_course must still be registered when only notes is unconfigured")
 	}
 }
 
@@ -659,8 +704,8 @@ func TestTurnToolsOmitWebSearchWhenNoProviderIsConfigured(t *testing.T) {
 // permanently to zero.
 func TestTurnToolsAreFreshPerCall(t *testing.T) {
 	provider := &fakeSearch{}
-	first := ai.TurnTools(fakeCourses{}, provider, 1)
-	second := ai.TurnTools(fakeCourses{}, provider, 1)
+	first := ai.TurnTools(fakeCourses{}, provider, 1, &fakeNotes{}, uuid.New())
+	second := ai.TurnTools(fakeCourses{}, provider, 1, &fakeNotes{}, uuid.New())
 
 	if first[ai.ToolNameWebSearch] == second[ai.ToolNameWebSearch] {
 		t.Fatal("two TurnTools calls returned the SAME web_search runner — its " +
@@ -745,8 +790,9 @@ func TestAIHandlerFlows(t *testing.T) {
 		if err := json.Unmarshal(body, &out); err != nil {
 			t.Fatalf("decode: %v (%s)", err, body)
 		}
-		if len(out.ToolsEnabled) != 1 || out.ToolsEnabled[0] != ai.ToolNameReadCourse {
-			t.Fatalf("want the column default {read_course} for a new account, got %v", out.ToolsEnabled)
+		if want := []string{ai.ToolNameReadCourse, ai.ToolNameReadMyNotes}; !slices.Equal(out.ToolsEnabled, want) {
+			t.Fatalf("want the default %v for a new account (Task 12 added read_my_notes to "+
+				"defaultAgentConfig — see credits.go), got %v", want, out.ToolsEnabled)
 		}
 	})
 
@@ -930,8 +976,8 @@ func TestAIHandlerFlows(t *testing.T) {
 		if got.SystemPrompt != "" {
 			t.Fatalf("want an empty default prompt, got %q", got.SystemPrompt)
 		}
-		if len(got.ToolsEnabled) != 1 || got.ToolsEnabled[0] != ai.ToolNameReadCourse {
-			t.Fatalf("default tools_enabled must match the column default {read_course}, got %v", got.ToolsEnabled)
+		if want := []string{ai.ToolNameReadCourse, ai.ToolNameReadMyNotes}; !slices.Equal(got.ToolsEnabled, want) {
+			t.Fatalf("default tools_enabled must match defaultAgentConfig()'s %v, got %v", want, got.ToolsEnabled)
 		}
 		// Compared by CONTENT and ORDER, not merely by length: a length
 		// check passes for a list of the right size holding the wrong names,
@@ -961,7 +1007,15 @@ func TestAIHandlerFlows(t *testing.T) {
 		// No Search — exactly the shape of a deploy with no BRAVE_API_KEY.
 		// TurnTools registers no web_search runner for it, and until this
 		// field existed the settings screen had no way to know.
-		noSearch := newAIApp(t, uid, ai.HandlerDeps{Credits: credits, Courses: fakeCourses{}})
+		//
+		// Notes IS wired (unlike Search): this subtest measures ONLY
+		// web_search's availability, and leaving Notes nil would make
+		// read_my_notes ALSO unavailable here for a reason that has nothing
+		// to do with what this test is checking — TurnTools nil-checks Notes
+		// the same way it nil-checks Search (see TurnTools's own doc
+		// comment), so an unwired fake here would conflate two different
+		// "unavailable" causes in one assertion.
+		noSearch := newAIApp(t, uid, ai.HandlerDeps{Credits: credits, Courses: fakeCourses{}, Notes: &fakeNotes{}})
 		resp, raw := doJSON(t, noSearch, http.MethodGet, "/ai/config", nil)
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("want 200 got %d body=%s", resp.StatusCode, raw)
@@ -989,7 +1043,7 @@ func TestAIHandlerFlows(t *testing.T) {
 		// The other side of the same measurement: with a provider wired,
 		// the list is EMPTY, never null on the wire.
 		withSearch := newAIApp(t, uid, ai.HandlerDeps{
-			Credits: credits, Courses: fakeCourses{}, Search: &fakeSearch{},
+			Credits: credits, Courses: fakeCourses{}, Search: &fakeSearch{}, Notes: &fakeNotes{},
 		})
 		resp2, raw2 := doJSON(t, withSearch, http.MethodGet, "/ai/config", nil)
 		if resp2.StatusCode != http.StatusOK {
@@ -1739,5 +1793,97 @@ func TestSuccessfulTurnWithNoUsageIsLoudNotSilent(t *testing.T) {
 	rows := usageRowsOf(t, pool, uid)
 	if len(rows) != 1 {
 		t.Fatalf("muốn đúng 1 hàng ai_usage (dấu vết lượt đã xảy ra), có %d", len(rows))
+	}
+}
+
+// ============================================================================
+// Task 12 (Pha 3) — read_my_notes: the two conditions that were not free.
+// ============================================================================
+
+// TestChatPassesCourseSlugIntoTurn is Step 3 of task-12-brief.md, and it
+// guards Pha 2's single most expensive lesson: the previous phase's
+// read_course tool shipped enabled by default while ChapterView rendered
+// the AI panels without passing courseSlug — the prop defaulted "" the
+// whole way down to agent.go's `if t.CourseSlug != ""`, a dead branch in
+// production for a WHOLE PHASE, with every test staying green throughout.
+//
+// That wiring has since been fixed (whole-branch review, mục B) — this test
+// exists so it STAYS fixed. It asserts on the one place the fix is
+// externally observable without reaching into unexported state: buildMessages
+// (agent.go) appends a system message naming the course, right before
+// Question, whenever Turn.CourseSlug is a valid, non-empty slug — so if
+// course_slug in the request body ever again fails to reach Turn.CourseSlug,
+// this message simply stops appearing in what the fake provider receives.
+func TestChatPassesCourseSlugIntoTurn(t *testing.T) {
+	pool := store.TestPool(t)
+	seedFixtureRates(t, pool)
+	credits := ai.NewService(pool)
+	uid := newUser(t, pool, "course-slug-wiring", 9000)
+
+	fs := &fakeStream{script: []streamStep{answerStep("ok", round2Usage())}}
+	app := newAIApp(t, uid, ai.HandlerDeps{Client: fs, Credits: credits, Courses: fakeCourses{}})
+
+	resp, raw := doJSON(t, app, http.MethodPost, "/ai/chat", map[string]any{
+		"question": "where am I stuck?", "course_slug": "mau-hop-le",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200 got %d body=%s", resp.StatusCode, raw)
+	}
+
+	req := fs.request(0)
+	var sawContext bool
+	for _, m := range req.Messages {
+		if m.Role == "system" && strings.Contains(m.Content, `course "mau-hop-le"`) {
+			sawContext = true
+		}
+	}
+	if !sawContext {
+		t.Fatalf("POST /ai/chat's course_slug never reached Turn.CourseSlug — no course-context "+
+			"system message was found in the request the model actually received. This is "+
+			"exactly the dead-branch shape Pha 2 shipped for a whole phase (a prop that "+
+			"existed the entire chain, defaulted \"\", and agent.go's "+
+			"`if t.CourseSlug != \"\"` never ran in production) — with every test green "+
+			"throughout. messages sent to the model: %+v", req.Messages)
+	}
+}
+
+// TestChatBindsNotesToolToTheCallersOwnID is the end-to-end half of
+// tool_notes_test.go's TestNotesToolReadsOnlyBoundUser: that test proves
+// notesTool.Run itself ignores a user_id smuggled into argsJSON; this one
+// proves the SAME thing through the real wiring — POST /ai/chat, a real
+// tool_call round trip, and the userID handler.go's Chat actually binds
+// read_my_notes to.
+//
+// A NEW learner's ToolsEnabled is {read_course, read_my_notes}
+// (defaultAgentConfig, credits.go — Task 12 made this the default), so no
+// PUT /ai/config is needed to make the tool available for this turn.
+func TestChatBindsNotesToolToTheCallersOwnID(t *testing.T) {
+	pool := store.TestPool(t)
+	seedFixtureRates(t, pool)
+	credits := ai.NewService(pool)
+	uid := newUser(t, pool, "notes-binding", 9000)
+
+	notes := &fakeNotes{}
+	spoofed := uuid.NewString()
+	fs := &fakeStream{script: []streamStep{
+		toolStep(ai.ToolNameReadMyNotes, `{"slug":"mau-hop-le","user_id":"`+spoofed+`"}`, round1Usage()),
+		answerStep("ok", round2Usage()),
+	}}
+	app := newAIApp(t, uid, ai.HandlerDeps{
+		Client: fs, Credits: credits, Courses: fakeCourses{}, Notes: notes,
+	})
+
+	resp, raw := doJSON(t, app, http.MethodPost, "/ai/chat", map[string]any{"question": "where am I stuck?"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200 got %d body=%s", resp.StatusCode, raw)
+	}
+	if notes.gotUserID != uid {
+		t.Fatalf("read_my_notes read data for %v, want the session's own learner %v — a "+
+			"user_id smuggled into the model's tool_call arguments must never steer whose "+
+			"private notes are read", notes.gotUserID, uid)
+	}
+	if notes.gotCourseID != "mau-hop-le" {
+		t.Fatalf("read_my_notes read course %q, want %q (the tool's own \"slug\" argument, "+
+			"which the model DOES control — only identity is bound)", notes.gotCourseID, "mau-hop-le")
 	}
 }

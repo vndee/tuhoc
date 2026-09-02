@@ -17,6 +17,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vndee/tuhoc-api/internal/ai"
@@ -302,7 +303,14 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// there is no outbox and no LWW timestamp for a client to carry — see
 	// internal/userdata's own doc comment. Mounted behind the same
 	// auth.Require(deps.Pool) entry point as every route below.
-	userdataHandler := userdata.NewHandler(userdata.NewUsecase(userdata.NewRepo(deps.Pool)))
+	//
+	// userdataRepo is held in its own variable, not inlined, for the same
+	// reason catalogUsecase is below: the AI routes' read_my_notes tool
+	// (Task 12) reuse it through notesQuerier — one Repo over one pool,
+	// instead of a second equivalent *userdata.Repo built just for that
+	// tool.
+	userdataRepo := userdata.NewRepo(deps.Pool)
+	userdataHandler := userdata.NewHandler(userdata.NewUsecase(userdataRepo))
 	app.Get("/progress", auth.Require(deps.Pool), userdataHandler.ListProgress)
 	app.Put("/progress", auth.Require(deps.Pool), userdataHandler.PutProgress)
 
@@ -481,6 +489,13 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 		Credits: ai.NewService(deps.Pool),
 		Courses: courseQuerier{uc: catalogUsecase},
 		Search:  aiSearch,
+		// Notes backs read_my_notes (Task 12): the SAME userdataRepo the
+		// /progress and /annotations routes above use, through notesQuerier
+		// — one Repo over one pool, not a second stack built just for this
+		// tool. Unlike Search, there is no "not configured" branch here: a
+		// real deployment always has deps.Pool, so this is never nil in
+		// production (only in tests that do not need the tool available).
+		Notes: notesQuerier{repo: userdataRepo},
 		// The learner is whoever the session cookie says, never anything in
 		// the request. Passed in as a function because internal/auth imports
 		// internal/ai (the signup grant), so internal/ai cannot import auth
@@ -551,4 +566,62 @@ func (q courseQuerier) ChapterHTML(ctx context.Context, slug, chapterID string) 
 	// prose. courseTool strips tags from what it gets back anyway.
 	html, _, _, err := q.uc.GetChapter(ctx, slug, chapterID)
 	return html, err
+}
+
+// notesQuerier adapts internal/userdata's read side to the narrow surface
+// the read_my_notes tool needs (ai.NotesQuerier) — the same reason
+// courseQuerier above exists for read_course, and for a stronger version of
+// the same constraint: internal/ai cannot import internal/userdata AT ALL
+// (not a style choice this time — internal/userdata's handler.go imports
+// internal/auth, and internal/auth's repo.go imports internal/ai for the
+// signup-credit grant, so ai -> userdata -> auth -> ai is a real import
+// cycle, confirmed with `go build`, not assumed). This adapter is the one
+// place in the whole module allowed to see both packages and translate
+// between their row types.
+//
+// UNLIKE courseQuerier's two PUBLIC-course reads, both methods here are
+// gated on userID — they answer only about the SAME learner who is asking.
+// This adapter does not add or remove that scoping; it exists to translate
+// types, not to decide whose data comes back. The tool that calls it
+// (tool_notes.go's notesTool) is what fixes userID to the authenticated
+// caller before Progress/Notes is ever invoked — see ai.NewNotesTool's doc
+// comment for why that binding happens at construction and nowhere later.
+type notesQuerier struct {
+	repo *userdata.Repo
+}
+
+// Progress filters userdata.Repo.ListProgress's whole-account result down
+// to ONE course. Repo has no course-scoped progress query of its own — it
+// answers "every progress row for this learner, every course", which is
+// exactly right for pages/Progress.tsx's cross-course dashboard — so the
+// per-course filter lives here, in the one caller that needs a single
+// course's slice of it.
+func (q notesQuerier) Progress(ctx context.Context, userID uuid.UUID, courseID string) ([]ai.NotesProgressRow, error) {
+	rows, err := q.repo.ListProgress(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ai.NotesProgressRow, 0, len(rows))
+	for _, r := range rows {
+		if r.CourseID != courseID {
+			continue
+		}
+		out = append(out, ai.NotesProgressRow{ChapterID: r.ChapterID, Status: r.Status, Done: r.Done})
+	}
+	return out, nil
+}
+
+// Notes maps straight onto Repo.ListAnnotations, which already accepts a
+// courseID filter (its own SQL WHERE clause) — no extra filtering needed
+// here, unlike Progress above.
+func (q notesQuerier) Notes(ctx context.Context, userID uuid.UUID, courseID string) ([]ai.NotesAnnotationRow, error) {
+	rows, err := q.repo.ListAnnotations(ctx, userID, courseID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ai.NotesAnnotationRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ai.NotesAnnotationRow{ChapterID: r.ChapterID, Anchor: r.Anchor, Note: r.Note})
+	}
+	return out, nil
 }

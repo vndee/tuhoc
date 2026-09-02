@@ -388,12 +388,20 @@ type AgentConfig struct {
 
 // defaultAgentConfig is what a learner who has never opened the settings
 // screen gets. It mirrors user_agent_config's own column DEFAULTs
-// (system_prompt ”, tools_enabled '{read_course}') by hand, because a
-// SELECT that finds no row does not apply column defaults — they only fire
-// on INSERT. A learner with no row and a learner who saved the defaults
-// must behave identically.
+// (system_prompt ”, tools_enabled '{read_course,read_my_notes}' as of
+// migration 0010) by hand, because a SELECT that finds no row does not
+// apply column defaults — they only fire on INSERT. A learner with no row
+// and a learner who saved the defaults must behave identically.
+//
+// read_my_notes joined the default set in Task 12 (Pha 3), and that is a
+// product decision with a real cost: it covers only NEW rows. Every row
+// already in user_agent_config carries its own tools_enabled, so this
+// function changing is invisible to every existing account unless
+// migration 0010's own UPDATE also appends 'read_my_notes' to their stored
+// arrays — see that migration's up.sql for the idempotent form of that
+// statement.
 func defaultAgentConfig() AgentConfig {
-	return AgentConfig{ToolsEnabled: []string{ToolNameReadCourse}}
+	return AgentConfig{ToolsEnabled: []string{ToolNameReadCourse, ToolNameReadMyNotes}}
 }
 
 // AgentConfig reads userID's row, or the defaults above when there is none.

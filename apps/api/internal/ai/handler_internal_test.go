@@ -34,6 +34,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 // TestWebSearchToolNameMatchesTheAgentLoopsCounter is the direct form of the
@@ -65,6 +67,7 @@ func TestToolNameConstantsMatchTheRunnersDefinitions(t *testing.T) {
 	}{
 		{ToolNameReadCourse, NewCourseTool(nil)},
 		{ToolNameWebSearch, NewSearchTool(nil, 1)},
+		{ToolNameReadMyNotes, NewNotesTool(nil, uuid.Nil)},
 	}
 	for _, tc := range cases {
 		if got := tc.runner.Definition().Function.Name; got != tc.want {
