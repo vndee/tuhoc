@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { resetEventQueue } from '../api/events';
 import { resetSessionScopedQueries } from '../api/useMe';
+import { clearLegacyLocalData } from '../db/legacyDrain';
 import { clearUserContent } from '../db/localStorage';
 import { announceSessionUser } from './sessionIdentity';
 
@@ -55,6 +56,24 @@ import { announceSessionUser } from './sessionIdentity';
  *     `resumePausedMutations()` find nothing to resume (it iterates
  *     `getAll()` on that same set); see `session.test.ts`'s own
  *     "the mutation half" describe block for the account-handoff proof.
+ *
+ * The final whole-branch review added a fifth, and this one is not a store
+ * somebody newly opened — it is one this function USED to clear and
+ * silently stopped clearing:
+ *
+ *   - `clearLegacyLocalData()` (`../db/legacyDrain`) — the Dexie-era
+ *     `'tuhoc'` IndexedDB database. Until Task 10, `clearLocalData()` ended
+ *     with `await Promise.all(db.tables.map((t) => t.clear()))`, which
+ *     emptied `outbox` — the queued-but-unsent progress and annotation
+ *     writes — on both auth transitions. Task 10 removed Dexie and that
+ *     line went with it, leaving the database on disk with nothing in this
+ *     codebase clearing it, while `db/legacyDrain.ts` gained a fresh reason
+ *     to READ it. The result was a cross-account leak with a longer fuse
+ *     than the other four: A's unsent notes sat in the browser through B's
+ *     login and were pushed to `POST /sync` on B's next page load, where
+ *     `auth.UID(c)` INSERTed them into B's account. See that module's
+ *     header for why the server's own owner-scoping cannot catch an INSERT,
+ *     and `test/legacyDrainHandoff.test.tsx` for the end-to-end proof.
  *
  * Every call site happened to be correct once it existed. That is not the point.
  * *"Two truth points, remember to call both"* is the exact SHAPE of the
@@ -115,8 +134,9 @@ import { announceSessionUser } from './sessionIdentity';
  * anything inside it still yields to the event loop.)
  *
  * The tripwire that keeps a third call site from quietly appearing — for
- * the three NAMED halves above (`clearUserContent`,
- * `resetSessionScopedQueries`, `resetEventQueue`) — lives in
+ * the four NAMED halves above (`clearUserContent`,
+ * `resetSessionScopedQueries`, `resetEventQueue`, `clearLegacyLocalData`) —
+ * lives in
  * `./session.test.ts`'s `SESSION_CLEARERS`, next to this function's own
  * tests. `getMutationCache().clear()` is deliberately NOT a fourth entry in
  * that list: it is a plain method call on the `QueryClient` this function
@@ -156,6 +176,22 @@ export async function clearSession(queryClient: QueryClient): Promise<void> {
   // see the report for what would.
   announceSessionUser(null);
   clearUserContent();
+  // The FIFTH half, and the oldest of them: the Dexie-era `'tuhoc'`
+  // database. It held this same durable role until Task 10 — the old
+  // `clearLocalData()` ended with a `table.clear()` over every Dexie
+  // table, `outbox` included — and when Dexie left, the database stayed on
+  // disk with nothing left in this codebase clearing it. The final
+  // whole-branch review found what that produced: `db/legacyDrain.ts`
+  // pushing A's unsent, never-server-seen notes to `POST /sync` under
+  // whoever's cookie was current on a later page load, where
+  // `auth.UID(c)` files them under that account (see that module's header
+  // for why the server's own owner-scoping cannot catch an INSERT).
+  //
+  // Deliberately NOT awaited — see `clearLegacyLocalData`'s own doc for
+  // the `blocked` hazard that makes awaiting a way for an old tab to hang
+  // this one's logout. It is a fire-and-forget that cannot reject, so
+  // there is no rejection to handle here.
+  void clearLegacyLocalData();
   resetSessionScopedQueries(queryClient);
   // Unconditional, and never preceded by an attempted flush HERE — see
   // this function's own "What it deliberately does NOT do" above. Whatever

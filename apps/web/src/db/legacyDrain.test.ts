@@ -21,7 +21,7 @@
  * database standing.** Deleting first and sending second is a function with
  * nothing left to send.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Same boundary `sync/engine.test.ts`/`session.test.ts` mock at: this file
 // asserts exactly which HTTP calls a drain makes, with no real network
@@ -31,6 +31,7 @@ vi.mock('../api/client', () => ({
 }));
 
 import { api } from '../api/client';
+import { announceSessionUser, __resetSessionIdentityForTests, sessionWasSuperseded } from '../auth/sessionIdentity';
 import { drainLegacyDataOnce } from './legacyDrain';
 
 const LEGACY_DB_NAME = 'tuhoc';
@@ -88,6 +89,14 @@ beforeEach(async () => {
   await deleteLegacyDatabase();
 });
 
+// Every test but the supersession one below leaves this module untouched
+// (`localUser === undefined`, `superseded === false`), which is exactly the
+// state a fresh tab starts in. Resetting anyway keeps the one test that DOES
+// announce from colouring whatever runs after it.
+afterEach(() => {
+  __resetSessionIdentityForTests();
+});
+
 describe('drainLegacyDataOnce — flush THEN delete, never the other order', () => {
   // Step 1a. Order is the whole value here: delete-then-send is a function
   // with nothing left to send.
@@ -139,10 +148,22 @@ describe('drainLegacyDataOnce — batching and shape', () => {
     await drainLegacyDataOnce();
 
     expect(vi.mocked(api.post)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(api.post)).toHaveBeenCalledWith('/sync', {
-      progress: [{ courseId: 'c', chapterId: 'ch1', status: 'read', done: true, updatedAt: 'x' }],
-      annotations: [{ id: 'a1', courseId: 'c', chapterId: 'ch1', note: 'n' }],
-    });
+    expect(vi.mocked(api.post)).toHaveBeenCalledWith(
+      '/sync',
+      {
+        progress: [{ courseId: 'c', chapterId: 'ch1', status: 'read', done: true, updatedAt: 'x' }],
+        annotations: [{ id: 'a1', courseId: 'c', chapterId: 'ch1', note: 'n' }],
+      },
+      // Recorded Minor, fixed in the same round as this file's supersession
+      // test below: without `redirectOn401: false`, a 401 here hard-redirects
+      // the visitor to /login from `api/client.ts`'s `send()` — including a
+      // signed-out visitor sitting on a PUBLIC course page, who never asked
+      // this app for anything. Same defect class Task 13 found in
+      // `Sidebar.tsx`. Asserted, not merely written: an option object that
+      // silently went missing would restore the redirect with no other
+      // symptom.
+      { redirectOn401: false },
+    );
   });
 
   // Landmine #4: a browser running a build from before Task 8 (Pha 3) queued
@@ -184,5 +205,44 @@ describe('drainLegacyDataOnce — batching and shape', () => {
 
     expect(vi.mocked(api.post)).not.toHaveBeenCalled();
     expect(await databaseExists(LEGACY_DB_NAME)).toBe(false);
+  });
+});
+
+/**
+ * The guard `sync/engine.ts`'s `runCycle` used to own — `if
+ * (sessionWasSuperseded()) { stopSync(); return; }` — asked here, where
+ * Task 10 left a writer with nobody asking it.
+ *
+ * TWO MODULE GRAPHS, one per tab, the same mechanism
+ * `auth/supersededScreen.test.tsx` uses: `BroadcastChannel` never delivers a
+ * message back to the object that posted it, so a test that announces from
+ * THIS tab's own `sessionIdentity` can never measure what it means to
+ * measure. `vi.resetModules()` + a dynamic import gives the other tab its
+ * own copy; the channel itself is a jsdom global and is genuinely shared.
+ */
+describe('drainLegacyDataOnce — whose outbox is this', () => {
+  it('một tab khác chiếm phiên ⇒ không đẩy gì, và cơ sở dữ liệu cũ ở lại chờ đúng chủ của nó', async () => {
+    await seedLegacyOutbox([
+      { table: 'annotations', row: { id: 'a1', courseId: 'c', chapterId: 'ch1', note: 'ghi chú riêng của A' } },
+    ]);
+
+    // Tab này đã xác lập: trình duyệt thuộc về A.
+    announceSessionUser('u-a');
+
+    vi.resetModules();
+    const otherTab = await import('../auth/sessionIdentity');
+    // Tab kia: A đăng xuất (`clearSession()` công bố `null`), rồi B đăng nhập.
+    otherTab.announceSessionUser(null);
+    otherTab.announceSessionUser('u-b');
+    await vi.waitFor(() => expect(sessionWasSuperseded()).toBe(true));
+
+    await drainLegacyDataOnce();
+
+    expect(vi.mocked(api.post)).not.toHaveBeenCalled();
+    // KHÔNG xoá: outbox chưa gửi vẫn là của A, và cửa sổ duy nhất nó còn
+    // được gửi đúng chỗ là một lần tải trang mà A thật sự đang đăng nhập.
+    expect(await databaseExists(LEGACY_DB_NAME)).toBe(true);
+
+    otherTab.__resetSessionIdentityForTests();
   });
 });

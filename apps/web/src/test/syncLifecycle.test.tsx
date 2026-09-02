@@ -11,15 +11,27 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
  * is no more background sync loop for anything here to start or stop.
  *
  * What replaced it in `App.tsx` is `drainLegacyDataOnce()`
- * (`db/legacyDrain.ts`), fired once on mount — and DELIBERATELY NOT gated on
- * auth state the way `startSync()` was: the legacy outbox belongs to
- * whichever account was signed in on THIS browser under the OLD build, not
- * to whoever GET /me currently answers, and `POST /sync` (inside the drain)
- * carries whatever session cookie is currently valid at the moment it
- * fires — including none. A logged-out visitor still needs the drain to run
- * (their browser may hold the old outbox from before they signed out), so
- * this file's replacement tests pin the OPPOSITE of what the old ones did:
- * the drain fires regardless of `GET /me`'s answer.
+ * (`db/legacyDrain.ts`), and this file's tests for it were REVERSED by the
+ * final whole-branch review's Critical 2.
+ *
+ * They used to pin the drain firing for a logged-out visitor, and said why:
+ * *the legacy outbox belongs to whichever account was signed in on THIS
+ * browser under the OLD build, not to whoever `GET /me` currently answers*.
+ * Every clause of that is true; the conclusion drawn from it was not. The
+ * outbox does not travel with a name, and the very next sentence of the old
+ * comment — *`POST /sync` carries whatever session cookie is currently
+ * valid at the moment it fires* — is the leak stated out loud:
+ * `apps/api/internal/sync/handler.go` files every row it receives under
+ * `auth.UID(c)`. "Flush it for whoever wrote it" and "flush it under
+ * whoever is signed in" are the same line of code, and only the second is
+ * what it does. So B signing in on A's browser meant A's private, never-
+ * sent notes were INSERTed into B's account on B's next page load.
+ *
+ * These tests now pin the opposite of what they pinned before: a settled,
+ * SIGNED-IN `useMe` is a precondition of the drain running at all. The
+ * account-handoff proof that this is not merely a preference lives in
+ * `test/legacyDrainHandoff.test.tsx`; what stays here is the `<App/>`-level
+ * "the real wiring does this" half.
  *
  * The event flusher's real wiring (`startEventFlusher()`, still gated on
  * auth, unchanged by this task) keeps ONE test here proving the REAL
@@ -72,15 +84,16 @@ describe('App startup wiring (App.tsx)', () => {
     await waitFor(() => expect(drainSpy).toHaveBeenCalledTimes(1));
   }, OVERSUBSCRIBED_MS);
 
-  // The sharp edge this file exists to pin: unlike the old `startSync()`,
-  // the drain is NOT gated on `GET /me`. A browser that ran the old build,
-  // then signed out (or whose 30-day cookie simply expired) before this
-  // build ever loaded, still needs its outbox flushed — `POST /sync` inside
-  // the drain sends under whatever cookie is currently valid, which may be
-  // none, and the drain's own retry-next-load behaviour (see
-  // `legacyDrain.test.ts`) covers a currently-unauthenticated attempt that
-  // cannot reach an account at all.
-  it('drains the legacy local database once on mount, EVEN for a logged-out visitor', async () => {
+  // The sharp edge this file exists to pin, and the one the review turned
+  // around: the drain is gated on `GET /me` exactly the way `startSync()`
+  // was, because a request with no account behind it is not a request with
+  // no OWNER behind it — it is a request the server will file under
+  // whichever cookie happens to be valid. A browser holding an old outbox
+  // and no session keeps it: the outbox stays on disk, and the one page
+  // load that may send it is one where its own account is signed in (or,
+  // failing that, `clearSession()` deletes it at the next sign-in — see
+  // `db/legacyDrain.ts`'s `clearLegacyLocalData`).
+  it('does NOT drain the legacy local database for a logged-out visitor', async () => {
     server.use(http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
     const legacyDrain = await import('../db/legacyDrain');
     const drainSpy = vi.spyOn(legacyDrain, 'drainLegacyDataOnce').mockResolvedValue(undefined);
@@ -93,7 +106,7 @@ describe('App startup wiring (App.tsx)', () => {
     // proof the app actually settled on the sign-in screen, not merely that
     // some render happened.
     await waitFor(() => expect(document.querySelector('.auth-page')).toBeInTheDocument());
-    expect(drainSpy).toHaveBeenCalledTimes(1);
+    expect(drainSpy).not.toHaveBeenCalled();
   }, OVERSUBSCRIBED_MS);
 
   it('starts the event flusher once GET /me resolves to a signed-in user, and stops it on unmount', async () => {
