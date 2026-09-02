@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -52,6 +53,50 @@ func (uc *Usecase) PutProgress(ctx context.Context, userID uuid.UUID, row Progre
 // with errors.Is by handler.go to produce a 400, the same split
 // ErrInvalidProgress draws for PUT /progress.
 var ErrInvalidAnnotation = errors.New("userdata: invalid annotation item")
+
+// MaxNoteChars caps one annotation's note, in CHARACTERS (runes), and is
+// enforced by both CreateAnnotation and PatchAnnotation below.
+//
+// It exists because until the final whole-branch review there was no bound
+// at all: CreateAnnotation checked id/course/chapter/anchor for PRESENCE and
+// PatchAnnotation validated nothing, so the only ceiling on a note was the
+// HTTP body limit — which these routes had inherited from the app-wide
+// 21 MiB one meant for course packages (see internal/server's route table).
+// /annotations is not rate limited either, so "how much can one account
+// write into this table" had no answer anywhere in the stack.
+//
+// WHY 4000 SPECIFICALLY, in three parts:
+//
+//  1. It is the same number as ai.MaxSystemPromptChars, which is this
+//     platform's existing answer to "the longest free-form paragraph a
+//     learner may store on the server". A note is that kind of field, and
+//     giving it a different ceiling would be inventing a second answer to
+//     a question already answered.
+//  2. internal/ai's read_my_notes tool reads EVERY note of a course back
+//     into the model's context under one 12,000-rune cap
+//     (maxNotesToolOutputRunes) — billed to that same learner's credit. At
+//     4,000 a single note cannot swallow that whole budget; at, say,
+//     20,000 one note would truncate away every other note the learner
+//     wrote, silently.
+//  3. It is far above anything a margin note actually is. 4,000 characters
+//     is roughly two pages of prose attached to one highlighted sentence.
+//     A cap that a real learner can reach is a bug report; this one cannot
+//     be reached by writing about a passage, only by pasting at it.
+//
+// RUNES, not bytes, for the reason MaxSystemPromptChars and
+// maxNotesToolOutputRunes each give for themselves: this platform is
+// bilingual, and a byte cap silently gives an English writer about three
+// times the characters a Vietnamese writer gets.
+const MaxNoteChars = 4000
+
+// noteTooLong reports whether note exceeds MaxNoteChars characters. One
+// function, called from both write paths, so the two cannot drift into
+// disagreeing about how long a note may be — the shape of bug this
+// codebase has already paid for elsewhere (clearLocalData's eight
+// hand-copied copies).
+func noteTooLong(note string) bool {
+	return utf8.RuneCountInString(note) > MaxNoteChars
+}
 
 // ListAnnotations returns every annotation row belonging to userID,
 // optionally filtered to one courseID (courseID == "" means every
@@ -104,14 +149,27 @@ func (uc *Usecase) CreateAnnotation(ctx context.Context, userID uuid.UUID, row A
 	if row.ID == uuid.Nil || row.CourseID == "" || row.ChapterID == "" || isMissingAnchor(row.Anchor) {
 		return fmt.Errorf("%w: (id=%s course=%q chapter=%q anchorMissing=%t) missing a required field", ErrInvalidAnnotation, row.ID, row.CourseID, row.ChapterID, isMissingAnchor(row.Anchor))
 	}
+	if noteTooLong(row.Note) {
+		return fmt.Errorf("%w: note is %d characters, the limit is %d", ErrInvalidAnnotation, utf8.RuneCountInString(row.Note), MaxNoteChars)
+	}
 	return uc.repo.CreateAnnotation(ctx, userID, row)
 }
 
-// PatchAnnotation passes straight through to the repo layer: there is no
-// business validation to apply beyond the repo's own owner-scoped WHERE
-// clause (see Repo.PatchAnnotation), and note/anchor's "nil means leave
-// untouched" contract is a repo-layer SQL detail, not a usecase rule.
+// PatchAnnotation applies the ONE business rule an edit can break —
+// MaxNoteChars — and otherwise passes straight through to the repo layer:
+// the owner scoping is the repo's own WHERE clause (see
+// Repo.PatchAnnotation), and note/anchor's "nil means leave untouched"
+// contract is a repo-layer SQL detail, not a usecase rule.
+//
+// This function validated NOTHING until the final whole-branch review, and
+// the asymmetry was the defect: CreateAnnotation's checks are worth nothing
+// if the very next request may PATCH the same row into a shape create would
+// have refused. A nil note means "leave it untouched" and is not measured;
+// only a note actually being written is.
 func (uc *Usecase) PatchAnnotation(ctx context.Context, userID, id uuid.UUID, note *string, anchor json.RawMessage) (bool, error) {
+	if note != nil && noteTooLong(*note) {
+		return false, fmt.Errorf("%w: note is %d characters, the limit is %d", ErrInvalidAnnotation, utf8.RuneCountInString(*note), MaxNoteChars)
+	}
 	return uc.repo.PatchAnnotation(ctx, userID, id, note, anchor)
 }
 

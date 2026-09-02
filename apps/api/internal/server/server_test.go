@@ -17,6 +17,7 @@ import (
 	"github.com/vndee/tuhoc-api/internal/pkgcheck"
 	"github.com/vndee/tuhoc-api/internal/stats"
 	appsync "github.com/vndee/tuhoc-api/internal/sync"
+	"github.com/vndee/tuhoc-api/internal/userdata"
 )
 
 func TestHealthz(t *testing.T) {
@@ -148,12 +149,28 @@ func TestRouteScopedBodyLimits(t *testing.T) {
 		return resp
 	}
 
+	// Every route that accepts a body from a learner and is NOT the reason
+	// the app ceiling is high. The four /progress and /annotations WRITE
+	// routes were added by the final whole-branch review (Important 3):
+	// Pha 3 introduced them as the REST replacement for the two halves of
+	// POST /sync, inherited the app-wide 21 MiB ceiling by simply not
+	// saying otherwise, and so quietly gave a single annotation write five
+	// times the room the batch endpoint it replaced is allowed.
+	//
+	// GET /progress and DELETE /annotations/:id are deliberately absent:
+	// neither carries a body, so a byte ceiling on them would be a line of
+	// code that can never fire and a test that can never distinguish itself
+	// from a passing no-op.
 	routes := []struct {
+		method string
 		target string
 		limit  int64
 	}{
-		{"/sync", appsync.MaxPushBytes},
-		{"/events/batch", stats.MaxBatchBytes},
+		{http.MethodPost, "/sync", appsync.MaxPushBytes},
+		{http.MethodPost, "/events/batch", stats.MaxBatchBytes},
+		{http.MethodPut, "/progress", userdata.MaxWriteBytes},
+		{http.MethodPost, "/annotations", userdata.MaxWriteBytes},
+		{http.MethodPatch, "/annotations/00000000-0000-4000-8000-000000000000", userdata.MaxWriteBytes},
 	}
 
 	for _, r := range routes {
@@ -161,15 +178,15 @@ func TestRouteScopedBodyLimits(t *testing.T) {
 		if int64(len(over)) <= r.limit {
 			t.Fatalf("%s: the fixture is not over the limit (%d bytes vs %d)", r.target, len(over), r.limit)
 		}
-		if got := do(t, http.MethodPost, r.target, over).StatusCode; got != http.StatusRequestEntityTooLarge {
-			t.Errorf("POST %s with %d bytes (limit %d): want 413 got %d", r.target, len(over), r.limit, got)
+		if got := do(t, r.method, r.target, over).StatusCode; got != http.StatusRequestEntityTooLarge {
+			t.Errorf("%s %s with %d bytes (limit %d): want 413 got %d", r.method, r.target, len(over), r.limit, got)
 		}
 
 		// Anti-vacuity: a body inside the limit is NOT stopped here. 401
 		// is auth's answer, which means the limit let it through.
 		under := padded(1024)
-		if got := do(t, http.MethodPost, r.target, under).StatusCode; got != http.StatusUnauthorized {
-			t.Errorf("POST %s with %d bytes (limit %d): want 401 got %d", r.target, len(under), r.limit, got)
+		if got := do(t, r.method, r.target, under).StatusCode; got != http.StatusUnauthorized {
+			t.Errorf("%s %s with %d bytes (limit %d): want 401 got %d", r.method, r.target, len(under), r.limit, got)
 		}
 	}
 
