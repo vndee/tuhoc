@@ -87,10 +87,13 @@ const MaxBatchBytes int64 = 4 << 20
 // does not bound the count — an event item can be shrunk far below its
 // realistic size — so this is its own number.
 //
-// It is set against the client rather than against an attacker, exactly
-// as internal/sync's MaxItemsPerPush is: the web client posts its whole
-// outbox in one unchunked request, so a cap it can exceed strands a
-// long-offline device permanently. 10 000 heartbeats is over 80 hours of
+// It is set against the client rather than against an attacker, the same
+// reasoning internal/sync's (now-historical) MaxItemsPerPush used: the web
+// client (apps/web/src/api/events.ts's flushEvents) posts its whole
+// in-memory queue in one unchunked request — not a Dexie outbox any more
+// (Task 8/10, Pha 3 moved heartbeats off that before deleting it outright),
+// but still unchunked — so a cap it can exceed strands a device that stays
+// open and offline for a long stretch. 10 000 heartbeats is over 80 hours of
 // continuous active reading.
 const MaxEventsPerBatch = 10000
 

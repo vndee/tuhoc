@@ -8,14 +8,21 @@ import { useMe } from '../api/useMe';
  * admin" endpoint, `role` rides on `GET /me`'s own response (Task 8).
  *
  * Deliberately simpler than `RequireAuth`, and that is a decision, not an
- * oversight. `RequireAuth` earns its extra branches from spec §2.6's
- * offline promise: a reader who is mid-chapter with the network down still
- * gets the chapter already on their device. Nothing about `/admin` has an
- * offline promise to keep — publishing a course package needs a live
- * connection to the server no matter what this guard decides — so the
- * offline/optimistic branch would only ever add a way to show the admin
- * screen to someone this device cannot currently confirm is an admin.
- * There is no local, previously-downloaded admin page to protect either.
+ * oversight. **Task 11 (Pha 3) removed the offline promise this comment
+ * used to cite here** — `RequireAuth`'s old optimistic-offline branch
+ * (spec §2.6, pre-server-side-pivot) is gone; see `RequireAuth.tsx`'s own
+ * doc comment for what replaced it. `RequireAuth` still earns two branches
+ * this guard does not need, for reasons that have nothing to do with
+ * offline reading any more: it tells "the server answered with an error"
+ * apart from "no response arrived at all" (`auth.needsNetwork`), and it
+ * keeps an already-rendered, already-authorized page on screen through a
+ * transient `/me` blip (`authorizedOnce`) rather than tearing the reader's
+ * chapter down mid-read. Nothing about `/admin` needs either: publishing a
+ * course package needs a live connection to the server no matter what this
+ * guard decides, and there is no already-open admin screen worth protecting
+ * through a network blip the way a reader's open chapter is — so collapsing
+ * every non-confirmed-admin state (pending aside) into one `<Navigate>`
+ * loses nothing this screen was ever promising to keep.
  *
  * Three renders, matching `useMe`'s three settled shapes — and this is the
  * one place a two-way collapse is a NAMED bug, not a hypothetical one (see

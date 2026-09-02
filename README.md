@@ -66,4 +66,6 @@ fuller story.
 
 ## Documentation
 
-See the [platform design specification](docs/superpowers/specs/2026-08-19-tuhoc-platform-design.md) for full architecture and feature details.
+The current architecture is [`docs/superpowers/specs/2026-08-25-server-side-pivot.md`](docs/superpowers/specs/2026-08-25-server-side-pivot.md) — courses, progress/notes/annotations, and AI all live on the server now; the browser keeps no local-first store. `docs/carried-forward.md` tracks debts and rulings still in effect across phases; `docs/superpowers/plans/` holds each phase's executed plan and handover.
+
+[`docs/superpowers/specs/2026-08-19-tuhoc-platform-design.md`](docs/superpowers/specs/2026-08-19-tuhoc-platform-design.md) is the original design (Dexie/IndexedDB local-first, a cursor-based `/sync`) — a **dated record, not rewritten**, and superseded by the server-side pivot above. Read it for history, not for how the platform works today.
