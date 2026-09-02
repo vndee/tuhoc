@@ -424,6 +424,19 @@ CHÍNH người đang bị course độc điều khiển đọc hộ, không ph�
 chặn SỐ LỜI GỌI không chặn SỐ CHỮ). `read_my_notes` không tự nó cần một hạng mục sửa riêng; nó là lý
 do để đọc lại mục #1 với mức khẩn cấp cao hơn một chút, vì thứ rò ra giờ dễ lấy hơn.
 
+**Cập nhật (rà soát toàn nhánh Pha 3, Quan trọng 4) — BÁN KÍNH ĐÃ HẸP LẠI MỘT BẬC, lỗ vẫn mở.**
+Đến vòng sửa cuối, `read_my_notes` còn nhận `slug` như một THAM SỐ DO MODEL CHỌN: `agent.go` chỉ
+nhắc course đang mở như lời khuyên trong prompt (*"use this one"*), không chỗ nào so `args.Slug` với
+`Turn.CourseSlug`. Tức là ràng buộc DANH TÍNH kín (mục trên), nhưng PHẠM VI bên trong dữ liệu của
+chính người học thì lái được — đúng khác biệt giữa *"đọc ghi chú của khoá bạn đang mở"* và *"đọc ghi
+chú của bạn ở bất kỳ khoá nào nó gọi tên"*. Nay course được buộc lúc dựng tool từ `Turn.CourseSlug`
+và schema **không còn tham số nào cả** (xem `tool_notes.go`, điều kiện 3;
+`TestNotesToolSchemaHasNoSlugParameter`, `TestNotesToolReadsOnlyTheTurnsCourse`). Điều này KHÔNG
+đóng mục này: một course độc vẫn điều khiển được `POST /ai/chat` bằng phiên của nạn nhân, và nó tự
+đặt được `course_slug` trong thân request y như nó đặt `question`. Cái nó đổi là một câu hỏi độc
+giờ chỉ moi được ghi chú của MỘT course mỗi lượt, và câu công bố trong `AskPanel.tsx` ("cho khoá học
+này") lần đầu tiên đúng với thứ mã thật sự làm.
+
 ## Form nhập key sống trong iframe: chặn được NHÚNG, không chặn được SAO CHÉP (S2 Task 6) — **KHÔNG CÒN Ô NHẬP KEY (Pha 2, Task 16)**
 
 > **Trạng thái: không còn form nhập key nào trong sản phẩm.** Pha 2 gỡ `apps/vault`, và mục Trợ lý AI

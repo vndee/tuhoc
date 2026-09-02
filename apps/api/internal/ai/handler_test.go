@@ -651,7 +651,7 @@ func TestAIRoutesRejectRequestsWithoutASession(t *testing.T) {
 // a registration keyed by anything else produces a tool that is advertised
 // to the model and then never runs — no error, no log, nothing.
 func TestTurnToolsKeysMatchDefinitionNames(t *testing.T) {
-	tools := ai.TurnTools(fakeCourses{}, &fakeSearch{}, 2, &fakeNotes{}, uuid.New())
+	tools := ai.TurnTools(fakeCourses{}, &fakeSearch{}, 2, &fakeNotes{}, uuid.New(), "c")
 	if len(tools) == 0 {
 		t.Fatal("TurnTools returned no tools — this test would pass vacuously")
 	}
@@ -674,7 +674,7 @@ func TestTurnToolsKeysMatchDefinitionNames(t *testing.T) {
 // cannot run would spend the learner's tokens on a tool_call that always
 // comes back as an error string.
 func TestTurnToolsOmitWebSearchWhenNoProviderIsConfigured(t *testing.T) {
-	tools := ai.TurnTools(fakeCourses{}, nil, 2, &fakeNotes{}, uuid.New())
+	tools := ai.TurnTools(fakeCourses{}, nil, 2, &fakeNotes{}, uuid.New(), "c")
 	if _, ok := tools[ai.ToolNameWebSearch]; ok {
 		t.Fatal("web_search was registered with no SearchProvider behind it")
 	}
@@ -688,7 +688,7 @@ func TestTurnToolsOmitWebSearchWhenNoProviderIsConfigured(t *testing.T) {
 // unavailable (never advertised), not panic the first time a learner's
 // turn actually calls it — see HandlerDeps.Notes's own doc comment.
 func TestTurnToolsOmitNotesWhenQuerierIsNil(t *testing.T) {
-	tools := ai.TurnTools(fakeCourses{}, nil, 2, nil, uuid.New())
+	tools := ai.TurnTools(fakeCourses{}, nil, 2, nil, uuid.New(), "c")
 	if _, ok := tools[ai.ToolNameReadMyNotes]; ok {
 		t.Fatal("read_my_notes was registered with no NotesQuerier behind it")
 	}
@@ -704,8 +704,8 @@ func TestTurnToolsOmitNotesWhenQuerierIsNil(t *testing.T) {
 // permanently to zero.
 func TestTurnToolsAreFreshPerCall(t *testing.T) {
 	provider := &fakeSearch{}
-	first := ai.TurnTools(fakeCourses{}, provider, 1, &fakeNotes{}, uuid.New())
-	second := ai.TurnTools(fakeCourses{}, provider, 1, &fakeNotes{}, uuid.New())
+	first := ai.TurnTools(fakeCourses{}, provider, 1, &fakeNotes{}, uuid.New(), "c")
+	second := ai.TurnTools(fakeCourses{}, provider, 1, &fakeNotes{}, uuid.New(), "c")
 
 	if first[ai.ToolNameWebSearch] == second[ai.ToolNameWebSearch] {
 		t.Fatal("two TurnTools calls returned the SAME web_search runner — its " +
@@ -1866,7 +1866,55 @@ func TestChatBindsNotesToolToTheCallersOwnID(t *testing.T) {
 	notes := &fakeNotes{}
 	spoofed := uuid.NewString()
 	fs := &fakeStream{script: []streamStep{
-		toolStep(ai.ToolNameReadMyNotes, `{"slug":"mau-hop-le","user_id":"`+spoofed+`"}`, round1Usage()),
+		// The model asks for somebody else's id AND a different course than
+		// the learner has open. Both are refused by CONSTRUCTION, not by
+		// validation: neither is a parameter of this tool any more (see
+		// ai/tool_notes.go's Definition).
+		toolStep(ai.ToolNameReadMyNotes, `{"slug":"khoa-hoc-khac","user_id":"`+spoofed+`"}`, round1Usage()),
+		answerStep("ok", round2Usage()),
+	}}
+	app := newAIApp(t, uid, ai.HandlerDeps{
+		Client: fs, Credits: credits, Courses: fakeCourses{}, Notes: notes,
+	})
+
+	resp, raw := doJSON(t, app, http.MethodPost, "/ai/chat", map[string]any{
+		"question": "where am I stuck?", "course_slug": "mau-hop-le",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200 got %d body=%s", resp.StatusCode, raw)
+	}
+	if notes.gotUserID != uid {
+		t.Fatalf("read_my_notes read data for %v, want the session's own learner %v — a "+
+			"user_id smuggled into the model's tool_call arguments must never steer whose "+
+			"private notes are read", notes.gotUserID, uid)
+	}
+	// Final whole-branch review, Important 4 — the wiring half of the fix
+	// tool_notes_test.go's TestNotesToolReadsOnlyTheTurnsCourse pins at the
+	// unit level. This assertion used to say the opposite in so many words
+	// ("the tool's own slug argument, which the model DOES control — only
+	// identity is bound"), which is precisely what made the learner-facing
+	// disclosure ("your progress and notes FOR THIS COURSE") untrue.
+	if notes.gotCourseID != "mau-hop-le" {
+		t.Fatalf("read_my_notes read course %q, want %q — the course comes from the REQUEST's "+
+			"course_slug (Turn.CourseSlug), never from the model's tool_call arguments",
+			notes.gotCourseID, "mau-hop-le")
+	}
+}
+
+// TestChatNotesToolReadsNothingWithNoCourseOpen is the other half of the
+// same wiring: a question asked from the home page carries no course_slug,
+// and the tool must then read NOTHING rather than falling back to whatever
+// course the model names — or, worse, to courseID "" (which is "every
+// course" to userdata.Repo.ListAnnotations).
+func TestChatNotesToolReadsNothingWithNoCourseOpen(t *testing.T) {
+	pool := store.TestPool(t)
+	seedFixtureRates(t, pool)
+	credits := ai.NewService(pool)
+	uid := newUser(t, pool, "notes-no-course", 9000)
+
+	notes := &fakeNotes{}
+	fs := &fakeStream{script: []streamStep{
+		toolStep(ai.ToolNameReadMyNotes, `{"slug":"mau-hop-le"}`, round1Usage()),
 		answerStep("ok", round2Usage()),
 	}}
 	app := newAIApp(t, uid, ai.HandlerDeps{
@@ -1877,13 +1925,10 @@ func TestChatBindsNotesToolToTheCallersOwnID(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("want 200 got %d body=%s", resp.StatusCode, raw)
 	}
-	if notes.gotUserID != uid {
-		t.Fatalf("read_my_notes read data for %v, want the session's own learner %v — a "+
-			"user_id smuggled into the model's tool_call arguments must never steer whose "+
-			"private notes are read", notes.gotUserID, uid)
+	if notes.gotCourseID != "" {
+		t.Fatalf("read_my_notes read course %q with no course open — the model named it and was obeyed", notes.gotCourseID)
 	}
-	if notes.gotCourseID != "mau-hop-le" {
-		t.Fatalf("read_my_notes read course %q, want %q (the tool's own \"slug\" argument, "+
-			"which the model DOES control — only identity is bound)", notes.gotCourseID, "mau-hop-le")
+	if notes.gotUserID != uuid.Nil {
+		t.Fatalf("read_my_notes queried at all (user %v) with no course open", notes.gotUserID)
 	}
 }

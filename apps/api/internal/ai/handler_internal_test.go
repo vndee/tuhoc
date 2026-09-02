@@ -67,7 +67,7 @@ func TestToolNameConstantsMatchTheRunnersDefinitions(t *testing.T) {
 	}{
 		{ToolNameReadCourse, NewCourseTool(nil)},
 		{ToolNameWebSearch, NewSearchTool(nil, 1)},
-		{ToolNameReadMyNotes, NewNotesTool(nil, uuid.Nil)},
+		{ToolNameReadMyNotes, NewNotesTool(nil, uuid.Nil, "c")},
 	}
 	for _, tc := range cases {
 		if got := tc.runner.Definition().Function.Name; got != tc.want {

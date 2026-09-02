@@ -468,6 +468,14 @@ export const en: Messages = {
   //
   // Persistent, same spot as ai.panel.noMemory just above: true from the
   // very first question, before the tool has actually been called once.
+  //
+  // "for this course" was NOT true when this string shipped, and the fix
+  // went into the code rather than into the sentence (final whole-branch
+  // review, Important 4). The tool used to take the course as a
+  // MODEL-CHOSEN argument, with the learner's current course injected only
+  // as advisory prose; it is now bound at construction from
+  // Turn.CourseSlug, with no course parameter in its schema at all — see
+  // apps/api/internal/ai/tool_notes.go's package comment, condition 3.
   'ai.readsYourNotes':
     'The tutor can read your progress and notes for this course to answer more precisely.',
   // `ai.panel.noCredit` is Phase 2's replacement for the Phase 1 pair
