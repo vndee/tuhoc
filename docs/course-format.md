@@ -288,6 +288,19 @@ khác:
   `tier`, và tự kiểm bốn luật máy chủ sẽ đo. Giới hạn (theme theo hệ, chiều cao
   cố định) ghi ở `tools/viz-to-widgets/README.md`.
 
+**Báo chiều cao (tuỳ chọn).** Khung của widget cao 420px mặc định; trang không đo
+được bên trong một origin mờ, nhưng widget nói được với trang:
+
+```js
+parent.postMessage({ type: 'tuhoc:widget-height', height: document.documentElement.scrollHeight }, '*');
+```
+
+Gửi lúc mount và mỗi khi nội dung đổi cỡ (một `ResizeObserver` trên `body` là
+đủ). Trang chỉ nhận thông điệp từ đúng khung của widget ấy, chỉ đọc một con số
+hữu hạn, và kẹp trong 160–1400px; widget không gửi gì thì giữ 420px. Đây là
+kênh MỘT CHIỀU từ widget ra trang — trang không gửi gì vào (kể cả theme), và
+sandbox không đổi. `tools/viz-to-widgets` tự cài đoạn này vào widget nó sinh.
+
 **Chọn có widget hay không.** Không còn "hạng" để lên; chỉ còn câu hỏi khái
 niệm này có **phải nhìn thấy nó chuyển động mới hiểu** hay không — người đọc
 cần bấm/vặn một tham số rồi thấy kết quả đổi thật. Hoạt hình trang trí, nút

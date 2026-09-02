@@ -36,8 +36,10 @@ TUHOC_ADMIN_TOKEN=… bun tools/tuhoc-cli/src/index.ts publish /tmp/<khoá>.zip 
   ngược lại), widget là một ô sáng trên trang tối. Muốn khớp thật thì reader phải
   đóng dấu theme vào `srcdoc` hoặc `postMessage` sau khi nạp — một quyết định của
   reader, chưa làm.
-- **Chiều cao.** `.widget-frame` cố định 420px (`reader-layout.css`); widget cao
-  hơn thì cuộn bên trong khung. Không có giao thức báo chiều cao.
+- **Chiều cao.** Widget báo `scrollHeight` của nó cho trang bằng
+  `parent.postMessage({ type: 'tuhoc:widget-height', height }, '*')` lúc mount và
+  mỗi khi `body` đổi cỡ; `WidgetFrame.tsx` chỉ nhận từ đúng khung của nó và kẹp
+  160–1400px. Widget không gửi gì thì giữ 420px mặc định của `reader-layout.css`.
 - **KaTeX.** `runtime.js` gọi `renderMathInElement` nếu có; trong widget không có
   KaTeX nên nhãn viết bằng `$…$` hiển thị nguyên văn. Các hình của khoá trên không
   dùng đường này.

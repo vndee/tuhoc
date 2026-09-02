@@ -31,7 +31,8 @@
   }
 }
 html, body { margin:0; background:var(--surface-1); color:var(--ink); font-family:var(--serif); font-size:15px; line-height:1.5 }
-body { box-sizing:border-box; min-height:100vh; padding:14px 16px 10px; overflow:auto }
+/* Không min-height: scrollHeight phải là chiều cao THẬT của nội dung để báo cho khung. */
+body { box-sizing:border-box; padding:14px 16px 12px; overflow:hidden }
 #host { position:relative }
 canvas { display:block; max-width:100% }
 .small { font-size:14px; color:var(--ink-2) }

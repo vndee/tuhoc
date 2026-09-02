@@ -80,9 +80,13 @@ const chaptersDir = join(courseDir, 'chapters');
 const chapterFiles = readdirSync(chaptersDir).filter((f) => f.endsWith('.html'));
 const referenced = new Set<string>();
 const placeholderRe = /<div data-viz="([a-z0-9-]+)">\s*<\/div>/g;
+// Chạy lại trên một course ĐÃ chuyển: chỗ đặt khi ấy là data-widget, và vẫn
+// phải được tính là "chương tham chiếu" để widget không bị coi là mồ côi.
+const convertedRe = /<div data-widget="([a-z0-9-]+)">\s*<\/div>/g;
 for (const f of chapterFiles) {
   const html = readFileSync(join(chaptersDir, f), 'utf8');
   for (const m of html.matchAll(placeholderRe)) referenced.add(m[1]);
+  for (const m of html.matchAll(convertedRe)) referenced.add(m[1]);
   const leftovers = html.replace(placeholderRe, '').match(/data-viz=/g);
   if (leftovers) throw new Error(`${f}: có ${leftovers.length} thẻ data-viz không đúng khuôn <div data-viz="…"></div>`);
 }
@@ -122,6 +126,12 @@ function widgetHtml(name: string, body: string): string {
     "  vizMissing: function (n) { return 'Gói không có hình \"' + n + '\".'; },",
     "  vizFailed: 'Hình này không chạy được trên trình duyệt của bạn.'",
     '});',
+    '/* Báo chiều cao cho khung: WidgetFrame.tsx nghe tuhoc:widget-height, kẹp 160–1400px. */',
+    'function reportHeight() {',
+    "  parent.postMessage({ type: 'tuhoc:widget-height', height: document.documentElement.scrollHeight }, '*');",
+    '}',
+    'reportHeight();',
+    'new ResizeObserver(reportHeight).observe(document.body);',
     '/* Vẽ lại khi hệ đổi sáng/tối: Plot đăng ký vào CourseKit.REDRAWS. */',
     "matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {",
     '  CourseKit.REDRAWS.forEach(function (r) {',
