@@ -192,6 +192,10 @@
   transition: color 150ms ease-out;
 }
 
+html[data-theme='dark'] #app.auth-screen .auth-chrome #lang-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M6 8.5l4 4 4-4' stroke='%2398A2B3' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
 #app.auth-screen .auth-chrome-btn:hover,
 #app.auth-screen .auth-chrome #lang-select:hover {
   color: var(--ink);
@@ -211,7 +215,7 @@
   /* Mũi tên riêng, màu trắng: mũi tên mặc định của hệ điều hành là màu chữ TỐI
      và biến mất trên nền ảnh. */
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M6 8.5l4 4 4-4' stroke='%23ffffff' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M6 8.5l4 4 4-4' stroke='%23667085' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 5px center;
   background-size: 16px 16px;
@@ -222,11 +226,6 @@
   background: var(--surface-1);
 }
 
-#app.auth-screen .auth-chrome-btn:hover,
-#app.auth-screen .auth-chrome #lang-select:hover {
-  background: rgba(16, 24, 40, 0.5);
-  border-color: rgba(255, 255, 255, 0.5);
-}
 
 #app.auth-screen .auth-chrome-btn:focus-visible,
 #app.auth-screen .auth-chrome #lang-select:focus-visible {
@@ -627,23 +626,11 @@ html[data-theme='dark'] .auth-pw-eye:hover {
    nó gỡ một lo lắng. Tô màu nó là biến một lời trấn an thành một tín hiệu
    nguy hiểm. */
 .auth-reassure {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
   margin: 18px 0 0;
-  padding: 11px 13px;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.5;
   color: var(--ink-3);
-}
-
-.auth-reassure svg {
-  flex: none;
-  margin-top: 1px;
-  color: var(--color-gray-400);
+  text-align: center;
 }
 
 /* ── ĐỔI TAB Ở ĐÁY CỘT ────────────────────────────────────────────────────

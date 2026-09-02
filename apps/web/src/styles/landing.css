@@ -13,7 +13,41 @@
  * ══════════════════════════════════════════════════════════════════════════ */
 
 .landing .doc-lede {
-  max-width: 62ch;
+  max-width: 72ch;
+}
+
+/* Đầu trang gọn hơn `home.css` một bậc: đo ở 1440×900, hành động chính của
+   cảnh 1 phải nằm trên nếp gấp của một laptop có thanh trình duyệt (~780px). */
+.landing .doc-head {
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.landing .doc-h {
+  margin-bottom: 10px;
+}
+
+/* Cảnh 1: ba mục — đoạn, ghi chú lề, hành động. Máy bàn: đoạn và hành động
+   xếp dọc ở cột chính, lề chiếm cả hai hàng. Dưới 900px lưới thành một cột và
+   thứ tự DOM (đoạn → ghi chú → hành động) giữ ghi chú sát câu nó neo vào. */
+.ld-read {
+  grid-template-rows: auto auto;
+}
+
+.ld-read > .doc-main {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.ld-read > .doc-margin {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.ld-read > .ld-act {
+  grid-column: 1;
+  grid-row: 2;
+  min-width: 0;
 }
 
 .ld-scene {
@@ -24,8 +58,14 @@
   margin-bottom: 24px;
 }
 
+/* Nguồn trích: serif nghiêng nhỏ, KHÔNG phải một dòng nhãn viết hoa nữa dưới
+   đầu mục "Đọc" — hai dòng nhãn chồng nhau là thứ reviewer gọi tên. */
 .ld-source {
-  margin: 0 0 14px;
+  margin: 0 0 8px;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 14.5px;
+  color: var(--ink-3);
 }
 
 /* ── TRÍCH ĐOẠN ────────────────────────────────────────────────────────────
@@ -34,18 +74,18 @@
 .ld-excerpt {
   font-family: var(--font-serif);
   font-size: 17px;
-  line-height: 1.6;
+  line-height: 1.55;
   color: var(--ink);
   max-width: 66ch;
 }
 
 .ld-excerpt p {
-  margin: 0 0 1em;
+  margin: 0 0 0.8em;
 }
 
 .ld-excerpt pre {
-  margin: 0 0 1em;
-  padding: 12px 14px;
+  margin: 0 0 0.8em;
+  padding: 8px 14px;
   font-family: var(--font-mono);
   font-size: 13.5px;
   line-height: 1.5;
@@ -77,13 +117,13 @@
   transition: text-decoration-color 150ms ease-out;
 }
 
-.ld-scene:has(.mnote:hover) .ld-hl,
-.ld-scene:has(.mnote:focus-within) .ld-hl {
+.ld-read:has(.mnote:hover) .ld-hl,
+.ld-read:has(.mnote:focus-within) .ld-hl {
   text-decoration-color: var(--accent);
 }
 
 .ld-cta {
-  margin-top: 26px;
+  margin-top: 10px;
 }
 
 /* Nhãn "Ví dụ" trong hàng meta của ghi chú: cùng cỡ với tên khoá, nhưng màu
@@ -156,13 +196,18 @@
   --mnote-color: var(--s4);
 }
 
-/* Mục lục ví dụ: tiêu đề là chữ, không phải liên kết — cùng cỡ với `.toc-title`. */
-.ld-toc .toc-title {
+/* Mục lục ví dụ dùng nguyên `.toc-*` của home.css: khi tiêu đề là liên kết
+   (khoá đã xuất bản) nó mang đúng kiểu liên kết của mục lục thật, kể cả màu
+   nhấn ở hàng "tiếp theo"; khi là chữ trơn thì không có luật riêng nào tô nó. */
+span.toc-title {
   color: var(--ink);
 }
 
-.ld-toc .is-next .toc-title {
-  color: var(--accent);
+/* Câu "rê chuột…" chỉ có nghĩa ở nơi có con trỏ. */
+@media (hover: none) {
+  .ld-hover-only {
+    display: none;
+  }
 }
 
 .ld-actions {
@@ -177,6 +222,13 @@
 @media (max-width: 900px) {
   .ld-scene {
     margin-bottom: 44px;
+  }
+
+  .ld-read > .doc-main,
+  .ld-read > .doc-margin,
+  .ld-read > .ld-act {
+    grid-column: 1;
+    grid-row: auto;
   }
 
   .ld-qa-turn {
