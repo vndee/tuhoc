@@ -188,6 +188,18 @@ race nó được viết ra để đo; nó xanh vì một lý do khác lý do t�
   mở đường dữ liệu mới, nhưng hạ chi phí kỹ thuật của đúng lỗ đang mở — một course độc chỉ cần một
   câu hỏi tự nhiên thay vì tự parse `/annotations`, và câu trả lời chảy qua đúng luồng SSE kẻ tấn
   công đã đang đọc.
+- **Mặt nạ `superseded` (`auth/sessionIdentity.ts`) DÍNH khi trình duyệt quay lại ĐÚNG người cũ** —
+  tìm được ở vòng review hẹp CUỐI CÙNG, sau khi Task 14 đã đóng sổ. `receive()` và
+  `announceSessionUser()` đều early-return khi giá trị mới TRÙNG niềm tin cục bộ, nên không xoá được
+  cờ đã dính từ một thông báo trước đó; `useMe.ts`'s hiệu ứng công bố (khoá theo `[settledUser]`)
+  còn không chạy lại để thử. Đo được: tab 1 đăng xuất rồi đăng nhập lại ĐÚNG A ⇒ tab 2 dính
+  `{ superseded: true, text: 'nobody' }` vĩnh viễn. Fail-closed (không rò dữ liệu sang ai), nhưng
+  bán kính MỚI hơn điều kiện: từ khi mặt nạ chuyển vào `useMe()`, nó phủ cả tuyến đọc CÔNG KHAI
+  (`ChapterView.tsx`'s `AuthedReaderExtras`), không chỉ các trang sau `<RequireAuth>` như trước. Sửa
+  một dòng (cho `receive()` xoá cờ cả ở nhánh trùng giá trị) chưa được áp dụng — đây là ghi nhận tài
+  liệu, không phải bản vá. Chi tiết đầy đủ, kịch bản đo từng bước, và hai quan sát liên quan không
+  phải hồi quy (flush khi unmount ở `MarginCards.tsx:487`, đốm tô sáng còn sót ở `useAnnotations`):
+  mục cuối "Nợ Pha 3" của `docs/carried-forward.md`.
 
 ---
 
