@@ -26,3 +26,12 @@ FIRST VIEWPORT: Cột chính 8/12: dòng Tiếp tục (chương, đoạn, phút)
 FORM: Giáo trình LaTeX lề rộng, hạng 1/7 (IMPECCABLE'S PICK), seed 57dcb485, code-led.
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+
+## Lệch hợp đồng — ghi tại vòng kết thúc (2026-09-02)
+
+Ba lời hứa trong hợp đồng không dựng được đúng chữ, vì dữ liệu hoặc reader chưa có; ghi ở đây để lần sau không đọc nhầm là bỏ quên.
+
+- **"đoạn" trong dòng Tiếp tục.** `GET /progress` chỉ biết CHƯƠNG đã đọc, không có vị trí đoạn đang đọc. Dòng meta ghi: tên khoá · chương đã đọc · phút đã học (phút lấy từ `stats.courses[]`, cùng query với `/progress`).
+- **"bấm vào đúng đoạn" của ghi chú lề.** `anchor` của ghi chú mờ với client này, và reader chưa cuộn tới một ghi chú theo hash. Trích đoạn là liên kết (hover gạch chân màu nhấn, 150ms) nhưng mở CHƯƠNG; nhãn "Mở chương" nói đúng điều đó. Khoảng trống ghi ở PRODUCT.md.
+- **"mục lục có %".** Tiến độ theo chương là nhị phân (đã đọc / chưa), nên mục lục ghi "1/3 chương", "Đã đọc", "Tiếp theo" — thật hơn một con số phần trăm suy ra.
+

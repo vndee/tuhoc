@@ -36,9 +36,15 @@ import { useProgress } from '../progress/useProgress';
  * về, và không được phép quay lại đây: một con số muốn người ta ngắm, một hành
  * động muốn người ta bấm, và đặt cả hai cạnh nhau thì cái to hơn thắng.
  *
- * `useStats()` do đó KHÔNG được gọi ở tệp này để VẼ số liệu — nó vẫn được gọi,
- * dưới `statsQueryKey` dùng chung với `/progress`, chỉ để lấy `stats.courses[]`
- * (khoá học đã học ở MÁY KHÁC — xem "Nguồn danh sách" bên dưới).
+ * `useStats()` do đó không vẽ BẢNG số liệu ở đây. Nó được gọi dưới
+ * `statsQueryKey` dùng chung với `/progress` cho hai việc hẹp: lấy
+ * `stats.courses[]` (khoá học đã học ở MÁY KHÁC — xem "Nguồn danh sách" bên
+ * dưới), và — từ vòng thiết kế lại — đưa MỘT con số vào dòng meta dưới hành
+ * động: số phút đã học của chính khoá đang dở. Hợp đồng hướng đặt tên dòng ấy
+ * là "chương, đoạn, phút"; một câu serif 15px dưới một tiêu đề 34px không cạnh
+ * tranh với hành động, còn một lưới ô số thì có — ranh giới của đặc tả IA nằm
+ * ở đó, không phải ở việc có xuất hiện chữ "phút" hay không. "Đoạn" không có:
+ * `GET /progress` chỉ biết chương, không biết vị trí đoạn (ghi ở brief).
  *
  * ## Ruling F5, thu hẹp phạm vi (Pha 3)
  *
@@ -133,6 +139,11 @@ function Continue({ courseId }: { courseId: string }) {
     retry: false,
   });
   const { doneChapterIds } = useProgress(courseId);
+  // Cùng query key với `/progress` và với `Dashboard()` ở trên — TanStack gộp,
+  // không thêm request. Không có số liệu (chưa tải, lỗi) thì dòng meta chỉ
+  // ngắn đi một vế; nó không bao giờ chặn hành động chính.
+  const statsQuery = useStats();
+  const minutes = statsQuery.data?.courses.find((c) => c.courseId === courseId)?.minutes ?? 0;
 
   if (manifestQuery.isPending) {
     return <p className="home-note">{t('course.loading')}</p>;
@@ -161,23 +172,37 @@ function Continue({ courseId }: { courseId: string }) {
   return (
     <>
       <section className="cont">
-        <p className="cont-course lbl">
-          <Link to={`/c/${courseId}`}>{manifest.title}</Link>
-        </p>
-
-        {/* HÀNH ĐỘNG CHÍNH LÀ TÊN CHƯƠNG. Động từ là nhãn run-in đứng trước,
-            trong cùng liên kết — tên trợ năng đọc là "Đọc tiếp 1.2 Tên chương",
-            và không có nút màu nào để cạnh tranh với nó. */}
+        {/* HÀNH ĐỘNG CHÍNH LÀ TÊN CHƯƠNG. Động từ là run-in TRONG cùng dòng của
+            <h2> — không có nhãn nào đứng trên tiêu đề (bản trước xếp tên khoá
+            và động từ thành hai tầng eyebrow; reviewer kết thúc gọi đúng tên).
+            Tên trợ năng đọc là "Đọc tiếp 1.2 Tên chương", và không có nút màu
+            nào để cạnh tranh với nó. */}
         <Link to={targetHref} className="cont-link">
-          <span className="cont-verb">{t(ctaKey)}</span>
           <h2 className="cont-chapter">
+            <span className="cont-verb">{t(ctaKey)}</span>
             {target !== undefined && target.num !== '' && <span className="cont-num">{target.num}</span>}
             <span className="cont-title">{target?.title ?? manifest.title}</span>
           </h2>
         </Link>
 
+        {/* Dòng meta là một câu: tên khoá (liên kết về trang khoá) · chương đã
+            đọc · phút đã học. Dấu chấm giữa là trình bày, ẩn với trình đọc. */}
         <p className="cont-meta">
+          <Link to={`/c/${courseId}`} className="cont-course">
+            {manifest.title}
+          </Link>
+          <span className="cont-sep" aria-hidden="true">
+            {' · '}
+          </span>
           {total > 0 ? t('home.chapters', String(read), String(total)) : t('home.chaptersUnknown', String(read))}
+          {minutes > 0 && (
+            <>
+              <span className="cont-sep" aria-hidden="true">
+                {' · '}
+              </span>
+              {t('progress.course.minutes', String(minutes))}
+            </>
+          )}
           {next === undefined && total > 0 && <span className="cont-done"> {t('home.finished')}</span>}
         </p>
       </section>
@@ -300,7 +325,13 @@ function NoteRow({ note }: { note: Ann }) {
       {quote !== '' && (
         <p className="mnote-quote">
           <span className="mnote-swatch" aria-hidden="true" />
-          {renderQuote(quote, t('home.notes.formula'))}
+          {/* Trích đoạn là liên kết: hover gạch chân, bấm mở CHƯƠNG. Không phải
+              "đúng đoạn" như hợp đồng hứa — `anchor` mờ với client này và reader
+              chưa cuộn tới một ghi chú; khoảng trống ghi ở PRODUCT.md, và nhãn
+              "Mở chương" bên dưới nói đúng điều liên kết làm. */}
+          <Link to={`/c/${note.courseId}/${note.chapterId}`} className="mnote-quote-link">
+            {renderQuote(quote, t('home.notes.formula'))}
+          </Link>
         </p>
       )}
       <p className="mnote-text">{note.note}</p>
