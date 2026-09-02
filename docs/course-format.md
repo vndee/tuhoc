@@ -282,6 +282,12 @@ khác:
   `.jsx` **ngoài** `widgets/<tên>/` — đường viz.js chạy toàn khoá kiểu cũ
   không còn đường sống.
 
+  Gói v1 còn `viz.js` không phải chuyển tay: `bun tools/viz-to-widgets/convert.ts
+  <thư-mục-course>` tách từng `defineViz` thành một widget tự chứa (kèm
+  `runtime.js` và bảng biến CSS của reader), đổi `data-viz` → `data-widget`, xoá
+  `tier`, và tự kiểm bốn luật máy chủ sẽ đo. Giới hạn (theme theo hệ, chiều cao
+  cố định) ghi ở `tools/viz-to-widgets/README.md`.
+
 **Chọn có widget hay không.** Không còn "hạng" để lên; chỉ còn câu hỏi khái
 niệm này có **phải nhìn thấy nó chuyển động mới hiểu** hay không — người đọc
 cần bấm/vặn một tham số rồi thấy kết quả đổi thật. Hoạt hình trang trí, nút
