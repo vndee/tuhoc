@@ -65,9 +65,6 @@ export const vi = {
   'settings.account.syncBlurb': 'Tiến độ đồng bộ qua tài khoản này.',
   'settings.appearance.themeLight': 'Sáng',
   'settings.appearance.themeDark': 'Tối',
-  'settings.localData.statNotes': 'ghi chú',
-  'settings.localData.statBytes': 'đang chiếm',
-  'settings.localData.statsAria': 'Máy này đang giữ những gì',
 
   /* ── mục Tài khoản ─────────────────────────────────────────────────────── */
 
@@ -118,9 +115,9 @@ export const vi = {
    * lời một câu hỏi về NƠI CHỐN.
    */
   'settings.localData.blurb':
-    'Ghi chú nằm ở hai nơi: một bản trong trình duyệt này, và một bản đồng bộ lên máy chủ theo tài khoản của bạn — nên đăng nhập ở thiết bị khác vẫn thấy đủ. Khoá học không tải gói nào về máy: đọc thẳng từ máy chủ.',
-  'settings.localData.clearedOnSignOut':
-    'Cơ sở dữ liệu mang tên TRÌNH DUYỆT, không mang tên người dùng — nên nó bị xoá sạch mỗi lần đổi người đăng nhập, kể cả khi không ai bấm đăng xuất.',
+    'Ghi chú, tiến độ và số phút học đều nằm trên máy chủ, theo tài khoản của bạn — máy này không giữ bản nào, nên đăng nhập ở thiết bị khác vẫn thấy đủ. Khoá học cũng đọc thẳng từ máy chủ, không tải gói nào về máy.',
+  'settings.localData.draft':
+    'Trên máy này chỉ có một thứ của riêng bạn: bản nháp ghi chú đang gõ dở, để không mất khi lỡ tải lại trang. Đăng xuất, hay đổi người đăng nhập, xoá bản nháp ấy.',
   'settings.localData.kept': 'Ngôn ngữ và giao diện thì ở lại: chúng là tuỳ chọn của thiết bị.',
 
   /* ── mục Trợ lý AI (Pha 2 — task-14: credit + cấu hình agent thay khung
@@ -313,6 +310,8 @@ export const vi = {
   'home.notes.open': 'Mở chương',
   'home.notes.formula': 'công thức',
   'home.notes.aria': (course: string) => `Mở ghi chú này trong ${course}`,
+  'toc.next': 'Tiếp theo',
+  'toc.done': 'Đã đọc',
 
   /**
    * Trạng thái rỗng của Bảng điều khiển, sau khi luồng import chết.
@@ -361,12 +360,6 @@ export const vi = {
   'progress.heat.less': 'ít',
   'progress.heat.more': 'nhiều',
   'progress.byCourse': 'Theo khoá học',
-  'progress.stat.chapters': 'Chương đã học',
-  'progress.stat.chaptersSub': (n: string) => `trên ${n} khoá trong máy này`,
-  'progress.stat.streak': 'Chuỗi ngày liền',
-  'progress.stat.streakSub': 'tính tới hôm nay',
-  'progress.stat.notes': 'Ghi chú đã viết',
-  'progress.stat.notesSub': 'còn giữ trên máy này',
   /**
    * fix-round-2 (task-14) — bản cũ nói "Nhập một gói ở mục Khoá học", một
    * hành động không còn tồn tại: `Courses.tsx` (đích của route `/courses`)
@@ -491,7 +484,7 @@ export const vi = {
    * trang này, chỉ là trang ấy không còn "của bạn" lẫn "hai tab" để nói tới.
    */
   'courses.title': 'Khoá học',
-  'courses.lede': 'Mọi khoá học, công khai — đọc miễn phí, không cần tài khoản.',
+  'courses.lede': 'Mọi khoá học, công khai. Chọn một khoá để bắt đầu đọc.',
   'courses.loading': 'Đang tải danh mục…',
   'courses.empty': 'Chưa có khoá học nào được xuất bản.',
   'courses.list.aria': 'Danh mục khoá học',
@@ -1091,7 +1084,7 @@ export const vi = {
   'admin.nav.pricing': 'Bảng giá & prompt nền',
 
   'admin.title': 'Quản trị khoá học',
-  'admin.lede': 'Phát hành, gỡ, hoặc lùi phiên bản một khoá học — đi cùng bộ kiểm định mà `tuhoc pack` dùng ở dòng lệnh.',
+  'admin.lede': 'Phát hành, gỡ, hoặc lùi phiên bản một khoá học — đi cùng bộ kiểm định mà tuhoc pack dùng ở dòng lệnh.',
   'admin.loading': 'Đang tải danh sách…',
   'admin.empty': 'Chưa có khoá học nào được phát hành.',
 

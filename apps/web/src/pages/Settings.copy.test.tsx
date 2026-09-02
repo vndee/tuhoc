@@ -91,6 +91,13 @@ const LOI_HUA_DA_CHET_VI = [
   /gói khoá học/i,
   /key của chính bạn/i,
   /không đi qua máy chủ/i,
+  // Lời hứa thứ TƯ, chết cùng Pha 3 (Task 7–10) nhưng sống sót trên trang này
+  // tới 2026-09-02: ghi chú "nằm ở hai nơi", một bản "trong trình duyệt này",
+  // và một "cơ sở dữ liệu mang tên trình duyệt" bị xoá khi đổi người. Không
+  // còn bản nào trên máy; xem doc của `LocalDataSection`.
+  /nằm ở hai nơi/i,
+  /một bản trong trình duyệt/i,
+  /mang tên trình duyệt/i,
 ];
 
 describe('Cài đặt — không còn hứa gói khoá học nằm trên máy, hay trợ lý AI chạy bằng key riêng (task-14, task-15)', () => {

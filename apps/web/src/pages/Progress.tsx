@@ -130,69 +130,90 @@ export function Progress() {
   const statsQuery = useStats();
   const local = useLocalProgress();
 
+  // Năm đang xem SỐNG Ở ĐÂY, không trong `YearActivity`: cột chọn năm nay đứng
+  // ở LỀ (khung `.doc` của home.css), tức bên ngoài phần lịch, nên hai thành
+  // phần phải cùng đọc một state. `useStats(year)` dưới đây và trong
+  // `YearActivity` chia cùng `statsQueryKey(year)` — một request, hai người đọc.
+  const thisYear = Number(todayIctIso().slice(0, 4));
+  const [year, setYear] = useState(thisYear);
+  const yearStats = useStats(year);
+  // `years[]` từ máy chủ luôn kèm năm hiện tại (buildYears), nhưng một máy chủ
+  // cũ hơn không có trường ấy — lùi về đúng năm đang xem thay vì một cột rỗng.
+  const years = yearStats.data?.years?.length ? yearStats.data.years : [year];
+
   const minutesByCourse = courseMinutes(statsQuery.data?.courses);
   const courseIds = local.courseIds ?? [];
   const coursesSettled = local.courseIds !== null;
 
   return (
-    <div className="prog">
-      <h1 className="ch-title">{t('nav.progress')}</h1>
-      <p className="ch-lede">{t('progress.lede')}</p>
+    <div className="prog doc">
+      <header className="doc-head">
+        <h1 className="doc-title">{t('nav.progress')}</h1>
+        <p className="doc-lede">{t('progress.lede')}</p>
+      </header>
 
-      {statsQuery.isPending && <p className="prog-note">{t('progress.loading')}</p>}
-      {statsQuery.isError && <p className="prog-note">{t('progress.error')}</p>}
+      <div className="doc-body">
+        <div className="doc-main">
+          {statsQuery.isPending && <p className="prog-note">{t('progress.loading')}</p>}
+          {statsQuery.isError && <p className="prog-note">{t('progress.error')}</p>}
 
-      {/* Ba thẻ số liệu. Câu văn bên dưới KHÔNG bị thay thế — nó nói cùng dữ
-          liệu ấy thành một câu, và đó là điều `progress.lede` hứa ("kể thành
-          câu"). Con số cho người liếc, câu cho người đọc. */}
-      <div className="prog-stats">
-        <div className="prog-stat">
-          <p className="prog-stat-k">{t('progress.stat.chapters')}</p>
-          <p className="prog-stat-v">{local.chaptersRead}</p>
-          <p className="prog-stat-sub">{t('progress.stat.chaptersSub', String(courseIds.length))}</p>
+          {/* CÂU, không phải ô đếm. Ba thẻ số liệu từng đứng trên câu này đã đi:
+              spec IA của repo nói "con số kể thành câu, không phải ô đếm rời",
+              và ba ô ấy là hero-metric template của category — số to, nhãn nhỏ.
+              `local.chaptersRead`/`local.notes` vẫn được tính vì hai con số
+              ấy xuất hiện trong bảng theo khoá bên dưới. */}
+          {statsQuery.data != null && (
+            <p className="prog-sentence">
+              {studySentence(t, statsQuery.data.totalMinutes, statsQuery.data.streakDays)}
+            </p>
+          )}
+
+          <YearActivity year={year} />
+
+          <section className="prog-section">
+            <h2 className="doc-h">{t('progress.byCourse')}</h2>
+
+            {/* "Chưa biết" không được vẽ thành "không có gì" — `coursesSettled`, không `length`. */}
+            {courseIds.length === 0 && !coursesSettled && <p className="prog-note">{t('progress.loading')}</p>}
+            {courseIds.length === 0 && coursesSettled && (
+              <p className="prog-note">
+                {t('progress.noCourses')}{' '}
+                <Link to="/courses" className="doc-link">
+                  {t('nav.courses')}
+                </Link>
+              </p>
+            )}
+
+            {courseIds.length > 0 && (
+              <ul className="prog-list">
+                {courseIds.map((courseId) => (
+                  <CourseProgress key={courseId} courseId={courseId} minutes={minutesByCourse.get(courseId)} />
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
-        <div className="prog-stat">
-          <p className="prog-stat-k">{t('progress.stat.streak')}</p>
-          <p className="prog-stat-v">{statsQuery.data?.streakDays ?? 0}</p>
-          <p className="prog-stat-sub">{t('progress.stat.streakSub')}</p>
-        </div>
-        <div className="prog-stat">
-          <p className="prog-stat-k">{t('progress.stat.notes')}</p>
-          <p className="prog-stat-v">{local.notes}</p>
-          <p className="prog-stat-sub">{t('progress.stat.notesSub')}</p>
-        </div>
-      </div>
 
-      {statsQuery.data != null && (
-        <p className="prog-sentence">
-          {studySentence(t, statsQuery.data.totalMinutes, statsQuery.data.streakDays)}
-        </p>
-      )}
-
-      <YearActivity />
-
-      <section className="prog-section">
-        <h2 className="prog-h">{t('progress.byCourse')}</h2>
-
-        {/* "Chưa biết" không được vẽ thành "không có gì" — `coursesSettled`, không `length`. */}
-        {courseIds.length === 0 && !coursesSettled && <p className="prog-note">{t('progress.loading')}</p>}
-        {courseIds.length === 0 && coursesSettled && (
-          <p className="prog-note">
-            {t('progress.noCourses')}{' '}
-            <Link to="/courses" className="prog-empty-link">
-              {t('nav.courses')}
-            </Link>
-          </p>
-        )}
-
-        {courseIds.length > 0 && (
-          <ul className="prog-list">
-            {courseIds.map((courseId) => (
-              <CourseProgress key={courseId} courseId={courseId} minutes={minutesByCourse.get(courseId)} />
+        {/* LỀ: cột năm. `<nav>` chứ không phải `<select>` — một danh sách ngắn
+            mà mọi lựa chọn đều đáng hiện ra cùng lúc, và ở lề của một trang
+            typeset nó đọc như bảng chỉ mục năm ở mép sách. */}
+        <aside className="doc-margin">
+          <h2 className="doc-h">{t('progress.year.pickAria')}</h2>
+          <nav className="prog-years" aria-label={t('progress.year.pickAria')}>
+            {years.map((option) => (
+              <button
+                type="button"
+                key={option}
+                className={option === year ? 'prog-year-btn on' : 'prog-year-btn'}
+                aria-current={option === year ? 'true' : undefined}
+                onClick={() => setYear(option)}
+              >
+                {option}
+              </button>
             ))}
-          </ul>
-        )}
-      </section>
+          </nav>
+        </aside>
+      </div>
     </div>
   );
 }
@@ -302,10 +323,8 @@ function CourseWeight({ courseId, share }: { courseId: string; share: number }) 
   );
 }
 
-function YearActivity() {
+function YearActivity({ year }: { year: number }) {
   const { t, lang } = useLanguage();
-  const thisYear = Number(todayIctIso().slice(0, 4));
-  const [year, setYear] = useState(thisYear);
 
   const statsQuery = useStats(year);
   const calendar = buildYearCalendar(statsQuery.data?.days, year, todayIctIso());
@@ -314,15 +333,11 @@ function YearActivity() {
   // "Th 1" và "Jan", nên `heat.ts` không phải giữ một bảng tên tháng nào.
   const monthName = new Intl.DateTimeFormat(lang, { month: 'short' });
 
-  // `years[]` từ máy chủ luôn kèm năm hiện tại (buildYears), nhưng một máy chủ
-  // cũ hơn không có trường ấy — lùi về đúng năm đang xem thay vì một cột rỗng.
-  const years = statsQuery.data?.years?.length ? statsQuery.data.years : [year];
-
   return (
     <section className="prog-year">
       <div className="prog-year-main">
         <div className="prog-year-head">
-          <h2 className="prog-h">
+          <h2 className="doc-h">
             {t('progress.year.title', String(calendar.activeDays), String(year))}
           </h2>
           {/* CÂU RIÊNG, không dùng lại `progress.error` của trang.
@@ -384,7 +399,7 @@ function YearActivity() {
         {/* KHOÁ HỌC CỦA NĂM ẤY, kèm trọng số — `share` do máy chủ tính, nên mọi
             client vẽ cùng một thanh từ cùng một phép làm tròn. */}
         <div className="prog-year-courses">
-          <h3 className="prog-year-sub">{t('progress.year.courses')}</h3>
+          <h3 className="doc-h">{t('progress.year.courses')}</h3>
           {(statsQuery.data?.yearCourses ?? []).length === 0 && (
             <p className="prog-note">{t('progress.year.noCourses', String(year))}</p>
           )}
@@ -395,23 +410,8 @@ function YearActivity() {
           </ul>
         </div>
       </div>
-
-      {/* CỘT NĂM. `<nav>` chứ không phải một `<select>`: GitHub dựng nó thành
-          một danh sách nhìn thấy được, và ở đây nó cũng là một danh sách ngắn
-          mà mọi lựa chọn đều đáng hiện ra cùng lúc. */}
-      <nav className="prog-years" aria-label={t('progress.year.pickAria')}>
-        {years.map((option) => (
-          <button
-            type="button"
-            key={option}
-            className={option === year ? 'prog-year-btn on' : 'prog-year-btn'}
-            aria-current={option === year ? 'true' : undefined}
-            onClick={() => setYear(option)}
-          >
-            {option}
-          </button>
-        ))}
-      </nav>
+      {/* Cột năm đã ra LỀ của trang (`Progress()`), nơi nó đọc như bảng chỉ mục
+          năm ở mép sách; phần này chỉ còn lịch và khoá học của năm. */}
     </section>
   );
 }

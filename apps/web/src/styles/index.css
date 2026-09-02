@@ -8,6 +8,22 @@
    tay bên dưới thì KHÔNG nằm trong layer nào nên nó vẫn thắng utility —
    xem phần "THỨ TỰ CASCADE" trong chính tệp ấy. */
 @import './tokens.css';
+/* Hai phông của thế giới "giáo trình LaTeX" (tokens.css `--font-serif`/`--font-sans`).
+   Import ĐÚNG trọng lượng dùng tới, không `index.css` của gói: mỗi trọng lượng là
+   một tệp woff2 riêng cho subset `vietnamese`, và tải cả họ chỉ để dùng hai
+   là trả tiền mạng cho chữ không ai thấy. IBM Plex Sans đã rời đây — nó là
+   `--sans` mặc định của reader.css, thứ index.css ghi đè ngay dưới. */
+@import '@fontsource/charis-sil/400.css';
+@import '@fontsource/charis-sil/400-italic.css';
+@import '@fontsource/charis-sil/700.css';
+@import '@fontsource/archivo-narrow/400.css';
+@import '@fontsource/archivo-narrow/500.css';
+@import '@fontsource/archivo-narrow/600.css';
+@import '@fontsource/archivo-narrow/700.css';
+/* IBM Plex Sans ở lại CHỈ cho reader (`#app.reading`, bên dưới). Đây là mặt
+   chữ heading/UI mà `course-kit/reader.css` tự khai báo và người dùng đã duyệt
+   ("phần đọc content tôi thấy khá ổn rồi"). Trình duyệt chỉ tải tệp phông khi
+   có phần tử dùng nó, nên khung app không trả thêm byte nào cho dòng này. */
 @import '@fontsource-variable/ibm-plex-sans/index.css';
 @import '@course-kit/vendor/katex.css';
 @import '@course-kit/reader.css';
@@ -52,10 +68,22 @@
    thang xám hơi lạnh. Trộn hai thứ ấy thì thẻ trắng nổi lên như một mảnh vá
    trên nền ngà. */
 :root {
-  --sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Sans hẹp cho NHÃN của khung app. Thân chữ của khung là `--font-serif`
+     (tokens.css). `--serif` của reader.css KHÔNG bị ghi đè có chủ ý: đó là
+     mặt chữ thân bài trong chương, và chủ dự án nói phần đọc đã ổn.
+     `--sans` thì phải ghi đè ở `:root` (reader.css cũng khai báo nó ở `:root`
+     và nạp trước) — nên reader lấy lại giá trị gốc của nó ở `#app.reading`
+     ngay dưới đây; đo trên trình duyệt thật khi thiếu dòng ấy: tiêu đề chương
+     ra Archivo Narrow, một thay đổi trong vùng đã được yêu cầu giữ nguyên. */
+  --sans: var(--font-sans);
 
   --surface-1: #ffffff;
-  --page: var(--color-gray-50);
+  /* GIẤY LÀ MỘT TỜ. Hợp đồng hướng (giáo trình LaTeX) đặt giấy #FFFFFF; bản
+     trước để `--page` là gray-50 trong khi running head đứng trên `--surface-1`
+     trắng — đo trên ảnh: hai tờ giấy trong một khung. Trang và running head
+     nay cùng một màu. `--panel` vẫn gray-50 cho các mặt phẳng phụ (hover,
+     ô nhập) của Cài đặt/Admin — đó không phải giấy, đó là nền của điều khiển. */
+  --page: #ffffff;
   --panel: var(--color-gray-50);
 
   --ink: var(--color-gray-900);
@@ -72,30 +100,43 @@
   --shadow: var(--shadow-sm);
 }
 
+/* Reader giữ nguyên mặt chữ của chính nó — sao chép nguyên văn từ
+   `course-kit/reader.css` (dòng `--sans`), không phải một quyết định mới. */
+#app.reading {
+  --sans: "IBM Plex Sans Variable", "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
 /* CHỈ `html[data-theme='dark']`, KHÔNG `@media (prefers-color-scheme)`.
    Bản đầu của khối này có thêm một nhánh `prefers-color-scheme` — sai, và sai
    im lặng: `reader.css` chỉ đổi màu theo công tắc tường minh, nên nhánh ấy sẽ
    cho một máy đặt hệ điều hành ở chế độ tối nhận màu nhấn tối TRÊN NỀN SÁNG.
    Hai nửa của cùng một bảng, mỗi nửa nghe một tín hiệu khác nhau.
 
-   `brand-400` chứ không phải `brand-600`: trên nền gray-950 màu ấy tụt dưới
+   `brand-400` chứ không phải `brand-600`: trên nền tối màu ấy tụt dưới
    ngưỡng tương phản đọc được. Đó cũng đúng thói quen reader.css vốn có — nó
    tự nâng `--accent` lên một bậc trong khối tối. */
 html[data-theme='dark'] {
-  --surface-1: var(--color-gray-900);
-  --page: var(--color-gray-950);
-  --panel: var(--color-gray-900);
+  /* TỐI = ĐÊM PDF: đảo giấy và mực, KHÔNG phải slate xanh của kit. gray-950
+     (#0c111d) của Untitled UI ngả xanh — đó là "chế độ tối của một dashboard",
+     và đo trên ảnh nó là đúng cái mà hợp đồng hướng tránh. Thang dưới đây là
+     xám TRUNG TÍNH: giấy #171717 (nghịch đảo của mực #1A1A1A, hạ một bậc để
+     không bám đen tuyền), mực #ececec (không trắng tinh — giấy đêm không loé),
+     kẻ #333. Màu nhấn vẫn brand-400: một xanh duy nhất trên nền trung tính. */
+  --surface-1: #202020;
+  --page: #171717;
+  --panel: #202020;
 
-  --ink: var(--color-gray-50);
-  --ink-2: var(--color-gray-300);
-  --ink-3: var(--color-gray-400);
+  --ink: #ececec;
+  --ink-2: #b4b4b4;
+  --ink-3: #8c8c8c;
 
-  --rule: var(--color-gray-800);
-  --rule-strong: var(--color-gray-700);
-  --grid: var(--color-gray-800);
+  --rule: #333333;
+  --rule-strong: #474747;
+  --grid: #333333;
 
   --accent: var(--color-brand-400);
-  --accent-soft: rgba(126, 86, 217, 0.22);
+  /* brand-400 (#4d92cc) ở alpha 22% — cùng màu nhấn với `--accent` của khối này, không còn hằng tím của kit cũ. */
+  --accent-soft: rgba(77, 146, 204, 0.22);
 
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
 }
