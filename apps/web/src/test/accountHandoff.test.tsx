@@ -520,7 +520,7 @@ describe('one browser, two accounts — the note draft is the departing user’s
 
 // Task 7b's "one browser, two accounts — reading offline must never open
 // the previous account's reader" describe block lived here (`GuardedBrowser`,
-// `coldLoad`, `NETWORK_IS_DOWN`, `A`, `B`, and five tests) and is gone: Task
+// `coldLoad`, `NETWORK_IS_DOWN`, `A`, `B`, and four tests) and is gone: Task
 // 11 removed the offline branch it exercised
 // (`offlineSessionIsUsable`/`rememberSessionVerified`, the `sessionVerifiedAt`
 // marker) along with `<RequireAuth>`'s offline branch itself. With no branch

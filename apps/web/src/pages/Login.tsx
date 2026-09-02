@@ -146,13 +146,18 @@ export function Login() {
     // on this machine, through the one door (ruling P2-F18), strictly
     // before the seed:
     //
-    //       - the durable half (`clearUserContent()` + the offline marker):
-    //         the previous user's `localStorage` content must be gone
-    //         before the arriving user's session renders anything — a note
-    //         draft is scoped to the BROWSER (there is no per-user
-    //         namespace in `localStorage`), and it never expires on its
-    //         own, so "the cookie changed" is the only thing that changes
-    //         here — nothing else would.
+    //       - the durable half (`clearUserContent()`): the previous
+    //         user's `localStorage` content must be gone before the
+    //         arriving user's session renders anything — a note draft is
+    //         scoped to the BROWSER (there is no per-user namespace in
+    //         `localStorage`), and it never expires on its own, so "the
+    //         cookie changed" is the only thing that changes here —
+    //         nothing else would. (Task 11 removed a second thing this
+    //         bullet used to name here, the offline-read marker —
+    //         `<RequireAuth>`'s offline branch, its only reader, is gone,
+    //         and `clearUserContent()` never cleared that marker anyway;
+    //         a separate call inside `clearSession()` did, and that call
+    //         is gone too — see `session.ts`'s own doc comment.)
     //       - the in-memory half (`resetSessionScopedQueries()`): `['stats']`
     //         etc. still hold the previous user's numbers. It has to land
     //         before `setQueryData`, or it would wipe the seed.
@@ -170,6 +175,14 @@ export function Login() {
     //         Dropping is the only correct choice at this specific call
     //         site; see `clearSession()`'s own doc for why it is
     //         unconditional (it never waits on or attempts a flush itself).
+    //       - the paused-but-unresumed mutation half
+    //         (`queryClient.getMutationCache().clear()`, Task 11's fix
+    //         round): a mutation the PREVIOUS session left paused offline
+    //         (TanStack's default `networkMode: 'online'`) would otherwise
+    //         auto-resume the moment connectivity returns and replay under
+    //         whatever cookie is valid then — the ARRIVING user's, by this
+    //         point. Same shape of leak as the event queue above, one
+    //         layer up the stack; see `session.ts`'s own doc comment.
     //
     //     `useLogout` goes through the same door on the way out, but flushes
     //     the event queue ITSELF, first, while its own cookie is still
