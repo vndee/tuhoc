@@ -65,9 +65,6 @@ export const vi = {
   'settings.account.syncBlurb': 'Tiến độ đồng bộ qua tài khoản này.',
   'settings.appearance.themeLight': 'Sáng',
   'settings.appearance.themeDark': 'Tối',
-  'settings.localData.statNotes': 'ghi chú',
-  'settings.localData.statBytes': 'đang chiếm',
-  'settings.localData.statsAria': 'Máy này đang giữ những gì',
 
   /* ── mục Tài khoản ─────────────────────────────────────────────────────── */
 
@@ -118,9 +115,9 @@ export const vi = {
    * lời một câu hỏi về NƠI CHỐN.
    */
   'settings.localData.blurb':
-    'Ghi chú nằm ở hai nơi: một bản trong trình duyệt này, và một bản đồng bộ lên máy chủ theo tài khoản của bạn — nên đăng nhập ở thiết bị khác vẫn thấy đủ. Khoá học không tải gói nào về máy: đọc thẳng từ máy chủ.',
-  'settings.localData.clearedOnSignOut':
-    'Cơ sở dữ liệu mang tên TRÌNH DUYỆT, không mang tên người dùng — nên nó bị xoá sạch mỗi lần đổi người đăng nhập, kể cả khi không ai bấm đăng xuất.',
+    'Ghi chú, tiến độ và số phút học đều nằm trên máy chủ, theo tài khoản của bạn — máy này không giữ bản nào, nên đăng nhập ở thiết bị khác vẫn thấy đủ. Khoá học cũng đọc thẳng từ máy chủ, không tải gói nào về máy.',
+  'settings.localData.draft':
+    'Trên máy này chỉ có một thứ của riêng bạn: bản nháp ghi chú đang gõ dở, để không mất khi lỡ tải lại trang. Đăng xuất, hay đổi người đăng nhập, xoá bản nháp ấy.',
   'settings.localData.kept': 'Ngôn ngữ và giao diện thì ở lại: chúng là tuỳ chọn của thiết bị.',
 
   /* ── mục Trợ lý AI (Pha 2 — task-14: credit + cấu hình agent thay khung
