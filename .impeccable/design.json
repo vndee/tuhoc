@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-02T00:00:00+07:00",
+  "title": "Design System: Tự học — khung app",
+  "scope": {
+    "covers": ["#topbar (running head)", "/ (Học tiếp)", "/courses", "/progress"],
+    "excludes": ["packages/course-kit/reader.css và trang /c/:courseId/:chapterId — bề mặt riêng, chưa đụng", "Cài đặt / Admin / Đăng nhập — app-screens.css kế thừa"],
+    "sources": ["apps/web/src/styles/tokens.css", "apps/web/src/styles/index.css", "apps/web/src/styles/home.css", "apps/web/src/styles/courses.css", "apps/web/src/styles/shell-modes.css", ".impeccable/review/*.png"]
+  },
+  "extensions": {
+    "colorMeta": {
+      "theorem-blue": { "role": "primary", "displayName": "Xanh định lý", "canonical": "#0b5fa5", "cssVar": "--accent (sáng) = --color-brand-600", "tonalRamp": ["#052c4e", "#073c69", "#094d86", "#0b5fa5", "#2676b8", "#4d92cc", "#85b5de", "#b3d1eb", "#d9e8f5", "#eef5fb", "#f7fafd"] },
+      "theorem-blue-soft": { "role": "primary", "displayName": "Xanh định lý mềm", "canonical": "#d9e8f5", "cssVar": "--accent-soft (sáng) = --color-brand-100", "tonalRamp": ["#052c4e", "#073c69", "#094d86", "#0b5fa5", "#2676b8", "#4d92cc", "#85b5de", "#b3d1eb", "#d9e8f5", "#eef5fb", "#f7fafd"] },
+      "theorem-blue-night": { "role": "primary", "displayName": "Xanh định lý đêm", "canonical": "#4d92cc", "cssVar": "--accent (tối) = --color-brand-400", "tonalRamp": ["#052c4e", "#073c69", "#094d86", "#0b5fa5", "#2676b8", "#4d92cc", "#85b5de", "#b3d1eb", "#d9e8f5", "#eef5fb", "#f7fafd"] },
+      "paper": { "role": "neutral", "displayName": "Giấy", "canonical": "#ffffff", "cssVar": "--page (sáng)", "tonalRamp": ["#0c111d", "#101828", "#1d2939", "#344054", "#475467", "#667085", "#98a2b3", "#d0d5dd", "#eaecf0", "#f2f4f7", "#f9fafb", "#fcfcfd", "#ffffff"] },
+      "ink": { "role": "neutral", "displayName": "Mực", "canonical": "#101828", "cssVar": "--ink (sáng) = --color-gray-900", "tonalRamp": ["#0c111d", "#101828", "#1d2939", "#344054", "#475467", "#667085", "#98a2b3", "#d0d5dd", "#eaecf0", "#f2f4f7", "#f9fafb", "#fcfcfd"] },
+      "ink-2": { "role": "neutral", "displayName": "Mực 2", "canonical": "#475467", "cssVar": "--ink-2 (sáng) = --color-gray-600", "tonalRamp": ["#0c111d", "#101828", "#1d2939", "#344054", "#475467", "#667085", "#98a2b3", "#d0d5dd", "#eaecf0", "#f2f4f7", "#f9fafb", "#fcfcfd"] },
+      "ink-3": { "role": "neutral", "displayName": "Mực 3", "canonical": "#667085", "cssVar": "--ink-3 (sáng) = --color-gray-500", "tonalRamp": ["#0c111d", "#101828", "#1d2939", "#344054", "#475467", "#667085", "#98a2b3", "#d0d5dd", "#eaecf0", "#f2f4f7", "#f9fafb", "#fcfcfd"] },
+      "rule": { "role": "neutral", "displayName": "Kẻ", "canonical": "#eaecf0", "cssVar": "--rule (sáng) = --color-gray-200", "tonalRamp": ["#0c111d", "#101828", "#1d2939", "#344054", "#475467", "#667085", "#98a2b3", "#d0d5dd", "#eaecf0", "#f2f4f7", "#f9fafb", "#fcfcfd"] },
+      "rule-strong": { "role": "neutral", "displayName": "Kẻ đậm", "canonical": "#d0d5dd", "cssVar": "--rule-strong (sáng) = --color-gray-300", "tonalRamp": ["#0c111d", "#101828", "#1d2939", "#344054", "#475467", "#667085", "#98a2b3", "#d0d5dd", "#eaecf0", "#f2f4f7", "#f9fafb", "#fcfcfd"] },
+      "paper-night": { "role": "neutral", "displayName": "Giấy đêm", "canonical": "#171717", "cssVar": "--page (tối)", "tonalRamp": ["#171717", "#202020", "#333333", "#474747", "#8c8c8c", "#b4b4b4", "#ececec"] },
+      "ink-night": { "role": "neutral", "displayName": "Mực đêm", "canonical": "#ececec", "cssVar": "--ink (tối)", "tonalRamp": ["#171717", "#202020", "#333333", "#474747", "#8c8c8c", "#b4b4b4", "#ececec"] },
+      "ink-2-night": { "role": "neutral", "displayName": "Mực 2 đêm", "canonical": "#b4b4b4", "cssVar": "--ink-2 (tối)", "tonalRamp": ["#171717", "#202020", "#333333", "#474747", "#8c8c8c", "#b4b4b4", "#ececec"] },
+      "ink-3-night": { "role": "neutral", "displayName": "Mực 3 đêm", "canonical": "#8c8c8c", "cssVar": "--ink-3 (tối)", "tonalRamp": ["#171717", "#202020", "#333333", "#474747", "#8c8c8c", "#b4b4b4", "#ececec"] },
+      "rule-night": { "role": "neutral", "displayName": "Kẻ đêm", "canonical": "#333333", "cssVar": "--rule (tối)", "tonalRamp": ["#171717", "#202020", "#333333", "#474747", "#8c8c8c", "#b4b4b4", "#ececec"] },
+      "rule-strong-night": { "role": "neutral", "displayName": "Kẻ đậm đêm", "canonical": "#474747", "cssVar": "--rule-strong (tối)", "tonalRamp": ["#171717", "#202020", "#333333", "#474747", "#8c8c8c", "#b4b4b4", "#ececec"] }
+    },
+    "derivedColors": [
+      { "name": "heat-l0", "value": "color-mix(in srgb, var(--ink) 8%, var(--page))", "purpose": "Ô lịch không học." },
+      { "name": "heat-l1", "value": "color-mix(in srgb, var(--accent) 28%, var(--page))", "purpose": "Bậc 1 lịch năm." },
+      { "name": "heat-l2", "value": "color-mix(in srgb, var(--accent) 50%, var(--page))", "purpose": "Bậc 2 lịch năm." },
+      { "name": "heat-l3", "value": "color-mix(in srgb, var(--accent) 74%, var(--page))", "purpose": "Bậc 3 lịch năm." },
+      { "name": "heat-l4", "value": "var(--accent)", "purpose": "Bậc 4 lịch năm." },
+      { "name": "link-underline-rest", "value": "color-mix(in srgb, var(--accent) 55%, transparent)", "purpose": "Màu gạch chân nghỉ của .doc-link." }
+    ],
+    "typographyMeta": {
+      "display": { "displayName": "Tiêu đề trang", "purpose": ".doc-title — Học tiếp / Khoá học / Tiến độ. text-wrap: balance." },
+      "headline": { "displayName": "Tên chương (hành động chính)", "purpose": ".cont-chapter trên /. Cũng 26px cho tiêu đề trạng thái rỗng." },
+      "sentence": { "displayName": "Câu số liệu", "purpose": ".prog-sentence — câu mở đầu /progress, max-width 34em, text-wrap: pretty." },
+      "title": { "displayName": "Tên khoá", "purpose": ".courses-item-title 22px; biến thể 17px (.prog-row-title), 16.5px (.toc-title)." },
+      "lede": { "displayName": "Câu dẫn nghiêng", "purpose": ".doc-lede 17px --ink-2, max-width 60ch. Cùng giọng: trích đoạn ghi chú 14.5px, câu trạng thái 16px --ink-3." },
+      "body": { "displayName": "Thân", "purpose": ".cont-meta, .mnote-text, .courses-item-desc, .prog-weight — 15.5px, đo 56–62ch." },
+      "label": { "displayName": "Nhãn", "purpose": ".lbl, .doc-h; .cont-verb ở 12.5px màu nhấn." },
+      "label-nav": { "displayName": "Nhãn running head", "purpose": "#topbar .tn-link, .tb-btn, #lang-select, .tn-account-disc." },
+      "numeral": { "displayName": "Chữ số", "purpose": ".toc-num, .prog-weight-pct, .prog-row-n, .prog-row-minutes — tabular-nums." }
+    },
+    "fonts": [
+      { "name": "--font-serif", "value": "'Charis SIL', 'Charter', 'Iowan Old Style', Georgia, 'Times New Roman', serif", "source": "@fontsource, subset vietnamese", "definedIn": "apps/web/src/styles/tokens.css" },
+      { "name": "--font-sans", "value": "'Archivo Narrow', 'Arial Narrow', 'Roboto Condensed', system-ui, sans-serif", "source": "@fontsource", "definedIn": "apps/web/src/styles/tokens.css" }
+    ],
+    "shadows": [],
+    "borders": [
+      { "name": "hrule-ink", "value": "1px solid var(--ink)", "purpose": "Kết đầu trang (.doc-head), đầu mục có nhãn (.doc-h), running head (#topbar border-bottom)." },
+      { "name": "hairline-rule", "value": "1px solid var(--rule)", "purpose": "Ngăn hàng: .toc-row, .mnote, .courses-item, .prog-row, .prog-weight; viền .mnote-formula." },
+      { "name": "hairline-inset", "value": "inset 0 0 0 1px var(--rule)", "purpose": "Ô lịch chưa rõ (.prog-heat-unknown) — hairline không chiếm chỗ, không phải bóng." },
+      { "name": "focus-ring", "value": "outline: 1px solid var(--accent); outline-offset: 3px–6px", "purpose": "focus-visible trên mọi thứ bấm được trong khung." }
+    ],
+    "motion": [
+      { "name": "underline-reveal", "value": "text-decoration-color 150ms ease-out", "purpose": "Chuyển động duy nhất của khung: gạch chân 1px từ transparent/màu nghỉ lên --accent khi hover/focus." },
+      { "name": "ink-shift", "value": "color 150ms ease-out", "purpose": "Đi kèm underline-reveal ở nơi màu chữ cũng đổi (.toc-title, .prog-year-btn, .tn-link, .tb-btn)." }
+    ],
+    "breakpoints": [
+      { "name": "doc-stack", "value": "900px", "purpose": ".doc-body về một cột, row-gap 40px; /progress lề lên trước, lịch cuộn ngang ô 11px." },
+      { "name": "topbar-wrap", "value": "980px", "purpose": "#topbar xuống hai hàng, .tn-nav chiếm trọn hàng dưới, ẩn wordmark chữ." }
+    ],
+    "layout": {
+      "docMaxWidth": "72rem",
+      "docGrid": "minmax(0, 2fr) minmax(0, 1fr)",
+      "docColumnGap": "clamp(28px, 5vw, 64px)",
+      "topbarHeight": "64px",
+      "topbarPadX": "var(--topbar-pad-x) = 16px",
+      "calendarGrid": "repeat(53, minmax(0, 1fr)) × 7, gap 3px"
+    },
+    "themeSwitch": "html[data-theme='dark'] only — never prefers-color-scheme; all theme tokens live in apps/web/src/styles/index.css"
+  },
+  "components": [
+    {
+      "name": "Hành động chính — tên chương",
+      "kind": "custom",
+      "refersTo": "action-chapter",
+      "description": "Liên kết serif cỡ lớn với động từ run-in và số chương cùng dòng; thay cho nút màu trên /.",
+      "html": "<a class=\"ds-cont-link\" href=\"#\"><h2 class=\"ds-cont-chapter\"><span class=\"ds-cont-verb\">Đọc tiếp</span><span class=\"ds-cont-num\">1.2</span><span class=\"ds-cont-title\">Ba nghĩa vụ của một bất biến</span></h2><p class=\"ds-cont-meta\"><a class=\"ds-cont-course\" href=\"#\">Bất biến vòng lặp</a> <span class=\"ds-cont-sep\">·</span> 1/3 chương đã đọc <span class=\"ds-cont-sep\">·</span> 11 phút đã học</p></a>",
+      "css": ".ds-cont-link { display: block; color: var(--ink, #101828); text-decoration: none; } .ds-cont-chapter { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: 0; font-family: var(--font-serif, 'Charis SIL', Charter, Georgia, serif); font-weight: 400; font-size: clamp(26px, 3vw, 34px); line-height: 1.15; letter-spacing: -0.01em; text-wrap: balance; } .ds-cont-verb { flex: none; font-family: var(--font-sans, 'Archivo Narrow', 'Arial Narrow', sans-serif); font-size: 12.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent, #0b5fa5); position: relative; top: -0.15em; } .ds-cont-num { flex: none; font-family: var(--font-sans, 'Archivo Narrow', sans-serif); font-size: 0.5em; font-weight: 600; letter-spacing: 0.02em; color: var(--ink-3, #667085); font-variant-numeric: tabular-nums; } .ds-cont-title { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.12em; text-decoration-color: transparent; transition: text-decoration-color 150ms ease-out; } .ds-cont-link:hover .ds-cont-title, .ds-cont-link:focus-visible .ds-cont-title { text-decoration-color: var(--accent, #0b5fa5); } .ds-cont-link:focus-visible { outline: 1px solid var(--accent, #0b5fa5); outline-offset: 6px; } .ds-cont-meta { font-family: var(--font-serif, 'Charis SIL', Charter, Georgia, serif); font-size: 15.5px; line-height: 1.5; color: var(--ink-2, #475467); margin: 14px 0 0; font-variant-numeric: tabular-nums; } .ds-cont-course { color: var(--ink, #101828); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.12em; text-decoration-color: var(--rule-strong, #d0d5dd); transition: text-decoration-color 150ms ease-out; } .ds-cont-course:hover, .ds-cont-course:focus-visible { text-decoration-color: var(--accent, #0b5fa5); } .ds-cont-sep { color: var(--ink-3, #667085); }"
+    },
+    {
+      "name": "Liên kết trong văn bản",
+      "kind": "custom",
+      "refersTo": "link-doc",
+      "description": "Liên kết màu nhấn với gạch chân hairline 55% → 100% khi hover.",
+      "html": "<p class=\"ds-body\">Ghi chú này thuộc chương <a class=\"ds-doc-link\" href=\"#\">Mở chương</a>.</p>",
+      "css": ".ds-body { font-family: var(--font-serif, 'Charis SIL', Charter, Georgia, serif); font-size: 15.5px; line-height: 1.5; color: var(--ink, #101828); margin: 0; } .ds-doc-link { color: var(--accent, #0b5fa5); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.14em; text-decoration-color: color-mix(in srgb, var(--accent, #0b5fa5) 55%, transparent); transition: text-decoration-color 150ms ease-out; } .ds-doc-link:hover, .ds-doc-link:focus-visible { text-decoration-color: var(--accent, #0b5fa5); } .ds-doc-link:focus-visible { outline: 1px solid var(--accent, #0b5fa5); outline-offset: 3px; }"
+    },
+    {
+      "name": "Đầu trang (.doc-head)",
+      "kind": "custom",
+      "refersTo": "display",
+      "description": "Tiêu đề serif thường + câu dẫn nghiêng + hairline mực (\\hrule).",
+      "html": "<header class=\"ds-doc-head\"><h1 class=\"ds-doc-title\">Học tiếp</h1><p class=\"ds-doc-lede\">Chỗ bạn đang đọc dở, và những ghi chú gần đây.</p></header>",
+      "css": ".ds-doc-head { padding: 10px 0 18px; border-bottom: 1px solid var(--ink, #101828); margin-bottom: 30px; } .ds-doc-title { font-family: var(--font-serif, 'Charis SIL', Charter, Georgia, serif); font-weight: 400; font-size: clamp(30px, 3.4vw, 40px); line-height: 1.1; letter-spacing: -0.01em; color: var(--ink, #101828); margin: 0; text-wrap: balance; } .ds-doc-lede { font-family: var(--font-serif, 'Charis SIL', Charter, Georgia, serif); font-style: italic; font-size: 17px; line-height: 1.5; color: var(--ink-2, #475467); margin: 8px 0 0; max-width: 60ch; }"
+    },
+    {
+      "name": "Đầu mục có nhãn (.doc-h)",
+      "kind": "custom",
+      "refersTo": "heading-label",
+      "description": "Nhãn sans hẹp viết hoa với hairline mực dưới — đầu cột lề và đầu mục trong cột chính.",
+      "html": "<h2 class=\"ds-doc-h\">Ghi chú gần đây</h2>",
+      "css": ".ds-doc-h { font-family: var(--font-sans, 'Archivo Narrow', 'Arial Narrow', sans-serif); font-size: 12px; line-height: 1.3; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3, #667085); margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--ink, #101828); }"
+    },
+    {
+      "name": "Running head — mục điều hướng",
+      "kind": "nav",
+      "refersTo": "nav-link",
+      "description": "Ba đích như ba mục của running head: sans hẹp viết hoa, không nền; mục đang chọn màu nhấn + gạch chân offset 9px.",
+      "html": "<header class=\"ds-topbar\"><span class=\"ds-wordmark\">Tự học</span><nav class=\"ds-nav\"><a class=\"ds-tn-link ds-is-active\" href=\"#\">Học tiếp</a><a class=\"ds-tn-link\" href=\"#\">Khoá học</a><a class=\"ds-tn-link\" href=\"#\">Tiến độ</a></nav><span class=\"ds-tn-right\"><button class=\"ds-tb-btn\" type=\"button\" aria-label=\"Tìm\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"M20 20l-3.5-3.5\"/></svg></button><button class=\"ds-tb-btn\" type=\"button\">VI</button><button class=\"ds-tb-btn\" type=\"button\">TH</button></span></header>",
+      "css": ".ds-topbar { display: flex; align-items: center; gap: 10px; height: 64px; padding: 0 16px; background: var(--page, #ffffff); border-bottom: 1px solid var(--ink, #101828); } .ds-wordmark { font-family: var(--font-serif, 'Charis SIL', Charter, Georgia, serif); font-size: 18px; font-weight: 400; letter-spacing: 0; color: var(--ink, #101828); margin-right: 14px; } .ds-nav { display: flex; align-items: center; flex: 1; } .ds-tn-link { display: inline-flex; align-items: center; height: 36px; padding: 0 2px; margin: 0 10px; font-family: var(--font-sans, 'Archivo Narrow', 'Arial Narrow', sans-serif); font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2, #475467); text-decoration: none; transition: color 150ms ease-out; } .ds-tn-link:hover { color: var(--ink, #101828); } .ds-tn-link.ds-is-active { color: var(--accent, #0b5fa5); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 9px; } .ds-tn-link:focus-visible { outline: 1px solid var(--accent, #0b5fa5); outline-offset: 4px; } .ds-tn-right { display: inline-flex; align-items: center; gap: 6px; } .ds-tb-btn { display: inline-flex; align-items: center; height: 32px; padding: 0 6px; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--ink-2, #475467); font-family: var(--font-sans, 'Archivo Narrow', 'Arial Narrow', sans-serif); font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: color 150ms ease-out; } .ds-tb-btn:hover { color: var(--ink, #101828); } .ds-tb-btn:focus-visible { outline: 1px solid var(--accent, #0b5fa5); outline-offset: 3px; }"
+    },
+    {
+      "name": "Mục lục (\\tableofcontents)",
+      "kind": "custom",
+      "refersTo": "toc-row",
+      "description": "Mỗi chương một hàng: số mục sans / tiêu đề serif / dấu đã đọc; hairline xám ngăn hàng; chương kế tiếp màu nhấn.",
+      "html": "<p class=\"ds-lbl\">Phần I · Từ chạy thử đến chứng minh</p><ol class=\"ds-toc\"><li class=\"ds-toc-row ds-is-done\"><span class=\"ds-toc-num\">1.1</span><a class=\"ds-toc-title\" href=\"#\">Vì sao chạy thử không kết luận được</a><span class=\"ds-toc-mark\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 12.5l5 5L20 6.5\"/></svg>Đã đọc</span></li><li class=\"ds-toc-row ds-is-next\"><span class=\"ds-toc-num\">1.2</span><a class=\"ds-toc-title\" href=\"#\">Ba nghĩa vụ của một bất biến</a><span class=\"ds-toc-mark\">Tiếp theo</span></li><li class=\"ds-toc-row\"><span class=\"ds-toc-num\">1.3</span><a class=\"ds-toc-title\" href=\"#\">Tìm bất biến từ đâu ra</a><span class=\"ds-toc-mark\"></span></li></ol>",
+      "css": ".ds-lbl { font-family: var(--font-sans, 'Archivo Narrow', 'Arial Narrow', sans-serif); font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3, #667085); margin: 0 0 4px; } .ds-toc { list-style: none; margin: 0; padding: 0; } .ds-toc-row { display: grid; grid-template-columns: 3.4em minmax(0, 1fr) auto; column-gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--rule, #eaecf0); } .ds-toc-num { font-family: var(--font-sans, 'Archivo Narrow', sans-serif); font-size: 12.5px; font-weight: 500; color: var(--ink-3, #667085); font-variant-numeric: tabular-nums; } .ds-toc-title { font-family: var(--font-serif, 'Charis SIL', Charter, Georgia, serif); font-size: 16.5px; line-height: 1.4; color: var(--ink, #101828); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.12em; text-decoration-color: transparent; transition: text-decoration-color 150ms ease-out, color 150ms ease-out; } .ds-toc-title:hover, .ds-toc-title:focus-visible { text-decoration-color: var(--accent, #0b5fa5); } .ds-toc-row.ds-is-done .ds-toc-title { color: var(--ink-2, #475467); } .ds-toc-row.ds-is-next .ds-toc-title { color: var(--accent, #0b5fa5); } .ds-toc-mark { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-sans, 'Archivo Narrow', sans-serif); font-size: 12px; color: var(--ink-3, #667085); white-space: nowrap; } .ds-toc-mark svg { color: var(--accent, #0b5fa5); }"
+    },
+    {
+      "name": "Ghi chú lề (marginalia)",
+      "kind": "custom",
+      "refersTo": "margin-note",
+      "description": "Ô vuông 9px màu bút tô + trích đoạn nghiêng (liên kết) + thân ghi chú + hàng meta; hairline dưới, không viền trái.",
+      "html": "<li class=\"ds-mnote\"><p class=\"ds-mnote-quote\"><span class=\"ds-mnote-swatch\" style=\"--mnote-color:#eda100\"></span><a class=\"ds-mnote-quote-link\" href=\"#\">Một vòng lặp sai vượt qua mười nghìn lần chạy thử</a></p><p class=\"ds-mnote-text\">Đây chính là định nghĩa của bất biến: một khẳng định đúng ở MỌI lần lặp, độc lập với số lần.</p><p class=\"ds-mnote-meta\"><span>Bất biến vòng lặp</span><a class=\"ds-doc-link\" href=\"#\">Mở chương</a></p></li>",
+      "css": ".ds-mnote { list-style: none; padding: 12px 0 14px; border-bottom: 1px solid var(--rule, #eaecf0); } .ds-mnote-swatch { display: inline-block; width: 9px; height: 9px; margin-right: 8px; vertical-align: 0.02em; background: var(--mnote-color, var(--rule-strong, #d0d5dd)); } .ds-mnote-quote { font-family: var(--font-serif, 'Charis SIL', Charter, Georgia, serif); font-style: italic; font-size: 14.5px; line-height: 1.5; color: var(--ink-2, #475467); margin: 0 0 6px; } .ds-mnote-quote-link { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.12em; text-decoration-color: transparent; transition: text-decoration-color 150ms ease-out; } .ds-mnote:hover .ds-mnote-quote-link, .ds-mnote-quote-link:focus-visible { text-decoration-color: var(--accent, #0b5fa5); } .ds-mnote-quote-link:focus-visible { outline: 1px solid var(--accent, #0b5fa5); outline-offset: 3px; } .ds-mnote-text { font-family: var(--font-serif, 'Charis SIL', Charter, Georgia, serif); font-size: 15.5px; line-height: 1.5; color: var(--ink, #101828); margin: 0 0 7px; white-space: pre-wrap; overflow-wrap: anywhere; } .ds-mnote-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-family: var(--font-sans, 'Archivo Narrow', sans-serif); font-size: 12px; color: var(--ink-3, #667085); margin: 0; } .ds-doc-link { color: var(--accent, #0b5fa5); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.14em; text-decoration-color: color-mix(in srgb, var(--accent, #0b5fa5) 55%, transparent); transition: text-decoration-color 150ms ease-out; } .ds-doc-link:hover, .ds-doc-link:focus-visible { text-decoration-color: var(--accent, #0b5fa5); }"
+    },
+    {
+      "name": "Mục danh mục khoá",
+      "kind": "custom",
+      "refersTo": "title",
+      "description": "Một mục của danh mục /courses: tên serif 22px + mô tả, hairline dưới, không số, không bìa.",
+      "html": "<li class=\"ds-courses-item\"><a class=\"ds-courses-item-link\" href=\"#\"><h2 class=\"ds-courses-item-title\">Bất biến vòng lặp</h2><p class=\"ds-courses-item-desc\">Từ chạy thử đến chứng minh: vì sao mười nghìn ca đúng không nói gì về ca thứ mười nghìn lẻ một.</p></a></li>",
+      "css": ".ds-courses-item { list-style: none; border-bottom: 1px solid var(--rule, #eaecf0); } .ds-courses-item-link { display: block; padding: 16px 0 18px; text-decoration: none; color: inherit; } .ds-courses-item-title { margin: 0; font-family: var(--font-serif, 'Charis SIL', Charter, Georgia, serif); font-weight: 400; font-size: 22px; line-height: 1.25; color: var(--ink, #101828); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.12em; text-decoration-color: transparent; transition: text-decoration-color 150ms ease-out; } .ds-courses-item-link:hover .ds-courses-item-title, .ds-courses-item-link:focus-visible .ds-courses-item-title { text-decoration-color: var(--accent, #0b5fa5); } .ds-courses-item-link:focus-visible { outline: 1px solid var(--accent, #0b5fa5); outline-offset: 4px; } .ds-courses-item-desc { margin: 6px 0 0; font-family: var(--font-serif, 'Charis SIL', Charter, Georgia, serif); font-size: 15.5px; line-height: 1.5; color: var(--ink-2, #475467); max-width: 62ch; }"
+    },
+    {
+      "name": "Hàng tiến độ với đường kẻ 2px (\\rule)",
+      "kind": "custom",
+      "refersTo": "rule-bar",
+      "description": "Tên khoá serif, số chương tabular canh phải, thanh 2px không bo, dòng phút.",
+      "html": "<li class=\"ds-prog-row\"><div class=\"ds-prog-row-head\"><a class=\"ds-prog-row-title\" href=\"#\">Bất biến vòng lặp</a><span class=\"ds-prog-row-n\">1/3 chương</span></div><div class=\"ds-prog-bar\"><span class=\"ds-prog-bar-fill\" style=\"width:33%\"></span></div><p class=\"ds-prog-row-minutes\">11 phút đã học</p></li>",
+      "css": ".ds-prog-row { list-style: none; padding: 12px 0 14px; border-bottom: 1px solid var(--rule, #eaecf0); } .ds-prog-row-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; } .ds-prog-row-title { font-family: var(--font-serif, 'Charis SIL', Charter, Georgia, serif); font-size: 17px; color: var(--ink, #101828); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.12em; text-decoration-color: transparent; transition: text-decoration-color 150ms ease-out; } .ds-prog-row-title:hover, .ds-prog-row-title:focus-visible { text-decoration-color: var(--accent, #0b5fa5); } .ds-prog-row-n { flex: none; font-family: var(--font-sans, 'Archivo Narrow', sans-serif); font-size: 13px; color: var(--ink-2, #475467); font-variant-numeric: tabular-nums; } .ds-prog-bar { height: 2px; background: var(--rule, #eaecf0); overflow: hidden; } .ds-prog-bar-fill { display: block; height: 100%; background: var(--accent, #0b5fa5); } .ds-prog-row-minutes { font-family: var(--font-sans, 'Archivo Narrow', sans-serif); font-size: 12.5px; color: var(--ink-3, #667085); margin: 8px 0 0; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Chọn năm (nút chữ ở lề)",
+      "kind": "button",
+      "refersTo": "nav-link-active",
+      "description": "Nút không nền không viền; năm đang xem màu nhấn + gạch chân offset 6px. Kiểu nút DUY NHẤT trong khung .doc.",
+      "html": "<div class=\"ds-prog-years\"><button class=\"ds-prog-year-btn ds-on\" type=\"button\">2026</button><button class=\"ds-prog-year-btn\" type=\"button\">2025</button></div>",
+      "css": ".ds-prog-years { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; } .ds-prog-year-btn { appearance: none; background: none; border: 0; padding: 4px 0; font-family: var(--font-sans, 'Archivo Narrow', 'Arial Narrow', sans-serif); font-size: 15px; font-weight: 500; color: var(--ink-2, #475467); cursor: pointer; font-variant-numeric: tabular-nums; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 6px; text-decoration-color: transparent; transition: color 150ms ease-out, text-decoration-color 150ms ease-out; } .ds-prog-year-btn:hover { color: var(--ink, #101828); } .ds-prog-year-btn.ds-on { color: var(--accent, #0b5fa5); text-decoration-color: var(--accent, #0b5fa5); } .ds-prog-year-btn:focus-visible { outline: 1px solid var(--accent, #0b5fa5); outline-offset: 4px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Giáo trình LaTeX, lề rộng",
+    "overview": "Khung app là một trang giáo trình đã typeset, không phải một dashboard. Giấy trắng thuần, mực gần đen, một cột chính và một cột lề thật; chữ thân là serif có chân (Charis SIL — hậu duệ Charter, có đủ dấu tiếng Việt), chữ nhãn là sans hẹp (Archivo Narrow) và chỉ đứng ở lề, đầu mục và running head. Phân cấp bằng cỡ chữ, hairline và khoảng trắng — không thẻ, không bóng, không viền màu, không bo góc. Một màu nhấn duy nhất, xanh \"hộp định lý\", dành cho hành động và mục đang chọn.\n\nĐây là thế giới của chế độ Operate: người quay lại một chương khó lần thứ n, cần thấy ngay mình dừng đâu và nghĩ gì. Hành động chính của trang chủ vì thế không phải một nút màu mà là tên chương dở, một liên kết serif cỡ lớn với động từ run-in đứng trước — như \\paragraph{Đọc tiếp}. Trang tiến độ mở bằng một câu tiếng Việt hoàn chỉnh, không phải ba ô số liệu. Chuyển động chỉ có một: đường gạch chân hairline hiện lên trong 150ms.\n\nChế độ tối là \"đêm của trình đọc PDF\": đảo giấy/mực sang xám trung tính (không phải slate ngả xanh của kit dashboard), giữ nguyên một xanh nhấn nâng một bậc để đọc được. Công tắc là html[data-theme], không bao giờ là prefers-color-scheme.",
+    "keyCharacteristics": [
+      "Trung tính + đúng MỘT màu nhấn (#0b5fa5 sáng / #4d92cc tối).",
+      "Serif là thân, sans hẹp là nhãn — hai địa phận không chồng lên nhau.",
+      "Phẳng tuyệt đối: hairline 1px thay cho mọi thẻ, bóng và viền màu.",
+      "Hairline mực kết đầu mục (\\hrule), hairline xám ngăn hàng.",
+      "Lưới 2fr/1fr với lề thật; dưới 900px lề xếp xuống (riêng /progress lề lên trước).",
+      "Một ngữ pháp chuyển động: text-decoration-color/color 150ms ease-out.",
+      "Tối = đêm PDF, xám trung tính, công tắc tường minh."
+    ],
+    "rules": [
+      { "name": "Quy tắc Một mực nhấn", "body": "Khung app có đúng một màu ngoài thang xám. Nó chỉ xuất hiện trên thứ bấm được hoặc đang được chọn; mọi thứ khác là mực. Nếu một màn cần màu thứ hai, đó là dấu hiệu màn ấy đang muốn thành dashboard.", "section": "colors" },
+      { "name": "Quy tắc Đêm PDF", "body": "Tối là đảo giấy/mực sang xám trung tính (#171717 / #ececec / #333333), nhấn nâng đúng một bậc (brand-600 → brand-400). Không slate, không xanh tím, không prefers-color-scheme. Mọi màu của khung là token của index.css, nên home.css/courses.css/shell-modes.css không được chứa một luật [data-theme] nào.", "section": "colors" },
+      { "name": "Quy tắc Giấy một tờ", "body": "--page và nền running head là cùng một giá trị. Không có \"surface\" thứ hai trong khung .doc; --panel (gray-50) chỉ là nền của điều khiển ở Cài đặt/Admin, không phải giấy.", "section": "colors" },
+      { "name": "Quy tắc Sans ở lề", "body": "Sans hẹp chỉ cho nhãn, số mục, đầu cột, running head và điều khiển. Không một đoạn văn, tên chương, mô tả hay câu meta nào được đặt bằng sans. Kiểm: nếu câu có động từ và kết bằng dấu chấm, nó là serif.", "section": "typography" },
+      { "name": "Quy tắc Run-in, không eyebrow", "body": "Không có dòng nhãn nào đứng trên một tiêu đề. Khi tiêu đề cần một động từ hay một số, chúng đứng trong cùng thẻ heading, cùng dòng, cỡ nhỏ hơn (.cont-verb 12.5px sans nhấn, .cont-num 0.5em) — như \\paragraph{}. Tên trợ năng của liên kết vẫn đọc liền \"Đọc tiếp 1.2 Tên chương\".", "section": "typography" },
+      { "name": "Quy tắc Không đậm", "body": "Heading serif là weight 400. Phân cấp làm bằng cỡ (40 → 34 → 22 → 17 → 16.5) và hairline, không bằng độ đậm. Sans 600 ở 12–13px là ngoại lệ duy nhất, vì chữ hẹp viết hoa cỡ nhỏ cần nét để đọc.", "section": "typography" },
+      { "name": "Quy tắc Không thẻ", "body": "Không box-shadow, không border-radius, không nền khác màu giấy, không border-left màu quanh một nhóm nội dung trong khung .doc và running head. Muốn nhóm thì kẻ một hairline hoặc thêm khoảng trắng. Ô vuông 9px màu bút tô ở ghi chú lề là dữ liệu (màu bút của chính ghi chú), không phải trang trí — và nó cũng vuông góc.", "section": "elevation" },
+      { "name": "Quy tắc \\hrule", "body": "Kẻ mực (--ink) cho ranh giới cấu trúc: dưới đầu trang, dưới đầu mục có nhãn. Kẻ xám (--rule) cho ranh giới lặp: giữa các hàng của một danh sách. Không có kẻ trên đầu danh sách ngay dưới .doc-head (hai đường song song đọc như lỗi — đã đo).", "section": "elevation" },
+      { "name": "Quy tắc Tên chương là nút", "body": "Hành động chính của một trang trong khung là một liên kết serif cỡ lớn mang tên thứ sẽ mở, không phải một nút màu. Nút màu không tồn tại trong khung .doc.", "section": "components" },
+      { "name": "Quy tắc Gạch chân 150ms", "body": "Toàn bộ ngữ pháp chuyển động của khung là transition: text-decoration-color 150ms ease-out (kèm color ở nơi màu chữ cũng đổi). Gạch chân 1px từ transparent (hoặc màu nghỉ) lên --accent. Không transform, không opacity, không đổi nền, không chuyển động nào khác được thêm vào.", "section": "components" },
+      { "name": "Quy tắc Hai id", "body": "app-screens.css đặt #app:not(.reading) #content h1/h2/h3 bằng sans đậm (độ đặc hiệu 2,1,1). Mọi heading serif của khung .doc (.doc-title, .doc-h, .cont-chapter, .home-empty-h, .courses-item-title) phải được khai báo với tiền tố #app:not(.reading) #content để thắng đúng ở địa phận này; đây là chỗ duy nhất trong home.css/courses.css dùng id. Thêm một heading mới vào khung mà quên tiền tố thì nó ra sans đậm 18–30px — đã đo.", "section": "components" },
+      { "name": "Quy tắc Media query cuối tệp", "body": "Khối @media (max-width: 900px) của /progress phải đứng sau mọi luật gốc cùng độ đặc hiệu mà nó ghi đè (đo: đặt giữa tệp thì hàng nhãn tháng phình 2680px ở 375px). Luật mới cho khung .doc thêm vào trước khối media ở cuối home.css.", "section": "components" }
+    ],
+    "dos": [
+      "Do đặt mọi thân chữ, tiêu đề, câu meta, mô tả bằng --font-serif weight 400; phân cấp bằng cỡ (clamp(30px,3.4vw,40px) → clamp(26px,3vw,34px) → 22px → 17px → 16.5px → 15.5px).",
+      "Do dùng .lbl/.doc-h (sans 12px 600 0.08em UPPERCASE --ink-3) cho mọi nhãn đứng cạnh chữ lớn — một lớp, không tự chọn cỡ mới.",
+      "Do kết đầu trang và đầu mục bằng 1px solid var(--ink); ngăn hàng danh sách bằng 1px solid var(--rule).",
+      "Do để hành động chính là một liên kết serif mang tên đích; động từ (nếu cần) là run-in trong thẻ heading, sans 12.5px màu nhấn.",
+      "Do làm hover/focus bằng gạch chân 1px text-decoration-color → --accent, 150ms ease-out; focus-visible là outline: 1px solid var(--accent) với offset 3–6px.",
+      "Do vẽ tiến độ bằng đường kẻ 2px (--rule nền, --accent tô) với số tabular đứng cạnh; kể số liệu thành một câu serif trước khi vẽ bất kỳ biểu đồ nào.",
+      "Do lấy màu từ token của index.css (--page, --ink*, --rule*, --accent) và pha bậc trung gian bằng color-mix(... , var(--page)) để chế độ tối tự đúng.",
+      "Do đặt cột lề (1fr) cho thứ đứng cạnh nội dung — ghi chú, chọn năm, chú giải — và cho nó xếp xuống (hoặc lên, nếu nó là điều khiển) dưới 900px.",
+      "Do đưa mọi chuỗi giao diện vào cả hai catalog packages/i18n (vi và en) trước khi hiển thị."
+    ],
+    "donts": [
+      "Don't thêm eyebrow/kicker — một dòng nhãn đứng trên tiêu đề. Tiêu đề tự đứng; nhãn đi run-in.",
+      "Don't dùng thẻ, box-shadow, border-radius, nền khác --page, hay border-left màu (bất kỳ độ dày nào >1px) trong khung .doc và running head.",
+      "Don't đặt heading, đoạn văn hay câu meta bằng --font-sans; sans chỉ cho nhãn, số mục, đầu cột, running head và điều khiển.",
+      "Don't đưa màu thứ hai ngoài --accent vào khung (kể cả success/warning/error của tokens.css) trừ khi nó là ngữ nghĩa bắt buộc đã có sẵn (nhãn hạng interactive).",
+      "Don't đánh số một danh sách không có thứ tự thật (01, 02 bằng counter). Số chỉ xuất hiện khi thứ tự mang nghĩa, và khi đó là 1., 1.2 kiểu LaTeX.",
+      "Don't dùng nút màu (.btn tô nền nhấn) cho hành động chính của một trang trong khung.",
+      "Don't đổi bảng tối sang xám ngả xanh (gray-950 #0c111d, slate) hay nghe prefers-color-scheme; tối chỉ qua html[data-theme='dark'] và chỉ ở index.css.",
+      "Don't thêm [data-theme] vào home.css, courses.css, shell-modes.css.",
+      "Don't đặt luật @media cho khung .doc trước luật gốc của nó trong home.css.",
+      "Don't chỉnh packages/course-kit/reader.css hay ghi đè --serif của reader để \"khớp\" với khung; reader là bề mặt riêng, chủ dự án nói phần đọc đã ổn.",
+      "Don't kẻ hairline ở đầu một danh sách đứng ngay dưới .doc-head (hai đường song song)."
+    ],
+    "notCanonized": [
+      "app-screens.css: thẻ, --radius-md/lg/xl, --shadow-*, heading sans đậm — kế thừa Untitled UI cho Cài đặt/Admin/Đăng nhập; cùng tồn tại, không phải luật của hệ này.",
+      "tokens.css: --radius-*, --shadow-*, --shadow-ring-brand #f4ebff (tím kit cũ), thang success/warning/error — khai báo còn đó, khung .doc không dùng.",
+      "Mark xanh vuông bo góc ở góc trái running head và tên 'Tự học' — placeholder theo PRODUCT.md; không ghi thành luật hình dạng.",
+      "Trang đăng nhập/landing (Persuade) chưa thiết kế lại; không được khẳng định 'không cần tài khoản'.",
+      "Ba lệch hợp đồng (không có 'đoạn' trong dòng Tiếp tục, ghi chú lề mở CHƯƠNG, mục lục không có %) — là giới hạn dữ liệu/reader, ghi ở brief và PRODUCT.md, không phải quyết định thiết kế."
+    ]
+  }
+}
