@@ -57,9 +57,6 @@ export const en: Messages = {
   'settings.account.syncBlurb': 'Progress syncs through this account.',
   'settings.appearance.themeLight': 'Light',
   'settings.appearance.themeDark': 'Dark',
-  'settings.localData.statNotes': 'notes',
-  'settings.localData.statBytes': 'in use',
-  'settings.localData.statsAria': 'What this machine is holding',
 
   'settings.account.loading': 'Asking the server who is signed in…',
   'settings.account.unknown': 'Could not load your account details. This part needs the network.',
@@ -86,9 +83,9 @@ export const en: Messages = {
   // is exactly what `login.point.sync` already promises — see the vi
   // catalog's comment on this key.
   'settings.localData.blurb':
-    'Notes live in two places: a copy in this browser, and a copy synced to the server under your account — so signing in on another device still shows all of them. Courses aren’t downloaded as packages: they’re read straight from the server.',
-  'settings.localData.clearedOnSignOut':
-    'The local database is named after the BROWSER, not the user — so it is wiped whenever a different person signs in, even if nobody signed out.',
+    'Notes, progress and minutes studied all live on the server, under your account — this device keeps no copy, so signing in elsewhere shows everything. Courses are read straight from the server too; nothing is downloaded.',
+  'settings.localData.draft':
+    'The one thing of yours on this device is the note you are still typing, kept so a reload does not lose it. Signing out, or signing in as someone else, clears that draft.',
   'settings.localData.kept': 'Language and theme stay: they belong to the device.',
 
   /* AI section — Phase 2 (task-14): credit + agent config replace the key

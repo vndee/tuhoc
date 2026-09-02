@@ -1,9 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AgentConfigPanel } from '../ai/AgentConfigPanel';
 import { CreditPanel } from '../ai/CreditPanel';
-import { annotationsQueryKey, fetchAnnotations } from '../api/annotations';
 import { useMe, accountInitials } from '../api/useMe';
 import { useLogout } from '../auth/useLogout';
 import { LANGS, normalizeLang } from '../i18n';
@@ -433,86 +431,27 @@ function AppearanceSection() {
  * những gì của tôi, và khi nào thì mất?"* — và đó là chữ.
  */
 /**
- * Hai con số: ghi chú, dung lượng.
+ * SAU PHA 3, MỤC NÀY NÓI MỘT ĐIỀU KHÁC HẲN — và bản trước của nó nói SAI.
  *
- * Chú thích trên nói mục này nợ người dùng câu trả lời cho *"máy này đang giữ
- * những gì của tôi"* — và cho tới nay nó trả lời bằng CHỮ. Hai con số trả lời
- * đúng câu ấy bằng thứ đọc trong một giây.
+ * Bản trước (Pha 2) mang hai con số và hai câu: "Ghi chú nằm ở hai nơi: một
+ * bản trong trình duyệt này…" và "Cơ sở dữ liệu mang tên TRÌNH DUYỆT… bị xoá
+ * sạch mỗi lần đổi người đăng nhập". Cả hai mô tả một mô hình đã chết ở Task
+ * 7–10 (spec `2026-08-25-server-side-pivot.md`): ghi chú, tiến độ, nhịp học
+ * đều là dữ liệu MÁY CHỦ, Dexie đã gỡ, và con số "ghi chú" trên trang thực ra
+ * đếm `GET /annotations` — tức máy chủ — dưới một tiêu đề nói "trên máy". Con
+ * số "đang chiếm" là `navigator.storage.estimate()` của cả origin, không nói
+ * gì về dữ liệu của người dùng. Người dùng đọc trang này đã hỏi đúng câu:
+ * "đã pivot lên database rồi, sao còn lưu trên trình duyệt?"
  *
- * **Ghi chú, sau Task 9, không còn đọc `db.annotations.count()`.** Từ Task 7,
- * ghi chú đã là dữ liệu MÁY CHỦ — `useAnnotations`'s mutations viết thẳng qua
- * `POST`/`PATCH`/`DELETE /annotations`, không còn ghi vào Dexie ở đâu cả — nên
- * `db.annotations.count()` chỉ còn là một con số CÓ THỂ CŨ (ghi chú tạo ở máy
- * khác không có ở đây; một hàng còn sót lại ở đây từ trước Task 7 không còn ở
- * máy chủ). Con số đúng, và duy nhất, là `GET /annotations` — cùng
- * `annotationsQueryKey()`/`fetchAnnotations()` mà `progress/recent.ts` và
- * `useAnnotations` đã dùng, nên trang này không tốn thêm một request nào khi
- * một trong hai nơi kia đã hỏi trước.
- *
- * `bytes` (dung lượng) VẪN đọc từ `navigator.storage.estimate()` — ước lượng
- * của cả ORIGIN này trong trình duyệt, không riêng ghi chú hay bất kỳ bảng
- * nào, nên nó ở lại là một phép đo cục bộ đúng nghĩa, tách khỏi câu hỏi "ghi
- * chú của tôi ở đâu".
- *
- * Từng có MỘT con số thứ ba — số gói khoá học đã tải về máy, từ `db.packages`.
- * Bảng ấy không còn tồn tại (Task 13, spec
- * `2026-08-25-server-side-pivot.md` §1): course không còn được nhập vào máy
- * người đọc, chỉ đọc thẳng từ server, nên không có "gói trên máy" nào để đếm
- * nữa. Bỏ hẳn con số này thay vì để nó luôn hiện `0` hoặc `—`: một số 0 ở đây
- * đọc như "máy bạn không giữ gói nào" — một câu vẫn đúng nghĩa đen nhưng bịa
- * ra một khái niệm ("gói trên máy") mà sản phẩm không còn có nữa.
- *
- * `null` là "chưa biết", KHÁC với 0 — và khác biệt ấy quan trọng ở đây hơn ở
- * hầu hết chỗ khác: vẽ "0 ghi chú" cho một người có ba ghi chú, chỉ vì
- * `GET /annotations` chưa trả lời xong (hoặc đã lỗi), là nói với họ rằng máy
- * đã mất dữ liệu. `useQuery`'s `data` là `undefined` trong cả hai trường hợp
- * đó, nên `notes.data?.length ?? null` giữ đúng phân biệt này mà không cần
- * một nhánh lỗi riêng.
- *
- * `storage.estimate()` không có ở mọi trình duyệt và trả về ƯỚC LƯỢNG của cả
- * origin (không riêng bảng nào), nên nó được nói là "đang chiếm" chứ không
- * phải "dữ liệu của bạn nặng bằng này", và vắng mặt thì cột ấy biến mất chứ
- * không hiện 0.
+ * Nay mục này chỉ có CHỮ, và chữ ấy là sự thật đo được từ `db/localStorage.ts`:
+ * trên máy chỉ còn ba khoá — `itbook-theme`, `itbook-lang` (tuỳ chọn thiết bị,
+ * ở lại khi đăng xuất) và `itbook-note-draft` (bản nháp ghi chú đang gõ,
+ * `clearUserContent()` xoá khi đổi phiên). Không con số nào: không có gì ở
+ * đây đáng đếm, và một con số đứng dưới tiêu đề "trên máy" là cách nhanh nhất
+ * để lời hứa sai quay lại. `Settings.copy.test.tsx` canh nguyên văn hai câu cũ.
  */
-function useLocalFootprint(): { notes: number | null; bytes: number | null } {
-  const notesQuery = useQuery({
-    queryKey: annotationsQueryKey(),
-    queryFn: () => fetchAnnotations(),
-  });
-
-  const [bytes, setBytes] = useState<number | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      let estimate: number | null = null;
-      try {
-        const result = await navigator.storage?.estimate?.();
-        estimate = typeof result?.usage === 'number' ? result.usage : null;
-      } catch {
-        estimate = null;
-      }
-      if (!cancelled) setBytes(estimate);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return { notes: notesQuery.data?.length ?? null, bytes };
-}
-
-/** Byte → "4,2 MB". Dấu phẩy thập phân vì catalog mặc định là tiếng Việt. */
-function formatBytes(bytes: number, lang: string): string {
-  const mb = bytes / (1024 * 1024);
-  const unit = mb >= 1 ? 'MB' : 'KB';
-  const value = mb >= 1 ? mb : bytes / 1024;
-  return `${value.toLocaleString(lang === 'en' ? 'en-US' : 'vi-VN', { maximumFractionDigits: 1 })} ${unit}`;
-}
-
 function LocalDataSection({ anchor }: { anchor: string }) {
-  const { lang, t } = useLanguage();
-  const footprint = useLocalFootprint();
+  const { t } = useLanguage();
 
   return (
     <section className="set-block" id={anchor}>
@@ -522,22 +461,8 @@ function LocalDataSection({ anchor }: { anchor: string }) {
       </div>
 
       <div className="set-block-main">
-
-      <dl className="set-stats" aria-label={t('settings.localData.statsAria')}>
-        <div className="set-stat">
-          <dt className="set-stat-v">{footprint.notes ?? '—'}</dt>
-          <dd className="set-stat-k">{t('settings.localData.statNotes')}</dd>
-        </div>
-        {footprint.bytes !== null && (
-          <div className="set-stat">
-            <dt className="set-stat-v">{formatBytes(footprint.bytes, lang)}</dt>
-            <dd className="set-stat-k">{t('settings.localData.statBytes')}</dd>
-          </div>
-        )}
-      </dl>
-
-      <p className="set-note">{t('settings.localData.clearedOnSignOut')}</p>
-      <p className="set-note">{t('settings.localData.kept')}</p>
+        <p className="set-note">{t('settings.localData.draft')}</p>
+        <p className="set-note">{t('settings.localData.kept')}</p>
       </div>
     </section>
   );
