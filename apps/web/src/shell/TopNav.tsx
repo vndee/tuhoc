@@ -37,13 +37,12 @@ import { Logo } from './Logo';
 // được pathname.
 const CHAPTER_ROUTE = /^\/c\/[^/]+\/[^/]+/;
 
+// Lớp NGỮ NGHĨA, không phải chuỗi utility: kiểu của running head nằm ở
+// `styles/shell-modes.css` (`#topbar .tn-link`), nơi nó đứng cạnh luật của
+// chính `#topbar` — một chỗ để đổi, không phải hai. Viên nền tím cho mục đang
+// chọn đã đi cùng kit cũ; mục đang chọn nay là màu nhấn + một gạch chân hairline.
 function navClass({ isActive }: { isActive: boolean }): string {
-  return [
-    'flex items-center h-9 px-3 rounded-sm text-sm no-underline transition-colors',
-    isActive
-      ? 'bg-brand-50 text-brand-700 font-semibold dark:bg-brand-600/15 dark:text-brand-300'
-      : 'text-gray-600 font-medium hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-50',
-  ].join(' ');
+  return isActive ? 'tn-link is-active' : 'tn-link';
 }
 
 /**
@@ -75,9 +74,9 @@ export function TopNav() {
   // học" ở 375px và hết giờ, vì liên kết bị đẩy ra ngoài thanh.
   return (
     <>
-      <div className="tn-brand flex items-center gap-2.5 font-sans">
+      <div className="tn-brand flex items-center gap-2.5">
         <Logo size={28} boxed />
-        <span className="tn-wordmark text-[15px] font-semibold tracking-[-0.01em] text-gray-900 dark:text-gray-50">
+        <span className="tn-wordmark">
           {t('app.name')}
         </span>
       </div>
@@ -87,7 +86,7 @@ export function TopNav() {
           là không mời gì. `useMe` là chính truy vấn `RequireAuth` đọc, nên hỏi
           ở đây không tốn thêm một request nào. */}
       {meQuery.data && (
-        <nav aria-label={t('nav.aria.main')} className="tn-nav flex items-center gap-1 font-sans">
+        <nav aria-label={t('nav.aria.main')} className="tn-nav flex items-center">
           <NavLink to="/" end className={navClass}>
             {t('nav.continue')}
           </NavLink>

@@ -39,11 +39,14 @@ export function Courses() {
   });
 
   return (
-    <div className="courses-page">
-      <div className="courses-header">
-        <h1 className="ch-title">{t('courses.title')}</h1>
-        <p className="ch-lede">{t('courses.lede')}</p>
-      </div>
+    <div className="courses-page doc">
+      {/* Đầu trang theo khung `.doc` (home.css): serif thường, câu dẫn nghiêng,
+          hairline mực — không mượn `.ch-title` của reader.css nữa, lớp ấy là
+          tiêu đề CHƯƠNG trong chế độ đọc và mang cỡ sans đậm của nó. */}
+      <header className="doc-head">
+        <h1 className="doc-title">{t('courses.title')}</h1>
+        <p className="doc-lede">{t('courses.lede')}</p>
+      </header>
 
       {query.isPending && <p className="courses-note">{t('courses.loading')}</p>}
       {query.isError && <p className="courses-note">{describeCourseError(query.error, t)}</p>}

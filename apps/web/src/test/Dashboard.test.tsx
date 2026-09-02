@@ -257,7 +257,11 @@ describe('Học tiếp — MỘT hành động', () => {
 
     expect(await screen.findByText('Khóa học demo')).toBeInTheDocument();
     // Chương 3 — chương ĐẦU TIÊN chưa đọc, không phải chương sau chương vừa đọc.
-    expect(await screen.findByText('Chương 3')).toBeInTheDocument();
+    // Hỏi đúng HEADING của khối "Tiếp tục": từ vòng thiết kế lại (giáo trình
+    // LaTeX), trang chủ còn vẽ cả mục lục khoá, nên "Chương 3" xuất hiện hai
+    // lần — một ở heading đang dở, một ở dòng mục lục. Chỉ heading mới là câu
+    // trả lời cho "mở cái gì bây giờ"; dòng mục lục có bài canh riêng bên dưới.
+    expect(await screen.findByRole('heading', { name: /chương 3/i })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/2\s*\/\s*4/)).toBeInTheDocument());
     expect(cta()).toHaveAttribute('href', '/c/demo/ch-3');
   }, OVERSUBSCRIBED_MS);

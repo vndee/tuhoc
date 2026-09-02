@@ -1,421 +1,517 @@
 /* ══════════════════════════════════════════════════════════════════════════
- * `/` — Học tiếp  ·  `/progress` — Tiến độ
+ * KHUNG `.doc` (dùng chung ba nơi chốn)  ·  `/` — Học tiếp  ·  `/progress` — Tiến độ
  *
- * Tệp RIÊNG, và một dòng `@import` duy nhất trong `styles/index.css`. Ba màn
- * hình khác đang được dựng song song trong cùng vòng thiết kế lại thứ bậc; một
- * khối mới chèn vào giữa `index.css` là một xung đột hợp nhất cho mỗi người
- * trong số họ, và tệ hơn, là một cách sửa nhầm khối của người khác mà không ai
- * thấy trong diff.
+ * Thế giới hình ảnh: **giáo trình LaTeX, lề rộng**. Hợp đồng hướng nằm ở brief
+ * bề mặt `.impeccable/surfaces/apps-web-src-pages-dashboard-tsx.md` (seed
+ * 57dcb485, code-led). Tóm tắt luật, để ai sửa tệp này không phải mở brief:
  *
- * Dùng lại token của `packages/course-kit/reader.css` (`--ink*`, `--surface-1`,
- * `--panel`, `--rule*`, `--accent`, `--sans`, `--ann-*`) chứ không đặt màu mới:
- * đặc tả chốt "giấy ấm" là ngôn ngữ thị giác đã có, và **không hộp bảy màu** —
- * phân cấp ở đây làm bằng cỡ chữ, nét kẻ và khoảng trắng.
+ *   - Cột chính 2fr, cột LỀ 1fr. Lề là nơi của ghi chú và của thứ đứng bên
+ *     cạnh nội dung (chọn năm, chú giải). Dưới 900px lề xếp xuống dưới cột chính.
+ *   - Thân chữ là SERIF (`--font-serif`, Charis SIL). Sans hẹp (`--font-sans`,
+ *     Archivo Narrow) chỉ cho NHÃN: tên khoá, số mục, đầu cột lề, đường phím.
+ *   - Không thẻ, không bóng, không viền màu. Phân cấp bằng cỡ chữ, HAIRLINE
+ *     (`--rule` xám cho hàng, `--ink` mực cho đầu mục — như `\hrule`), khoảng
+ *     trắng, và ĐÚNG MỘT màu nhấn (`--accent`) cho hành động và mục đang chọn.
+ *   - Không eyebrow trên tiêu đề. Tiêu đề tự đứng.
+ *
+ * Tối/sáng: mọi màu ở đây là token của `index.css` (`--ink*`, `--page`,
+ * `--rule*`, `--accent`), nên chế độ tối là "đêm của trình đọc PDF" — đảo
+ * giấy/mực, giữ nhấn — mà tệp này không có một luật `[data-theme]` nào.
  * ══════════════════════════════════════════════════════════════════════════ */
 
-/* ── `/` — Học tiếp ─────────────────────────────────────────────────────── */
-
-.home {
-  max-width: 46rem;
+.doc {
+  max-width: 72rem;
+  margin: 0 auto;
 }
 
-.home-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 26px;
-}
+/* ── VÌ SAO CÁC HEADING DƯỚI ĐÂY MANG TIỀN TỐ `#app:not(.reading) #content` ──
+   `app-screens.css` đặt kiểu chữ chung cho MỌI heading ngoài chế độ đọc:
+   `#app:not(.reading) #content h1/h2/h3 { font-family: var(--sans); 30/18/16px;
+   600 }` — hai id, độ đặc hiệu (2,1,1). Một lớp trần như `.doc-title` (0,1,0)
+   thua nó ở mọi thuộc tính, và ĐO ĐƯỢC trên trình duyệt thật: tiêu đề trang ra
+   sans đậm 30px, nhãn `.doc-h` phình 18px, tên chương ở khối "Tiếp tục" — hành
+   động chính của hợp đồng hướng — co còn 18px sans đậm trong khi hợp đồng nói
+   serif 26–34px.
 
-.home-head .ch-title {
-  margin: 0 0 4px;
-}
+   Không xoá luật chung ấy: Cài đặt, Admin, trang khoá học còn đứng trên nó. Nâng
+   luật của `.doc` lên cùng hai id + một lớp (2,2,0) để thắng đúng ở địa phận
+   này và không đâu khác. Đây là chỗ DUY NHẤT trong tệp cần độ đặc hiệu id; mọi
+   luật khác của khung `.doc` (p, a, span, li) không bị luật chung nào cạnh tranh. */
 
-.home-head .ch-lede {
+#app:not(.reading) #content .doc-title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(30px, 3.4vw, 40px);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--ink);
   margin: 0;
 }
 
-/* Câu trạng thái (đang tải, chưa có ghi chú…). Không khung, không nền: nó là
-   một lời nói, không phải một khối nội dung. */
-.home-note {
-  font-family: var(--sans);
-  font-size: 13.5px;
-  line-height: 1.55;
-  color: var(--ink-3);
-  margin: 0 0 22px;
-}
-
-/*
- * TRẠNG THÁI RỖNG — sau khi luồng import chết (spec
- * `2026-08-25-server-side-pivot.md` §1). Bản trước dựng ba cách NHẬP một gói
- * (`<EmptyLibrary>`, `pages/Library.tsx`); nay không ai nhập gì — hành động
- * duy nhất còn lại là mở danh mục, nên khối này nhỏ hơn hẳn bản nó thay thế.
- * Cùng khung `.home-card` mượn được (nền phẳng, một đường kẻ) để trạng thái
- * rỗng không đọc như một trang khác của ứng dụng.
- */
-.home-empty {
-  padding: 22px 24px 24px;
-  background: var(--surface-1);
-  border: 1px solid var(--rule);
-  border-radius: 14px;
-  margin: 0 0 38px;
-}
-
-.home-empty-h {
-  font-family: var(--sans);
-  font-size: 17px;
-  font-weight: 660;
-  color: var(--ink);
-  margin: 0 0 8px;
-}
-
-.home-empty-lede {
-  font-family: var(--sans);
-  font-size: 13.5px;
-  line-height: 1.55;
-  color: var(--ink-2);
-  margin: 0 0 16px;
-  max-width: 46ch;
-}
-
-.home-empty-cta.btn {
-  display: inline-block;
-  text-decoration: none;
-}
-
-/*
- * THẺ HÀNH ĐỘNG DUY NHẤT của trang.
- *
- * Nó là thứ duy nhất trên màn hình có nền riêng, và đó là toàn bộ cách nó được
- * nhấn: không màu, không bóng đổ nặng, chỉ một mặt phẳng nhạt hơn nền giấy và
- * một đường kẻ. Nếu ghi chú bên dưới cũng có khung thì trang lại thành một
- * bảng, và trang này vừa mới thôi làm bảng.
- */
-.home-card {
-  padding: 22px 24px 24px;
-  background: var(--surface-1);
-  border: 1px solid var(--rule);
-  border-radius: 14px;
-  margin: 0 0 38px;
-}
-
-.home-eyebrow {
-  font-family: var(--sans);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.11em;
+#app:not(.reading) #content .doc-h {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-3);
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ink);
+}
+
+#app:not(.reading) #content .cont-chapter {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(26px, 3vw, 34px);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin: 0;
+}
+
+#app:not(.reading) #content .home-empty-h {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 26px;
+  line-height: 1.2;
+  color: var(--ink);
   margin: 0 0 10px;
 }
 
-.home-course {
-  font-family: var(--sans);
-  font-size: 13px;
-  margin: 0 0 2px;
+/* Đầu trang: tiêu đề serif thường (không đậm — trang typeset nhấn bằng CỠ),
+   một câu dẫn nghiêng như `\emph`, rồi một hairline MỰC. Khoảng trên tiêu đề
+   lớn hơn khoảng dưới, đúng nhịp của heading. */
+.doc-head {
+  padding: 10px 0 18px;
+  border-bottom: 1px solid var(--ink);
+  margin-bottom: 30px;
 }
 
-.home-course-link {
+.doc-title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(30px, 3.4vw, 40px);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin: 0;
+  text-wrap: balance;
+}
+
+.doc-lede {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 17px;
+  line-height: 1.5;
   color: var(--ink-2);
+  margin: 8px 0 0;
+  max-width: 60ch;
+}
+
+.doc-body {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  column-gap: clamp(28px, 5vw, 64px);
+  align-items: start;
+}
+
+.doc-main,
+.doc-margin {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .doc-body {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 40px;
+  }
+}
+
+/* NHÃN: sans hẹp, chữ hoa, tracking. Một lớp cho mọi chỗ cần "chữ nhỏ đứng
+   cạnh chữ lớn", để bốn chỗ không tự chọn bốn cỡ khác nhau. */
+.lbl {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* Đầu mục lề và đầu mục trong cột chính: nhãn + hairline mực dưới. */
+.doc-h {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ink);
+}
+
+/* Câu trạng thái (đang tải, chưa có gì): một lời nói, nghiêng, không khung. */
+.home-note,
+.prog-note {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  margin: 0 0 20px;
+}
+
+/* Liên kết trong văn bản của khung: gạch chân hairline màu nhấn, offset thấp.
+   `reader.css` cho mọi `<a>` một border-bottom mờ; ở đây gỡ nó và dùng
+   text-decoration để đường gạch bám đúng baseline của serif. */
+.doc a {
+  border-bottom: none;
+}
+
+.doc-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.14em;
+  text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  transition: text-decoration-color 150ms ease-out;
+}
+
+.doc-link:hover,
+.doc-link:focus-visible {
+  text-decoration-color: var(--accent);
+}
+
+/* ── `/` — TIẾP TỤC ─────────────────────────────────────────────────────────
+   Hành động chính là TÊN CHƯƠNG, một liên kết serif cỡ lớn — không nút màu.
+   Động từ ("Đọc tiếp") là nhãn run-in đứng trước, cùng dòng khối, kiểu
+   `\paragraph{}` của LaTeX: nó thuộc về cùng một liên kết, nên tên trợ năng
+   của liên kết vẫn là "Đọc tiếp 1.2 Tên chương". */
+.cont {
+  margin: 0 0 40px;
+}
+
+.cont-course {
+  margin: 0 0 10px;
+}
+
+.cont-course a {
+  color: var(--ink-3);
   text-decoration: none;
-  border-bottom: 1px solid transparent;
+  transition: color 150ms ease-out;
 }
 
-.home-course-link:hover,
-.home-course-link:focus-visible {
+.cont-course a:hover,
+.cont-course a:focus-visible {
   color: var(--ink);
-  border-bottom-color: var(--rule-strong);
 }
 
-/* Chương là phần tử LỚN NHẤT của trang — đây là câu trả lời cho "mở cái gì
-   bây giờ", và mọi thứ khác trên màn hình chỉ đang chú thích cho nó. */
-.home-chapter {
-  font-family: var(--sans);
-  font-size: clamp(21px, 2.6vw, 27px);
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-  font-weight: 680;
+.cont-link {
+  display: block;
   color: var(--ink);
-  margin: 0 0 18px;
+  text-decoration: none;
+}
+
+.cont-verb {
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 8px;
+}
+
+.cont-chapter {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: 14px;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(26px, 3vw, 34px);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 0;
+  text-wrap: balance;
 }
 
-.home-chapter-num {
+.cont-num {
   flex: none;
-  font-size: 0.62em;
-  font-weight: 700;
+  font-family: var(--font-sans);
+  font-size: 0.5em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
 
-.home-prog {
-  margin: 0 0 20px;
+/* Hover/focus: gạch chân hairline màu nhấn chạy dưới tên chương — chuyển động
+   duy nhất của khối này, 150ms, từ trạng thái đã thấy được. */
+.cont-title {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.12em;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 150ms ease-out;
 }
 
-.home-bar,
-.prog-bar {
-  height: 5px;
-  border-radius: 999px;
-  background: var(--panel);
-  overflow: hidden;
+.cont-link:hover .cont-title,
+.cont-link:focus-visible .cont-title {
+  text-decoration-color: var(--accent);
 }
 
-.home-bar-fill,
-.prog-bar-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: var(--accent);
-  /* `min-width` để 1% không biến mất hoàn toàn: một tiến độ có thật phải nhìn
-     thấy được, còn 0% thì `width: 0` vẫn ăn đứt nó (phần tử không được vẽ). */
-  min-width: 0;
+.cont-link:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 6px;
 }
 
-.home-prog-text {
-  font-family: var(--sans);
-  font-size: 12.5px;
-  color: var(--ink-3);
-  margin: 8px 0 0;
-}
-
-.home-done {
-  color: var(--good);
-}
-
-.home-cta.btn {
-  display: inline-block;
-  text-decoration: none;
-  padding: 9px 20px;
+.cont-meta {
+  font-family: var(--font-sans);
   font-size: 13.5px;
-}
-
-.home-card-error {
-  border-color: var(--rule-strong);
-}
-
-.home-card-note {
-  font-family: var(--sans);
-  font-size: 13.5px;
-  line-height: 1.55;
   color: var(--ink-2);
-  margin: 0 0 16px;
+  margin: 14px 0 0;
+  font-variant-numeric: tabular-nums;
 }
 
-/* ── ghi chú gần đây ────────────────────────────────────────────────────── */
+.cont-done {
+  color: var(--accent);
+}
 
-.home-h2 {
-  font-family: var(--sans);
-  font-size: 15px;
-  font-weight: 660;
-  letter-spacing: -0.005em;
+.cont-error {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 1.5;
   color: var(--ink-2);
-  margin: 0 0 14px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--rule);
+  margin: 0 0 12px;
+  max-width: 56ch;
 }
 
-.home-note-list {
+/* ── MỤC LỤC (kiểu `\tableofcontents`) ──────────────────────────────────────
+   Mỗi chương một dòng: số mục (sans, cột cố định), tiêu đề (serif), dấu đã
+   đọc ở mép phải. Hàng ngăn bằng hairline xám; phần ngăn bằng nhãn. Chương
+   KẾ TIẾP mang màu nhấn — đó là câu trả lời thứ hai cho "mở cái gì bây giờ",
+   nhìn thấy được ngay trong danh sách. */
+.toc {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.toc-part {
+  margin: 20px 0 4px;
+}
+
+.toc-part:first-child {
+  margin-top: 0;
+}
+
+.toc-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc-row {
   display: grid;
-  gap: 18px;
+  grid-template-columns: 3.4em minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: baseline;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule);
 }
 
-/* Màu của chính ghi chú, lấy từ `colorOf(anchor)` — cùng bốn token mà bút tô
-   trong chương dùng, nên một ghi chú vàng ở đây là ghi chú vàng ở đó. */
-.home-note-row {
-  padding-left: 14px;
-  border-left: 3px solid var(--home-note-color, var(--rule-strong));
-}
-
-/* `--s4/--s3/--s1/--s5` — đúng bốn ô màu mà `--ann-y/g/b/p` được pha ra từ đó
-   (xem `styles/index.css`), nhưng ở độ đậm đầy đủ: `--ann-*` mang alpha 28%
-   để hai bút tô chồng nhau đọc được thành một dải đậm hơn, còn một nét kẻ
-   3px ở độ trong ấy thì gần như biến mất trên nền giấy. */
-.home-note-c-y {
-  --home-note-color: var(--s4);
-}
-
-.home-note-c-g {
-  --home-note-color: var(--s3);
-}
-
-.home-note-c-b {
-  --home-note-color: var(--s1);
-}
-
-.home-note-c-p {
-  --home-note-color: var(--s5);
-}
-
-/* Đoạn được trích là CHỮ THÂN — nó là văn bản của khoá học, không phải giao
-   diện — nên nó dùng serif, đúng như khi người đọc gặp nó trong chương. */
-.home-note-quote {
-  font-family: var(--serif);
-  font-size: 14px;
-  line-height: 1.55;
+.toc-num {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
   color: var(--ink-3);
-  margin: 0 0 5px;
+  font-variant-numeric: tabular-nums;
 }
 
-.home-note-text {
-  font-family: var(--sans);
-  font-size: 14px;
+.toc-title {
+  font-family: var(--font-serif);
+  font-size: 16.5px;
+  line-height: 1.4;
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.12em;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 150ms ease-out, color 150ms ease-out;
+}
+
+.toc-title:hover,
+.toc-title:focus-visible {
+  text-decoration-color: var(--accent);
+}
+
+.toc-row.is-done .toc-title {
+  color: var(--ink-2);
+}
+
+.toc-row.is-next .toc-title {
+  color: var(--accent);
+}
+
+.toc-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.toc-mark svg {
+  color: var(--accent);
+}
+
+/* ── LỀ: GHI CHÚ GẦN ĐÂY (marginalia) ──────────────────────────────────────
+   Đoạn trích nghiêng như `\emph` — nó là chữ của khoá học; ghi chú thẳng —
+   nó là chữ của người học. Một ô vuông 9px mang màu bút tô của chính ghi chú
+   (cùng bốn token `--s*` mà bút tô trong chương pha ra): nó nói "ghi chú này
+   màu vàng ở trong bài", và chỉ nói đúng thế. Không viền trái màu: đó là
+   một thiết bị của thẻ, không phải của lề sách. */
+.margin-notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mnote {
+  padding: 12px 0 14px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.mnote-c-y { --mnote-color: var(--s4); }
+.mnote-c-g { --mnote-color: var(--s3); }
+.mnote-c-b { --mnote-color: var(--s1); }
+.mnote-c-p { --mnote-color: var(--s5); }
+
+.mnote-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 8px;
+  vertical-align: 0.02em;
+  background: var(--mnote-color, var(--rule-strong));
+}
+
+.mnote-quote {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  margin: 0 0 6px;
+}
+
+.mnote-formula {
+  font-family: var(--font-sans);
+  font-style: normal;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 0 4px;
+  border: 1px solid var(--rule);
+}
+
+.mnote-text {
+  font-family: var(--font-serif);
+  font-size: 15.5px;
   line-height: 1.5;
   color: var(--ink);
-  margin: 0 0 6px;
+  margin: 0 0 7px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.home-note-link {
-  font-family: var(--sans);
+.mnote-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-family: var(--font-sans);
   font-size: 12px;
-  color: var(--ink-3);
-  text-decoration: none;
-}
-
-.home-note-link:hover,
-.home-note-link:focus-visible {
-  color: var(--accent);
-}
-
-.home-note-sep {
-  margin: 0 6px;
-}
-
-/* ── `/progress` — Tiến độ ──────────────────────────────────────────────── */
-
-.prog {
-  max-width: 46rem;
-}
-
-.prog .ch-title {
-  margin: 0 0 4px;
-}
-
-.prog .ch-lede {
-  margin: 0 0 26px;
-}
-
-.prog-note {
-  font-family: var(--sans);
-  font-size: 13.5px;
-  line-height: 1.55;
   color: var(--ink-3);
   margin: 0;
 }
 
-.prog-empty-link {
-  color: var(--accent);
+/* ── RỖNG: một đoạn văn, không phải một thẻ ────────────────────────────────── */
+.home-empty {
+  max-width: 56ch;
 }
 
-/*
- * CÂU, không phải ô đếm.
- *
- * Cỡ chữ ở đây làm đúng việc mà hai con số cỡ 40px từng làm sai: nó vẫn là thứ
- * đọc trước tiên trên trang, nhưng thứ được đọc là một câu hoàn chỉnh, nên
- * người đọc không phải tự ghép "42" với "phút đã học" ở dòng dưới.
- */
-.prog-sentence {
-  font-family: var(--serif);
-  font-size: clamp(19px, 2.4vw, 24px);
-  line-height: 1.45;
+.home-empty-h {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 26px;
+  line-height: 1.2;
   color: var(--ink);
-  margin: 0 0 34px;
-  max-width: 32em;
+  margin: 0 0 10px;
+}
+
+.home-empty-lede {
+  font-family: var(--font-serif);
+  font-size: 16.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  margin: 0 0 16px;
+}
+
+/* ── `/progress` — TIẾN ĐỘ ────────────────────────────────────────────────── */
+
+/* CÂU, không phải ô đếm: thứ đọc trước tiên trên trang là một câu tiếng Việt
+   hoàn chỉnh, cỡ lớn, serif. Ba ô số liệu từng đứng trên câu này đã đi — spec
+   IA của repo nói đúng điều ấy ("con số kể thành câu, không phải ô đếm rời"),
+   và ba ô kia là hero-metric template của category. */
+.prog-sentence {
+  font-family: var(--font-serif);
+  font-size: clamp(22px, 2.6vw, 30px);
+  line-height: 1.35;
+  color: var(--ink);
+  margin: 0 0 36px;
+  max-width: 34em;
+  text-wrap: pretty;
 }
 
 .prog-section {
-  margin: 0 0 34px;
+  margin: 0 0 36px;
 }
 
-.prog-h {
-  font-family: var(--sans);
-  font-size: 15px;
-  font-weight: 660;
-  color: var(--ink-2);
-  margin: 0 0 14px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--rule);
+/* Lịch cả năm: bố cục phần này vốn nằm ở `app-screens.css` (`.prog-cal*`);
+   ở đây chỉ đổi VẬT LIỆU: ô vuông góc (không bo), thang một sắc từ nhấn. */
+.prog-heat-cell,
+.prog-cal-cell {
+  border-radius: 0;
 }
 
-/* ── lịch nhiệt ─────────────────────────────────────────────────────────── */
-
-/*
- * Bảy cột (tuần) × bảy hàng (thứ Hai → Chủ nhật).
- *
- * `grid` trên hàng NGOÀI và `grid` trong mỗi cột, chứ không phải một lưới 49 ô
- * với `grid-auto-flow: column`: cách này giữ mỗi tuần là một phần tử DOM thật,
- * nên thứ tự đọc của trình đọc màn hình và thứ tự trong mã nguồn trùng nhau, và
- * một tuần không bao giờ bị bẻ đôi khi lưới co lại.
- */
-.prog-heat {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 4px;
-  max-width: 22rem;
-}
-
-.prog-heat-week {
-  display: grid;
-  grid-template-rows: repeat(7, 1fr);
-  gap: 4px;
-}
-
-.prog-heat-cell {
-  display: block;
-  aspect-ratio: 1;
-  border-radius: 3px;
-  background: var(--panel);
-}
-
-/* Ngày CÓ dữ liệu và bằng không: một ô ĐẶC. Nó đã được đo, và nó phải đọc
-   được như một ô chứ không như một chỗ trống — đo trên nền `--page`, riêng
-   `--panel` chênh quá ít để mắt tách nó khỏi ô dưới. */
 .prog-heat-l0 {
-  background: color-mix(in srgb, var(--ink) 9%, var(--panel));
+  background: color-mix(in srgb, var(--ink) 8%, var(--page));
 }
 
-/*
- * Ngày NGOÀI cửa sổ máy chủ trả về (`GET /stats` chỉ có 30 ngày, lịch có 49).
- *
- * Vẽ khác hẳn "0 phút" là bắt buộc, không phải trang trí: tô 19 ô ấy như ngày
- * không học là nói với người đọc rằng họ đã nghỉ ba tuần, trong khi sự thật là
- * không ai hỏi.
- */
 .prog-heat-unknown {
   background: transparent;
   box-shadow: inset 0 0 0 1px var(--rule);
 }
 
-/* Bốn bậc, cùng một sắc, khác độ đậm — không phải bốn màu. */
-.prog-heat-l1 {
-  background: color-mix(in srgb, var(--accent) 26%, var(--panel));
-}
-
-.prog-heat-l2 {
-  background: color-mix(in srgb, var(--accent) 48%, var(--panel));
-}
-
-.prog-heat-l3 {
-  background: color-mix(in srgb, var(--accent) 72%, var(--panel));
-}
-
-.prog-heat-l4 {
-  background: var(--accent);
-}
+.prog-heat-l1 { background: color-mix(in srgb, var(--accent) 28%, var(--page)); }
+.prog-heat-l2 { background: color-mix(in srgb, var(--accent) 50%, var(--page)); }
+.prog-heat-l3 { background: color-mix(in srgb, var(--accent) 74%, var(--page)); }
+.prog-heat-l4 { background: var(--accent); }
 
 .prog-heat-legend {
   display: flex;
   align-items: center;
   gap: 4px;
   margin: 12px 0 0;
-  font-family: var(--sans);
-  font-size: 11px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
   color: var(--ink-3);
 }
 
@@ -430,14 +526,111 @@
   margin: 0 4px;
 }
 
-/* ── theo khoá học ──────────────────────────────────────────────────────── */
+/* Cột NĂM ra lề: một danh sách dọc, năm đang xem mang màu nhấn + gạch chân. */
+.prog-years {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
 
+.prog-year-btn {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink-2);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 6px;
+  text-decoration-color: transparent;
+  transition: color 150ms ease-out, text-decoration-color 150ms ease-out;
+}
+
+.prog-year-btn:hover {
+  color: var(--ink);
+}
+
+.prog-year-btn.on {
+  color: var(--accent);
+  text-decoration-color: var(--accent);
+}
+
+.prog-year-btn:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 4px;
+}
+
+@media (max-width: 900px) {
+  .prog-years {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px 18px;
+  }
+}
+
+/* Khoá học trong năm, kèm trọng số: tên + một đường kẻ 2px + phần trăm. */
+.prog-weights {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.prog-weight {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(80px, 160px) 3.2em;
+  align-items: center;
+  column-gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--font-serif);
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.prog-weight-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prog-weight-bar {
+  display: block;
+  height: 2px;
+  background: var(--rule);
+}
+
+.prog-weight-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.prog-weight-pct {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  color: var(--ink-3);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Theo khoá học: bảng có kẻ. Thanh tiến độ là một ĐƯỜNG KẺ 2px — `\rule` —
+   không bo, không viên; con số đứng cạnh nó bằng chữ số tabular. */
 .prog-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 20px;
+}
+
+.prog-row {
+  padding: 12px 0 14px;
+  border-bottom: 1px solid var(--rule);
 }
 
 .prog-row-head {
@@ -445,34 +638,115 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 7px;
+  margin-bottom: 8px;
 }
 
 .prog-row-title {
-  font-family: var(--sans);
-  font-size: 14.5px;
-  font-weight: 620;
+  font-family: var(--font-serif);
+  font-size: 17px;
   color: var(--ink);
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.12em;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 150ms ease-out;
 }
 
 .prog-row-title:hover,
 .prog-row-title:focus-visible {
-  border-bottom-color: var(--rule-strong);
+  text-decoration-color: var(--accent);
 }
 
 .prog-row-n {
   flex: none;
-  font-family: var(--sans);
-  font-size: 12.5px;
-  color: var(--ink-3);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--ink-2);
   font-variant-numeric: tabular-nums;
 }
 
+.prog-bar {
+  height: 2px;
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.prog-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  min-width: 0;
+}
+
 .prog-row-minutes {
-  font-family: var(--sans);
-  font-size: 12px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
   color: var(--ink-3);
-  margin: 7px 0 0;
+  margin: 8px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── LỊCH CẢ NĂM — bố cục lưới (chuyển từ app-screens.css) ─────────────────
+   53 cột × 7 hàng. `minmax(0, 1fr)` cho cột co được: lịch phải vừa mọi bề
+   ngang chứ không đẩy trang ra thanh cuộn ngang. Không thẻ quanh lịch: nó
+   đứng trực tiếp trên giấy, dưới đầu mục có hairline mực.
+
+   KHÔNG đặt `background` trên `.prog-cal-cell`: hình dạng thuộc về lớp này,
+   MÀU thuộc về lớp bậc `.prog-heat-l*` ở trên — trộn hai thứ vào một luật là
+   cách chắc chắn để ô nào cũng phẳng một màu (bài học đã đo ba lần). */
+.prog-year {
+  margin: 0 0 36px;
+}
+
+.prog-year-main {
+  min-width: 0;
+}
+
+.prog-year-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.prog-cal-grid,
+.prog-cal-months {
+  display: grid;
+  grid-template-columns: repeat(53, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.prog-cal-months {
+  margin-bottom: 6px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.prog-cal-month {
+  grid-row: 1;
+  white-space: nowrap;
+}
+
+.prog-cal-week {
+  display: grid;
+  grid-template-rows: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.prog-cal-cell {
+  width: 100%;
+  aspect-ratio: 1;
+}
+
+/* Ô KHÔNG thuộc năm đang xem: trống hẳn — vẽ nó xám là nói ngày ấy "không
+   học", mà nó thuộc năm khác. */
+.prog-cal-out {
+  background: transparent;
+}
+
+.prog-year-courses {
+  margin-top: 24px;
 }
