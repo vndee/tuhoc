@@ -1114,8 +1114,11 @@ await pageB.reload();
 await expect(pageB.getByRole('listitem', { name: /c1/ })).toHaveClass(/done/);
 ```
 
-- [ ] **Step 6: Chạy** — `make test-e2e` (cần Docker). Bộ này nay **7 bài**:
-      `p1`×4, `p2`×1 (vừa gỡ cách ly), `s2`×1, `widget`×1. Ghi lại thời gian
+- [ ] **Step 6: Chạy** — `make test-e2e` (cần Docker). Con số **7 bài** dưới đây
+      (`p1`×4, `p2`×1 vừa gỡ cách ly, `s2`×1, `widget`×1) là **mô tả hình dạng tối
+      thiểu, KHÔNG phải trần**: nếu khôi phục thêm kịch bản của `p2` là đúng thì cứ
+      thêm. (Đo ở lúc thi công: đọc con số này như một trần đã khiến hai kịch bản
+      orphan/rescue của `p2` không được khôi phục.) Ghi lại thời gian
       chạy trước và sau: bỏ hai lần chờ 15 giây là một phép đo, không phải một
       cảm giác.
 - [ ] **Step 7: Commit** — `git commit -m "e2e: p2 hết cách ly (seed đúng mau-hop-le/c1), p1 thôi chờ hai bộ đếm 15s đã chết, thêm bài mất mạng"`
