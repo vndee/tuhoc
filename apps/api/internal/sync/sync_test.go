@@ -11,20 +11,30 @@
 // conflict, since this file's own package name is "sync_test", not
 // "sync". This file does import internal/sync itself (aliased "appsync",
 // matching server.go's own convention) purely to reference
-// appsync.SyncSafetyLag by name rather than duplicating its value as a
+// appsync.MaxItemsPerPush by name rather than duplicating its value as a
 // magic number — that alias is the real (and only) collision-avoidance
 // mechanism in this package; see internal/server/server.go for the fuller
 // reasoning.
+//
+// Pha 3 Task 3 note: GET /sync is gone (see internal/sync/handler.go's
+// package note). Every subtest below that used to read its own push back
+// through GET /sync now reads it back through GET /progress or
+// GET /annotations instead — the REST resources Pha 3 Tasks 1 and 2 built,
+// reached through this same server.New wiring. A few subtests whose real
+// subject WAS the pull path itself (the cursor's safety lag, the `since`
+// query param) are deleted outright, not adapted — there is nothing left
+// for them to be about. See this task's report for the full per-test
+// accounting.
 package sync_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"testing"
 	"time"
 
@@ -72,6 +82,10 @@ type progressOut struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
+// annotationOut deliberately has no DeletedAt field: GET /annotations
+// (unlike the old GET /sync) never emits one — a deleted annotation is
+// simply absent from the list (see internal/userdata's own AnnotationRow
+// doc comment).
 type annotationOut struct {
 	ID        string          `json:"id"`
 	CourseID  string          `json:"courseId"`
@@ -80,13 +94,6 @@ type annotationOut struct {
 	Note      string          `json:"note"`
 	CreatedAt string          `json:"createdAt"`
 	UpdatedAt string          `json:"updatedAt"`
-	DeletedAt *string         `json:"deletedAt"`
-}
-
-type pullOut struct {
-	Progress    []progressOut   `json:"progress"`
-	Annotations []annotationOut `json:"annotations"`
-	Cursor      string          `json:"cursor"`
 }
 
 type pushOut struct {
@@ -140,6 +147,41 @@ func sessionCookie(resp *http.Response) *http.Cookie {
 		}
 	}
 	return nil
+}
+
+// --- read-back helpers, replacing GET /sync (see this file's Pha 3 Task 3
+// note above): every subtest that used to prove a push's effect by reading
+// it back through GET /sync now reads it back through one of these two
+// instead, mirroring internal/userdata's own getProgress/getAnnotations
+// helpers in progress_test.go / annotations_test.go. ---
+
+// getProgress calls GET /progress and returns the parsed rows.
+func getProgress(t *testing.T, app *fiber.App, cookie *http.Cookie) []progressOut {
+	t.Helper()
+	resp, raw := doRequest(t, app, http.MethodGet, "/progress", nil, cookie)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /progress: want 200 got %d body=%s", resp.StatusCode, raw)
+	}
+	var out struct {
+		Progress []progressOut `json:"progress"`
+	}
+	mustUnmarshal(t, raw, &out)
+	return out.Progress
+}
+
+// getAnnotations calls GET /annotations (every course, no ?course= filter
+// — none of this file's subtests need one) and returns the parsed rows.
+func getAnnotations(t *testing.T, app *fiber.App, cookie *http.Cookie) []annotationOut {
+	t.Helper()
+	resp, raw := doRequest(t, app, http.MethodGet, "/annotations", nil, cookie)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /annotations: want 200 got %d body=%s", resp.StatusCode, raw)
+	}
+	var out struct {
+		Annotations []annotationOut `json:"annotations"`
+	}
+	mustUnmarshal(t, raw, &out)
+	return out.Annotations
 }
 
 // registerUser creates a fresh account and returns its session cookie and
@@ -206,14 +248,19 @@ func pushBody(progress []map[string]any, annotations []map[string]any) map[strin
 
 // TestSyncFlows covers the three cases the task brief names — (a) a
 // strictly older write must not overwrite a newer one, (b) two-device
-// convergence, (c) another user's annotations must never leak through
-// GET — plus the additional cases this task's own instructions call out:
-// user isolation for progress (not just annotations), tombstone/done=false
-// propagation, idempotent batch replay, cursor semantics, timezone/
-// precision handling, atomic batch rejection, and the 401 case for both
-// routes. All subtests share one store.TestPool container (each gets its
-// own fiber.App instance and its own user(s)) to keep the container-spin-
-// up cost to once per run, exactly like auth_test.go.
+// convergence, (c) another user's annotations must never leak through a
+// read route — plus the additional cases this task's own instructions call
+// out: user isolation for progress (not just annotations), tombstone/
+// done=false propagation, idempotent batch replay, timezone/precision
+// handling, atomic batch rejection, and the auth gate on both /sync verbs.
+// Pha 3 Task 3 deleted GET /sync, its `since` cursor, and every subtest
+// whose real subject was that cursor's own safety-lag formula (see the
+// deletion note inline, below); every OTHER subtest that used to read a
+// push back through GET /sync now reads it back through GET /progress or
+// GET /annotations instead (see this file's own package note above). All
+// subtests share one store.TestPool container (each gets its own
+// fiber.App instance and its own user(s)) to keep the container-spin-up
+// cost to once per run, exactly like auth_test.go.
 func TestSyncFlows(t *testing.T) {
 	pool := store.TestPool(t)
 
@@ -246,16 +293,11 @@ func TestSyncFlows(t *testing.T) {
 			t.Fatalf("push B (older, must lose LWW): want applied=0 got %d", outB.Applied)
 		}
 
-		getResp, getRaw := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
-		if getResp.StatusCode != http.StatusOK {
-			t.Fatalf("get: want 200 got %d body=%s", getResp.StatusCode, getRaw)
+		rows := getProgress(t, app, cookie)
+		if len(rows) != 1 {
+			t.Fatalf("want 1 progress row, got %d: %+v", len(rows), rows)
 		}
-		var pull pullOut
-		mustUnmarshal(t, getRaw, &pull)
-		if len(pull.Progress) != 1 {
-			t.Fatalf("want 1 progress row, got %d: %+v", len(pull.Progress), pull.Progress)
-		}
-		if !pull.Progress[0].Done {
+		if !rows[0].Done {
 			t.Fatalf("want done=true (A kept), got done=false (B's older write leaked through)")
 		}
 	})
@@ -299,24 +341,27 @@ func TestSyncFlows(t *testing.T) {
 			t.Fatalf("device1's older-but-later-arriving push must be rejected (applied=0), got applied=%d", outX.Applied)
 		}
 
-		// Both devices pull and must converge on y — never on x.
+		// Both devices read back and must converge on y — never on x.
 		for _, device := range []string{"device1", "device2"} {
-			getResp, getRaw := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
-			if getResp.StatusCode != http.StatusOK {
-				t.Fatalf("%s get: want 200 got %d body=%s", device, getResp.StatusCode, getRaw)
+			rows := getProgress(t, app, cookie)
+			if len(rows) != 1 {
+				t.Fatalf("%s: want 1 progress row, got %d", device, len(rows))
 			}
-			var pull pullOut
-			mustUnmarshal(t, getRaw, &pull)
-			if len(pull.Progress) != 1 {
-				t.Fatalf("%s: want 1 progress row, got %d", device, len(pull.Progress))
-			}
-			if !pull.Progress[0].Done {
+			if !rows[0].Done {
 				t.Fatalf("%s: converged value must be y (done=true), got done=false — the LWW guard did not hold", device)
 			}
 		}
 	})
 
-	t.Run("annotations from another user do not leak into GET /sync", func(t *testing.T) {
+	// Was "annotations from another user do not leak into GET /sync" before
+	// Pha 3 Task 3 deleted that route. Re-expressed through GET /annotations
+	// (Task 2's surviving reader) rather than deleted outright: the real
+	// invariant under test isn't about GET /sync's own query — it's whether
+	// a row this package's push path writes into the shared `annotations`
+	// table stays scoped to its owner no matter which route later reads it
+	// back. That's still worth proving now that a DIFFERENT package
+	// (internal/userdata) owns the read side.
+	t.Run("annotations pushed by another user do not leak into GET /annotations", func(t *testing.T) {
 		app := newTestApp(pool)
 		cookieA, _ := registerUser(t, app, "leak-a")
 		cookieB, _ := registerUser(t, app, "leak-b")
@@ -329,15 +374,10 @@ func TestSyncFlows(t *testing.T) {
 			t.Fatalf("push annotation as user A: want 200 got %d body=%s", resp.StatusCode, raw)
 		}
 
-		getResp, getRaw := doRequest(t, app, http.MethodGet, "/sync", nil, cookieB)
-		if getResp.StatusCode != http.StatusOK {
-			t.Fatalf("get as user B: want 200 got %d", getResp.StatusCode)
-		}
-		var pull pullOut
-		mustUnmarshal(t, getRaw, &pull)
-		for _, a := range pull.Annotations {
+		rows := getAnnotations(t, app, cookieB)
+		for _, a := range rows {
 			if a.ID == annID.String() {
-				t.Fatalf("user B's GET /sync leaked user A's annotation %s", annID)
+				t.Fatalf("user B's GET /annotations leaked user A's annotation %s (pushed through POST /sync)", annID)
 			}
 		}
 	})
@@ -369,14 +409,9 @@ func TestSyncFlows(t *testing.T) {
 			t.Fatalf("B's attempt to hijack A's annotation id must be rejected (applied=0), got applied=%d", outB.Applied)
 		}
 
-		getRespA, getRawA := doRequest(t, app, http.MethodGet, "/sync", nil, cookieA)
-		if getRespA.StatusCode != http.StatusOK {
-			t.Fatalf("get as A: want 200 got %d", getRespA.StatusCode)
-		}
-		var pullA pullOut
-		mustUnmarshal(t, getRawA, &pullA)
+		rowsA := getAnnotations(t, app, cookieA)
 		found := false
-		for _, a := range pullA.Annotations {
+		for _, a := range rowsA {
 			if a.ID == annID.String() {
 				found = true
 				if a.Note != "A's note" {
@@ -385,18 +420,13 @@ func TestSyncFlows(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Fatalf("A's annotation missing from A's own GET /sync")
+			t.Fatalf("A's annotation missing from A's own GET /annotations")
 		}
 
-		getRespB, getRawB := doRequest(t, app, http.MethodGet, "/sync", nil, cookieB)
-		if getRespB.StatusCode != http.StatusOK {
-			t.Fatalf("get as B: want 200 got %d", getRespB.StatusCode)
-		}
-		var pullB pullOut
-		mustUnmarshal(t, getRawB, &pullB)
-		for _, a := range pullB.Annotations {
+		rowsB := getAnnotations(t, app, cookieB)
+		for _, a := range rowsB {
 			if a.ID == annID.String() {
-				t.Fatalf("B's GET /sync shows A's annotation id %s, which must never be visible to B", annID)
+				t.Fatalf("B's GET /annotations shows A's annotation id %s, which must never be visible to B", annID)
 			}
 		}
 	})
@@ -418,18 +448,28 @@ func TestSyncFlows(t *testing.T) {
 			t.Fatalf("push as B: want 200 got %d body=%s", respB.StatusCode, rawB)
 		}
 
-		getA, rawGetA := doRequest(t, app, http.MethodGet, "/sync", nil, cookieA)
-		if getA.StatusCode != http.StatusOK {
-			t.Fatalf("get A: want 200 got %d", getA.StatusCode)
-		}
-		var pullA pullOut
-		mustUnmarshal(t, rawGetA, &pullA)
-		if len(pullA.Progress) != 1 || !pullA.Progress[0].Done {
-			t.Fatalf("A's own progress must be unaffected by B's push to the same course/chapter/status key: %+v", pullA.Progress)
+		rowsA := getProgress(t, app, cookieA)
+		if len(rowsA) != 1 || !rowsA[0].Done {
+			t.Fatalf("A's own progress must be unaffected by B's push to the same course/chapter/status key: %+v", rowsA)
 		}
 	})
 
-	t.Run("pull includes tombstoned annotations and done=false progress", func(t *testing.T) {
+	// Renamed and rewritten for Pha 3 Task 2 (migration 0009 dropped
+	// annotations.deleted_at — see internal/userdata, the REST replacement
+	// this column's removal was for). Before that migration, a pushed
+	// tombstone still occupied a row (deleted_at set) and GET /sync
+	// returned it WITH a deletedAt, so other devices could see the
+	// deletion as an event. Now PushBatch translates a DeletedAt-bearing
+	// item into a real DELETE (see repo.go's deleteAnnotationSQL and its
+	// own doc comment) — there is no tombstone row left to return.
+	//
+	// Rewritten AGAIN for Pha 3 Task 3, which deleted GET /sync itself
+	// (see handler.go's package note): the read-back below now goes
+	// through GET /annotations / GET /progress, Tasks 1–2's surviving REST
+	// resources, reached through this same server.New wiring. The
+	// acceptance criterion is unchanged — the annotation must be GONE, not
+	// present-with-deletedAt — only the route proving it changed.
+	t.Run("a pushed tombstone hard-deletes the annotation; done=false progress still propagates", func(t *testing.T) {
 		app := newTestApp(pool)
 		cookie, _ := registerUser(t, app, "tomb")
 
@@ -447,6 +487,11 @@ func TestSyncFlows(t *testing.T) {
 		if delResp.StatusCode != http.StatusOK {
 			t.Fatalf("delete (tombstone) push: want 200 got %d body=%s", delResp.StatusCode, delRaw)
 		}
+		var delOut pushOut
+		mustUnmarshal(t, delRaw, &delOut)
+		if delOut.Applied != 1 {
+			t.Fatalf("delete push: want applied=1 (the row existed and the delete's updated_at is newer) got %d", delOut.Applied)
+		}
 
 		unmarkResp, unmarkRaw := doRequest(t, app, http.MethodPost, "/sync",
 			pushBody([]map[string]any{progressPushItem("c1", "ch2", "read", false, now)}, nil), cookie)
@@ -454,28 +499,16 @@ func TestSyncFlows(t *testing.T) {
 			t.Fatalf("push done=false progress: want 200 got %d body=%s", unmarkResp.StatusCode, unmarkRaw)
 		}
 
-		getResp, getRaw := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
-		if getResp.StatusCode != http.StatusOK {
-			t.Fatalf("get: want 200 got %d", getResp.StatusCode)
-		}
-		var pull pullOut
-		mustUnmarshal(t, getRaw, &pull)
-
-		gotTombstone := false
-		for _, a := range pull.Annotations {
+		annRows := getAnnotations(t, app, cookie)
+		for _, a := range annRows {
 			if a.ID == annID.String() {
-				if a.DeletedAt == nil {
-					t.Fatalf("tombstone missing deletedAt in GET /sync response")
-				}
-				gotTombstone = true
+				t.Fatalf("deleted annotation %s still present in GET /annotations — a real DELETE must not leave a row behind", annID)
 			}
 		}
-		if !gotTombstone {
-			t.Fatalf("tombstoned annotation missing entirely from GET /sync — deletions must propagate")
-		}
 
+		progRows := getProgress(t, app, cookie)
 		gotUnmarked := false
-		for _, p := range pull.Progress {
+		for _, p := range progRows {
 			if p.ChapterID == "ch2" {
 				if p.Done {
 					t.Fatalf("want done=false for ch2, got true")
@@ -484,7 +517,7 @@ func TestSyncFlows(t *testing.T) {
 			}
 		}
 		if !gotUnmarked {
-			t.Fatalf("done=false progress row missing entirely from GET /sync — unmarking must propagate")
+			t.Fatalf("done=false progress row missing entirely from GET /progress — unmarking must propagate")
 		}
 	})
 
@@ -517,180 +550,30 @@ func TestSyncFlows(t *testing.T) {
 			t.Fatalf("retried identical push: want applied=0 (equal timestamp does not re-write) got %d", out2.Applied)
 		}
 
-		getResp, getRaw := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
-		if getResp.StatusCode != http.StatusOK {
-			t.Fatalf("get: want 200 got %d", getResp.StatusCode)
-		}
-		var pull pullOut
-		mustUnmarshal(t, getRaw, &pull)
-		if len(pull.Progress) != 1 {
-			t.Fatalf("replay must not create a duplicate row: want 1 progress row got %d", len(pull.Progress))
+		rows := getProgress(t, app, cookie)
+		if len(rows) != 1 {
+			t.Fatalf("replay must not create a duplicate row: want 1 progress row got %d", len(rows))
 		}
 	})
 
-	t.Run("cursor is safety-lagged behind max updated_at; echoes since when nothing changed", func(t *testing.T) {
-		app := newTestApp(pool)
-		cookie, _ := registerUser(t, app, "cursor")
-
-		getResp0, getRaw0 := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
-		if getResp0.StatusCode != http.StatusOK {
-			t.Fatalf("get (empty account): want 200 got %d", getResp0.StatusCode)
-		}
-		var pull0 pullOut
-		mustUnmarshal(t, getRaw0, &pull0)
-		if pull0.Cursor != "" {
-			t.Fatalf("empty account, since absent: want cursor=\"\" got %q", pull0.Cursor)
-		}
-
-		t1 := nowUTC()
-		pushResp, pushRaw := doRequest(t, app, http.MethodPost, "/sync",
-			pushBody([]map[string]any{progressPushItem("c1", "cursor1", "read", true, t1)}, nil), cookie)
-		if pushResp.StatusCode != http.StatusOK {
-			t.Fatalf("push: want 200 got %d body=%s", pushResp.StatusCode, pushRaw)
-		}
-
-		getResp1, getRaw1 := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
-		if getResp1.StatusCode != http.StatusOK {
-			t.Fatalf("get (after push): want 200 got %d", getResp1.StatusCode)
-		}
-		var pull1 pullOut
-		mustUnmarshal(t, getRaw1, &pull1)
-		if pull1.Cursor == "" {
-			t.Fatalf("want non-empty cursor after a push")
-		}
-		cursorTime, err := time.Parse(time.RFC3339Nano, pull1.Cursor)
-		if err != nil {
-			t.Fatalf("cursor not parseable as RFC3339Nano: %v", err)
-		}
-		// The cursor must trail t1 by exactly SyncSafetyLag, not equal it —
-		// this is the fix's whole point: a raw max(updated_at) cursor is
-		// unsafe (see the regression test right below this one).
-		wantCursor := t1.Add(-appsync.SyncSafetyLag)
-		if !cursorTime.Equal(wantCursor) {
-			t.Fatalf("cursor: want t1-SyncSafetyLag=%v got %v", wantCursor, cursorTime)
-		}
-		if !cursorTime.Before(t1) {
-			t.Fatalf("cursor must lag strictly behind t1, got cursor=%v t1=%v", cursorTime, t1)
-		}
-
-		// Poll again using the lagged cursor as since: t1 falls INSIDE the
-		// trailing SyncSafetyLag window behind that cursor (by
-		// construction — the cursor is t1-lag), so the row is deliberately
-		// re-delivered. This is the intentional, harmless re-delivery
-		// behavior the fix's doc comment calls out: a client re-applying
-		// the same row under the same LWW rule is a no-op (see
-		// TestSyncFlows/replaying_an_identical_batch_is_idempotent).
-		nextURL := "/sync?" + url.Values{"since": {pull1.Cursor}}.Encode()
-		getResp2, getRaw2 := doRequest(t, app, http.MethodGet, nextURL, nil, cookie)
-		if getResp2.StatusCode != http.StatusOK {
-			t.Fatalf("get with since=cursor: want 200 got %d body=%s", getResp2.StatusCode, getRaw2)
-		}
-		var pull2 pullOut
-		mustUnmarshal(t, getRaw2, &pull2)
-		if len(pull2.Progress) != 1 {
-			t.Fatalf("polling again with since=<lagged cursor>: want the row re-delivered (still inside the lag window), got %d progress rows", len(pull2.Progress))
-		}
-		if pull2.Cursor != pull1.Cursor {
-			t.Fatalf("polling again with the same data and no new writes: want cursor to stay put at %q, got %q", pull1.Cursor, pull2.Cursor)
-		}
-
-		// Poll with a since far beyond any row and beyond the lag window
-		// entirely (simulating a client that has fully caught up): nothing
-		// new is found, and the cursor is echoed back exactly as sent,
-		// proving the "nothing changed -> unchanged, non-blank cursor"
-		// property still holds under the new formula (the `since` floor).
-		future := t1.Add(2 * appsync.SyncSafetyLag)
-		futureURL := "/sync?" + url.Values{"since": {future.Format(time.RFC3339Nano)}}.Encode()
-		getResp3, getRaw3 := doRequest(t, app, http.MethodGet, futureURL, nil, cookie)
-		if getResp3.StatusCode != http.StatusOK {
-			t.Fatalf("get with since=<far future>: want 200 got %d body=%s", getResp3.StatusCode, getRaw3)
-		}
-		var pull3 pullOut
-		mustUnmarshal(t, getRaw3, &pull3)
-		if len(pull3.Progress) != 0 || len(pull3.Annotations) != 0 {
-			t.Fatalf("polling with since beyond every row: want empty result, got %+v", pull3)
-		}
-		cursor3, err := time.Parse(time.RFC3339Nano, pull3.Cursor)
-		if err != nil {
-			t.Fatalf("cursor not parseable as RFC3339Nano: %v", err)
-		}
-		if !cursor3.Equal(future) {
-			t.Fatalf("polling with since beyond every row: want cursor echoed back as %v, got %v", future, cursor3)
-		}
-	})
-
-	// This is the fix's real acceptance test — it reproduces the exact
-	// commit-ordering race described in Usecase.Pull's doc comment and
-	// proves the safety-lagged cursor closes it. It is deliberately
-	// written so it would fail against the pre-fix cursor formula
-	// (cursor = raw max(updated_at) of the returned rows): see this task's
-	// report for the before/after run confirming that.
-	t.Run("a late-committing row with an older updated_at survives the safety-lagged cursor", func(t *testing.T) {
-		app := newTestApp(pool)
-		cookie, _ := registerUser(t, app, "latecommit")
-
-		// Step 1: device B pushes "now" and its transaction commits first.
-		tB := nowUTC()
-		respB, rawB := doRequest(t, app, http.MethodPost, "/sync",
-			pushBody([]map[string]any{progressPushItem("c1", "chB", "read", true, tB)}, nil), cookie)
-		if respB.StatusCode != http.StatusOK {
-			t.Fatalf("device B push: want 200 got %d body=%s", respB.StatusCode, rawB)
-		}
-
-		// Step 2: a poller captures the cursor right after B's row lands —
-		// this models the poll that happens *between* device A's push
-		// beginning and it committing.
-		pollResp, pollRaw := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
-		if pollResp.StatusCode != http.StatusOK {
-			t.Fatalf("poll after B: want 200 got %d body=%s", pollResp.StatusCode, pollRaw)
-		}
-		var poll pullOut
-		mustUnmarshal(t, pollRaw, &poll)
-		if poll.Cursor == "" {
-			t.Fatalf("want a non-empty cursor after B's push")
-		}
-
-		// Step 3: device A's push lands now, but carries an updated_at
-		// strictly OLDER than B's — modeling a transaction that started
-		// before B's but committed after this poll captured its cursor.
-		// Critically, tA is older than the RAW max the poller already
-		// observed (tB), which is exactly the scenario a naive
-		// max(updated_at) cursor cannot handle.
-		tA := tB.Add(-5 * time.Second)
-		respA, rawA := doRequest(t, app, http.MethodPost, "/sync",
-			pushBody([]map[string]any{progressPushItem("c1", "chA", "read", true, tA)}, nil), cookie)
-		if respA.StatusCode != http.StatusOK {
-			t.Fatalf("device A push: want 200 got %d body=%s", respA.StatusCode, rawA)
-		}
-		var outA pushOut
-		mustUnmarshal(t, rawA, &outA)
-		if outA.Applied != 1 {
-			t.Fatalf("device A's push is a fresh row (different chapter), not a conflict: want applied=1 got %d", outA.Applied)
-		}
-
-		// Step 4: resume from the cursor captured in step 2, BEFORE A
-		// committed. A's row must still be visible: its updated_at
-		// (tB-5s) is inside the trailing SyncSafetyLag window behind the
-		// cursor (tB-lag, since B was the only row seen at that point), so
-		// tA > cursor holds and the row is returned.
-		resumeURL := "/sync?" + url.Values{"since": {poll.Cursor}}.Encode()
-		resumeResp, resumeRaw := doRequest(t, app, http.MethodGet, resumeURL, nil, cookie)
-		if resumeResp.StatusCode != http.StatusOK {
-			t.Fatalf("resume from captured cursor: want 200 got %d body=%s", resumeResp.StatusCode, resumeRaw)
-		}
-		var resume pullOut
-		mustUnmarshal(t, resumeRaw, &resume)
-
-		found := false
-		for _, p := range resume.Progress {
-			if p.ChapterID == "chA" {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatalf("device A's late-committing row (updated_at=%v) was lost: resuming from the cursor captured before it committed (cursor=%s) did not return it — got %+v", tA, poll.Cursor, resume.Progress)
-		}
-	})
+	// DELETED (Pha 3 Task 3), not adapted:
+	//   - "cursor is safety-lagged behind max updated_at; echoes since when
+	//     nothing changed"
+	//   - "a late-committing row with an older updated_at survives the
+	//     safety-lagged cursor" (the fix's own regression test for the
+	//     commit-ordering race Usecase.Pull's now-deleted doc comment
+	//     described)
+	// Both subjects were the Pull cursor's own safety-lag formula — since
+	// (max updated_at - SyncSafetyLag), floored at `since`. There is no
+	// cursor left to be safety-lagged: GET /sync, the `since` query
+	// parameter, Usecase.Pull, and the SyncSafetyLag constant are all gone
+	// (see handler.go's package note and usecase.go's Usecase doc comment).
+	// Re-expressing either test through GET /progress would assert nothing
+	// real — neither test's failure mode (a poller silently losing a row
+	// that committed late) can happen anymore, because there is no poller.
+	// Keeping them around unable to test their own subject would be
+	// exactly the "keep a test that now asserts nothing" this task's own
+	// instructions rule out.
 
 	t.Run("push applies progress and annotations together in one call", func(t *testing.T) {
 		app := newTestApp(pool)
@@ -729,13 +612,8 @@ func TestSyncFlows(t *testing.T) {
 			t.Fatalf("batch with one malformed item: want 400 got %d body=%s", resp.StatusCode, raw)
 		}
 
-		getResp, getRaw := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
-		if getResp.StatusCode != http.StatusOK {
-			t.Fatalf("get: want 200 got %d", getResp.StatusCode)
-		}
-		var pull pullOut
-		mustUnmarshal(t, getRaw, &pull)
-		for _, p := range pull.Progress {
+		rows := getProgress(t, app, cookie)
+		for _, p := range rows {
 			if p.ChapterID == "atomic-valid" {
 				t.Fatalf("the valid item in a rejected batch must not have been applied (want all-or-nothing), but it was")
 			}
@@ -776,14 +654,9 @@ func TestSyncFlows(t *testing.T) {
 			t.Fatalf("a genuinely later write, even at lower (second) precision, must still win: want applied=1 got %d", out2.Applied)
 		}
 
-		getResp, getRaw := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
-		if getResp.StatusCode != http.StatusOK {
-			t.Fatalf("get: want 200 got %d", getResp.StatusCode)
-		}
-		var pull pullOut
-		mustUnmarshal(t, getRaw, &pull)
+		rows := getProgress(t, app, cookie)
 		found := false
-		for _, p := range pull.Progress {
+		for _, p := range rows {
 			if p.ChapterID == "tz1" {
 				found = true
 				if p.Done {
@@ -792,38 +665,36 @@ func TestSyncFlows(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Fatalf("progress row tz1 missing from GET /sync")
+			t.Fatalf("progress row tz1 missing from GET /progress")
 		}
 	})
 
-	t.Run("GET /sync with an unparseable since is 400", func(t *testing.T) {
-		app := newTestApp(pool)
-		cookie, _ := registerUser(t, app, "badsince")
-		resp, raw := doRequest(t, app, http.MethodGet, "/sync?since=not-a-timestamp", nil, cookie)
-		if resp.StatusCode != http.StatusBadRequest {
-			t.Fatalf("GET /sync with garbage since: want 400 got %d body=%s", resp.StatusCode, raw)
-		}
-	})
+	// DELETED (Pha 3 Task 3): "GET /sync with an unparseable since is 400".
+	// Its subject was Pull's own `since` query-parameter parsing, which no
+	// longer exists — GET /sync is gone, and POST /sync never had a
+	// `since` parameter to begin with. Nothing survives to re-express this
+	// against.
 
-	// I3 — a device with a fast clock must not be able to poison the
-	// cursor for every OTHER device the same user owns.
+	// I3 — a device with a fast clock must not be able to poison a row's
+	// LWW position far into the future.
 	//
-	// `updated_at` comes from the client (handler.go parses it out of the
-	// request body) and is the sole input to the cursor Pull hands back.
-	// Before the clamp, one device stamping a row an hour ahead pushed the
-	// watermark to (thatTime - SyncSafetyLag), i.e. ~59 minutes into the
-	// future — and every row written afterwards with a CORRECT timestamp
-	// then fell BELOW that cursor and was never delivered to anyone, with
-	// no error anywhere, until wall-clock time caught up. The safety lag
-	// is sized for commit-ordering jitter (milliseconds), not clock skew
-	// (unbounded), so it cannot absorb this.
-	t.Run("a future-dated client timestamp does not poison the cursor for the user's other devices", func(t *testing.T) {
+	// Before Pha 3 Task 3 deleted GET /sync, this same concern was framed
+	// around Pull's shared cursor (a fast device could poison the
+	// watermark every one of that user's devices polled with — see
+	// usecase.go's clampFuture doc comment for the fuller history). That
+	// framing is gone along with the cursor; what remains, and what this
+	// subtest now proves, is that the clamp still protects the STORED row
+	// itself: `updated_at` comes from the client (handler.go parses it out
+	// of the request body), and an unclamped future value would let that
+	// row win every future LWW comparison — against another device's push,
+	// or against PUT /progress — until wall-clock time caught up to it.
+	t.Run("a future-dated client timestamp is clamped to server time, not stored verbatim", func(t *testing.T) {
 		app := newTestApp(pool)
 		cookie, _ := registerUser(t, app, "fastclock")
 
 		t0 := nowUTC()
-		// An hour ahead: far past SyncSafetyLag (60s), which is the whole
-		// point — anything inside the lag is absorbed by design.
+		// An hour ahead — far past any plausible commit-ordering jitter,
+		// which is the whole point of the assertion below.
 		skewed := t0.Add(time.Hour)
 
 		resp, raw := doRequest(t, app, http.MethodPost, "/sync",
@@ -834,57 +705,19 @@ func TestSyncFlows(t *testing.T) {
 
 		// The stored row itself is clamped to server-now, so it cannot be
 		// used to beat every future edit under last-write-wins either.
-		_, firstRaw := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
-		var first pullOut
-		mustUnmarshal(t, firstRaw, &first)
-		if len(first.Progress) != 1 {
-			t.Fatalf("want 1 progress row back, got %d: %+v", len(first.Progress), first.Progress)
+		rows := getProgress(t, app, cookie)
+		if len(rows) != 1 {
+			t.Fatalf("want 1 progress row back, got %d: %+v", len(rows), rows)
 		}
-		storedUpdatedAt, err := time.Parse(time.RFC3339Nano, first.Progress[0].UpdatedAt)
+		storedUpdatedAt, err := time.Parse(time.RFC3339Nano, rows[0].UpdatedAt)
 		if err != nil {
-			t.Fatalf("parse stored updatedAt %q: %v", first.Progress[0].UpdatedAt, err)
+			t.Fatalf("parse stored updatedAt %q: %v", rows[0].UpdatedAt, err)
 		}
 		// A generous ceiling: the clamp uses the API server's own clock,
 		// which is this same process, so "not meaningfully in the future"
 		// is the honest assertion — not equality with any exact instant.
 		if storedUpdatedAt.After(t0.Add(time.Minute)) {
 			t.Fatalf("stored updatedAt %s was not clamped to server-now (test started at %s) — the client's clock still decides", storedUpdatedAt, t0)
-		}
-
-		if first.Cursor == "" {
-			t.Fatalf("want a non-empty cursor after a push, got empty")
-		}
-		cursor, err := time.Parse(time.RFC3339Nano, first.Cursor)
-		if err != nil {
-			t.Fatalf("parse cursor %q: %v", first.Cursor, err)
-		}
-		if cursor.After(t0) {
-			t.Fatalf("cursor %s is in the future relative to the test's own start (%s) — the fast device poisoned the watermark", cursor, t0)
-		}
-
-		// The real consequence, stated as a behaviour rather than as a
-		// property of the cursor string: a SUBSEQUENT, correctly-stamped
-		// row must still be delivered to a device polling with the cursor
-		// the poisoned pull handed back.
-		later := nowUTC().Add(time.Second)
-		resp2, raw2 := doRequest(t, app, http.MethodPost, "/sync",
-			pushBody([]map[string]any{progressPushItem("c1", "ch-correct", "read", true, later)}, nil), cookie)
-		if resp2.StatusCode != http.StatusOK {
-			t.Fatalf("push from the correct-clock device: want 200 got %d body=%s", resp2.StatusCode, raw2)
-		}
-
-		_, secondRaw := doRequest(t, app, http.MethodGet, "/sync?since="+url.QueryEscape(first.Cursor), nil, cookie)
-		var second pullOut
-		mustUnmarshal(t, secondRaw, &second)
-
-		var sawCorrectRow bool
-		for _, row := range second.Progress {
-			if row.ChapterID == "ch-correct" {
-				sawCorrectRow = true
-			}
-		}
-		if !sawCorrectRow {
-			t.Fatalf("the correctly-timestamped row was never delivered to a device polling with cursor=%s — this is the silent data loss the clamp exists to prevent; got %+v", first.Cursor, second.Progress)
 		}
 	})
 
@@ -908,15 +741,13 @@ func TestSyncFlows(t *testing.T) {
 			t.Fatalf("push of an offline edit: want 200 got %d body=%s", resp.StatusCode, raw)
 		}
 
-		_, pullRaw := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
-		var pull pullOut
-		mustUnmarshal(t, pullRaw, &pull)
-		if len(pull.Progress) != 1 {
-			t.Fatalf("want 1 progress row back, got %d: %+v", len(pull.Progress), pull.Progress)
+		rows := getProgress(t, app, cookie)
+		if len(rows) != 1 {
+			t.Fatalf("want 1 progress row back, got %d: %+v", len(rows), rows)
 		}
-		got, err := time.Parse(time.RFC3339Nano, pull.Progress[0].UpdatedAt)
+		got, err := time.Parse(time.RFC3339Nano, rows[0].UpdatedAt)
 		if err != nil {
-			t.Fatalf("parse stored updatedAt %q: %v", pull.Progress[0].UpdatedAt, err)
+			t.Fatalf("parse stored updatedAt %q: %v", rows[0].UpdatedAt, err)
 		}
 		if !got.Equal(offlineEdit) {
 			t.Fatalf("past-dated updatedAt was rewritten: sent %s, stored %s — offline edits depend on this being untouched", offlineEdit, got)
@@ -977,14 +808,9 @@ func TestSyncFlows(t *testing.T) {
 		}
 
 		// Neither request wrote anything.
-		getResp, getRaw := doRequest(t, app, http.MethodGet, "/sync", nil, cookie)
-		if getResp.StatusCode != http.StatusOK {
-			t.Fatalf("get: want 200 got %d body=%s", getResp.StatusCode, getRaw)
-		}
-		var pull pullOut
-		mustUnmarshal(t, getRaw, &pull)
-		if n := len(pull.Progress); n != 0 {
-			t.Errorf("a refused batch left %d progress row(s) behind: %+v", n, pull.Progress)
+		rows := getProgress(t, app, cookie)
+		if n := len(rows); n != 0 {
+			t.Errorf("a refused batch left %d progress row(s) behind: %+v", n, rows)
 		}
 
 		// Anti-vacuity: an ordinary batch from the same session still
@@ -1001,15 +827,24 @@ func TestSyncFlows(t *testing.T) {
 		}
 	})
 
-	// Ruling F3: both routes must reject an unauthenticated request with
-	// 401 — the same case auth_test.go pins for /me, exercised here for
-	// sync's own two routes.
-	t.Run("401 without a session cookie on both GET and POST /sync", func(t *testing.T) {
+	// Was "401 without a session cookie on both GET and POST /sync" (ruling
+	// F3). GET /sync is deleted by Pha 3 Task 3 — there is no auth gate
+	// left on it to 401-check — so this pins the route's actual removal
+	// instead: fiber matches the path "/sync" (POST is still registered
+	// there) but not the method, which is 405 Method Not Allowed, not 404
+	// — confirmed by running this subtest against the pre-fix expectation
+	// (404) and observing the real response before writing this comment.
+	// This also keeps the still-live half of ruling F3: POST /sync must
+	// still reject an unauthenticated request with 401, the same case
+	// auth_test.go pins for /me. A future change that silently re-wired
+	// Pull back onto GET /sync would turn this 405 into a 200/401 pair
+	// instead, which is exactly what this subtest is here to catch.
+	t.Run("GET /sync is gone (405); POST /sync still 401s without a session cookie", func(t *testing.T) {
 		app := newTestApp(pool)
 
 		getResp, getRaw := doRequest(t, app, http.MethodGet, "/sync", nil, nil)
-		if getResp.StatusCode != http.StatusUnauthorized {
-			t.Fatalf("GET /sync without cookie: want 401 got %d body=%s", getResp.StatusCode, getRaw)
+		if getResp.StatusCode != http.StatusMethodNotAllowed {
+			t.Fatalf("GET /sync: want 405 (route removed, POST still claims the path) got %d body=%s", getResp.StatusCode, getRaw)
 		}
 
 		postResp, postRaw := doRequest(t, app, http.MethodPost, "/sync", pushBody(nil, nil), nil)
@@ -1023,5 +858,187 @@ func mustUnmarshal(t *testing.T, raw []byte, v any) {
 	t.Helper()
 	if err := json.Unmarshal(raw, v); err != nil {
 		t.Fatalf("unmarshal %s: %v", raw, err)
+	}
+}
+
+// TestPushAnnotationTombstoneHardDeletes is Pha 3 Task 2's dedicated
+// regression test for the ruling that task carries beyond its own brief:
+// migration 0009 dropped annotations.deleted_at (see internal/userdata,
+// the REST replacement that column's removal was actually for), and
+// internal/sync's push path — this package, still depended on by the
+// browser's one-time old-outbox flush — had to be adapted to keep working
+// without it. This test proves the exact translation PushBatch and
+// deleteAnnotationSQL now perform (see repo.go): an incoming annotation
+// item whose deletedAt is non-null becomes a REAL DELETE of that row,
+// never a write to a marker column, and — the failure mode the ruling
+// names explicitly — never lets the row come back. Dropping a queued
+// deletedAt on the floor during the browser's old-outbox flush would
+// resurrect a note the learner deleted, silently; this is the test that
+// would catch it if a future change reintroduced that bug.
+func TestPushAnnotationTombstoneHardDeletes(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool)
+	cookie, _ := registerUser(t, app, "hard-delete")
+
+	now := nowUTC()
+	annID := uuid.New()
+
+	// Push 1: create the annotation.
+	createResp, createRaw := doRequest(t, app, http.MethodPost, "/sync",
+		pushBody(nil, []map[string]any{annotationPushItem(annID, "c1", "ch1", map[string]any{"pos": 1}, "my note", now, now, nil)}), cookie)
+	if createResp.StatusCode != http.StatusOK {
+		t.Fatalf("push (create): want 200 got %d body=%s", createResp.StatusCode, createRaw)
+	}
+	var createOut pushOut
+	mustUnmarshal(t, createRaw, &createOut)
+	if createOut.Applied != 1 {
+		t.Fatalf("push (create): want applied=1 (fresh insert) got %d", createOut.Applied)
+	}
+
+	// Push 2: the SAME id, this time carrying deletedAt — exactly what a
+	// browser flushing its old offline outbox sends for a note the
+	// learner deleted before upgrading off local-first storage (see this
+	// task's ruling).
+	deletedAt := now.Add(time.Minute)
+	delResp, delRaw := doRequest(t, app, http.MethodPost, "/sync",
+		pushBody(nil, []map[string]any{annotationPushItem(annID, "c1", "ch1", map[string]any{"pos": 1}, "my note", now, deletedAt, &deletedAt)}), cookie)
+	if delResp.StatusCode != http.StatusOK {
+		t.Fatalf("push (tombstone): want 200 got %d body=%s", delResp.StatusCode, delRaw)
+	}
+	var delOut pushOut
+	mustUnmarshal(t, delRaw, &delOut)
+	if delOut.Applied != 1 {
+		t.Fatalf("push (tombstone): want applied=1 (the delete matched the row created above) got %d — the translation did not run", delOut.Applied)
+	}
+
+	// Confirm the row is gone — not resurrected — on the read path
+	// available to this test. This used to be GET /sync, "the only route
+	// this package exposes to read a row back"; Pha 3 Task 3 deleted that
+	// route (see handler.go's package note), so the read-back now goes
+	// through GET /annotations instead — Task 2's own surviving endpoint,
+	// reached through this same server.New wiring — which still proves
+	// exactly what this test needs: the row this package's push path
+	// deleted is not visible anywhere the API can show it back.
+	rows := getAnnotations(t, app, cookie)
+	for _, a := range rows {
+		if a.ID == annID.String() {
+			t.Fatalf("annotation %s reappeared in GET /annotations after its tombstone was pushed through POST /sync — the delete translation resurrected it instead of deleting it", annID)
+		}
+	}
+}
+
+// --- testEnv: a fluent wrapper around one store.TestPool-backed app + pool
+// + "current user" cookie, added for TestPushStillPrefersNewerServerRow
+// below. Mirrors internal/userdata/annotations_test.go's own testEnv (this
+// repo's established shape for this pattern); the rest of this file keeps
+// its existing doRequest-based style rather than migrating onto testEnv
+// wholesale, since that migration is no part of this task's brief. ---
+
+type testEnv struct {
+	pool   *pgxpool.Pool
+	app    *fiber.App
+	cookie *http.Cookie
+	userID uuid.UUID
+}
+
+// newTestEnv spins up one store.TestPool-backed app and registers its
+// default caller.
+func newTestEnv(t *testing.T) *testEnv {
+	t.Helper()
+	pool := store.TestPool(t)
+	app := newTestApp(pool)
+	cookie, userIDStr := registerUser(t, app, "lww")
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		t.Fatalf("parse registered user id %q: %v", userIDStr, err)
+	}
+	return &testEnv{pool: pool, app: app, cookie: cookie, userID: userID}
+}
+
+// seedProgress writes a progress row directly into Postgres, bypassing
+// every HTTP layer on purpose: PUT /progress (Task 1) always stamps
+// updated_at as the SERVER's now() and has no way to accept an arbitrary
+// timestamp, and POST /sync's own push path is the very thing
+// TestPushStillPrefersNewerServerRow verifies — seeding through it would
+// test the LWW guard using the LWW guard. This represents "a progress row
+// already exists on the server with exactly this updatedAt", however it
+// actually got there (in reality: some earlier PUT /progress or push, at
+// whatever instant it happened).
+func (e *testEnv) seedProgress(t *testing.T, courseID, chapterID, status string, done bool, updatedAt time.Time) {
+	t.Helper()
+	_, err := e.pool.Exec(context.Background(),
+		`INSERT INTO progress (user_id, course_id, chapter_id, status, done, updated_at) VALUES ($1,$2,$3,$4,$5,$6)`,
+		e.userID, courseID, chapterID, status, done, updatedAt)
+	if err != nil {
+		t.Fatalf("seed progress: %v", err)
+	}
+}
+
+// push sends rawBody to POST /sync as e's current user and asserts 200.
+func (e *testEnv) push(t *testing.T, rawBody string) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/sync", bytes.NewReader([]byte(rawBody)))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(e.cookie)
+	resp, err := e.app.Test(req, testTimeoutMS)
+	if err != nil {
+		t.Fatalf("POST /sync: %v", err)
+	}
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("POST /sync: read body: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /sync: want 200 got %d body=%s", resp.StatusCode, raw)
+	}
+}
+
+// progressDone reads a single progress row back through GET /progress
+// (Task 1's surviving read route — GET /sync no longer exists, see
+// handler.go's package note) and returns its done flag, failing the test
+// if the row is missing entirely.
+func (e *testEnv) progressDone(t *testing.T, courseID, chapterID, status string) bool {
+	t.Helper()
+	rows := getProgress(t, e.app, e.cookie)
+	for _, p := range rows {
+		if p.CourseID == courseID && p.ChapterID == chapterID && p.Status == status {
+			return p.Done
+		}
+	}
+	t.Fatalf("progress row %s/%s/%s not found via GET /progress", courseID, chapterID, status)
+	return false
+}
+
+// parse parses a fixed RFC3339 instant, panicking on a malformed literal.
+// Only used by TestPushStillPrefersNewerServerRow below, where every call
+// site passes a constant — a parse failure there can only be a typo in
+// this file, not a runtime condition worth plumbing *testing.T through for.
+func parse(s string) time.Time {
+	parsed, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		panic(fmt.Sprintf("parse(%q): %v", s, err))
+	}
+	return parsed
+}
+
+// TestPushStillPrefersNewerServerRow is this package's real reason to
+// still exist after Pha 3 Task 3 cut GET /sync (see handler.go's package
+// note): an item from a browser's old offline outbox can carry a stale
+// updatedAt — the entry may have sat unsynced for days before the upgrade
+// — and pushing it through PUT /progress (Task 1, which always stamps
+// server now()) would blindly overwrite a genuinely newer server row with
+// older content, because PUT /progress has no LWW guard and no client
+// timestamp to guard with. POST /sync's push path is what still honors
+// the client's own updatedAt and refuses to let it win against something
+// newer — this is the test that would go red if that ever stopped being
+// true.
+func TestPushStillPrefersNewerServerRow(t *testing.T) {
+	env := newTestEnv(t)
+	env.seedProgress(t, "c", "c1", "read", true, parse("2026-09-01T10:00:00Z"))
+	env.push(t, `{"progress":[{"courseId":"c","chapterId":"c1","status":"read","done":false,"updatedAt":"2026-08-01T10:00:00Z"}],"annotations":[]}`)
+
+	if !env.progressDone(t, "c", "c1", "read") {
+		t.Fatal("hàng cũ hơn từ outbox đã đè hàng mới hơn trên máy chủ")
 	}
 }

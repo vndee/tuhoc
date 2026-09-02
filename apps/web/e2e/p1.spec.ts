@@ -210,43 +210,51 @@ test.describe('P1 definition-of-done gate', () => {
     await expect(courseHomeChapterLink(p2, COURSE_TITLE, CHAPTER_ID)).not.toHaveClass(/\bdone\b/);
 
     // ---------------------------------------------------------------
-    // Back to device 1: mark the chapter read. `useProgress`'s write is
-    // local-first (Ruling F5 — see useProgress.ts), so the UI reflects it
-    // immediately; the sync engine's 15s timer is what carries it to the
-    // server afterwards.
+    // Back to device 1: mark the chapter read. Pha 3 rewired `useProgress`
+    // straight onto the server (`PUT /progress`, optimistic with rollback —
+    // see useProgress.ts's own doc): the click flips `#mark-btn` the instant
+    // this returns, but the write to the server is still an async request in
+    // flight, `mutate()`-fired-and-forgotten, not awaited by the click
+    // itself. `waitForResponse` is registered BEFORE the click for the same
+    // reason `helpers.ts`'s `submitAuthForm` registers its listener before
+    // `submit()`: the response can land before `click()` even resolves, and
+    // a listener attached after the fact can miss it.
     // ---------------------------------------------------------------
     await p1.bringToFront();
+    const markReadPut = p1.waitForResponse(
+      (r) => new URL(r.url()).pathname === '/progress' && r.request().method() === 'PUT',
+    );
     await p1.click('#mark-btn');
     await expect(p1.locator('#mark-btn.on')).toBeVisible();
+    await markReadPut;
 
     // ---------------------------------------------------------------
-    // Judgment 2 — waiting for sync without flake. The task brief's own
-    // sketch uses a fixed 16s sleep. That is exactly the anti-pattern its
-    // own instructions warn against: long enough to be safe today, and
-    // long enough to hide a regression that made sync noticeably slower
-    // without ever failing the test. Two real timers are in play and
-    // neither is synchronized with this test: device 1's own 15s push
-    // timer (up to ~15s before it even SENDS the mark-read row — it was
-    // just started fresh by `useSyncLifecycle` on login, not primed to
-    // fire immediately) and device 2's own independent 15s pull timer
-    // (same story). Worst case is close to two full periods plus network
-    // and container overhead, not one.
+    // Task 13 of Pha 3 — device 2 sees it on a reload, with no window to
+    // wait out at all. This assertion used to poll for up to 45s: the task
+    // brief's own sketch used a fixed 16s sleep (already too short for a
+    // WORKING sync path — see the git history of this comment for the
+    // arithmetic this replaced), and this file's own fix used
+    // `expect(locator).toBeVisible({ timeout: 45_000 })` as a true poll
+    // instead of a sleep, because two independent 15s timers were in play
+    // and neither was synchronized with this test: device 1's own 15s push
+    // timer and device 2's own independent 15s pull timer (`sync/engine.ts`'s
+    // `SYNC_INTERVAL_MS`, on both sides), worst case close to two full
+    // periods plus network and container overhead.
     //
-    // Instead: `expect(locator).toBeVisible({ timeout })` is a true poll
-    // — Playwright re-checks the DOM on its own internal cadence up to
-    // the bound, so a working sync path resolves this the moment the
-    // condition becomes true (often well under the bound), while a
-    // genuinely broken/slower sync path fails loudly once the bound is
-    // exceeded, rather than the test having silently waited far longer
-    // than necessary either way. `bringToFront()` first: Chromium
-    // throttles timers in backgrounded pages, and device 2's page has
-    // been sitting unfocused since the isolation check above — bringing
-    // it forward before the wait removes that as a confound, so a
-    // timeout here means the SYNC path is slow/broken, not that the
-    // browser deprioritized an inactive tab's timers.
+    // Both timers, and the local-first Dexie/outbox layer they belonged to,
+    // are deleted — there is nothing left to poll FOR. Device 1's PUT above
+    // is already confirmed to have reached the server before this line
+    // runs, so device 2's own next `GET /progress` (a plain reload; nothing
+    // here is cached client-side across a full navigation) reads the
+    // current row on the first try. If this assertion ever needs to wait —
+    // a bumped timeout, a retry loop, anything — that is not "sync being
+    // slow," because there is no sync left to be slow: it means something
+    // is still happening in the background that should not be, and that is
+    // a regression this assertion exists to catch, not paper over.
     // ---------------------------------------------------------------
     await p2.bringToFront();
-    await expect(courseHomeChapterLink(p2, COURSE_TITLE, CHAPTER_ID)).toHaveClass(/\bdone\b/, { timeout: 45_000 });
+    await p2.reload();
+    await expect(courseHomeChapterLink(p2, COURSE_TITLE, CHAPTER_ID)).toHaveClass(/\bdone\b/);
 
     expect(pageErrors, `uncaught page errors:\n${pageErrors.join('\n')}`).toEqual([]);
     expect(consoleErrors, `console.error output:\n${consoleErrors.join('\n')}`).toEqual([]);

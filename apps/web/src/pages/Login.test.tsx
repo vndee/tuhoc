@@ -3,11 +3,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import { useEffect } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { meQueryKey, useMe } from '../api/useMe';
-import { clearLocalData, db } from '../db/local';
+import { meQueryKey } from '../api/useMe';
+import { clearUserContent, USER_CONTENT_KEYS } from '../db/localStorage';
 import { Login } from './Login';
 import { t } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageProvider';
@@ -35,8 +34,8 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-beforeEach(clearLocalData);
-afterEach(clearLocalData);
+beforeEach(clearUserContent);
+afterEach(clearUserContent);
 
 type InitialEntry = { pathname: string; search?: string; state?: unknown } | string;
 
@@ -181,7 +180,7 @@ describe('Login — hai cột: sản phẩm tự giới thiệu bên trái, form
    * mới render là cách render thẳng bản tiếng Anh mà không cần mô phỏng một
    * cú bấm đổi ngôn ngữ.
    *
-   * `try`/`finally` xoá khoá này khi bài kiểm xong: `clearLocalData()`
+   * `try`/`finally` xoá khoá này khi bài kiểm xong: `clearUserContent()`
    * (chạy trong `beforeEach`/`afterEach` của cả tệp) CỐ Ý không đụng tới
    * `itbook-lang` — nó là tuỳ chọn THIẾT BỊ, không phải nội dung người dùng
    * (`i18n/i18n.test.ts` → `'ngôn ngữ được ghi nhớ THEO THIẾT BỊ'`) — nên
@@ -366,87 +365,49 @@ describe('Login page', () => {
 });
 
 /**
- * A stand-in for `App.tsx`'s `useSyncLifecycle`, and deliberately an exact
- * structural copy of it: `useMe()` → `meQuery.data?.id ?? null` → an
- * effect keyed on that id. In the real app that effect calls
- * `startSync()`; here it just records what the local database looked like
- * AT THAT INSTANT.
+ * Puts a value in the ONE local store left after Task 10 — the
+ * user-content `localStorage` keys — so "nothing survives" can never pass
+ * vacuously.
  *
- * That is the whole point. "Clear the database on login" is only a fix if
- * the clear finishes BEFORE a sync cycle for the new session can start,
- * and the thing that starts one is precisely this effect firing. Asserting
- * "the tables are empty once the dust settles" would pass even for a fix
- * that cleared asynchronously after seeding `me` — the exact race the
- * ordering is designed to avoid. Sampling here, in the same effect the
- * engine starts from, is what makes the ordering itself the thing under
- * test.
+ * Task 10 note, replacing the old version of this fixture: it used to seed
+ * Dexie's `progress`/`annotations`/`outbox`/`meta` tables too. Those
+ * tables, and Dexie itself, are gone — progress and annotations are
+ * exclusively server-side now, scoped by session cookie at the SERVER, so
+ * there is no local row of either that a change of signed-in user could
+ * possibly inherit. What remains capable of surviving on THIS BROWSER,
+ * across an auth transition, is `localStorage` — which is exactly what
+ * `clearSession()` (`auth/session.ts`) still exists to clear.
+ *
+ * Task 11 note: this used to also seed `SESSION_VERIFIED_KEY`, the
+ * offline-read marker — removed along with `<RequireAuth>`'s offline
+ * branch, its only reader. `USER_CONTENT_KEYS` is the whole of what
+ * survives an auth transition now.
  */
-function SyncLifecycleProbe({ onSyncCouldStart }: { onSyncCouldStart: () => void }) {
-  const meQuery = useMe();
-  const userId = meQuery.data?.id ?? null;
-
-  useEffect(() => {
-    if (userId !== null) onSyncCouldStart();
-  }, [userId, onSyncCouldStart]);
-
-  return null;
-}
-
-/** Puts one row in every local table, so "the tables are empty" can never pass vacuously. */
-async function seedPreviousUsersLocalData(): Promise<void> {
-  await db.progress.put({
-    courseId: 'so-dau-phay-dong',
-    chapterId: 'p2-10',
-    status: 'read',
-    done: true,
-    updatedAt: '2026-08-19T10:00:00.000Z',
-  });
-  await db.annotations.put({
-    id: '22222222-2222-4222-8222-222222222222',
-    courseId: 'so-dau-phay-dong',
-    chapterId: 'p2-10',
-    anchor: {},
-    note: "previous user's private note",
-    createdAt: '2026-08-19T10:00:00.000Z',
-    updatedAt: '2026-08-19T10:00:00.000Z',
-    deletedAt: null,
-  });
-  await db.outbox.add({ table: 'progress', row: { courseId: 'so-dau-phay-dong', chapterId: 'p2-10' } });
-  await db.outbox.add({ table: 'events', row: { kind: 'heartbeat' } });
-  await db.meta.put({ key: 'syncCursor', value: '2026-08-19T10:00:00Z' });
+function seedPreviousUsersLocalData(): void {
+  for (const key of USER_CONTENT_KEYS) window.localStorage.setItem(key, "previous user's private note");
 }
 
 /**
- * C1 — the local database is named for the BROWSER (`'tuhoc'`, see
- * src/db/local.ts), not for a user, and IndexedDB never expires. Before
- * this fix `useLogout` was the ONLY thing that ever cleared it, so any
- * change of signed-in user that did not go through an in-app logout —
- * a second person signing in while the first was still signed in, or a
- * first person's 30-day cookie simply expiring — left the arriving user
- * sitting on the departing user's rows: their queued outbox entries got
- * POSTed under the ARRIVING user's cookie into the ARRIVING user's server
- * account, their progress rendered as the arriving user's, and their
- * `syncCursor` made `GET /sync?since=` skip everything of the arriving
- * user's older than it.
+ * C1 — before this fix `useLogout` was the ONLY thing that ever cleared
+ * local content, so any change of signed-in user that did not go through
+ * an in-app logout — a second person signing in while the first was still
+ * signed in, or a first person's 30-day cookie simply expiring — left the
+ * arriving user sitting on the departing user's `localStorage` content.
+ *
+ * Task 10 narrowed WHAT can survive (Dexie's tables are gone; only
+ * `localStorage` remains) but not the shape of the guarantee: `<Login>`
+ * must clear it before seeding the arriving user, on both the sign-in and
+ * the register path.
  */
 describe('Login — local state does not survive a change of signed-in user (C1)', () => {
-  it('clears every local table before a sync cycle for the new session can start', async () => {
+  it('clears local content before seeding the new session', async () => {
     server.use(http.post('/auth/login', () => HttpResponse.json({ id: 'u-new', email: 'new@example.com', name: 'New' })));
-    await seedPreviousUsersLocalData();
-
-    // Sampled inside the very effect the sync engine starts from — see
-    // SyncLifecycleProbe. Captured as a promise so the read is ISSUED at
-    // that instant rather than after the test has moved on.
-    const samplesAtSyncStart: Promise<number[]>[] = [];
-    const onSyncCouldStart = () => {
-      samplesAtSyncStart.push(Promise.all(db.tables.map((t) => t.count())));
-    };
+    seedPreviousUsersLocalData();
 
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const user = userEvent.setup();
     render(
       <QueryClientProvider client={queryClient}>
-        <SyncLifecycleProbe onSyncCouldStart={onSyncCouldStart} />
         <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={['/login']}>
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -463,18 +424,12 @@ describe('Login — local state does not survive a change of signed-in user (C1)
 
     await waitFor(() => expect(screen.getByText('Home dashboard')).toBeInTheDocument());
 
-    // The previous user's rows are gone...
-    expect(await Promise.all(db.tables.map((t) => t.count()))).toEqual(db.tables.map(() => 0));
-    // ...and they were already gone at the moment sync could first run.
-    expect(samplesAtSyncStart.length).toBeGreaterThan(0);
-    for (const sample of samplesAtSyncStart) {
-      expect(await sample).toEqual(db.tables.map(() => 0));
-    }
+    for (const key of USER_CONTENT_KEYS) expect(window.localStorage.getItem(key)).toBeNull();
   });
 
   it('registering on a browser that still holds a previous user\'s data clears it too', async () => {
     server.use(http.post('/auth/register', () => HttpResponse.json({ id: 'u-reg', email: 'reg@example.com', name: 'Reg' })));
-    await seedPreviousUsersLocalData();
+    seedPreviousUsersLocalData();
 
     const user = userEvent.setup();
     await renderLoginForm();
@@ -486,7 +441,7 @@ describe('Login — local state does not survive a change of signed-in user (C1)
     await user.click(screen.getByRole('button', { name: /đăng ký/i }));
 
     await waitFor(() => expect(screen.getByText('Home dashboard')).toBeInTheDocument());
-    expect(await Promise.all(db.tables.map((t) => t.count()))).toEqual(db.tables.map(() => 0));
+    for (const key of USER_CONTENT_KEYS) expect(window.localStorage.getItem(key)).toBeNull();
   });
 
   it('an already-authenticated visitor to /login never renders the sign-in form (deferred-minor #18)', async () => {

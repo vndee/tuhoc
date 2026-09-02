@@ -1,0 +1,12 @@
+-- `down` này KHÔNG khôi phục được những hàng câu DELETE ở up.sql đã xoá
+-- thật — nói dối điều đó (giả vờ "down" là nghịch đảo của "up") tệ hơn một
+-- down thiếu: một người vận hành lùi version rồi tin dữ liệu đã về nguyên
+-- trạng sẽ phát hiện ra sai lầm ấy theo cách tệ nhất — khi người học hỏi
+-- "ghi chú tôi xoá tuần trước sao lại không thấy trong bản backup".
+--
+-- Câu lệnh dưới đây chỉ trả lại CỘT, để một DB đã chạy up rồi lỡ cần lùi
+-- version còn chỗ để (một tombstone MỚI, kể từ đây trở đi) mà không phải
+-- chạy lại toàn bộ từ 0001. Không hàng nào đã mất trong up.sql
+-- (deleted_at IS NOT NULL tại thời điểm đó) quay lại được bằng migration
+-- này hay bất kỳ migration nào khác — dữ liệu ấy không còn tồn tại ở đâu.
+ALTER TABLE annotations ADD COLUMN deleted_at timestamptz;

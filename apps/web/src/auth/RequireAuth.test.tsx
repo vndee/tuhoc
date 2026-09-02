@@ -5,7 +5,7 @@ import { setupServer } from 'msw/node';
 import { useEffect } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { clearLocalData, readSessionVerifiedAt, rememberSessionVerified } from '../db/local';
+import { clearUserContent } from '../db/localStorage';
 import { t } from '../i18n';
 import { Login } from '../pages/Login';
 import { RequireAuth } from './RequireAuth';
@@ -18,10 +18,17 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-// This guard now WRITES to the local database (the offline-read marker), so
-// every test here starts from a browser nobody has ever signed in on.
-beforeEach(clearLocalData);
-afterEach(clearLocalData);
+/**
+ * Task 11 removed the offline-read marker along with `<RequireAuth>`'s
+ * offline branch (see `auth/session.ts`) — `clearUserContent()` alone is
+ * the whole reset now, same as `clearSession()` itself.
+ */
+function resetDevice(): void {
+  clearUserContent();
+}
+
+beforeEach(resetDevice);
+afterEach(resetDevice);
 
 function Protected() {
   return <div>Protected content</div>;
@@ -129,120 +136,39 @@ describe('RequireAuth', () => {
     expect(meCallCount).toBe(1);
     expect(screen.getByRole('heading', { name: t('vi', 'login.heading.login') })).toBeInTheDocument();
   });
+
+  /**
+   * Task 11 (Pha 3) — RequireAuth's offline branch is gone. The measurement
+   * that justifies this: no service worker, no precache, the reader fetches
+   * every chapter from the server on each load (`grep -arln
+   * 'serviceWorker\|workbox\|precache' apps/web/` returns nothing) — so the
+   * old branch was admitting a visitor past the auth gate into a page with
+   * nothing on it to read. When `GET /me` gets no response at all (offline,
+   * DNS failure, a blocked request — see `serverAnswered` in
+   * `api/client.ts`), this is now the ONE outcome, unconditionally: a
+   * needs-network message, never `children`.
+   */
+  it('không có response nào thì hiện màn cần-mạng, không thả vào reader', async () => {
+    server.use(http.get('/me', () => HttpResponse.error()));
+    const pathnames: string[] = [];
+    renderApp('/', pathnames);
+
+    expect(await screen.findByText(t('vi', 'auth.needsNetwork'))).toBeInTheDocument();
+    expect(screen.queryByText('Protected content')).not.toBeInTheDocument();
+    expect(pathnames.at(-1)).toBe('/');
+  });
 });
 
-/* ====================================================================== *
- * Task 7b — a COLD page load with the network down
- * ====================================================================== */
-
-/** msw's network-level failure: `fetch` rejects with a bare `TypeError`, no status, no body — what a browser hands a page when it never reached a server. */
-const NETWORK_IS_DOWN = http.get('/me', () => HttpResponse.error());
-
-/** How long ago the last confirmed `GET /me` was, expressed as an absolute instant. */
-function verifiedAgo(ms: number): Date {
-  return new Date(Date.now() - ms);
-}
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-describe('RequireAuth — reading offline after a cold page load', () => {
-  it('renders the protected page when the server is unreachable and this device recently held a confirmed session', async () => {
-    // Task 7 made a pinned course readable with the network off, but only
-    // for a tab that was ALREADY open: a fresh load could not get past this
-    // guard, because `GET /me` failing looked exactly like being logged
-    // out. Measured in a real browser — see task-7-report.md §5.5.
-    await rememberSessionVerified(verifiedAgo(60_000));
-    server.use(NETWORK_IS_DOWN);
-    const pathnames: string[] = [];
-    renderApp('/', pathnames);
-
-    expect(await screen.findByText('Protected content')).toBeInTheDocument();
-    // ...and it stayed. A guard that rendered the page and then bounced
-    // would satisfy the line above for one frame.
-    await new Promise((r) => setTimeout(r, 50));
-    expect(screen.getByText('Protected content')).toBeInTheDocument();
-    expect(pathnames).toEqual(['/']);
-  });
-
-  it('does NOT render the protected page on a device where nobody has signed in — an unreachable server is not a key', async () => {
-    server.use(NETWORK_IS_DOWN);
-    const pathnames: string[] = [];
-    renderApp('/', pathnames);
-
-    expect(await screen.findByText(/kết nối/i)).toBeInTheDocument();
-    expect(screen.queryByText('Protected content')).not.toBeInTheDocument();
-    expect(pathnames.at(-1)).toBe('/');
-  });
-
-  it('does NOT render the protected page once the offline window has run out', async () => {
-    await rememberSessionVerified(verifiedAgo(8 * DAY_MS));
-    server.use(NETWORK_IS_DOWN);
-    const pathnames: string[] = [];
-    renderApp('/', pathnames);
-
-    expect(await screen.findByText(/kết nối/i)).toBeInTheDocument();
-    expect(screen.queryByText('Protected content')).not.toBeInTheDocument();
-    expect(pathnames.at(-1)).toBe('/');
-  });
-
-  it('a 401 still wins over the marker: the server saying "nobody is signed in" is an ANSWER, not an outage', async () => {
-    // The sharp edge of this whole change. The marker only ever fills a
-    // silence; it may never contradict the server.
-    await rememberSessionVerified(verifiedAgo(60_000));
-    server.use(http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
-    const pathnames: string[] = [];
-    renderApp('/', pathnames);
-
-    await waitFor(() => expect(pathnames.at(-1)).toBe('/login'));
-    expect(screen.queryByText('Protected content')).not.toBeInTheDocument();
-  });
-
-  it('a 500 still shows the outage message even with a fresh marker — a reachable, broken server is not an offline device', async () => {
-    await rememberSessionVerified(verifiedAgo(60_000));
-    server.use(http.get('/me', () => HttpResponse.json({ error: 'boom' }, { status: 500 })));
-    const pathnames: string[] = [];
-    renderApp('/', pathnames);
-
-    expect(await screen.findByText(/máy chủ|lỗi/i)).toBeInTheDocument();
-    expect(screen.queryByText('Protected content')).not.toBeInTheDocument();
-    expect(pathnames.at(-1)).toBe('/');
-  });
-
-  it('a confirmed GET /me is what leaves the marker behind, so the NEXT load can be offline', async () => {
-    expect(await readSessionVerifiedAt()).toBeNull();
-    server.use(http.get('/me', () => HttpResponse.json({ id: 'u1', email: 'a@example.com', name: 'A' })));
-    const pathnames: string[] = [];
-    renderApp('/', pathnames);
-
-    await screen.findByText('Protected content');
-    await waitFor(async () => expect(await readSessionVerifiedAt()).not.toBeNull());
-  });
-
-  it('a 401 leaves NO marker behind — the offline door never opens for a visitor who was refused', async () => {
-    server.use(http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
-    const pathnames: string[] = [];
-    renderApp('/', pathnames);
-
-    await waitFor(() => expect(pathnames.at(-1)).toBe('/login'));
-    expect(await readSessionVerifiedAt()).toBeNull();
-  });
-
-  it('renders nothing — never the login screen — while it is still asking the local database', async () => {
-    // The same trade the pending branch above already makes: one blank
-    // paint beats flashing a sign-in form at somebody who is merely
-    // offline.
-    await rememberSessionVerified(verifiedAgo(60_000));
-    server.use(NETWORK_IS_DOWN);
-    const pathnames: string[] = [];
-    renderApp('/', pathnames);
-
-    expect(screen.queryByRole('heading', { name: t('vi', 'login.heading.login') })).not.toBeInTheDocument();
-    expect(screen.queryByText(/kết nối/i)).not.toBeInTheDocument();
-
-    await screen.findByText('Protected content');
-    expect(pathnames).toEqual(['/']);
-  });
-});
+// Task 7b's "RequireAuth — reading offline after a cold page load" describe
+// block (`NETWORK_IS_DOWN`, `verifiedAgo`, `DAY_MS`, and eight tests) lived
+// here and is gone: Task 11 removed the offline branch it exercised
+// (`offlineSessionIsUsable`, `rememberSessionVerified`, the
+// `sessionVerifiedAt` marker) along with the branch itself. What replaces
+// it is the single "không có response nào..." test above, in the main
+// `describe('RequireAuth', ...)` block: on a COLD load with no response,
+// the outcome is now unconditional, so there is nothing left to
+// distinguish "has a recent marker" from "doesn't" — see `RequireAuth.tsx`'s
+// own doc comment for the measurement that justified this.
 
 /* ====================================================================== *
  * MỘT LẦN `GET /me` HỎNG THOÁNG QUA KHÔNG ĐƯỢC PHÁ TRANG ĐANG MỞ
@@ -321,9 +247,11 @@ describe('RequireAuth — một lần /me hỏng thoáng qua', () => {
     );
 
     expect(await screen.findByText('Protected content')).toBeInTheDocument();
-    // Cái mốc ngoại tuyến do chính guard ghi ra sau khi phiên được xác nhận;
-    // đợi nó, vì nhánh lạc quan bên dưới đọc đúng nó.
-    await waitFor(async () => expect(await readSessionVerifiedAt()).not.toBeNull());
+    // `authorizedOnce.current` (`RequireAuth.tsx`) is set synchronously in
+    // the very render that returns `children` here — no marker, no async
+    // step to wait on since Task 11 (it used to be gated behind an
+    // offline-session query's own `isPending`, which is gone). By the time
+    // `findByText` above resolves, it is already `true`.
     expect(log).toEqual(['mount']);
 
     // Một lần làm mới thất bại, đúng như `refetchOnWindowFocus` sẽ gây ra.

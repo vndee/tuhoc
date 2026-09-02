@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { CourseHome } from '../pages/CourseHome';
 import { Sidebar } from '../shell/Sidebar';
 import type { Chapter, Manifest } from '../course/types';
-import { clearLocalData, db } from '../db/local';
+import { clearUserContent } from '../db/localStorage';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 
 function buildManifest(chapterCount: number): Manifest {
@@ -40,11 +40,17 @@ const server = setupServer(
   // it, so a default authenticated `/me` here keeps them describing the same
   // behaviour as before; Task 12's own block overrides it per-test.
   http.get('/me', () => HttpResponse.json({ id: 'u1', email: 'a@vi.vn', name: 'Người học' })),
+  // Task 6, Pha 3: `useProgress` (behind `Sidebar`'s `doneChapterIds`) now
+  // reads `GET /progress` instead of a local `db.progress` row — see
+  // `reader/ChapterView.test.tsx`'s server setup for the same change. No
+  // progress by default; the one test that needs a chapter already marked
+  // read overrides this with `server.use(...)`.
+  http.get('/progress', () => HttpResponse.json({ progress: [] })),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 beforeEach(async () => {
-  await clearLocalData();
+  clearUserContent();
 });
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
@@ -122,8 +128,16 @@ describe('CourseHome', () => {
   });
 
   it('marks chapters read in LOCAL progress (Ruling F4 / debt #1 — real data, not a prop) with the "done" class', async () => {
-    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(3))));
-    await db.progress.put({ courseId: 'demo', chapterId: 'ch-2', status: 'read', done: true, updatedAt: new Date().toISOString() });
+    server.use(
+      http.get('/courses/demo', () => HttpResponse.json(buildManifest(3))),
+      // Task 6, Pha 3: "already read" now comes from the server, not a
+      // pre-seeded Dexie row.
+      http.get('/progress', () =>
+        HttpResponse.json({
+          progress: [{ courseId: 'demo', chapterId: 'ch-2', status: 'read', done: true, updatedAt: new Date().toISOString() }],
+        }),
+      ),
+    );
 
     renderCourseHome();
 
@@ -135,9 +149,15 @@ describe('CourseHome', () => {
     expect(links.find((a) => a.getAttribute('data-ch') === 'ch-3')?.className).not.toContain('done');
   });
 
-  it('does NOT mark a chapter done from a DIFFERENT course\'s local progress row (courseId scoping)', async () => {
-    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(3))));
-    await db.progress.put({ courseId: 'other-course', chapterId: 'ch-2', status: 'read', done: true, updatedAt: new Date().toISOString() });
+  it('does NOT mark a chapter done from a DIFFERENT course\'s progress row (courseId scoping)', async () => {
+    server.use(
+      http.get('/courses/demo', () => HttpResponse.json(buildManifest(3))),
+      http.get('/progress', () =>
+        HttpResponse.json({
+          progress: [{ courseId: 'other-course', chapterId: 'ch-2', status: 'read', done: true, updatedAt: new Date().toISOString() }],
+        }),
+      ),
+    );
 
     renderCourseHome();
 
@@ -185,15 +205,20 @@ describe('CourseHome', () => {
 /**
  * Task 12 — `/c/:courseId` is public now (spec §2.4), but the progress it
  * shows (the "Bắt đầu"/"Đọc tiếp" resume card, each part's read count) is
- * server-recorded, per-account state. This block proves the two do not mix:
- * a device that happens to hold a local progress row must not have that row
- * read back to whoever opens the browser next, signed in or not.
+ * server-recorded, per-account state.
+ *
+ * The "chưa đăng nhập" test below used to also seed a Dexie `db.progress`
+ * row and prove it was NOT read back for an anonymous visitor — Task 10
+ * removed Dexie, and with it every local progress row of any kind, so
+ * there is no longer a local row for this app to mis-attribute. What
+ * remains, and is what this test still proves: an anonymous visitor's
+ * resume card renders as if nothing were ever read, because the anonymous
+ * branch never even asks the server for progress.
  */
 describe('Task 12 — tiến độ chỉ hiện khi có phiên', () => {
-  it('người đọc CHƯA đăng nhập: một dòng tiến độ có sẵn trên máy KHÔNG được nhận là của mình', async () => {
+  it('người đọc CHƯA đăng nhập: trang hiện như chưa từng đọc gì', async () => {
     server.use(http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
     server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(4))));
-    await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: new Date().toISOString() });
 
     renderCourseHome();
     await screen.findByRole('heading', { name: 'Khóa học demo' });
@@ -220,8 +245,14 @@ describe('Task 12 — tiến độ chỉ hiện khi có phiên', () => {
   });
 
   it('người đọc ĐÃ đăng nhập: cùng dòng tiến độ ấy hiện đúng trên trang', async () => {
-    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(4))));
-    await db.progress.put({ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: new Date().toISOString() });
+    server.use(
+      http.get('/courses/demo', () => HttpResponse.json(buildManifest(4))),
+      http.get('/progress', () =>
+        HttpResponse.json({
+          progress: [{ courseId: 'demo', chapterId: 'ch-1', status: 'read', done: true, updatedAt: new Date().toISOString() }],
+        }),
+      ),
+    );
 
     renderCourseHome();
     await screen.findByRole('heading', { name: 'Khóa học demo' });

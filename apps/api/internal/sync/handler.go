@@ -1,3 +1,37 @@
+// This package is dead code on a schedule, not dead code.
+//
+// Pha 3 replaced the old cursor+outbox sync protocol (GET/POST /sync) with
+// plain REST resources — GET/PUT /progress (internal/userdata, Task 1) and
+// the four /annotations verbs (internal/userdata, Task 2) — because the
+// browser is no longer local-first. Every new read and write in the web
+// client goes through those instead. GET /sync itself is deleted (Pha 3
+// Task 3): there is no client left that calls it.
+//
+// POST /sync survives on purpose. An upgrading browser flushes its old
+// offline outbox through it exactly once, before deleting its own local
+// database, and that flush is the only thing standing between a learner's
+// unsent work and silent loss — so this package stays alive to receive it.
+//
+// The condition for deleting this package: zero POST /sync requests
+// recorded in the access log (fiber's middleware/logger, wired in
+// server.go via Deps.LogOutput — every request gets a line there,
+// success or failure, and on Render that log is the platform log) over
+// 30 consecutive days. Not apilog: that package only ever records a 5xx
+// (see apilog.Internal), so a successful POST /sync — the ordinary case,
+// a browser's flush that actually worked — never appears there, and
+// "zero entries in apilog" would already be true on day one even while
+// browsers were still flushing through this route. That is a scheduling
+// decision, not a code change — once every upgrading browser has had its
+// one-time flush window, there is nothing left calling this route and it
+// can be removed the same way GET /sync was cut here.
+//
+// What that schedule does NOT cover, stated plainly rather than glossed
+// over: a user who does not open the upgraded app within that 30-day
+// window loses whatever sat unflushed in their local outbox. That is a
+// known, accepted hole — closed by CHOOSING WHEN this package is safe to
+// delete (a wide enough margin that any real user has shown up at least
+// once), not by anything this code does. See docs/carried-forward.md for
+// the fuller accounting of what Pha 3 carries forward.
 package sync
 
 import (
@@ -56,14 +90,21 @@ const MaxPushBytes int64 = 4 << 20
 // session cookie. This is the bound on that, and the byte limit above is
 // the bound on the ~20× RAM amplification BodyParser costs.
 //
-// The number is chosen against the client, not against an attacker: the
-// web client (apps/web/src/sync/engine.ts) sends its WHOLE outbox in one
-// request with no chunking, so a cap it can exceed strands a long-offline
-// device permanently — it would 413 forever and never drain. 10 000
-// items is over 80 hours of continuous active reading at one heartbeat
-// per 30 s, far beyond any realistic offline window. Lowering it is a
-// client change first (chunked flushes), a server change second; that
-// pairing is recorded in docs/carried-forward.md.
+// The number was chosen against the client, not against an attacker, back
+// when the client was apps/web/src/sync/engine.ts (deleted, Task 10 of
+// Pha 3): it sent its WHOLE outbox in one request with no chunking, so a
+// cap it could exceed would have stranded a long-offline device
+// permanently — 413 forever, never draining. 10 000 items was over 80
+// hours of continuous active reading at one heartbeat per 30 s, far beyond
+// any realistic offline window.
+//
+// The only caller left is apps/web/src/db/legacyDrain.ts (this package's
+// one-time outbox flush — see this file's own package comment), and it
+// already sends in 1000-item batches (LEGACY_BATCH_SIZE), well under this
+// ceiling — nothing left to strand it. This constant stays at its old
+// value rather than being tightened, since the whole package is dead code
+// on a schedule (see the 30-day deletion condition above); see
+// docs/carried-forward.md for that condition.
 const MaxItemsPerPush = 10000
 
 // Handler holds the HTTP-layer concerns for sync: parsing requests,
@@ -104,71 +145,6 @@ type pushRequest struct {
 
 type pushResponse struct {
 	Applied int `json:"applied"`
-}
-
-type pullResponse struct {
-	Progress    []progressItem   `json:"progress"`
-	Annotations []annotationItem `json:"annotations"`
-	Cursor      string           `json:"cursor"`
-}
-
-// Pull handles GET /sync?since=<RFC3339Nano>. It is mounted behind
-// auth.Require, so auth.UID(c) is always populated by the time this runs.
-//
-// since being absent or the empty string means "the beginning of time":
-// every row the user has ever written is returned, and is how a device
-// syncing for the first time (or after local storage was wiped) bootstraps
-// its full state. A since value that is present but fails to parse as
-// RFC3339Nano is a client error (400), not treated the same as absent —
-// silently falling back to "everything" on a typo would let a broken
-// client's every request quietly become a full resync without ever
-// noticing.
-func (h *Handler) Pull(c *fiber.Ctx) error {
-	since := time.Time{}
-	if raw := c.Query("since"); raw != "" {
-		parsed, err := time.Parse(timeLayout, raw)
-		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid since: must be RFC3339Nano"})
-		}
-		since = parsed
-	}
-
-	progress, annotations, cursor, err := h.uc.Pull(c.Context(), auth.UID(c), since)
-	if err != nil {
-		apilog.Internal(c, "sync.Pull", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "sync pull failed"})
-	}
-
-	resp := pullResponse{
-		Progress:    make([]progressItem, len(progress)),
-		Annotations: make([]annotationItem, len(annotations)),
-	}
-	for i, p := range progress {
-		resp.Progress[i] = progressItem{
-			CourseID:  p.CourseID,
-			ChapterID: p.ChapterID,
-			Status:    p.Status,
-			Done:      p.Done,
-			UpdatedAt: p.UpdatedAt.UTC().Format(timeLayout),
-		}
-	}
-	for i, a := range annotations {
-		resp.Annotations[i] = annotationItem{
-			ID:        a.ID.String(),
-			CourseID:  a.CourseID,
-			ChapterID: a.ChapterID,
-			Anchor:    a.Anchor,
-			Note:      a.Note,
-			CreatedAt: a.CreatedAt.UTC().Format(timeLayout),
-			UpdatedAt: a.UpdatedAt.UTC().Format(timeLayout),
-			DeletedAt: formatOptionalTime(a.DeletedAt),
-		}
-	}
-	if !cursor.IsZero() {
-		resp.Cursor = cursor.UTC().Format(timeLayout)
-	}
-
-	return c.Status(fiber.StatusOK).JSON(resp)
 }
 
 // Push handles POST /sync {"progress":[...],"annotations":[...]}. It is
@@ -257,12 +233,4 @@ func (h *Handler) Push(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(pushResponse{Applied: applied})
-}
-
-func formatOptionalTime(t *time.Time) *string {
-	if t == nil {
-		return nil
-	}
-	s := t.UTC().Format(timeLayout)
-	return &s
 }

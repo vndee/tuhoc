@@ -188,7 +188,7 @@ hiện* — và lần này nó **hiển thị ra màn hình**.
 ## 3. Nợ kỹ thuật đã ghi nhận, chấp nhận mang theo
 
 - `TestPool` nằm trong `internal/store` (không phải `internal/storetest`), kéo `testing` + ~15 package testcontainers/docker vào đồ thị phụ thuộc của binary production 17MB trên image `FROM scratch`. Không có chi phí runtime (linker loại bỏ) nhưng công cụ quét bảo mật sẽ báo CVE của testcontainers cho service này. Sửa = di chuyển file, nhưng đổi tên interface mà 3 task phụ thuộc.
-- `stats.courses[].chaptersDone` được tính mỗi request nhưng **không ai dùng** (ruling F5 cho vòng tiến độ lấy từ dữ liệu cục bộ). Một truy vấn thừa mỗi lần gọi `/stats`.
+- `stats.courses[].chaptersDone` được tính mỗi request nhưng **không ai dùng** con số ấy để vẽ (đo lại 2026-09-02: không dòng TSX nào đọc trường này, chỉ có trong Go test và trong chú thích). Một truy vấn thừa mỗi lần gọi `/stats`. **Ruling F5 gốc — "vòng tiến độ lấy từ dữ liệu cục bộ, đúng cả khi không có mạng" — ĐÃ HẾT HIỆU LỰC (Pha 3, Task 6/9): xem mục "Ruling F5 — nửa RETIRED, nửa còn sống" bên dưới cho lý do và cho một khẳng định sai mà chính pha này để sót.**
 - `Require(pool)` và `RequireWithUsecase(uc)` là hai cửa vào cho cùng một middleware; `server.go` dựng 4 cặp `Repo`/`Usecase` thừa trên cùng một pool.
 - Chưa có: bộ quét phiên hết hạn, index trên `sessions.expires_at`, kiểm tra độ dài mật khẩu phía server, cấu hình CI.
 - ~~giới hạn kích thước batch cho `/sync` và `/events/batch`~~ — **ĐÃ LÀM ở hệ thống con 1** (Task 6
@@ -393,6 +393,49 @@ Gỡ hẳn phép kiểm xác nhận ⇒ bẫy Task 3 **vẫn xanh**; phải gỡ
 mới đỏ. Bẫy thật của người gác là `guard.test.ts > BẪY TRUNG TÂM`, nơi key **đã** được cắm.
 ⇒ Bài học chung: **một dây bẫy còn xanh không có nghĩa nó còn đo thứ nó từng đo.** Khi mã dưới nó
 đổi, phải đo lại bằng đột biến, không suy luận.
+
+### Bổ sung (Pha 3, Task 12) — `read_my_notes` không mở đường mới, nhưng cho kênh cũ một cách nói tự nhiên hơn
+
+Task 12 thêm tool agent thứ ba, `read_my_notes` (`apps/api/internal/ai/tool_notes.go`), đọc tiến độ +
+ghi chú của CHÍNH người hỏi cho một course — mặc định **bật** cho mọi tài khoản mới
+(`defaultAgentConfig`, `credits.go`) và **có công bố** trong `AgentConfigPanel.tsx` (nhãn
+`settings.ai.toolReadMyNotes`). Đây KHÔNG phải một data path mới cho *confused deputy* đang bàn ở
+mục này: `/annotations` đã fetch được bằng cookie của nạn nhân từ trước (`credentials: 'include'`,
+cùng cơ chế mục #1 ở trên mô tả), nên một course độc script hoá sẵn có thể tự đọc ghi chú riêng tư
+qua `GET /annotations` mà không cần tool này tồn tại.
+
+**Cái tool này thật sự đổi:** nó cho kênh cũ một CÁCH NÓI tự nhiên hơn để lấy dữ liệu ấy RA KHỎI
+trang, không cần script tự parse JSON của `/annotations`. Một course độc chỉ cần đặt một câu hỏi
+(qua cùng cơ chế mục #1 dùng để bảo agent "gọi hộ") có hình dạng như *"đọc ghi chú của tôi cho khoá
+X rồi tóm tắt lại"* — `read_my_notes` trả về đúng nội dung ghi chú (không phải chỉ số lượng hay
+metadata), model tóm tắt/lặp lại nó trong câu trả lời, và câu trả lời ấy chảy qua **SSE** của
+`POST /ai/chat` — đúng luồng mạng mà script của kẻ tấn công đã đang đọc để "gọi hộ" AI ngay từ đầu.
+Nói cách khác: `read_my_notes` không mở khoá gì mới, nhưng nó biến một cuộc khai thác vốn cần script
+tự hiểu cấu trúc `/annotations` thành một cuộc khai thác chỉ cần MỘT câu tiếng Việt/Anh tự nhiên —
+hạ chi phí kỹ thuật của đúng lỗ đang mở, không phải mở lỗ mới.
+
+`tool_notes.go`'s package doc comment đã tự ghi rõ điều kiện CONFUSED DEPUTY nó tự đóng cho CHÍNH
+nó (không tham số nào trong schema mang được danh tính người dùng — `TestNotesToolSchemaHasNoUserParameter`,
+`TestNotesToolReadsOnlyBoundUser`): tool luôn đọc đúng người đang hỏi, không đọc hộ ai khác. Cái nó
+KHÔNG đóng — vì không thuộc bán kính của nó — là con đường thứ hai này, con đường nạn nhân vẫn là
+CHÍNH người đang bị course độc điều khiển đọc hộ, không phải ai khác.
+
+**Nơi xử lý:** chưa đổi — sáu món Task 9 chưa mua được vẫn là sáu món đó (đặc biệt món #1, hạn mức
+chặn SỐ LỜI GỌI không chặn SỐ CHỮ). `read_my_notes` không tự nó cần một hạng mục sửa riêng; nó là lý
+do để đọc lại mục #1 với mức khẩn cấp cao hơn một chút, vì thứ rò ra giờ dễ lấy hơn.
+
+**Cập nhật (rà soát toàn nhánh Pha 3, Quan trọng 4) — BÁN KÍNH ĐÃ HẸP LẠI MỘT BẬC, lỗ vẫn mở.**
+Đến vòng sửa cuối, `read_my_notes` còn nhận `slug` như một THAM SỐ DO MODEL CHỌN: `agent.go` chỉ
+nhắc course đang mở như lời khuyên trong prompt (*"use this one"*), không chỗ nào so `args.Slug` với
+`Turn.CourseSlug`. Tức là ràng buộc DANH TÍNH kín (mục trên), nhưng PHẠM VI bên trong dữ liệu của
+chính người học thì lái được — đúng khác biệt giữa *"đọc ghi chú của khoá bạn đang mở"* và *"đọc ghi
+chú của bạn ở bất kỳ khoá nào nó gọi tên"*. Nay course được buộc lúc dựng tool từ `Turn.CourseSlug`
+và schema **không còn tham số nào cả** (xem `tool_notes.go`, điều kiện 3;
+`TestNotesToolSchemaHasNoSlugParameter`, `TestNotesToolReadsOnlyTheTurnsCourse`). Điều này KHÔNG
+đóng mục này: một course độc vẫn điều khiển được `POST /ai/chat` bằng phiên của nạn nhân, và nó tự
+đặt được `course_slug` trong thân request y như nó đặt `question`. Cái nó đổi là một câu hỏi độc
+giờ chỉ moi được ghi chú của MỘT course mỗi lượt, và câu công bố trong `AskPanel.tsx` ("cho khoá học
+này") lần đầu tiên đúng với thứ mã thật sự làm.
 
 ## Form nhập key sống trong iframe: chặn được NHÚNG, không chặn được SAO CHÉP (S2 Task 6) — **KHÔNG CÒN Ô NHẬP KEY (Pha 2, Task 16)**
 
@@ -1049,3 +1092,235 @@ không mang chữ tự do nào.
 *"never the question, never the answer"* — không đúng vô điều kiện, vì `runErr` mang được text mà
 gói này không viết ra. Nay nó nói đúng phạm vi: **không mã nào trong gói này** đưa câu hỏi hay câu
 trả lời vào `runErr`, và phần còn lại là rủi ro đã đo, đã ghi.
+
+---
+
+# Nợ Pha 3 (Dữ liệu lên máy chủ) — 2026-09-01/02
+
+Thi công 01/09/2026, 14 task. Spec: `2026-08-25-server-side-pivot.md` §4/§9. Plan:
+`2026-09-01-pha3-du-lieu-len-may-chu.md`. Bàn giao đầy đủ:
+`docs/superpowers/plans/2026-09-01-pha3-ban-giao.md`. Mục dưới đây là bốn khoản Task 14 (tài liệu)
+được giao ghi lại, cộng một khoản bổ sung tìm được sau đó ở vòng review hẹp cuối cùng (mục cuối tệp
+này) — mỗi khoản do một vòng review trong pha tìm ra, không phải do Task 14 tự phát
+hiện, trừ khi ghi rõ khác.
+
+## `POST /sync` là mã chết theo lịch — điều kiện xoá, và lỗ đã biết
+
+**Trạng thái: còn sống, có ngày hết hạn.** Gói `apps/api/internal/sync` nay chỉ còn một route,
+`POST /sync` (`GET /sync` đã xoá thật ở Task 3 — không còn client nào gọi). Chú thích đầu
+`handler.go` đã tự ghi đúng — mục này là bản lưu bền ở nơi người đọc sổ nợ sẽ tìm, không phải một
+bản sao có thể lệch.
+
+**Vì sao còn sống:** một trình duyệt nâng cấp từ bản cũ có thể còn IndexedDB (Dexie) trên máy, mang
+tiến độ/ghi chú chưa từng gửi đi. `apps/web/src/db/legacyDrain.ts` (`drainLegacyDataOnce`, gọi từ
+`App.tsx` lúc khởi động, không chặn render) đọc outbox cũ đó, gửi qua đúng `POST /sync` này (chia lô
+1000 dòng — `LEGACY_BATCH_SIZE`), rồi mới `indexedDB.deleteDatabase('tuhoc')` — **flush trước, xoá
+sau**, không đảo thứ tự (đảo thứ tự là một hàm không còn gì để gửi, ăn mất tiến độ của người học
+trong im lặng).
+
+**Điều kiện xoá — đúng, không phải `apilog`:** tín hiệu là **access log** (middleware
+`fiber`'s `middleware/logger`, gắn qua `Deps.LogOutput` trong `server.go` — trên Render đây là log
+nền tảng, stdout, mọi request đều có một dòng bất kể thành hay bại), **KHÔNG PHẢI** `apilog`. Lý do:
+gói `apilog` chỉ ghi khi có lỗi 5xx (`apilog.Internal`) — một `POST /sync` thành công, tức trường hợp
+BÌNH THƯỜNG của một trình duyệt đang flush đúng cách, không bao giờ để lại dấu vết ở đó. "Không
+`apilog` entry nào" đã ĐÚNG từ ngày đầu tiên, kể cả khi trình duyệt vẫn đang flush qua route này mỗi
+ngày — dùng `apilog` làm điều kiện xoá sẽ xoá gói này khi nó vẫn đang được dùng thật. Điều kiện đúng:
+**zero `POST /sync` trong access log, 30 ngày liên tiếp.** Đây là quyết định LỊCH, không phải quyết
+định mã — hết cửa sổ, xoá gói này giống hệt cách `GET /sync` đã bị xoá ở Task 3.
+
+**Lỗ đã biết, không giấu:** một người học không mở lại app trong cửa sổ 30 ngày đó **mất** bất cứ
+thứ gì còn nằm trong outbox cục bộ chưa flush. Lỗ này KHÔNG đóng bằng mã — nó đóng bằng việc **chọn
+thời điểm xoá đủ rộng** (30 ngày là biên đủ để hầu hết người dùng thật đã quay lại ít nhất một lần).
+Nếu 30 ngày là không đủ cho phân bố người dùng thật của nền tảng, việc cần làm là dời điều kiện xa
+hơn — TRƯỚC khi xoá gói, không phải sau.
+
+**Một chỗ hồ sơ Task 14 sửa cùng lúc:** chú thích của `MaxItemsPerPush`
+(`apps/api/internal/sync/handler.go`) từng nói "the web client (apps/web/src/sync/engine.ts) sends
+its WHOLE outbox in one request with no chunking" — `sync/engine.ts` đã bị xoá ở Task 10; người gọi
+CÒN LẠI duy nhất là `legacyDrain.ts`, và nó ĐÃ chia lô 1000 dòng. Đã sửa tại chỗ; hằng số
+`MaxItemsPerPush = 10000` giữ nguyên giá trị vì cả gói sắp bị xoá theo lịch ở trên, không đáng siết
+lại cho một người gọi sắp không còn tồn tại.
+
+## Ruling F5 — nửa RETIRED, nửa còn sống, và một khẳng định sai Task 14 bắt được khi đi tìm nó
+
+**Ruling F5 gốc (P1):** phần trăm hoàn thành và mọi thứ `useProgress` phơi ra tính từ tiến độ CỤC BỘ
+(Dexie qua `liveQuery`), không bao giờ cần một vòng mạng — vì trang chủ (`/`) là màn hình đầu tiên
+mọi phiên mở ra, và nó phải đúng khi không có mạng.
+
+**RETIRED, có chủ ý (Pha 3, Task 6 + Task 9):** Task 6 viết lại `useProgress` thành TanStack Query +
+ghi lạc quan (không còn Dexie ở dưới); Task 9 làm y hệt cho `progress/recent.ts`'s hai hook
+(`useLastStudiedCourseId`, `useRecentNotes`) và `pages/Progress.tsx`'s `useLocalProgress`. Cả ba đều
+gỡ tiền đề "không cần mạng" CÓ CHỦ Ý, cùng lý do: Task 10 xoá Dexie hoàn toàn, Task 11 xoá nhánh
+ngoại tuyến của `RequireAuth`. Từ Pha 3, **không trang nào của app còn đúng khi mất mạng** —
+`RequireAuth` hiện `auth.needsNetwork` ("cần mạng") thay vì render một cây đã cache.
+
+**Phần còn sống, THU HẸP PHẠM VI:** `pages/Dashboard.tsx` và `pages/Progress.tsx` vẫn tính số chương
+đã đọc từ `useProgress` thay vì từ `stats.courses[].chaptersDone` (trường này tồn tại ở API, có
+trong response, nhưng không dòng TSX nào đọc nó — đo lại 2026-09-02). Lý do còn lại KHÔNG phải tính
+sẵn có nữa mà là ĐỘ TRỄ: `useProgress` ghi lạc quan, một chương đánh dấu đã đọc hiện NGAY trong
+cache; `stats.courses[].chaptersDone` chỉ nhích lên sau khi `PUT /progress` thành công VÀ `/stats`
+được hỏi lại. Cùng một sự kiện, hai độ trễ khác nhau — trang của các con số chọn cái nhanh hơn. Xem
+`pages/Progress.tsx`'s chú thích "Vì sao số chương vẫn tính từ `useProgress`" cho lập luận đầy đủ.
+
+**Khẳng định sai Task 14 bắt được khi đi kiểm mục này (đúng dạng lỗi Pha 2 cảnh báo — hồ sơ hứa
+rộng hơn mã, và nó SỐNG SÓT qua cả Task 6, Task 9, Task 11 mà không ai chạm tới):**
+`pages/Dashboard.tsx`'s doc comment, ngay dưới tiêu đề `## Ruling F5 còn nguyên`, viết đến tận
+2026-09-01: *"Trang này phải đúng khi không có mạng, vì nó là trang mở ra trước cả khi ai kịp biết
+mình có mạng hay không."* Câu này SAI kể từ Task 6/9/10/11 — `useProgress` đọc `GET /progress` qua
+mạng, không còn Dexie/`liveQuery` nào ở dưới, và trang này **không còn** đúng khi mất mạng. Không
+phép quét `outbox|/sync|ngoại tuyến|offline|IndexedDB|Dexie` nào của Task 14 bắt được câu này — nó
+không chứa từ khoá nào trong danh sách đó — chỉ bắt được bằng cách lần theo tên "ruling F5" và đọc
+lại đúng nghĩa gốc của nó. Đã sửa tại chỗ (`Dashboard.tsx`), đổi tiêu đề thành
+`## Ruling F5, thu hẹp phạm vi (Pha 3)` và viết lại đúng phần còn sống ở trên.
+
+## C-1 tái diễn BA lần trong Pha 3, ba hình dạng mới — và một hình dạng dây bẫy `SESSION_CLEARERS` không bắt được
+
+`clearSession()` (`apps/web/src/auth/session.ts`, ruling P2-F18) là điểm chân lý DUY NHẤT của
+codebase này cho việc dọn dữ liệu một người học rời đi. Pha 3 thêm ba kho dữ liệu mới, và cả ba lần
+đầu tiên đều KHÔNG được nối vào cửa đó — đúng hình dạng C-1 (rò rỉ chéo tài khoản) đã đóng ở P1, tái
+diễn ba lần trong MỘT pha:
+
+1. **Hàng đợi heartbeat trong bộ nhớ** (`api/events.ts`, Task 8's bản đầu) — không có reset nào cả.
+   Một heartbeat của A còn nằm trong `queue` sống sót qua `useLogout()`, và lượt tick tiếp theo của
+   `startEventFlusher()` — khởi động lại dưới phiên B ngay khi B đăng nhập cùng tab — POST nó lên
+   `/events/batch` dưới cookie B, gán nhầm phút học của A cho B. Đóng bằng `resetEventQueue()`, nối
+   vào `clearSession()`, chứng minh đầu-cuối ở `test/eventQueueHandoff.test.tsx`.
+2. **Một cú flush bị bỏ rơi tái tiêm gói của A vào hàng đợi của B** (Task 8's vòng sửa, một review
+   hẹp bắt tiếp). `useLogout.ts`'s best-effort flush chạy trong `withTimeout(…, LOGOUT_SYNC_TIMEOUT_MS)`
+   — timeout ấy chỉ đua với PROMISE NGOÀI, không huỷ request thật (không `AbortController` nào trong
+   `api/client.ts`). Một flush còn chạy khi mốc 5s hết hạn bị BỎ RƠI, không bị huỷ, và tiếp tục chạy
+   trong lúc logout dọn sạch mọi thứ — kể cả `resetEventQueue()`. Nếu phản hồi TRỄ của nó là một THẤT
+   BẠI, nhánh `catch` cũ tái tiêm gói của A vào bất cứ thứ gì `queue` đang giữ LÚC ĐÓ — trên một lần
+   bàn giao cùng tab, có thể đã là hàng đợi vừa mới của B. Đóng bằng `queueGeneration`
+   (`api/events.ts`), mô phỏng đúng cơ chế `syncEpoch` cũ của `sync/engine.ts` (đã xoá): một flush
+   đóng dấu thế hệ hiện tại trước khi đợi mạng, và chỉ tái tiêm nếu thế hệ ấy vẫn còn đúng lúc thất
+   bại — một `resetEventQueue()` xen vào giữa thì gói bị DROP, không bị ghi lại.
+3. **Bộ nhớ đệm mutation của TanStack Query** (Task 11's phát hiện review). `networkMode: 'online'`
+   mặc định (repo không cấu hình gì khác — `App.tsx`'s `new QueryClient()` để trống) khiến một
+   mutation gửi lúc mất mạng bị TẠM DỪNG chứ không thất bại, và TỰ ĐỘNG TIẾP TỤC ngay khi
+   `onlineManager` báo có mạng lại — gửi lại qua `api/client.ts`'s `send()`, luôn mang
+   `credentials: 'include'`, tức bất kỳ cookie nào đang hợp lệ LÚC ĐÓ, không phải tài khoản đã bắt
+   đầu việc ghi. A mất mạng giữa lúc ghi, mutation tạm dừng, A đăng xuất, B đăng nhập, có mạng lại —
+   không có bản vá thì việc ghi tạm dừng của A phát lại dưới cookie B. Đóng bằng
+   `queryClient.getMutationCache().clear()`, gọi từ `clearSession()`.
+
+**Dây bẫy cấu trúc không bắt được hình dạng thứ ba, và đây không phải một lỗ — đã được cân nhắc và
+ghi lại tại chỗ.** `SESSION_CLEARERS` (`apps/web/src/auth/session.test.ts`) quét AST của mọi tệp mã
+nguồn sản phẩm, tìm định danh trùng tên với BA hàm có thể import được
+(`clearUserContent`/`resetSessionScopedQueries`/`resetEventQueue`) xuất hiện ở nơi KHÁC
+`session.ts` — bắt được đúng lớp lỗi hình dạng #1/#2 ở trên: một hàm được author ở nơi khác, một
+call site tương lai có thể import thẳng thay vì đi qua `clearSession()`. **Hình dạng #3 không có gì
+để dây bẫy này bắt:** `getMutationCache().clear()` là một LỜI GỌI PHƯƠNG THỨC trên instance
+`QueryClient` đã có sẵn trong tay, không phải một hàm import được từ nơi khác — không có "điểm import
+thứ hai" nào để quét. `session.ts`'s doc comment tự ghi rõ điều này ("There is nothing to name as a
+second import site of a TanStack Query built-in"). Ghi lại ở tầng sổ nợ của pha, không chỉ tầng tệp:
+nếu Pha 4 thêm một kho dữ liệu thứ tư mà cách nối đúng của nó CŨNG là một lời gọi phương thức trên
+một đối tượng đã có sẵn (không phải một hàm import), `SESSION_CLEARERS` sẽ không bắt được thiếu sót
+đó — người thi công phải TỰ nhớ, không có cổng nào nhắc.
+
+## `p2.spec.ts` mất cover e2e cho orphan/rescue (§3/§4 bản cũ) — nợ có tên, có điều kiện
+
+**Trạng thái: hở, có chủ đích, đã báo cáo trung thực ngay trong tệp.** Khi Task 13 gỡ cách ly
+`p2.spec.ts`, chỉ MỘT kịch bản được khôi phục/viết lại (§1 hai thiết bị đọc thẳng từ máy chủ, §2 ghi
+thất bại thì lùi và báo). Hai kịch bản cũ của bản TRƯỚC rewrite — §3 (một ghi chú mồ côi khi nội dung
+chương được dựng lại bên dưới nó) và §4 (cứu một ghi chú mồ côi, gồm cả việc từ chối chọn lại bằng
+công thức) — KHÔNG được port sang.
+
+**Vì sao:** plan's câu "7 bài: `p1`×4, `p2`×1, `s2`×1, `widget`×1" bị đọc như một TRẦN, không phải
+một hình dạng TỐI THIỂU — lỗi câu chữ ở plan, không phải ở người thi công (đã tự sửa ngay trong pha,
+commit `7d278fd`, "con số '7 bài' của Task 13 là hình dạng tối thiểu, không phải trần"). Logic
+orphan/rescue KHÔNG đổi trong Pha 3 (`useAnnotations.ts`'s doc: "orphans are data" — resolving là một
+phép ĐỌC, không có nhánh ghi nào bị chạm) và vẫn có cover unit đầy đủ (`OrphanPanel.test.tsx`,
+`useAnnotations.test.tsx`) — nhưng không còn cổng e2e nào canh nó ở mức trình duyệt thật.
+
+**Vì sao đáng lo hơn một dòng "TODO" bình thường:** `p2.spec.ts`'s bản TRƯỚC rewrite (git history,
+commit `9454917`, trước khi Task 13 viết lại) tự ghi trong chính header của nó: *"Seven tasks of P2
+are covered by 515 unit tests that mock at least one of those boundaries. That suite is green and
+deterministic, and it has still missed a real bug on SIX consecutive rounds — every one of them
+found by opening the thing in a browser."* Orphan/rescue là ĐÚNG cái subsystem câu đó nói về. Mất
+cổng e2e cho đúng phần lịch sử đã chứng minh unit test không đủ, sáu lần liên tiếp, không phải một
+rủi ro trừu tượng.
+
+**Điều kiện xét lại:** trước hoặc cùng lúc với lần tới `anchor.ts`/`normalize.ts`/`OrphanPanel.tsx`'s
+đường reattach bị chạm, hoặc như một task độc lập có kích thước riêng — khôi phục hai kịch bản cũ
+(§3/§4) vào chuỗi `test.describe.serial` của `p2.spec.ts`. Hạ tầng cần (course `mau-hop-le`, chương
+`c1`, hai `BrowserContext` cho hai thiết bị) đã có sẵn từ §1/§2 hiện tại — việc thêm chỉ là các bước
+dựng lại nội dung chương dưới một ghi chú đã tồn tại rồi lặp lại cú chọn.
+
+## Mặt nạ `superseded` DÍNH khi trình duyệt quay lại ĐÚNG người cũ — vòng review hẹp cuối cùng bắt được
+
+**Trạng thái: hở, fail-closed, chưa vá.** `apps/web/src/auth/sessionIdentity.ts`'s `receive()` và
+`announceSessionUser()` mỗi hàm có một early-return khi giá trị mới TRÙNG với niềm tin cục bộ hiện
+tại — `receive()`: `if (data.user === localUser) return;`; `announceSessionUser()`:
+`if (localUser === user) return;`. Cả hai đường đều thoát TRƯỚC khi chạm `superseded`; chỉ nhánh
+KHÔNG bằng nhau mới xoá cờ. Với `receive()` điều đó đúng ý (không có gì THAY ĐỔI nên không có gì để
+báo `superseded`) — nhưng nó bỏ sót đúng một trường hợp: cờ đã bị bật `true` bởi một thông báo TRƯỚC
+đó, và thông báo hiện tại tình cờ khớp lại với `localUser`.
+
+**Kịch bản đo được (probe dùng một lần, ghi lại làm bằng chứng chứ không phải suy luận):** tab 1
+đăng xuất A rồi đăng nhập lại ĐÚNG A, trong khi tab 2 đang mở trang đọc công khai và trước đó đã tự
+xác lập `localUser = 'u-a'`.
+
+1. A đăng xuất ở tab 1 → `clearSession()` công bố `null`. Tab 2's `receive()` thấy `null !== 'u-a'`
+   → `superseded = true`. `receive()` KHÔNG cập nhật `localUser` (nó chỉ làm vậy khi `localUser` còn
+   `undefined`), nên `localUser` của tab 2 vẫn đứng nguyên ở `'u-a'` suốt từ đây.
+2. A đăng nhập lại ở tab 1 → công bố `'u-a'`. Tab 2's `receive()` thấy `'u-a' === localUser ('u-a')`
+   → early-return ở nhánh trùng giá trị, `superseded` giữ nguyên `true`.
+3. Một lần `GET /me` MỚI của chính tab 2 (refetch do `staleTime` hết hạn, hoặc cửa sổ được focus lại)
+   trả lời `'u-a'` — vẫn đúng người trình duyệt đang thuộc về. `useMe.ts`'s hiệu ứng công bố
+   (`useEffect(..., [settledUser])`) không chạy lại: `settledUser` đã là `'u-a'` từ trước khi mọi
+   chuyện xảy ra (cache của TanStack Query không bị `sessionIdentity.ts` đụng tới) và vẫn là `'u-a'`
+   sau, nên giá trị dependency KHÔNG đổi và effect bị React bỏ qua — `announceSessionUser('u-a')`
+   không bao giờ được gọi cho trường hợp này. Giả sử nó được gọi bằng cách khác, nó cũng early-return
+   ở nhánh trùng giá trị của chính nó trước khi chạm `superseded`.
+
+Đo được: sau bước 3, tab 2 đọc `{ superseded: true, text: 'nobody' }` — dính vĩnh viễn cho tới khi
+tải lại trang hoặc người dùng tự tay đăng nhập lại (một `GET /me` mà `settledUser` đổi giá trị THẬT
+sự, ví dụ đăng nhập thành một người khác, mới chạy lại effect và xoá được cờ).
+
+**Vì sao fail-closed, không phải rò rỉ:** `nobodyResult()` (`useMe.ts`) là câu trả lời "chưa ai đăng
+nhập" — giống hệt một khách vãng lai. Không dữ liệu của ai bị lộ sang người khác; A chỉ bị từ chối
+xem CHÍNH dữ liệu của A.
+
+**Hậu quả người dùng thấy, và vì sao bán kính mới hơn bản thân điều kiện:** điều kiện dính cờ này có
+từ trước vòng sửa cuối — trước đây `RequireAuth` tự đọc `sessionWasSuperseded()` qua
+`useSyncExternalStore` riêng, và dính cờ chỉ đẩy trang được bảo vệ về `/login`, một điều hướng cứng,
+không phải một trang câm lặng. Từ khi mặt nạ chuyển hẳn vào `useMe()` (rà soát toàn nhánh, bước 5;
+xem chú thích "NỬA MÀN HÌNH CỦA C-1 KHÔNG BIẾN MẤT" ở `RequireAuth.tsx`), MỌI nơi gọi `useMe()` thừa
+kế cùng cờ — kể cả `reader/ChapterView.tsx`'s `AuthedReaderExtras`, sống trên tuyến đọc CÔNG KHAI,
+gắn chỉ bằng `me.isSuccess && me.data != null`, không đứng sau `<RequireAuth>`. Tab 2 dính cờ mất chú
+thích, tiến độ và heartbeat, và hiện đúng lời mời "khách vãng lai" — dù CHÍNH A đang ngồi ở tab đó —
+cho tới khi tải lại trang hoặc tự đăng nhập lại trong chính tab này.
+
+**Khẳng định sai `useMe.ts` từng ghi, đã sửa cùng lúc với mục nợ này:** doc comment ở mục "It is not
+a lockout…" nói cờ được xoá "the moment its own `GET /me` answers" — đúng khi `GET /me` trả lời một
+người KHÁC với niềm tin cũ, nhưng SAI trong đúng ca đo được ở trên: một `GET /me` trả lời TRÙNG người
+tab đã tin không xoá được cờ, vì cả hai điểm xoá (`receive()`, `announceSessionUser()`) chỉ xoá ở
+nhánh giá trị THAY ĐỔI, và hiệu ứng công bố còn không chạy lại để thử. Đã viết lại đoạn đó tại chỗ để
+nêu rõ trường hợp ngoại lệ này thay vì khẳng định vô điều kiện.
+
+**Sửa một dòng, chưa áp dụng (đây là tài liệu, không phải mã):** cho `receive()` xoá `superseded`
+(và gọi `notifyListeners()`) cả khi `data.user === localUser`, thay vì early-return im lặng — nghĩa
+là mọi thông báo tự nó xác nhận lại "trình duyệt này thuộc về ai" đều xoá cờ, bất kể trùng hay khác
+giá trị cũ.
+
+**Bối cảnh liên quan, KHÔNG PHẢI hồi quy — ghi cùng mục để không ai đọc nhầm thành hai món nợ:**
+
+- `annotations/MarginCards.tsx` dòng 487, cleanup unmount gọi `flush()` — mặt nạ khiến nó bắn một
+  `PATCH /annotations/:id` cho một bản nháp chưa lưu đúng lúc bàn giao. Không rò: `PatchAnnotation`
+  where theo cả `id` VÀ `user_id`, nên dưới B nó khớp 0 dòng → 404; không ai đăng nhập thì 401, và
+  `redirectOn401` mặc định `true` nên tab bị điều hướng cứng sang `/login`. Bản debounce cũ, trước
+  khi có bản vá cờ này, cũng làm y hệt — đổi THỜI ĐIỂM bắn request, không đổi hành vi.
+- `useAnnotations` không có unmount-unpaint: đốm tô sáng (highlight span) của A vẫn còn trong DOM
+  chương sau khi lớp ghi unmount — chữ ghi chú thì biến mất vì sống trong React, chỉ đốm tô là còn.
+  Đây là một THU HẸP so với trạng thái trước bản vá `superseded`, không phải một lỗ lộ mới do vòng
+  sửa này tạo ra.
+
+**Chưa có bài kiểm nào phủ đúng ca này:** `test/supersededTabWrites.test.tsx`'s "KHÔNG phải một cái
+khoá vĩnh viễn…" chỉ đo trường hợp tab 2 tự xác lập lại thành một người KHÁC (B) — đúng nhánh
+`receive()`/`announceSessionUser()` xoá được cờ, không phải nhánh đang hở ở đây.
+
+**Điều kiện đóng:** vá một dòng ở `receive()` như trên; thêm một bài kiểm cho đúng chuỗi "đăng xuất
+rồi đăng nhập lại ĐÚNG người" (chưa tồn tại, xem trên); đo lại bằng đột biến trước khi coi là kín,
+theo đúng bài học "một dây bẫy còn xanh không có nghĩa nó còn đo thứ nó từng đo" ở mục *Confused
+deputy* của tệp này.

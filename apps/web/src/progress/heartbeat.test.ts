@@ -1,29 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { db, type OutboxEntry } from '../db/local';
+
+// Task 8 (Pha 3): the heartbeat no longer writes to `db.outbox` at all —
+// it hands every tick to `../api/events`'s in-memory queue instead (see
+// that module's own header for why). Mocked at the module boundary, same
+// shape as `sync/engine.test.ts`'s `vi.mock('../api/navigation', ...)`,
+// so this suite can assert exactly which events `startHeartbeat` queued
+// without a real network or a real IndexedDB write anywhere in it.
+vi.mock('../api/events', () => ({
+  queueEvent: vi.fn(),
+}));
+
+import { queueEvent } from '../api/events';
 import { startHeartbeat } from './heartbeat';
 
 /**
- * This suite deliberately never calls `vi.useFakeTimers()`. Same
- * rationale as src/sync/engine.ts's own interval test
- * ("startSync() registers a 15s setInterval...", src/sync/engine.test.ts):
- * fake-indexeddb schedules its internal callbacks through a REAL
- * `setImmediate` specifically so it keeps working alongside an app that
- * fakes timers elsewhere, and faking the clock around a real Dexie
- * write (`startHeartbeat` writes to `db.outbox` on every tick) is a
- * documented deadlock in this codebase — `vi.advanceTimersByTimeAsync`
- * has no way to "advance" a real `setImmediate`.
+ * This suite deliberately never calls `vi.useFakeTimers()`. Spying on
+ * `setInterval` and invoking the captured callback directly gives the
+ * exact same "simulate the next 30s tick, on demand" control without
+ * faking anything, and `clearInterval` (asserted in the teardown test) is
+ * the real, native function — proving it was called with the exact handle
+ * `setInterval` returned is itself real proof teardown works.
  *
- * Spying on `setInterval` and invoking the captured callback directly
- * gives the exact same "simulate the next 30s tick, on demand" control
- * without faking anything: every Dexie write below runs against the
- * real event loop, and `clearInterval` (asserted in the teardown test)
- * is the real, native function, so proving it was called with the exact
- * handle `setInterval` returned is itself real proof teardown works —
- * not something a mock could fake.
- *
- * Similarly, `Date.now` is spied directly (not through the fake-timer
- * system) to get deterministic control over the 60s activity window
- * without touching setInterval/setTimeout/setImmediate at all.
+ * `Date.now` is spied directly (not through the fake-timer system) to get
+ * deterministic control over the 60s activity window without touching
+ * setInterval/setTimeout at all.
  */
 function captureTick(setIntervalSpy: ReturnType<typeof vi.spyOn>): () => void {
   return setIntervalSpy.mock.calls[0][0] as () => void;
@@ -33,24 +33,14 @@ function setHidden(hidden: boolean) {
   Object.defineProperty(document, 'hidden', { value: hidden, configurable: true });
 }
 
-async function outboxEvents(): Promise<OutboxEntry[]> {
-  return db.outbox.where('table').equals('events').toArray();
-}
-
-/** Gives any (incorrect) async write a chance to land before asserting none did — the outbox add is fire-and-forget, so a negative assertion right after `tick()` with no `await` at all could pass for the wrong reason. */
-async function settle() {
-  await new Promise((resolve) => setTimeout(resolve, 20));
-}
-
-beforeEach(async () => {
-  await db.outbox.clear();
+beforeEach(() => {
+  vi.mocked(queueEvent).mockClear();
   setHidden(false);
 });
 
-afterEach(async () => {
+afterEach(() => {
   vi.restoreAllMocks();
   setHidden(false);
-  await db.outbox.clear();
 });
 
 describe('startHeartbeat', () => {
@@ -64,23 +54,19 @@ describe('startHeartbeat', () => {
     stop();
   });
 
-  it('visible tab + recent activity -> pushes exactly one heartbeat event into the outbox per tick, shaped exactly like the sync flush expects', async () => {
+  it('visible tab + recent activity -> queues exactly one heartbeat event per tick, shaped exactly like POST /events/batch expects', () => {
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
     const stop = startHeartbeat(() => ({ courseId: 'c1', chapterId: 'ch1' }));
     const tick = captureTick(setIntervalSpy);
 
     window.dispatchEvent(new Event('pointerdown'));
     tick();
-    await vi.waitFor(async () => expect(await outboxEvents()).toHaveLength(1));
+    expect(queueEvent).toHaveBeenCalledTimes(1);
 
-    const [entry] = await outboxEvents();
-    expect(entry.table).toBe('events');
-    // Matches src/sync/engine.ts's flushOutbox exactly — it filters
-    // `r.table === 'events'` and POSTs `r.row` verbatim to
-    // /events/batch, whose contract is
-    // {courseId,chapterId,kind,meta,at} (see engine.test.ts's own
-    // "flushes queued events via a SEPARATE POST /events/batch call").
-    expect(entry.row).toEqual({
+    // `api/events.ts`'s own `StudyEvent` contract, field for field — see
+    // that module's doc and apps/api/internal/stats/handler.go's
+    // `eventsBatchRequest`.
+    expect(vi.mocked(queueEvent).mock.calls[0][0]).toEqual({
       courseId: 'c1',
       chapterId: 'ch1',
       kind: 'heartbeat',
@@ -90,17 +76,18 @@ describe('startHeartbeat', () => {
     // `at` must be a real, parseable instant — the server rejects
     // anything that doesn't parse as RFC3339Nano (see
     // apps/api/internal/stats/handler.go's EventsBatch).
-    expect(new Date((entry.row as { at: string }).at).toString()).not.toBe('Invalid Date');
+    const firstCall = vi.mocked(queueEvent).mock.calls[0][0];
+    expect(new Date(firstCall.at).toString()).not.toBe('Invalid Date');
 
     // A second tick (with fresh activity) produces a second, distinct event.
     window.dispatchEvent(new Event('pointerdown'));
     tick();
-    await vi.waitFor(async () => expect(await outboxEvents()).toHaveLength(2));
+    expect(queueEvent).toHaveBeenCalledTimes(2);
 
     stop();
   });
 
-  it('a hidden tab produces no events, even with activity right before the tick', async () => {
+  it('a hidden tab produces no queued event, even with activity right before the tick', () => {
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
     const stop = startHeartbeat(() => ({ courseId: 'c1', chapterId: 'ch1' }));
     const tick = captureTick(setIntervalSpy);
@@ -109,13 +96,12 @@ describe('startHeartbeat', () => {
     window.dispatchEvent(new Event('pointerdown'));
     tick();
 
-    await settle();
-    expect(await outboxEvents()).toHaveLength(0);
+    expect(queueEvent).not.toHaveBeenCalled();
 
     stop();
   });
 
-  it('a visible tab with NO activity at all since mount produces no event', async () => {
+  it('a visible tab with NO activity at all since mount queues nothing', () => {
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
     const stop = startHeartbeat(() => ({ courseId: 'c1', chapterId: 'ch1' }));
     const tick = captureTick(setIntervalSpy);
@@ -123,13 +109,12 @@ describe('startHeartbeat', () => {
     // Deliberately no pointerdown/keydown/scroll dispatched.
     tick();
 
-    await settle();
-    expect(await outboxEvents()).toHaveLength(0);
+    expect(queueEvent).not.toHaveBeenCalled();
 
     stop();
   });
 
-  it('activity that happened more than 60s before the tick produces no event', async () => {
+  it('activity that happened more than 60s before the tick queues nothing', () => {
     let mockNow = Date.now();
     vi.spyOn(Date, 'now').mockImplementation(() => mockNow);
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
@@ -140,13 +125,12 @@ describe('startHeartbeat', () => {
     mockNow += 61_000; // 61s later — outside the 60s window
     tick();
 
-    await settle();
-    expect(await outboxEvents()).toHaveLength(0);
+    expect(queueEvent).not.toHaveBeenCalled();
 
     stop();
   });
 
-  it('activity within the last 60s (just inside the boundary) still produces an event', async () => {
+  it('activity within the last 60s (just inside the boundary) still queues an event', () => {
     let mockNow = Date.now();
     vi.spyOn(Date, 'now').mockImplementation(() => mockNow);
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
@@ -157,12 +141,12 @@ describe('startHeartbeat', () => {
     mockNow += 59_000; // 59s later — still inside the 60s window
     tick();
 
-    await vi.waitFor(async () => expect(await outboxEvents()).toHaveLength(1));
+    expect(queueEvent).toHaveBeenCalledTimes(1);
 
     stop();
   });
 
-  it('getCtx() returning null (no chapter context) produces no event', async () => {
+  it('getCtx() returning null (no chapter context) queues nothing', () => {
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
     const stop = startHeartbeat(() => null);
     const tick = captureTick(setIntervalSpy);
@@ -170,13 +154,12 @@ describe('startHeartbeat', () => {
     window.dispatchEvent(new Event('pointerdown'));
     tick();
 
-    await settle();
-    expect(await outboxEvents()).toHaveLength(0);
+    expect(queueEvent).not.toHaveBeenCalled();
 
     stop();
   });
 
-  it('attributes each tick to whatever getCtx() returns AT TICK TIME, not whatever it returned when startHeartbeat was called (chapter navigation mid-interval)', async () => {
+  it('attributes each tick to whatever getCtx() returns AT TICK TIME, not whatever it returned when startHeartbeat was called (chapter navigation mid-interval)', () => {
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
     let currentCtx: { courseId: string; chapterId: string } | null = { courseId: 'c1', chapterId: 'ch1' };
     const stop = startHeartbeat(() => currentCtx);
@@ -184,22 +167,21 @@ describe('startHeartbeat', () => {
 
     window.dispatchEvent(new Event('pointerdown'));
     tick();
-    await vi.waitFor(async () => expect(await outboxEvents()).toHaveLength(1));
+    expect(queueEvent).toHaveBeenCalledTimes(1);
 
     // Simulate the reader navigating to a different chapter BETWEEN two ticks.
     currentCtx = { courseId: 'c1', chapterId: 'ch2' };
     window.dispatchEvent(new Event('pointerdown'));
     tick();
-    await vi.waitFor(async () => expect(await outboxEvents()).toHaveLength(2));
+    expect(queueEvent).toHaveBeenCalledTimes(2);
 
-    const events = await outboxEvents();
-    expect((events[0].row as { chapterId: string }).chapterId).toBe('ch1');
-    expect((events[1].row as { chapterId: string }).chapterId).toBe('ch2');
+    expect(vi.mocked(queueEvent).mock.calls[0][0].chapterId).toBe('ch1');
+    expect(vi.mocked(queueEvent).mock.calls[1][0].chapterId).toBe('ch2');
 
     stop();
   });
 
-  it('teardown clears the exact interval startHeartbeat created and removes the activity listeners', async () => {
+  it('teardown clears the exact interval startHeartbeat created and removes the activity listeners', () => {
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
     const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
     const addSpy = vi.spyOn(window, 'addEventListener');

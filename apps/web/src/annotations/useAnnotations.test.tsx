@@ -1,10 +1,25 @@
 /**
- * Tests for the annotation store (P2 Task 4) — the module that joins the
- * three previous ones (`./normalize`, `./anchor`, `./painter`) to the sync
- * pipeline P1 built and nobody had used yet.
+ * Tests for the annotation store — the module that joins the three
+ * anchoring/painting modules (`./normalize`, `./anchor`, `./painter`) to the
+ * server data layer (`../api/annotations`, Task 5, Pha 3).
  *
- * Three properties here are worth more than the rest, because each of them
- * is a failure that stays GREEN under the obvious test:
+ * Task 7, Pha 3 rewired this hook off Dexie's `liveQuery`/outbox pair onto
+ * TanStack Query + optimistic mutations against `GET/POST /annotations` and
+ * `PATCH/DELETE /annotations/:id` — the same shift `progress/useProgress.test.ts`
+ * made one task earlier, and for the identical reason stated there: every
+ * wire-level shape/error-handling concern (`assertAnnotations`,
+ * `MalformedAnnotationsError`, the exact POST/PATCH/DELETE bytes) is already
+ * covered by `api/annotations.test.ts` via MSW; this file mocks
+ * `fetchAnnotations`/`createAnnotation`/`patchAnnotation`/`deleteAnnotation`
+ * directly at the module boundary instead, because it is testing the HOOK's
+ * own logic — optimistic patch, rollback, draft survival, stable identities —
+ * not the HTTP contract underneath it.
+ *
+ * Three properties from the anchoring/painting side are worth calling out
+ * because each is a failure that stays GREEN under the obvious test — none of
+ * this changed in Task 7, it is exercised here because `rows` now arrives
+ * through the query cache instead of a Dexie `liveQuery`, and the whole point
+ * of the rewrite is that these behaviours must survive the swap untouched:
  *
  *   1. **Two overlapping notes painted in one pass.** The naive loop
  *      `for (a of anns) { r = anchorToRange(map, a); paint(r) }` passes every
@@ -15,33 +30,36 @@
  *      clock is a flake; this file asserts the ORDER of published states
  *      instead — an exact-matching note must reach `list` in an earlier React
  *      commit than a note that needed the fuzzy tier.
- *   3. **The outbox row's field names.** One wrong name and the note syncs to
- *      the server and vanishes on the other device, silently. The shape is
- *      compared against the literal key list of `annotationItem` in
- *      `apps/api/internal/sync/handler.go`.
+ *   3. **`create`/`updateNote`/`remove`/`reattach` write OPTIMISTICALLY, and a
+ *      failed write rolls the cache back without erasing the learner's own
+ *      typing.** New in Task 7 — see the "ghi lạc quan" describe block.
  */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, waitFor } from '@testing-library/react';
-import { StrictMode, useEffect, useRef, useState } from 'react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { clearLocalData, db, mergeRow, type AnnotationRow } from '../db/local';
+import { StrictMode, useEffect, useRef, useState, type ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  annotationsQueryKey,
+  createAnnotation,
+  deleteAnnotation,
+  fetchAnnotations,
+  patchAnnotation,
+  type Ann,
+} from '../api/annotations';
 import { type Anchor, type AnchorColor, selectionToAnchor } from './anchor';
 import { normalizeContainer } from './normalize';
 import { type ChapterContent, type UseAnnotationsResult, useAnnotations } from './useAnnotations';
 
-/** The exact JSON field names `annotationItem` declares in
- * apps/api/internal/sync/handler.go. Anything else in an outbox row is a
- * field the server will ignore; anything missing is a field it will reject
- * (400) or read as empty. */
-const SERVER_ANNOTATION_FIELDS = [
-  'anchor',
-  'chapterId',
-  'courseId',
-  'createdAt',
-  'deletedAt',
-  'id',
-  'note',
-  'updatedAt',
-];
+vi.mock('../api/annotations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/annotations')>();
+  return {
+    ...actual,
+    fetchAnnotations: vi.fn(),
+    createAnnotation: vi.fn(),
+    patchAnnotation: vi.fn(),
+    deleteAnnotation: vi.fn(),
+  };
+});
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -64,7 +82,7 @@ const Q_EDITED_PARA = 'Độ dài mã tối ưu không thể ngắn hơn entropy
 const Q_ABSENT = 'Định lý mã hoá kênh của Shannon nói về dung lượng khả đạt';
 
 /**
- * Builds a real `Anchor` the way Task 5's toolbar will: from a live `Range`
+ * Builds a real `Anchor` the way `SelectionToolbar` does: from a live `Range`
  * over the chapter, through `selectionToAnchor`. Hand-writing `{exact,
  * prefix, suffix}` literals would test this file's idea of the collapsed
  * projection rather than `./anchor`'s.
@@ -99,15 +117,25 @@ interface SeedInput {
   chapterId?: string;
   createdAt?: string;
   updatedAt?: string;
-  deletedAt?: string | null;
 }
 
-/** Puts a row straight into Dexie without an outbox entry — i.e. exactly what
- * `sync/engine.ts`'s `pull()` does with a row that arrived from another
- * device. Used so "resolving an annotation must never write anything" can be
- * asserted against an empty outbox. */
-async function seed(input: SeedInput): Promise<AnnotationRow> {
-  const row: AnnotationRow = {
+/**
+ * A tiny in-memory stand-in for the backend `createAnnotation`/
+ * `patchAnnotation`/`deleteAnnotation` write to and `fetchAnnotations` reads
+ * from — the same shape `progress/useProgress.test.ts`'s own `serverRows`
+ * uses, and for the same reason: `onSettled` (see `useAnnotations.ts`)
+ * always invalidates and refetches after a mutation, so a `fetchAnnotations`
+ * mock that always resolves the same fixed array, independent of what was
+ * just written, would make every test that mutates-then-awaits-settling
+ * flake against a double that has nothing to do with the hook.
+ */
+let serverRows: Ann[];
+
+/** Puts a row straight into `serverRows` without going through `create()` —
+ * i.e. exactly what a row already on the server looks like when this hook
+ * mounts and fetches it for the first time. */
+async function seed(input: SeedInput): Promise<Ann> {
+  const row: Ann = {
     id: input.id,
     courseId: input.courseId ?? 'c1',
     chapterId: input.chapterId ?? 'ch1',
@@ -115,9 +143,8 @@ async function seed(input: SeedInput): Promise<AnnotationRow> {
     note: input.note ?? '',
     createdAt: input.createdAt ?? '2026-08-20T10:00:00.000Z',
     updatedAt: input.updatedAt ?? '2026-08-20T10:00:00.000Z',
-    deletedAt: input.deletedAt ?? null,
   };
-  await db.annotations.put(row);
+  serverRows.push(row);
   return row;
 }
 
@@ -138,6 +165,11 @@ interface Snapshot {
  * reassigned `let`, not because it satisfies the linter. */
 const hook = { api: null as unknown as UseAnnotationsResult };
 let snapshots: Snapshot[];
+
+let queryClient: QueryClient;
+function wrapper({ children }: { children: ReactNode }) {
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+}
 
 /**
  * Stands in for `ChapterView`: owns a `<div>` React never gives children to,
@@ -162,7 +194,7 @@ function Harness({ html, courseId = 'c1', chapterId = 'ch1' }: { html: string; c
   return <div ref={ref} data-testid="chapter" />;
 }
 
-/** The two-argument form the task brief names verbatim: no DOM, CRUD only. */
+/** The two-argument form: no DOM, CRUD only. */
 function CrudHarness() {
   hook.api = useAnnotations('c1', 'ch1');
   return null;
@@ -184,23 +216,197 @@ function paintedText(id: string): string {
     .join('');
 }
 
-function shift(iso: string, ms: number): string {
-  return new Date(Date.parse(iso) + ms).toISOString();
-}
-
-beforeEach(async () => {
-  await clearLocalData();
+beforeEach(() => {
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  serverRows = [];
   snapshots = [];
+  document.body.innerHTML = '';
+
+  vi.mocked(fetchAnnotations)
+    .mockReset()
+    .mockImplementation(async (courseId) =>
+      serverRows.filter((row) => courseId === undefined || row.courseId === courseId).map((row) => ({ ...row })),
+    );
+  vi.mocked(createAnnotation)
+    .mockReset()
+    .mockImplementation(async (row) => {
+      const at = new Date().toISOString();
+      serverRows.push({ ...(row as Ann), createdAt: at, updatedAt: at });
+    });
+  vi.mocked(patchAnnotation)
+    .mockReset()
+    .mockImplementation(async (id, patch) => {
+      const idx = serverRows.findIndex((row) => row.id === id);
+      if (idx === -1) return;
+      serverRows[idx] = { ...serverRows[idx], ...patch, updatedAt: new Date().toISOString() };
+    });
+  vi.mocked(deleteAnnotation)
+    .mockReset()
+    .mockImplementation(async (id) => {
+      serverRows = serverRows.filter((row) => row.id !== id);
+    });
+});
+
+afterEach(() => {
   document.body.innerHTML = '';
 });
 
-afterEach(async () => {
-  await clearLocalData();
+/* ========================================================================
+ * GHI LẠC QUAN — ba kịch bản bắt buộc của task-7-brief.md (Step 1–3).
+ * ======================================================================== */
+
+describe('useAnnotations — ghi lạc quan (Query + mutation, không còn Dexie/outbox)', () => {
+  it('create() hiện annotation trong `list` TRƯỚC KHI POST trả lời, và remove() hỏng thì nó QUAY LẠI sau khi cache lùi', async () => {
+    render(<Harness html={CHAPTER} />, { wrapper });
+    await waitFor(() => expect(vi.mocked(fetchAnnotations)).toHaveBeenCalled());
+    expect(hook.api.list).toHaveLength(0);
+
+    // ---- create: lạc quan trước khi POST /annotations trả lời ----
+    let resolveCreate: (() => void) | null = null;
+    vi.mocked(createAnnotation).mockImplementationOnce(
+      (row) =>
+        new Promise<void>((resolve) => {
+          resolveCreate = () => {
+            const at = new Date().toISOString();
+            serverRows.push({ ...(row as Ann), createdAt: at, updatedAt: at });
+            resolve();
+          };
+        }),
+    );
+    const anchor = makeAnchor(CHAPTER, Q_FIRST_HALF, 'g');
+
+    let createPromise!: Promise<string>;
+    act(() => {
+      createPromise = hook.api.create(anchor, 'ghi chú mới');
+    });
+    // `resolveCreate` chưa hề được gọi — POST vẫn đang treo lơ lửng — nhưng
+    // đợi đúng một NHỊP RENDER (không phải đợi mạng) đã đủ để cache lạc quan
+    // lộ diện trong `list`. Đây là phần "lạc quan" của bài kiểm tra.
+    await waitFor(() => expect(hook.api.list).toHaveLength(1));
+    expect(hook.api.list[0].note).toBe('ghi chú mới');
+    const id = hook.api.list[0].id;
+    expect(id).toMatch(UUID_RE);
+    expect(paintedText(id)).toBe(Q_FIRST_HALF);
+
+    await act(async () => {
+      resolveCreate?.();
+      await createPromise;
+    });
+    // `onSettled` invalidates+refetches unconditionally after EVERY write,
+    // success or failure — wait for THAT refetch to land before starting the
+    // remove() below, or the "hold the refetch pending" trick right after
+    // this could end up holding back the wrong call.
+    await waitFor(() => expect(vi.mocked(fetchAnnotations)).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(serverRows.some((row) => row.id === id)).toBe(true));
+
+    // ---- remove: lạc quan xoá ngay, LÙI LẠI khi DELETE hỏng ----
+    //
+    // `onSettled` refetches after EVERY mutation, failure included — and
+    // because this DELETE mock rejects WITHOUT touching `serverRows`, that
+    // refetch alone would also put the row back, coincidentally, whether or
+    // not `onError`'s rollback does anything. So the refetch is held PENDING
+    // here too: if `list` already contains `id` before that refetch is let
+    // through, the only thing that could have restored it is `onError`'s
+    // `setQueryData(previous)`.
+    let rejectRemove: ((error: Error) => void) | null = null;
+    vi.mocked(deleteAnnotation).mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectRemove = reject;
+        }),
+    );
+    let resolveRefetch: ((rows: Ann[]) => void) | null = null;
+    vi.mocked(fetchAnnotations).mockImplementationOnce(
+      () =>
+        new Promise<Ann[]>((resolve) => {
+          resolveRefetch = resolve;
+        }),
+    );
+
+    let removePromise!: Promise<void>;
+    act(() => {
+      removePromise = hook.api.remove(id).catch(() => {});
+    });
+    // Đã xoá lạc quan khỏi `list` — DELETE vẫn đang treo, chưa hề trả lời.
+    await waitFor(() => expect(hook.api.list).toHaveLength(0));
+
+    await act(async () => {
+      rejectRemove?.(new Error('mạng hỏng'));
+      await removePromise;
+    });
+    // The safety-net refetch triggered by `onSettled` is STILL PENDING here
+    // (`resolveRefetch` has not been called) — so this can only be `onError`'s
+    // rollback putting the row back.
+    await waitFor(() => expect(hook.api.list.map((row) => row.id)).toEqual([id]));
+    expect(paintedText(id)).toBe(Q_FIRST_HALF);
+
+    // Let the held-back refetch resolve too, so nothing is left dangling.
+    await act(async () => {
+      resolveRefetch?.(serverRows.filter((row) => row.courseId === 'c1'));
+    });
+  });
+
+  // Đây là chỗ "lạc quan + lùi lại" có thể tự bắn vào chân: lùi cache về giá
+  // trị cũ mà cũng lùi Ô SOẠN thì người ta mất nguyên đoạn vừa viết. Cache
+  // lùi, ô soạn KHÔNG — `draftOf` phải sống độc lập với `row.note`.
+  it('updateNote() hỏng: cache lùi về ghi chú cũ, nhưng draftOf() giữ nguyên chữ vừa gõ', async () => {
+    await seed({ id: 'a1', anchor: makeAnchor(CHAPTER, Q_FIRST_HALF), note: 'ghi chú cũ' });
+    render(<Harness html={CHAPTER} />, { wrapper });
+    await waitFor(() => expect(hook.api.list).toHaveLength(1));
+    expect(hook.api.draftOf('a1')).toBe('ghi chú cũ'); // chưa sửa gì — draftOf trả về bản đã lưu
+
+    vi.mocked(patchAnnotation).mockRejectedValueOnce(new Error('mạng hỏng'));
+    await act(async () => {
+      await hook.api.updateNote('a1', 'đoạn tôi vừa gõ').catch(() => {});
+    });
+
+    expect(hook.api.list[0].note).toBe('ghi chú cũ'); // cache đã lùi
+    expect(hook.api.draftOf('a1')).toBe('đoạn tôi vừa gõ'); // chữ còn nguyên
+  });
+
+  // Xoá-rồi-tạo đổi id, và id là thứ painter.ts + MarginCards dùng để nối thẻ
+  // với vùng bôi. Đổi id giữa chừng là mất liên kết ấy, im lặng.
+  it('reattach() gửi anchor qua PATCH, không phải xoá-rồi-tạo — id không đổi', async () => {
+    await seed({ id: 'a1', anchor: makeAnchor(CHAPTER, Q_FIRST_HALF) });
+    render(<Harness html={CHAPTER} />, { wrapper });
+    await waitFor(() => expect(hook.api.list).toHaveLength(1));
+
+    const newAnchor = makeAnchor(CHAPTER, Q_THIRD_PARA, 'b');
+    await act(async () => {
+      await hook.api.reattach('a1', newAnchor);
+    });
+
+    expect(vi.mocked(patchAnnotation)).toHaveBeenCalledWith('a1', { anchor: newAnchor });
+    expect(vi.mocked(deleteAnnotation)).not.toHaveBeenCalled();
+    await waitFor(() => expect(hook.api.list.map((row) => row.id)).toEqual(['a1']));
+    expect(paintedText('a1')).toBe(Q_THIRD_PARA);
+  });
+
+  it('saveError bật lên khi một write hỏng, và tắt lại ở lần write kế tiếp thành công', async () => {
+    await seed({ id: 'a1', anchor: makeAnchor(CHAPTER, Q_FIRST_HALF), note: 'cũ' });
+    render(<Harness html={CHAPTER} />, { wrapper });
+    await waitFor(() => expect(hook.api.list).toHaveLength(1));
+    expect(hook.api.saveError).toBe(false);
+
+    vi.mocked(patchAnnotation).mockRejectedValueOnce(new Error('mạng hỏng'));
+    await act(async () => {
+      await hook.api.updateNote('a1', 'mới').catch(() => {});
+    });
+    await waitFor(() => expect(hook.api.saveError).toBe(true));
+
+    vi.mocked(patchAnnotation).mockResolvedValueOnce(undefined);
+    await act(async () => {
+      await hook.api.updateNote('a1', 'mới lần hai');
+    });
+    await waitFor(() => expect(hook.api.saveError).toBe(false));
+  });
 });
 
-describe('useAnnotations — CRUD writes local + outbox in one go', () => {
-  it('create() returns a crypto.randomUUID id and writes BOTH the Dexie row and an outbox entry whose row matches the server contract field-for-field', async () => {
-    render(<CrudHarness />);
+describe('useAnnotations — CRUD gọi đúng endpoint, đúng thân', () => {
+  it('create() trả id crypto.randomUUID() và POST đúng năm trường, không kèm createdAt/updatedAt', async () => {
+    render(<CrudHarness />, { wrapper });
     const anchor = makeAnchor(CHAPTER, Q_FIRST_HALF, 'g');
 
     let id = '';
@@ -209,137 +415,50 @@ describe('useAnnotations — CRUD writes local + outbox in one go', () => {
     });
 
     expect(id).toMatch(UUID_RE);
-
-    const row = await db.annotations.get(id);
-    expect(row).toEqual({
+    expect(vi.mocked(createAnnotation)).toHaveBeenCalledWith({
       id,
       courseId: 'c1',
       chapterId: 'ch1',
       anchor,
       note: 'ghi chú của tôi',
-      createdAt: expect.any(String),
-      updatedAt: expect.any(String),
-      deletedAt: null,
     });
-    // createdAt/updatedAt are the same instant on creation, and are the
-    // instant of the EDIT — not of the eventual flush (see setProgress's own
-    // doc comment for why that distinction is load-bearing for LWW).
-    expect(row!.createdAt).toBe(row!.updatedAt);
-    expect(Number.isNaN(Date.parse(row!.createdAt))).toBe(false);
-
-    const entries = await db.outbox.toArray();
-    expect(entries).toHaveLength(1);
-    expect(entries[0].table).toBe('annotations');
-    // Field-for-field against apps/api/internal/sync/handler.go's
-    // `annotationItem`: a single renamed field here is a note that syncs and
-    // then silently never appears on the other device.
-    expect(Object.keys(entries[0].row as object).sort()).toEqual(SERVER_ANNOTATION_FIELDS);
-    expect(entries[0].row).toEqual(row);
+    expect(serverRows.find((row) => row.id === id)?.note).toBe('ghi chú của tôi');
   });
 
-  it('remove() sets a deletedAt tombstone (never deletes the row) and enqueues the tombstone', async () => {
-    render(<CrudHarness />);
+  it('remove() gọi deleteAnnotation(id)', async () => {
+    render(<CrudHarness />, { wrapper });
     const anchor = makeAnchor(CHAPTER, Q_FIRST_HALF);
 
     let id = '';
     await act(async () => {
       id = await hook.api.create(anchor, 'sắp xoá');
     });
-    const before = await db.annotations.get(id);
-
     await act(async () => {
       await hook.api.remove(id);
     });
 
-    const after = await db.annotations.get(id);
-    expect(after).toBeDefined();
-    expect(after!.deletedAt).not.toBeNull();
-    expect(Date.parse(after!.deletedAt!)).toBeGreaterThanOrEqual(Date.parse(before!.updatedAt));
-    // updatedAt must move too, or LWW on every other device keeps the live row.
-    expect(Date.parse(after!.updatedAt)).toBeGreaterThanOrEqual(Date.parse(before!.updatedAt));
-    expect(after!.note).toBe('sắp xoá');
-    expect(after!.createdAt).toBe(before!.createdAt);
-
-    const entries = await db.outbox.toArray();
-    expect(entries).toHaveLength(2);
-    expect(entries[1].table).toBe('annotations');
-    expect(entries[1].row).toEqual(after);
-    expect(Object.keys(entries[1].row as object).sort()).toEqual(SERVER_ANNOTATION_FIELDS);
+    expect(vi.mocked(deleteAnnotation)).toHaveBeenCalledWith(id);
+    expect(serverRows.find((row) => row.id === id)).toBeUndefined();
   });
 
-  it('updateNote() rewrites the note, bumps updatedAt, keeps the anchor, and enqueues', async () => {
-    render(<CrudHarness />);
+  it('updateNote() gọi patchAnnotation(id, {note}) — không kèm anchor', async () => {
+    render(<CrudHarness />, { wrapper });
     const anchor = makeAnchor(CHAPTER, Q_FIRST_HALF);
 
     let id = '';
     await act(async () => {
       id = await hook.api.create(anchor, 'bản nháp');
     });
-    const before = await db.annotations.get(id);
-
     await act(async () => {
       await hook.api.updateNote(id, 'bản sửa');
     });
 
-    const after = await db.annotations.get(id);
-    expect(after!.note).toBe('bản sửa');
-    expect(after!.anchor).toEqual(anchor);
-    expect(after!.createdAt).toBe(before!.createdAt);
-    expect(Date.parse(after!.updatedAt)).toBeGreaterThanOrEqual(Date.parse(before!.updatedAt));
-
-    const entries = await db.outbox.toArray();
-    expect(entries).toHaveLength(2);
-    expect(entries[1].row).toEqual(after);
+    expect(vi.mocked(patchAnnotation)).toHaveBeenCalledWith(id, { note: 'bản sửa' });
+    expect(serverRows.find((row) => row.id === id)?.note).toBe('bản sửa');
   });
 
-  it('reattach() replaces the anchor, keeps note/createdAt, and enqueues', async () => {
-    render(<CrudHarness />);
-    const first = makeAnchor(CHAPTER, Q_FIRST_HALF);
-    const second = makeAnchor(CHAPTER, Q_THIRD_PARA, 'b');
-
-    let id = '';
-    await act(async () => {
-      id = await hook.api.create(first, 'nối lại');
-    });
-
-    await act(async () => {
-      await hook.api.reattach(id, second);
-    });
-
-    const after = await db.annotations.get(id);
-    expect(after!.anchor).toEqual(second);
-    expect(after!.note).toBe('nối lại');
-    expect(after!.deletedAt).toBeNull();
-
-    const entries = await db.outbox.toArray();
-    expect(entries).toHaveLength(2);
-    expect(entries[1].row).toEqual(after);
-  });
-
-  it('every write leaves local row and outbox entry consistent — never one without the other', async () => {
-    render(<CrudHarness />);
-    const anchor = makeAnchor(CHAPTER, Q_FIRST_HALF);
-
-    await act(async () => {
-      const id = await hook.api.create(anchor, 'một');
-      await hook.api.updateNote(id, 'hai');
-      await hook.api.remove(id);
-    });
-
-    const rows = await db.annotations.toArray();
-    const entries = await db.outbox.toArray();
-    expect(rows).toHaveLength(1);
-    expect(entries).toHaveLength(3);
-    // The last queued row is always exactly what the local table holds now.
-    expect(entries[2].row).toEqual(rows[0]);
-    for (const entry of entries) {
-      expect(entry.table).toBe('annotations');
-      expect(Object.keys(entry.row as object).sort()).toEqual(SERVER_ANNOTATION_FIELDS);
-    }
-  });
-
-  it('updateNote()/remove()/reattach() on an unknown id write nothing at all', async () => {
-    render(<CrudHarness />);
+  it('updateNote()/remove()/reattach() trên một id KHÔNG TỒN TẠI không gọi mạng, không đổi gì', async () => {
+    render(<CrudHarness />, { wrapper });
 
     await act(async () => {
       await hook.api.updateNote('khong-ton-tai', 'x');
@@ -347,8 +466,10 @@ describe('useAnnotations — CRUD writes local + outbox in one go', () => {
       await hook.api.reattach('khong-ton-tai', makeAnchor(CHAPTER, Q_FIRST_HALF));
     });
 
-    expect(await db.annotations.count()).toBe(0);
-    expect(await db.outbox.count()).toBe(0);
+    expect(vi.mocked(createAnnotation)).not.toHaveBeenCalled();
+    expect(vi.mocked(patchAnnotation)).not.toHaveBeenCalled();
+    expect(vi.mocked(deleteAnnotation)).not.toHaveBeenCalled();
+    expect(serverRows).toHaveLength(0);
   });
 });
 
@@ -359,7 +480,7 @@ describe('useAnnotations — resolving and painting a chapter', () => {
     await seed({ id: 'a1', anchor: a1, createdAt: '2026-08-20T10:00:00.000Z' });
     await seed({ id: 'a2', anchor: a2, createdAt: '2026-08-20T10:00:01.000Z' });
 
-    render(<Harness html={CHAPTER} />);
+    render(<Harness html={CHAPTER} />, { wrapper });
 
     await waitFor(() => expect(hook.api.list).toHaveLength(2));
 
@@ -386,21 +507,10 @@ describe('useAnnotations — resolving and painting a chapter', () => {
     await seed({ id: 'third', anchor: makeAnchor(CHAPTER, Q_THIRD_PARA), createdAt: '2026-08-20T10:00:00.000Z' });
     await seed({ id: 'first', anchor: makeAnchor(CHAPTER, Q_FIRST_HALF), createdAt: '2026-08-20T10:00:09.000Z' });
 
-    render(<Harness html={CHAPTER} />);
+    render(<Harness html={CHAPTER} />, { wrapper });
 
     await waitFor(() => expect(hook.api.list).toHaveLength(2));
     expect(hook.api.list.map((r) => r.id)).toEqual(['first', 'third']);
-  });
-
-  it('a tombstoned annotation is neither listed nor painted', async () => {
-    await seed({ id: 'gone', anchor: makeAnchor(CHAPTER, Q_FIRST_HALF), deletedAt: '2026-08-20T11:00:00.000Z' });
-    await seed({ id: 'alive', anchor: makeAnchor(CHAPTER, Q_THIRD_PARA) });
-
-    render(<Harness html={CHAPTER} />);
-
-    await waitFor(() => expect(hook.api.list).toHaveLength(1));
-    expect(hook.api.list[0].id).toBe('alive');
-    expect(marksFor('gone')).toHaveLength(0);
   });
 
   it('annotations belonging to another chapter or course are ignored entirely', async () => {
@@ -408,7 +518,7 @@ describe('useAnnotations — resolving and painting a chapter', () => {
     await seed({ id: 'other-chapter', anchor: makeAnchor(CHAPTER, Q_THIRD_PARA), chapterId: 'ch2' });
     await seed({ id: 'other-course', anchor: makeAnchor(CHAPTER, Q_THIRD_PARA), courseId: 'c2' });
 
-    render(<Harness html={CHAPTER} />);
+    render(<Harness html={CHAPTER} />, { wrapper });
 
     await waitFor(() => expect(hook.api.list).toHaveLength(1));
     expect(hook.api.list[0].id).toBe('mine');
@@ -418,31 +528,32 @@ describe('useAnnotations — resolving and painting a chapter', () => {
 });
 
 describe('useAnnotations — orphans are DATA, not rubbish', () => {
-  it('an unresolvable anchor lands in `orphans`, is never deleted, never tombstoned, and never enqueued', async () => {
+  it('an unresolvable anchor lands in `orphans`, is never removed, and never writes anything', async () => {
     await seed({ id: 'lost', anchor: makeAnchor(CHAPTER, Q_FIRST_HALF), note: 'ghi chú quý' });
     // Rendered content that contains none of the quote, none of its context.
     const unrelated = '<p>Một chương hoàn toàn khác, không có câu nào giống.</p>';
 
-    render(<Harness html={unrelated} />);
+    render(<Harness html={unrelated} />, { wrapper });
 
     await waitFor(() => expect(hook.api.orphans).toHaveLength(1));
     expect(hook.api.orphans[0].id).toBe('lost');
     expect(hook.api.list).toHaveLength(0);
 
-    const row = await db.annotations.get('lost');
+    const row = serverRows.find((r) => r.id === 'lost');
     expect(row).toBeDefined();
-    expect(row!.deletedAt).toBeNull();
     expect(row!.note).toBe('ghi chú quý');
     // Resolving is a READ. Nothing about a note failing to find its place is
     // a change to propagate to the server.
-    expect(await db.outbox.count()).toBe(0);
+    expect(vi.mocked(createAnnotation)).not.toHaveBeenCalled();
+    expect(vi.mocked(patchAnnotation)).not.toHaveBeenCalled();
+    expect(vi.mocked(deleteAnnotation)).not.toHaveBeenCalled();
   });
 
   it('an anchor whose quote is simply absent from THIS chapter is an orphan, while its neighbours still resolve', async () => {
     await seed({ id: 'ok', anchor: makeAnchor(CHAPTER, Q_FIRST_HALF) });
     await seed({ id: 'nope', anchor: makeAnchor(`<p>${Q_ABSENT} và thêm chữ.</p>`, Q_ABSENT) });
 
-    render(<Harness html={CHAPTER} />);
+    render(<Harness html={CHAPTER} />, { wrapper });
 
     await waitFor(() => expect(hook.api.orphans).toHaveLength(1));
     expect(hook.api.orphans[0].id).toBe('nope');
@@ -452,7 +563,7 @@ describe('useAnnotations — orphans are DATA, not rubbish', () => {
   it('reattach() moves a note out of `orphans` and paints it', async () => {
     await seed({ id: 'lost', anchor: makeAnchor(`<p>${Q_ABSENT} và thêm chữ.</p>`, Q_ABSENT) });
 
-    render(<Harness html={CHAPTER} />);
+    render(<Harness html={CHAPTER} />, { wrapper });
     await waitFor(() => expect(hook.api.orphans).toHaveLength(1));
 
     await act(async () => {
@@ -539,7 +650,7 @@ describe('useAnnotations — the fuzzy tier is deferred past the first paint (ru
 
     // The chapter as it is TODAY: one character of the quoted paragraph has
     // been edited since the note was taken, so 'fuzzy' misses the exact tier.
-    render(<Harness html={CHAPTER_EDITED} />);
+    render(<Harness html={CHAPTER_EDITED} />, { wrapper });
 
     await waitFor(() => expect(hook.api.list.map((r) => r.id)).toEqual(['exact']));
 
@@ -564,7 +675,7 @@ describe('useAnnotations — the fuzzy tier is deferred past the first paint (ru
     await seed({ id: 'exact', anchor: makeAnchor(CHAPTER, Q_THIRD_PARA) });
     await seed({ id: 'fuzzy', anchor: makeAnchor(CHAPTER, Q_EDITED_PARA) });
 
-    render(<Harness html={CHAPTER_EDITED} />);
+    render(<Harness html={CHAPTER_EDITED} />, { wrapper });
 
     await waitFor(() => expect(hook.api.list).toHaveLength(1));
 
@@ -609,7 +720,7 @@ describe('useAnnotations — the fuzzy tier is deferred past the first paint (ru
     // fuzzy tier's documented give-up rule instead of this file's queue.
     const edited = pristine.replaceAll('dung lượng kênh', 'dung luong kênh');
 
-    render(<Harness html={edited} />);
+    render(<Harness html={edited} />, { wrapper });
 
     await waitFor(() => expect(idle.callbacks.size).toBe(1));
     expect(hook.api.list).toHaveLength(0);
@@ -638,6 +749,7 @@ describe('useAnnotations — React StrictMode double-invoke', () => {
       <StrictMode>
         <Harness html={CHAPTER} />
       </StrictMode>,
+      { wrapper },
     );
 
     await waitFor(() => expect(hook.api.list).toHaveLength(2));
@@ -660,6 +772,7 @@ describe('useAnnotations — React StrictMode double-invoke', () => {
       <StrictMode>
         <Harness html={CHAPTER} />
       </StrictMode>,
+      { wrapper },
     );
 
     await waitFor(() => expect(hook.api.list).toHaveLength(2));
@@ -680,7 +793,7 @@ describe('useAnnotations — keeping the painted DOM in step with the store', ()
     })();
     await seed({ id: 'a1', anchor: makeAnchor(CHAPTER, Q_FIRST_HALF) });
 
-    render(<Harness html={CHAPTER} />);
+    render(<Harness html={CHAPTER} />, { wrapper });
     await waitFor(() => expect(marksFor('a1').length).toBeGreaterThan(0));
 
     await act(async () => {
@@ -695,7 +808,7 @@ describe('useAnnotations — keeping the painted DOM in step with the store', ()
   it('a note created through create() is painted without re-painting the notes already on the page', async () => {
     await seed({ id: 'a1', anchor: makeAnchor(CHAPTER, Q_FIRST_HALF) });
 
-    render(<Harness html={CHAPTER} />);
+    render(<Harness html={CHAPTER} />, { wrapper });
     await waitFor(() => expect(hook.api.list).toHaveLength(1));
     const firstMark = marksFor('a1')[0];
 
@@ -714,7 +827,7 @@ describe('useAnnotations — keeping the painted DOM in step with the store', ()
   it('updateNote() leaves the painted highlight untouched (same element, no repaint)', async () => {
     await seed({ id: 'a1', anchor: makeAnchor(CHAPTER, Q_FIRST_HALF), note: 'cũ' });
 
-    render(<Harness html={CHAPTER} />);
+    render(<Harness html={CHAPTER} />, { wrapper });
     await waitFor(() => expect(hook.api.list).toHaveLength(1));
     const firstMark = marksFor('a1')[0];
 
@@ -727,42 +840,37 @@ describe('useAnnotations — keeping the painted DOM in step with the store', ()
     expect(marksFor('a1')).toHaveLength(1);
   });
 
-  it('a row arriving from another device merges by updatedAt (LWW) and the hook shows the merged result', async () => {
-    render(<Harness html={CHAPTER} />);
+  it('a row written directly into the cache from OUTSIDE this hook (e.g. another `useAnnotations` instance settling a write) is reflected in `list`', async () => {
+    render(<Harness html={CHAPTER} />, { wrapper });
     const anchor = makeAnchor(CHAPTER, Q_FIRST_HALF);
 
     let id = '';
     await act(async () => {
-      id = await hook.api.create(anchor, 'bản của máy này');
+      id = await hook.api.create(anchor, 'bản gốc');
     });
     await waitFor(() => expect(hook.api.list).toHaveLength(1));
 
-    const local = (await db.annotations.get(id))!;
-
-    // Newer remote row wins — applied exactly the way sync/engine.ts's pull()
-    // applies it, through the same mergeRow.
-    const newer: AnnotationRow = { ...local, note: 'bản của máy kia', updatedAt: shift(local.updatedAt, 1000) };
+    const key = annotationsQueryKey('c1');
+    const current = queryClient.getQueryData<Ann[]>(key) ?? [];
+    const updated = current.map((row) =>
+      row.id === id ? { ...row, note: 'sửa từ nơi khác', updatedAt: new Date().toISOString() } : row,
+    );
     await act(async () => {
-      await db.annotations.put(mergeRow(local, newer));
+      queryClient.setQueryData<Ann[]>(key, updated);
     });
-    await waitFor(() => expect(hook.api.list[0].note).toBe('bản của máy kia'));
 
-    // Older remote row loses, and nothing about the painted highlight changes.
-    const older: AnnotationRow = { ...local, note: 'bản cũ hơn', updatedAt: shift(local.updatedAt, -1000) };
-    await act(async () => {
-      const current = (await db.annotations.get(id))!;
-      await db.annotations.put(mergeRow(current, older));
-    });
-    expect((await db.annotations.get(id))!.note).toBe('bản của máy kia');
+    await waitFor(() => expect(hook.api.list[0].note).toBe('sửa từ nơi khác'));
+    // The anchor did not change, so the signature-based reconciliation must
+    // not have unpainted and repainted the highlight.
     expect(marksFor(id)).toHaveLength(1);
   });
 
-  it('changing chapter repaints against the new content and never carries the old chapter\'s notes over', async () => {
+  it("changing chapter repaints against the new content and never carries the old chapter's notes over", async () => {
     const other = '<p>Chương hai nói về mã hoá nguồn và cây Huffman.</p>';
     await seed({ id: 'in-ch1', anchor: makeAnchor(CHAPTER, Q_FIRST_HALF), chapterId: 'ch1' });
     await seed({ id: 'in-ch2', anchor: makeAnchor(other, 'mã hoá nguồn và cây Huffman'), chapterId: 'ch2' });
 
-    const view = render(<Harness html={CHAPTER} chapterId="ch1" />);
+    const view = render(<Harness html={CHAPTER} chapterId="ch1" />, { wrapper });
     await waitFor(() => expect(hook.api.list.map((r) => r.id)).toEqual(['in-ch1']));
 
     view.rerender(<Harness html={other} chapterId="ch2" />);
@@ -785,7 +893,7 @@ describe('useAnnotations — keeping the painted DOM in step with the store', ()
     await seed({ id: 'orphan-ch1', anchor: makeAnchor(`<p>${Q_ABSENT} và thêm chữ.</p>`, Q_ABSENT), chapterId: 'ch1' });
     await seed({ id: 'in-ch2', anchor: makeAnchor(other, 'mã hoá nguồn và cây Huffman'), chapterId: 'ch2' });
 
-    const view = render(<Harness html={CHAPTER} chapterId="ch1" />);
+    const view = render(<Harness html={CHAPTER} chapterId="ch1" />, { wrapper });
     await waitFor(() => expect(hook.api.orphans.map((r) => r.id)).toEqual(['orphan-ch1']));
     expect(chapterRoot().querySelectorAll('mark.ann')).toHaveLength(0);
 

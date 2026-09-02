@@ -1,16 +1,15 @@
-import { liveQuery } from 'dexie';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { db, setProgress, type ProgressRow } from '../db/local';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo } from 'react';
+import { type ProgressRow, fetchProgress, progressQueryKey, putProgress } from '../api/progress';
 
 /**
- * Aggregate counts over a single course's local progress rows — the
- * hook's own answer to "how much has this learner done," independent of
- * any manifest (the hook takes only `courseId`, per the task brief's
- * literal signature; a denominator like "out of how many chapters total"
- * requires the manifest, which callers already load separately via
- * `loadManifest`/`useQuery` — see Dashboard.tsx, which divides
- * `partStats.chaptersRead` by the manifest's own chapter count to build
- * the completion ring).
+ * Aggregate counts over a single course's progress — the hook's own answer
+ * to "how much has this learner done," independent of any manifest (the
+ * hook takes only `courseId`, per the task brief's literal signature; a
+ * denominator like "out of how many chapters total" requires the manifest,
+ * which callers already load separately via `loadManifest`/`useQuery` —
+ * see Dashboard.tsx, which divides `partStats.chaptersRead` by the
+ * manifest's own chapter count to build the completion ring).
  */
 export interface PartStats {
   /** Distinct chapters marked `read` for this course. */
@@ -32,6 +31,19 @@ export interface UseProgressResult {
    * before this task).
    */
   doneChapterIds: ReadonlySet<string>;
+  /**
+   * True while the MOST RECENT `toggleRead`/`toggleEx` write is sitting on
+   * a failed `PUT /progress` — i.e. the optimistic flip this hook showed
+   * was rolled back, and the learner's tap did not actually reach the
+   * server. Additive to the pre-Task-6 contract: existing consumers that
+   * don't read it behave exactly as before. Named for what it measures —
+   * the SAVE failed, not "there is progress" or "a load failed" (that is
+   * `pages/Progress.tsx`'s own `progress.error`, a completely different
+   * failure). Cleared back to `false` the moment another `toggleRead`/
+   * `toggleEx` call starts (`useMutation` resets `isError` on every new
+   * `mutate()`), so it never lingers past the next attempt.
+   */
+  saveError: boolean;
 }
 
 const EX_STATUS_PREFIX = 'ex:';
@@ -40,113 +52,236 @@ function exStatus(n: number): string {
 }
 
 /**
- * Live-subscribes to one course's rows in the local `progress` table
- * (Task 13's `src/db/local.ts`) and exposes read/exercise status plus
- * mutators that write through `setProgress` — which, in one Dexie
- * transaction, both updates local state and enqueues the mutation onto
- * the sync outbox (see `setProgress`'s own doc comment). This hook adds
- * no separate "pending sync" state of its own: the local write IS the
- * answer the whole app treats as current (Ruling F5 — completion %, and
- * everything this hook exposes, comes from local progress, not a round
- * trip to the server), so there is nothing to roll back if the outbox
- * later fails to flush — `src/sync/engine.ts` retries indefinitely and
- * this hook's next `liveQuery` emission will simply reflect whatever
- * local state exists at any given moment, exactly as it does today.
- *
- * `db.progress` has no per-`courseId` index of its own (its only index is
- * the compound primary key `[courseId+chapterId+status]` — see
- * `local.ts`'s schema) and this task does not touch that schema, so
- * filtering happens in JS after a full-table `toArray()` rather than an
- * indexed range query. This is a full local-table scan on every write to
- * ANY course's progress, not just this hook's own `courseId` — acceptable
- * because a single user's local progress table is small (at most a few
- * hundred rows: one row per chapter marked read, plus one per exercise
- * checkbox, across however many courses this browser profile has ever
- * touched), and correctness (never needing a schema migration this task
- * wasn't scoped to make) is worth more here than the micro-optimization.
- *
- * Multiple independent call sites (`Sidebar`, `CourseHome`, `ChapterView`
- * all call this for the same `courseId` on a chapter route) each run
- * their own `liveQuery` subscription rather than sharing one through a
- * context — deliberately: Dexie's `liveQuery` already guarantees every
- * subscriber converges on the same data after any write (it re-runs the
- * querier whenever a write touches a table it read from), so independent
- * subscriptions are simply idiomatic here, the same way multiple
- * `useQuery(manifestQueryKey(...))` call sites already share a cache
- * without any of *them* needing to coordinate directly either.
- *
- * `isRead`/`exDone`/`toggleRead`/`toggleEx` are all stable function
- * identities across re-renders (reading current data through a ref, not a
- * render-time closure) — this matters concretely for `ChapterView`, which
- * uses `toggleRead` inside an imperative `#mark-btn` click listener
- * wired up in a `useEffect`; a stable reference means that effect does
- * not need to tear down and re-attach its listener on every progress
- * change, only on an actual chapter change.
+ * One shared, module-level empty array — NOT `useQuery`'s own
+ * `data: rows = []` default-parameter syntax, which would build a fresh
+ * `[]` on every single render for as long as the query has no data yet
+ * (pending, or erroring and retrying). A fresh array is a fresh
+ * REFERENCE, and `courseRows`/`doneChapterIds`/`partStats` below are all
+ * `useMemo`d off `rows` — so a fresh reference every render defeats every
+ * one of those memos, handing a brand-new `Set` to `doneChapterIds` on
+ * every render too. `ChapterView.tsx`'s `AuthedReaderExtras` feeds exactly
+ * that `Set` to a `useEffect([progress.doneChapterIds, ...])` that calls
+ * `onDoneChapterIdsChange` (a parent `setState`) — a `Set` that is
+ * "equal" but never `===` from one render to the next makes that effect
+ * fire on EVERY render, which sets state, which re-renders, which builds
+ * another fresh `[]` while the query is still unsettled, forever. Measured
+ * directly: `GET /progress` failing/pending for more than an instant
+ * produced React's "Maximum update depth exceeded" in exactly this
+ * component. One stable singleton is the whole fix.
  */
-export function useProgress(courseId: string): UseProgressResult {
-  const [rows, setRows] = useState<ProgressRow[]>([]);
-  // Deliberately assigned during render, not in a `useEffect` — the
-  // "latest ref" pattern. Syncing this in an effect instead would leave a
-  // one-render window where `rowsRef.current` still holds the PREVIOUS
-  // `rows` while `isRead`/`exDone` (below) are already being called
-  // against the just-rendered output elsewhere (e.g. `ChapterView`'s
-  // `#mark-btn` effect reads `progress.isRead(chapter.id)` synchronously
-  // during render, then this ref is what `toggleRead`'s LATER click
-  // handler call reads) — writing it here keeps the ref exactly in sync
-  // with whatever `rows` this render just committed, with no lag. The
-  // write is idempotent (same value assigned again under, e.g., React
-  // StrictMode's double-render), so it carries none of the risks the
-  // "don't mutate during render" rule exists to prevent.
-  const rowsRef = useRef<ProgressRow[]>(rows);
-  rowsRef.current = rows;
+const EMPTY_ROWS: ProgressRow[] = [];
 
-  useEffect(() => {
-    const subscription = liveQuery(() =>
-      db.progress.toArray().then((all) => all.filter((r) => r.courseId === courseId)),
-    ).subscribe({
-      next: (next) => setRows(next),
-      error: (err) => console.error('useProgress: live query failed', err),
-    });
-    return () => subscription.unsubscribe();
-  }, [courseId]);
+/**
+ * R2 (a ruling, not in the brief): builds the row `onMutate` writes into
+ * the query cache. `putProgress`'s own parameter type is deliberately
+ * `Omit<ProgressRow, 'updatedAt'>` — the server stamps that field, so
+ * there is no honest client-side value for it on the way OUT (see
+ * `api/progress.ts`'s header). But the CACHE holds full `ProgressRow`s
+ * (that is what `fetchProgress` resolves to, and what `isRead`/`exDone`/
+ * `doneChapterIds` below all read), so the optimistic entry needs
+ * *something* in that field until the server's real answer lands via
+ * `onSettled`'s invalidate — a provisional client-side timestamp, stamped
+ * fresh on every call so a second rapid toggle's patch always sorts after
+ * the first's. `row` (the mutation's actual variables, sent to
+ * `putProgress` unchanged) never carries this — only the cache entry does.
+ *
+ * Upserts by `(courseId, chapterId, status)`, the same compound key
+ * `db/local.ts`'s Dexie schema used (`[courseId+chapterId+status]`) and
+ * the server's own primary key (`api/progress.ts`'s `putProgress` doc) —
+ * one row per checkbox, replaced in place rather than duplicated.
+ */
+function upsertOptimistic(rows: ProgressRow[], row: Omit<ProgressRow, 'updatedAt'>): ProgressRow[] {
+  const optimistic: ProgressRow = { ...row, updatedAt: new Date().toISOString() };
+  const idx = rows.findIndex(
+    (r) => r.courseId === row.courseId && r.chapterId === row.chapterId && r.status === row.status,
+  );
+  if (idx === -1) return [...rows, optimistic];
+  const next = rows.slice();
+  next[idx] = optimistic;
+  return next;
+}
 
+/**
+ * Reads one course's progress from TanStack Query (Task 5's `api/progress`
+ * — `GET`/`PUT /progress`, the server as the single source of truth) and
+ * exposes read/exercise status plus mutators that write OPTIMISTICALLY:
+ * `toggleRead`/`toggleEx` flip the cache synchronously, before the network
+ * answers, and roll back to the pre-toggle value if the `PUT` fails (see
+ * `saveError` above for how that failure surfaces to the learner).
+ *
+ * This replaces the pre-Task-6 version's Dexie `liveQuery` +
+ * `setProgress`-onto-an-outbox pair (`src/db/local.ts` / `src/sync/`) —
+ * neither is imported here any more. `UseProgressResult`'s pre-existing
+ * members keep their exact names/shapes (`CourseNav`, `Dashboard`,
+ * `ChapterView` all consume this hook and are out of this task's blast
+ * radius); `saveError` is the one addition.
+ *
+ * ## One shared cache entry, filtered client-side
+ *
+ * `progressQueryKey()` takes no `courseId` — `GET /progress` always
+ * answers every course's rows for the signed-in learner in one shot (see
+ * `api/progress.ts`'s own doc comment) — so every `useProgress(...)` call
+ * site, whatever course it names, reads and patches the SAME cache entry,
+ * and TanStack Query's subscription model is what keeps them all in sync
+ * (a `Sidebar` instance and a `ChapterView` instance for the same course
+ * both see a toggle the instant either one's mutation settles, with no
+ * cross-component wiring needed). Filtering by `courseId` happens here,
+ * in JS, over that one shared array.
+ *
+ * ## Why `onMutate` cancels in-flight queries FIRST
+ *
+ * Without `queryClient.cancelQueries(...)`, a `GET /progress` that is
+ * still in flight when a toggle fires (the mount fetch, or a previous
+ * mutation's own `onSettled` refetch) can resolve AFTER this toggle's
+ * optimistic patch and silently overwrite it with pre-toggle data — the
+ * classic query-vs-mutation race the TanStack Query docs' own optimistic-
+ * update recipe guards against the same way. This matters concretely for
+ * two rapid toggles on the same chapter: without the cancel, the first
+ * toggle's patch can be clobbered by a stale response arriving between the
+ * two, and the UI gets stuck on a value neither toggle actually asked for.
+ *
+ * `cancelQueries` is invoked before `setQueryData` (matching the order the
+ * cancellation needs to visibly take effect against a concurrent fetch),
+ * but is not `await`-ed before the patch: `Query#cancel` aborts the
+ * in-flight retryer SYNCHRONOUSLY (see `@tanstack/query-core`'s
+ * `query.ts`) — the Promise it returns only signals when that abort has
+ * fully settled, not when the abort itself takes effect. Gating the patch
+ * behind that `await` would push it a full microtask tick after the
+ * `toggleRead`/`toggleEx` call that triggered it, which is one tick too
+ * late for the "flips before the network answers" contract this hook
+ * promises: a caller that reads `isRead` synchronously, right after
+ * calling `toggleRead` in the same tick, must already see the new value.
+ */
+export interface UseProgressOptions {
+  /**
+   * Whether this call site should actually fetch `GET /progress` at all.
+   * Defaults to `true` — every pre-existing caller (`CourseHome.tsx`'s
+   * `CourseProgress`, `ChapterView.tsx`'s `AuthedReaderExtras`,
+   * `Dashboard.tsx`, `pages/Progress.tsx`) already only mounts/calls this
+   * hook once a session is confirmed, so passing nothing keeps their exact
+   * pre-existing behaviour.
+   *
+   * Added for `Sidebar.tsx`, which — unlike those four — cannot use the
+   * "mount a child component only when signed in" pattern: it is chrome
+   * rendered on EVERY route (`App.tsx`'s `<Shell sidebar={<Sidebar />}>`),
+   * including `/login` itself, and it needs `doneChapterIds` synchronously
+   * in its OWN render (the progress bar, `CourseNav`'s prop) rather than
+   * reporting it up to an outer component the way the other four do. Before
+   * this option existed, `Sidebar.tsx:53` called `useProgress(courseId ??
+   * '')` unconditionally — Task 6 of Pha 3's own report names this fact —
+   * which was harmless while the hook read local-first Dexie (an
+   * unauthenticated read just came back empty), and became a real bug the
+   * moment Task 6 rewired it onto `GET /progress`: a signed-out visitor on
+   * ANY page, including `/login` itself, now fired an authenticated-only
+   * request that 401s, and — because `api/client.ts`'s `redirectOn401`
+   * defaults to `true` and this call never opted out — hard-navigated an
+   * anonymous visitor on a public course page (`/c/:courseId`, public since
+   * Task 12) straight to `/login`. `enabled: false` here is what makes
+   * "the query simply never runs" a real option for this ONE caller,
+   * without touching the other four's contract at all (they were never the
+   * ones missing a gate).
+   */
+  readonly enabled?: boolean;
+}
+
+export function useProgress(courseId: string, options: UseProgressOptions = {}): UseProgressResult {
+  const { enabled = true } = options;
+  const queryClient = useQueryClient();
+
+  const { data: rows = EMPTY_ROWS } = useQuery({
+    queryKey: progressQueryKey(),
+    queryFn: () => fetchProgress(),
+    enabled,
+  });
+
+  const courseRows = useMemo(() => rows.filter((r) => r.courseId === courseId), [rows, courseId]);
+
+  const mutation = useMutation({
+    // A one-arg wrapper, not `mutationFn: putProgress` directly: `putProgress`'s
+    // own second parameter (`RequestOptions`) and `MutationFunction`'s
+    // (`MutationFunctionContext`) share no overlapping property names, and
+    // TS's weak-type check rejects that pairing even though, structurally,
+    // an all-optional `RequestOptions` would otherwise accept it.
+    mutationFn: (row: Omit<ProgressRow, 'updatedAt'>) => putProgress(row),
+    onMutate: async (row) => {
+      const cancelled = queryClient.cancelQueries({ queryKey: progressQueryKey() });
+      const previous = queryClient.getQueryData<ProgressRow[]>(progressQueryKey());
+      queryClient.setQueryData<ProgressRow[]>(progressQueryKey(), (old = []) => upsertOptimistic(old, row));
+      // Not needed for the patch above (already applied, synchronously) —
+      // awaited here only so this mutation's lifecycle doesn't move on to
+      // `mutationFn` until the cancellation itself has fully settled.
+      await cancelled;
+      return { previous };
+    },
+    onError: (_err, _row, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(progressQueryKey(), ctx.previous);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: progressQueryKey() });
+    },
+  });
+  const mutate = mutation.mutate;
+
+  // `isRead`/`exDone` read the query cache DIRECTLY (`queryClient.getQueryData`),
+  // not the `rows`/`courseRows` this render committed. That is deliberate,
+  // not a style choice: `queryClient.setQueryData` inside `onMutate` above
+  // writes the cache SYNCHRONOUSLY, but the re-render that would update
+  // `rows` is scheduled through TanStack Query's `notifyManager` (a
+  // `setTimeout(…, 0)`, i.e. a macrotask) — strictly later than "this
+  // synchronous call". A caller of `toggleRead` that checks `isRead` right
+  // after, in the same tick (this hook's own "flips before the network
+  // answers" contract — see this file's module doc), would still see the
+  // PRE-toggle value if `isRead` read anything render-derived. Reading the
+  // cache directly sidesteps that lag entirely, and is also what makes two
+  // rapid `toggleRead` calls in the same tick resolve correctly: the
+  // second call's `isRead` sees the first call's SYNCHRONOUS patch, not a
+  // stale snapshot from before either of them ran.
   const isRead = useCallback(
-    (chapterId: string) => rowsRef.current.some((r) => r.chapterId === chapterId && r.status === 'read' && r.done),
-    [],
+    (chapterId: string) => {
+      const current = queryClient.getQueryData<ProgressRow[]>(progressQueryKey()) ?? [];
+      return current.some(
+        (r) => r.courseId === courseId && r.chapterId === chapterId && r.status === 'read' && r.done,
+      );
+    },
+    [queryClient, courseId],
   );
 
   const exDone = useCallback(
-    (chapterId: string, n: number) =>
-      rowsRef.current.some((r) => r.chapterId === chapterId && r.status === exStatus(n) && r.done),
-    [],
+    (chapterId: string, n: number) => {
+      const current = queryClient.getQueryData<ProgressRow[]>(progressQueryKey()) ?? [];
+      return current.some(
+        (r) => r.courseId === courseId && r.chapterId === chapterId && r.status === exStatus(n) && r.done,
+      );
+    },
+    [queryClient, courseId],
   );
 
   const toggleRead = useCallback(
     (chapterId: string) => {
-      void setProgress(courseId, chapterId, 'read', !isRead(chapterId));
+      mutate({ courseId, chapterId, status: 'read', done: !isRead(chapterId) });
     },
-    [courseId, isRead],
+    [courseId, isRead, mutate],
   );
 
   const toggleEx = useCallback(
     (chapterId: string, n: number) => {
-      void setProgress(courseId, chapterId, exStatus(n), !exDone(chapterId, n));
+      mutate({ courseId, chapterId, status: exStatus(n), done: !exDone(chapterId, n) });
     },
-    [courseId, exDone],
+    [courseId, exDone, mutate],
   );
 
   const doneChapterIds = useMemo(
-    () => new Set(rows.filter((r) => r.status === 'read' && r.done).map((r) => r.chapterId)),
-    [rows],
+    () => new Set(courseRows.filter((r) => r.status === 'read' && r.done).map((r) => r.chapterId)),
+    [courseRows],
   );
 
   const partStats = useMemo<PartStats>(
     () => ({
       chaptersRead: doneChapterIds.size,
-      exercisesDone: rows.filter((r) => r.status.startsWith(EX_STATUS_PREFIX) && r.done).length,
+      exercisesDone: courseRows.filter((r) => r.status.startsWith(EX_STATUS_PREFIX) && r.done).length,
     }),
-    [rows, doneChapterIds],
+    [courseRows, doneChapterIds],
   );
 
-  return { isRead, toggleRead, exDone, toggleEx, partStats, doneChapterIds };
+  return { isRead, toggleRead, exDone, toggleEx, partStats, doneChapterIds, saveError: mutation.isError };
 }

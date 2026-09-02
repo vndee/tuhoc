@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { writeLocalStorage } from '../db/local';
+import { writeLocalStorage } from '../db/localStorage';
 import {
   DEFAULT_LANG,
   LANG_STORAGE_KEY,

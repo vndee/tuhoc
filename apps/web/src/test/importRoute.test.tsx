@@ -6,7 +6,7 @@ import { useEffect } from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { AppRoutes } from '../routes';
-import { clearLocalData } from '../db/local';
+import { clearUserContent } from '../db/localStorage';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 import { ThemeProvider } from '../theme/ThemeContext';
 
@@ -41,8 +41,8 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-beforeEach(clearLocalData);
-afterEach(clearLocalData);
+beforeEach(clearUserContent);
+afterEach(clearUserContent);
 
 function Recorder({ onChange }: { onChange: (pathname: string) => void }) {
   const location = useLocation();

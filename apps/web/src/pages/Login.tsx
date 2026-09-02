@@ -7,7 +7,6 @@ import { clearSession } from '../auth/session';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { LanguageSwitcher } from '../i18n/LanguageSwitcher';
 import { Logo } from '../shell/Logo';
-import { stopSync } from '../sync/engine';
 import { useThemeContext } from '../theme/ThemeContext';
 
 type Tab = 'login' | 'register';
@@ -131,47 +130,69 @@ export function Login() {
   const meQuery = useMe();
 
   async function handleAuthenticated(user: Me) {
-    // ORDERING IS THE FIX HERE, not an implementation detail. The sync
-    // engine starts from `App.tsx`'s `useSyncLifecycle`, which is driven
-    // by `useMe()`'s cached user — so the instant
-    // `setQueryData(meQueryKey, user)` runs below, a sync cycle for THIS
-    // session can begin. Everything that must be true before that
-    // happens has to happen strictly before that line:
+    // ORDERING IS THE FIX HERE, not an implementation detail. Task 10
+    // removed `sync/engine.ts` (progress/annotations are exclusively
+    // server-side now, read and written directly, no local outbox to race)
+    // — before that removal, this comment also explained a `stopSync()`
+    // call that had to run before the seed below, for exactly the same
+    // "a stale cycle must not write after the clear" reason `clearSession`'s
+    // own doc comment still gives for its own ordering. That call and that
+    // reasoning are gone WITH the engine, not merely unused — there is no
+    // background cycle left anywhere in this app for a previous session's
+    // response to race.
     //
-    //  1. `stopSync()` — bumps `sync/engine.ts`'s epoch, so any cycle
-    //     belonging to a PREVIOUS session that is still in flight (its
-    //     response not yet back) discards its local write instead of
-    //     landing it after step 2's clear. Same mechanism, same reason,
-    //     as `useLogout`'s own `stopSync()` calls; the lifecycle effect
-    //     restarts sync on its own once `me` changes below.
-    //  2. `await clearSession(queryClient)` (src/auth/session.ts) — BOTH
-    //     halves of what the previous session left on this machine, through
-    //     the one door (ruling P2-F18), and both strictly before the seed:
+    // What is still load-bearing: `await clearSession(queryClient)`
+    // (src/auth/session.ts) — every half of what the previous session left
+    // on this machine, through the one door (ruling P2-F18), strictly
+    // before the seed:
     //
-    //       - the durable half (`clearLocalData()`): the previous user's
-    //         rows must be gone before this session can read or push any of
-    //         them. The local database is named for the BROWSER (`'tuhoc'`),
-    //         not the user, and IndexedDB never expires, so "the cookie
-    //         changed" is the only thing that changes here — nothing else
-    //         would. Without this, the previous user's queued outbox entries
-    //         (progress AND heartbeat events) get POSTed under the new
-    //         user's cookie into the NEW user's server account, the previous
-    //         user's progress renders as the new user's, and
-    //         `db.meta.syncCursor` — still the previous user's watermark —
-    //         makes `GET /sync?since=` skip everything of the new user's
-    //         older than it, so their own history never downloads at all.
+    //       - the durable half (`clearUserContent()`): the previous
+    //         user's `localStorage` content must be gone before the
+    //         arriving user's session renders anything — a note draft is
+    //         scoped to the BROWSER (there is no per-user namespace in
+    //         `localStorage`), and it never expires on its own, so "the
+    //         cookie changed" is the only thing that changes here —
+    //         nothing else would. (Task 11 removed a second thing this
+    //         bullet used to name here, the offline-read marker —
+    //         `<RequireAuth>`'s offline branch, its only reader, is gone,
+    //         and `clearUserContent()` never cleared that marker anyway;
+    //         a separate call inside `clearSession()` did, and that call
+    //         is gone too — see `session.ts`'s own doc comment.)
     //       - the in-memory half (`resetSessionScopedQueries()`): `['stats']`
     //         etc. still hold the previous user's numbers. It has to land
     //         before `setQueryData`, or it would wipe the seed.
+    //       - the queued-but-unflushed study-event half
+    //         (`resetEventQueue()`, `../api/events`): DELIBERATELY dropped
+    //         here, never flushed first. Unlike `useLogout.ts`'s own
+    //         `bestEffortFinalFlush()`, which flushes BEFORE invalidating
+    //         the departing session's cookie, this function is only ever
+    //         called AFTER `POST /auth/login` has already succeeded — the
+    //         browser's cookie jar already carries the ARRIVING user's
+    //         session by the time this line runs. A flush attempted here
+    //         would POST the PREVIOUS user's queued heartbeats under the
+    //         NEW user's cookie: not a fix for the cross-account leak this
+    //         whole door exists to close, but a straight-line cause of it.
+    //         Dropping is the only correct choice at this specific call
+    //         site; see `clearSession()`'s own doc for why it is
+    //         unconditional (it never waits on or attempts a flush itself).
+    //       - the paused-but-unresumed mutation half
+    //         (`queryClient.getMutationCache().clear()`, Task 11's fix
+    //         round): a mutation the PREVIOUS session left paused offline
+    //         (TanStack's default `networkMode: 'online'`) would otherwise
+    //         auto-resume the moment connectivity returns and replay under
+    //         whatever cookie is valid then — the ARRIVING user's, by this
+    //         point. Same shape of leak as the event queue above, one
+    //         layer up the stack; see `session.ts`'s own doc comment.
     //
-    //     `useLogout` goes through the same door on the way out.
+    //     `useLogout` goes through the same door on the way out, but flushes
+    //     the event queue ITSELF, first, while its own cookie is still
+    //     valid — see that hook's `bestEffortFinalFlush`.
     //
     // Only then: seed `me`. Seeding it directly rather than invalidating
     // and refetching is the original, still-valid reason — `<RequireAuth>`
     // on the target route reads `useMe` on the very next render, and a
     // refetch would leave it briefly back in its "pending" state
     // (rendering nothing) right after a successful login.
-    stopSync();
     await clearSession(queryClient);
     queryClient.setQueryData(meQueryKey, user);
     navigate(redirectTarget(location.state, location.search), { replace: true });

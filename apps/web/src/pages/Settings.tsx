@@ -1,10 +1,11 @@
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AgentConfigPanel } from '../ai/AgentConfigPanel';
 import { CreditPanel } from '../ai/CreditPanel';
+import { annotationsQueryKey, fetchAnnotations } from '../api/annotations';
 import { useMe, accountInitials } from '../api/useMe';
 import { useLogout } from '../auth/useLogout';
-import { db } from '../db/local';
 import { LANGS, normalizeLang } from '../i18n';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { useThemeContext } from '../theme/ThemeContext';
@@ -436,8 +437,22 @@ function AppearanceSection() {
  *
  * Chú thích trên nói mục này nợ người dùng câu trả lời cho *"máy này đang giữ
  * những gì của tôi"* — và cho tới nay nó trả lời bằng CHỮ. Hai con số trả lời
- * đúng câu ấy bằng thứ đọc trong một giây, và cả hai đều đọc từ chỗ đã có:
- * một bảng Dexie, và `navigator.storage.estimate()`.
+ * đúng câu ấy bằng thứ đọc trong một giây.
+ *
+ * **Ghi chú, sau Task 9, không còn đọc `db.annotations.count()`.** Từ Task 7,
+ * ghi chú đã là dữ liệu MÁY CHỦ — `useAnnotations`'s mutations viết thẳng qua
+ * `POST`/`PATCH`/`DELETE /annotations`, không còn ghi vào Dexie ở đâu cả — nên
+ * `db.annotations.count()` chỉ còn là một con số CÓ THỂ CŨ (ghi chú tạo ở máy
+ * khác không có ở đây; một hàng còn sót lại ở đây từ trước Task 7 không còn ở
+ * máy chủ). Con số đúng, và duy nhất, là `GET /annotations` — cùng
+ * `annotationsQueryKey()`/`fetchAnnotations()` mà `progress/recent.ts` và
+ * `useAnnotations` đã dùng, nên trang này không tốn thêm một request nào khi
+ * một trong hai nơi kia đã hỏi trước.
+ *
+ * `bytes` (dung lượng) VẪN đọc từ `navigator.storage.estimate()` — ước lượng
+ * của cả ORIGIN này trong trình duyệt, không riêng ghi chú hay bất kỳ bảng
+ * nào, nên nó ở lại là một phép đo cục bộ đúng nghĩa, tách khỏi câu hỏi "ghi
+ * chú của tôi ở đâu".
  *
  * Từng có MỘT con số thứ ba — số gói khoá học đã tải về máy, từ `db.packages`.
  * Bảng ấy không còn tồn tại (Task 13, spec
@@ -448,8 +463,11 @@ function AppearanceSection() {
  * ra một khái niệm ("gói trên máy") mà sản phẩm không còn có nữa.
  *
  * `null` là "chưa biết", KHÁC với 0 — và khác biệt ấy quan trọng ở đây hơn ở
- * hầu hết chỗ khác: vẽ "0 ghi chú" cho một người có ba ghi chú, chỉ vì Dexie
- * chưa trả lời xong, là nói với họ rằng máy đã mất dữ liệu.
+ * hầu hết chỗ khác: vẽ "0 ghi chú" cho một người có ba ghi chú, chỉ vì
+ * `GET /annotations` chưa trả lời xong (hoặc đã lỗi), là nói với họ rằng máy
+ * đã mất dữ liệu. `useQuery`'s `data` là `undefined` trong cả hai trường hợp
+ * đó, nên `notes.data?.length ?? null` giữ đúng phân biệt này mà không cần
+ * một nhánh lỗi riêng.
  *
  * `storage.estimate()` không có ở mọi trình duyệt và trả về ƯỚC LƯỢNG của cả
  * origin (không riêng bảng nào), nên nó được nói là "đang chiếm" chứ không
@@ -457,30 +475,31 @@ function AppearanceSection() {
  * không hiện 0.
  */
 function useLocalFootprint(): { notes: number | null; bytes: number | null } {
-  const [state, setState] = useState<{ notes: number | null; bytes: number | null }>({
-    notes: null,
-    bytes: null,
+  const notesQuery = useQuery({
+    queryKey: annotationsQueryKey(),
+    queryFn: () => fetchAnnotations(),
   });
+
+  const [bytes, setBytes] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const notes = await db.annotations.count();
-      let bytes: number | null = null;
+      let estimate: number | null = null;
       try {
-        const estimate = await navigator.storage?.estimate?.();
-        bytes = typeof estimate?.usage === 'number' ? estimate.usage : null;
+        const result = await navigator.storage?.estimate?.();
+        estimate = typeof result?.usage === 'number' ? result.usage : null;
       } catch {
-        bytes = null;
+        estimate = null;
       }
-      if (!cancelled) setState({ notes, bytes });
+      if (!cancelled) setBytes(estimate);
     })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  return state;
+  return { notes: notesQuery.data?.length ?? null, bytes };
 }
 
 /** Byte → "4,2 MB". Dấu phẩy thập phân vì catalog mặc định là tiếng Việt. */

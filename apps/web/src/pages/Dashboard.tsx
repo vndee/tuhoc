@@ -2,9 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import { colorOf, quoteOf } from '../annotations/useAnnotations';
+import type { Ann } from '../api/annotations';
 import { catalogQueryKey, fetchCatalog } from '../api/catalog';
 import { useStats } from '../api/stats';
-import type { AnnotationRow } from '../db/local';
 import { flatChapters, nextChapter } from '../course/chapters';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
 import { monogram } from '../course/monogram';
@@ -33,11 +33,20 @@ import { useProgress } from '../progress/useProgress';
  * dưới `statsQueryKey` dùng chung với `/progress`, chỉ để lấy `stats.courses[]`
  * (khoá học đã học ở MÁY KHÁC — xem "Nguồn danh sách" bên dưới).
  *
- * ## Ruling F5 còn nguyên
+ * ## Ruling F5, thu hẹp phạm vi (Pha 3)
  *
- * Số chương đã đọc và chương kế tiếp đều tính từ `useProgress` — dữ liệu CỤC
- * BỘ — không từ `stats.courses[].chaptersDone`. Trang này phải đúng khi không
- * có mạng, vì nó là trang mở ra trước cả khi ai kịp biết mình có mạng hay không.
+ * Số chương đã đọc và chương kế tiếp vẫn tính từ `useProgress`, không từ
+ * `stats.courses[].chaptersDone` — nhưng KHÔNG còn vì lý do ruling F5 gốc nêu
+ * ("trang này phải đúng khi không có mạng"). Task 6/9, Pha 3 gỡ tiền đề
+ * offline đó có chủ ý: `useProgress` nay đọc `GET /progress` qua TanStack
+ * Query, không còn Dexie/`liveQuery` nào ở dưới, nên trang này KHÔNG còn đúng
+ * khi mất mạng — mất mạng hiện lỗi/loading như mọi trang khác của app. Lý do
+ * còn sống để vẫn dùng `useProgress` thay vì `stats.courses[].chaptersDone`
+ * là ĐỘ TRỄ, không phải TÍNH SẴN CÓ: `useProgress` ghi LẠC QUAN, một chương
+ * đánh dấu đã đọc hiện lên NGAY trong cache trước khi `PUT /progress` trả
+ * lời, còn `stats.courses[].chaptersDone` chỉ nhích lên sau khi request ấy
+ * xong VÀ `/stats` được hỏi lại (cùng lý do `pages/Progress.tsx`'s chú thích
+ * cùng tên nêu cho vòng hoàn thành theo khoá).
  *
  * ## Nguồn danh sách course, sau khi luồng import chết (Task 13)
  *
@@ -51,8 +60,11 @@ import { useProgress } from '../progress/useProgress';
  * Nên trang này không còn hỏi "người này SỞ HỮU khoá nào" — câu hỏi ấy không
  * còn nghĩa. Nó hỏi hai câu hẹp hơn, đúng với những gì nó thật sự cần:
  *
- *  1. **Khoá đang đọc dở** — `useLastStudiedCourseId()` (Dexie cục bộ, ruling
- *     F5). Đúng trong hầu hết mọi phiên, và không cần chờ mạng.
+ *  1. **Khoá đang đọc dở** — `useLastStudiedCourseId()` (`GET /progress`, qua
+ *     `progress/recent.ts`). Đúng trong hầu hết mọi phiên. Tới Task 9 đây là
+ *     Dexie cục bộ, không cần chờ mạng — tiền đề ấy đã gỡ có chủ ý cùng lý do
+ *     Task 6 gỡ nó khỏi `useProgress`: biết "khoá nào đang dở" không còn free
+ *     về mạng nữa, đúng việc nhánh `pha3/du-lieu-len-may-chu` làm.
  *  2. **Chưa đọc gì cả thì gợi ý khoá nào** — khoá ĐẦU TIÊN trong danh mục
  *     công khai, hợp với mọi course `stats.courses[]` biết (học ở máy khác,
  *     có thể không còn trong danh mục hôm nay). Đây KHÔNG phải "khoá của
@@ -235,10 +247,10 @@ const RECENT_QUOTE_CHARS = 110;
 /**
  * "Thứ người học thật sự quay lại": những gì chính họ đã viết.
  *
- * Đọc thẳng `db.annotations` qua `progress/recent.ts` chứ không qua
- * `useAnnotations`: hook ấy phân giải neo và TÔ vào DOM của một chương đang
- * mở, thứ ở đây không tồn tại. Cái được dùng chung là hai hàm đọc phòng thủ —
- * `quoteOf` và `colorOf` — và dùng chung chúng là bắt buộc chứ không phải tiện:
+ * Đọc thẳng `GET /annotations` (qua `progress/recent.ts`'s `useRecentNotes`)
+ * chứ không qua `useAnnotations`: hook ấy phân giải neo và TÔ vào DOM của một
+ * chương đang mở, thứ ở đây không tồn tại. Cái được dùng chung là hai hàm đọc
+ * phòng thủ — `quoteOf` và `colorOf` — và dùng chung chúng là bắt buộc chứ không phải tiện:
  * `anchor` đi từ `json.RawMessage` của máy chủ vào đây dưới dạng `unknown`, và
  * một bản sao thứ hai của phép đọc phòng thủ ấy là đúng chỗ trôi dạt mà chú
  * thích của chính `exactOf` đã cảnh báo.
@@ -288,7 +300,7 @@ function useNoteCourseTitle(courseId: string): string {
   return manifestQuery.data?.title ?? courseId;
 }
 
-function NoteRow({ note }: { note: AnnotationRow }) {
+function NoteRow({ note }: { note: Ann }) {
   const { t } = useLanguage();
   const course = useNoteCourseTitle(note.courseId);
   const quote = quoteOf(note.anchor, RECENT_QUOTE_CHARS);

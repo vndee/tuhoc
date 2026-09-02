@@ -146,6 +146,40 @@ describe('AskPanel — trung thực về việc KHÔNG có trí nhớ giữa cá
   });
 });
 
+/**
+ * Task 12 (Pha 3) — `read_my_notes` bật MẶC ĐỊNH, và người học phải được báo.
+ * Cùng kỷ luật với nhóm bài "không có trí nhớ" ở trên: câu công bố phải hiện
+ * NGAY khi mở panel, trước cả câu hỏi đầu tiên — đúng lúc tool có thể đã được
+ * gọi mà người học chưa từng thấy một dòng nào nói vậy.
+ */
+describe('AskPanel — công bố read_my_notes bật mặc định', () => {
+  it('câu công bố hiện NGAY khi mở, kèm đường dẫn sang Cài đặt', () => {
+    render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
+    expect(screen.getByTestId('ai-reads-notes-notice')).toHaveTextContent(
+      'Gia sư có thể đọc tiến độ và ghi chú của bạn cho khoá học này để trả lời sát hơn.',
+    );
+    const link = screen.getByRole('link', { name: 'Cài đặt' });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute('href', '/settings');
+  });
+
+  it('câu công bố vẫn còn đó sau khi đã có vài lượt', async () => {
+    const { sse } = nextChat();
+    render(wrap(<AskPanel heading="Hỏi về chương" system={SYSTEM} onClose={() => {}} />));
+    typeQuestion('hỏi');
+    await act(async () => {
+      screen.getByRole('button', { name: 'Hỏi' }).click();
+      await flush();
+    });
+    await act(async () => {
+      sse.event('done', {});
+      sse.close();
+      await flush();
+    });
+    expect(screen.getByTestId('ai-reads-notes-notice')).toBeInTheDocument();
+  });
+});
+
 describe('AskPanel — courseSlug tới biên panel (Important 3, review vòng 1)', () => {
   it('courseSlug truyền vào AskPanel đi ra ĐÚNG course_slug trên dây', async () => {
     const { requests, sse } = nextChat();

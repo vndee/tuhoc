@@ -27,15 +27,34 @@
  *     outbox is the witness: a single row means something was propagated to
  *     the reader's other devices that they never asked for.
  */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useEffect, useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type AnnotationRow, clearLocalData, db } from '../db/local';
+import { type Ann, createAnnotation, deleteAnnotation, fetchAnnotations, patchAnnotation } from '../api/annotations';
 import { type Anchor, type AnchorColor, selectionToAnchor } from './anchor';
 import { normalizeContainer } from './normalize';
 import { ORPHAN_QUOTE_MAX, OrphanPanel } from './OrphanPanel';
 import { type ChapterContent, useAnnotations } from './useAnnotations';
 import { LanguageProvider } from '../i18n/LanguageProvider';
+
+// Task 7, Pha 3: `useAnnotations` reads/writes the server through
+// `../api/annotations` now, not Dexie — the same shift
+// `useAnnotations.test.tsx`/`SelectionToolbar.test.tsx`/`MarginCards.test.tsx`
+// already made. `OrphanPanelStore` (`Pick<UseAnnotationsResult, 'orphans' |
+// 'reattach'>`) means the ONLY write this file's component ever makes is a
+// `reattach` — i.e. every "outbox" assertion below becomes a `patchAnnotation`
+// call count.
+vi.mock('../api/annotations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/annotations')>();
+  return {
+    ...actual,
+    fetchAnnotations: vi.fn(),
+    createAnnotation: vi.fn(),
+    patchAnnotation: vi.fn(),
+    deleteAnnotation: vi.fn(),
+  };
+});
 
 const PROSE = [
   '<h2>Chương thử nghiệm</h2>',
@@ -142,10 +161,20 @@ function makeAnchor(html: string, quote: string, color: AnchorColor = 'y'): Anch
 }
 
 let seq = 0;
-async function seed(anchor: Anchor, note: string): Promise<AnnotationRow> {
+/** A tiny in-memory stand-in for the backend `createAnnotation`/
+ * `patchAnnotation`/`deleteAnnotation` write to and `fetchAnnotations` reads
+ * from — same shape the other `annotations/*.test.tsx` files use. */
+let serverRows: Ann[];
+let queryClient: QueryClient;
+
+/** Puts a row straight into `serverRows`, with NO `patchAnnotation`/
+ * `createAnnotation` call — exactly what a row already on the server looks
+ * like when `Harness` mounts and fetches it for the first time. That is what
+ * makes "the mock was never called" a meaningful assertion below. */
+function seed(anchor: Anchor, note: string): Ann {
   seq += 1;
   const at = '2026-08-19T09:30:00.000Z';
-  const row: AnnotationRow = {
+  const row: Ann = {
     id: `n${seq}`,
     courseId: 'c1',
     chapterId: 'ch1',
@@ -153,12 +182,8 @@ async function seed(anchor: Anchor, note: string): Promise<AnnotationRow> {
     note,
     createdAt: at,
     updatedAt: at,
-    deletedAt: null,
   };
-  // Straight into Dexie with no outbox entry — exactly what `sync/engine.ts`'s
-  // `pull()` does with a row from another device. That is what makes "the
-  // outbox is still empty" a meaningful assertion below.
-  await db.annotations.put(row);
+  serverRows.push(row);
   return row;
 }
 
@@ -167,8 +192,19 @@ async function seed(anchor: Anchor, note: string): Promise<AnnotationRow> {
  * sets the chapter HTML into it imperatively, bumps a revision counter, holds
  * the ONE `useAnnotations` instance, and owns the reattach-mode state the way
  * `ChapterView` does (it has to live above both this panel and the toolbar).
+ *
+ * Wrapped in its own `QueryClientProvider` — the hook reads/writes through
+ * TanStack Query now (Task 7, Pha 3).
  */
 function Harness({ html }: { html: string }) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <HarnessBody html={html} />
+    </QueryClientProvider>
+  );
+}
+
+function HarnessBody({ html }: { html: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [content, setContent] = useState<ChapterContent>({ root: null, revision: 0 });
   const [reattaching, setReattaching] = useState<string | null>(null);
@@ -311,15 +347,41 @@ async function reattachTo(id: string, target: string): Promise<void> {
   fireEvent.click(confirm);
 }
 
-beforeEach(async () => {
-  await clearLocalData();
+beforeEach(() => {
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  serverRows = [];
   document.body.innerHTML = '';
   seq = 0;
   setViewportWidth(WIDE);
+
+  vi.mocked(fetchAnnotations)
+    .mockReset()
+    .mockImplementation(async (courseId) =>
+      serverRows.filter((row) => courseId === undefined || row.courseId === courseId).map((row) => ({ ...row })),
+    );
+  vi.mocked(createAnnotation)
+    .mockReset()
+    .mockImplementation(async (row) => {
+      const at = new Date().toISOString();
+      serverRows.push({ ...(row as Ann), createdAt: at, updatedAt: at });
+    });
+  vi.mocked(patchAnnotation)
+    .mockReset()
+    .mockImplementation(async (id, patch) => {
+      const idx = serverRows.findIndex((row) => row.id === id);
+      if (idx === -1) return;
+      serverRows[idx] = { ...serverRows[idx], ...patch, updatedAt: new Date().toISOString() };
+    });
+  vi.mocked(deleteAnnotation)
+    .mockReset()
+    .mockImplementation(async (id) => {
+      serverRows = serverRows.filter((row) => row.id !== id);
+    });
 });
 
-afterEach(async () => {
-  await clearLocalData();
+afterEach(() => {
   window.getSelection()?.removeAllRanges();
   setViewportWidth(1024);
 });
@@ -403,16 +465,15 @@ describe('OrphanPanel — ghi chú mồ côi là dữ liệu, không phải rác
     await waitForOrphans(0);
     expect(paintedText('n1')).toBe(TARGET_FIRST);
 
-    const after = await db.annotations.get('n1');
+    const after = serverRows.find((r) => r.id === 'n1');
     expect(after!.note).toBe('đừng làm mất chữ này');
     expect((after!.anchor as Anchor).color).toBe('p');
     expect((after!.anchor as Anchor).exact).toBe(TARGET_FIRST);
     expect(after!.createdAt).toBe(before.createdAt);
-    expect(after!.deletedAt).toBeNull();
     // The highlight wears the note's original colour, not the default yellow.
     expect(marksFor('n1')[0].className).toContain('ann-p');
     // One outbox row: the reattach itself, and nothing else.
-    expect(await db.outbox.count()).toBe(1);
+    expect(vi.mocked(patchAnnotation)).toHaveBeenCalledTimes(1);
   });
 
   it('gắn lại HAI ghi chú liên tiếp — map là ảnh chụp, và cái thứ hai là cái phát hiện ra điều đó (P2-F8)', async () => {
@@ -437,9 +498,9 @@ describe('OrphanPanel — ghi chú mồ côi là dữ liệu, không phải rác
     expect(paintedText('n2')).toBe(TARGET_THIRD);
     // And the first one did not move when the second was placed.
     expect(paintedText('n1')).toBe(TARGET_FIRST);
-    expect((await db.annotations.get('n1'))!.note).toBe('ghi chú một');
-    expect((await db.annotations.get('n2'))!.note).toBe('ghi chú hai');
-    expect((await db.annotations.get('n2')!)!.anchor).toMatchObject({ exact: TARGET_THIRD, color: 'b' });
+    expect(serverRows.find((r) => r.id === 'n1')!.note).toBe('ghi chú một');
+    expect(serverRows.find((r) => r.id === 'n2')!.note).toBe('ghi chú hai');
+    expect(serverRows.find((r) => r.id === 'n2')!.anchor).toMatchObject({ exact: TARGET_THIRD, color: 'b' });
   });
 
   it('"Hủy" không ghi gì cả: hàng vẫn mồ côi, không tombstone, outbox vẫn rỗng', async () => {
@@ -456,13 +517,12 @@ describe('OrphanPanel — ghi chú mồ côi là dữ liệu, không phải rác
     await waitFor(() => expect(screen.queryByRole('button', { name: /gắn vào đây/i })).not.toBeInTheDocument());
     expect(orphanRow('n1')).toBeInTheDocument();
 
-    const row = await db.annotations.get('n1');
-    expect(row!.deletedAt).toBeNull();
+    const row = serverRows.find((r) => r.id === 'n1');
     expect(row!.note).toBe('ghi chú quý');
     expect(row!.updatedAt).toBe('2026-08-19T09:30:00.000Z');
     // Backing out of a rescue is a READ. Nothing about it belongs on another
     // device.
-    expect(await db.outbox.count()).toBe(0);
+    expect(vi.mocked(patchAnnotation)).not.toHaveBeenCalled();
   });
 
   it('lần cứu thứ hai không thừa hưởng đoạn chọn của lần thứ nhất', async () => {
@@ -518,9 +578,8 @@ describe('OrphanPanel — ghi chú mồ côi là dữ liệu, không phải rác
     await waitForOrphans(1);
     expect(within(orphanRow('n1')).getByText('ghi chú sống sót')).toBeInTheDocument();
 
-    const row = await db.annotations.get('n1');
-    expect(row!.deletedAt).toBeNull();
-    expect(await db.outbox.count()).toBe(0);
+    expect(serverRows.find((r) => r.id === 'n1')).toBeDefined();
+    expect(vi.mocked(patchAnnotation)).not.toHaveBeenCalled();
   });
 
   it('trích dẫn dài ĐÚNG BẰNG 80 ký tự không bị cắt — biên là thứ duy nhất phân biệt > và >=', async () => {
@@ -554,11 +613,10 @@ describe('OrphanPanel — ghi chú mồ côi là dữ liệu, không phải rác
 
     await waitFor(() => expect(reattachBar()).not.toBeInTheDocument());
     expect(orphanRow('n1')).toBeInTheDocument();
-    const row = await db.annotations.get('n1');
+    const row = serverRows.find((r) => r.id === 'n1');
     expect(row!.note).toBe('ghi chú quý');
     expect(row!.updatedAt).toBe('2026-08-19T09:30:00.000Z');
-    expect(row!.deletedAt).toBeNull();
-    expect(await db.outbox.count()).toBe(0);
+    expect(vi.mocked(patchAnnotation)).not.toHaveBeenCalled();
   });
 
   it('cứu ở chương SAU không được dùng lại bản đồ của chương TRƯỚC, dù mọi node cũ vẫn giữ nguyên độ dài (P2-F8)', async () => {
@@ -594,7 +652,7 @@ describe('OrphanPanel — ghi chú mồ côi là dữ liệu, không phải rác
     // The rescue landed in the chapter the reader is actually looking at, with
     // that chapter's words in it — not chapter one's.
     expect(paintedText('n1')).toBe(TARGET_OTHER);
-    const row = await db.annotations.get('n1');
+    const row = serverRows.find((r) => r.id === 'n1');
     expect((row!.anchor as Anchor).exact).toBe(TARGET_OTHER);
     expect(row!.note).toBe('ghi chú xuyên chương');
   });
@@ -634,10 +692,10 @@ describe('OrphanPanel — cứu hộ không được phá thứ nó đang cứu 
     // And the mode stays alive, with the note untouched, so the reader can
     // simply widen the selection.
     expect(orphanRow('n1')).toBeInTheDocument();
-    const row = await db.annotations.get('n1');
+    const row = serverRows.find((r) => r.id === 'n1');
     expect((row!.anchor as Anchor).exact).toBe(Q_LOST_LONG);
     expect(row!.updatedAt).toBe('2026-08-19T09:30:00.000Z');
-    expect(await db.outbox.count()).toBe(0);
+    expect(vi.mocked(patchAnnotation)).not.toHaveBeenCalled();
   });
 
   it('nút đã hiện rồi mà đoạn chọn đổi sang công thức: lệnh GHI vẫn từ chối, exact giữ nguyên từng byte', async () => {
@@ -660,13 +718,12 @@ describe('OrphanPanel — cứu hộ không được phá thứ nó đang cứu 
     // The gate that matters is the one on the WRITE, not the one on the
     // button: it is the only one that holds however the click arrived.
     expect(screen.getByText(/chỉ gồm công thức/i)).toBeInTheDocument();
-    const row = await db.annotations.get('n1');
+    const row = serverRows.find((r) => r.id === 'n1');
     expect((row!.anchor as Anchor).exact).toBe(Q_LOST_LONG);
     expect(row!.anchor).toEqual(before.anchor);
     expect(row!.updatedAt).toBe(before.updatedAt);
     expect(row!.note).toBe('chữ của người đọc');
-    expect(row!.deletedAt).toBeNull();
-    expect(await db.outbox.count()).toBe(0);
+    expect(vi.mocked(patchAnnotation)).not.toHaveBeenCalled();
 
     // Still rescuable, which is the whole point: the row never left the list,
     // so backing out of this attempt hands both of its controls straight back.
@@ -688,7 +745,7 @@ describe('OrphanPanel — cứu hộ không được phá thứ nó đang cứu 
     render(<Harness html={PROSE_MATH} />);
     await waitForOrphans(1);
 
-    const start = await db.annotations.get('n1');
+    const start = serverRows.find((r) => r.id === 'n1');
     expect(hasWordsInIt((start!.anchor as Anchor).exact)).toBe(true);
 
     fireEvent.click(within(orphanRow('n1')).getByRole('button', { name: 'Gắn lại' }));
@@ -705,7 +762,7 @@ describe('OrphanPanel — cứu hộ không được phá thứ nó đang cứu 
       const button = confirmButton();
       if (button) fireEvent.click(button);
       await act(async () => {});
-      const row = await db.annotations.get('n1');
+      const row = serverRows.find((r) => r.id === 'n1');
       expect(hasWordsInIt((row!.anchor as Anchor).exact)).toBe(true);
     }
 
@@ -714,10 +771,10 @@ describe('OrphanPanel — cứu hộ không được phá thứ nó đang cứu 
     selectInChapter(TARGET_FIRST);
     fireEvent.click(await screen.findByRole('button', { name: /gắn vào đây/i }));
     await waitForPlaced(1);
-    const done = await db.annotations.get('n1');
+    const done = serverRows.find((r) => r.id === 'n1');
     expect((done!.anchor as Anchor).exact).toBe(TARGET_FIRST);
     expect(hasWordsInIt((done!.anchor as Anchor).exact)).toBe(true);
-    expect(await db.outbox.count()).toBe(1);
+    expect(vi.mocked(patchAnnotation)).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -782,10 +839,9 @@ describe('OrphanPanel — màn hẹp phải BIẾT là mình có ghi chú đang 
     await waitFor(() =>
       expect(screen.queryByRole('status', { name: /ghi chú chưa gắn lại được/i })).not.toBeInTheDocument(),
     );
-    const row = await db.annotations.get('n1');
-    expect(row!.deletedAt).toBeNull();
+    const row = serverRows.find((r) => r.id === 'n1');
     expect(row!.note).toBe('ghi chú quý');
     expect(row!.updatedAt).toBe('2026-08-19T09:30:00.000Z');
-    expect(await db.outbox.count()).toBe(0);
+    expect(vi.mocked(patchAnnotation)).not.toHaveBeenCalled();
   });
 });
