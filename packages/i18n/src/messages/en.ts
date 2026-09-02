@@ -222,6 +222,8 @@ export const en: Messages = {
   'home.notes.open': 'Open the chapter',
   'home.notes.formula': 'formula',
   'home.notes.aria': (course: string) => `Open this note in ${course}`,
+  'toc.next': 'Next',
+  'toc.done': 'Read',
 
   /** Dashboard empty state, after the import flow died — see vi.ts's comment. */
   'home.empty.heading': 'You have not started a course yet',
@@ -251,12 +253,6 @@ export const en: Messages = {
   'progress.heat.less': 'less',
   'progress.heat.more': 'more',
   'progress.byCourse': 'By course',
-  'progress.stat.chapters': 'Chapters read',
-  'progress.stat.chaptersSub': (n: string) => `across ${n} courses on this device`,
-  'progress.stat.streak': 'Day streak',
-  'progress.stat.streakSub': 'as of today',
-  'progress.stat.notes': 'Notes written',
-  'progress.stat.notesSub': 'kept on this device',
   /** Rewritten at fix-round-2 (task-14) — see vi.ts's comment for why, and for why this stops right before "Courses" rather than repeating it. */
   'progress.noCourses': 'Nothing to measure yet. Start reading under',
   'progress.chaptersDone': (n: string) => `${n} chapters read`,
@@ -308,7 +304,7 @@ export const en: Messages = {
 
   /* ── the Courses screen (`pages/Courses.tsx`) — see vi.ts's comment ────── */
   'courses.title': 'Courses',
-  'courses.lede': 'Every course, public — free to read, no account needed.',
+  'courses.lede': 'Every course, in the open. Pick one to start reading.',
   'courses.loading': 'Loading the catalog…',
   'courses.empty': 'No courses have been published yet.',
   'courses.list.aria': 'Course catalog',

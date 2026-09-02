@@ -76,6 +76,59 @@
   height: 64px;
   padding: 0 var(--topbar-pad-x);
   gap: 10px;
+  /* RUNNING HEAD của một trang typeset: nền là chính giấy, và một hairline MỰC
+     (không phải xám) ngăn nó với thân trang — đúng cách LaTeX kẻ `\headrule`.
+     Không bóng, không nền khác màu: thanh trên không phải một tấm chrome đặt
+     lên trang, nó là dòng đầu của trang. */
+  background: var(--page);
+  border-bottom: 1px solid var(--ink);
+}
+
+/* Nhãn hiệu: serif của thế giới, không đậm — trên running head, tên sách đứng
+   bằng chữ thường có chân, không phải wordmark sans in đậm. */
+.tn-wordmark {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--ink);
+}
+
+/* Ba đích điều hướng như ba mục của running head: sans hẹp, chữ hoa có tracking,
+   không nền, không viên. Mục đang chọn mang màu nhấn và một gạch chân hairline
+   đặt thấp — cùng thiết bị mà mục lục và liên kết trong `.doc` dùng.
+   Độ đặc hiệu có `#topbar` vì `app-screens.css` đã đặt `#topbar a { border-bottom: none }`
+   để gỡ gạch chân mờ của reader.css; ta không dùng border, dùng text-decoration. */
+#topbar .tn-link {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 2px;
+  margin: 0 10px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  text-decoration: none;
+  transition: color 150ms ease-out;
+}
+
+#topbar .tn-link:hover {
+  color: var(--ink);
+}
+
+#topbar .tn-link.is-active {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 9px;
+}
+
+#topbar .tn-link:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 4px;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════

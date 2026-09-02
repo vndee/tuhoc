@@ -313,6 +313,8 @@ export const vi = {
   'home.notes.open': 'Mở chương',
   'home.notes.formula': 'công thức',
   'home.notes.aria': (course: string) => `Mở ghi chú này trong ${course}`,
+  'toc.next': 'Tiếp theo',
+  'toc.done': 'Đã đọc',
 
   /**
    * Trạng thái rỗng của Bảng điều khiển, sau khi luồng import chết.
@@ -361,12 +363,6 @@ export const vi = {
   'progress.heat.less': 'ít',
   'progress.heat.more': 'nhiều',
   'progress.byCourse': 'Theo khoá học',
-  'progress.stat.chapters': 'Chương đã học',
-  'progress.stat.chaptersSub': (n: string) => `trên ${n} khoá trong máy này`,
-  'progress.stat.streak': 'Chuỗi ngày liền',
-  'progress.stat.streakSub': 'tính tới hôm nay',
-  'progress.stat.notes': 'Ghi chú đã viết',
-  'progress.stat.notesSub': 'còn giữ trên máy này',
   /**
    * fix-round-2 (task-14) — bản cũ nói "Nhập một gói ở mục Khoá học", một
    * hành động không còn tồn tại: `Courses.tsx` (đích của route `/courses`)
@@ -491,7 +487,7 @@ export const vi = {
    * trang này, chỉ là trang ấy không còn "của bạn" lẫn "hai tab" để nói tới.
    */
   'courses.title': 'Khoá học',
-  'courses.lede': 'Mọi khoá học, công khai — đọc miễn phí, không cần tài khoản.',
+  'courses.lede': 'Mọi khoá học, công khai. Chọn một khoá để bắt đầu đọc.',
   'courses.loading': 'Đang tải danh mục…',
   'courses.empty': 'Chưa có khoá học nào được xuất bản.',
   'courses.list.aria': 'Danh mục khoá học',

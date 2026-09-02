@@ -8,7 +8,18 @@
    tay bên dưới thì KHÔNG nằm trong layer nào nên nó vẫn thắng utility —
    xem phần "THỨ TỰ CASCADE" trong chính tệp ấy. */
 @import './tokens.css';
-@import '@fontsource-variable/ibm-plex-sans/index.css';
+/* Hai phông của thế giới "giáo trình LaTeX" (tokens.css `--font-serif`/`--font-sans`).
+   Import ĐÚNG trọng lượng dùng tới, không `index.css` của gói: mỗi trọng lượng là
+   một tệp woff2 riêng cho subset `vietnamese`, và tải cả họ chỉ để dùng hai
+   là trả tiền mạng cho chữ không ai thấy. IBM Plex Sans đã rời đây — nó là
+   `--sans` mặc định của reader.css, thứ index.css ghi đè ngay dưới. */
+@import '@fontsource/charis-sil/400.css';
+@import '@fontsource/charis-sil/400-italic.css';
+@import '@fontsource/charis-sil/700.css';
+@import '@fontsource/archivo-narrow/400.css';
+@import '@fontsource/archivo-narrow/500.css';
+@import '@fontsource/archivo-narrow/600.css';
+@import '@fontsource/archivo-narrow/700.css';
 @import '@course-kit/vendor/katex.css';
 @import '@course-kit/reader.css';
 @import './courses.css';
@@ -52,7 +63,10 @@
    thang xám hơi lạnh. Trộn hai thứ ấy thì thẻ trắng nổi lên như một mảnh vá
    trên nền ngà. */
 :root {
-  --sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Sans hẹp cho NHÃN của khung app. Thân chữ của khung là `--font-serif`
+     (tokens.css). `--serif` của reader.css KHÔNG bị ghi đè có chủ ý: đó là
+     mặt chữ thân bài trong chương, và chủ dự án nói phần đọc đã ổn. */
+  --sans: var(--font-sans);
 
   --surface-1: #ffffff;
   --page: var(--color-gray-50);
@@ -95,7 +109,8 @@ html[data-theme='dark'] {
   --grid: var(--color-gray-800);
 
   --accent: var(--color-brand-400);
-  --accent-soft: rgba(126, 86, 217, 0.22);
+  /* brand-400 (#4d92cc) ở alpha 22% — cùng màu nhấn với `--accent` của khối này, không còn hằng tím của kit cũ. */
+  --accent-soft: rgba(77, 146, 204, 0.22);
 
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
 }

@@ -3,77 +3,89 @@
  *
  * Đặc tả: `docs/superpowers/specs/2026-08-25-server-side-pivot.md` §1, §2.4.
  * MỘT danh mục công khai — tiêu đề, câu dẫn, rồi một danh sách. Không tab,
- * không nút, không hộp thoại: mọi thứ hai tab và một hộp thoại từng cần ở đây
- * (`.courses-tabs`/`.courses-tab`/`.ci-*`/`.lib-tier*`) đi cùng luồng nhập gói
- * đã chết, và đã rời tệp này cùng lúc — xem `task-13-report.md` về lý do.
+ * không nút, không hộp thoại.
  *
- * Hai luật của hướng A mà tệp này vẫn theo:
- *   - **không hộp bảy màu** — phân cấp bằng cỡ chữ, nét kẻ và khoảng trắng;
- *   - chữ giao diện là `var(--sans)` sẵn có, KHÔNG `system-ui`.
+ * Thế giới: giáo trình LaTeX (xem đầu `home.css`). Danh mục được xếp như một
+ * MỤC LỤC CÓ ĐÁNH SỐ: số thứ tự sans ở cột trái cố định, tên khoá serif cỡ lớn,
+ * mô tả serif nhỏ hơn, hairline giữa các mục. Không bìa, không monogram, không
+ * thẻ — một danh mục dài thì mật độ chữ quan trọng hơn trang trí.
  * ══════════════════════════════════════════════════════════════════════════ */
 
-.courses-page {
-  max-width: 780px;
-}
-
-.courses-header {
-  margin-bottom: 18px;
-}
-
-.courses-header .ch-lede {
-  margin: 4px 0 0;
-  max-width: 46ch;
-}
-
 .courses-note {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 16px;
   color: var(--ink-3);
-  font-size: 14px;
 }
 
-/* Một hàng: tên khoá (đường liên kết duy nhất của hàng) rồi câu mô tả. Không
-   bìa, không chữ tắt monogram — đó là trang trí của trang chủ ("Đang đọc dở"
-   cần một mỏ neo thị giác); một danh mục dài thì mật độ chữ quan trọng hơn. */
 .courses-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 0;
-  margin: 0;
   list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: course;
+  /* Hairline mực trên đầu danh sách, cùng ngữ pháp với `.doc-head`. */
+  border-top: 1px solid var(--rule);
 }
 
 .courses-item {
+  counter-increment: course;
   border-bottom: 1px solid var(--rule);
 }
 
 .courses-item-link {
-  display: block;
-  padding: 14px 2px;
+  display: grid;
+  grid-template-columns: 3.4em minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: baseline;
+  padding: 16px 0 18px;
   text-decoration: none;
   color: inherit;
-  border-radius: var(--radius-xs);
 }
 
-.courses-item-link:hover .courses-item-title {
-  color: var(--color-brand-600);
+/* Số thứ tự do CSS đếm — nó là trình bày, không phải dữ liệu, nên không có
+   trong DOM và không lọt vào tên trợ năng của liên kết. */
+.courses-item-link::before {
+  content: counter(course, decimal-leading-zero);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* Tiền tố hai id: thắng `#app:not(.reading) #content h2` của app-screens.css —
+   lý do đầy đủ ở đầu `home.css`, khối "VÌ SAO CÁC HEADING…". */
+#app:not(.reading) #content .courses-item-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1.25;
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.12em;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 150ms ease-out;
+}
+
+.courses-item-link:hover .courses-item-title,
+.courses-item-link:focus-visible .courses-item-title {
+  text-decoration-color: var(--accent);
 }
 
 .courses-item-link:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-ring-brand);
-}
-
-.courses-item-title {
-  margin: 0;
-  font-family: var(--sans);
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--ink);
+  outline: 1px solid var(--accent);
+  outline-offset: 4px;
 }
 
 .courses-item-desc {
-  margin: 4px 0 0;
-  font-size: 13.5px;
-  color: var(--ink-3);
+  grid-column: 2;
+  margin: 6px 0 0;
+  font-family: var(--font-serif);
+  font-size: 15.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
   max-width: 62ch;
 }
