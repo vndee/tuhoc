@@ -7,6 +7,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import type { Chapter, Part } from '../course/types';
+import { __resetSessionIdentityForTests, announceSessionUser, sessionWasSuperseded } from '../auth/sessionIdentity';
 import { clearUserContent } from '../db/localStorage';
 import { t } from '../i18n';
 import { ThemeProvider } from '../theme/ThemeContext';
@@ -215,6 +216,16 @@ function renderChapterView(
 
 describe('ChapterView', () => {
   let renderKatex: Mock<(root: ParentNode) => void>;
+
+  // The supersession test at the bottom of this file is the only one that
+  // touches `auth/sessionIdentity`'s module state, and a leftover
+  // `superseded` flag would make every test after it render a signed-out
+  // reader. Reset unconditionally rather than in that one test: a guard that
+  // depends on remembering to call it is the shape this whole round of
+  // fixes exists to remove.
+  afterEach(() => {
+    __resetSessionIdentityForTests();
+  });
 
   beforeEach(() => {
     progressRows = [];
@@ -1401,6 +1412,94 @@ describe('ChapterView', () => {
       expect(document.getElementById('rail-tab-notes')).not.toBeNull();
       expect(document.getElementById('mark-btn')!.hidden).toBe(false);
       expect(document.querySelectorAll('.box.ex .box-h input[type="checkbox"]')).toHaveLength(2);
+    });
+
+    /**
+     * Rà soát toàn nhánh, bước 5 — CHỖ THỨ NĂM, đo trên chính component
+     * thật.
+     *
+     * `AuthedReaderExtras` mang cả `useAnnotations` (POST/PATCH/DELETE
+     * /annotations) lẫn `useProgress` (PUT /progress), và nó dựng trên
+     * route CÔNG KHAI `/c/:courseId/:chapterId` — ngoài `<RequireAuth>`,
+     * tức ngoài người đọc duy nhất của `sessionWasSuperseded()` trước vòng
+     * sửa này. Với `useMe` còn cache là A, một tab nền vẫn vẽ cây của A và
+     * mọi cú ghi của nó đi dưới cookie của B: một ghi chú A gõ rồi lưu sau
+     * lúc bàn giao được INSERT vào tài khoản B, nguyên văn.
+     *
+     * Bài này KHÔNG dựng lại cổng ấy bằng một bản sao — nó dùng đúng
+     * `<ChapterView>` thật, với đúng dòng `me.isSuccess && me.data != null`
+     * mà production chạy. Cổng nay nằm trong `useMe()` (một nơi hỏi, mọi
+     * nơi thừa hưởng), nên đây là chỗ chứng minh nó thật sự tới được tới
+     * lớp ghi.
+     *
+     * Tab kia là một ĐỒ THỊ MODULE RIÊNG: `BroadcastChannel` không trả
+     * thông điệp về cho chính object đã gửi, nên `announceSessionUser` gọi
+     * trong cùng một module sẽ không bao giờ đo được điều nó định đo.
+     */
+    it('một tab khác chiếm phiên ⇒ lớp GHI của trang đọc biến mất, và không cú ghi nào của A tới máy chủ', async () => {
+      await renderChapterAndSettle();
+
+      // Đối chứng dương TRƯỚC: lớp ghi đang thật sự đứng đó.
+      expect(document.getElementById('rail-tab-notes')).not.toBeNull();
+      expect(document.getElementById('mark-btn')!.hidden).toBe(false);
+      expect(document.querySelectorAll('.box.ex .box-h input[type="checkbox"]')).toHaveLength(2);
+
+      // Tab 1: A đăng xuất (`clearSession()` công bố `null`), B đăng nhập.
+      vi.resetModules();
+      const tab1 = await import('../auth/sessionIdentity');
+      tab1.announceSessionUser(null);
+      tab1.announceSessionUser('u-b');
+      await waitFor(() => expect(sessionWasSuperseded()).toBe(true));
+
+      // Mọi thứ GHI do React dựng đã rời khỏi trang — cùng danh sách mà
+      // bài "khách ẩn danh" ngay trên kiểm, vì đó chính xác là hình dạng
+      // đúng: tab này không còn là một phiên đã xác nhận nữa.
+      await waitFor(() => expect(document.getElementById('rail-tab-notes')).toBeNull());
+      expect(document.getElementById('mark-btn')!.hidden).toBe(true);
+
+      // CÁC Ô BÀI TẬP CŨNG PHẢI BIẾN MẤT, và đây là nửa mà bản sửa "một nơi
+      // hỏi, mọi nơi thừa hưởng" KHÔNG tự lo được. Chúng là DOM mệnh lệnh
+      // tiêm vào fragment của chương, mang một listener `change` đóng gói
+      // `progress.toggleEx` — tức một `PUT /progress` sống. Tháo
+      // `AuthedReaderExtras` ra không gỡ chúng đi, vì chúng không thuộc cây
+      // React. Bản đầu của bài kiểm này bấm vào một ô còn sót và NHẬN ĐƯỢC
+      // một hàng tiến độ — nên `injectExerciseCheckboxes.ts` nay có
+      // `removeExerciseCheckboxes`, gọi từ một cleanup lúc unmount.
+      const leftoverCheckbox = document.querySelector('.box.ex .box-h input[type="checkbox"]');
+      expect(leftoverCheckbox).toBeNull();
+
+      // Các cử chỉ ghi thật sự không làm gì nữa: bôi đen không gọi được
+      // thanh công cụ, bấm `#mark-btn` không sinh ra hàng nào phía máy chủ.
+      selectInChapter('Nội dung A');
+      await act(async () => {});
+      expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
+
+      fireEvent.click(document.getElementById('mark-btn')!);
+      await act(async () => {});
+      expect(progressRows).toHaveLength(0);
+      expect(annotationRows).toHaveLength(0);
+    });
+
+    /**
+     * Nửa còn lại, và là nửa dễ làm hỏng nhất khi vá loại lỗi này: một tab
+     * bị thay phiên phải trở lại BÌNH THƯỜNG ngay khi nó tự biết mình là
+     * ai — không phải một cái khoá đến hết đời tab.
+     */
+    it('và khi tab này tự hỏi lại rồi biết mình là B, lớp ghi trở lại đầy đủ', async () => {
+      await renderChapterAndSettle();
+
+      vi.resetModules();
+      const tab1 = await import('../auth/sessionIdentity');
+      tab1.announceSessionUser(null);
+      await waitFor(() => expect(sessionWasSuperseded()).toBe(true));
+      await waitFor(() => expect(document.getElementById('rail-tab-notes')).toBeNull());
+
+      // Tab này tự xác lập danh tính mới — đúng thứ `api/useMe.ts` làm khi
+      // `GET /me` của chính nó trả lời.
+      announceSessionUser('u-b');
+
+      await waitFor(() => expect(document.getElementById('rail-tab-notes')).not.toBeNull());
+      expect(document.getElementById('mark-btn')!.hidden).toBe(false);
     });
 
     it('does not show the nudge while GET /me is still pending — a flash aimed at a signed-in reader is worse than a late nudge', async () => {

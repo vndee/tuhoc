@@ -1,8 +1,7 @@
-import { useRef, useSyncExternalStore, type ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { describeAuthError, serverAnswered } from '../api/client';
 import { useMe } from '../api/useMe';
-import { sessionWasSuperseded, subscribeToSessionChanges } from './sessionIdentity';
 import { useLanguage } from '../i18n/LanguageProvider';
 
 export interface RequireAuthProps {
@@ -78,28 +77,24 @@ export function RequireAuth({ children }: RequireAuthProps) {
   const location = useLocation();
   const meQuery = useMe();
 
-  /**
-   * Đã có tab khác đăng nhập bằng tài khoản khác chưa?
+  /*
+   * NỬA MÀN HÌNH CỦA C-1 KHÔNG BIẾN MẤT — NÓ CHUYỂN VÀO `useMe()`.
    *
-   * C-1 đóng nửa **dữ liệu**: tab bị thay thế ngừng đồng bộ ngay, nên không
-   * hàng nào của A tới server dưới cookie của B. Nhưng nó để lại nửa **màn
-   * hình**: tab ấy vẫn hiển thị cây đã render của A cho tới khi `useMe` của
-   * chính nó làm mới. Nếu A rời máy và B đăng nhập, B **nhìn thấy ghi chú và
-   * tiến độ của A** — không có dữ liệu chảy đi, nhưng vẫn là phơi lộ chéo
-   * tài khoản, và là thứ người dùng nhìn thấy được.
+   * Component này từng tự hỏi `sessionWasSuperseded()` bằng một
+   * `useSyncExternalStore` riêng, đứng trước mọi nhánh bên dưới. Vòng sửa
+   * cuối (rà soát toàn nhánh, bước 5) chuyển câu hỏi ấy vào `api/useMe.ts`:
+   * khi một tab khác chiếm phiên của trình duyệt, `useMe()` trả lời "không
+   * có ai" — đã ngã ngũ, `data: null` — nên nhánh `meQuery.data == null` ở
+   * cuối hàm này điều hướng về `/login` y hệt như nhánh riêng kia từng làm.
    *
-   * `useSyncExternalStore` chứ không phải `useState` + `useEffect`: dự án đã
-   * mất trọn một vòng vì `setState` trong thân effect rơi vào **commit sau**
-   * so với thao tác mệnh lệnh, và React Scheduler chỉ nhường sau **ngân sách
-   * 5 ms**. Đây đúng là bài toán mà primitive này sinh ra để giải — và nó đọc
-   * cùng một sự thật mà `sessionIdentity` công bố cho đường đồng bộ, không
-   * phải một bản sao thứ hai có thể lệch.
+   * VÌ SAO GỠ CHỨ KHÔNG GIỮ CẢ HAI: giữ lại là có HAI người viết cho MỘT sự
+   * thật mà không bài kiểm nào bắt được ai chịu trách nhiệm. Đo thật, không
+   * suy luận: xoá nhánh cũ đi thì cả ba bài của
+   * `auth/supersededScreen.test.tsx` vẫn XANH — nó đã trở thành mã không thể
+   * giết. Đó đúng là hình dạng mà `icTZOffset` và tám bản sao của
+   * `clearLocalData` đã dạy dự án này một lần rồi. Ba bài ấy nay khoá đúng
+   * cái guard duy nhất còn lại: gỡ mặt nạ trong `useMe()` là chúng đỏ.
    */
-  const superseded = useSyncExternalStore(
-    subscribeToSessionChanges,
-    sessionWasSuperseded,
-    sessionWasSuperseded,
-  );
 
   /**
    * Lần mount NÀY đã từng dựng `children` dưới một phiên được server xác nhận
@@ -139,13 +134,6 @@ export function RequireAuth({ children }: RequireAuthProps) {
 
   const noResponseArrived = meQuery.isError && !serverAnswered(meQuery.error);
 
-  // Đứng TRƯỚC mọi nhánh khác, kể cả `isPending`: khi một tài khoản khác đã
-  // chiếm phiên trên máy này, mọi câu trả lời mà tab này đang cầm đều thuộc
-  // về người trước. Không có câu hỏi nào ở dưới còn nghĩa.
-  if (superseded) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
-  }
-
   if (meQuery.isPending) {
     return null;
   }
@@ -165,6 +153,11 @@ export function RequireAuth({ children }: RequireAuthProps) {
     return <p className="ch-lede">{t('auth.needsNetwork')}</p>;
   }
 
+  // `null` ở đây có HAI nguồn, và cả hai đều đúng một câu trả lời: máy chủ
+  // vừa nói 401 (không ai đăng nhập), HOẶC một tab khác đã chiếm phiên của
+  // trình duyệt này và `useMe()` đang trả lời "không có ai" (xem chú thích ở
+  // đầu hàm, và doc của chính `useMe`). Với TRANG NÀY hai thứ ấy không khác
+  // nhau: phiên mà cây đang vẽ không còn là phiên của trình duyệt nữa.
   if (meQuery.data == null) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }

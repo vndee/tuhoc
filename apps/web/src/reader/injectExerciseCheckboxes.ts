@@ -78,3 +78,34 @@ export function injectExerciseCheckboxes(
     input.checked = callbacks.isDone(index);
   });
 }
+
+/**
+ * Removes every checkbox this module injected under `root`, listener and
+ * all — the counterpart `injectExerciseCheckboxes` shipped without.
+ *
+ * WHY IT HAS TO EXIST (final whole-branch review, step 5). The `change`
+ * listener above closes over `callbacks.toggle`, which is
+ * `useProgress`'s `toggleEx` — a real `PUT /progress`. The label it is
+ * attached to lives in the chapter DOM, which `ChapterView` owns through a
+ * ref rather than through React's vdom, so **unmounting the component that
+ * created it does not remove it**. That made the checkbox the one writer in
+ * the reader that could outlive its own gate: `AuthedReaderExtras`
+ * disappears the moment `useMe()` reports nobody (a superseded tab), and a
+ * click on a leftover checkbox still fired `toggleEx` — under whichever
+ * account's cookie the browser now carries. Measured, not theorised: the
+ * first version of `ChapterView.test.tsx`'s supersession test clicked one
+ * and got a progress row.
+ *
+ * Removing the whole wrapper element, not just the listener: the element
+ * itself is this module's, nothing else reads it, and a checkbox left on
+ * screen that no longer does anything is its own small lie.
+ *
+ * Safe on a root that never had any (removes nothing), which is what lets
+ * the caller run it from an unmount cleanup without first asking whether
+ * the inject ever ran.
+ */
+export function removeExerciseCheckboxes(root: ParentNode): void {
+  for (const label of Array.from(root.querySelectorAll(`.${CHECKBOX_WRAPPER_CLASS}`))) {
+    label.remove();
+  }
+}

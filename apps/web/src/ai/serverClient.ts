@@ -34,6 +34,8 @@
  * thứ hai đi vòng qua bất kỳ đâu.
  */
 
+import { sessionWasSuperseded } from '../auth/sessionIdentity';
+
 /** Mười mã lỗi Go phát ra (`handler.go`'s `Code*` const), cộng hai mã CHỈ
  *  phía trình duyệt biết — cùng khuôn lớp lỗi phía client của Pha 1 đã dùng
  *  để mở rộng union mã lỗi của giao thức nó nói chuyện cùng:
@@ -181,6 +183,35 @@ export async function chat(
     // và (một khi credit đã trừ trước khi stream bắt đầu ở phía Go) tốn tiền
     // của người học.
     throw new ServerAIError('Aborted', 'cancelled before the request was sent');
+  }
+
+  // NGƯỜI GHI DUY NHẤT KHÔNG ĐI QUA `useMe` — nên nó tự hỏi, ngay tại chỗ
+  // gửi (rà soát toàn nhánh, bước 5).
+  //
+  // Vòng sửa này chuyển câu hỏi "phiên này của ai" về đúng một nơi:
+  // `api/useMe.ts` trả lời "không có ai" khi tab bị thay phiên, và mọi cổng
+  // `confirmedLoggedIn` thừa hưởng. Hai lối vào AI của trang đọc CỐ Ý không
+  // nằm sau cổng ấy — `ChapterView.tsx` nói thẳng: *"HAI LỐI VÀO AI LUÔN CÓ
+  // MẶT, KHÔNG CÒN CỜ NÀO GÁC CHÚNG"*. Hỏi về một chương là việc công khai,
+  // và một khách chưa đăng nhập phải nhận một câu 401 tử tế chứ không phải
+  // một panel biến mất. Nên chỗ này KHÔNG thể thừa hưởng, và một guard
+  // "trông có vẻ trung tâm" mà bỏ sót một lối vòng thì tệ hơn bốn miếng vá
+  // thành thật.
+  //
+  // Lập luận y hệt cái ngay trên, mạnh hơn một bậc: không gửi một lời gọi mà
+  // ta BIẾT sẽ bị tính vào nhầm tài khoản. Câu hỏi của A (mang theo cả khối
+  // ngữ cảnh chương mà `useAI.ts`'s `buildWireQuestion` ghép vào) sẽ đi dưới
+  // cookie của B, tiêu credit của B, và hiện ra trong sổ dùng của B.
+  //
+  // `Unauthenticated` chứ không phải một mã mới: `useAI.ts`'s
+  // `describeFailure` đã dịch mã ấy thành đúng câu người học cần đọc — phiên
+  // của tab này không còn hiệu lực, đăng nhập lại để hỏi tiếp — và với TAB
+  // NÀY thì đó chính xác là chuyện vừa xảy ra.
+  if (sessionWasSuperseded()) {
+    throw new ServerAIError(
+      'Unauthenticated',
+      'another tab replaced this browser session before the question was sent',
+    );
   }
 
   let res: Response;

@@ -1,6 +1,6 @@
-import { hashKey, useQuery, type QueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
-import { announceSessionUser } from '../auth/sessionIdentity';
+import { hashKey, useQuery, type QueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useEffect, useSyncExternalStore } from 'react';
+import { announceSessionUser, sessionWasSuperseded, subscribeToSessionChanges } from '../auth/sessionIdentity';
 import { api, ApiError } from './client';
 
 /**
@@ -91,12 +91,91 @@ async function fetchMe(): Promise<Me | null> {
 }
 
 /**
+ * The result shape `useMe` reports while another tab holds this browser's
+ * session — see `useMe`'s own doc comment, "the superseded answer".
+ *
+ * Built by overriding a REAL query result rather than by inventing one from
+ * nothing: everything a caller might read that is not about the answer
+ * (`refetch`, `isFetching`, `dataUpdatedAt`, …) stays exactly what TanStack
+ * says it is, and only the four fields that carry the ANSWER are replaced.
+ *
+ * The cast is unavoidable and is the narrowest one available:
+ * `UseQueryResult` is a discriminated union over `status`, so an object
+ * literal spreading one member and overriding fields of another cannot be
+ * checked structurally. The overrides below are exactly the success
+ * member's own invariants (`status: 'success'` ⇒ `isSuccess`, not pending,
+ * not error, `error: null`), written out rather than assumed.
+ */
+function nobodyResult(query: UseQueryResult<Me | null, Error>): UseQueryResult<Me | null, Error> {
+  return {
+    ...query,
+    data: null,
+    error: null,
+    status: 'success',
+    isSuccess: true,
+    isPending: false,
+    isLoading: false,
+    isError: false,
+    isLoadingError: false,
+    isRefetchError: false,
+  } as UseQueryResult<Me | null, Error>;
+}
+
+/**
  * The single source of truth for "who (if anyone) is logged in," backed by
  * GET /me. Resolves to the user, or `null` for a logged-out visitor —
  * `null` is data, not an error, so `.isPending`/`.isError` stay reserved
  * for "still asking" and "the server couldn't answer" (e.g. a 500), which
  * `<RequireAuth>` needs to tell apart from "definitely logged out" (see
  * src/auth/RequireAuth.tsx).
+ *
+ * ## The superseded answer — one place asks whose session this is
+ *
+ * When another tab has replaced this browser's session
+ * (`auth/sessionIdentity.ts`), this hook reports **nobody**: settled,
+ * `data: null`, exactly the shape a logged-out visitor gets.
+ *
+ * It is here, and not in each caller, because of what the final
+ * whole-branch review's step-5 search found. Three writers had already been
+ * patched one at a time — the deleted sync engine's `runCycle`,
+ * `api/events.ts`'s flusher, `db/legacyDrain.ts`'s drain — and the fourth
+ * was `reader/ChapterView.tsx`'s `AuthedReaderExtras`, which hosts
+ * `useAnnotations` (POST/PATCH/DELETE /annotations) and `useProgress`
+ * (PUT /progress) and is mounted on the PUBLIC reader route, outside
+ * `<RequireAuth>`, on nothing but `me.isSuccess && me.data != null`. A note
+ * A typed and saved after a handoff was INSERTed into B's account. Patching
+ * a fourth call site would have been accepting a fifth.
+ *
+ * Every gate in this app already derives from this one query — `RequireAuth`,
+ * `AdminGuard`, `ChapterView`/`CourseHome`/`Sidebar`'s `confirmedLoggedIn`,
+ * `App.tsx`'s flusher and legacy-drain lifecycles, `TopNav`, `Settings`,
+ * `Login` — so answering the question ONCE, here, is what makes them all
+ * inherit it instead of each re-deriving it. That is `runCycle`'s shape
+ * restored: one place asks *whose session is this* and everything
+ * downstream is told.
+ *
+ * **It is not a lockout, and that distinction is load-bearing.**
+ * `superseded` is one-way only until this tab establishes an identity
+ * FIRST-HAND (`announceSessionUser`, below), which is exactly what happens
+ * the moment its own `GET /me` answers — refocus the tab, or sign in on it,
+ * and it is an ordinary signed-in tab again with no special case anywhere.
+ * The arriving learner is never trapped: the tab performing an auth
+ * transition never marks ITSELF superseded (`BroadcastChannel` does not
+ * echo a tab's own message), so `<Login>` and `useLogout` are untouched by
+ * this.
+ *
+ * **What it deliberately does NOT do.** It does not clear the cached `me`
+ * entry, and it does not refetch. The cache still holds whatever the last
+ * `GET /me` said; only the ANSWER this hook reports is masked. Clearing
+ * would be this tab performing half a `clearSession()` it has no business
+ * performing — `clearSession()` belongs to the tab where the transition
+ * actually happened, and the masked answer is what makes it unnecessary
+ * here.
+ *
+ * `useSyncExternalStore`, not `useState` + `useEffect`: the same choice
+ * `<RequireAuth>` makes and for the reason written there — a `setState`
+ * inside an effect body lands a commit LATER than the imperative fact, and
+ * this fact gates network writes.
  */
 export function useMe() {
   const query = useQuery({
@@ -140,13 +219,25 @@ export function useMe() {
   // for a logged-out visitor and is worth announcing, while `isError` (a
   // 500, a dead network) means "unknown" — announcing anything there would
   // be this tab inventing a fact about the browser out of a failure.
+  //
+  // Read from the RAW query, deliberately, and computed BEFORE the mask
+  // below is applied. Announcing from the masked answer would be this tab
+  // telling every other tab that the browser belongs to nobody — which
+  // would clear its own `superseded` flag (see `announceSessionUser`), and
+  // the guard would erase itself one render after it engaged.
   const settledUser = query.isSuccess ? (query.data?.id ?? null) : undefined;
   useEffect(() => {
     if (settledUser === undefined) return;
     announceSessionUser(settledUser);
   }, [settledUser]);
 
-  return query;
+  const superseded = useSyncExternalStore(
+    subscribeToSessionChanges,
+    sessionWasSuperseded,
+    sessionWasSuperseded,
+  );
+
+  return superseded ? nobodyResult(query) : query;
 }
 
 /**
