@@ -238,6 +238,18 @@ const SESSION_CLEARERS: readonly { readonly name: string; readonly allowedIn: re
     allowedIn: [join('apps', 'web', 'src', 'api', 'events.ts'), join('apps', 'web', 'src', 'auth', 'session.ts')],
     why: 'the queued-but-unflushed study-event half of ending a session — call clearSession() from src/auth/session.ts, which also clears the other two halves',
   },
+  {
+    // Added by the final whole-branch review, and the one entry here whose
+    // store predates the list itself: the Dexie-era `'tuhoc'` database was
+    // cleared on every auth transition until Task 10 deleted Dexie and the
+    // `db.tables.map(t => t.clear())` line with it. `clearLegacyLocalData`
+    // puts it back behind the same door as the other three, so the next
+    // reader of that database (there is one — `db/legacyDrain.ts`) cannot
+    // be handed a departed account's rows.
+    name: 'clearLegacyLocalData',
+    allowedIn: [join('apps', 'web', 'src', 'db', 'legacyDrain.ts'), join('apps', 'web', 'src', 'auth', 'session.ts')],
+    why: 'the legacy Dexie-database half of ending a session — call clearSession() from src/auth/session.ts, which also clears the other three halves',
+  },
 ];
 
 /**
