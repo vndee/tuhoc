@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
+import { useMe } from '../api/useMe';
 import { CourseNav } from '../course/CourseNav';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
 import { useLanguage } from '../i18n/LanguageProvider';
@@ -24,9 +25,13 @@ function courseIdFromPathname(pathname: string): string | undefined {
  * silent emptiness, which is indistinguishable from "still loading forever"
  * and disagrees with `CourseHome` showing a real error right next to it.
  * Live progress numbers and working search are still a later task's job.
- * `doneChapterIds` (Ruling F4 / debt #1) comes from `useProgress`, called
- * unconditionally with `courseId ?? ''` for the same reason `CourseHome`
- * does — see that component's doc comment.
+ * `doneChapterIds` (Ruling F4 / debt #1) comes from `useProgress`, called on
+ * EVERY render (React's rules of hooks — `Sidebar` is chrome rendered on
+ * every route, not just course ones, so there is no `if` to hide it behind)
+ * but only actually FETCHES once a session is confirmed
+ * (`useProgress`'s own `enabled` option — see its doc for the bug this
+ * closes: an unconditional `GET /progress` on every page, including
+ * `/login` itself, that 401s and hard-redirects a signed-out visitor).
  */
 /*
  * ĐIỀU HƯỚNG CHUNG ĐÃ RỜI KHỎI ĐÂY — nay ở `shell/TopNav.tsx`, trên thanh
@@ -50,7 +55,13 @@ export function Sidebar() {
     queryFn: () => loadManifest(courseId as string),
     enabled: courseId != null,
   });
-  const { doneChapterIds } = useProgress(courseId ?? '');
+  // Same `useMe()` + `confirmedLoggedIn` shape `CourseHome.tsx`/
+  // `ChapterView.tsx` use to gate their own `useProgress` call — see
+  // `useProgress`'s `enabled` option doc for why THIS caller needs the
+  // gate passed in rather than reached with an `if` around the hook call.
+  const me = useMe();
+  const confirmedLoggedIn = me.isSuccess && me.data != null;
+  const { doneChapterIds } = useProgress(courseId ?? '', { enabled: courseId != null && confirmedLoggedIn });
 
   // THANH BÊN CHỈ TỒN TẠI KHI CÓ MỘT KHOÁ ĐANG MỞ.
   //
