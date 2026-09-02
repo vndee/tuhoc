@@ -28,9 +28,17 @@ const manifest: Manifest = {
 };
 
 const server = setupServer(
-  // Task 6, Pha 3: `Sidebar.tsx:53` calls `useProgress(courseId ?? '')`
-  // unconditionally (not gated by auth), so `GET /progress` fires on
-  // every render site in this file, not just the one test that seeds a
+  // Task 13, Pha 3: `Sidebar.tsx` now gates its `useProgress` call behind a
+  // confirmed session (`useProgress`'s own `enabled` option — see its doc
+  // for the bug this closes), which means it also calls `useMe()`
+  // unconditionally on every render. A signed-in baseline here is what
+  // keeps every pre-existing test in this file exercising the SAME
+  // "logged in, `doneChapterIds` fetched" path it always did — same
+  // pattern `test/CourseHome.test.tsx`'s own server setup uses for the
+  // identical reason.
+  http.get('/me', () => HttpResponse.json({ id: 'u1', email: 'a@vi.vn', name: 'Người học' })),
+  // `GET /progress` fires on every render site in this file that reaches
+  // the `courseId != null` branch, not just the one test that seeds a
   // "chapter already read" row — see `reader/ChapterView.test.tsx`'s and
   // `test/CourseHome.test.tsx`'s server setup for the same baseline
   // handler. No progress by default; the one test that needs a specific

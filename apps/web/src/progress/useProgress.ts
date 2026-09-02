@@ -152,12 +152,46 @@ function upsertOptimistic(rows: ProgressRow[], row: Omit<ProgressRow, 'updatedAt
  * promises: a caller that reads `isRead` synchronously, right after
  * calling `toggleRead` in the same tick, must already see the new value.
  */
-export function useProgress(courseId: string): UseProgressResult {
+export interface UseProgressOptions {
+  /**
+   * Whether this call site should actually fetch `GET /progress` at all.
+   * Defaults to `true` — every pre-existing caller (`CourseHome.tsx`'s
+   * `CourseProgress`, `ChapterView.tsx`'s `AuthedReaderExtras`,
+   * `Dashboard.tsx`, `pages/Progress.tsx`) already only mounts/calls this
+   * hook once a session is confirmed, so passing nothing keeps their exact
+   * pre-existing behaviour.
+   *
+   * Added for `Sidebar.tsx`, which — unlike those four — cannot use the
+   * "mount a child component only when signed in" pattern: it is chrome
+   * rendered on EVERY route (`App.tsx`'s `<Shell sidebar={<Sidebar />}>`),
+   * including `/login` itself, and it needs `doneChapterIds` synchronously
+   * in its OWN render (the progress bar, `CourseNav`'s prop) rather than
+   * reporting it up to an outer component the way the other four do. Before
+   * this option existed, `Sidebar.tsx:53` called `useProgress(courseId ??
+   * '')` unconditionally — Task 6 of Pha 3's own report names this fact —
+   * which was harmless while the hook read local-first Dexie (an
+   * unauthenticated read just came back empty), and became a real bug the
+   * moment Task 6 rewired it onto `GET /progress`: a signed-out visitor on
+   * ANY page, including `/login` itself, now fired an authenticated-only
+   * request that 401s, and — because `api/client.ts`'s `redirectOn401`
+   * defaults to `true` and this call never opted out — hard-navigated an
+   * anonymous visitor on a public course page (`/c/:courseId`, public since
+   * Task 12) straight to `/login`. `enabled: false` here is what makes
+   * "the query simply never runs" a real option for this ONE caller,
+   * without touching the other four's contract at all (they were never the
+   * ones missing a gate).
+   */
+  readonly enabled?: boolean;
+}
+
+export function useProgress(courseId: string, options: UseProgressOptions = {}): UseProgressResult {
+  const { enabled = true } = options;
   const queryClient = useQueryClient();
 
   const { data: rows = EMPTY_ROWS } = useQuery({
     queryKey: progressQueryKey(),
     queryFn: () => fetchProgress(),
+    enabled,
   });
 
   const courseRows = useMemo(() => rows.filter((r) => r.courseId === courseId), [rows, courseId]);

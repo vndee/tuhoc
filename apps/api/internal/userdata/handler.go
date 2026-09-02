@@ -166,6 +166,29 @@ func (h *Handler) ListAnnotations(c *fiber.Ctx) error {
 // {"id":"<uuid client sinh>","courseId":"c","chapterId":"c1","anchor":{...},"note":""}
 // -> 201, no body. It is mounted behind auth.Require, so auth.UID(c) is
 // always populated by the time this runs.
+//
+// Found by Task 13 of Pha 3's e2e work (`apps/web/e2e/p2.spec.ts`), not
+// anticipated: the success path used to end in `c.SendStatus(201)`, which
+// this comment's own "no body" was WRONG about. `fiber.Ctx.SendStatus`
+// fills in `utils.StatusMessage(status)` as the body whenever nothing has
+// written to it yet — for a status the HTTP spec allows a body on (201
+// is, unlike 204), that is a real, non-empty body: literally the seven
+// bytes `"Created"`, `Content-Type: text/plain` (confirmed with a raw
+// curl against the running server, not assumed from reading Fiber's
+// source). The web client's `api/client.ts` `request()` parses every
+// non-empty 2xx body and rejects one that is not a JSON object
+// (`NotJsonError` — a deliberate guard against an SPA host answering an
+// unknown API path with `index.html`, see that file's own doc), so THIS
+// response tripped that guard on every single annotation a reader ever
+// created: the row was written correctly (confirmed — `useAnnotations`'
+// own query-cache invalidation immediately re-fetched it and painted the
+// real highlight), but `create()` still threw, rolling back the
+// optimistic paint and showing the reader a false "could not save"
+// toast. `PatchAnnotation`/`DeleteAnnotation` right below never hit this:
+// 204 is a true no-body status by the HTTP spec, so fasthttp strips
+// whatever `SendStatus` would have written before it ever reaches the
+// wire. `c.Status(...)` (no `Send*`) is what actually leaves the body
+// untouched for a status that permits one.
 func (h *Handler) CreateAnnotation(c *fiber.Ctx) error {
 	var req createAnnotationRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -194,7 +217,8 @@ func (h *Handler) CreateAnnotation(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "create annotation failed"})
 	}
 
-	return c.SendStatus(fiber.StatusCreated)
+	c.Status(fiber.StatusCreated)
+	return nil
 }
 
 // PatchAnnotation handles PATCH /annotations/:id, body {"note":"..."}

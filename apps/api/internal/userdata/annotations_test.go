@@ -91,6 +91,25 @@ func (e *testEnv) doRaw(t *testing.T, method, path, rawBody string, wantStatus i
 	if resp.StatusCode != wantStatus {
 		t.Fatalf("%s %s: want %d got %d body=%s", method, path, wantStatus, resp.StatusCode, raw)
 	}
+	// 201/204 are this API's two documented "no body" success statuses for
+	// every verb `doRaw` drives (see handler.go's own doc comments on
+	// CreateAnnotation/PatchAnnotation/DeleteAnnotation) — asserted here,
+	// not only by status code, because a status code alone missed a real
+	// regression: `CreateAnnotation` used to end in `c.SendStatus(201)`,
+	// which fiber fills with the literal text "Created" whenever nothing
+	// else has written to the body first (201, unlike 204, is not a
+	// status the HTTP spec forbids a body on, so nothing strips it before
+	// the wire) — every annotation a reader ever created answered 201
+	// with a non-empty, non-JSON body, and the web client's `NotJsonError`
+	// guard (`api/client.ts`) correctly rejected it, rolling back the
+	// optimistic paint and showing a false "could not save" toast for a
+	// row that, underneath, had been written correctly. `doRaw`'s own
+	// `resp.StatusCode != wantStatus` check could not see this — 201 was
+	// still 201 — so a same-shape regression on PATCH/DELETE would have
+	// been just as invisible without this line.
+	if (wantStatus == http.StatusCreated || wantStatus == http.StatusNoContent) && len(raw) != 0 {
+		t.Fatalf("%s %s: status %d must carry no body, got %d bytes: %q", method, path, wantStatus, len(raw), raw)
+	}
 }
 
 func (e *testEnv) post(t *testing.T, path, rawBody string, wantStatus int) {
