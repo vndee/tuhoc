@@ -12,6 +12,27 @@ import (
 	"github.com/vndee/tuhoc-api/internal/auth"
 )
 
+// MaxWriteBytes is the ceiling on the request body of every /progress and
+// /annotations WRITE route, applied as route-scoped middleware in
+// internal/server (bodyLimit) rather than as fiber's app-wide BodyLimit.
+//
+// It is fiber's own 4 MiB default, restored. The app-wide ceiling is raised
+// to ~21 MiB for exactly one route — PUT /admin/courses/:slug, which
+// accepts a course package — and every other route inherits that number
+// unless it says otherwise, because BodyLimit is a per-APP setting in fiber
+// v2. internal/sync's MaxPushBytes and internal/stats's MaxBatchBytes each
+// say otherwise for the same reason and with the same number; these four
+// routes, added in Pha 3 as the REST replacement for the two halves of
+// POST /sync, were simply never given theirs. So a single annotation write
+// — one note about one highlighted sentence — was allowed five times the
+// body the BATCH endpoint it replaced is allowed.
+//
+// This bounds BYTES ON THE WIRE and nothing else. The bound that actually
+// matters for what one learner can store is MaxNoteChars (usecase.go), for
+// the reason internal/sync's own comment gives about MaxItemsPerPush: a
+// byte ceiling cannot express "how much of this is content".
+const MaxWriteBytes int64 = 4 << 20
+
 // timeLayout is the wire format for the updatedAt this package emits:
 // RFC3339Nano. Unlike internal/sync, this package never PARSES a
 // client-supplied timestamp (PUT /progress carries none — see repo.go's
@@ -238,6 +259,13 @@ func (h *Handler) PatchAnnotation(c *fiber.Ctx) error {
 
 	found, err := h.uc.PatchAnnotation(c.Context(), auth.UID(c), id, req.Note, req.Anchor)
 	if err != nil {
+		// Same split CreateAnnotation draws, and for the same reason: a
+		// note past MaxNoteChars is the client's malformed request, not
+		// this server failing. Without this branch the usecase's new
+		// length check would surface as a fabricated 500.
+		if errors.Is(err, ErrInvalidAnnotation) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid annotation item"})
+		}
 		apilog.Internal(c, "userdata.PatchAnnotation", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "patch annotation failed"})
 	}

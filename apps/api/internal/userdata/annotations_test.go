@@ -13,12 +13,15 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 
 	"github.com/vndee/tuhoc-api/internal/store"
+	"github.com/vndee/tuhoc-api/internal/userdata"
 )
 
 // --- response shapes mirroring handler.go's JSON contract ---
@@ -246,5 +249,68 @@ func TestCreateAnnotationRejectsMissingAnchor(t *testing.T) {
 
 	if rows := env.getAnnotations(t, ""); len(rows) != 0 {
 		t.Fatalf("400 vẫn ghi %d hàng — anchor thiếu hoặc null phải bị chặn trước khi chạm CSDL", len(rows))
+	}
+}
+
+// --- final whole-branch review, Important 3: `note` had NO length bound of
+// any kind. CreateAnnotation checked id/course/chapter/anchor for PRESENCE
+// and PatchAnnotation validated nothing at all, so the only ceiling on a
+// note was the HTTP body limit — which, until the same review, was the
+// app-wide 21 MiB one meant for course packages. /annotations is not rate
+// limited either, so "how much can one account write into this table" had
+// no answer.
+//
+// The cap is in RUNES, not bytes (userdata.MaxNoteChars): this platform is
+// bilingual, and a byte cap hands an English writer roughly three times the
+// characters a Vietnamese writer gets for the same allowance — the same
+// reasoning ai.MaxSystemPromptChars and ai's maxNotesToolOutputRunes each
+// give for their own fields. ---
+
+// overlongNote is one rune past the cap, built out of a MULTI-BYTE rune on
+// purpose: with a byte-counting implementation this fixture is over the
+// limit three times over, so a test built on it would pass against exactly
+// the implementation this cap must not have. `đ` is 2 bytes in UTF-8.
+func overlongNote() string {
+	return strings.Repeat("đ", userdata.MaxNoteChars+1)
+}
+
+func TestCreateAnnotationRejectsOverlongNote(t *testing.T) {
+	env := newTestEnv(t)
+
+	env.post(t, "/annotations", `{"id":"`+uuid.NewString()+`","courseId":"c","chapterId":"c1","anchor":{},"note":"`+overlongNote()+`"}`, 400)
+
+	if rows := env.getAnnotations(t, ""); len(rows) != 0 {
+		t.Fatalf("400 vẫn ghi %d hàng — ghi chú quá dài phải bị chặn trước khi chạm CSDL", len(rows))
+	}
+
+	// Anti-vacuity, and the half that pins the cap as a CHARACTER count: a
+	// note of exactly MaxNoteChars multi-byte runes (well over the cap in
+	// bytes) is accepted.
+	atCap := strings.Repeat("đ", userdata.MaxNoteChars)
+	env.post(t, "/annotations", `{"id":"`+uuid.NewString()+`","courseId":"c","chapterId":"c1","anchor":{},"note":"`+atCap+`"}`, 201)
+	rows := env.getAnnotations(t, "")
+	if len(rows) != 1 || utf8.RuneCountInString(rows[0].Note) != userdata.MaxNoteChars {
+		t.Fatalf("một ghi chú đúng bằng trần phải được nhận nguyên vẹn; nhận %d hàng", len(rows))
+	}
+}
+
+func TestPatchAnnotationRejectsOverlongNote(t *testing.T) {
+	env := newTestEnv(t)
+	id := uuid.NewString()
+	env.post(t, "/annotations", `{"id":"`+id+`","courseId":"c","chapterId":"c1","anchor":{},"note":"ngắn"}`, 201)
+
+	env.patch(t, "/annotations/"+id, `{"note":"`+overlongNote()+`"}`, 400)
+
+	// A refused PATCH must leave the row exactly as it was — a 400 that
+	// still wrote would be worse than no validation at all.
+	if got := env.getAnnotations(t, "")[0].Note; got != "ngắn" {
+		t.Errorf("note = %q — PATCH bị từ chối vẫn ghi vào hàng", got)
+	}
+
+	// Anti-vacuity: the same PATCH one rune shorter lands.
+	atCap := strings.Repeat("đ", userdata.MaxNoteChars)
+	env.patch(t, "/annotations/"+id, `{"note":"`+atCap+`"}`, 204)
+	if got := env.getAnnotations(t, "")[0].Note; utf8.RuneCountInString(got) != userdata.MaxNoteChars {
+		t.Errorf("một PATCH đúng bằng trần phải được nhận: nhận %d ký tự", utf8.RuneCountInString(got))
 	}
 }

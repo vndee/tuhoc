@@ -211,9 +211,19 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// session cookie.
 	//
 	// So the app ceiling stays high for the one route that needs it, and
-	// the two that do not get their old 4 MiB back through the bodyLimit
-	// middleware above (appsync.MaxPushBytes, stats.MaxBatchBytes) plus a
-	// cap on ITEMS, which is the bound the byte limit cannot supply.
+	// the routes that do not get their old 4 MiB back through the bodyLimit
+	// middleware above (appsync.MaxPushBytes, stats.MaxBatchBytes,
+	// userdata.MaxWriteBytes) plus a cap on ITEMS or on CHARACTERS, which
+	// is the bound the byte limit cannot supply.
+	//
+	// "The two that do not" is what this said until the final whole-branch
+	// review counted them: Pha 3 added four more body-carrying routes
+	// (PUT /progress, POST /annotations, PATCH /annotations/:id — the REST
+	// replacement for POST /sync's two halves) and gave none of them a
+	// limit, so each quietly took the 21 MiB ceiling. A convention that is
+	// only written down in a comment is a convention new routes do not
+	// join; server_test.go's TestRouteScopedBodyLimits now enumerates every
+	// route that must have one.
 	//
 	// This limit is NOT the package size rule and must never be mistaken
 	// for it: it bounds the bytes on the wire, while the rule that matters
@@ -311,8 +321,15 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// tool.
 	userdataRepo := userdata.NewRepo(deps.Pool)
 	userdataHandler := userdata.NewHandler(userdata.NewUsecase(userdataRepo))
+	//
+	// bodyLimit(userdata.MaxWriteBytes) on the WRITE route only, mounted
+	// ahead of auth the same way /sync's and /events/batch's are: these
+	// routes have no use for PUT /admin/courses/:slug's 21 MiB app ceiling
+	// and never did — inheriting it was an omission, not a decision (final
+	// whole-branch review, Important 3). GET /progress carries no body, so
+	// a limit on it would be a line that can never fire.
 	app.Get("/progress", auth.Require(deps.Pool), userdataHandler.ListProgress)
-	app.Put("/progress", auth.Require(deps.Pool), userdataHandler.PutProgress)
+	app.Put("/progress", bodyLimit(userdata.MaxWriteBytes), auth.Require(deps.Pool), userdataHandler.PutProgress)
 
 	// Annotation routes (Pha 3, Task 2). The REST replacement for the
 	// annotations half of /sync, same non-local-first reasoning as
@@ -320,9 +337,14 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// annotations.deleted_at: this package never writes a tombstone,
 	// unlike internal/sync's push path (see that package's repo.go for how
 	// it now translates an incoming tombstone into a real delete instead).
+	//
+	// Same route-scoped bodyLimit as PUT /progress above, on the two verbs
+	// that carry a body. GET and DELETE do not, so neither is wrapped —
+	// see MaxWriteBytes's own doc comment, and note that the ceiling that
+	// bounds what a learner can actually STORE is MaxNoteChars, not this.
 	app.Get("/annotations", auth.Require(deps.Pool), userdataHandler.ListAnnotations)
-	app.Post("/annotations", auth.Require(deps.Pool), userdataHandler.CreateAnnotation)
-	app.Patch("/annotations/:id", auth.Require(deps.Pool), userdataHandler.PatchAnnotation)
+	app.Post("/annotations", bodyLimit(userdata.MaxWriteBytes), auth.Require(deps.Pool), userdataHandler.CreateAnnotation)
+	app.Patch("/annotations/:id", bodyLimit(userdata.MaxWriteBytes), auth.Require(deps.Pool), userdataHandler.PatchAnnotation)
 	app.Delete("/annotations/:id", auth.Require(deps.Pool), userdataHandler.DeleteAnnotation)
 
 	// Stats routes (Task 8). Mounted behind auth.Require(deps.Pool) — the
