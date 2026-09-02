@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useMutation } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
@@ -7,8 +7,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as eventsModule from '../api/events';
 import { meQueryKey } from '../api/useMe';
-import { clearLocalData, db } from '../db/local';
-import * as engine from '../sync/engine';
+import { USER_CONTENT_KEYS } from '../db/localStorage';
 import { useLogout } from './useLogout';
 
 const server = setupServer();
@@ -16,12 +15,8 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-async function clearAll() {
-  await clearLocalData();
-}
-
-beforeEach(clearAll);
-afterEach(clearAll);
+beforeEach(() => window.localStorage.clear());
+afterEach(() => window.localStorage.clear());
 
 function LocationProbe() {
   const location = useLocation();
@@ -48,14 +43,8 @@ function wrapper(queryClient: QueryClient) {
 }
 
 describe('useLogout', () => {
-  it('stops the sync engine, best-effort flushes the outbox, calls POST /auth/logout, clears every local table, and navigates to /login', async () => {
-    await db.progress.put({ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: new Date().toISOString() });
-    await db.annotations.put({ id: 'a1', courseId: 'c1', chapterId: 'ch1', anchor: {}, note: 'n', createdAt: '', updatedAt: '', deletedAt: null });
-    await db.outbox.add({ table: 'progress', row: { courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: new Date().toISOString() } });
-    await db.meta.put({ key: 'syncCursor', value: 'sometoken' });
-
-    const stopSyncSpy = vi.spyOn(engine, 'stopSync');
-    const syncOnceSpy = vi.spyOn(engine, 'syncOnce').mockResolvedValue(undefined);
+  it('calls POST /auth/logout, clears user-content localStorage, and navigates to /login', async () => {
+    for (const key of USER_CONTENT_KEYS) window.localStorage.setItem(key, 'nháp chưa lưu');
 
     let logoutCalled = false;
     server.use(http.post('/auth/logout', () => {
@@ -72,20 +61,10 @@ describe('useLogout', () => {
       await result.current();
     });
 
-    expect(stopSyncSpy).toHaveBeenCalled();
-    expect(syncOnceSpy).toHaveBeenCalled();
     expect(logoutCalled).toBe(true);
-
-    expect(await db.progress.count()).toBe(0);
-    expect(await db.annotations.count()).toBe(0);
-    expect(await db.outbox.count()).toBe(0);
-    expect(await db.meta.count()).toBe(0);
-
+    for (const key of USER_CONTENT_KEYS) expect(window.localStorage.getItem(key)).toBeNull();
     expect(queryClient.getQueryData(meQueryKey)).toBeNull();
-    await waitFor(() => expect(currentPath()).toBe("/login"));
-
-    stopSyncSpy.mockRestore();
-    syncOnceSpy.mockRestore();
+    await waitFor(() => expect(currentPath()).toBe('/login'));
   });
 
   it('resets every session-scoped query cache entry, not just `me` (I5)', async () => {
@@ -95,7 +74,6 @@ describe('useLogout', () => {
     // in-app logout→login on the same browser rendered the DEPARTING
     // user's numbers to the arriving one for as long as the refetch took,
     // and indefinitely if it failed.
-    vi.spyOn(engine, 'syncOnce').mockResolvedValue(undefined);
     server.use(http.post('/auth/logout', () => new HttpResponse(null, { status: 200 })));
 
     const queryClient = new QueryClient();
@@ -115,42 +93,67 @@ describe('useLogout', () => {
     // <RequireAuth> and the sync lifecycle is never left pointing at a
     // destroyed query. See resetSessionScopedQueries' own doc comment.
     expect(queryClient.getQueryData(meQueryKey)).toBeNull();
-
-    vi.restoreAllMocks();
   });
 
-  it('flushes the outbox (syncOnce) BEFORE calling POST /auth/logout — the session must still be valid for the flush to have any chance of succeeding', async () => {
-    const callOrder: string[] = [];
-    const syncOnceSpy = vi.spyOn(engine, 'syncOnce').mockImplementation(async () => {
-      callOrder.push('syncOnce');
+  /**
+   * Task 10 rewrite: before this task, "the outbox" (`sync/engine.ts`) was
+   * what logout waited to flush, proven via a spy on `engine.syncOnce`.
+   * That engine is gone — progress/annotation writes are react-query
+   * mutations now, sent directly, and the thing worth proving is that a
+   * REAL in-flight mutation (not a mock) is genuinely waited for before
+   * `POST /auth/logout` runs, using the SAME machinery `useLogout.ts`
+   * itself uses (`queryClient.isMutating()`).
+   */
+  it('waits for an in-flight mutation to settle before calling POST /auth/logout', async () => {
+    let releaseGate: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve;
     });
+
+    const callOrder: string[] = [];
     server.use(http.post('/auth/logout', () => {
       callOrder.push('logout');
       return new HttpResponse(null, { status: 200 });
     }));
 
     const queryClient = new QueryClient();
-    const { result } = renderHook(() => useLogout(), { wrapper: wrapper(queryClient) });
+    const { result } = renderHook(
+      () => ({
+        logout: useLogout(),
+        mutation: useMutation({
+          mutationFn: async () => {
+            callOrder.push('mutation-start');
+            await gate;
+            callOrder.push('mutation-settled');
+          },
+        }),
+      }),
+      { wrapper: wrapper(queryClient) },
+    );
 
+    act(() => {
+      result.current.mutation.mutate();
+    });
+    await waitFor(() => expect(queryClient.isMutating()).toBe(1));
+
+    const logoutPromise = result.current.logout();
+    // Give logout's own wait a moment to reach `waitForMutationsToSettle` —
+    // proves it genuinely waits rather than racing past the mutation.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(callOrder).toEqual(['mutation-start']);
+
+    releaseGate!();
     await act(async () => {
-      await result.current();
+      await logoutPromise;
     });
 
-    expect(callOrder).toEqual(['syncOnce', 'logout']);
-    syncOnceSpy.mockRestore();
+    expect(callOrder).toEqual(['mutation-start', 'mutation-settled', 'logout']);
   });
 
-  // Critical finding (Task 8 review): `api/events.ts`'s in-memory study-event
-  // queue was never given a chance to leave the browser BEFORE the session
-  // cookie died — the account-handoff leak this closes is proven separately
-  // in `test/eventQueueHandoff.test.tsx`. This test proves the narrower,
-  // ORDERING half of that fix in isolation: `flushEvents()` must be called,
-  // and it must be called while `POST /auth/logout` has not yet run — the
-  // exact same reasoning the `syncOnce` ordering test above gives, one line
-  // down: a flush attempted AFTER the cookie is invalidated has no session
-  // left to succeed under.
-  it('flushes the study-event queue (flushEvents) BEFORE calling POST /auth/logout — same reasoning as the outbox flush', async () => {
-    vi.spyOn(engine, 'syncOnce').mockResolvedValue(undefined);
+  // Same reasoning as the outbox-flush ordering test this replaces: a flush
+  // attempted AFTER the cookie is invalidated has no session left to
+  // succeed under.
+  it('flushes the study-event queue (flushEvents) BEFORE calling POST /auth/logout', async () => {
     const callOrder: string[] = [];
     const flushEventsSpy = vi.spyOn(eventsModule, 'flushEvents').mockImplementation(async () => {
       callOrder.push('flushEvents');
@@ -174,10 +177,9 @@ describe('useLogout', () => {
     vi.restoreAllMocks();
   });
 
-  it('still clears local tables and navigates to /login even when POST /auth/logout fails (network error)', async () => {
-    await db.progress.put({ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: new Date().toISOString() });
+  it('still clears local state and navigates to /login even when POST /auth/logout fails (network error)', async () => {
+    window.localStorage.setItem(USER_CONTENT_KEYS[0], 'nháp');
     server.use(http.post('/auth/logout', () => HttpResponse.error()));
-    vi.spyOn(engine, 'syncOnce').mockResolvedValue(undefined);
 
     const queryClient = new QueryClient();
     const { result } = renderHook(() => useLogout(), { wrapper: wrapper(queryClient) });
@@ -186,15 +188,13 @@ describe('useLogout', () => {
       await result.current();
     });
 
-    expect(await db.progress.count()).toBe(0);
-    await waitFor(() => expect(currentPath()).toBe("/login"));
-
-    vi.restoreAllMocks();
+    expect(window.localStorage.getItem(USER_CONTENT_KEYS[0])).toBeNull();
+    await waitFor(() => expect(currentPath()).toBe('/login'));
   });
 
-  it('still clears local tables and logs out even when the best-effort syncOnce() flush itself throws', async () => {
-    await db.progress.put({ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: new Date().toISOString() });
-    vi.spyOn(engine, 'syncOnce').mockRejectedValue(new Error('boom'));
+  it('still clears local state and logs out even when the best-effort flushEvents() itself throws', async () => {
+    window.localStorage.setItem(USER_CONTENT_KEYS[0], 'nháp');
+    vi.spyOn(eventsModule, 'flushEvents').mockRejectedValue(new Error('boom'));
     let logoutCalled = false;
     server.use(http.post('/auth/logout', () => {
       logoutCalled = true;
@@ -209,113 +209,23 @@ describe('useLogout', () => {
     });
 
     expect(logoutCalled).toBe(true);
-    expect(await db.progress.count()).toBe(0);
-    await waitFor(() => expect(currentPath()).toBe("/login"));
-
-    vi.restoreAllMocks();
-  });
-
-  it('does not leave a second account\'s progress readable: a fresh useProgress read after logout sees nothing for a previously-read chapter', async () => {
-    await db.progress.put({ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: new Date().toISOString() });
-    vi.spyOn(engine, 'syncOnce').mockResolvedValue(undefined);
-    server.use(http.post('/auth/logout', () => new HttpResponse(null, { status: 200 })));
-
-    const queryClient = new QueryClient();
-    const { result } = renderHook(() => useLogout(), { wrapper: wrapper(queryClient) });
-
-    await act(async () => {
-      await result.current();
-    });
-
-    const row = await db.progress.get(['c1', 'ch1', 'read']);
-    expect(row).toBeUndefined();
-
-    vi.restoreAllMocks();
-  });
-
-  // Fix-round-1, Finding 2: a cycle that was ALREADY in flight (started
-  // before logout was clicked — e.g. the 15s timer firing moments before
-  // the user hit "Đăng xuất") must never be able to write into the local
-  // database after logout has cleared it. This test uses the REAL
-  // `engine.syncOnce`/`stopSync`/`waitForInFlight` (no mocking — the race
-  // being tested lives inside their actual interaction, not something a
-  // mock can stand in for) and a manually-controlled `GET /sync` response
-  // so the "request sent, response not yet received" window can be
-  // deterministically held open across the exact moment logout runs.
-  it('a cycle already in flight when logout is called cannot repopulate local data once its late response arrives', async () => {
-    await db.progress.put({ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: new Date().toISOString() });
-
-    let releasePull: (() => void) | undefined;
-    const pullGate = new Promise<void>((resolve) => {
-      releasePull = resolve;
-    });
-    let pullRequested = false;
-
-    server.use(
-      http.post('/sync', () => HttpResponse.json({ applied: 0 })),
-      http.get('/sync', async () => {
-        pullRequested = true;
-        await pullGate;
-        // A remote row for the SAME chapter — simulating another device's
-        // (or, worse, another account's leftover) progress landing right
-        // as this session is logging out.
-        return HttpResponse.json({
-          progress: [{ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: new Date().toISOString() }],
-          annotations: [],
-          cursor: 'sometoken',
-        });
-      }),
-      http.post('/auth/logout', () => new HttpResponse(null, { status: 200 })),
-    );
-
-    // Simulate the 15s timer firing moments before the user clicks logout
-    // — a real cycle, started through the real engine, not through
-    // useLogout at all.
-    const staleCycle = engine.syncOnce();
-    await vi.waitFor(() => expect(pullRequested).toBe(true));
-
-    const queryClient = new QueryClient();
-    const { result } = renderHook(() => useLogout(), { wrapper: wrapper(queryClient) });
-
-    // Kicked off directly (not wrapped in `act`) so it can run
-    // concurrently with the `setTimeout`/`releasePull` below — `act`'s own
-    // promise is only awaited once, at the end, in the single call below,
-    // which is what actually matters for flushing the `navigate()` call
-    // deep inside this promise chain into the DOM.
-    const logoutPromise = result.current();
-
-    // Give logout's own bestEffortFinalFlush a moment to reach
-    // waitForInFlight() (which is now awaiting the SAME stale cycle)
-    // before releasing the gate — proves logout genuinely waits rather
-    // than racing past it.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    releasePull!();
-
-    await act(async () => {
-      await logoutPromise;
-    });
-    await staleCycle;
-
-    const row = await db.progress.get(['c1', 'ch1', 'read']);
-    expect(row).toBeUndefined();
+    expect(window.localStorage.getItem(USER_CONTENT_KEYS[0])).toBeNull();
     await waitFor(() => expect(currentPath()).toBe('/login'));
+
+    vi.restoreAllMocks();
   });
 
   // Minor finding, folded into this round: the best-effort flush must not
-  // hold the logout UI hostage on a hung connection. Real time, not fake
-  // timers — this codebase already has a documented reason to avoid
-  // `vi.useFakeTimers()` around Dexie/fake-indexeddb operations (see
-  // engine.test.ts's own comment on the interval test: fake-indexeddb
-  // schedules its callbacks via a REAL `setImmediate`, and faking the
-  // clock around a real Dexie transaction is a known deadlock) — this
-  // test's own `db.progress.clear()` etc. are exactly such an operation,
-  // so it genuinely waits out the real bound instead. Given a generous
-  // per-test timeout so it doesn't race vitest's own default.
+  // hold the logout UI hostage on a hung connection (a mutation that never
+  // settles). Real time, not fake timers — this codebase has a documented
+  // reason to avoid `vi.useFakeTimers()` around IndexedDB-adjacent work
+  // elsewhere, and this test has no such dependency, but keeping it on real
+  // time is what actually exercises `LOGOUT_SYNC_TIMEOUT_MS`. Given a
+  // generous per-test timeout so it doesn't race vitest's own default.
   it(
-    'proceeds with logout (clears local state, navigates) even when the best-effort flush never resolves (Minor finding — bounded, not indefinite)',
+    'proceeds with logout (clears local state, navigates) even when a mutation never settles (Minor finding — bounded, not indefinite)',
     async () => {
-      vi.spyOn(engine, 'waitForInFlight').mockReturnValue(new Promise<void>(() => {})); // never resolves
-      await db.progress.put({ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: new Date().toISOString() });
+      window.localStorage.setItem(USER_CONTENT_KEYS[0], 'nháp');
       let logoutCalled = false;
       server.use(
         http.post('/auth/logout', () => {
@@ -325,94 +235,56 @@ describe('useLogout', () => {
       );
 
       const queryClient = new QueryClient();
-      const { result } = renderHook(() => useLogout(), { wrapper: wrapper(queryClient) });
+      const { result } = renderHook(
+        () => ({
+          logout: useLogout(),
+          mutation: useMutation({
+            mutationFn: () => new Promise<void>(() => {}), // never resolves
+          }),
+        }),
+        { wrapper: wrapper(queryClient) },
+      );
+
+      act(() => {
+        result.current.mutation.mutate();
+      });
+      await waitFor(() => expect(queryClient.isMutating()).toBe(1));
 
       await act(async () => {
-        await result.current();
+        await result.current.logout();
       });
 
       expect(logoutCalled).toBe(true);
-      expect(await db.progress.count()).toBe(0);
+      expect(window.localStorage.getItem(USER_CONTENT_KEYS[0])).toBeNull();
       await waitFor(() => expect(currentPath()).toBe('/login'));
-
-      vi.restoreAllMocks();
     },
     10_000,
   );
 
-  // Fix-round-2: the 5s timeout bound (Minor finding, fix-round-1) only
-  // stops `useLogout` from WAITING any longer — it does not cancel the
-  // underlying `fetch` (no `AbortController` is wired through
-  // `api/client.ts`'s `request()`). If `bestEffortFinalFlush()`'s OWN
-  // cycle times out, it is ABANDONED, not cancelled: it keeps running in
-  // the background and still holds the epoch the FIRST `stopSync()` call
-  // set. Without a second `stopSync()` call after the timeout race
-  // settles (this hook's step 3), that straggler's late response would
-  // still pass its epoch check and write straight into the database
-  // logout just cleared.
-  //
-  // This test deliberately does NOT render `<App/>` or use `useMe()` —
-  // only `useLogout()` in isolation via the local `wrapper()` above. That
-  // matters: `App.tsx`'s `useSyncLifecycle` would otherwise ALSO call
-  // `stopSync()` in reaction to this hook's own `setQueryData(meQueryKey,
-  // null)`, incidentally closing the same gap and masking a regression in
-  // `useLogout.ts` itself. Isolated like this, the only thing that can
-  // close the gap is `useLogout.ts`'s own second `stopSync()` call.
-  //
-  // Runs for real (not mocked) — it needs the ACTUAL bounded timeout to
-  // fire, so it takes just over 5s; given a generous per-test timeout so
-  // it doesn't race vitest's own default.
-  it(
-    "bestEffortFinalFlush()'s own cycle, abandoned once the timeout fires, must not write once its late response arrives (fix-round-2)",
-    async () => {
-      await db.progress.put({ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: new Date().toISOString() });
-
-      let releasePull: (() => void) | undefined;
-      const pullGate = new Promise<void>((resolve) => {
-        releasePull = resolve;
-      });
-      let pullRequested = false;
-
-      server.use(
-        http.post('/sync', () => HttpResponse.json({ applied: 0 })),
-        http.get('/sync', async () => {
-          pullRequested = true;
-          await pullGate;
-          return HttpResponse.json({
-            progress: [{ courseId: 'c1', chapterId: 'ch1', status: 'read', done: true, updatedAt: new Date().toISOString() }],
-            annotations: [],
-            cursor: 'sometoken',
-          });
-        }),
-        http.post('/auth/logout', () => new HttpResponse(null, { status: 200 })),
-      );
-
-      const queryClient = new QueryClient();
-      const { result } = renderHook(() => useLogout(), { wrapper: wrapper(queryClient) });
-
-      const logoutPromise = result.current();
-
-      await vi.waitFor(() => expect(pullRequested).toBe(true));
-
-      // Do NOT release the gate here — let the real 5s bound inside
-      // useLogout actually elapse and give up on this cycle.
-      await act(async () => {
-        await logoutPromise;
-      });
-
-      // Logout has fully finished: it hit the bound, moved on, logged
-      // out, and cleared local state. The abandoned cycle is STILL
-      // pending on pullGate at this point.
-      expect(await db.progress.count()).toBe(0);
-      await waitFor(() => expect(currentPath()).toBe('/login'));
-
-      // Now let the abandoned cycle's response arrive late.
-      releasePull!();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      const row = await db.progress.get(['c1', 'ch1', 'read']);
-      expect(row).toBeUndefined();
-    },
-    10_000,
-  );
+  /**
+   * Task 10 note, replacing two removed tests: the old file carried
+   * "a cycle already in flight when logout is called cannot repopulate
+   * local data once its late response arrives" and a fix-round-2 sibling —
+   * both proved `sync/engine.ts`'s double `stopSync()` closed a race where
+   * an ABANDONED cycle's late response wrote the departing user's rows
+   * straight into a local Dexie table `clearSession()` had already
+   * declared clean.
+   *
+   * That race cannot be reconstructed here, and not because it was hard to
+   * reach — because there is no longer a local table for a late response
+   * to write into. A react-query mutation abandoned past
+   * `LOGOUT_SYNC_TIMEOUT_MS` keeps running (same as before: no
+   * `AbortController` wired through `api/client.ts`), but its `onSuccess`/
+   * `onSettled` handlers only ever write to the QUERY CACHE
+   * (`invalidateQueries`/`setQueryData`), never to a durable local store —
+   * and any query it triggers is answered by the SERVER, scoped to
+   * whichever session cookie is valid at the moment that fetch actually
+   * runs. If account B has since signed in on this browser, a late
+   * `invalidateQueries` from A's abandoned mutation just causes a refetch
+   * that the server answers as B's own data — not A's, because the server
+   * (not this client) is what decides whose rows a request sees. The class
+   * of bug the old tests guarded against — CLIENT CODE deciding whose data
+   * a local write belongs to, and getting it wrong under a race — is gone
+   * with the architecture that made it possible, not merely untested.
+   */
 });

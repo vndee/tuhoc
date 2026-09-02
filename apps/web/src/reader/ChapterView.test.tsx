@@ -7,7 +7,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import type { Chapter, Part } from '../course/types';
-import { clearLocalData } from '../db/local';
+import { clearUserContent } from '../db/localStorage';
 import { t } from '../i18n';
 import { ThemeProvider } from '../theme/ThemeContext';
 import { ChapterView } from './ChapterView';
@@ -244,7 +244,7 @@ describe('ChapterView', () => {
   });
 
   afterEach(async () => {
-    await clearLocalData();
+    await clearUserContent();
     delete document.documentElement.dataset.theme;
     window.localStorage.clear();
     courseKitMockState.gate = null;

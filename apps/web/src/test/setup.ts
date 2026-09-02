@@ -51,16 +51,25 @@ configure({ asyncUtilTimeout: OVERSUBSCRIBED_WAIT_MS });
 
 /**
  * jsdom (this project's `test.environment`) implements no IndexedDB at all
- * — `window.indexedDB` is simply `undefined` — but Task 13's local store
- * (`src/db/local.ts`) is a Dexie database, and Dexie throws synchronously
- * at `new Dexie(...)` time if the global is missing. `fake-indexeddb/auto`
- * installs a spec-compliant in-memory IndexedDB implementation onto
- * `globalThis` as a side effect of being imported; it must run before any
- * test file's `import { db } from '../db/local'` does, which is exactly
- * what a shared `setupFiles` entry (run once, before every test file is
- * loaded) guarantees. Real browsers all have IndexedDB natively, so this
- * is a test-runtime-only shim, same rationale as the MemoryStorage patch
- * below for localStorage.
+ * — `window.indexedDB` is simply `undefined`.
+ *
+ * Task 13 through Task 9 (Pha 3) needed this because the local store
+ * (`src/db/local.ts`) was a Dexie database, and Dexie throws synchronously
+ * at `new Dexie(...)` time if the global is missing. Task 10 removed Dexie
+ * entirely — but `db/legacyDrain.ts`'s one-time drain of an old build's
+ * leftover Dexie database talks to raw `indexedDB` directly (`indexedDB.
+ * open`/`.databases()`/`.deleteDatabase`), and its own test file
+ * (`db/legacyDrain.test.ts`) needs the same global to seed a fixture
+ * database. So the need outlived the dependency that originally justified
+ * it, and the shim stays for a narrower reason than it started with.
+ *
+ * `fake-indexeddb/auto` installs a spec-compliant in-memory IndexedDB
+ * implementation onto `globalThis` as a side effect of being imported; it
+ * must run before any test file touches `indexedDB`, which is exactly what
+ * a shared `setupFiles` entry (run once, before every test file is loaded)
+ * guarantees. Real browsers all have IndexedDB natively, so this is a
+ * test-runtime-only shim, same rationale as the MemoryStorage patch below
+ * for localStorage.
  */
 import 'fake-indexeddb/auto';
 

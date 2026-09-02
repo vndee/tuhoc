@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { resetEventQueue } from '../api/events';
 import { resetSessionScopedQueries } from '../api/useMe';
-import { clearLocalData, readSessionVerifiedAt } from '../db/local';
+import { clearUserContent } from '../db/localStorage';
 import { announceSessionUser } from './sessionIdentity';
 
 /**
@@ -11,8 +11,10 @@ import { announceSessionUser } from './sessionIdentity';
  * Before this existed there were two of them, and every auth transition had
  * to remember both:
  *
- *   - `clearLocalData()` (`../db/local`) — the durable half: every Dexie
- *     table plus every `localStorage` key holding the user's own words.
+ *   - `clearLocalData()` (originally `../db/local`, now `clearUserContent()`
+ *     in `../db/localStorage` — see "Task 10" below) — the durable half:
+ *     every `localStorage` key holding the user's own words (Dexie itself,
+ *     and the table clear this used to also perform, are gone with Task 10).
  *   - `resetSessionScopedQueries()` (`../api/useMe`) — the in-memory half:
  *     the module-level `queryClient` in `App.tsx`, which really does hold
  *     user data (`['stats']`, `['course', …]`, every progress-derived entry).
@@ -44,17 +46,20 @@ import { announceSessionUser } from './sessionIdentity';
  * nothing anywhere enforcing it, is that warning with the copies moved from
  * inside one function to across two.
  *
- * **Why here and not in `db/local.ts`.** Merging downward would make the
- * persistence layer import react-query — wrong direction, and it would put a
- * UI-cache concern inside the module whose whole job is IndexedDB. `auth/` is
- * the layer where both dependencies are already at hand and where "a session
- * is ending" is the native vocabulary, so the merge goes UP.
+ * **Why here and not in `db/localStorage.ts`.** Merging downward would make
+ * the persistence layer import react-query — wrong direction, and it would
+ * put a UI-cache concern inside a module whose whole job is a handful of
+ * `localStorage` keys. `auth/` is the layer where both dependencies are
+ * already at hand and where "a session is ending" is the native vocabulary,
+ * so the merge goes UP. (Before Task 10 this also argued from IndexedDB —
+ * Dexie is gone now, but the direction-of-import argument stands unchanged.)
  *
- * **What it deliberately does NOT do.** It does not `stopSync()` and it does
- * not seed `me`. Both call sites need those, but they need them with
- * different values and, in `useLogout`'s case, in a more elaborate order that
- * this function has no business knowing (a bounded final flush, two epoch
- * bumps, `POST /auth/logout`). It also does not attempt to FLUSH
+ * **What it deliberately does NOT do.** It does not stop any background sync
+ * (there is none left to stop as of Task 10 — see that task's report) and it
+ * does not seed `me`. Both call sites need the seed, but with different
+ * values and, in `useLogout`'s case, after a more elaborate wait this
+ * function has no business knowing about (a bounded wait for in-flight
+ * mutations, `POST /auth/logout`). It also does not attempt to FLUSH
  * `api/events.ts`'s queue before dropping it — a best-effort flush needs the
  * departing account's cookie to still be valid, which is a fact only
  * `useLogout.ts` (not `Login.tsx`'s arriving-account path, and not this
@@ -64,17 +69,26 @@ import { announceSessionUser } from './sessionIdentity';
  * clearing are unchanged from the calls it replaces, including their order.
  *
  * **Order, which is load-bearing and is the reason this is one function
- * rather than separate exports.** `clearLocalData()` first and awaited, then
- * the query cache, then the event queue. The first two: both call sites
- * already did exactly this before this function existed, for reasons written
- * out at each of them — the durable rows must be gone before anything can
- * read or push them, and the cache reset must land before the caller seeds
- * `me` on the very next line, or it would wipe the seed it is supposed to
- * leave behind. The event-queue reset is placed last and is, unlike the
- * first two, NOT order-dependent on anything else here — it is a bare
- * in-memory array with no reader racing it and no seed for it to clobber —
- * so it is simply appended after the two steps whose order genuinely
- * matters, rather than interleaved among them.
+ * rather than separate exports.** The durable half first, then the query
+ * cache, then the event queue. The first two: both call sites already did
+ * exactly this before this function existed, for reasons written out at
+ * each of them — the durable rows must be gone before anything can read or
+ * push them, and the cache reset must land before the caller seeds `me` on
+ * the very next line, or it would wipe the seed it is supposed to leave
+ * behind. The event-queue reset is placed last and is, unlike the first two,
+ * NOT order-dependent on anything else here — it is a bare in-memory array
+ * with no reader racing it and no seed for it to clobber — so it is simply
+ * appended after the two steps whose order genuinely matters, rather than
+ * interleaved among them.
+ *
+ * (Task 10 note: every step this function itself performs is now
+ * synchronous — `clearUserContent()`, the offline marker's own clear below,
+ * and `resetSessionScopedQueries`/`resetEventQueue` were always synchronous.
+ * `clearSession` stays declared `async` purely for interface stability with
+ * its existing callers (`await clearSession(queryClient)` at both call
+ * sites), not because anything inside it still yields to the event loop.
+ * See the offline-marker section below for why that is a safety property,
+ * not just a simplification.)
  *
  * The tripwire that keeps a third call site from quietly appearing — for
  * ANY of the three halves above, `resetEventQueue()` included — lives in
@@ -103,14 +117,14 @@ export async function clearSession(queryClient: QueryClient): Promise<void> {
   // `api/useMe.ts` announces the concrete identity a moment later, from the
   // one place that actually learns it.
   //
-  // Earliest, not merely early: the alternative — announcing after the
-  // clearing resolves — would leave the whole of `clearLocalData()`'s
-  // IndexedDB round trip inside the window in which another tab can still
-  // push under the new cookie. Being synchronous and first makes that
-  // window as narrow as client-side code can make it. It cannot be closed
-  // entirely from here; see the report for what would.
+  // Earliest, not merely early — kept true even though the durable clear
+  // below is synchronous now (Task 10): another tab's own `postMessage`/
+  // event delivery is not, so announcing first still narrows the window as
+  // much as client-side code can. It cannot be closed entirely from here;
+  // see the report for what would.
   announceSessionUser(null);
-  await clearLocalData();
+  clearUserContent();
+  clearSessionVerifiedMarker();
   resetSessionScopedQueries(queryClient);
   // Unconditional, and never preceded by an attempted flush HERE — see
   // this function's own "What it deliberately does NOT do" above. Whatever
@@ -144,11 +158,11 @@ export async function clearSession(queryClient: QueryClient): Promise<void> {
  * as one.** The real boundary is the server: nothing behind this door is
  * fetched — every API call is failing, which is the precondition for being
  * here at all — so what an expired-but-unexpired-looking device can open is
- * only what is already on its own disk, which anybody with the browser
- * profile can read out of IndexedDB regardless. A device whose clock is
- * moved backwards can also make a stale marker look fresh; that is
- * acceptable for the same reason, and worth saying out loud rather than
- * pretending the timestamp is doing more than it is.
+ * only whatever this session already has, on-screen or in this tab's own
+ * caches, which anybody with the browser profile can already see regardless.
+ * A device whose clock is moved backwards can also make a stale marker look
+ * fresh; that is acceptable for the same reason, and worth saying out loud
+ * rather than pretending the timestamp is doing more than it is.
  *
  * The window is also not the usual way this ends. The normal end is the
  * next HTTP response of any kind: a 401 sends the reader to `/login`
@@ -161,8 +175,8 @@ export const OFFLINE_READ_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
  *
  * True only when `GET /me` confirmed a signed-in user here recently enough
  * — where "here" means this browser's current local session, because the
- * marker is a `db.meta` row that `clearLocalData()` empties on both auth
- * transitions (see `SESSION_VERIFIED_KEY` in `db/local.ts`).
+ * marker is a `localStorage` key that `clearSession()` (this file) erases
+ * on both auth transitions — see `SESSION_VERIFIED_KEY` below.
  *
  * `now` is injectable for tests only.
  *
@@ -182,4 +196,130 @@ export async function offlineSessionIsUsable(now: number = Date.now()): Promise<
   if (verifiedAt === null) return false;
   const age = now - verifiedAt;
   return age >= 0 && age < OFFLINE_READ_MAX_AGE_MS;
+}
+
+/* ------------------------------------------------------------------ *
+ * The offline-read marker — moved here from `db/local.ts` by Task 10
+ * ------------------------------------------------------------------ */
+
+/**
+ * `localStorage` key holding the last instant `GET /me` confirmed a
+ * signed-in user ON THIS DEVICE, ISO-8601.
+ *
+ * Task 10 (Dexie removal) moved this here from `db/local.ts`'s Dexie
+ * `db.meta` table — the table, and Dexie itself, are gone. `localStorage`
+ * is the only durable store this app still has.
+ *
+ * **Why this lives here, in `auth/session.ts`, and NOT as a fourth
+ * classified key in `db/localStorage.ts`.** `USER_CONTENT_KEYS` and
+ * `DEVICE_PREFERENCE_KEYS` are a closed, two-way classification for exactly
+ * two questions: "is this the user's own words" and "does this describe the
+ * device, not the person" (see that file's own doc comments). This marker
+ * answers NEITHER — it holds no content and describes no lasting
+ * preference; it is per-SESSION state that must be erased at the exact same
+ * moment `clearUserContent()` runs, by the exact same caller
+ * (`clearSession()`, below). Bolting a third category onto that union would
+ * either misclassify it (surviving a logout it must not survive, or being
+ * wiped alongside notes it has nothing to do with) or force
+ * `db/localStorage.ts` to learn about session lifecycle, which is a UI/auth
+ * concern, not a persistence concern — the same "merge goes UP, not DOWN"
+ * argument `clearSession()`'s own doc comment makes for why IT lives here
+ * and not in the persistence layer. `localStorage.test.ts`'s `PERSISTENCE`
+ * scan documents this file as the one allowed exception to "only
+ * `db/localStorage.ts` touches `localStorage` directly", by name, with this
+ * same reasoning.
+ *
+ * It exists for exactly one reader: `<RequireAuth>`, on a COLD page load
+ * with no network. The session cookie is `HttpOnly`, so `GET /me` is the
+ * only way this app can learn whether anybody is signed in — and when that
+ * request never reaches a server, the honest answer is "unknown", not
+ * "logged out".
+ *
+ * **It holds NO identity — an instant, nothing else.** Not a user id, not
+ * an email, not a name. That is what keeps the worst case cheap: even a row
+ * that somehow outlived its session can only say *somebody* was signed in
+ * here at T, so there is nothing in it to render at the next person.
+ */
+export const SESSION_VERIFIED_KEY = 'sessionVerifiedAt';
+
+/**
+ * Records that `GET /me` just confirmed a signed-in user here.
+ *
+ * `at` is injectable for tests only; production always means "now".
+ *
+ * Declared `async` and returning `Promise<void>` for interface stability
+ * with its one caller (`RequireAuth.tsx`'s `void rememberSessionVerified()`)
+ * and its tests (`await rememberSessionVerified(...)`) — the write itself is
+ * a single synchronous `localStorage.setItem`, with no `await` anywhere in
+ * this function's own body. That is not incidental. `db/local.ts`'s
+ * original version of this function carried a generation-counter guard
+ * (`clearGeneration`) specifically because `db.meta.put(...)` was an
+ * asynchronous Dexie transaction: a `clearLocalData()` call could start and
+ * finish WHILE that transaction was still committing, and the write would
+ * land after the clear had already declared the browser empty, resurrecting
+ * a stale marker. That guard is deliberately NOT carried over here — not
+ * dropped for tidiness, but because the exact race it defended against is
+ * now structurally impossible: a synchronous `localStorage.setItem` call
+ * cannot be interrupted mid-write by anything else on this single thread,
+ * and `clearSessionVerifiedMarker()` below is equally synchronous, so
+ * neither can ever observe the other mid-flight. See this task's report for
+ * the fuller argument and for the one race this does NOT close (the
+ * ordering between two independent event-loop callbacks — "GET /me's effect
+ * fires" versus "the user clicked logout" — which no storage backend can
+ * close from inside either callback alone, and which the OLD guard did not
+ * close either).
+ */
+export async function rememberSessionVerified(at: Date = new Date()): Promise<void> {
+  writeSessionVerifiedMarker(at.toISOString());
+}
+
+/**
+ * The marker as a parsed instant, or `null` for "this device has no such
+ * marker" — which includes a row whose value does not parse.
+ *
+ * Unparseable reads as absent rather than as `NaN`: every comparison
+ * against `NaN` is `false`, so the caller would still fail closed, but by
+ * accident. `null` makes the safe answer the deliberate one.
+ *
+ * Declared `async` for the same interface-stability reason as
+ * `rememberSessionVerified` above (its one caller, `offlineSessionIsUsable`,
+ * already `await`s it, as does `RequireAuth.test.tsx`) — the read itself is
+ * synchronous.
+ */
+export async function readSessionVerifiedAt(): Promise<number | null> {
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(SESSION_VERIFIED_KEY);
+  } catch {
+    // Best-effort, same as `db/localStorage.ts`'s `readLocalStorage`: a
+    // browser that refuses storage entirely reads back as "no marker",
+    // which is the fail-closed answer anyway.
+    raw = null;
+  }
+  if (raw === null) return null;
+  const at = Date.parse(raw);
+  return Number.isNaN(at) ? null : at;
+}
+
+/** The one write path both `rememberSessionVerified` and `clearSessionVerifiedMarker` funnel through — kept as one place so both share the identical best-effort try/catch. */
+function writeSessionVerifiedMarker(value: string | null): void {
+  try {
+    if (value === null) window.localStorage.removeItem(SESSION_VERIFIED_KEY);
+    else window.localStorage.setItem(SESSION_VERIFIED_KEY, value);
+  } catch {
+    // Best-effort: a browser that refuses storage never had offline reading
+    // to begin with, and never had anything of this marker to clear either.
+  }
+}
+
+/**
+ * Erases the marker — called from `clearSession()` above, unconditionally,
+ * on both auth transitions. Not exported: nothing outside this file's own
+ * `clearSession()` needs to clear it in isolation, and exporting it would
+ * be a second, unenforced way for a future call site to bypass the one
+ * door — the exact shape `SESSION_CLEARERS`' tripwire (`session.test.ts`)
+ * exists to close for the other three halves.
+ */
+function clearSessionVerifiedMarker(): void {
+  writeSessionVerifiedMarker(null);
 }

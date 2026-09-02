@@ -6,7 +6,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import type { Ann } from '../api/annotations';
 import { meQueryKey } from '../api/useMe';
-import { clearLocalData } from '../db/local';
+import { clearUserContent } from '../db/localStorage';
 import { Dashboard } from '../pages/Dashboard';
 import type { Manifest } from '../course/types';
 import { LanguageProvider } from '../i18n/LanguageProvider';
@@ -126,7 +126,7 @@ beforeAll(() => configure({ asyncUtilTimeout: OVERSUBSCRIBED_WAIT_MS }));
 afterAll(() => configure({ asyncUtilTimeout: defaultAsyncUtilTimeout }));
 
 async function clearAll() {
-  await clearLocalData();
+  await clearUserContent();
 }
 
 /**

@@ -5,10 +5,11 @@ import { setupServer } from 'msw/node';
 import { useEffect } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { clearLocalData, readSessionVerifiedAt, rememberSessionVerified } from '../db/local';
+import { clearUserContent } from '../db/localStorage';
 import { t } from '../i18n';
 import { Login } from '../pages/Login';
 import { RequireAuth } from './RequireAuth';
+import { readSessionVerifiedAt, rememberSessionVerified, SESSION_VERIFIED_KEY } from './session';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 import { ThemeProvider } from '../theme/ThemeContext';
 
@@ -18,10 +19,21 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-// This guard now WRITES to the local database (the offline-read marker), so
-// every test here starts from a browser nobody has ever signed in on.
-beforeEach(clearLocalData);
-afterEach(clearLocalData);
+/**
+ * This guard now WRITES the offline-read marker (`localStorage`, since
+ * Task 10 — see `auth/session.ts`), so every test here starts from a
+ * browser nobody has ever signed in on. `clearUserContent()` alone would
+ * not touch the marker (it is not user CONTENT — see that function's own
+ * doc comment), so this also removes it directly, the same way
+ * `clearSession()` does.
+ */
+function resetDevice(): void {
+  clearUserContent();
+  window.localStorage.removeItem(SESSION_VERIFIED_KEY);
+}
+
+beforeEach(resetDevice);
+afterEach(resetDevice);
 
 function Protected() {
   return <div>Protected content</div>;

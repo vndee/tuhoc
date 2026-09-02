@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { todayIctIso } from '../progress/heat';
 import { meQueryKey } from '../api/useMe';
 import type { Manifest } from '../course/types';
-import { clearLocalData } from '../db/local';
+import { clearUserContent } from '../db/localStorage';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 import { Progress } from '../pages/Progress';
 import { isoOfDayIndex, dayIndexOf } from '../progress/heat';
@@ -40,8 +40,8 @@ const defaultAsyncUtilTimeout = getConfig().asyncUtilTimeout;
 beforeAll(() => configure({ asyncUtilTimeout: OVERSUBSCRIBED_WAIT_MS }));
 afterAll(() => configure({ asyncUtilTimeout: defaultAsyncUtilTimeout }));
 
-beforeEach(clearLocalData);
-afterEach(clearLocalData);
+beforeEach(clearUserContent);
+afterEach(clearUserContent);
 
 /**
  * Task 6, Pha 3 touched `useProgress` ONLY — `pages/Progress.tsx`'s

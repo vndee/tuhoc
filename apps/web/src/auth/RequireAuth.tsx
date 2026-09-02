@@ -3,8 +3,7 @@ import { useEffect, useRef, useSyncExternalStore, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { describeAuthError, serverAnswered } from '../api/client';
 import { useMe } from '../api/useMe';
-import { rememberSessionVerified } from '../db/local';
-import { offlineSessionIsUsable } from './session';
+import { offlineSessionIsUsable, rememberSessionVerified } from './session';
 import { sessionWasSuperseded, subscribeToSessionChanges } from './sessionIdentity';
 import { useLanguage } from '../i18n/LanguageProvider';
 
