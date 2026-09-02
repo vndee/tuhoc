@@ -1,5 +1,5 @@
 import { normalizeLang } from '@tuhoc/i18n';
-import { readLocalStorage, type LocalStorageKey } from '../db/local';
+import { readLocalStorage, type LocalStorageKey } from '../db/localStorage';
 
 /**
  * NỬA "CÓ TRẠNG THÁI" của i18n ở trang chính.
@@ -34,7 +34,7 @@ import type { Lang } from '@tuhoc/i18n';
 /**
  * Khoá `localStorage` giữ lựa chọn ngôn ngữ.
  *
- * Khai ở `db/local.ts` và chỉ được ĐẶT TÊN LẠI ở đây, đúng khuôn
+ * Khai ở `db/localStorage.ts` và chỉ được ĐẶT TÊN LẠI ở đây, đúng khuôn
  * `theme/useTheme.ts`: ở đó nó được phân loại là **tuỳ chọn của thiết bị**, tức
  * danh sách mà `clearLocalData()` cố ý không đụng tới. Một chuỗi, một chủ sở
  * hữu — và lời hứa "đăng nhập bằng tài khoản khác không đổi ngôn ngữ của máy

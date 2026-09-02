@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, useLocation } from 'react-router-dom';
 import { startEventFlusher } from './api/events';
 import { useMe } from './api/useMe';
+import { drainLegacyDataOnce } from './db/legacyDrain';
 import { LanguageProvider } from './i18n/LanguageProvider';
 import { LanguageSwitcher } from './i18n/LanguageSwitcher';
 import { AppRoutes } from './routes';
@@ -14,7 +15,6 @@ import { AccountChip, SidebarTrigger, TopNav, TopSearch } from './shell/TopNav';
 import { Topbar } from './shell/Topbar';
 import { useMobileNav } from './shell/useMobileNav';
 import './styles/index.css';
-import { startSync, stopSync } from './sync/engine';
 import { ThemeProvider, useThemeContext } from './theme/ThemeContext';
 
 // One QueryClient for the whole app. No queries are defined yet — Task 10+
@@ -28,9 +28,9 @@ export default function App() {
       <BrowserRouter>
         {/* Ngoài <ThemeProvider>: ngôn ngữ là thứ MỌI thứ khác vẽ bằng, kể cả
             nhãn của nút chủ đề khi Task 5 bóc nó. Cả hai đều là tuỳ chọn của
-            THIẾT BỊ (db/local.ts's DEVICE_PREFERENCE_KEYS) và không phụ thuộc
-            nhau, nên thứ tự này chỉ là chiều phụ thuộc tương lai, không phải
-            một ràng buộc hôm nay. */}
+            THIẾT BỊ (db/localStorage.ts's DEVICE_PREFERENCE_KEYS) và không
+            phụ thuộc nhau, nên thứ tự này chỉ là chiều phụ thuộc tương lai,
+            không phải một ràng buộc hôm nay. */}
         <LanguageProvider>
           <ThemeProvider>
             <AppShell />
@@ -68,6 +68,7 @@ function AppShell() {
   const authScreen = AUTH_ROUTE.test(location.pathname);
 
   useSyncLifecycle();
+  useLegacyDrain();
 
   return (
     <Shell
@@ -122,10 +123,15 @@ function AppShell() {
 }
 
 /**
- * Debt carried from Task 13: `startSync()`/`stopSync()` (src/sync/engine.ts)
- * had no call site at all — nothing synced. This starts the background
- * sync loop once a user is authenticated, and stops it the moment that
- * stops being true (logout, session death) or this component unmounts.
+ * Debt carried from Task 13, narrowed by Task 10: this used to also start
+ * `sync/engine.ts`'s background push/pull loop (`startSync()`/`stopSync()`)
+ * once a user was authenticated. Task 10 deletes that engine entirely —
+ * progress and annotations are exclusively server-side now, read and
+ * written directly through `api/*` and react-query, with no local outbox
+ * left to flush on a timer. What remains here is `startEventFlusher()`
+ * (`./api/events.ts`) — the study-heartbeat queue, which was ALREADY off
+ * the Dexie outbox before this task (Task 8, this phase) and is unrelated
+ * to the engine that just left.
  *
  * Driven by `useMe()` — the same query `<RequireAuth>` reads — rather
  * than route location: `AppShell` renders on every route including
@@ -134,36 +140,56 @@ function AppShell() {
  * already uses for "is anyone logged in," so this doesn't introduce a
  * second, potentially-inconsistent way to answer that question.
  *
- * `startSync`/`stopSync` are both idempotent (see their own doc
- * comments in src/sync/engine.ts) — calling `startSync()` on every render
- * where `meQuery.data` is still the same signed-in user is a safe no-op,
- * not a second interval stacking on top of the first.
- *
- * Task 8 (Pha 3) adds `startEventFlusher()` (`./api/events.ts`) right
- * alongside `startSync()`, gated by the exact same `userId` — a
- * heartbeat can only be queued from a chapter route, which sits behind
- * `<RequireAuth>`, so there is nothing to flush before this same
- * condition is true anyway, and gating it identically means a logout
- * that stops the sync loop stops the flusher in the same tick rather
- * than leaving it posting against a session that just died. Unlike
- * `startSync`/`stopSync`, `startEventFlusher` is NOT a module-level
- * singleton (see its own doc comment) — its teardown is whatever THIS
- * effect's own call returned, captured in `stopFlusher` below, not a
- * shared top-level `stopEventFlusher()`.
+ * `startEventFlusher` is NOT a module-level singleton (see its own doc
+ * comment) — its teardown is whatever THIS effect's own call returned,
+ * captured in `stopFlusher` below, not a shared top-level
+ * `stopEventFlusher()`.
  */
 function useSyncLifecycle(): void {
   const meQuery = useMe();
   const userId = meQuery.data?.id ?? null;
 
   useEffect(() => {
-    let stopFlusher: (() => void) | null = null;
-    if (userId !== null) {
-      startSync();
-      stopFlusher = startEventFlusher();
-    }
+    if (userId === null) return undefined;
+    const stopFlusher = startEventFlusher();
     return () => {
-      stopSync();
-      stopFlusher?.();
+      stopFlusher();
     };
   }, [userId]);
+}
+
+/**
+ * Fires `drainLegacyDataOnce()` (`./db/legacyDrain.ts`) exactly once, at
+ * mount — this is what replaced `startSync()`'s call site here (Task 10).
+ *
+ * Deliberately NOT gated on `useMe()` the way `useSyncLifecycle` above is:
+ * the legacy outbox this drains belongs to whichever account was signed in
+ * on THIS BROWSER under the OLD build, which has nothing to do with who
+ * `GET /me` currently answers on this load — a browser that has since
+ * signed out, or whose cookie has since expired, still needs its old
+ * outbox flushed before this app is allowed to delete it. Gating this on
+ * auth would strand that browser's unsent work behind a session that may
+ * never come back.
+ *
+ * Empty dependency array: this must run once per app mount, not once per
+ * change of signed-in user — `drainLegacyDataOnce()` is itself idempotent
+ * (a second call after a successful drain is a cheap no-op — see that
+ * function's own doc comment), so nothing is lost by NOT re-running it on
+ * every auth transition; re-running it anyway would just be wasted work on
+ * every login/logout for the overwhelming majority of readers who never
+ * had a legacy database to begin with.
+ *
+ * Not awaited, and any failure is swallowed here as a second, defensive
+ * layer on top of `drainLegacyDataOnce()`'s own internal try/catch (which
+ * already never rejects — see that function's doc comment): this must
+ * never block or blank this component's render. The worst case of a
+ * drain failing is that it retries on the next page load, which is exactly
+ * what "no delete on failure" is for.
+ */
+function useLegacyDrain(): void {
+  useEffect(() => {
+    drainLegacyDataOnce().catch((err: unknown) => {
+      console.error('tuhoc: legacy local database drain failed unexpectedly', err);
+    });
+  }, []);
 }

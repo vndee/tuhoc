@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import App from '../App';
-import { clearLocalData, db } from '../db/local';
+import { clearUserContent } from '../db/localStorage';
 import { LanguageProvider, useLanguage } from './LanguageProvider';
 import { LANG_STORAGE_KEY } from './index';
 
@@ -68,33 +68,32 @@ describe('<LanguageProvider>', () => {
 
   /**
    * Đây là nửa "theo thiết bị, không đồng bộ" viết thành phép đo. Đăng xuất gọi
-   * `clearLocalData()`, thứ xoá sạch mọi khoá NỘI DUNG NGƯỜI DÙNG và mọi bảng
-   * Dexie. Ngôn ngữ giao diện là TUỲ CHỌN CỦA THIẾT BỊ — cùng lập luận với chủ
-   * đề sáng/tối trong `db/local.ts`: bàn giao máy cho người khác không phải một
-   * yêu cầu đổi ngôn ngữ.
+   * `clearUserContent()`, thứ xoá sạch mọi khoá NỘI DUNG NGƯỜI DÙNG (Task 10:
+   * đổi tên từ `clearLocalData()`, đồng thời Dexie — thứ hàm cũ còn dọn cùng —
+   * bị gỡ hẳn). Ngôn ngữ giao diện là TUỲ CHỌN CỦA THIẾT BỊ — cùng lập luận với
+   * chủ đề sáng/tối trong `db/localStorage.ts`: bàn giao máy cho người khác
+   * không phải một yêu cầu đổi ngôn ngữ.
    */
-  it('sống sót qua clearLocalData() — nó là tuỳ chọn thiết bị, không phải dữ liệu người dùng', async () => {
+  it('sống sót qua clearUserContent() — nó là tuỳ chọn thiết bị, không phải dữ liệu người dùng', () => {
     const { result } = renderHook(() => useLanguage(), { wrapper });
     act(() => {
       result.current.setLang('en');
     });
 
-    await clearLocalData();
+    clearUserContent();
 
     expect(window.localStorage.getItem(LANG_STORAGE_KEY)).toBe('en');
   });
 
-  it('không đẩy lựa chọn vào hàng đợi đồng bộ — không có gì rời khỏi máy này', async () => {
-    const { result } = renderHook(() => useLanguage(), { wrapper });
-    await db.outbox.clear();
-
-    act(() => {
-      result.current.setLang('en');
-    });
-
-    expect(await db.outbox.count()).toBe(0);
-    expect(await db.meta.get('lang')).toBeUndefined();
-  });
+  // Task 10 removed this test's original subject (`db.outbox`/`db.meta`,
+  // Dexie's sync queue) along with the sync engine itself — there is no
+  // longer ANY local queue for a language change to reach, of any kind, so
+  // "does not queue it" is no longer a claim this app can even fail to
+  // satisfy. The reason this used to need a test — a hidden second write
+  // path nobody had audited — is gone structurally along with the
+  // mechanism, the same way `db/local.test.ts`'s `packages`-table tests
+  // were retired when Task 13 removed that table rather than adjusted to
+  // keep passing.
 
   /**
    * Ném chứ không lặng lẽ trả về mặc định, theo đúng khuôn `useThemeContext()`.

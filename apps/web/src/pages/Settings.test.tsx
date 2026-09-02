@@ -7,7 +7,6 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, afterAll, afterEach, beforeAll } from 'vitest';
 import type { Ann } from '../api/annotations';
 import { meQueryKey, type Me } from '../api/useMe';
-import { clearLocalData, db } from '../db/local';
 import { t } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 import { ThemeProvider } from '../theme/ThemeContext';
@@ -356,20 +355,21 @@ describe('Cài đặt — cửa đăng xuất', () => {
 
 /**
  * TASK 9 — "Dữ liệu trên máy" đếm ghi chú từ `GET /annotations`, không từ
- * `db.annotations.count()`.
+ * một bảng cục bộ.
  *
  * `LocalDataSection` từng đọc thẳng Dexie (`useLocalFootprint`'s
  * `db.annotations.count()`) — số ĐÚNG cho một thế giới nơi ghi chú chỉ tồn tại
  * cục bộ cho tới khi outbox flush. Sau Task 7, ghi chú đã là dữ liệu MÁY CHỦ
  * (TanStack Query qua `api/annotations.ts`, cùng cache `annotationsQueryKey()`
- * mà `useAnnotations`/`progress/recent.ts` dùng) — Dexie có thể mang một con
- * số CŨ (ghi chú xoá ở máy khác vẫn còn hàng ở đây, hoặc ngược lại), nên
- * `db.annotations.count()` không còn là câu trả lời đúng cho "máy này đang
- * giữ bao nhiêu ghi chú của TÔI" nữa.
+ * mà `useAnnotations`/`progress/recent.ts` dùng).
  *
- * Bài dưới đây gieo Dexie với một con số CỐ Ý KHÁC con số `GET /annotations`
- * trả về — nếu trang còn đọc Dexie, nó sẽ hiện con số Dexie (5), không phải
- * con số máy chủ (2).
+ * Task 10 xoá hẳn Dexie: bài kiểm cũ ở đây gieo một con số Dexie CỐ Ý SAI
+ * (5, khác con số `GET /annotations` trả về) để phân biệt "đọc /annotations"
+ * với "vẫn đọc Dexie mà tình cờ đúng" — phép đối chứng ấy nay VÔ NGHĨA THEO
+ * ĐÚNG NGHĨA CẤU TRÚC: không còn `db.annotations` nào để gieo sai vào nữa,
+ * nên không có đường nào cho trang "tình cờ đọc đúng" một nguồn không tồn
+ * tại. Bài dưới đây giữ nguyên khẳng định còn lại — số hiện ra khớp với máy
+ * chủ.
  */
 function ann(id: string): Ann {
   return {
@@ -384,30 +384,10 @@ function ann(id: string): Ann {
 }
 
 describe('Cài đặt — "Dữ liệu trên máy" đếm ghi chú từ GET /annotations', () => {
-  afterEach(async () => {
-    await clearLocalData();
-  });
-
-  it('số ghi chú hiện ra khớp với /annotations, KHÔNG khớp với db.annotations.count() cục bộ', async () => {
-    // Dexie cục bộ giữ 5 hàng — một con số Dexie CỐ Ý sai để bài này phân
-    // biệt được "đọc /annotations" với "vẫn đọc Dexie mà tình cờ đúng".
-    for (let i = 0; i < 5; i += 1) {
-      await db.annotations.put({
-        id: `local-${i}`,
-        courseId: 'demo',
-        chapterId: 'ch-1',
-        anchor: {},
-        note: `local ${i}`,
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
-        deletedAt: null,
-      });
-    }
+  it('số ghi chú hiện ra khớp với /annotations', async () => {
     renderSettings(SIGNED_IN, FROM_AI_INVITE, [ann('a'), ann('b')]);
 
     const stat = await screen.findByText('2');
     expect(stat).toHaveClass('set-stat-v');
-    // ĐỐI CHỨNG: con số Dexie (5) không có mặt ở đâu trên trang.
-    expect(screen.queryByText('5')).not.toBeInTheDocument();
   });
 });

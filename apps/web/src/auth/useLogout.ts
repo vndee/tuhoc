@@ -1,16 +1,15 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { flushEvents } from '../api/events';
 import { meQueryKey } from '../api/useMe';
-import { stopSync, syncOnce, waitForInFlight } from '../sync/engine';
 import { clearSession } from './session';
 
 /**
  * Bounds how long logout will wait for the best-effort final flush
  * (`bestEffortFinalFlush` below) before giving up and proceeding anyway.
- * The user asked to leave — a hung connection (or a stale in-flight cycle
+ * The user asked to leave — a hung connection (or an in-flight mutation
  * that itself is waiting on a hung connection) must not hold the logout
  * UI hostage indefinitely. 5s is generous relative to a normal request
  * (low hundreds of ms) without being a noticeable stall for the common
@@ -36,61 +35,107 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | undefined>
 }
 
 /**
- * One last push+pull WHILE THE SESSION COOKIE IS STILL VALID (this runs
- * before `POST /auth/logout` below invalidates it) — the "optimistic UI"
- * judgment call extended to logout: a click on "mark read" writes locally
- * and enqueues instantly, and the server round trip normally happens
- * within the next 15s tick; logging out immediately afterward would
- * otherwise strand that mutation in an outbox this function's caller is
- * about to clear, silently losing it forever.
+ * Resolves once no react-query mutation is in flight on `queryClient` —
+ * immediately if none is, otherwise the moment the last one settles — or
+ * after `timeoutMs`, whichever comes first. Never rejects.
  *
- * `waitForInFlight()` runs FIRST, before this function's own `syncOnce()`
- * — fix-round-1 finding: without it, if a cycle from BEFORE logout was
- * clicked happened to still be running, `syncOnce()`'s own call to
- * `runCycle()` would immediately no-op against `inFlight` (see
- * engine.ts's own doc comment), silently skipping the flush entirely
- * rather than narrowing it. Waiting first means this function's own
- * `syncOnce()` either runs for real (nothing was in flight, or the
- * previous cycle already finished by the time we get here) or is
- * "genuinely subsumed" — the cycle we waited for already did a full
- * push+pull, so there is nothing left for a second one to usefully add
- * beyond a fast, empty-outbox no-op.
+ * Task 10 replaces the old outbox flush this hook used to do
+ * (`sync/engine.ts`'s `syncOnce()`/`waitForInFlight()`) with this: progress
+ * and annotation writes are no longer queued locally and flushed on a
+ * timer, they are react-query mutations that PUT/PATCH/DELETE the server
+ * directly the moment the reader acts (see `progress/useProgress.ts`,
+ * `annotations/useAnnotations.ts`). There is no local queue left to drain
+ * before logout — the thing that CAN still be genuinely in flight, and
+ * that would be silently abandoned by an unconditional `clearSession()`
+ * right after `POST /auth/logout`, is exactly one of those mutations
+ * mid-request. Waiting for `queryClient.isMutating()` to reach zero is the
+ * direct react-query equivalent of the old `waitForInFlight()`: give
+ * whatever the user's last action already kicked off a chance to actually
+ * reach the server WHILE THE SESSION COOKIE IS STILL VALID, same as the
+ * old flush did.
  *
- * `flushEvents()` (`../api/events`) joined this, LAST, as Task 8's fix
- * round: `api/events.ts`'s in-memory study-event queue is exactly the
- * same "must leave while the cookie is still valid or never leave at
- * all" shape as the outbox push above it, and it was the one review
- * caught this function NOT doing at all — see that module's own header
- * and `auth/session.ts`'s `clearSession()` (the unconditional half of
- * this fix: whatever this call did not manage to send, `clearSession()`
- * drops rather than lets leak into the next signed-in account). Ordered
- * after `syncOnce()`, not interleaved with it: the two touch unrelated
- * server resources (`/sync` vs `/events/batch`, exactly the same
- * independence `sync/engine.ts`'s `flushOutbox` doc comment gives for why
- * THOSE two are separate request sequences), so there is no ordering
+ * Implemented as a bounded subscription rather than a bare
+ * `setTimeout`/poll loop so it resolves the INSTANT the last mutation
+ * settles rather than on the next poll tick, and — the reason it manages
+ * its own timeout instead of relying solely on the outer
+ * `withTimeout(bestEffortFinalFlush(...), LOGOUT_SYNC_TIMEOUT_MS)` call
+ * site below — so the `MutationCache` subscription is always explicitly
+ * torn down on the way out, even in the pathological case where a mutation
+ * genuinely never settles. `withTimeout` alone stops AWAITING the inner
+ * promise but never cancels it, which would otherwise leak this
+ * subscription for the lifetime of the (page-lifetime, singleton)
+ * `queryClient`.
+ */
+function waitForMutationsToSettle(queryClient: QueryClient, timeoutMs: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (queryClient.isMutating() === 0) {
+      resolve();
+      return;
+    }
+
+    const finish = (): void => {
+      clearTimeout(timer);
+      unsubscribe();
+      resolve();
+    };
+
+    const unsubscribe = queryClient.getMutationCache().subscribe(() => {
+      if (queryClient.isMutating() === 0) finish();
+    });
+    const timer = setTimeout(finish, timeoutMs);
+  });
+}
+
+/**
+ * Gives whatever the reader's last action already kicked off a chance to
+ * actually reach the server WHILE THE SESSION COOKIE IS STILL VALID (this
+ * runs before `POST /auth/logout` below invalidates it) — the "optimistic
+ * UI" judgment call extended to logout: a click on "mark read" or a note
+ * edit fires a react-query mutation immediately, and logging out a moment
+ * later must not abandon a request that was already on the wire.
+ *
+ * Task 10 rewrite. Before this task, the thing that could be "in flight"
+ * was `sync/engine.ts`'s outbox push cycle (`waitForInFlight()` +
+ * `syncOnce()`) — a local queue flushed on a 15s timer. That engine and its
+ * outbox are gone: progress/annotation writes are react-query mutations
+ * now, sent the instant the reader acts, with no local queue to drain.
+ * `waitForMutationsToSettle()` (above) is the direct replacement — it is
+ * this function's own `waitForInFlight()` + `syncOnce()` collapsed into
+ * one wait, because react-query's mutation cache already tracks exactly
+ * the thing the old two-step dance had to reconstruct by hand (whether
+ * something is currently sending, and being notified the moment it
+ * settles).
+ *
+ * `flushEvents()` (`../api/events`) is unrelated to any of the above and
+ * unchanged by this task — `api/events.ts`'s in-memory study-event queue
+ * was already off the Dexie outbox before Task 10 (Task 8, this phase).
+ * It stays LAST, ordered after the mutation wait rather than interleaved
+ * with it: the two touch unrelated server resources (react-query's PUT/
+ * PATCH/DELETE endpoints vs `/events/batch`), so there is no ordering
  * requirement between them — `flushEvents()` never rejects (its own
  * `catch` either re-queues the failed batch or drops it; see its own
  * doc), so it needs no `try`/`catch` here to keep this function's
  * "failure here must not block logout" contract.
  *
  * `flushEvents()` here is itself wrapped, ONE level up, in
- * `withTimeout(bestEffortFinalFlush(), LOGOUT_SYNC_TIMEOUT_MS)` below —
- * which races the OUTER promise only. A request still pending when that
- * 5s bound elapses is ABANDONED, not cancelled (`api/client.ts` wires no
- * `AbortController`), and keeps running while the rest of this hook moves
- * on and clears local state. A scoped re-review caught that an abandoned
- * flush's eventual FAILURE used to reinject its batch into whatever
- * `api/events.ts`'s queue held by then — which, on a same-tab account
- * handoff, can already belong to whoever signed in next. `api/events.ts`'s
- * `queueGeneration` (mirroring `sync/engine.ts`'s own `syncEpoch`, for the
- * identical reason) is what makes that batch DROPPABLE instead: dropped
- * if `resetEventQueue()` ran while it was in flight, reinjected otherwise.
- * Nothing here has to know which happened — that is the point of the
- * guard living inside `flushEvents()` itself.
+ * `withTimeout(bestEffortFinalFlush(queryClient), LOGOUT_SYNC_TIMEOUT_MS)`
+ * below — which races the OUTER promise only. A request still pending
+ * when that 5s bound elapses is ABANDONED, not cancelled (`api/client.ts`
+ * wires no `AbortController`), and keeps running while the rest of this
+ * hook moves on and clears local state. A scoped re-review (Task 8) caught
+ * that an abandoned flush's eventual FAILURE used to reinject its batch
+ * into whatever `api/events.ts`'s queue held by then — which, on a
+ * same-tab account handoff, can already belong to whoever signed in next.
+ * `api/events.ts`'s `queueGeneration` is what makes that batch DROPPABLE
+ * instead: dropped if `resetEventQueue()` ran while it was in flight,
+ * reinjected otherwise. Nothing here has to know which happened — that is
+ * the point of the guard living inside `flushEvents()` itself. (A react-
+ * query mutation abandoned the same way is not this hook's problem to
+ * guard: TanStack Query's own retry/cache semantics own that request once
+ * it is in flight, same as any other page unload would leave it.)
  */
-async function bestEffortFinalFlush(): Promise<void> {
-  await waitForInFlight();
-  await syncOnce();
+async function bestEffortFinalFlush(queryClient: QueryClient): Promise<void> {
+  await waitForMutationsToSettle(queryClient, LOGOUT_SYNC_TIMEOUT_MS);
   await flushEvents();
 }
 
@@ -103,134 +148,75 @@ async function bestEffortFinalFlush(): Promise<void> {
  *
  * Steps, and why this exact order:
  *
- *  1. `stopSync()` — stop the interval/listener FIRST, before anything
- *     else touches local state, so a scheduled tick can't fire concurrently
- *     with the flush/clear below and race it. As of fix-round-1, this ALSO
- *     bumps a module-level epoch in `sync/engine.ts` that makes any cycle
- *     already in flight at this exact moment (see step 2) discard its
- *     eventual local write rather than apply it — see "The race this hook
- *     used to have" below for why that matters on its own, independent of
- *     step 2's best-effort wait.
- *  2. `bestEffortFinalFlush()` — waits for anything already in flight, then
- *     attempts its own push+pull PLUS a flush of `api/events.ts`'s queued
- *     study events (Task 8's fix round), bounded to `LOGOUT_SYNC_TIMEOUT_MS`
- *     total (Minor finding: a hung connection must not hold the logout UI
- *     hostage). A normal failure (network down, 5xx, or simply timing out)
- *     is swallowed by `withTimeout`/`syncOnce`/`flushEvents`'s own existing
- *     swallowing — local state (including the event queue — see step 5's
- *     `clearSession()`) is still cleared unconditionally afterward
- *     regardless.
- *  3. `stopSync()` AGAIN — fix-round-2, see "The abandoned-cycle gap"
- *     below. This is not a redundant repeat of step 1 (`stopSync` is
- *     idempotent w.r.t. its timer/listener side, but its epoch bump is
- *     NOT a no-op the second time): it exists specifically to invalidate
- *     step 2's OWN cycle if `withTimeout` gave up on it before it
- *     finished — that cycle is abandoned, not cancelled (there is no
- *     `AbortController` wired through `api/client.ts`), so it is still
- *     running and still holds the epoch from step 1 unless something
- *     bumps it again.
- *  4. `POST /auth/logout` — invalidates the session server-side and clears
+ *  1. `bestEffortFinalFlush()` — waits for any in-flight react-query
+ *     mutation to settle, then attempts a flush of `api/events.ts`'s
+ *     queued study events, bounded to `LOGOUT_SYNC_TIMEOUT_MS` total
+ *     (Minor finding, Task 8: a hung connection must not hold the logout
+ *     UI hostage). A normal failure (network down, 5xx, or simply timing
+ *     out) is swallowed by `withTimeout`/`waitForMutationsToSettle`/
+ *     `flushEvents`'s own existing swallowing — local state (including
+ *     the event queue — see step 3's `clearSession()`) is still cleared
+ *     unconditionally afterward regardless.
+ *  2. `POST /auth/logout` — invalidates the session server-side and clears
  *     the cookie. A failure here (network error; the endpoint itself is
  *     designed to always return 200 even for an already-dead session — see
  *     `Logout`'s own doc comment) does NOT stop the steps below: the one
  *     outcome this function must never allow is leaving another account's
- *     data behind in this browser's IndexedDB just because the network
- *     blipped on the way out.
- *  5. `clearSession()` (./session.ts) — unconditionally, regardless of
- *     whether steps 2 or 4 succeeded. See the paragraph below for why that
- *     is the right trade-off, not just the safe-looking one. It clears ALL
- *     THREE halves of what this session left on the machine — every local
- *     table and user-content `localStorage` key via `clearLocalData()`, the
- *     session-scoped query cache, and (Task 8's fix round) whatever
- *     `api/events.ts`'s queue still held after step 2's best-effort flush —
- *     through one call, so no half can be forgotten here, at the one call
- *     site where forgetting one fails silently (ruling P2-F18). It calls
- *     the shared helpers rather than spelling out a table list, so a table
- *     added to `LocalDB`'s schema is covered automatically.
- *  6. Reset the shared `me` query to `null` and navigate to `/login`.
+ *     data behind in this browser's `localStorage` just because the
+ *     network blipped on the way out.
+ *  3. `clearSession()` (./session.ts) — unconditionally, regardless of
+ *     whether steps 1 or 2 succeeded. See the paragraph below for why that
+ *     is the right trade-off, not just the safe-looking one. It clears
+ *     every half of what this session left on the machine — every
+ *     user-content `localStorage` key and the offline-read marker via
+ *     `clearUserContent()`, the session-scoped query cache, and (Task 8's
+ *     fix round) whatever `api/events.ts`'s queue still held after step 1's
+ *     best-effort flush — through one call, so no half can be forgotten
+ *     here, at the one call site where forgetting one fails silently
+ *     (ruling P2-F18).
+ *  4. Reset the shared `me` query to `null` and navigate to `/login`.
  *     `src/pages/Login.tsx` goes through the same door on the way IN — the
  *     two together are what make "this browser shows one user at a time"
  *     true across an in-app logout→login.
  *
- * **The race this hook used to have (fix-round-1, Finding 2):** `stopSync()`
- * on its own only prevents FUTURE ticks — it cannot un-schedule a network
- * request a cycle is already awaiting. Before this fix, a cycle that was
- * already mid-`pull()` when logout was clicked would have its `runCycle`'s
- * `inFlight` guard make THIS hook's own `syncOnce()` a silent no-op, and
- * then, once that stale cycle's `GET /sync` response eventually arrived —
- * potentially AFTER step 4's `Promise.all([...clear()])` had already run —
- * it would write the departing user's rows straight back into a database
- * this function had just promised was clean. `sync/engine.ts`'s
- * `syncEpoch`/`waitForInFlight()` close this: `stopSync()` bumps the
- * epoch, `flushOutbox`/`pull` check it immediately before their own local
- * writes and discard themselves if it moved, and `waitForInFlight()` lets
- * this hook's own flush genuinely run (or be genuinely subsumed) instead
- * of silently skipping. See `engine.ts`'s own doc comments for the full
- * mechanism.
+ * **Task 10 removed two steps that used to live here: `stopSync()`, called
+ * TWICE, once before the flush and once after (fix-round-1 and
+ * fix-round-2).** Both existed for one reason — `sync/engine.ts`'s
+ * background push/pull cycle could have a request already on the wire when
+ * logout ran, and its eventual (possibly LATE) response could write the
+ * departing user's rows back into a local database this hook had just
+ * promised was clean. That engine, its outbox, and everything it could
+ * write to are gone: progress/annotation reads and writes go straight
+ * through react-query and the server now, with no local table for a late
+ * response to repopulate. There is nothing left for either `stopSync()`
+ * call to protect. See this task's report for the fuller argument (and for
+ * `session.ts`'s parallel note on why its own durable clear no longer
+ * needs the analogous generation-counter guard it used to carry for a
+ * structurally identical reason).
  *
- * **The abandoned-cycle gap (fix-round-2):** the `LOGOUT_SYNC_TIMEOUT_MS`
- * bound (step 2) only stops THIS function from waiting any longer — it
- * does not cancel the underlying `fetch` (no `AbortController` is wired
- * through `api/client.ts`'s `request()`), so a flush cycle that times out
- * keeps running in the background. That cycle captured the epoch step 1
- * set, and nothing bumps the epoch again between the timeout firing and
- * step 5's clear — so if its response lands in that window, its epoch
- * check would still pass, and it would write straight into the database
- * step 5 is about to declare clean, the exact failure mode fix-round-1
- * closed, reopened through a different door. Step 3's second `stopSync()`
- * call closes it BY CONSTRUCTION: it bumps the epoch again regardless of
- * whether step 2 finished, finished late, or is still abandoned and
- * running, so an abandoned cycle's captured epoch can never match by the
- * time step 5 runs — independent of what any other part of the app
- * happens to do. (Before this fix, the gap was closed only as an
- * INCIDENTAL side effect of `App.tsx`'s `useSyncLifecycle`, which
- * reactively calls `stopSync()` again once `useMe()`'s cached user
- * becomes `null` — which THIS hook's own `setQueryData(meQueryKey, null)`
- * triggers. That happened to work, but it was another task's wiring
- * accidentally providing a guarantee this hook never established or
- * documented itself — a future refactor of that lifecycle effect could
- * have silently reopened the hole with nothing failing to say so.)
- *
- * **The core judgment call (debt #3's "think about it carefully" ask):**
- * `src/db/local.ts`'s own doc comment already states the local database
- * "belongs to exactly one signed-in user at a time" — this hook is what
- * makes that literally true instead of merely aspirational. The
- * alternative to clearing unconditionally would be clearing only after a
- * confirmed-successful final flush, to minimize data loss for the user
- * who is leaving. That is the WRONG trade-off here: an outbox entry
- * belongs to whichever account was signed in when it was created, and if
- * it survives a logout, the sync engine will — once a SECOND, DIFFERENT
- * user signs in on the same browser and `startSync()` runs again — push
- * the FIRST user's queued mutations under the second user's session
- * cookie, silently corrupting a stranger's server-side progress with the
- * first user's reading history (a real, concrete failure mode on any
- * shared/family computer, not a hypothetical one). Losing a few seconds
- * of the departing user's own unsynced edits (they can just re-click
- * "mark read" next time they sign in) is a minor, recoverable annoyance;
- * silently mixing two different people's data is not. Given that
- * asymmetry, this hook accepts the (already-minimized-by-step-2) small
- * data-loss risk in exchange for the hard guarantee — now enforced at the
- * engine level, not merely by ordering — that no local row ever survives
- * a logout to leak into the next signed-in session.
+ * **The core judgment call (debt #3's "think about it carefully" ask,
+ * still true post-Task-10).** This hook clears local state
+ * UNCONDITIONALLY, never only after a confirmed-successful final flush,
+ * even though that would minimize data loss for the user who is leaving.
+ * That is the WRONG trade-off here: a `localStorage` note draft belongs to
+ * whichever account was typing it, and if it survives a logout, the next
+ * person to sign in on the same browser inherits a stranger's half-written
+ * words — a real, concrete failure mode on any shared/family computer, not
+ * a hypothetical one (see `test/accountHandoff.test.tsx`). Losing a few
+ * seconds of the departing user's own unsent mutation (they can just
+ * re-click "mark read" or retype their note next time they sign in) is a
+ * minor, recoverable annoyance; silently mixing two different people's
+ * data is not. Given that asymmetry, this hook accepts the
+ * (already-minimized-by-step-1) small data-loss risk in exchange for the
+ * hard guarantee that no local content ever survives a logout to leak into
+ * the next signed-in session.
  */
 export function useLogout(): () => Promise<void> {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   return useCallback(async () => {
-    stopSync();
-
-    await withTimeout(bestEffortFinalFlush(), LOGOUT_SYNC_TIMEOUT_MS);
-
-    // Second call, not a redundant repeat of the one above — see "The
-    // abandoned-cycle gap" in this hook's own doc comment. If
-    // `withTimeout` gave up on `bestEffortFinalFlush()` above, that
-    // flush's OWN cycle is still running (abandoned, not cancelled) and
-    // still holds the epoch the first `stopSync()` call set. Bumping the
-    // epoch again HERE, unconditionally, invalidates that straggler by
-    // construction — regardless of whether it actually finished, is still
-    // running, or never gets a response at all.
-    stopSync();
+    await withTimeout(bestEffortFinalFlush(queryClient), LOGOUT_SYNC_TIMEOUT_MS);
 
     try {
       await api.post('/auth/logout', undefined, { redirectOn401: false });
@@ -240,14 +226,14 @@ export function useLogout(): () => Promise<void> {
       // happens via the steps below.
     }
 
-    // All three halves of "this browser no longer belongs to that session",
-    // through the one door at `./session.ts` (ruling P2-F18) — the durable
-    // tables and `localStorage` keys, the query cache, and (Task 8's fix
-    // round) whatever `api/events.ts`'s queue still held.
+    // Every half of "this browser no longer belongs to that session",
+    // through the one door at `./session.ts` (ruling P2-F18) — the
+    // `localStorage` content, the query cache, and (Task 8's fix round)
+    // whatever `api/events.ts`'s queue still held.
     //
     // The cache reset is not decoration, and it is why the clearing is one
-    // call rather than `clearLocalData()` alone. The `me` entry is not the
-    // only thing in that cache scoped to the session that is ending:
+    // call rather than `clearUserContent()` alone. The `me` entry is not
+    // the only thing in that cache scoped to the session that is ending:
     // `['stats']` (Dashboard's streak, total minutes and 30-day chart),
     // `['course', ...]`, and every progress-derived entry are all the
     // departing user's. Overwriting only `me` left the rest in place, so an

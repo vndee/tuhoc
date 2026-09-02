@@ -9,9 +9,10 @@
  * `annotations/MarginCards.tsx`'s `DRAFT_KEY` comment and
  * `.superpowers/sdd/2026-08-19-p2-annotations/task-6-fix-report.md`). What
  * the fix also did, without anyone noticing, was open a SECOND local store
- * holding the user's own words — and `clearLocalData()`, the single truth
+ * holding the user's own words — and `clearLocalData()` (now
+ * `clearSession()`, `auth/session.ts` — see Task 10), the single truth
  * point for "this browser now belongs to somebody else", only ever emptied
- * the Dexie tables.
+ * the Dexie tables at the time.
  *
  * `DRAFT_KEY` is a CONSTANT (`'itbook-note-draft'`), not a per-user key, and
  * `localStorage` never expires. So the words one reader typed sat in the
@@ -19,12 +20,12 @@
  *
  * Why the whole flow and not just "does the function delete the key":
  * neither half of this bug is wrong on its own. Stamping the draft
- * synchronously is correct. Clearing every Dexie table is correct. The
+ * synchronously is correct. Clearing every durable store is correct. The
  * defect is only visible where the two meet, so the test has to walk the
  * same ground a person does — type through the real editor, leave through
  * the real `useLogout`, arrive through the real `<Login>` — and both
  * doorways are checked, because both of them clear local data and both of
- * them are load-bearing (`db/local.ts`'s own doc comment names them).
+ * them are load-bearing (`auth/session.ts`'s own doc comment names them).
  *
  * Deliberately no `<App/>` and no `useSyncLifecycle` here: ruling P2-F3
  * forbids "sync immediately on login", and a test that started a cycle
@@ -45,21 +46,20 @@ import { normalizeContainer } from '../annotations/normalize';
 import { type Ann, type ChapterContent, useAnnotations } from '../annotations/useAnnotations';
 import { RequireAuth } from '../auth/RequireAuth';
 import { useLogout } from '../auth/useLogout';
-import { clearLocalData, db } from '../db/local';
 import { Login } from '../pages/Login';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 import { ThemeProvider } from '../theme/ThemeContext';
 
 /**
  * The theme key, written out rather than imported from the registry in
- * `db/local.ts` — the same choice `theme.test.tsx` makes.
+ * `db/localStorage.ts` — the same choice `theme.test.tsx` makes.
  *
  * On purpose: this file's job is to say what is really in the browser after
  * a change of account. If it asked the registry which keys to look at, a
  * change that dropped a key OUT of the registry would take this test's
  * eyesight with it, and the whole point is to have one witness that cannot
  * be fooled that way. The registry's own consistency is pinned separately,
- * in `db/local.test.ts`.
+ * in `db/localStorage.test.ts`.
  */
 const THEME_KEY = 'itbook-theme';
 
@@ -216,13 +216,14 @@ function LogoutButton() {
  * `<Login>`, plus a sample of what was in `localStorage` the FIRST time the
  * sign-in screen rendered.
  *
- * Same idea as `Login.test.tsx`'s `SyncLifecycleProbe`, and for the same
- * reason: "the browser is clean once the dust settles" would also pass for
- * a fix that cleaned up late, by accident. This route's render phase runs
- * strictly after `useLogout`'s `await clearLocalData()` and strictly before
- * the departing reader's unmount flush — so a sample taken here is a sample
- * of what the truth point itself left behind, with nothing else's timing
- * mixed in.
+ * Same idea as the effect-timing probes elsewhere in this phase's tests
+ * (e.g. Task 10's own report on `Login.test.tsx`), and for the same reason:
+ * "the browser is clean once the dust settles" would also pass for a fix
+ * that cleaned up late, by accident. This route's render phase runs
+ * strictly after `useLogout`'s `await clearSession(queryClient)` and
+ * strictly before the departing reader's unmount flush — so a sample taken
+ * here is a sample of what the truth point itself left behind, with
+ * nothing else's timing mixed in.
  */
 function LoginRoute({ onArrive }: { onArrive: (draft: string | null) => void }) {
   // A `useState` initializer runs exactly once, during the FIRST render of
@@ -303,10 +304,10 @@ function GuardedBrowser({ at = '/' }: { at?: string }) {
 const server = setupServer(
   // Nobody is signed in, by default — this is how the app says that (see api/useMe.ts).
   http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })),
-  // `useLogout` runs the REAL engine's best-effort final flush before it
-  // clears anything. These are the three endpoints one cycle can touch.
-  http.post('/sync', () => HttpResponse.json({ applied: 0 })),
-  http.get('/sync', () => HttpResponse.json({ progress: [], annotations: [], cursor: 'c0' })),
+  // `useLogout` runs a real best-effort final flush before it clears
+  // anything (waits for in-flight mutations, then flushes queued study
+  // events — Task 10 removed the Dexie outbox `/sync` used to drain, so
+  // that endpoint is no longer touched here at all).
   http.post('/events/batch', () => HttpResponse.json({ accepted: 0 })),
   http.post('/auth/logout', () => new HttpResponse(null, { status: 200 })),
   // Tied to the ACTUAL request resolving, not to `bSignsIn`'s own timing —
@@ -357,8 +358,11 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-beforeEach(async () => {
-  await clearLocalData();
+beforeEach(() => {
+  // `window.localStorage.clear()` alone is the full reset now — Task 10
+  // removed Dexie, so `clearUserContent()`'s own job (emptying
+  // `USER_CONTENT_KEYS`) is a strict subset of what a full `.clear()`
+  // already does here, making a separate call redundant.
   window.localStorage.clear();
   document.body.innerHTML = '';
   setViewportWidth(WIDE);
@@ -368,8 +372,7 @@ beforeEach(async () => {
   patchCount = 0;
 });
 
-afterEach(async () => {
-  await clearLocalData();
+afterEach(() => {
   window.localStorage.clear();
   setViewportWidth(1024);
 });
@@ -426,10 +429,15 @@ async function bSignsIn(): Promise<void> {
   await user.click(screen.getByRole('button', { name: /đăng nhập/i }));
 }
 
-/** Everything of A's that this browser could still be holding, in one place. */
-async function whatIsLeftInTheBrowser(): Promise<{ tables: number[]; draft: string | null; theme: string | null }> {
+/**
+ * Everything of A's that this browser could still be holding, in one place.
+ *
+ * Task 10 note: this used to also report `tables: number[]` (every Dexie
+ * table's row count). Dexie is gone — `localStorage` is the only local
+ * store left, so it is the whole of what this function reports now.
+ */
+function whatIsLeftInTheBrowser(): { draft: string | null; theme: string | null } {
   return {
-    tables: await Promise.all(db.tables.map((t) => t.count())),
     draft: window.localStorage.getItem(DRAFT_KEY),
     theme: window.localStorage.getItem(THEME_KEY),
   };
@@ -446,14 +454,14 @@ describe('one browser, two accounts — the note draft is the departing user’s
     render(<Browser onArriveAtLogin={(draft) => (draftWhenTheBrowserWasDeclaredClean = draft)} />);
     await aTypesAPrivateNote(row.id);
 
-    // The real hook: stopSync → best-effort flush → POST /auth/logout →
-    // clearLocalData → /login. The card is STILL OPEN while all of that
+    // The real hook: best-effort flush → POST /auth/logout →
+    // clearSession() → /login. The card is STILL OPEN while all of that
     // runs, which is exactly why the draft is still stashed at the moment
     // the browser is declared clean.
     fireEvent.click(screen.getByRole('button', { name: 'Đăng xuất' }));
     await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument(), { timeout: 10_000 });
 
-    // Sampled by `LoginRoute` — after `clearLocalData()`, before the
+    // Sampled by `LoginRoute` — after `clearSession()`, before the
     // departing reader's unmount flush. Asserting only the end state would
     // let a LATER, incidental cleanup stand in for the fix: the departing
     // editor's own flush does clear the stash on its way out, but only
@@ -465,8 +473,7 @@ describe('one browser, two accounts — the note draft is the departing user’s
     await bSignsIn();
     await waitFor(() => expect(screen.getByTestId('chapter')).toBeInTheDocument());
 
-    const left = await whatIsLeftInTheBrowser();
-    expect(left.tables).toEqual(db.tables.map(() => 0));
+    const left = whatIsLeftInTheBrowser();
     expect(left.draft).toBeNull();
     expect(left.theme).toBe('dark');
 
@@ -489,8 +496,7 @@ describe('one browser, two accounts — the note draft is the departing user’s
     await bSignsIn();
     await waitFor(() => expect(screen.getByTestId('chapter')).toBeInTheDocument());
 
-    const left = await whatIsLeftInTheBrowser();
-    expect(left.tables).toEqual(db.tables.map(() => 0));
+    const left = whatIsLeftInTheBrowser();
     expect(left.draft).toBeNull();
     expect(left.theme).toBe('dark');
     expect(document.body.textContent ?? '').not.toContain(A_PRIVATE);
@@ -574,7 +580,7 @@ function coldLoad(at = '/'): void {
  * The property being tested is not "the guard is strict" — a guard that
  * refused everything would pass a negative test and break the feature. It
  * is that the offline render is driven by THIS BROWSER'S CURRENT local
- * session: whatever `clearLocalData()` last left behind, and nothing older.
+ * session: whatever `clearSession()` last left behind, and nothing older.
  * So both directions are here, and the positive one runs first, because a
  * negative result means nothing until the setup is known to work.
  */
@@ -604,9 +610,10 @@ describe('one browser, two accounts — reading offline must never open the prev
     render(<GuardedBrowser />);
     await waitForCards(1);
 
-    // The real hook — and the real `clearLocalData()` inside it, which takes
-    // the offline marker with it because the marker is a `db.meta` row and
-    // that function empties `db.tables`. Nothing was written for it.
+    // The real hook — and the real `clearSession()` inside it, which takes
+    // the offline marker with it directly (Task 10: the marker moved from
+    // Dexie's `db.meta` to a `localStorage` key `clearSession()` clears by
+    // name — see `auth/session.ts`'s `clearSessionVerifiedMarker`).
     fireEvent.click(screen.getByRole('button', { name: 'Đăng xuất' }));
     await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument(), { timeout: 10_000 });
 
@@ -641,10 +648,12 @@ describe('one browser, two accounts — reading offline must never open the prev
     // The guard opened — B is not punished for A having been here.
     await waitFor(() => expect(screen.getByTestId('chapter')).toBeInTheDocument());
     expect(screen.queryByText(/kết nối/i)).not.toBeInTheDocument();
-    // And it opened onto B's own browser state, which holds nothing of A's.
+    // And it opened onto B's own browser state, which holds nothing of A's
+    // — `waitForCards(0)` is now the whole of that claim (Task 10 removed
+    // the local `db.annotations` table this used to also check directly;
+    // annotations are exclusively server-side, scoped by session cookie).
     await waitForCards(0);
     expect(document.body.textContent ?? '').not.toContain(A_PRIVATE);
-    expect(await db.annotations.count()).toBe(0);
   }, 20_000);
 
   it('A never logged out, but the server says 401: the answer wins over the marker, offline branch or not', async () => {

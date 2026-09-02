@@ -33,7 +33,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { flushEvents, queueEvent, resetEventQueue, startEventFlusher, type StudyEvent } from '../api/events';
 import { useMe } from '../api/useMe';
 import { useLogout } from '../auth/useLogout';
-import { clearLocalData } from '../db/local';
+import { clearUserContent } from '../db/localStorage';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 import { Login } from '../pages/Login';
 import { ThemeProvider } from '../theme/ThemeContext';
@@ -145,14 +145,14 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 beforeEach(async () => {
-  await clearLocalData();
+  await clearUserContent();
   resetEventQueue();
   currentAccountId = 'u-a';
   batches = [];
 });
 
 afterEach(async () => {
-  await clearLocalData();
+  await clearUserContent();
 });
 
 /** B fills in the real sign-in form and submits it — same helper shape as `test/accountHandoff.test.tsx`'s `bSignsIn`. */

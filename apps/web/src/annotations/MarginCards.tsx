@@ -78,7 +78,7 @@
  */
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type LocalStorageKey, readLocalStorage, writeLocalStorage } from '../db/local';
+import { type LocalStorageKey, readLocalStorage, writeLocalStorage } from '../db/localStorage';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { type CardMeasure, DEFAULT_GAP, layoutCards } from './layout';
 import { highlightElements, highlightRects } from './painter';
@@ -197,7 +197,7 @@ const WRITE_DEBOUNCE_MS = 600;
  * unbounded set of keys to expire; this is the cheaper end of that trade and
  * the reason is here so the next person can re-decide it.
  *
- * The key itself is DECLARED in `db/local.ts`, not here, and is classified
+ * The key itself is DECLARED in `db/localStorage.ts`, not here, and is classified
  * there as user content. That is deliberate and it is the whole lesson of
  * this mechanism's own follow-up bug: this is a per-BROWSER slot holding one
  * person's private words, so the thing that empties this browser for the next
