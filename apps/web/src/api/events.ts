@@ -87,8 +87,59 @@
  * network, and only reinjects on failure if that generation is still
  * current — a `resetEventQueue()` in between means the batch is dropped,
  * not written back.
+ *
+ * ## `queueOwner` — and why both fixes above were about the WRONG TAB
+ *
+ * Everything written above is about ONE tab: the tab that performs an auth
+ * transition, and therefore the tab that runs `clearSession()`. The final
+ * whole-branch review found the same leak in the tab that does NOT.
+ *
+ * `clearSession()` is tab-local by construction. The only thing that
+ * crosses to another tab is `auth/sessionIdentity.ts`'s announcement, over
+ * a `BroadcastChannel`. Before Task 10 there was exactly one reader of it
+ * on the data path — `sync/engine.ts`'s `runCycle`, which opened with
+ * `if (sessionWasSuperseded()) { stopSync(); return; }`, the ONLY place in
+ * this app that asked *whose data am I about to send* before sending a
+ * learner's data. Task 10 deleted that engine. This module took over one
+ * half of its job and inherited none of its guard.
+ *
+ * The path, measured (`test/supersededTabHandoff.test.tsx`): tab 2 sits on
+ * `/c/:courseId/:chapterId` — a PUBLIC route, deliberately outside
+ * `<RequireAuth>` — with `useMe` cached as A (`staleTime: 60_000`, tab
+ * unfocused), so `AuthedReaderExtras` stays mounted and `startHeartbeat`
+ * keeps calling `queueEvent` every 30s. In tab 1, A signs out and B signs
+ * in. Tab 2 hears `announceSessionUser(null)` and sets `superseded` — and
+ * nothing reads it. `startEventFlusher`'s 90s interval fires anyway,
+ * `api/client.ts`'s `send()` always sends `credentials: 'include'` — B's
+ * cookie now — and `stats.EventsBatch` writes every row with `auth.UID(c)`.
+ * A's study minutes land in B's account, repeatedly.
+ *
+ * TWO windows, not one, which is why the fix is not a single `if`:
+ *
+ *   - WHILE `superseded` is true, every beat this tab queues (the reader is
+ *     still scrolling A's chapter) would go out under B.
+ *   - AFTER tab 2 refetches `GET /me` and learns it is B, `superseded` is
+ *     cleared — correctly: this tab has just established, first-hand, who
+ *     the browser belongs to. But the QUEUE is still A's, and nothing
+ *     empties it: `resetEventQueue()` is only ever called from
+ *     `clearSession()`, which never runs in this tab.
+ *
+ * So the queue is STAMPED with the session it was collected under
+ * (`queueOwner`, from `establishedSessionUser()`), and `flushEvents` sends
+ * only when BOTH facts still hold: this tab has not been superseded, and
+ * the browser still belongs to the same account the queue does. Each half
+ * answers a window the other cannot see, and each is pinned by its own test
+ * in `test/supersededTabHandoff.test.tsx` (both proven able to fail — see
+ * the final fix report's mutation section).
+ *
+ * Read synchronously, at the moment of sending, rather than through a
+ * `subscribeToSessionChanges` listener: `sessionIdentity.ts`'s own doc says
+ * why — "a guard that only works when its event arrives is a guard whose
+ * failure mode is silence. Reading a boolean cannot miss." That was written
+ * about `runCycle`, and it is inherited here along with the job.
  */
 
+import { establishedSessionUser, sessionWasSuperseded } from '../auth/sessionIdentity';
 import { api } from './client';
 
 /** One study event, exactly as the server's `EventsBatch` parses it.
@@ -150,12 +201,66 @@ let queue: StudyEvent[] = [];
  */
 let queueGeneration = 0;
 
+/**
+ * Which session's data is sitting in `queue` right now — the value
+ * `establishedSessionUser()` (`auth/sessionIdentity.ts`) returned at the
+ * moment the current batch started collecting.
+ *
+ * `undefined` means either "the queue is empty, so nobody owns it" or
+ * "this tab had not yet learned who the browser belongs to when the first
+ * event was queued". The two are the same thing for this module's purposes
+ * — in both cases there is no account this batch can be honestly
+ * attributed to, and `flushEvents` compares against the CURRENT value, so
+ * a batch collected before `GET /me` answered is sent only if the answer,
+ * when it arrives, is still `undefined` (it never is: `useMe` announces
+ * either an id or `null`).
+ *
+ * See this module's header for the leak this closes. The short version:
+ * `sessionWasSuperseded()` is only true until the superseded tab
+ * re-establishes an identity of its own, and the queue outlives that
+ * moment.
+ */
+let queueOwner: string | null | undefined;
+
+/**
+ * Empties the queue because what is in it belongs to a session this
+ * browser no longer has — never because of an ordinary flush.
+ *
+ * Bumps `queueGeneration` for exactly the reason `resetEventQueue()` does
+ * (see that generation's own doc): a flush of the SAME batch may still be
+ * in flight, and if it later fails, its `catch` must drop the batch rather
+ * than write a departed session's events into the queue this function just
+ * handed to whoever comes next.
+ */
+function discardOrphanedQueue(reason: string): void {
+  if (queue.length > 0) {
+    console.error(
+      `tuhoc events: ${reason}; dropping ${queue.length} queued study event(s) rather than sending them under whichever account holds this browser's cookie now`,
+    );
+  }
+  queue = [];
+  queueGeneration += 1;
+  queueOwner = establishedSessionUser();
+}
+
 /** Appends one event to the in-memory queue. Synchronous, and never
  * touches the network — batching is entirely `flushEvents`'s job — so a
  * caller (`progress/heartbeat.ts`'s tick) can call this from a plain
  * `setInterval` callback with nothing to await and nothing that can
- * reject. */
+ * reject.
+ *
+ * Stamps the batch with whoever this tab currently believes the browser
+ * belongs to (`queueOwner`). When that has CHANGED since the batch started
+ * — a tab that was superseded and has since learned it is now B — whatever
+ * the queue still holds is A's and is discarded here, before B's own first
+ * event joins it. Without this the two would travel together and
+ * `flushEvents`'s owner check, seeing a batch stamped A, would have to
+ * drop B's beat along with A's: correct, but a silent loss of the arriving
+ * account's data for no reason. */
 export function queueEvent(event: StudyEvent): void {
+  if (establishedSessionUser() !== queueOwner) {
+    discardOrphanedQueue('the session that queued these study events is no longer the one this browser belongs to');
+  }
   queue.push(event);
 }
 
@@ -195,6 +300,11 @@ export function queueEvent(event: StudyEvent): void {
 export function resetEventQueue(): void {
   queue = [];
   queueGeneration += 1;
+  // The queue is empty, so it has no owner. Not merely tidiness: leaving a
+  // departed account's id stamped here would make the NEXT event queued in
+  // this tab look, to `queueEvent`'s own comparison, like it arrived after
+  // an ownership change that has already been dealt with.
+  queueOwner = undefined;
 }
 
 /**
@@ -231,6 +341,25 @@ export function resetEventQueue(): void {
  */
 export async function flushEvents(): Promise<void> {
   if (queue.length === 0) return;
+
+  // THE GUARD `runCycle` USED TO OWN — see this module's header for the
+  // whole path, and `auth/sessionIdentity.ts` for why it is polled here
+  // rather than delivered as an event.
+  //
+  // Both halves are load-bearing and neither implies the other. While
+  // `superseded` is true this tab's own belief about the browser
+  // (`establishedSessionUser()`) is UNCHANGED — the flag is the only thing
+  // that moved — so the owner comparison alone would happily send. Once
+  // this tab re-establishes an identity the flag is cleared, so the flag
+  // alone would happily send a queue that is still the previous account's.
+  if (sessionWasSuperseded() || queueOwner !== establishedSessionUser()) {
+    discardOrphanedQueue(
+      sessionWasSuperseded()
+        ? 'another tab has taken this browser’s session'
+        : 'this browser now belongs to a different account than the one these events were collected under',
+    );
+    return;
+  }
 
   const batch = queue;
   const generation = queueGeneration;
