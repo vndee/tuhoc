@@ -504,11 +504,14 @@
    không storage, không đường vào phiên của người đọc. Cái giá đo được của
    quyết định ấy nằm ở ĐÂY: trang cha không có cách nào hỏi khung "nội dung
    của mày cao bao nhiêu" (không origin chung để gọi qua), và cũng không đọc
-   được DOM bên trong để tự đo — nên `.widget-frame` không thể "vừa khít nội
-   dung" như một `<img>` hay một canvas tự đo được nữa. MỘT chiều cao cố định
-   là lựa chọn được CHẤP NHẬN ở đây; nó không phải chỗ để nới sandbox ra
-   `allow-same-origin` rồi tự đo bên trong — làm vậy là xoá luôn hàng rào mà
-   toàn bộ Task 11 dựng lên. */
+   được DOM bên trong để tự đo. Nhưng KHUNG thì nói được với trang: một
+   `postMessage` từ origin mờ vẫn đi ra — `WidgetFrame.tsx` nghe thông điệp
+   `tuhoc:widget-height` từ đúng khung của nó, kẹp 160–1400px, rồi đặt
+   `style.height` đè lên con số dưới đây. 420px vì thế là MẶC ĐỊNH cho widget
+   không nói gì, không còn là trần: đo trên khoá đầu tiên có 58 hình, một phần
+   ba cao 450–490px và hàng readout bị cắt trong khung 420 mà không ai thấy
+   thanh cuộn. Vẫn không phải chỗ để nới sandbox ra `allow-same-origin` rồi tự
+   đo bên trong — làm vậy là xoá luôn hàng rào mà toàn bộ Task 11 dựng lên. */
 #app.reading .widget-frame {
   display: block;
   width: 100%;

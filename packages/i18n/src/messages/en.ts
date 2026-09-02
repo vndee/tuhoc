@@ -57,9 +57,6 @@ export const en: Messages = {
   'settings.account.syncBlurb': 'Progress syncs through this account.',
   'settings.appearance.themeLight': 'Light',
   'settings.appearance.themeDark': 'Dark',
-  'settings.localData.statNotes': 'notes',
-  'settings.localData.statBytes': 'in use',
-  'settings.localData.statsAria': 'What this machine is holding',
 
   'settings.account.loading': 'Asking the server who is signed in…',
   'settings.account.unknown': 'Could not load your account details. This part needs the network.',
@@ -86,9 +83,9 @@ export const en: Messages = {
   // is exactly what `login.point.sync` already promises — see the vi
   // catalog's comment on this key.
   'settings.localData.blurb':
-    'Notes live in two places: a copy in this browser, and a copy synced to the server under your account — so signing in on another device still shows all of them. Courses aren’t downloaded as packages: they’re read straight from the server.',
-  'settings.localData.clearedOnSignOut':
-    'The local database is named after the BROWSER, not the user — so it is wiped whenever a different person signs in, even if nobody signed out.',
+    'Notes, progress and minutes studied all live on the server, under your account — this device keeps no copy, so signing in elsewhere shows everything. Courses are read straight from the server too; nothing is downloaded.',
+  'settings.localData.draft':
+    'The one thing of yours on this device is the note you are still typing, kept so a reload does not lose it. Signing out, or signing in as someone else, clears that draft.',
   'settings.localData.kept': 'Language and theme stay: they belong to the device.',
 
   /* AI section — Phase 2 (task-14): credit + agent config replace the key
@@ -222,6 +219,8 @@ export const en: Messages = {
   'home.notes.open': 'Open the chapter',
   'home.notes.formula': 'formula',
   'home.notes.aria': (course: string) => `Open this note in ${course}`,
+  'toc.next': 'Next',
+  'toc.done': 'Read',
 
   /** Dashboard empty state, after the import flow died — see vi.ts's comment. */
   'home.empty.heading': 'You have not started a course yet',
@@ -251,12 +250,6 @@ export const en: Messages = {
   'progress.heat.less': 'less',
   'progress.heat.more': 'more',
   'progress.byCourse': 'By course',
-  'progress.stat.chapters': 'Chapters read',
-  'progress.stat.chaptersSub': (n: string) => `across ${n} courses on this device`,
-  'progress.stat.streak': 'Day streak',
-  'progress.stat.streakSub': 'as of today',
-  'progress.stat.notes': 'Notes written',
-  'progress.stat.notesSub': 'kept on this device',
   /** Rewritten at fix-round-2 (task-14) — see vi.ts's comment for why, and for why this stops right before "Courses" rather than repeating it. */
   'progress.noCourses': 'Nothing to measure yet. Start reading under',
   'progress.chaptersDone': (n: string) => `${n} chapters read`,
@@ -308,7 +301,7 @@ export const en: Messages = {
 
   /* ── the Courses screen (`pages/Courses.tsx`) — see vi.ts's comment ────── */
   'courses.title': 'Courses',
-  'courses.lede': 'Every course, public — free to read, no account needed.',
+  'courses.lede': 'Every course, in the open. Pick one to start reading.',
   'courses.loading': 'Loading the catalog…',
   'courses.empty': 'No courses have been published yet.',
   'courses.list.aria': 'Course catalog',
@@ -776,7 +769,7 @@ export const en: Messages = {
   'admin.nav.pricing': 'Pricing & base prompt',
 
   'admin.title': 'Course administration',
-  'admin.lede': 'Publish, unpublish, or roll back a course — the same validation rules `tuhoc pack` runs on the command line.',
+  'admin.lede': 'Publish, unpublish, or roll back a course — the same validation rules tuhoc pack runs on the command line.',
   'admin.loading': 'Loading the list…',
   'admin.empty': 'No courses have been published yet.',
 

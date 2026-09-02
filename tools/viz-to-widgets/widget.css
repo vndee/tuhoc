@@ -1,0 +1,74 @@
+/* Bảng biến của course-kit/reader.css, chép lại vì iframe sandbox có origin mờ
+   và không thừa kế gì từ trang chứa. Tối theo prefers-color-scheme (giới hạn
+   đã biết: khung reader dùng công tắc html[data-theme], iframe không đọc được). */
+:root {
+  color-scheme: light dark;
+  --surface-1:#fcfcfb; --page:#f7f6f3; --panel:#f2f1ec;
+  --ink:#0b0b0b; --ink-2:#52514e; --ink-3:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --rule:rgba(11,11,11,.10); --rule-strong:rgba(11,11,11,.18);
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100;
+  --s5:#e87ba4; --s6:#008300; --s7:#4a3aa7; --s8:#e34948;
+  --seq-100:#cde2fb; --seq-150:#b7d3f6; --seq-200:#9ec5f4; --seq-250:#86b6ef;
+  --seq-300:#6da7ec; --seq-350:#5598e7; --seq-400:#3987e5; --seq-450:#2a78d6;
+  --seq-500:#256abf; --seq-550:#1c5cab; --seq-600:#184f95; --seq-650:#104281; --seq-700:#0d366b;
+  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
+  --accent:#2a78d6;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --serif: "Iowan Old Style", "Charter", "Georgia", "Times New Roman", serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface-1:#1a1a19; --page:#0d0d0d; --panel:#161615;
+    --ink:#f3f2ee; --ink-2:#c3c2b7; --ink-3:#8e8c85;
+    --grid:#2c2c2a; --axis:#3d3d3a; --rule:rgba(255,255,255,.10); --rule-strong:rgba(255,255,255,.18);
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
+    --s5:#d55181; --s6:#3aa93a; --s7:#9085e9; --s8:#e66767;
+    --seq-100:#0d366b; --seq-150:#104281; --seq-200:#184f95; --seq-250:#1c5cab;
+    --seq-300:#256abf; --seq-350:#2a78d6; --seq-400:#3987e5; --seq-450:#5598e7;
+    --seq-500:#6da7ec; --seq-550:#86b6ef; --seq-600:#9ec5f4; --seq-650:#b7d3f6; --seq-700:#cde2fb;
+    --accent:#5598e7;
+  }
+}
+html, body { margin:0; background:var(--surface-1); color:var(--ink); font-family:var(--serif); font-size:15px; line-height:1.5 }
+/* Không min-height: scrollHeight phải là chiều cao THẬT của nội dung để báo cho khung. */
+body { box-sizing:border-box; padding:14px 16px 12px; overflow:hidden }
+#host { position:relative }
+canvas { display:block; max-width:100% }
+.small { font-size:14px; color:var(--ink-2) }
+.muted { color:var(--ink-3) }
+.ctrls { display:flex; flex-wrap:wrap; gap:14px 20px; align-items:flex-end; margin:2px 0 14px; font-family:var(--sans); font-size:12px }
+.ctrl { display:flex; flex-direction:column; gap:4px; min-width:132px }
+.ctrl > label { font-size:11px; color:var(--ink-3); font-weight:600; letter-spacing:.02em; display:flex; justify-content:space-between; gap:10px }
+.ctrl > label b { color:var(--ink); font-variant-numeric:tabular-nums; font-weight:660 }
+input[type=range] { -webkit-appearance:none; appearance:none; width:100%; height:18px; background:none; cursor:pointer; margin:0 }
+input[type=range]::-webkit-slider-runnable-track { height:4px; background:var(--grid); border-radius:2px }
+input[type=range]::-moz-range-track { height:4px; background:var(--grid); border-radius:2px }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:var(--accent); margin-top:-5px; border:2px solid var(--surface-1); box-shadow:0 0 0 1px var(--rule-strong) }
+input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:50%; border:2px solid var(--surface-1); background:var(--accent); box-shadow:0 0 0 1px var(--rule-strong) }
+.btn { font-family:var(--sans); font-size:12px; font-weight:600; padding:6px 12px; border-radius:7px; border:1px solid var(--rule-strong); background:var(--surface-1); color:var(--ink-2); cursor:pointer }
+.btn:hover { border-color:var(--accent); color:var(--accent) }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:#fff }
+.btn.primary:hover { filter:brightness(1.08); color:#fff }
+.seg { display:inline-flex; border:1px solid var(--rule-strong); border-radius:7px; overflow:hidden }
+.seg button { font-family:var(--sans); font-size:11.5px; font-weight:600; padding:5px 10px; border:none; background:var(--surface-1); color:var(--ink-2); cursor:pointer; border-right:1px solid var(--rule) }
+.seg button:last-child { border-right:none }
+.seg button.on { background:var(--accent); color:#fff }
+.chk { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-2); cursor:pointer }
+.legend { display:flex; flex-wrap:wrap; gap:8px 16px; font-family:var(--sans); font-size:11.5px; color:var(--ink-2); margin:8px 0 2px }
+.legend span.k { display:inline-flex; align-items:center; gap:6px }
+.legend i { width:11px; height:11px; border-radius:3px; display:inline-block; flex:0 0 11px }
+.legend i.ln { height:3px; border-radius:2px; width:14px }
+.readout { display:flex; flex-wrap:wrap; gap:0; font-family:var(--sans); margin:12px 0 0; border:1px solid var(--rule); border-radius:10px; overflow:hidden; background:var(--panel) }
+.readout .cell { flex:1 1 110px; padding:9px 12px; border-right:1px solid var(--rule); min-width:104px }
+.readout .cell:last-child { border-right:none }
+.readout .k { font-size:10.5px; color:var(--ink-3); letter-spacing:.03em; margin-bottom:3px; line-height:1.25; min-height:2.2em }
+.readout .v { font-size:17px; font-weight:660; font-variant-numeric:tabular-nums; letter-spacing:-.02em }
+.tip { position:absolute; pointer-events:none; background:var(--ink); color:var(--surface-1); font-family:var(--sans); font-size:11.5px; line-height:1.45; padding:6px 9px; border-radius:7px; opacity:0; transition:opacity .1s; z-index:30; white-space:nowrap; box-shadow:0 4px 14px rgba(0,0,0,.2) }
+.tip.on { opacity:1 }
+.relwrap { position:relative }
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:18px }
+@media (max-width:640px) { .grid2 { grid-template-columns:1fr } }
+.matgrid { display:inline-grid; gap:3px; font-family:var(--sans) }
+.matcell { width:62px; height:40px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:12px; font-variant-numeric:tabular-nums; cursor:ns-resize; user-select:none; border:1px solid var(--rule) }
+.mathdr { font-size:11px; color:var(--ink-3); display:flex; align-items:center; justify-content:center; font-family:var(--sans); font-weight:600 }

@@ -59,28 +59,45 @@
    không phải thứ Tailwind quét được, nên nó sẽ lặng lẽ nhận giá trị rỗng. */
 @theme static {
   /* ── CHỮ ────────────────────────────────────────────────────────────────
-     Inter cho KHUNG ứng dụng. Nội dung chương KHÔNG dùng nó: trang đọc giữ
-     serif của `course-kit/reader.css` (`--serif`) với khổ `--measure: 43rem`.
-     Ranh giới ấy là ràng buộc lớn nhất của hướng A — hai họ chữ trong một màn
-     chỉ hoạt động khi mỗi họ có địa phận rõ ràng. */
-  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+     Thế giới "giáo trình LaTeX, lề rộng" (hợp đồng hướng, brief của
+     `pages/Dashboard.tsx`; seed 57dcb485). HAI vai, mỗi vai một địa phận:
+
+     - `--font-serif` — Charis SIL: hậu duệ Bitstream Charter, SIL OFL, có
+       đủ dấu tiếng Việt (subset `vietnamese` được kiểm khi cài). Đây là chữ
+       THÂN của khung app: câu dẫn, tên chương, mô tả khoá, ghi chú trích ở lề.
+       Nó cùng giọng với thân bài trong `course-kit/reader.css`, vốn đã xếp
+       Charter trước Georgia — nên đây không phải một họ chữ mới cho reader mà
+       là bản Charter chắc chắn có mặt trên mọi máy.
+     - `--font-sans` — Archivo Narrow: sans hẹp cho NHÃN, running head, đầu
+       cột, nút, số mục. Hẹp là cố ý: trong một trang typeset, sans chỉ đứng ở
+       lề và đầu trang, không bao giờ là thân.
+
+     Inter/IBM Plex đã rời khỏi đây: cả hai nằm trong danh sách phông "mặc
+     định mọi mô hình ship", và không lý do nào ngoài quán tính giữ chúng. */
+  --font-serif: 'Charis SIL', 'Charter', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --font-sans: 'Archivo Narrow', 'Arial Narrow', 'Roboto Condensed', system-ui, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
 
   /* ── BRAND ──────────────────────────────────────────────────────────────
-     Tím là mặc định của Untitled UI. Nó là MỘT thang, không phải một quyết
-     định rải khắp mã: đổi sang xanh #2a78d6 mà app đang dùng là sửa đúng khối
-     này, không màn nào phải sửa theo. */
-  --color-brand-25: #fcfaff;
-  --color-brand-50: #f9f5ff;
-  --color-brand-100: #f4ebff;
-  --color-brand-200: #e9d7fe;
-  --color-brand-300: #d6bbfb;
-  --color-brand-400: #b692f6;
-  --color-brand-500: #9e77ed;
-  --color-brand-600: #7f56d9;
-  --color-brand-700: #6941c6;
-  --color-brand-800: #53389e;
-  --color-brand-900: #42307d;
+     Xanh "hộp định lý" — màu nhấn DUY NHẤT của thế giới giáo trình LaTeX
+     (OWN-WORLD: #0B5FA5). Tím Untitled UI đã đi: nó là mặc định của một bộ
+     kit, không phải một quyết định về sản phẩm này. Vẫn là MỘT thang, nên đổi
+     màu nhấn lần sau vẫn chỉ sửa đúng khối này.
+
+     Chiến lược màu là Restrained (Operate): trung tính + một nhấn. Nhấn dùng
+     cho hành động chính, mục đang chọn, trạng thái — không bao giờ để tô nền
+     một vùng lớn hay trang trí. */
+  --color-brand-25: #f7fafd;
+  --color-brand-50: #eef5fb;
+  --color-brand-100: #d9e8f5;
+  --color-brand-200: #b3d1eb;
+  --color-brand-300: #85b5de;
+  --color-brand-400: #4d92cc;
+  --color-brand-500: #2676b8;
+  --color-brand-600: #0b5fa5;
+  --color-brand-700: #094d86;
+  --color-brand-800: #073c69;
+  --color-brand-900: #052c4e;
 
   /* ── GRAY ───────────────────────────────────────────────────────────────
      Nền, chữ, viền — gần như mọi thứ còn lại. */

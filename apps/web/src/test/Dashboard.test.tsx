@@ -257,7 +257,11 @@ describe('Học tiếp — MỘT hành động', () => {
 
     expect(await screen.findByText('Khóa học demo')).toBeInTheDocument();
     // Chương 3 — chương ĐẦU TIÊN chưa đọc, không phải chương sau chương vừa đọc.
-    expect(await screen.findByText('Chương 3')).toBeInTheDocument();
+    // Hỏi đúng HEADING của khối "Tiếp tục": từ vòng thiết kế lại (giáo trình
+    // LaTeX), trang chủ còn vẽ cả mục lục khoá, nên "Chương 3" xuất hiện hai
+    // lần — một ở heading đang dở, một ở dòng mục lục. Chỉ heading mới là câu
+    // trả lời cho "mở cái gì bây giờ"; dòng mục lục có bài canh riêng bên dưới.
+    expect(await screen.findByRole('heading', { name: /chương 3/i })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/2\s*\/\s*4/)).toBeInTheDocument());
     expect(cta()).toHaveAttribute('href', '/c/demo/ch-3');
   }, OVERSUBSCRIBED_MS);
@@ -327,10 +331,17 @@ describe('Học tiếp — MỘT hành động', () => {
     expect(out.length, 'thẻ lỗi không có đường nào đi tiếp').toBeGreaterThanOrEqual(1);
   }, OVERSUBSCRIBED_MS);
 
-  it('KHÔNG còn một con số học tập nào ở trang chủ — chúng đã sang /progress', async () => {
-    // Bài chống-đi-ngược. Trang này từng mở đầu bằng `streakDays` và
+  it('KHÔNG có bảng số liệu ở trang chủ — chỉ một dòng meta serif dưới hành động: khoá · chương · phút của khoá đang dở', async () => {
+    // Bài chống-đi-ngược, thu hẹp đúng một vế ở vòng thiết kế lại (giáo trình
+    // LaTeX, seed 57dcb485). Trang này từng mở đầu bằng `streakDays` và
     // `totalMinutes` cỡ lớn; với một tài khoản mới đó là HAI SỐ 0 to đùng, và
-    // đó là màn hình đầu tiên của cả sản phẩm. Con số nào quay lại đây sẽ đỏ.
+    // đó là màn hình đầu tiên của cả sản phẩm. Những con số ẤY (tổng phút, chuỗi
+    // ngày, biểu đồ 30 cột) quay lại đây sẽ đỏ.
+    //
+    // Nhưng hợp đồng hướng đặt tên dòng Tiếp tục là "chương, đoạn, phút": số
+    // phút của CHÍNH KHOÁ ĐANG DỞ đứng trong một câu serif dưới tên chương —
+    // đó là ngữ cảnh của hành động, không phải một con số để ngắm. Ranh giới
+    // của đặc tả IA ("KHÔNG phải bảng số liệu") nằm ở đó.
     server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(4))));
     server.use(
       http.get('/stats', () =>
@@ -351,12 +362,21 @@ describe('Học tiếp — MỘT hành động', () => {
     // không phải vì trang còn trống.
     expect(await screen.findByText('Khóa học demo')).toBeInTheDocument();
 
+    // Bảng số liệu: vắng.
     expect(screen.queryByText('372')).not.toBeInTheDocument();
-    expect(screen.queryByText('120')).not.toBeInTheDocument();
+    expect(screen.queryByText(/372 phút/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/ngày liên tục/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/phút đã học/i)).not.toBeInTheDocument();
     expect(document.querySelector('.dash-chart'), 'biểu đồ 30 cột vẫn còn trên trang chủ').toBeNull();
     expect(document.querySelectorAll('.dash-bar')).toHaveLength(0);
+    expect(document.querySelectorAll('.prog-weight, .prog-cal, .prog-row')).toHaveLength(0);
+
+    // Dòng meta: phút của khoá đang dở, trong CÙNG một câu với tên khoá và số
+    // chương — không phải một ô số đứng riêng.
+    const meta = document.querySelector('.cont-meta');
+    expect(meta).not.toBeNull();
+    expect(meta).toHaveTextContent('Khóa học demo');
+    expect(meta).toHaveTextContent(tr('vi', 'progress.course.minutes', '120'));
+    expect(screen.getAllByText(/phút đã học/i)).toHaveLength(1);
   }, OVERSUBSCRIBED_MS);
 });
 
@@ -375,8 +395,13 @@ describe('Học tiếp — ghi chú gần đây', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent('ghi chú mới');
     expect(rows[1]).toHaveTextContent('ghi chú cũ');
-    // Đường về đúng chương, không phải về trang khoá học.
-    expect(within(rows[0]).getByRole('link')).toHaveAttribute('href', '/c/demo/ch-3');
+    // Đường về đúng chương, không phải về trang khoá học. Từ vòng thiết kế
+    // lại, mỗi ghi chú có HAI liên kết cùng đích: trích đoạn (gạch chân khi
+    // hover) và nhãn "Mở chương". Cả hai phải về cùng một chương — không liên
+    // kết nào được về trang khoá.
+    const links = within(rows[0]).getAllByRole('link');
+    expect(links.length).toBeGreaterThanOrEqual(1);
+    for (const link of links) expect(link).toHaveAttribute('href', '/c/demo/ch-3');
     // Đoạn được bôi đen đi kèm: một ghi chú không có ngữ cảnh thì phải mở
     // chương ra mới hiểu được, tức là nó không giúp gì ở đây.
     expect(rows[0]).toHaveTextContent('một đoạn được bôi đen');

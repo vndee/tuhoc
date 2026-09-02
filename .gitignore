@@ -49,3 +49,12 @@ apps/api/bin/
 # and it is machine-generated, not authored — nothing here to review or
 # commit to.
 go.work.sum
+
+# Impeccable (skill thiết kế, cài ở mức dự án): phụ thuộc npm của skill và các
+# tạo tác THEO PHIÊN — ảnh chụp vòng kiểm, trạng thái build, trang câu hỏi.
+# Hợp đồng hướng (`.impeccable/surfaces/`) và `config.json` thì được commit.
+.claude/skills/impeccable/node_modules/
+.impeccable/review/
+.impeccable/build/
+.impeccable/questions/
+.impeccable/live/

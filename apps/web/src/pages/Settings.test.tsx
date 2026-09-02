@@ -354,22 +354,15 @@ describe('Cài đặt — cửa đăng xuất', () => {
 });
 
 /**
- * TASK 9 — "Dữ liệu trên máy" đếm ghi chú từ `GET /annotations`, không từ
- * một bảng cục bộ.
+ * "DỮ LIỆU TRÊN MÁY" KHÔNG CÒN CON SỐ NÀO — và không được có lại.
  *
- * `LocalDataSection` từng đọc thẳng Dexie (`useLocalFootprint`'s
- * `db.annotations.count()`) — số ĐÚNG cho một thế giới nơi ghi chú chỉ tồn tại
- * cục bộ cho tới khi outbox flush. Sau Task 7, ghi chú đã là dữ liệu MÁY CHỦ
- * (TanStack Query qua `api/annotations.ts`, cùng cache `annotationsQueryKey()`
- * mà `useAnnotations`/`progress/recent.ts` dùng).
- *
- * Task 10 xoá hẳn Dexie: bài kiểm cũ ở đây gieo một con số Dexie CỐ Ý SAI
- * (5, khác con số `GET /annotations` trả về) để phân biệt "đọc /annotations"
- * với "vẫn đọc Dexie mà tình cờ đúng" — phép đối chứng ấy nay VÔ NGHĨA THEO
- * ĐÚNG NGHĨA CẤU TRÚC: không còn `db.annotations` nào để gieo sai vào nữa,
- * nên không có đường nào cho trang "tình cờ đọc đúng" một nguồn không tồn
- * tại. Bài dưới đây giữ nguyên khẳng định còn lại — số hiện ra khớp với máy
- * chủ.
+ * Bản Task 9 của mục này đếm ghi chú từ `GET /annotations` và bài kiểm ở đây
+ * từng canh đúng con số ấy. Nhưng một con số MÁY CHỦ đứng dưới tiêu đề "trên
+ * máy" là một lời hứa sai theo cách khác: người dùng đọc nó thành "máy này
+ * đang giữ 2 ghi chú của tôi", trong khi sau Pha 3 máy này không giữ ghi chú
+ * nào. Mục nay chỉ có chữ (xem doc của `LocalDataSection`). Bài dưới đây gieo
+ * hai ghi chú ở máy chủ và khẳng định KHÔNG có ô số nào trong mục này — kể cả
+ * khi dữ liệu có sẵn để đếm.
  */
 function ann(id: string): Ann {
   return {
@@ -383,11 +376,15 @@ function ann(id: string): Ann {
   };
 }
 
-describe('Cài đặt — "Dữ liệu trên máy" đếm ghi chú từ GET /annotations', () => {
-  it('số ghi chú hiện ra khớp với /annotations', async () => {
+describe('Cài đặt — "Dữ liệu trên máy" chỉ có chữ, không con số', () => {
+  it('không vẽ ô số nào trong mục, dù máy chủ có ghi chú để đếm', async () => {
     renderSettings(SIGNED_IN, FROM_AI_INVITE, [ann('a'), ann('b')]);
 
-    const stat = await screen.findByText('2');
-    expect(stat).toHaveClass('set-stat-v');
+    const heading = await screen.findByRole('heading', { name: t('vi', 'settings.section.localData') });
+    const section = heading.closest('section');
+    expect(section).not.toBeNull();
+    expect(section!.querySelector('.set-stats, .set-stat-v')).toBeNull();
+    expect(section).toHaveTextContent(t('vi', 'settings.localData.draft'));
+    expect(section).not.toHaveTextContent('2');
   });
 });

@@ -39,7 +39,10 @@ người đọc gật đầu rồi bỏ qua. Nên nó ở đây, dưới dạng 
    kèm tên course nên bốn phép trên đều mù. Phép này dùng chính gói riêng làm
    máy đối chiếu: nó đọc gói từ kho ngoài cây git, băm văn bản chương thành
    chuỗi 12 từ, rồi tìm trong các tệp được theo dõi. Không có gói riêng trong
-   tay thì nó nói ra là đã bỏ qua, chứ không im lặng cho xanh.
+   tay thì nó nói ra là đã bỏ qua, chứ không im lặng cho xanh. Nó đo VĂN
+   XUÔI: khối `<script>`/`<style>` bị bỏ trước khi băm (xem `strip_html`), nếu
+   không một gói v2 — nơi mỗi widget là một tệp HTML chứa nguyên chương trình
+   nhúng runtime và CSS của chính repo — làm repo tự khớp với repo và phép đo mù.
 
 Phép 5 là phép duy nhất bắt được thứ đã lọt qua tất cả các phép còn lại một
 lần rồi (714 ký tự văn xuôi + số chương trong `SKILL.md`). Nó chỉ chạy được
@@ -78,7 +81,20 @@ def run(repo: pathlib.Path, *args: str) -> tuple[int, str]:
 
 
 def strip_html(raw: str) -> str:
-    return html.unescape(re.sub(r"<[^>]+>", " ", raw))
+    """Văn bản đọc được của một tệp HTML — không thẻ, và KHÔNG mã.
+
+    `<script>`/`<style>` bị bỏ cả khối trước khi bỏ thẻ, vì phép 5 đo văn xuôi
+    chép tay chứ không đo mã. Điều này thành vấn đề từ format v2: mỗi
+    `widgets/<tên>/index.html` là một tệp HTML chứa nguyên một chương trình
+    (runtime của course-kit, CSS, mã của hình), và đo trên gói riêng đầu tiên
+    được chuyển, giữ mã lại cho ra 11 tệp "trùng" — runtime.js 3.449 đoạn,
+    reader.css 722 đoạn — toàn bộ là repo tự khớp với repo qua đường vòng của
+    gói, cộng hai đoạn tham số slider trùng với một gói mẫu công khai. Không
+    một đoạn nào là văn xuôi. Bỏ mã đi thì phép đo trở lại đúng phạm vi nó có
+    trước v2: chữ trong chương.
+    """
+    text = re.sub(r"<(script|style)\b[^>]*>.*?</\1\s*>", " ", raw, flags=re.IGNORECASE | re.DOTALL)
+    return html.unescape(re.sub(r"<[^>]+>", " ", text))
 
 
 def words(text: str) -> list[str]:
