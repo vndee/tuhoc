@@ -713,16 +713,4 @@ html[data-theme='dark'] .auth-switch-link {
     min-height: 100dvh;
     padding: 32px 20px 40px;
   }
-
-  
-
-  
-
-  /* Nền ĐẶC hơn ở đây: chip nổi trên nền TRẮNG của cột form, và lớp mờ 32%
-     dành cho một tấm ảnh tối sẽ cho chữ trắng trên xám nhạt. */
-  #app.auth-screen .auth-chrome-btn,
-  #app.auth-screen .auth-chrome #lang-select {
-    background: rgba(16, 24, 40, 0.86);
-    border-color: rgba(255, 255, 255, 0.24);
-  }
 }
