@@ -17,7 +17,7 @@ import { startHeartbeat } from '../progress/heartbeat';
 import { useProgress } from '../progress/useProgress';
 import { useThemeContext } from '../theme/ThemeContext';
 import { setChapterContextSource } from './getContext';
-import { injectExerciseCheckboxes } from './injectExerciseCheckboxes';
+import { injectExerciseCheckboxes, removeExerciseCheckboxes } from './injectExerciseCheckboxes';
 import { readingProgressWidth } from './readingProgress';
 import { rewriteAssetUrls } from './rewriteAssetUrls';
 import { TocDrawer } from './TocDrawer';
@@ -1006,9 +1006,16 @@ function AuthedReaderExtras({
   // write, which means this component only ever sees the new `content` in a
   // LATER commit, by which point the DOM mutation (from the earlier commit)
   // has already happened.
+  /** The last chapter container the effect below injected checkboxes into — read only by the unmount cleanup further down. */
+  const injectedIntoRef = useRef<ParentNode | null>(null);
+
   useEffect(() => {
     const container = content.root;
     if (!container) return;
+    // Remembered for the unmount cleanup right below, which must be able to
+    // reach the LAST container this effect injected into without re-running
+    // itself whenever that container changes.
+    injectedIntoRef.current = container;
     injectExerciseCheckboxes(
       container,
       {
@@ -1018,6 +1025,40 @@ function AuthedReaderExtras({
       t,
     );
   }, [chapter.id, content, progress.partStats, progress.exDone, progress.toggleEx, t]);
+
+  /**
+   * The checkboxes above are torn down when THIS COMPONENT goes away — and
+   * only then. Final whole-branch review, step 5.
+   *
+   * They are the one writer in this reader that can outlive its own gate.
+   * Everything else here is either React-rendered (it disappears with this
+   * component) or an imperative listener with a matching `removeEventListener`
+   * in its own effect cleanup (`#mark-btn`, just above). The injected
+   * checkbox is neither: it is a DOM node this component creates inside the
+   * chapter fragment — which `ChapterView` owns through a ref, outside
+   * React's vdom — carrying a `change` listener closed over
+   * `progress.toggleEx`, i.e. a live `PUT /progress`. Unmounting left it on
+   * screen and clickable, so a superseded tab (where `useMe()` now reports
+   * nobody and this whole component unmounts) could still write A's
+   * exercise progress under B's cookie. That is the one path the central
+   * `useMe` guard cannot reach on its own, because a stale DOM listener
+   * asks React nothing.
+   *
+   * EMPTY DEPS, deliberately, and this is the whole reason it is a second
+   * effect rather than a `return` added to the one above: that effect
+   * re-runs on every progress change (`partStats`, `exDone`, …), and a
+   * cleanup there would delete and recreate every checkbox each time —
+   * taking keyboard focus off the box a learner just ticked. `injectExerciseCheckboxes`
+   * is idempotent precisely so that it never has to recreate them; adding a
+   * per-run teardown would throw that away. This effect runs its cleanup
+   * exactly once, at unmount.
+   */
+  useEffect(() => {
+    return () => {
+      const container = injectedIntoRef.current;
+      if (container) removeExerciseCheckboxes(container);
+    };
+  }, []);
 
   return (
     <>
