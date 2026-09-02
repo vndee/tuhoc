@@ -167,13 +167,22 @@ async function bestEffortFinalFlush(queryClient: QueryClient): Promise<void> {
  *  3. `clearSession()` (./session.ts) — unconditionally, regardless of
  *     whether steps 1 or 2 succeeded. See the paragraph below for why that
  *     is the right trade-off, not just the safe-looking one. It clears
- *     every half of what this session left on the machine — every
- *     user-content `localStorage` key and the offline-read marker via
- *     `clearUserContent()`, the session-scoped query cache, and (Task 8's
- *     fix round) whatever `api/events.ts`'s queue still held after step 1's
- *     best-effort flush — through one call, so no half can be forgotten
- *     here, at the one call site where forgetting one fails silently
- *     (ruling P2-F18).
+ *     every half of what this session left on the machine — the durable
+ *     `localStorage` half (every user-content key) via `clearUserContent()`,
+ *     the session-scoped query cache, (Task 8's fix round) whatever
+ *     `api/events.ts`'s queue still held after step 1's best-effort flush,
+ *     and (Task 11's fix round) whatever TanStack Query's own mutation
+ *     cache still held — a mutation PAUSED by the default
+ *     `networkMode: 'online'` while this reader was offline is not
+ *     something step 1's wait can settle, and would otherwise auto-resume
+ *     and replay under whichever cookie is valid once connectivity returns,
+ *     which by then may belong to whoever signs in next on this browser —
+ *     through one call, so no half can be forgotten here, at the one call
+ *     site where forgetting one fails silently (ruling P2-F18). (Task 11
+ *     also removed the offline-read marker this comment used to mention
+ *     here — `<RequireAuth>`'s offline branch, its only reader, is gone;
+ *     see `session.ts`'s own doc comment for what `clearSession()` clears
+ *     today.)
  *  4. Reset the shared `me` query to `null` and navigate to `/login`.
  *     `src/pages/Login.tsx` goes through the same door on the way IN — the
  *     two together are what make "this browser shows one user at a time"
