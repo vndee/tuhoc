@@ -316,17 +316,7 @@ export function Login() {
             KHÔNG MẤT GÌ nếu chưa đăng nhập ngay, cho người chỉ đọc cột form mà
             bỏ qua panel bên trái.
           */}
-          <p className="auth-reassure">
-            <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path
-                d="M10 2.6l5.7 2.2v4.6c0 3.4-2.3 6.5-5.7 7.9-3.4-1.4-5.7-4.5-5.7-7.9V4.8L10 2.6z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span>{t('login.reassure')}</span>
-          </p>
+          <p className="auth-reassure">{t('login.reassure')}</p>
 
           {/*
             ĐỔI TAB, KHÔNG PHẢI ĐIỀU HƯỚNG: hai form là hai tab của cùng một

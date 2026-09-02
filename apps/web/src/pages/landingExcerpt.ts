@@ -12,7 +12,9 @@
  * mục "(ví dụ)"); đó là điều kiện để trang được phép trình diễn cơ chế mà
  * không bịa bằng chứng — xem PRODUCT.md, Positioning, lời hứa số 1.
  *
- * Câu được bôi đen là câu chương ấy thật sự nói, và ghi chú ví dụ nói đúng
+ * Đoạn dẫn bỏ câu cuối của chương ("Chương này đi từ chỗ bí đó…") để hành
+ * động chính còn nằm trong khung nhìn đầu trên laptop có thanh trình duyệt —
+ * đo ở 1440×900: 820px xuống ~740px. Câu được bôi đen là câu chương ấy thật sự nói, và ghi chú ví dụ nói đúng
  * điều chương 1.2 sẽ định nghĩa: một khẳng định đúng ở mọi lần lặp.
  */
 
@@ -38,7 +40,7 @@ export const EXCERPT_LEDE: readonly Segment[] = [
   { text: 'mọi', kind: 'i' },
   { text: ' đầu vào thì ' },
   { text: 'phải nói được điều gì đó về vòng lặp mà không cần biết nó đã chạy bao nhiêu lần', kind: 'mark' },
-  { text: '. Chương này đi từ chỗ bí đó tới chỗ thứ duy nhất thoát ra được, và hoá ra chỉ có một lối.' },
+  { text: '.' },
 ];
 
 export const EXCERPT_SETUP = 'Hàm dưới đây trả về phần tử lớn nhất của một dãy. Nó có một lỗi. Hãy tìm ra trước khi đọc tiếp:';

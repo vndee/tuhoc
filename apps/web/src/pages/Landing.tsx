@@ -57,12 +57,12 @@ export function Landing() {
       {/* Cảnh 1 — ĐỌC. Trích đoạn thật ở cột chính, ghi chú ví dụ ở lề. Rê
           chuột lên ghi chú thì câu gốc gạch chân (CSS `:has`, 150ms — chuyển
           động duy nhất của trang, cùng ngữ pháp với mọi liên kết). */}
-      <div className="doc-body ld-scene">
+      <div className="doc-body ld-scene ld-read">
         <section className="doc-main" aria-labelledby="ld-read-h">
           <h2 id="ld-read-h" className="doc-h">
             {t('landing.read.h')}
           </h2>
-          <p className="lbl ld-source">
+          <p className="ld-source">
             {DEMO_COURSE.title} · {first.num} {first.title}
           </p>
           <div className="ld-excerpt" lang="vi">
@@ -73,26 +73,6 @@ export function Landing() {
             </pre>
             <p>{renderSegments(EXCERPT_AFTER)}</p>
           </div>
-
-          {/* HÀNH ĐỘNG CHÍNH LÀ TÊN CHƯƠNG, cùng dạng với khối Tiếp tục của
-              trang Học tiếp: động từ run-in, số chương, tên chương serif lớn.
-              Không nút màu. */}
-          <Link to={readHref} className="cont-link ld-cta" data-testid="landing-read">
-            <span className="cont-chapter">
-              <span className="cont-verb">{t('landing.read.verb')}</span>
-              {demoPublished && <span className="cont-num">{first.num}</span>}
-              <span className="cont-title">{demoPublished ? first.title : t('landing.read.catalog')}</span>
-            </span>
-          </Link>
-          <p className="cont-meta">
-            {t('landing.read.meta')}
-            <span className="cont-sep" aria-hidden="true">
-              {' · '}
-            </span>
-            <Link to="/login" state={{ intent: 'register' }} className="cont-course">
-              {t('landing.account.cta')}
-            </Link>
-          </p>
         </section>
 
         <aside className="doc-margin" aria-labelledby="ld-note-h">
@@ -112,8 +92,35 @@ export function Landing() {
               </p>
             </li>
           </ul>
-          <p className="ld-margin-note">{t('landing.note.how')}</p>
+          <p className="ld-margin-note">
+            {t('landing.note.how')} <span className="ld-hover-only">{t('landing.note.hover')}</span>
+          </p>
         </aside>
+
+        {/* HÀNH ĐỘNG CHÍNH LÀ TÊN CHƯƠNG, cùng dạng với khối Tiếp tục của
+            trang Học tiếp: động từ run-in, số chương, tên chương serif lớn.
+            Không nút màu. Là một mục RIÊNG của lưới chứ không nằm trong
+            `.doc-main`: trên máy bàn nó ở ngay dưới đoạn (cột chính, hàng 2),
+            còn dưới 900px thứ tự DOM đoạn → ghi chú → hành động giữ ghi chú
+            sát câu gốc của nó, thay vì rơi xuống sau hành động ~600px. */}
+        <div className="ld-act">
+          <Link to={readHref} className="cont-link ld-cta" data-testid="landing-read">
+            <span className="cont-chapter">
+              <span className="cont-verb">{t('landing.read.verb')}</span>
+              {demoPublished && <span className="cont-num">{first.num}</span>}
+              <span className="cont-title">{demoPublished ? first.title : t('landing.read.catalog')}</span>
+            </span>
+          </Link>
+          <p className="cont-meta">
+            {t('landing.read.meta')}
+            <span className="cont-sep" aria-hidden="true">
+              {' · '}
+            </span>
+            <Link to="/login" state={{ intent: 'register' }} className="cont-course">
+              {t('landing.account.cta')}
+            </Link>
+          </p>
+        </div>
       </div>
 
       {/* Cảnh 2 — HỎI. Biên bản một lượt: bạn hỏi, gia sư trả lời và trích
@@ -150,8 +157,10 @@ export function Landing() {
       </div>
 
       {/* Cảnh 3 — QUAY LẠI ĐÚNG CHỖ. Hàng mục lục có tiến độ, đúng thành phần
-          của trang Học tiếp (`.toc-*`), nhưng là ví dụ nên tiêu đề là chữ,
-          không phải liên kết. */}
+          của trang Học tiếp (`.toc-*`). Tiêu đề là LIÊN KẾT thật tới chương khi
+          khoá mẫu đã xuất bản (cùng cổng `demoPublished` với hành động chính);
+          chưa xuất bản thì là chữ trơn, không mang màu nhấn — màu nhấn trong hệ
+          này là tín hiệu liên kết, không đứng trên chữ không bấm được. */}
       <div className="doc-body ld-scene">
         <section className="doc-main" aria-labelledby="ld-progress-h">
           <h2 id="ld-progress-h" className="doc-h">
@@ -162,7 +171,7 @@ export function Landing() {
             <ul className="toc-rows">
               <li className="toc-row is-done">
                 <span className="toc-num">{first.num}</span>
-                <span className="toc-title">{first.title}</span>
+                <TocTitle chapter={first} published={demoPublished} />
                 <span className="toc-mark">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M4 12.5l5 5L20 6.5" />
@@ -172,12 +181,12 @@ export function Landing() {
               </li>
               <li className="toc-row is-next">
                 <span className="toc-num">{second.num}</span>
-                <span className="toc-title">{second.title}</span>
+                <TocTitle chapter={second} published={demoPublished} />
                 <span className="toc-mark">{t('toc.next')}</span>
               </li>
               <li className="toc-row">
                 <span className="toc-num">{third.num}</span>
-                <span className="toc-title">{third.title}</span>
+                <TocTitle chapter={third} published={demoPublished} />
               </li>
             </ul>
           </nav>
@@ -226,6 +235,15 @@ export function Landing() {
         </section>
       </div>
     </div>
+  );
+}
+
+function TocTitle({ chapter, published }: { chapter: (typeof DEMO_COURSE.chapters)[number]; published: boolean }) {
+  if (!published) return <span className="toc-title">{chapter.title}</span>;
+  return (
+    <Link to={`/c/${DEMO_COURSE.slug}/${chapter.id}`} className="toc-title">
+      {chapter.title}
+    </Link>
   );
 }
 
