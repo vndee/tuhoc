@@ -1,36 +1,54 @@
 /// <reference types="node" />
-import { QueryClient } from '@tanstack/react-query';
+import { onlineManager, QueryClient } from '@tanstack/react-query';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as ts from 'typescript';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { meQueryKey } from '../api/useMe';
-import { clearLocalData, db, rememberSessionVerified, setProgress, USER_CONTENT_KEYS } from '../db/local';
-import { clearSession, OFFLINE_READ_MAX_AGE_MS, offlineSessionIsUsable } from './session';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-beforeEach(clearLocalData);
-afterEach(clearLocalData);
+// Same shape as `sync/engine.test.ts`'s `vi.mock('../api/navigation', ...)`
+// and `api/events.test.ts`'s own `vi.mock('./client', ...)`: mocked at the
+// network boundary so this file can assert exactly whether the event queue
+// was still populated (i.e. `flushEvents()` would still have something to
+// send) without a real network anywhere in it.
+vi.mock('../api/client', () => ({
+  api: { post: vi.fn() },
+}));
+
+import { api } from '../api/client';
+import { flushEvents, queueEvent } from '../api/events';
+import { meQueryKey } from '../api/useMe';
+import { USER_CONTENT_KEYS } from '../db/localStorage';
+import { clearSession } from './session';
+
+beforeEach(() => {
+  window.localStorage.clear();
+  vi.mocked(api.post).mockReset();
+  vi.mocked(api.post).mockResolvedValue(undefined);
+});
+afterEach(() => window.localStorage.clear());
 
 describe('clearSession — the one door out of a session', () => {
-  it('empties the durable half: every local table, and the keys holding the user’s own words', async () => {
-    await setProgress('c', 'ch', 'read', true);
-    await db.annotations.put({
-      id: 'a1',
-      courseId: 'c',
-      chapterId: 'ch',
-      anchor: { exact: 'x', prefix: '', suffix: '', color: 'y' },
-      note: 'riêng tư',
-      createdAt: '2026-08-21T00:00:00.000Z',
-      updatedAt: '2026-08-21T00:00:00.000Z',
-      deletedAt: null,
-    });
-    await db.meta.put({ key: 'syncCursor', value: 'c1' });
+  // Critical finding (Task 8 review): `api/events.ts`'s in-memory
+  // study-event queue is a THIRD half of ending a session, alongside the
+  // durable Dexie/localStorage half and the in-memory query-cache half
+  // this file already tests above and below. Proven end-to-end (real
+  // `useLogout`, real `<Login>`) in `test/eventQueueHandoff.test.tsx`;
+  // this is the narrow claim `clearSession()` itself makes.
+  it('empties the queued-but-unflushed study-event half too — a heartbeat that never got flushed does not survive', async () => {
+    queueEvent({ courseId: 'c', chapterId: 'ch1', kind: 'heartbeat', meta: {}, at: '2026-08-21T00:00:00.000Z' });
+
+    await clearSession(new QueryClient());
+
+    await flushEvents();
+    expect(vi.mocked(api.post)).not.toHaveBeenCalled();
+  });
+
+  it('empties the durable half: every key holding the user’s own words', async () => {
     for (const key of USER_CONTENT_KEYS) window.localStorage.setItem(key, 'nửa câu đang viết');
 
     await clearSession(new QueryClient());
 
-    for (const table of db.tables) expect(await table.count(), `${table.name} still has rows`).toBe(0);
     for (const key of USER_CONTENT_KEYS) expect(window.localStorage.getItem(key)).toBeNull();
   });
 
@@ -61,79 +79,104 @@ describe('clearSession — the one door out of a session', () => {
     expect(queryClient.getQueryData(['stats'])).toBeUndefined();
   });
 
-  it('clears the durable half BEFORE the cache, and does not resolve until the durable half is done', async () => {
-    // The ordering both call sites relied on, now asserted once here instead
-    // of being a comment at each of them. `useLogout` seeds `me` on the line
-    // after this call and `Login` seeds the arriving user there; if
-    // `clearSession` resolved while `clearLocalData()` was still running, the
-    // new session could read or push the previous user's rows.
+  /**
+   * Task 10 note, replacing the old version of this test: before this task,
+   * `clearLocalData()` was an awaited Dexie round trip, so `clearSession`
+   * genuinely had a "still running" window a probe taken right after calling
+   * it (before awaiting) could observe — that is what the old version of
+   * this test sampled. As of Task 10 there is no Dexie left, and every step
+   * `clearSession` itself performs (`clearUserContent()`, the offline
+   * marker's clear, `resetSessionScopedQueries`, `resetEventQueue`) is
+   * synchronous, so calling it — even WITHOUT awaiting — already runs the
+   * entire body to completion before the next line executes. That is a
+   * STRONGER guarantee than the old one, not a weaker one: there is no
+   * window left in which the durable half is cleared but the cache is not
+   * (or vice versa), because there is no window at all. This test asserts
+   * exactly that: the durable half and the cache are both already gone
+   * immediately after the (unawaited) call returns.
+   */
+  it('clears the durable half and the cache synchronously — no window where one is done and the other is not', () => {
     const queryClient = new QueryClient();
-    const order: string[] = [];
     queryClient.setQueryData(['stats'], { streak: 1 });
-    await setProgress('c', 'ch', 'read', true);
+    window.localStorage.setItem(USER_CONTENT_KEYS[0], 'nửa câu đang viết');
 
-    const pending = clearSession(queryClient).then(() => order.push('resolved'));
-    // Sampled before awaiting: the cache reset is synchronous and happens
-    // after an awaited clear, so it cannot have run yet.
-    order.push(queryClient.getQueryData(['stats']) === undefined ? 'cache-cleared-early' : 'cache-still-warm');
-    await pending;
+    // Deliberately not awaited — see this test's own doc comment above.
+    void clearSession(queryClient);
 
-    expect(order).toEqual(['cache-still-warm', 'resolved']);
-    expect(await db.progress.count()).toBe(0);
+    expect(window.localStorage.getItem(USER_CONTENT_KEYS[0])).toBeNull();
     expect(queryClient.getQueryData(['stats'])).toBeUndefined();
   });
 });
 
-/* ====================================================================== *
- * offlineSessionIsUsable — how long a device may stand in for the server
- * ====================================================================== */
-
-describe('offlineSessionIsUsable — the offline reading window', () => {
-  const T = Date.parse('2026-08-21T10:00:00.000Z');
-
-  it('is false on a device nobody has ever signed in on', async () => {
-    expect(await offlineSessionIsUsable(T)).toBe(false);
+/**
+ * Task 11 review finding (Pha 3): TanStack Query's default
+ * `networkMode: 'online'` (this repo configures nothing else — see
+ * `App.tsx`'s bare `new QueryClient()`) PAUSES a mutation that is sent while
+ * offline, rather than failing it, and AUTO-RESUMES every paused mutation
+ * the instant `onlineManager` reports connectivity again
+ * (`@tanstack/query-core`'s `QueryClient.mount()` subscribes to
+ * `onlineManager` and calls `resumePausedMutations()` on it — see that
+ * package's own `queryClient.ts`). A resumed mutation replays through
+ * `api/client.ts`'s `send()`, which always sends `credentials: 'include'` —
+ * i.e. whatever cookie is valid AT RESUME TIME, not the account that
+ * started the write.
+ *
+ * Concretely, in the same tab, on the ONE `queryClient` `App.tsx` ever
+ * builds: learner A goes offline mid-write, the mutation pauses, A logs
+ * out, learner B signs in, connectivity returns — and without this,
+ * A's paused write would replay and reach the server under B's cookie.
+ * This phase has already paid two fix rounds for exactly this shape of bug
+ * (a queue of A's study events POSTed under B's session — see
+ * `api/events.ts`'s `queueGeneration` and `test/eventQueueHandoff.test.tsx`)
+ * — the mutation cache was the one queue nothing had wired into the door
+ * yet.
+ *
+ * The fix is `getMutationCache().clear()`, called from `clearSession()`
+ * itself (see that function, above) — not a new clearing path: emptying the
+ * cache's tracked mutation set is what makes `resumePausedMutations()`
+ * find nothing to resume, because it iterates `getAll()` on that same set.
+ * The paused request's own promise is simply never continued; nothing
+ * cancels an in-flight `fetch`, because there isn't one — a PAUSED mutation
+ * with `networkMode: 'online'` never called `fetch` in the first place (see
+ * `@tanstack/query-core`'s `retryer.ts`: `canStart()` is false while
+ * offline, so `start()` calls `pause()` before `run()` ever executes).
+ */
+describe('clearSession — the mutation half (TanStack’s auto-resume hazard)', () => {
+  afterEach(() => {
+    // Every other describe block in this file runs "online" implicitly
+    // (jsdom's default); restore that so a failure here cannot leak into
+    // an unrelated test run after it in the same file.
+    onlineManager.setOnline(true);
   });
 
-  it('is true immediately after GET /me confirmed a user here', async () => {
-    await rememberSessionVerified(new Date(T));
+  it('a paused mutation belonging to A must not replay under B’s session once connectivity returns', async () => {
+    const queryClient = new QueryClient();
 
-    expect(await offlineSessionIsUsable(T)).toBe(true);
-  });
+    // A is mid-write when the network drops. `networkMode: 'online'`
+    // (the default, unconfigured here) means the mutation PAUSES rather
+    // than sends — `fetch` is never called while offline.
+    onlineManager.setOnline(false);
+    const mutation = queryClient.getMutationCache().build(queryClient, {
+      mutationFn: () => api.post('/progress/toggle', { chapterId: 'ch1' }),
+    });
+    void mutation.execute({ chapterId: 'ch1' }).catch(() => {});
+    await vi.waitFor(() => expect(mutation.state.isPaused).toBe(true));
+    expect(vi.mocked(api.post)).not.toHaveBeenCalled();
 
-  it('is still true one millisecond before the window closes, and false one millisecond after', async () => {
-    await rememberSessionVerified(new Date(T));
+    // A logs out — same tab, same queryClient — exactly clearSession()'s job.
+    await clearSession(queryClient);
 
-    expect(await offlineSessionIsUsable(T + OFFLINE_READ_MAX_AGE_MS - 1)).toBe(true);
-    expect(await offlineSessionIsUsable(T + OFFLINE_READ_MAX_AGE_MS)).toBe(false);
-    expect(await offlineSessionIsUsable(T + OFFLINE_READ_MAX_AGE_MS + 1)).toBe(false);
-  });
+    // B signs in (irrelevant to this test which account, if any, is
+    // current — the hazard is that the SAME queryClient carries A's
+    // mutation forward regardless), then connectivity returns.
+    onlineManager.setOnline(true);
+    await queryClient.resumePausedMutations();
 
-  it('stays well inside the server session it stands in for', () => {
-    // apps/api/internal/auth/usecase.go's `SessionTTL = 30 * 24 * time.Hour`,
-    // and it is NOT sliding — `FindValidSession` never moves `expires_at`.
-    // So the longest a server session can live is 30 days from the login
-    // that created it. This window has to be a fraction of that, or a
-    // device could keep reading long after the cookie it is standing in
-    // for became worthless.
-    const SERVER_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-    expect(OFFLINE_READ_MAX_AGE_MS).toBeLessThan(SERVER_SESSION_TTL_MS / 4);
-    expect(OFFLINE_READ_MAX_AGE_MS).toBeGreaterThan(24 * 60 * 60 * 1000);
-  });
-
-  it('refuses a marker stamped in the future — a clock that moved fails closed', async () => {
-    await rememberSessionVerified(new Date(T + 60_000));
-
-    expect(await offlineSessionIsUsable(T)).toBe(false);
-  });
-
-  it('is false again the moment the session ends, because clearLocalData() took the marker with it', async () => {
-    await rememberSessionVerified(new Date(T));
-    expect(await offlineSessionIsUsable(T)).toBe(true);
-
-    await clearSession(new QueryClient());
-
-    expect(await offlineSessionIsUsable(T)).toBe(false);
+    // If A's paused mutation was still tracked, TanStack would have
+    // auto-resumed it here and sent it with `credentials: 'include'` —
+    // under WHATEVER cookie is valid now, B's.
+    expect(vi.mocked(api.post)).not.toHaveBeenCalled();
+    expect(queryClient.getMutationCache().getAll()).toEqual([]);
   });
 });
 
@@ -150,7 +193,7 @@ function label(file: string): string {
 }
 
 /**
- * The two halves of ending a session, and the ONLY files allowed to name
+ * The three halves of ending a session, and the ONLY files allowed to name
  * each one: the module that defines it, and `auth/session.ts`, which is the
  * door.
  *
@@ -160,11 +203,29 @@ function label(file: string): string {
  * and not the other, and be correct on the day it is written — which is
  * exactly the state this ruling was made about. Every "correct today, with
  * nothing pinning it" item in this phase has eventually broken.
+ *
+ * `resetEventQueue` (Task 8's fix round) is the newest entry, and the exact
+ * shape of what this array exists to prevent: Task 8's original diff built
+ * `api/events.ts`'s in-memory queue with no third half wired into this
+ * door at all, not merely wired into the wrong place — the review that
+ * caught it is `test/eventQueueHandoff.test.tsx`'s own header. Watching
+ * the name here is what stops a FUTURE call site from "fixing" a similar
+ * leak by importing `resetEventQueue` directly instead of routing through
+ * `clearSession()`.
  */
 const SESSION_CLEARERS: readonly { readonly name: string; readonly allowedIn: readonly string[]; readonly why: string }[] = [
   {
-    name: 'clearLocalData',
-    allowedIn: [join('apps', 'web', 'src', 'db', 'local.ts'), join('apps', 'web', 'src', 'auth', 'session.ts')],
+    // Renamed by Task 10 from `clearLocalData` (`db/local.ts`, Dexie +
+    // localStorage) to `clearUserContent` (`db/localStorage.ts`,
+    // localStorage only — Dexie is gone). This is a RENAME of the watched
+    // identifier, not a weakening: the invariant this entry enforces (only
+    // `session.ts` may call the durable-clearing function directly) is
+    // unchanged, and leaving the OLD name here after nothing in the
+    // codebase calls it anymore would make this entry permanently vacuous
+    // — every scan would report zero violations for a name nobody uses,
+    // which looks identical to protection while providing none.
+    name: 'clearUserContent',
+    allowedIn: [join('apps', 'web', 'src', 'db', 'localStorage.ts'), join('apps', 'web', 'src', 'auth', 'session.ts')],
     why: 'the durable half of ending a session — call clearSession() from src/auth/session.ts, which also clears the query cache',
   },
   {
@@ -172,19 +233,37 @@ const SESSION_CLEARERS: readonly { readonly name: string; readonly allowedIn: re
     allowedIn: [join('apps', 'web', 'src', 'api', 'useMe.ts'), join('apps', 'web', 'src', 'auth', 'session.ts')],
     why: 'the in-memory half of ending a session — call clearSession() from src/auth/session.ts, which also clears the durable stores',
   },
+  {
+    name: 'resetEventQueue',
+    allowedIn: [join('apps', 'web', 'src', 'api', 'events.ts'), join('apps', 'web', 'src', 'auth', 'session.ts')],
+    why: 'the queued-but-unflushed study-event half of ending a session — call clearSession() from src/auth/session.ts, which also clears the other two halves',
+  },
+  {
+    // Added by the final whole-branch review, and the one entry here whose
+    // store predates the list itself: the Dexie-era `'tuhoc'` database was
+    // cleared on every auth transition until Task 10 deleted Dexie and the
+    // `db.tables.map(t => t.clear())` line with it. `clearLegacyLocalData`
+    // puts it back behind the same door as the other three, so the next
+    // reader of that database (there is one — `db/legacyDrain.ts`) cannot
+    // be handed a departed account's rows.
+    name: 'clearLegacyLocalData',
+    allowedIn: [join('apps', 'web', 'src', 'db', 'legacyDrain.ts'), join('apps', 'web', 'src', 'auth', 'session.ts')],
+    why: 'the legacy Dexie-database half of ending a session — call clearSession() from src/auth/session.ts, which also clears the other three halves',
+  },
 ];
 
 /**
  * Files this scan does NOT read, and why each is safe to skip.
  *
- * `*.test.ts(x)` — a test's job includes driving each half on its own:
- * `db/local.test.ts` and `useLogout.test.tsx` both call `clearLocalData()`
- * directly as a fixture, and this very file calls both.
+ * `*.test.ts(x)` — a test's job includes exercising the individual halves
+ * directly: `api/events.test.ts` calls `resetEventQueue` on its own to test
+ * IT, and should not have to route through `clearSession()` just to do so.
  *
  * `packages/course-kit/runtime.js` is deliberately NOT skipped, for the same
- * reason `db/local.test.ts` scans it: it runs on every reader route in this
- * origin, is loaded as a classic `<script src>` so nothing under `src/`
- * mentions it, and would be exactly as invisible here as it was there.
+ * reason `db/localStorage.test.ts` scans it: it runs on every reader route
+ * in this origin, is loaded as a classic `<script src>` so nothing under
+ * `src/` mentions it, and would be exactly as invisible here as it was
+ * there.
  */
 function isProductionSource(relativePath: string): boolean {
   if (/\.test\.tsx?$/.test(relativePath)) return false;
@@ -250,15 +329,15 @@ function clearersNamedIn(
 describe('no third way to end a session', () => {
   it('reads its own instrument correctly: code counts, comments and strings do not', () => {
     const decoyed = [
-      '// clearLocalData() and resetSessionScopedQueries() — a mention, not a use',
-      '/** both halves: clearLocalData, resetSessionScopedQueries */',
-      'const notARealUse = "clearLocalData";',
+      '// clearUserContent() and resetSessionScopedQueries() — a mention, not a use',
+      '/** both halves: clearUserContent, resetSessionScopedQueries */',
+      'const notARealUse = "clearUserContent";',
       'export const fine = 1;',
     ].join('\n');
     expect([...clearersNamedIn('decoy.ts', decoyed)]).toEqual([]);
 
-    const real = 'import { clearLocalData } from "x"; export const go = () => clearLocalData();';
-    expect([...clearersNamedIn('real.ts', real)]).toEqual(['clearLocalData']);
+    const real = 'import { clearUserContent } from "x"; export const go = () => clearUserContent();';
+    expect([...clearersNamedIn('real.ts', real)]).toEqual(['clearUserContent']);
   });
 
   it('is looking at the whole app, not at nothing', () => {
@@ -292,35 +371,11 @@ describe('no third way to end a session', () => {
     expect(violations).toEqual([]);
   });
 
-  /**
-   * The marker `offlineSessionIsUsable` reads is the ONE durable thing this
-   * phase added that says "somebody was signed in on this device". It is a
-   * `db.meta` row, so `clearLocalData()` empties it with nothing written for
-   * it — but that only stays true while the set of places that WRITE it
-   * stays small enough to reason about.
-   *
-   * Two files may name it: `db/local.ts` defines it, and
-   * `auth/RequireAuth.tsx` is the one surface that both writes and reads it
-   * — it writes exactly when `GET /me` has confirmed a user, which is the
-   * only fact the marker is allowed to record. A third writer is how this
-   * would go wrong: a call from somewhere that has NOT confirmed a user
-   * would make the marker mean something weaker than it says, and every
-   * offline render downstream would inherit that.
-   */
-  const MARKER_WRITER = 'rememberSessionVerified';
-  const MARKER_WRITER_ALLOWED_IN = [
-    join('apps', 'web', 'src', 'db', 'local.ts'),
-    join('apps', 'web', 'src', 'auth', 'RequireAuth.tsx'),
-  ];
-
-  it('only RequireAuth writes the offline-read marker, and it is the same file that reads it', () => {
-    const watched = new Set([MARKER_WRITER]);
-    const writers = productionSourceFiles()
-      .filter((file) => clearersNamedIn(file, readFileSync(file, 'utf-8'), watched).has(MARKER_WRITER))
-      .map(label);
-
-    expect(writers.sort()).toEqual([...MARKER_WRITER_ALLOWED_IN].sort());
-  });
+  // Task 11 removed the offline-read marker (`rememberSessionVerified`,
+  // `SESSION_VERIFIED_KEY`, and the "only RequireAuth writes it" scan that
+  // used to live here) along with `<RequireAuth>`'s offline branch — the
+  // marker had exactly one reader, that branch, and no reader means nothing
+  // left to protect the marker's meaning for.
 
   it('the door is actually used: both auth transitions go through it', () => {
     // The complement of the scan above. Without this, deleting BOTH call

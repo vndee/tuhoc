@@ -28,7 +28,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import App from '../App';
 import { meQueryKey } from '../api/useMe';
-import { clearLocalData } from '../db/local';
+import { clearUserContent } from '../db/localStorage';
 import { TopNav } from '../shell/TopNav';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 
@@ -42,8 +42,8 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-beforeEach(clearLocalData);
-afterEach(clearLocalData);
+beforeEach(clearUserContent);
+afterEach(clearUserContent);
 
 function goTo(path: string) {
   window.history.pushState({}, '', path);

@@ -17,7 +17,7 @@ import { startHeartbeat } from '../progress/heartbeat';
 import { useProgress } from '../progress/useProgress';
 import { useThemeContext } from '../theme/ThemeContext';
 import { setChapterContextSource } from './getContext';
-import { injectExerciseCheckboxes } from './injectExerciseCheckboxes';
+import { injectExerciseCheckboxes, removeExerciseCheckboxes } from './injectExerciseCheckboxes';
 import { readingProgressWidth } from './readingProgress';
 import { rewriteAssetUrls } from './rewriteAssetUrls';
 import { TocDrawer } from './TocDrawer';
@@ -836,21 +836,24 @@ export function ChapterView({
  * What lives here, and why:
  *  - `useAnnotations` + `<SelectionToolbar>` (creates a highlight/note) +
  *    `<MarginCards>`/`<OrphanPanel>` (reads them back) + the "Ghi chú (N)"
- *    toggle button — creating and painting an annotation is writing to
- *    `db.annotations`, which syncs to the server under THIS reader's
+ *    toggle button — creating and painting an annotation writes straight to
+ *    `POST`/`PATCH`/`DELETE /annotations` (Task 5/7, Pha 3 — TanStack Query
+ *    over the server, no Dexie in between any more) under THIS reader's
  *    account; an anonymous highlight would have nowhere of its own to live.
  *  - `useProgress` + the exercise checkboxes — same reasoning, for
- *    `db.progress`. Nothing else in the tree can create a `.box.ex .box-h`
- *    checkbox, so an anonymous chapter simply renders with none of them, not
- *    with dead ones — a checkbox that appears and does nothing is worse than
- *    one that is absent.
+ *    `GET`/`PUT /progress`. Nothing else in the tree can create a `.box.ex
+ *    .box-h` checkbox, so an anonymous chapter simply renders with none of
+ *    them, not with dead ones — a checkbox that appears and does nothing is
+ *    worse than one that is absent.
  *  - The `#mark-btn` CLICK wiring (icon/label/class + the toggle itself).
  *    `ChapterView` still hides the button itself whenever this component is
  *    not mounted (its own effect, keyed on the same `confirmedLoggedIn`) —
  *    the same "worse than absent" reasoning applies to it too.
- *  - The study heartbeat (`startHeartbeat`) — it queues `db.outbox` rows
- *    attributed to an account; there is no account to attribute them to for
- *    an anonymous visit.
+ *  - The study heartbeat (`startHeartbeat`) — it queues into an in-memory
+ *    queue (Task 8, Pha 3), flushed in batches to `POST /events/batch`
+ *    (`api/events.ts`), attributed to an account; there is no account to
+ *    attribute them to for an anonymous visit. `db.outbox` and the 15s sync
+ *    engine that used to carry this are both gone (Task 10, Pha 3).
  *
  * What does NOT live here, deliberately — see `ChapterView`'s own doc for the
  * full reasoning on each: the chapter's HTML/KaTeX/widget rendering, the
@@ -1003,9 +1006,16 @@ function AuthedReaderExtras({
   // write, which means this component only ever sees the new `content` in a
   // LATER commit, by which point the DOM mutation (from the earlier commit)
   // has already happened.
+  /** The last chapter container the effect below injected checkboxes into — read only by the unmount cleanup further down. */
+  const injectedIntoRef = useRef<ParentNode | null>(null);
+
   useEffect(() => {
     const container = content.root;
     if (!container) return;
+    // Remembered for the unmount cleanup right below, which must be able to
+    // reach the LAST container this effect injected into without re-running
+    // itself whenever that container changes.
+    injectedIntoRef.current = container;
     injectExerciseCheckboxes(
       container,
       {
@@ -1016,8 +1026,70 @@ function AuthedReaderExtras({
     );
   }, [chapter.id, content, progress.partStats, progress.exDone, progress.toggleEx, t]);
 
+  /**
+   * The checkboxes above are torn down when THIS COMPONENT goes away — and
+   * only then. Final whole-branch review, step 5.
+   *
+   * They are the one writer in this reader that can outlive its own gate.
+   * Everything else here is either React-rendered (it disappears with this
+   * component) or an imperative listener with a matching `removeEventListener`
+   * in its own effect cleanup (`#mark-btn`, just above). The injected
+   * checkbox is neither: it is a DOM node this component creates inside the
+   * chapter fragment — which `ChapterView` owns through a ref, outside
+   * React's vdom — carrying a `change` listener closed over
+   * `progress.toggleEx`, i.e. a live `PUT /progress`. Unmounting left it on
+   * screen and clickable, so a superseded tab (where `useMe()` now reports
+   * nobody and this whole component unmounts) could still write A's
+   * exercise progress under B's cookie. That is the one path the central
+   * `useMe` guard cannot reach on its own, because a stale DOM listener
+   * asks React nothing.
+   *
+   * EMPTY DEPS, deliberately, and this is the whole reason it is a second
+   * effect rather than a `return` added to the one above: that effect
+   * re-runs on every progress change (`partStats`, `exDone`, …), and a
+   * cleanup there would delete and recreate every checkbox each time —
+   * taking keyboard focus off the box a learner just ticked. `injectExerciseCheckboxes`
+   * is idempotent precisely so that it never has to recreate them; adding a
+   * per-run teardown would throw that away. This effect runs its cleanup
+   * exactly once, at unmount.
+   */
+  useEffect(() => {
+    return () => {
+      const container = injectedIntoRef.current;
+      if (container) removeExerciseCheckboxes(container);
+    };
+  }, []);
+
   return (
     <>
+      {/* Task 6, Pha 3 — `useProgress`'s `toggleRead`/`toggleEx` now write
+          optimistically; this is the ONE place that failure surfaces. Not a
+          toast (this codebase has none — see `ErrorBoundary.tsx`,
+          `AdminCredits.tsx`, `AdminPricing.tsx` for the same `role="alert"`
+          convention this reuses), and not portalled: it renders right where
+          the tap that failed happened, the same "next to the thing that
+          failed" placement every other inline error in this app uses.
+          `lib-notice-server` is `registry/Rating.tsx`'s own save-failure
+          class, reused as-is rather than inventing a reader-scoped twin. */}
+      {progress.saveError && (
+        <p role="alert" className="lib-notice-server">
+          {t('progress.saveFailed')}
+        </p>
+      )}
+      {/* Task 7, Pha 3 — the same additive-field/one-render-site shape as
+          `progress.saveError` right above, for `useAnnotations`'s
+          `updateNote`/`remove`/`reattach`: before this task a failed one of
+          those three went straight to `console.error`, with nothing on the
+          page saying the write did not land. `create`'s own failure already
+          has a surface (`SelectionToolbar`'s inline `ann.saveFailed`, right
+          next to the toolbar), which is why this is a SEPARATE string
+          (`notes.saveFailed`) rather than reusing that one — two different
+          events that can, harmlessly, both be true at once. */}
+      {annotations.saveError && (
+        <p role="alert" className="lib-notice-server">
+          {t('notes.saveFailed')}
+        </p>
+      )}
       {/* Last in the chapter pipeline (innerHTML → renderKatex → widgets →
           checkboxes → normalize/resolve/paint → toolbar): it watches
           `selectionchange` and does nothing at all until the reader selects

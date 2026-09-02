@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { liveQuery } from 'dexie';
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { type Ann, annotationsQueryKey, fetchAnnotations } from '../api/annotations';
+import { type ProgressRow, fetchProgress, progressQueryKey } from '../api/progress';
 import { useStats } from '../api/stats';
 import { countChapters } from '../course/chapters';
-import { db } from '../db/local';
 import { loadManifest, manifestQueryKey } from '../course/loader';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { buildYearCalendar, heatLevel, todayIctIso } from '../progress/heat';
@@ -32,77 +32,97 @@ import { useProgress } from '../progress/useProgress';
  *
  * ## Hai câu hỏi, hai nguồn — và cả hai đều là nguồn DUY NHẤT của nó
  *
- * *"Người này có những khoá nào"* → `db.progress` cục bộ (`useLocalProgress`
- * bên dưới), KHÔNG phải danh mục công khai (`fetchCatalog`). Sau khi luồng
- * import chết (Task 13), "sở hữu" một khoá không còn nghĩa gì — danh mục là
- * chung, ai cũng thấy y hệt nhau — nên trang này hỏi một câu hẹp hơn và đúng
- * hơn: "tôi đã học chương nào của khoá nào". Cũng KHÔNG phải `stats.courses[]`:
- * danh sách ấy chỉ chứa khoá máy chủ đã thấy nhịp học hoặc chương hoàn thành,
- * nên một khoá vừa đọc dở, offline, chưa kịp đồng bộ, sẽ biến mất khỏi trang
- * tiến độ nếu đây là nguồn duy nhất.
+ * *"Người này có những khoá nào"* → `GET /progress` (`useLocalProgress` bên
+ * dưới, tên hàm giữ nguyên từ trước Task 9 dù nguồn đã đổi — xem chú thích
+ * của chính hàm), KHÔNG phải danh mục công khai (`fetchCatalog`). Sau khi
+ * luồng import chết (Task 13), "sở hữu" một khoá không còn nghĩa gì — danh
+ * mục là chung, ai cũng thấy y hệt nhau — nên trang này hỏi một câu hẹp hơn
+ * và đúng hơn: "tôi đã học chương nào của khoá nào". Cũng KHÔNG phải
+ * `stats.courses[]`: danh sách ấy chỉ chứa khoá máy chủ đã thấy nhịp học
+ * hoặc chương hoàn thành, nên một khoá vừa đọc dở, chưa kịp có nhịp học hay
+ * chương hoàn thành nào được server đếm, sẽ biến mất khỏi trang tiến độ nếu
+ * đây là nguồn duy nhất.
  *
  * *"Bao nhiêu phút, chuỗi mấy ngày"* → `useStats()` từ `api/stats.ts`, dùng
  * chung với `pages/Dashboard.tsx`'s `statsQueryKey`, nên hai trang không cùng
  * gọi hai request khác nhau cho cùng một câu hỏi.
  *
- * ## Vì sao số chương vẫn tính từ máy (ruling F5)
+ * ## Vì sao số chương vẫn tính từ `useProgress`, không từ `stats.courses[]` (ruling F5)
  *
  * `stats.courses[].chaptersDone` có sẵn và trang này là trang của các con số —
  * nhưng phần trăm hoàn thành mỗi khoá vẫn lấy từ `useProgress`, đúng như ruling
- * F5 đã chốt cho vòng hoàn thành của trang chủ. Lý do không đổi: đánh dấu một
- * chương đã đọc là một phép ghi CỤC BỘ, và một thanh tiến độ nhích lên chỉ sau
- * khi outbox flush thành công là một thanh tiến độ nói dối trong mọi phiên
- * offline. `minutes` thì ngược lại — nó chỉ tồn tại ở máy chủ (nhịp học được
- * cộng ở đó), nên nó tới từ `stats.courses[]`.
+ * F5 đã chốt cho vòng hoàn thành của trang chủ. Lý do: `useProgress` (Task 6)
+ * ghi LẠC QUAN — một chương đánh dấu đã đọc hiện lên NGAY trong cache, trước
+ * khi `PUT /progress` trả lời — trong khi `stats.courses[].chaptersDone` chỉ
+ * nhích lên sau khi request ấy đã thành công VÀ `/stats` được hỏi lại. Cùng
+ * một sự kiện, hai độ trễ khác nhau; trang của các con số chọn cái nhanh hơn.
+ * `minutes` thì ngược lại — nó chỉ tồn tại ở máy chủ (nhịp học được cộng ở
+ * đó, không có bản lạc quan nào để ưu tiên), nên nó tới từ `stats.courses[]`.
  */
 /**
- * BA CON SỐ ĐẦU TRANG, và câu trả lời cho "khoá nào" — một `liveQuery` duy
- * nhất trên `db.progress`/`db.annotations` cho cả hai việc.
+ * Hai mảng rỗng CHIA SẺ Ở MỨC MODULE, không phải `data: rows = []` của
+ * `useQuery` (một mảng MỚI mỗi lần vẽ trong lúc câu hỏi chưa có dữ liệu). Xem
+ * `useProgress.ts`'s `EMPTY_ROWS` — cùng bẫy, cùng cách tránh: một tham chiếu
+ * mới mỗi lần vẽ sẽ vô hiệu `useMemo` bên dưới trên mọi lần vẽ trong lúc
+ * `GET /progress`/`GET /annotations` đang chờ hoặc đang lỗi-rồi-thử-lại.
+ */
+const EMPTY_PROGRESS_ROWS: ProgressRow[] = [];
+const EMPTY_ANNOTATION_ROWS: Ann[] = [];
+
+/**
+ * BA CON SỐ ĐẦU TRANG, và câu trả lời cho "khoá nào" — hai `useQuery` chia sẻ
+ * đúng cache mà `useProgress`/`useAnnotations`/`progress/recent.ts` đã dùng
+ * (`progressQueryKey()`/`annotationsQueryKey()`, không tham số — mọi khoá học
+ * trong một request), nên bốn nơi đọc "mọi tiến độ"/"mọi ghi chú" của app
+ * chia đúng MỘT request mỗi loại, không phải bốn.
  *
- * Hai trong ba con số đọc từ MÁY NÀY, không từ máy chủ, và đó là ruling F5
- * chứ không phải tiện tay: đánh dấu một chương đã đọc và viết một ghi chú đều
- * là phép ghi CỤC BỘ, nên một con số chỉ nhích lên sau khi outbox flush thành
- * công là con số nói dối trong mọi phiên offline. Chuỗi ngày thì ngược lại —
- * nhịp học được cộng ở máy chủ nên nó chỉ tồn tại ở đó.
+ * Tên hàm (`useLocalProgress`) giữ nguyên từ bản Dexie — Task 9 chỉ đổi
+ * NGUỒN, không đổi CÂU HỎI mà trang này đặt ra ("khoá nào, bao nhiêu chương,
+ * bao nhiêu ghi chú"), và đổi tên sẽ là một diff không cần thiết ở mọi chỗ
+ * gọi. Điều KHÔNG còn đúng nữa: hai trong ba con số này từng đọc "máy này,
+ * không cần mạng" (ruling F5 gốc) — Task 9 gỡ tiền đề đó có chủ ý, cùng lý do
+ * Task 6 đã gỡ nó khỏi `useProgress`: biết "bao nhiêu chương/ghi chú" không
+ * còn free về mạng nữa, đúng việc nhánh `pha3/du-lieu-len-may-chu` làm.
  *
- * `courseIds` — `null` cho tới khi `liveQuery` phát lần đầu, phân biệt với
- * `[]` ("chưa đọc chương nào ở đâu cả") vì lần phát đầu tiên của Dexie là bất
- * đồng bộ: coi giá trị khởi tạo là "không có gì" sẽ nháy trạng thái rỗng vào
- * mặt một người học đang có dở dang — cùng cái bẫy `course/owned.ts` từng
- * tách `settled` ra để tránh, trước khi module đó bị gỡ (Task 13).
+ * `courseIds` — `null` cho tới khi `GET /progress` trả lời lần đầu, phân
+ * biệt với `[]` ("chưa đọc chương nào ở đâu cả"): coi giá trị khởi tạo là
+ * "không có gì" sẽ nháy trạng thái rỗng vào mặt một người học đang có dở
+ * dang — cùng cái bẫy `course/owned.ts` từng tách `settled` ra để tránh
+ * (module đó đã gỡ ở Task 13). Gate riêng theo `progressQuery`, không đợi
+ * `annotationsQuery` cùng lúc: `courseIds` không phụ thuộc gì vào ghi chú, và
+ * chờ thêm một request không liên quan chỉ làm chậm câu trả lời.
  *
- * `liveQuery` chứ không phải một lần đọc: đánh dấu một chương ở tab khác phải
- * làm con số ở đây nhích lên mà không cần tải lại trang.
+ * `useQuery` chứ không phải một lần đọc: cache của `progressQueryKey()`/
+ * `annotationsQueryKey()` đổi (một chương được `useProgress` đánh dấu, một
+ * ghi chú `useAnnotations` vừa tạo) làm con số ở đây nhích lên mà không cần
+ * tải lại trang — cùng tính chất `liveQuery` từng cho, khác nguồn phát.
  */
 function useLocalProgress(): { chaptersRead: number; notes: number; courseIds: string[] | null } {
-  const [state, setState] = useState<{ chaptersRead: number; notes: number; courseIds: string[] | null }>({
-    chaptersRead: 0,
-    notes: 0,
-    courseIds: null,
+  const progressQueryResult = useQuery({
+    queryKey: progressQueryKey(),
+    queryFn: () => fetchProgress(),
+  });
+  const annotationsQueryResult = useQuery({
+    queryKey: annotationsQueryKey(),
+    queryFn: () => fetchAnnotations(),
   });
 
-  useEffect(() => {
-    const subscription = liveQuery(async () => {
-      const [progress, annotations] = await Promise.all([
-        db.progress.toArray(),
-        db.annotations.toArray(),
-      ]);
-      return {
-        chaptersRead: progress.filter((row) => row.done).length,
-        // `deletedAt` là xoá MỀM (xem `db/local.ts`): một ghi chú đã xoá vẫn còn
-        // hàng để đồng bộ, nhưng nó không còn là một ghi chú người ta đang giữ.
-        notes: annotations.filter((row) => row.deletedAt == null).length,
-        // Sắp xếp để thứ tự hàng ổn định giữa các lần phát của `liveQuery`.
-        courseIds: Array.from(new Set(progress.map((row) => row.courseId))).sort(),
-      };
-    }).subscribe({
-      next: (next) => setState(next),
-      error: (err) => console.error('Progress: live query failed', err),
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+  const progress = progressQueryResult.data ?? EMPTY_PROGRESS_ROWS;
+  const annotations = annotationsQueryResult.data ?? EMPTY_ANNOTATION_ROWS;
+  const progressSettled = !progressQueryResult.isPending;
 
-  return state;
+  return useMemo(
+    () => ({
+      chaptersRead: progress.filter((row) => row.done).length,
+      // `Ann` (Task 5) không có `deletedAt` nữa — migration 0009 gỡ hẳn cột
+      // tombstone, và `GET /annotations` không bao giờ trả một hàng đã xoá.
+      // Không còn nhánh lọc nào cần ở đây.
+      notes: annotations.length,
+      // Sắp xếp để thứ tự hàng ổn định giữa các lần cache phát lại.
+      courseIds: progressSettled ? Array.from(new Set(progress.map((row) => row.courseId))).sort() : null,
+    }),
+    [progress, annotations, progressSettled],
+  );
 }
 
 export function Progress() {

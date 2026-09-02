@@ -9,9 +9,10 @@
  * `annotations/MarginCards.tsx`'s `DRAFT_KEY` comment and
  * `.superpowers/sdd/2026-08-19-p2-annotations/task-6-fix-report.md`). What
  * the fix also did, without anyone noticing, was open a SECOND local store
- * holding the user's own words — and `clearLocalData()`, the single truth
+ * holding the user's own words — and `clearLocalData()` (now
+ * `clearSession()`, `auth/session.ts` — see Task 10), the single truth
  * point for "this browser now belongs to somebody else", only ever emptied
- * the Dexie tables.
+ * the Dexie tables at the time.
  *
  * `DRAFT_KEY` is a CONSTANT (`'itbook-note-draft'`), not a per-user key, and
  * `localStorage` never expires. So the words one reader typed sat in the
@@ -19,46 +20,45 @@
  *
  * Why the whole flow and not just "does the function delete the key":
  * neither half of this bug is wrong on its own. Stamping the draft
- * synchronously is correct. Clearing every Dexie table is correct. The
+ * synchronously is correct. Clearing every durable store is correct. The
  * defect is only visible where the two meet, so the test has to walk the
  * same ground a person does — type through the real editor, leave through
  * the real `useLogout`, arrive through the real `<Login>` — and both
  * doorways are checked, because both of them clear local data and both of
- * them are load-bearing (`db/local.ts`'s own doc comment names them).
+ * them are load-bearing (`auth/session.ts`'s own doc comment names them).
  *
  * Deliberately no `<App/>` and no `useSyncLifecycle` here: ruling P2-F3
  * forbids "sync immediately on login", and a test that started a cycle
  * would quietly depend on the thing that must not exist.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { useEffect, useRef, useState } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { annotationsQueryKey } from '../api/annotations';
 import { type Anchor, type AnchorColor, selectionToAnchor } from '../annotations/anchor';
 import { type CardFocus, DRAFT_KEY, MarginCards } from '../annotations/MarginCards';
 import { normalizeContainer } from '../annotations/normalize';
-import { type ChapterContent, useAnnotations } from '../annotations/useAnnotations';
-import { RequireAuth } from '../auth/RequireAuth';
+import { type Ann, type ChapterContent, useAnnotations } from '../annotations/useAnnotations';
 import { useLogout } from '../auth/useLogout';
-import { type AnnotationRow, clearLocalData, db } from '../db/local';
 import { Login } from '../pages/Login';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 import { ThemeProvider } from '../theme/ThemeContext';
 
 /**
  * The theme key, written out rather than imported from the registry in
- * `db/local.ts` — the same choice `theme.test.tsx` makes.
+ * `db/localStorage.ts` — the same choice `theme.test.tsx` makes.
  *
  * On purpose: this file's job is to say what is really in the browser after
  * a change of account. If it asked the registry which keys to look at, a
  * change that dropped a key OUT of the registry would take this test's
  * eyesight with it, and the whole point is to have one witness that cannot
  * be fooled that way. The registry's own consistency is pinned separately,
- * in `db/local.test.ts`.
+ * in `db/localStorage.test.ts`.
  */
 const THEME_KEY = 'itbook-theme';
 
@@ -98,8 +98,57 @@ function makeAnchor(html: string, quote: string, color: AnchorColor = 'y'): Anch
   throw new Error(`makeAnchor: không neo được ${JSON.stringify(quote)}`);
 }
 
-async function seedNote(id: string, note: string): Promise<AnnotationRow> {
-  const row: AnnotationRow = {
+/**
+ * Task 7, Pha 3: `useAnnotations` (the ONE instance `<Reader>` below owns)
+ * reads/writes the server through `GET/POST /annotations` and
+ * `PATCH/DELETE /annotations/:id` now, not Dexie — the same shift
+ * `reader/ChapterView.test.tsx` already made. `annotationRows` stands in for
+ * the backend the same way that file's own array does; `patchCount` is this
+ * file's own witness for "was `updateNote` ever sent", since there is no
+ * `db.outbox` any more to count.
+ *
+ * `rowOwners`/`currentAccountId` exist because this file's whole subject is
+ * TWO ACCOUNTS, and a real `GET /annotations` (and every write endpoint) is
+ * scoped server-side to whoever the session cookie names — B's request never
+ * even reaches A's rows, no matter when it lands. `db.annotations` (the
+ * pre-Task-7 local store this replaces) had no such scoping of its own; the
+ * OLD version of this file's guarantee came entirely from `clearLocalData()`
+ * emptying the ONE shared local table on logout, with nothing left for a
+ * next account to inherit — including, incidentally, whatever the departing
+ * reader's own in-flight write was about to land. Post-Task-7, annotations
+ * are never cached locally at all, and a write dispatched a moment before a
+ * crash is a REAL in-flight `fetch` with no local table left to wipe out
+ * from under it — so the account boundary this file exists to test has moved
+ * to the SERVER, same as production, and the mock has to enforce it there or
+ * a stray write from a session that has already ended could still land and
+ * (worse) a test asserting "B never sees A's note" would only be passing by
+ * accident (both accounts sharing one course/chapter id in this fixture,
+ * with nothing here otherwise telling them apart). Defaults to `'u-a'`
+ * because every `seedNote` in this file seeds AS A, and A is always the
+ * first account in every scenario; `bSignsIn` (via the real `/auth/login`
+ * handler below) is the one place it changes.
+ *
+ * (`setMe`, a direct `/me` mock setter that let a test declare "this is A"
+ * or "this is B" without a real login, used to live here too — Task 11
+ * removed it along with the only tests that called it, the offline-branch
+ * scenarios at the end of this file.)
+ */
+let annotationRows: Ann[];
+let rowOwners: Map<string, string>;
+let currentAccountId: string;
+let patchCount: number;
+
+/** Upserts by `id`, matching Dexie's `put` semantics the pre-Task-7 version
+ * of this function relied on — some tests call this TWICE with the SAME id
+ * (once for A, once for "B's own sync brings the same chapter's row down"
+ * under the SAME id — the whole point of that scenario), and a plain `push`
+ * would leave two rows with one id in `annotationRows`. Owned by whoever is
+ * CURRENT when it is seeded, not a fixed account: every call in this file
+ * happens to run before any `setMe`/`bSignsIn` (so it is A's, matching
+ * `currentAccountId`'s own default) EXCEPT the one deliberate re-seed after
+ * B has signed in, which is exactly how that row becomes B's own. */
+function seedNote(id: string, note: string): Ann {
+  const row: Ann = {
     id,
     courseId: 'c1',
     chapterId: 'ch1',
@@ -107,9 +156,11 @@ async function seedNote(id: string, note: string): Promise<AnnotationRow> {
     note,
     createdAt: '2026-08-20T10:00:00.000Z',
     updatedAt: '2026-08-20T10:00:00.000Z',
-    deletedAt: null,
   };
-  await db.annotations.put(row);
+  const idx = annotationRows.findIndex((r) => r.id === id);
+  if (idx === -1) annotationRows.push(row);
+  else annotationRows[idx] = row;
+  rowOwners.set(id, currentAccountId);
   return row;
 }
 
@@ -157,13 +208,14 @@ function LogoutButton() {
  * `<Login>`, plus a sample of what was in `localStorage` the FIRST time the
  * sign-in screen rendered.
  *
- * Same idea as `Login.test.tsx`'s `SyncLifecycleProbe`, and for the same
- * reason: "the browser is clean once the dust settles" would also pass for
- * a fix that cleaned up late, by accident. This route's render phase runs
- * strictly after `useLogout`'s `await clearLocalData()` and strictly before
- * the departing reader's unmount flush — so a sample taken here is a sample
- * of what the truth point itself left behind, with nothing else's timing
- * mixed in.
+ * Same idea as the effect-timing probes elsewhere in this phase's tests
+ * (e.g. Task 10's own report on `Login.test.tsx`), and for the same reason:
+ * "the browser is clean once the dust settles" would also pass for a fix
+ * that cleaned up late, by accident. This route's render phase runs
+ * strictly after `useLogout`'s `await clearSession(queryClient)` and
+ * strictly before the departing reader's unmount flush — so a sample taken
+ * here is a sample of what the truth point itself left behind, with
+ * nothing else's timing mixed in.
  */
 function LoginRoute({ onArrive }: { onArrive: (draft: string | null) => void }) {
   // A `useState` initializer runs exactly once, during the FIRST render of
@@ -176,8 +228,17 @@ function LoginRoute({ onArrive }: { onArrive: (draft: string | null) => void }) 
 }
 
 /** The browser: the reader at `/`, the sign-in page at `/login`, one query cache — the two routes an account handover actually passes through. */
-function Browser({ at = '/', onArriveAtLogin = () => {} }: { at?: string; onArriveAtLogin?: (draft: string | null) => void }) {
+function Browser({
+  at = '/',
+  onArriveAtLogin = () => {},
+  onQueryClient = () => {},
+}: {
+  at?: string;
+  onArriveAtLogin?: (draft: string | null) => void;
+  onQueryClient?: (client: QueryClient) => void;
+}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  onQueryClient(queryClient);
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={[at]}>
@@ -198,65 +259,83 @@ function Browser({ at = '/', onArriveAtLogin = () => {} }: { at?: string; onArri
   );
 }
 
-/**
- * The same browser, but with the real route guard in front of the reader —
- * which is what a COLD page load actually goes through, and what Task 7b
- * changed. `<Browser>` above mounts `<Reader/>` directly because its
- * subject is the note draft; this one's subject is the guard's new
- * offline branch, so the guard has to be in the tree.
- *
- * A fresh `QueryClient` per render is the point, not a detail: it is what
- * makes a second `render(...)` a COLD LOAD rather than a re-render. Nothing
- * of the previous session's in-memory cache survives it, so everything the
- * guard decides has to come from the durable stores — exactly as after F5.
- */
-function GuardedBrowser({ at = '/' }: { at?: string }) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={[at]}>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <RequireAuth>
-                <Reader />
-                <LogoutButton />
-              </RequireAuth>
-            }
-          />
-          <Route path="/login" element={<Login />} />
-        </Routes>
-      </MemoryRouter></LanguageProvider></ThemeProvider>
-    </QueryClientProvider>
-  );
-}
+// `GuardedBrowser` (the same browser, with the real `<RequireAuth>` guard in
+// front of the reader) used to live here, for Task 7b's offline-branch
+// scenarios below. Task 11 removed both — see the note at the end of this
+// file.
 
 const server = setupServer(
   // Nobody is signed in, by default — this is how the app says that (see api/useMe.ts).
   http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })),
-  // `useLogout` runs the REAL engine's best-effort final flush before it
-  // clears anything. These are the three endpoints one cycle can touch.
-  http.post('/sync', () => HttpResponse.json({ applied: 0 })),
-  http.get('/sync', () => HttpResponse.json({ progress: [], annotations: [], cursor: 'c0' })),
+  // `useLogout` runs a real best-effort final flush before it clears
+  // anything (waits for in-flight mutations, then flushes queued study
+  // events — Task 10 removed the Dexie outbox `/sync` used to drain, so
+  // that endpoint is no longer touched here at all).
   http.post('/events/batch', () => HttpResponse.json({ accepted: 0 })),
   http.post('/auth/logout', () => new HttpResponse(null, { status: 200 })),
-  http.post('/auth/login', () => HttpResponse.json({ id: 'u-b', email: 'b@example.com', name: 'B' })),
+  // Tied to the ACTUAL request resolving, not to `bSignsIn`'s own timing —
+  // the moment a real backend would start scoping requests to B's session.
+  http.post('/auth/login', () => {
+    currentAccountId = 'u-b';
+    return HttpResponse.json({ id: 'u-b', email: 'b@example.com', name: 'B' });
+  }),
+  http.get('/annotations', ({ request }) => {
+    const course = new URL(request.url).searchParams.get('course');
+    const rows = annotationRows.filter(
+      (r) => (course === null || r.courseId === course) && rowOwners.get(r.id) === currentAccountId,
+    );
+    return HttpResponse.json({ annotations: rows });
+  }),
+  http.post('/annotations', async ({ request }) => {
+    const body = (await request.json()) as { id: string; courseId: string; chapterId: string; anchor: unknown; note: string };
+    const at = new Date().toISOString();
+    annotationRows.push({ ...body, createdAt: at, updatedAt: at });
+    // Real backend: a row belongs to whoever's session created it.
+    rowOwners.set(body.id, currentAccountId);
+    return new HttpResponse(null, { status: 201 });
+  }),
+  // A real backend never applies a write to a row it does not consider
+  // CURRENTLY yours — the same ownership check `GET` makes. Without it, a
+  // write dispatched by A a moment before a crash (this file's `aPageDies`)
+  // and only actually delivered to the mock later — after B has signed in on
+  // the same browser — would silently land on the SAME id under B's account,
+  // exactly the cross-account write the whole file exists to rule out.
+  http.patch('/annotations/:id', async ({ request, params }) => {
+    const id = String(params.id);
+    const patch = (await request.json()) as { note?: string; anchor?: unknown };
+    if (rowOwners.get(id) !== currentAccountId) return new HttpResponse(null, { status: 404 });
+    patchCount += 1;
+    const idx = annotationRows.findIndex((r) => r.id === id);
+    if (idx === -1) return new HttpResponse(null, { status: 404 });
+    annotationRows[idx] = { ...annotationRows[idx], ...patch, updatedAt: new Date().toISOString() };
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.delete('/annotations/:id', ({ params }) => {
+    const id = String(params.id);
+    annotationRows = annotationRows.filter((r) => r.id !== id);
+    return new HttpResponse(null, { status: 204 });
+  }),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-beforeEach(async () => {
-  await clearLocalData();
+beforeEach(() => {
+  // `window.localStorage.clear()` alone is the full reset now — Task 10
+  // removed Dexie, so `clearUserContent()`'s own job (emptying
+  // `USER_CONTENT_KEYS`) is a strict subset of what a full `.clear()`
+  // already does here, making a separate call redundant.
   window.localStorage.clear();
   document.body.innerHTML = '';
   setViewportWidth(WIDE);
+  annotationRows = [];
+  rowOwners = new Map();
+  currentAccountId = 'u-a';
+  patchCount = 0;
 });
 
-afterEach(async () => {
-  await clearLocalData();
+afterEach(() => {
   window.localStorage.clear();
   setViewportWidth(1024);
 });
@@ -313,10 +392,15 @@ async function bSignsIn(): Promise<void> {
   await user.click(screen.getByRole('button', { name: /đăng nhập/i }));
 }
 
-/** Everything of A's that this browser could still be holding, in one place. */
-async function whatIsLeftInTheBrowser(): Promise<{ tables: number[]; draft: string | null; theme: string | null }> {
+/**
+ * Everything of A's that this browser could still be holding, in one place.
+ *
+ * Task 10 note: this used to also report `tables: number[]` (every Dexie
+ * table's row count). Dexie is gone — `localStorage` is the only local
+ * store left, so it is the whole of what this function reports now.
+ */
+function whatIsLeftInTheBrowser(): { draft: string | null; theme: string | null } {
   return {
-    tables: await Promise.all(db.tables.map((t) => t.count())),
     draft: window.localStorage.getItem(DRAFT_KEY),
     theme: window.localStorage.getItem(THEME_KEY),
   };
@@ -333,14 +417,14 @@ describe('one browser, two accounts — the note draft is the departing user’s
     render(<Browser onArriveAtLogin={(draft) => (draftWhenTheBrowserWasDeclaredClean = draft)} />);
     await aTypesAPrivateNote(row.id);
 
-    // The real hook: stopSync → best-effort flush → POST /auth/logout →
-    // clearLocalData → /login. The card is STILL OPEN while all of that
+    // The real hook: best-effort flush → POST /auth/logout →
+    // clearSession() → /login. The card is STILL OPEN while all of that
     // runs, which is exactly why the draft is still stashed at the moment
     // the browser is declared clean.
     fireEvent.click(screen.getByRole('button', { name: 'Đăng xuất' }));
     await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument(), { timeout: 10_000 });
 
-    // Sampled by `LoginRoute` — after `clearLocalData()`, before the
+    // Sampled by `LoginRoute` — after `clearSession()`, before the
     // departing reader's unmount flush. Asserting only the end state would
     // let a LATER, incidental cleanup stand in for the fix: the departing
     // editor's own flush does clear the stash on its way out, but only
@@ -352,8 +436,7 @@ describe('one browser, two accounts — the note draft is the departing user’s
     await bSignsIn();
     await waitFor(() => expect(screen.getByTestId('chapter')).toBeInTheDocument());
 
-    const left = await whatIsLeftInTheBrowser();
-    expect(left.tables).toEqual(db.tables.map(() => 0));
+    const left = whatIsLeftInTheBrowser();
     expect(left.draft).toBeNull();
     expect(left.theme).toBe('dark');
 
@@ -376,8 +459,7 @@ describe('one browser, two accounts — the note draft is the departing user’s
     await bSignsIn();
     await waitFor(() => expect(screen.getByTestId('chapter')).toBeInTheDocument());
 
-    const left = await whatIsLeftInTheBrowser();
-    expect(left.tables).toEqual(db.tables.map(() => 0));
+    const left = whatIsLeftInTheBrowser();
     expect(left.draft).toBeNull();
     expect(left.theme).toBe('dark');
     expect(document.body.textContent ?? '').not.toContain(A_PRIVATE);
@@ -401,140 +483,53 @@ describe('one browser, two accounts — the note draft is the departing user’s
     await aTypesAPrivateNote(sharedId);
     await aPageDies();
 
-    render(<Browser at="/login" />);
+    let bsQueryClient: QueryClient | undefined;
+    render(<Browser at="/login" onQueryClient={(client) => (bsQueryClient = client)} />);
     await bSignsIn();
     await waitFor(() => expect(screen.getByTestId('chapter')).toBeInTheDocument());
+    // `patchCount` so far is A's OWN legitimate flush-on-unmount from
+    // `aPageDies()` (saving A's own note, nothing to do with adoption) —
+    // reset it here so the assertion below is scoped to what happens in B's
+    // session, which is the only thing this test is about.
+    patchCount = 0;
 
     // B's own sync brings down B's own note for the same chapter, into the
     // reader B already has open — the moment the recovery effect looks for
-    // a row to give the stashed draft to.
+    // a row to give the stashed draft to. `seedNote` is a plain mutation of
+    // the mock's own array, not a real `POST`/`PATCH` — so, unlike Dexie's
+    // `liveQuery` (reactive to any local write), the already-mounted
+    // `useQuery` has no trigger of its own to notice it: `invalidateQueries`
+    // is what a real sync cycle would call once it had written the row, and
+    // is the most direct stand-in available here.
     await seedNote(sharedId, '');
+    await act(async () => {
+      await bsQueryClient!.invalidateQueries({ queryKey: annotationsQueryKey('c1') });
+    });
     await waitForCards(1);
     // The effect is keyed on `list`; give it a turn of the loop to fire.
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect((await db.annotations.get(sharedId))?.note).toBe('');
+    expect(annotationRows.find((r) => r.id === sharedId)?.note).toBe('');
     expect(within(cardFor(sharedId)).queryByText(A_PRIVATE)).toBeNull();
-    // The sharper harm: adoption goes through `updateNote`, which enqueues
-    // an outbox row — A's words would be POSTed into B's server account
-    // under B's cookie on the next cycle.
-    expect(await db.outbox.count()).toBe(0);
+    // The sharper harm: adoption goes through `updateNote`, which would have
+    // sent a `PATCH /annotations/:id` — A's words would be POSTed into B's
+    // server account under B's cookie on the next cycle.
+    expect(patchCount).toBe(0);
   }, 20_000);
 });
 
-/* ====================================================================== *
- * Task 7b — the same handover, with the network down on the far side
- * ====================================================================== */
-
-const A = { id: 'u-a', email: 'a@example.com', name: 'A' };
-const B = { id: 'u-b', email: 'b@example.com', name: 'B' };
-
-/** `GET /me` never reaches a server: `fetch` rejects with a bare TypeError, no status, no body. */
-const NETWORK_IS_DOWN = http.get('/me', () => HttpResponse.error());
-
-/** A cold load: nothing of the previous tree, nothing of its query cache. */
-function coldLoad(at = '/'): void {
-  cleanup();
-  render(<GuardedBrowser at={at} />);
-}
-
-/**
- * Task 7b lets `<RequireAuth>` render a protected page when `GET /me` never
- * reached a server. That is a decision about AUTHENTICATION, and this is
- * where it has to be paid for: the one thing it may never do is put A's
- * words in front of B.
- *
- * The property being tested is not "the guard is strict" — a guard that
- * refused everything would pass a negative test and break the feature. It
- * is that the offline render is driven by THIS BROWSER'S CURRENT local
- * session: whatever `clearLocalData()` last left behind, and nothing older.
- * So both directions are here, and the positive one runs first, because a
- * negative result means nothing until the setup is known to work.
- */
-describe('one browser, two accounts — reading offline must never open the previous account’s reader', () => {
-  it('positive control: A’s own device, A’s own session, network dead — A reads their own note', async () => {
-    server.use(http.get('/me', () => HttpResponse.json(A)));
-    const row = await seedNote('44444444-4444-4444-8444-444444444444', A_PRIVATE);
-
-    render(<GuardedBrowser />);
-    await waitForCards(1);
-    expect(within(cardFor(row.id)).getByText(A_PRIVATE)).toBeInTheDocument();
-
-    // The plane takes off.
-    server.use(NETWORK_IS_DOWN);
-    coldLoad();
-
-    // Before Task 7b this was the sign-in screen — the bug this whole task
-    // exists for, measured in a real browser in task-7-report.md §5.5.
-    await waitForCards(1);
-    expect(within(cardFor(row.id)).getByText(A_PRIVATE)).toBeInTheDocument();
-  }, 20_000);
-
-  it('A signs out, then the network dies: a cold load shows the outage, not A’s reader', async () => {
-    server.use(http.get('/me', () => HttpResponse.json(A)));
-    await seedNote('55555555-5555-4555-8555-555555555555', A_PRIVATE);
-
-    render(<GuardedBrowser />);
-    await waitForCards(1);
-
-    // The real hook — and the real `clearLocalData()` inside it, which takes
-    // the offline marker with it because the marker is a `db.meta` row and
-    // that function empties `db.tables`. Nothing was written for it.
-    fireEvent.click(screen.getByRole('button', { name: 'Đăng xuất' }));
-    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument(), { timeout: 10_000 });
-
-    server.use(NETWORK_IS_DOWN);
-    coldLoad();
-
-    expect(await screen.findByText(/kết nối/i)).toBeInTheDocument();
-    expect(screen.queryByTestId('chapter')).not.toBeInTheDocument();
-    expect(document.body.textContent ?? '').not.toContain(A_PRIVATE);
-  }, 20_000);
-
-  it('B signs in on A’s browser, then the network dies: B reads B’s empty library, never A’s note', async () => {
-    // The full handover, and the one that matters: the offline door is OPEN
-    // for B (B has a live local session, so the feature works for them) and
-    // what is behind it is B's own empty local database.
-    server.use(http.get('/me', () => HttpResponse.json(A)));
-    await seedNote('66666666-6666-4666-8666-666666666666', A_PRIVATE);
-
-    render(<GuardedBrowser />);
-    await waitForCards(1);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Đăng xuất' }));
-    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument(), { timeout: 10_000 });
-
-    server.use(http.get('/me', () => HttpResponse.json(B)));
-    await bSignsIn();
-    await waitFor(() => expect(screen.getByTestId('chapter')).toBeInTheDocument());
-
-    server.use(NETWORK_IS_DOWN);
-    coldLoad();
-
-    // The guard opened — B is not punished for A having been here.
-    await waitFor(() => expect(screen.getByTestId('chapter')).toBeInTheDocument());
-    expect(screen.queryByText(/kết nối/i)).not.toBeInTheDocument();
-    // And it opened onto B's own browser state, which holds nothing of A's.
-    await waitForCards(0);
-    expect(document.body.textContent ?? '').not.toContain(A_PRIVATE);
-    expect(await db.annotations.count()).toBe(0);
-  }, 20_000);
-
-  it('A never logged out, but the server says 401: the answer wins over the marker, offline branch or not', async () => {
-    // The bound on how long a device may stand in for the server: not a
-    // timer, the first HTTP response that arrives. A dead cookie plus a
-    // live network is a closed door on the very next load.
-    server.use(http.get('/me', () => HttpResponse.json(A)));
-    await seedNote('77777777-7777-4777-8777-777777777777', A_PRIVATE);
-
-    render(<GuardedBrowser />);
-    await waitForCards(1);
-
-    server.use(http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
-    coldLoad();
-
-    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument());
-    expect(screen.queryByTestId('chapter')).not.toBeInTheDocument();
-    expect(document.body.textContent ?? '').not.toContain(A_PRIVATE);
-  }, 20_000);
-});
+// Task 7b's "one browser, two accounts — reading offline must never open
+// the previous account's reader" describe block lived here (`GuardedBrowser`,
+// `coldLoad`, `NETWORK_IS_DOWN`, `A`, `B`, and four tests) and is gone: Task
+// 11 removed the offline branch it exercised
+// (`offlineSessionIsUsable`/`rememberSessionVerified`, the `sessionVerifiedAt`
+// marker) along with `<RequireAuth>`'s offline branch itself. With no branch
+// left that could ever render `children` from local state alone, the
+// account-boundary property this block existed to prove — "the previous
+// account's local session never opens this device's reader for the next
+// account" — is now vacuously true for THAT surface: there is no local
+// authority left to consult, only the server's answer for THIS request. The
+// account-boundary concern this phase introduced instead — a paused
+// react-query mutation replaying under the next signed-in account's cookie
+// once connectivity returns — is covered in `auth/session.test.ts`'s
+// "the mutation half" describe block.

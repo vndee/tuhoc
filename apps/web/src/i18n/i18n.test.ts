@@ -5,7 +5,7 @@ import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { en } from '../../../../packages/i18n/src/messages/en';
 import { vi } from '../../../../packages/i18n/src/messages/vi';
-import { DEVICE_PREFERENCE_KEYS, USER_CONTENT_KEYS } from '../db/local';
+import { DEVICE_PREFERENCE_KEYS, USER_CONTENT_KEYS } from '../db/localStorage';
 import { DEFAULT_LANG, LANGS, LANG_STORAGE_KEY, MESSAGES, normalizeLang, t } from './index';
 
 /**
@@ -154,7 +154,7 @@ describe('ngôn ngữ được ghi nhớ THEO THIẾT BỊ', () => {
       for (const spec of importSpecifiers(file, readFileSync(file, 'utf-8'))) specifiers.add(spec);
     }
     expect([...specifiers].sort()).toEqual([
-      '../db/local',
+      '../db/localStorage',
       './LanguageProvider',
       './index',
       './tNode',
@@ -457,7 +457,7 @@ describe('cổng chặn chuỗi cứng', () => {
     expect(seen).toContain('apps/web/src/pages/Settings.tsx');
     expect(seen).toContain('packages/i18n/src/messages/vi.ts');
     expect(seen).toContain('packages/course-kit/runtime.js');
-    expect(seen).not.toContain('apps/web/src/db/local.test.ts');
+    expect(seen).not.toContain('apps/web/src/db/localStorage.test.ts');
     expect(seen).not.toContain('packages/course-kit/vendor/katex.min.js');
   });
 

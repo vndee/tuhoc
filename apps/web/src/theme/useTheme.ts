@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { type LocalStorageKey, readLocalStorage, writeLocalStorage } from '../db/local';
+import { type LocalStorageKey, readLocalStorage, writeLocalStorage } from '../db/localStorage';
 
 export type Theme = 'light' | 'dark';
 
 /**
- * Declared in `db/local.ts`, where it is classified as a DEVICE PREFERENCE
+ * Declared in `db/localStorage.ts`, where it is classified as a DEVICE PREFERENCE
  * — the one list `clearLocalData()` deliberately leaves alone. Aliased here
  * rather than re-declared so there is one string with one owner: signing in
  * as somebody else must not flip a shared laptop back to a blinding white

@@ -7,7 +7,8 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 import type { Chapter, Part } from '../course/types';
-import { clearLocalData, db } from '../db/local';
+import { __resetSessionIdentityForTests, announceSessionUser, sessionWasSuperseded } from '../auth/sessionIdentity';
+import { clearUserContent } from '../db/localStorage';
 import { t } from '../i18n';
 import { ThemeProvider } from '../theme/ThemeContext';
 import { ChapterView } from './ChapterView';
@@ -78,6 +79,42 @@ const WIDGETS = [{ name: 'dao-ham', html: '<p>widget đạo hàm</p>' }];
 
 const CHAPTER_2_HTML = '<h1 class="ch-title">Chương hai</h1><p>nội dung khác</p>';
 
+/**
+ * Task 6, Pha 3: `useProgress` (mounted by `AuthedReaderExtras`, same as
+ * `/me` below) now reads/writes `GET`/`PUT /progress` instead of Dexie's
+ * `db.progress`/`db.outbox` — every `#mark-btn`/exercise-checkbox test in
+ * this file needs these to resolve. Backed by this in-memory array rather
+ * than a handler that always answers `[]`: `onSettled` (`useProgress.ts`)
+ * invalidates and REFETCHES after every mutation, so a `GET` that ignores
+ * what was just `PUT` would clobber the very write a test is trying to
+ * observe the instant that refetch lands — the same trap
+ * `progress/useProgress.test.ts`'s own mock avoids the same way. Reset in
+ * this file's `beforeEach`, below.
+ */
+let progressRows: Array<{ courseId: string; chapterId: string; status: string; done: boolean; updatedAt: string }>;
+
+/**
+ * Task 7, Pha 3: `useAnnotations` (mounted by `AuthedReaderExtras`, same as
+ * `useProgress` above) now reads/writes `GET/POST /annotations` and
+ * `PATCH/DELETE /annotations/:id` instead of Dexie's `db.annotations`/
+ * `db.outbox` — the identical shift `progressRows` already made one task
+ * earlier, for the identical reason: `onSettled` (`useAnnotations.ts`)
+ * invalidates and REFETCHES after every write, so a `GET` that ignores what
+ * was just written would clobber the very write a test is trying to observe.
+ * Reset in this file's `beforeEach`, below. No `deletedAt` field — the server
+ * hard-deletes (see `../api/annotations`'s own header), so `DELETE` below
+ * really does remove the row rather than tombstoning it.
+ */
+let annotationRows: Array<{
+  id: string;
+  courseId: string;
+  chapterId: string;
+  anchor: unknown;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+}>;
+
 const server = setupServer(
   http.get('/courses/demo/chapters/c1', () => HttpResponse.json({ html: FRAGMENT, widgets: WIDGETS })),
   http.get('/courses/demo/chapters/c2', () => HttpResponse.json({ html: CHAPTER_2_HTML, widgets: [] })),
@@ -88,6 +125,41 @@ const server = setupServer(
   // behaviour as before; the handful of tests that care about the OTHER
   // shape (Task 12's own block, below) override this with `server.use`.
   http.get('/me', () => HttpResponse.json({ id: 'u1', email: 'a@vi.vn', name: 'Người học' })),
+  http.get('/progress', () => HttpResponse.json({ progress: progressRows })),
+  http.put('/progress', async ({ request }) => {
+    const body = (await request.json()) as { courseId: string; chapterId: string; status: string; done: boolean };
+    const idx = progressRows.findIndex(
+      (r) => r.courseId === body.courseId && r.chapterId === body.chapterId && r.status === body.status,
+    );
+    const saved = { ...body, updatedAt: new Date().toISOString() };
+    if (idx === -1) progressRows.push(saved);
+    else progressRows[idx] = saved;
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.get('/annotations', ({ request }) => {
+    const course = new URL(request.url).searchParams.get('course');
+    const rows = course === null ? annotationRows : annotationRows.filter((r) => r.courseId === course);
+    return HttpResponse.json({ annotations: rows });
+  }),
+  http.post('/annotations', async ({ request }) => {
+    const body = (await request.json()) as { id: string; courseId: string; chapterId: string; anchor: unknown; note: string };
+    const at = new Date().toISOString();
+    annotationRows.push({ ...body, createdAt: at, updatedAt: at });
+    return new HttpResponse(null, { status: 201 });
+  }),
+  http.patch('/annotations/:id', async ({ request, params }) => {
+    const id = String(params.id);
+    const patch = (await request.json()) as { note?: string; anchor?: unknown };
+    const idx = annotationRows.findIndex((r) => r.id === id);
+    if (idx === -1) return new HttpResponse(null, { status: 404 });
+    annotationRows[idx] = { ...annotationRows[idx], ...patch, updatedAt: new Date().toISOString() };
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.delete('/annotations/:id', ({ params }) => {
+    const id = String(params.id);
+    annotationRows = annotationRows.filter((r) => r.id !== id);
+    return new HttpResponse(null, { status: 204 });
+  }),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
@@ -145,7 +217,19 @@ function renderChapterView(
 describe('ChapterView', () => {
   let renderKatex: Mock<(root: ParentNode) => void>;
 
+  // The supersession test at the bottom of this file is the only one that
+  // touches `auth/sessionIdentity`'s module state, and a leftover
+  // `superseded` flag would make every test after it render a signed-out
+  // reader. Reset unconditionally rather than in that one test: a guard that
+  // depends on remembering to call it is the shape this whole round of
+  // fixes exists to remove.
+  afterEach(() => {
+    __resetSessionIdentityForTests();
+  });
+
   beforeEach(() => {
+    progressRows = [];
+    annotationRows = [];
     renderKatex = vi.fn<(root: ParentNode) => void>();
     // `initViz`/`REDRAWS`/`VIZ` are still part of `window.CourseKit`'s type
     // (packages/course-kit/runtime.js still attaches them — see
@@ -171,7 +255,7 @@ describe('ChapterView', () => {
   });
 
   afterEach(async () => {
-    await clearLocalData();
+    await clearUserContent();
     delete document.documentElement.dataset.theme;
     window.localStorage.clear();
     courseKitMockState.gate = null;
@@ -579,7 +663,11 @@ describe('ChapterView', () => {
       expect(markBtn.querySelector('.mk-lbl')!.textContent).toBe('Đánh dấu đã học');
     });
 
-    it('clicking #mark-btn marks the chapter read: flips icon/label/class AND writes local progress + outbox', async () => {
+    it('clicking #mark-btn marks the chapter read: flips icon/label/class AND PUTs the new progress row', async () => {
+      // Task 6, Pha 3: the write this button makes is now a `PUT /progress`
+      // (`useProgress`'s optimistic mutation), not a Dexie write + outbox
+      // enqueue — see this file's server setup (`progressRows`) for where
+      // that PUT lands.
       await renderChapterAndSettle();
 
       const markBtn = document.getElementById('mark-btn')!;
@@ -593,9 +681,8 @@ describe('ChapterView', () => {
       // the button's accessible name.
       expect(markBtn.getAttribute('aria-label')).toBe('Bỏ đánh dấu đã học');
 
-      const row = await db.progress.get(['demo', 'c1', 'read']);
-      expect(row).toMatchObject({ courseId: 'demo', chapterId: 'c1', status: 'read', done: true });
-      expect(await db.outbox.count()).toBe(1);
+      await waitFor(() => expect(progressRows).toHaveLength(1));
+      expect(progressRows[0]).toMatchObject({ courseId: 'demo', chapterId: 'c1', status: 'read', done: true });
     });
 
     it('clicking #mark-btn a second time unmarks it again', async () => {
@@ -611,7 +698,9 @@ describe('ChapterView', () => {
     });
 
     it('reflects a chapter already marked read before this component mounted', async () => {
-      await db.progress.put({ courseId: 'demo', chapterId: 'c1', status: 'read', done: true, updatedAt: new Date().toISOString() });
+      // Task 6, Pha 3: "already marked read" now means the server's `GET
+      // /progress` says so, not a pre-seeded Dexie row.
+      progressRows.push({ courseId: 'demo', chapterId: 'c1', status: 'read', done: true, updatedAt: new Date().toISOString() });
 
       await renderChapterAndSettle();
 
@@ -649,19 +738,15 @@ describe('ChapterView', () => {
       const toolbar = screen.getByRole('toolbar');
       fireEvent.click(within(toolbar).getByRole('button', { name: /vàng/i }));
 
-      // Painted on the click, before anything has been read back out of Dexie.
+      // Painted on the click, before the server has answered the POST.
       expect(container.querySelectorAll('mark.ann').length).toBeGreaterThan(0);
       expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
 
-      await waitFor(async () => expect(await db.annotations.count()).toBe(1));
-      const [row] = await db.annotations.toArray();
-      expect(row).toMatchObject({ courseId: 'demo', chapterId: 'c1', note: '', deletedAt: null });
+      await waitFor(() => expect(annotationRows).toHaveLength(1));
+      const [row] = annotationRows;
+      expect(row).toMatchObject({ courseId: 'demo', chapterId: 'c1', note: '' });
       expect((row.anchor as { exact: string; color: string }).exact).toBe('Nội dung A');
       expect((row.anchor as { exact: string; color: string }).color).toBe('y');
-      // The outbox entry is what carries it to the other device — Task 4 writes
-      // both in one transaction, and this is the first caller to prove it from
-      // the UI side.
-      expect(await db.outbox.count()).toBe(1);
 
       // The store takes the highlight over, and there is exactly ONE mark left:
       // no double paint from a second hook instance, no orphaned optimistic
@@ -803,13 +888,13 @@ describe('ChapterView', () => {
       fireEvent.change(box, { target: { value: 'xem lại chỗ này' } });
       fireEvent.blur(box);
 
-      await waitFor(async () => {
-        const [row] = await db.annotations.toArray();
+      await waitFor(() => {
+        const [row] = annotationRows;
         expect(row.note).toBe('xem lại chỗ này');
       });
-      // One row for the create, one for the note edit — the note reaches the
-      // other device the same way the highlight does.
-      expect(await db.outbox.count()).toBe(2);
+      // Still exactly one row — the note edit is a PATCH of the same id, not a
+      // second annotation.
+      expect(annotationRows).toHaveLength(1);
       expect(notesBtn().textContent).toBe('Ghi chú (1)');
     });
 
@@ -840,11 +925,11 @@ describe('ChapterView', () => {
       // and so the second paint happens against a map the first paint expired.
       await selectAndOpenToolbar('Nội dung B');
       fireEvent.click(within(screen.getByRole('toolbar')).getByRole('button', { name: /vàng/i }));
-      await waitFor(async () => expect(await db.annotations.count()).toBe(1));
+      await waitFor(() => expect(annotationRows).toHaveLength(1));
 
       await selectAndOpenToolbar('Nội dung A');
       fireEvent.click(within(screen.getByRole('toolbar')).getByRole('button', { name: /xanh lá/i }));
-      await waitFor(async () => expect(await db.annotations.count()).toBe(2));
+      await waitFor(() => expect(annotationRows).toHaveLength(2));
 
       await waitFor(() => expect(rail().querySelectorAll('[data-ann-card]')).toHaveLength(2));
 
@@ -907,7 +992,6 @@ describe('ChapterView', () => {
       note: 'ghi chú cần cứu',
       createdAt: '2026-08-19T09:30:00.000Z',
       updatedAt: '2026-08-19T09:30:00.000Z',
-      deletedAt: null,
     };
 
     // The margin-card column only exists above 1240px (`reader.css` hides
@@ -932,7 +1016,7 @@ describe('ChapterView', () => {
     }
 
     it('mồ côi hiện trong lề ghi chú — đúng MỘT bản, trong portal của ChapterView (P2-F1)', async () => {
-      await db.annotations.put(LOST);
+      annotationRows.push(LOST);
       await renderChapterAndSettle();
       await openOrphanList();
 
@@ -947,7 +1031,7 @@ describe('ChapterView', () => {
     });
 
     it('cột thẻ KHÔNG nói "chưa có ghi chú nào" khi ngay dưới nó có ghi chú mồ côi', async () => {
-      await db.annotations.put(LOST);
+      annotationRows.push(LOST);
       await renderChapterAndSettle();
       await openOrphanList();
 
@@ -960,7 +1044,7 @@ describe('ChapterView', () => {
     });
 
     it('nút đếm cả ghi chú mồ côi — nếu không, con số duy nhất nói về chúng lại đề "(0)"', async () => {
-      await db.annotations.put(LOST);
+      annotationRows.push(LOST);
       await renderChapterAndSettle();
 
       // The reader has exactly one note in this chapter. It could not be
@@ -974,7 +1058,7 @@ describe('ChapterView', () => {
     });
 
     it('trong chế độ "Gắn lại", bôi chọn KHÔNG mở thanh công cụ tạo ghi chú mới — và mở lại được sau khi hủy', async () => {
-      await db.annotations.put(LOST);
+      annotationRows.push(LOST);
       await renderChapterAndSettle();
 
       // The positive precondition first, exactly as the pager test above does
@@ -1003,11 +1087,12 @@ describe('ChapterView', () => {
       // toolbar can be opened within a second, so this line is the proof that
       // suspending it did not leave it deaf.
       await selectAndOpenToolbar('Nội dung B');
-      expect(await db.outbox.count()).toBe(0);
+      // "Hủy" is a READ — nothing about the orphan changed on the server.
+      expect(annotationRows).toEqual([LOST]);
     });
 
     it('gắn lại qua giao diện thật: ghi chú về đúng chỗ mới, giữ nguyên chữ và màu, và rời khỏi mục mồ côi', async () => {
-      await db.annotations.put(LOST);
+      annotationRows.push(LOST);
       await renderChapterAndSettle();
 
       fireEvent.click(await openOrphanList());
@@ -1031,14 +1116,13 @@ describe('ChapterView', () => {
       // The rescued note keeps its own colour, not the toolbar's default.
       expect(mark.className).toContain('ann-p');
 
-      const row = await db.annotations.get('orphan-1');
+      // Still exactly one row, with the SAME id — a delete-then-create would
+      // have produced a second row (a new id) instead of a PATCH of this one.
+      expect(annotationRows).toHaveLength(1);
+      const row = annotationRows.find((r) => r.id === 'orphan-1');
       expect(row!.note).toBe('ghi chú cần cứu');
-      expect(row!.deletedAt).toBeNull();
       expect((row!.anchor as { exact: string; color: string }).exact).toBe('Nội dung A');
       expect((row!.anchor as { exact: string; color: string }).color).toBe('p');
-      // One outbox row for the reattach, and only that: nothing about an
-      // orphan is written until the reader asks for it.
-      expect(await db.outbox.count()).toBe(1);
     });
   });
 
@@ -1078,16 +1162,16 @@ describe('ChapterView', () => {
       expect(checkboxes).toHaveLength(2);
     });
 
-    it('checking a box writes "ex:<index>" progress (0-based, DOM order) to local storage + outbox', async () => {
+    it('checking a box PUTs "ex:<index>" progress (0-based, DOM order)', async () => {
+      // Task 6, Pha 3: this write is now `PUT /progress`, not a Dexie row —
+      // see the `#mark-btn` block above for the same change.
       await renderChapterAndSettle();
 
       const checkboxes = Array.from(document.querySelectorAll<HTMLInputElement>('.box.ex .box-h input[type="checkbox"]'));
       fireEvent.click(checkboxes[1]);
 
-      await waitFor(async () => {
-        const row = await db.progress.get(['demo', 'c1', 'ex:1']);
-        expect(row).toMatchObject({ status: 'ex:1', done: true });
-      });
+      await waitFor(() => expect(progressRows).toHaveLength(1));
+      expect(progressRows[0]).toMatchObject({ courseId: 'demo', chapterId: 'c1', status: 'ex:1', done: true });
     });
 
     it('does not double-inject across a StrictMode double-mount', async () => {
@@ -1314,10 +1398,11 @@ describe('ChapterView', () => {
       await act(async () => {});
       expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
 
-      // And nothing was written anywhere on this device.
-      expect(await db.progress.count()).toBe(0);
-      expect(await db.annotations.count()).toBe(0);
-      expect(await db.outbox.count()).toBe(0);
+      // And nothing reached the server — Task 6/7, Pha 3: `useProgress`/
+      // `useAnnotations` no longer write to Dexie at all, so the meaningful
+      // check is the server-facing state these mocks stand in for.
+      expect(progressRows).toHaveLength(0);
+      expect(annotationRows).toHaveLength(0);
     });
 
     it('a signed-in reader sees no nudge, alongside the full session UI', async () => {
@@ -1327,6 +1412,94 @@ describe('ChapterView', () => {
       expect(document.getElementById('rail-tab-notes')).not.toBeNull();
       expect(document.getElementById('mark-btn')!.hidden).toBe(false);
       expect(document.querySelectorAll('.box.ex .box-h input[type="checkbox"]')).toHaveLength(2);
+    });
+
+    /**
+     * Rà soát toàn nhánh, bước 5 — CHỖ THỨ NĂM, đo trên chính component
+     * thật.
+     *
+     * `AuthedReaderExtras` mang cả `useAnnotations` (POST/PATCH/DELETE
+     * /annotations) lẫn `useProgress` (PUT /progress), và nó dựng trên
+     * route CÔNG KHAI `/c/:courseId/:chapterId` — ngoài `<RequireAuth>`,
+     * tức ngoài người đọc duy nhất của `sessionWasSuperseded()` trước vòng
+     * sửa này. Với `useMe` còn cache là A, một tab nền vẫn vẽ cây của A và
+     * mọi cú ghi của nó đi dưới cookie của B: một ghi chú A gõ rồi lưu sau
+     * lúc bàn giao được INSERT vào tài khoản B, nguyên văn.
+     *
+     * Bài này KHÔNG dựng lại cổng ấy bằng một bản sao — nó dùng đúng
+     * `<ChapterView>` thật, với đúng dòng `me.isSuccess && me.data != null`
+     * mà production chạy. Cổng nay nằm trong `useMe()` (một nơi hỏi, mọi
+     * nơi thừa hưởng), nên đây là chỗ chứng minh nó thật sự tới được tới
+     * lớp ghi.
+     *
+     * Tab kia là một ĐỒ THỊ MODULE RIÊNG: `BroadcastChannel` không trả
+     * thông điệp về cho chính object đã gửi, nên `announceSessionUser` gọi
+     * trong cùng một module sẽ không bao giờ đo được điều nó định đo.
+     */
+    it('một tab khác chiếm phiên ⇒ lớp GHI của trang đọc biến mất, và không cú ghi nào của A tới máy chủ', async () => {
+      await renderChapterAndSettle();
+
+      // Đối chứng dương TRƯỚC: lớp ghi đang thật sự đứng đó.
+      expect(document.getElementById('rail-tab-notes')).not.toBeNull();
+      expect(document.getElementById('mark-btn')!.hidden).toBe(false);
+      expect(document.querySelectorAll('.box.ex .box-h input[type="checkbox"]')).toHaveLength(2);
+
+      // Tab 1: A đăng xuất (`clearSession()` công bố `null`), B đăng nhập.
+      vi.resetModules();
+      const tab1 = await import('../auth/sessionIdentity');
+      tab1.announceSessionUser(null);
+      tab1.announceSessionUser('u-b');
+      await waitFor(() => expect(sessionWasSuperseded()).toBe(true));
+
+      // Mọi thứ GHI do React dựng đã rời khỏi trang — cùng danh sách mà
+      // bài "khách ẩn danh" ngay trên kiểm, vì đó chính xác là hình dạng
+      // đúng: tab này không còn là một phiên đã xác nhận nữa.
+      await waitFor(() => expect(document.getElementById('rail-tab-notes')).toBeNull());
+      expect(document.getElementById('mark-btn')!.hidden).toBe(true);
+
+      // CÁC Ô BÀI TẬP CŨNG PHẢI BIẾN MẤT, và đây là nửa mà bản sửa "một nơi
+      // hỏi, mọi nơi thừa hưởng" KHÔNG tự lo được. Chúng là DOM mệnh lệnh
+      // tiêm vào fragment của chương, mang một listener `change` đóng gói
+      // `progress.toggleEx` — tức một `PUT /progress` sống. Tháo
+      // `AuthedReaderExtras` ra không gỡ chúng đi, vì chúng không thuộc cây
+      // React. Bản đầu của bài kiểm này bấm vào một ô còn sót và NHẬN ĐƯỢC
+      // một hàng tiến độ — nên `injectExerciseCheckboxes.ts` nay có
+      // `removeExerciseCheckboxes`, gọi từ một cleanup lúc unmount.
+      const leftoverCheckbox = document.querySelector('.box.ex .box-h input[type="checkbox"]');
+      expect(leftoverCheckbox).toBeNull();
+
+      // Các cử chỉ ghi thật sự không làm gì nữa: bôi đen không gọi được
+      // thanh công cụ, bấm `#mark-btn` không sinh ra hàng nào phía máy chủ.
+      selectInChapter('Nội dung A');
+      await act(async () => {});
+      expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
+
+      fireEvent.click(document.getElementById('mark-btn')!);
+      await act(async () => {});
+      expect(progressRows).toHaveLength(0);
+      expect(annotationRows).toHaveLength(0);
+    });
+
+    /**
+     * Nửa còn lại, và là nửa dễ làm hỏng nhất khi vá loại lỗi này: một tab
+     * bị thay phiên phải trở lại BÌNH THƯỜNG ngay khi nó tự biết mình là
+     * ai — không phải một cái khoá đến hết đời tab.
+     */
+    it('và khi tab này tự hỏi lại rồi biết mình là B, lớp ghi trở lại đầy đủ', async () => {
+      await renderChapterAndSettle();
+
+      vi.resetModules();
+      const tab1 = await import('../auth/sessionIdentity');
+      tab1.announceSessionUser(null);
+      await waitFor(() => expect(sessionWasSuperseded()).toBe(true));
+      await waitFor(() => expect(document.getElementById('rail-tab-notes')).toBeNull());
+
+      // Tab này tự xác lập danh tính mới — đúng thứ `api/useMe.ts` làm khi
+      // `GET /me` của chính nó trả lời.
+      announceSessionUser('u-b');
+
+      await waitFor(() => expect(document.getElementById('rail-tab-notes')).not.toBeNull());
+      expect(document.getElementById('mark-btn')!.hidden).toBe(false);
     });
 
     it('does not show the nudge while GET /me is still pending — a flash aimed at a signed-in reader is worse than a late nudge', async () => {

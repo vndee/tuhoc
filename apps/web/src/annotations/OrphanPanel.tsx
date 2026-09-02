@@ -87,8 +87,11 @@
  * in for one `'￼'`, so the reader's 109 characters of prose become a single
  * character that is identical to all 263 other formulas in the chapter. The
  * note then leaves `orphans` — taking "Gắn lại" and "Xem exact gốc" with it —
- * with nothing findable stored, no undo, and one outbox row of that to every
- * other device. Measured on a real browser, and it is the ordinary drag: in a
+ * with nothing findable stored, no undo, and a `PATCH /annotations/:id` that
+ * hands every other device's next read that exact same unfindable anchor
+ * (Pha 3: the write goes straight to the server, no outbox in between any
+ * more — but a reader elsewhere still sees the loss the moment they next
+ * fetch). Measured on a real browser, and it is the ordinary drag: in a
  * course about information theory, "my note is about THIS equation" is the
  * first thing a reader tries.
  *
@@ -404,7 +407,7 @@ export function OrphanPanel({ content, store, reattaching, onReattachingChange }
     // move between the render that offered the button and the click that
     // presses it, and that race is the one that costs `exact` (file doc,
     // section 5). The reader keeps the mode, the selection, the note and the
-    // old quote; nothing is written and nothing reaches the outbox.
+    // old quote; nothing is written and no `PATCH /annotations/:id` is sent.
     if (!hasFindableText(anchor.exact)) {
       setFailure(t(REATTACH_NO_WORDS));
       return;

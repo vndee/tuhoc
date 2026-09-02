@@ -78,7 +78,7 @@
  */
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type LocalStorageKey, readLocalStorage, writeLocalStorage } from '../db/local';
+import { type LocalStorageKey, readLocalStorage, writeLocalStorage } from '../db/localStorage';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { type CardMeasure, DEFAULT_GAP, layoutCards } from './layout';
 import { highlightElements, highlightRects } from './painter';
@@ -145,7 +145,8 @@ export const WIDE_MIN_PX = 1241;
 const WIDE_QUERY = `(min-width: ${WIDE_MIN_PX}px)`;
 
 /** How long after the last keystroke the note is written. Long enough that
- * typing a sentence is one write and one outbox row rather than forty.
+ * typing a sentence is one write and one `PATCH /annotations/:id` request
+ * rather than forty.
  *
  * This number is NOT what protects the reader's words — an earlier version of
  * this comment claimed it was ("short enough that a reader who closes the tab
@@ -162,10 +163,12 @@ const WRITE_DEBOUNCE_MS = 600;
 /**
  * Where the note being typed right now is kept so that nothing can lose it.
  *
- * This exists because of a measurement, not a worry. Three IndexedDB write
- * shapes were raced against four ways a page can go away, in real Chromium:
+ * This exists because of a measurement, not a worry — made back when the
+ * durable write below went to Dexie directly (P2), before Pha 3 moved
+ * `updateNote` onto `PATCH /annotations/:id`. Three IndexedDB write shapes
+ * were raced against four ways a page can go away, in real Chromium:
  *
- * | how the page went away | `put` straight from the handler | read-then-`put` (what the store does) |
+ * | how the page went away | `put` straight from the handler | read-then-`put` (what the store did) |
  * |---|---|---|
  * | tab closed             | committed | committed |
  * | reloaded (F5)          | **lost**  | **lost**  |
@@ -174,14 +177,24 @@ const WRITE_DEBOUNCE_MS = 600;
  *
  * So "flush harder on the way out" cannot be the whole answer: on a same-tab
  * navigation the browser discards transactions opened during unload no matter
- * how early they are issued, and `updateNote` is a read-modify-write, the
- * shape with the least chance of all. `localStorage` survived every one of the
- * four, because writing it is synchronous — it is done before the handler
- * returns, not scheduled.
+ * how early they are issued, and the store's write was a read-modify-write,
+ * the shape with the least chance of all. `localStorage` survived every one
+ * of the four, because writing it is synchronous — it is done before the
+ * handler returns, not scheduled.
  *
- * So the draft is stamped here on EVERY keystroke, and the durable write to
- * Dexie stays debounced. Not on unload only, deliberately: the lesson of this
- * bug is that enumerating the ways out is what failed (nobody listed Cmd+W),
+ * Pha 3 changed WHAT the durable write is (Dexie → `PATCH /annotations/:id`
+ * through `updateNote`, a network request instead of an IndexedDB
+ * transaction) but not the shape of the risk this measurement found: a
+ * deferred write that has not landed yet is exactly as loseable on an
+ * abrupt same-tab exit whether the thing it never reaches is a browser
+ * database or a server. This table was not re-run against the network write
+ * — the reasoning is presumed to carry over, not re-measured — which is
+ * why the draft safety net below was kept rather than retired.
+ *
+ * So the draft is stamped here on EVERY keystroke, and the durable write
+ * (now to the server, `updateNote` → `PATCH /annotations/:id`) stays
+ * debounced. Not on unload only, deliberately: the lesson of this bug is
+ * that enumerating the ways out is what failed (nobody listed Cmd+W),
  * and a draft that is already safe before anything happens does not need the
  * list to be complete — it also covers the exits that fire no event at all, a
  * crash or an out-of-memory tab kill on a phone.
@@ -197,7 +210,7 @@ const WRITE_DEBOUNCE_MS = 600;
  * unbounded set of keys to expire; this is the cheaper end of that trade and
  * the reason is here so the next person can re-decide it.
  *
- * The key itself is DECLARED in `db/local.ts`, not here, and is classified
+ * The key itself is DECLARED in `db/localStorage.ts`, not here, and is classified
  * there as user content. That is deliberate and it is the whole lesson of
  * this mechanism's own follow-up bug: this is a per-BROWSER slot holding one
  * person's private words, so the thing that empties this browser for the next
@@ -382,7 +395,7 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
    * guard below cannot stand in for this: `row` comes from `list`, and `list`
    * does not re-emit between a `visibilitychange` and the `pagehide` that
    * follows it milliseconds later — so without this, one tab close costs two
-   * Dexie writes and two outbox rows, i.e. two sync round trips, for one note.
+   * `PATCH /annotations/:id` requests for one note.
    * Cleared when the write fails, so a later flush retries rather than
    * believing a note was stored that was not. */
   const writtenRef = useRef<{ id: string; text: string } | null>(null);
@@ -396,7 +409,7 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
     if (!pending) return;
     const row = rowsRef.current.find((r) => r.id === pending.id);
     // Nothing to write when the text is unchanged — `updateNote` would still
-    // stamp `updatedAt` and queue an outbox row, i.e. a sync round trip for
+    // stamp `updatedAt` and send a `PATCH /annotations/:id` request for
     // opening a card and closing it again.
     if (!row || row.note === pending.text) return;
     const written = writtenRef.current;
@@ -421,15 +434,17 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
    * through as soon as the note it belongs to is on screen.
    *
    * Keyed on `list` because the row has to exist before it can be patched, and
-   * it arrives asynchronously (Dexie live query → resolve → paint). Rows from
+   * it arrives asynchronously (TanStack Query's `annotationsQueryKey` cache →
+   * resolve → paint, Task 7 of Pha 3 — no Dexie live query any more). Rows from
    * OTHER chapters are left alone rather than cleaned up: one shared slot means
    * a draft this chapter does not recognise probably belongs to a chapter that
    * has not been opened yet, and deleting it would be exactly the silent data
    * loss this is here to end.
    *
    * `honoured` because `list` emits again on the store's own write of this very
-   * note, and a second `updateNote` for the same text would be a second outbox
-   * row — the same trap `flush`'s `writtenRef` guards.
+   * note, and a second `updateNote` for the same text would be a second
+   * `PATCH /annotations/:id` request — the same trap `flush`'s `writtenRef`
+   * guards.
    */
   const recoveredRef = useRef<string | null>(null);
   useEffect(() => {
@@ -525,7 +540,8 @@ export function MarginCards({ content, store, visible, focus, onFocusChange }: M
   // `list` is in the deps and `honoured` is what makes that safe. The toolbar
   // path arrives EARLY: "Ghi chú" creates the row and asks for its card in the
   // same tick, but that card cannot exist until the row has travelled through
-  // Dexie's live query and been resolved and painted — several commits later.
+  // TanStack Query's cache and been resolved and painted — several commits
+  // later (no Dexie live query any more — Task 7 of Pha 3).
   // A focus effect keyed on `focus` alone runs once, finds no textarea, and
   // the reader is handed an editor they then have to click. Re-running it on
   // every store emission fixes that and introduces the opposite bug — focus

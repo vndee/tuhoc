@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { BrowserRouter, useLocation } from 'react-router-dom';
+import { startEventFlusher } from './api/events';
 import { useMe } from './api/useMe';
+import { drainLegacyDataOnce } from './db/legacyDrain';
 import { LanguageProvider } from './i18n/LanguageProvider';
 import { LanguageSwitcher } from './i18n/LanguageSwitcher';
 import { AppRoutes } from './routes';
@@ -13,7 +15,6 @@ import { AccountChip, SidebarTrigger, TopNav, TopSearch } from './shell/TopNav';
 import { Topbar } from './shell/Topbar';
 import { useMobileNav } from './shell/useMobileNav';
 import './styles/index.css';
-import { startSync, stopSync } from './sync/engine';
 import { ThemeProvider, useThemeContext } from './theme/ThemeContext';
 
 // One QueryClient for the whole app. No queries are defined yet — Task 10+
@@ -27,9 +28,9 @@ export default function App() {
       <BrowserRouter>
         {/* Ngoài <ThemeProvider>: ngôn ngữ là thứ MỌI thứ khác vẽ bằng, kể cả
             nhãn của nút chủ đề khi Task 5 bóc nó. Cả hai đều là tuỳ chọn của
-            THIẾT BỊ (db/local.ts's DEVICE_PREFERENCE_KEYS) và không phụ thuộc
-            nhau, nên thứ tự này chỉ là chiều phụ thuộc tương lai, không phải
-            một ràng buộc hôm nay. */}
+            THIẾT BỊ (db/localStorage.ts's DEVICE_PREFERENCE_KEYS) và không
+            phụ thuộc nhau, nên thứ tự này chỉ là chiều phụ thuộc tương lai,
+            không phải một ràng buộc hôm nay. */}
         <LanguageProvider>
           <ThemeProvider>
             <AppShell />
@@ -67,6 +68,7 @@ function AppShell() {
   const authScreen = AUTH_ROUTE.test(location.pathname);
 
   useSyncLifecycle();
+  useLegacyDrain();
 
   return (
     <Shell
@@ -121,10 +123,15 @@ function AppShell() {
 }
 
 /**
- * Debt carried from Task 13: `startSync()`/`stopSync()` (src/sync/engine.ts)
- * had no call site at all — nothing synced. This starts the background
- * sync loop once a user is authenticated, and stops it the moment that
- * stops being true (logout, session death) or this component unmounts.
+ * Debt carried from Task 13, narrowed by Task 10: this used to also start
+ * `sync/engine.ts`'s background push/pull loop (`startSync()`/`stopSync()`)
+ * once a user was authenticated. Task 10 deletes that engine entirely —
+ * progress and annotations are exclusively server-side now, read and
+ * written directly through `api/*` and react-query, with no local outbox
+ * left to flush on a timer. What remains here is `startEventFlusher()`
+ * (`./api/events.ts`) — the study-heartbeat queue, which was ALREADY off
+ * the Dexie outbox before this task (Task 8, this phase) and is unrelated
+ * to the engine that just left.
  *
  * Driven by `useMe()` — the same query `<RequireAuth>` reads — rather
  * than route location: `AppShell` renders on every route including
@@ -133,21 +140,95 @@ function AppShell() {
  * already uses for "is anyone logged in," so this doesn't introduce a
  * second, potentially-inconsistent way to answer that question.
  *
- * `startSync`/`stopSync` are both idempotent (see their own doc
- * comments in src/sync/engine.ts) — calling `startSync()` on every render
- * where `meQuery.data` is still the same signed-in user is a safe no-op,
- * not a second interval stacking on top of the first.
+ * `startEventFlusher` is NOT a module-level singleton (see its own doc
+ * comment) — its teardown is whatever THIS effect's own call returned,
+ * captured in `stopFlusher` below, not a shared top-level
+ * `stopEventFlusher()`.
  */
 function useSyncLifecycle(): void {
   const meQuery = useMe();
   const userId = meQuery.data?.id ?? null;
 
   useEffect(() => {
-    if (userId !== null) {
-      startSync();
-    }
+    if (userId === null) return undefined;
+    const stopFlusher = startEventFlusher();
     return () => {
-      stopSync();
+      stopFlusher();
     };
   }, [userId]);
+}
+
+/**
+ * Fires `drainLegacyDataOnce()` (`./db/legacyDrain.ts`) at most once per
+ * page load, and only for a SETTLED, SIGNED-IN `useMe()` — this is what
+ * replaced `startSync()`'s call site here (Task 10).
+ *
+ * **The gate this used to not have, and what its absence cost.** The first
+ * cut ran on `[]` deps with no auth condition at all, and said so on
+ * purpose: *the legacy outbox belongs to whichever account was signed in
+ * on THIS BROWSER under the OLD build, which has nothing to do with who
+ * `GET /me` currently answers — a browser that has since signed out still
+ * needs its old outbox flushed*. Every clause of that is true and the
+ * conclusion is still wrong, because the outbox does not travel with a
+ * name: `api/client.ts`'s `send()` carries whatever cookie the browser has
+ * NOW, and `apps/api/internal/sync/handler.go` files every row under
+ * `auth.UID(c)`. "Flush it for whoever wrote it" and "flush it under
+ * whoever is signed in" are the same line of code, and the second is what
+ * it actually does. The final whole-branch review measured the
+ * consequence: B signs in on A's browser, and on B's next page load A's
+ * private notes are INSERTed into B's account (see `legacyDrain.ts`'s
+ * header for why the server's owner-scoping cannot catch that, and
+ * `test/legacyDrainHandoff.test.tsx` for the end-to-end proof).
+ *
+ * `useSyncLifecycle` above only ever started the old sync engine for a
+ * signed-in user, and that engine's `runCycle` also asked
+ * `sessionWasSuperseded()` before every push. This hook is the same shape:
+ * the auth half here, the supersession half inside
+ * `drainLegacyDataOnce()` itself, where the drain's own await points are.
+ *
+ * **`decided`, and why the decision is per PAGE LOAD rather than per
+ * user.** `useMe()` settles once per load and can then change (a login on
+ * this very tab). Re-running the drain on that change is exactly the leak
+ * again in slow motion — the arriving account would flush the departing
+ * one's outbox. So the FIRST settled answer of a load decides, once, and
+ * nothing later in that load reopens the question: sign in as B and B's
+ * own next page load is the earliest this can run again, by which point
+ * `clearSession()` has already deleted the database (see
+ * `db/legacyDrain.ts`'s `clearLegacyLocalData`). `isError` deliberately
+ * does NOT decide — a 500 or a dead network is "unknown", not "logged
+ * out", the same distinction `<RequireAuth>` draws — so a later successful
+ * refetch still gets its one chance.
+ *
+ * What this strands, stated plainly: a browser whose old-build session
+ * ended and whose owner never signs in on it again keeps its outbox
+ * unsent, and the next account to sign in deletes rather than sends it.
+ * That is strictly better than the alternative it replaces, which was
+ * sending one learner's private notes into another learner's account.
+ *
+ * Exported for `test/legacyDrainHandoff.test.tsx`, which drives THIS hook
+ * rather than a copy of it — a gate this size is worth nothing if the
+ * thing under test is a re-implementation that can stay green while the
+ * real wiring rots.
+ *
+ * Not awaited, and any failure is swallowed here as a second, defensive
+ * layer on top of `drainLegacyDataOnce()`'s own internal try/catch (which
+ * already never rejects — see that function's doc comment): this must
+ * never block or blank this component's render. The worst case of a
+ * drain failing is that it retries on the next page load, which is exactly
+ * what "no delete on failure" is for.
+ */
+export function useLegacyDrain(): void {
+  const meQuery = useMe();
+  const settled = meQuery.isSuccess;
+  const userId = meQuery.data?.id ?? null;
+  const decided = useRef(false);
+
+  useEffect(() => {
+    if (decided.current || !settled) return;
+    decided.current = true;
+    if (userId === null) return;
+    drainLegacyDataOnce().catch((err: unknown) => {
+      console.error('tuhoc: legacy local database drain failed unexpectedly', err);
+    });
+  }, [settled, userId]);
 }

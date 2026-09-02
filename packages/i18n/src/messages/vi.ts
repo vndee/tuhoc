@@ -200,6 +200,13 @@ export const vi = {
     'Công cụ có nhãn "chưa bật trên máy chủ này" vẫn lưu được lựa chọn của bạn, nhưng máy chủ chưa được cấu hình để chạy nó — trợ lý sẽ bỏ qua cho tới khi quản trị viên bật.',
   'settings.ai.toolReadCourse': 'Đọc nội dung khoá học',
   'settings.ai.toolWebSearch': 'Tìm kiếm trên web',
+  // Task 12 (Pha 3) — nhãn thứ ba cho `AgentConfigPanel.tsx`'s
+  // `TOOL_LABEL_KEYS`, cùng hàng với hai khoá trên. `read_my_notes` bật
+  // MẶC ĐỊNH (`ai.readsYourNotes` nói điều đó ở panel hỏi–đáp); công tắc ở
+  // đây là nơi thật sự tắt được nó, và một nhãn tiếng Việt/Anh đọc được thay
+  // vì tên kỹ thuật "read_my_notes" trần trụi đúng cho một tool BẬT SẴN từ
+  // ngày đầu, không phải một tool người học tự bật.
+  'settings.ai.toolReadMyNotes': 'Đọc tiến độ và ghi chú của bạn',
   'settings.ai.save': 'Lưu cấu hình',
   'settings.ai.saved': 'Đã lưu.',
   'settings.ai.saveUnknownTool': 'Một công cụ trong danh sách không còn tồn tại. Tải lại trang rồi thử lại.',
@@ -325,6 +332,16 @@ export const vi = {
   'progress.lede': 'Số liệu học tập của bạn, kể thành câu.',
   'progress.loading': 'Đang tải tiến độ…',
   'progress.error': 'Chưa lấy được tiến độ. Số liệu nằm trên máy chủ, nên phần này cần mạng.',
+  /**
+   * Task 6, Pha 3: `useProgress.ts`'s `toggleRead`/`toggleEx` giờ ghi lạc
+   * quan lên `PUT /progress` — khi request đó hỏng, ô đã lật LÙI LẠI giá
+   * trị cũ (không giữ một lời nói dối), và câu này là lời giải thích duy
+   * nhất người học thấy, vẽ ngay cạnh nút vừa bấm (`reader/ChapterView.tsx`'s
+   * `AuthedReaderExtras`, `role="alert"`) — không phải toast, kho này không
+   * có hệ thống đó (xem `ErrorBoundary.tsx`/`AdminCredits.tsx` cho cùng quy
+   * ước). Cùng tông "Chưa lưu được X." với `rating.error.unknown` ở trên.
+   */
+  'progress.saveFailed': 'Chưa lưu được tiến độ của bạn.',
   'progress.sentence': (minutes: string, streak: string) =>
     `Bạn đã học ${minutes} phút, với chuỗi ${streak} ngày liên tục.`,
   'progress.sentenceNoStreak': (minutes: string) =>
@@ -603,6 +620,20 @@ export const vi = {
   'ann.deepDive': 'Đào sâu',
   'ann.dismissAlert': 'Đóng thông báo',
 
+  /**
+   * Task 7, Pha 3: `useAnnotations.ts`'s `updateNote`/`remove`/`reattach` giờ
+   * ghi lạc quan lên `PATCH`/`DELETE /annotations/:id` — trước Task 7, một
+   * request hỏng ở BA chỗ này chỉ vào `console.error`, người học không hề
+   * biết. Cache đã lùi lại giá trị cũ (đúng lẽ, không giữ một lời nói dối),
+   * và câu này là lời giải thích duy nhất người học thấy, vẽ trong
+   * `reader/ChapterView.tsx` (`role="alert"`) — cùng quy ước "một trường
+   * cộng thêm, một chỗ vẽ" `progress.saveFailed` đã dùng ở Task 6. KHÁC với
+   * `ann.saveFailed` ở trên: khoá đó là của `SelectionToolbar` khi TẠO ghi
+   * chú (bôi chọn) hỏng, khoá này là khi SỬA/XOÁ/GẮN LẠI một ghi chú đã có
+   * hỏng — hai sự kiện khác nhau, có thể cùng hiện một lúc, không sao.
+   */
+  'notes.saveFailed': 'Chưa lưu được ghi chú của bạn.',
+
   /* ── thẻ ghi chú bên lề (`annotations/MarginCards.tsx`) ────────────────── */
 
   'ann.card.collapsed': '▸ Đang thu gọn',
@@ -654,6 +685,25 @@ export const vi = {
   // hỏng, vì nó đúng ngay cả ở câu hỏi ĐẦU TIÊN. Xem `useAI.ts`'s doc comment
   // cho lý do máy chủ không có trí nhớ giữa các lượt.
   'ai.panel.noMemory': 'Mỗi câu hỏi là một lượt riêng — trợ lý không nhớ những câu bạn đã hỏi trước đó.',
+  // MẶC ĐỊNH BẬT, VÀ NGƯỜI HỌC PHẢI ĐƯỢC BÁO (task-12, Pha 3). `read_my_notes`
+  // (công cụ phía máy chủ, `apps/api/internal/ai/tool_notes.go`) đọc tiến độ
+  // và ghi chú của CHÍNH người đang hỏi cho course đang mở — migration 0010
+  // bật nó cho MỌI tài khoản, kể cả những tài khoản đã tồn tại từ trước. Bật
+  // mặc định là quyết định của chủ dự án; KHÔNG nói cho người học biết là một
+  // quyết định khác mà không ai chọn — câu này, cộng đường dẫn sang Cài đặt
+  // ngay sau nó trong `AskPanel.tsx`, là chỗ nói ra và chỗ tắt được.
+  //
+  // THƯỜNG TRỰC, cùng vị trí `ai.panel.noMemory` ngay trên: đúng ngay từ câu
+  // hỏi đầu tiên, không đợi tool thật sự được gọi lượt nào.
+  //
+  // "cho khoá học này" LÚC RA MẮT LÀ SAI, và bản rà soát toàn nhánh (Quan
+  // trọng 4) sửa MÃ chứ không sửa câu: trước đó slug của course là một
+  // THAM SỐ DO MODEL CHỌN, còn course người học đang mở chỉ được nhắc như
+  // lời khuyên trong prompt. Nay nó được buộc lúc dựng tool từ
+  // Turn.CourseSlug và schema không còn tham số course nào — xem
+  // `apps/api/internal/ai/tool_notes.go`, điều kiện 3 trong doc comment.
+  'ai.readsYourNotes':
+    'Gia sư có thể đọc tiến độ và ghi chú của bạn cho khoá học này để trả lời sát hơn.',
   // `ai.panel.noCredit` thay cho cặp Pha 1 `needsSetup`/`unavailable` (đã bỏ
   // — xem `git log` trên tệp này): Pha 2 không còn key cắm theo máy, và
   // không còn bản dựng nào thiếu route AI, nên cả hai trạng thái đó không
@@ -895,6 +945,13 @@ export const vi = {
   'auth.error.unknown': 'Đã xảy ra lỗi không xác định. Vui lòng thử lại.',
   'auth.error.unreachable':
     'Không thể kết nối tới máy chủ. Có thể bạn đang ngoại tuyến, hoặc máy chủ đang bị cấu hình sai (CORS/DNS).',
+  // Task 11 (Pha 3): màn hình `<RequireAuth>` hiện ra khi KHÔNG có phản hồi
+  // nào tới cho `GET /me` — không phải một lỗi máy chủ đã trả lời (đã có
+  // `auth.error.unreachable` ở trên cho ca đó), mà là "trang này cần mạng để
+  // mở, và máy không biết bạn còn phiên hay không". Từ khoá riêng vì màn hình
+  // này không phải một lỗi ĐĂNG NHẬP — người xem nó có thể đã đăng nhập, chỉ
+  // là máy không hỏi lại được máy chủ để xác nhận.
+  'auth.needsNetwork': 'Cần có kết nối mạng để mở trang này. Vui lòng kiểm tra kết nối rồi thử lại.',
 
   /* ── danh mục registry (`registry/`) ───────────────────────────────────── */
 

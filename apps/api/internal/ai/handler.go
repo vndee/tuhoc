@@ -65,24 +65,28 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// ToolNameReadCourse and ToolNameWebSearch are the names the two shipped
-// tools answer to. They are declared here, not next to each tool, because
-// this file needs them for three separate jobs that must agree: registering
-// the runners (TurnTools), validating what PUT /ai/config will store, and
-// telling the settings screen what exists (GET /ai/config's
-// available_tools).
+// ToolNameReadCourse, ToolNameWebSearch and ToolNameReadMyNotes are the
+// names the three shipped tools answer to. They are declared here, not next
+// to each tool, because this file needs them for three separate jobs that
+// must agree: registering the runners (TurnTools), validating what
+// PUT /ai/config will store, and telling the settings screen what exists
+// (GET /ai/config's available_tools).
 //
 // The values are not free choices. ToolNameReadCourse must equal
 // courseTool.Definition().Function.Name (tool_course.go), ToolNameWebSearch
 // must equal searchTool's (tool_search.go) AND agent.go's unexported
 // webSearchToolName, which is what decides whether the per-search surcharge
-// is billed at all. TestTurnToolsKeysMatchDefinitionNames pins the first
-// two; the surcharge assertion in
-// "POST /ai/chat runs a tool, charges the surcharge" pins the third
+// is billed at all, and ToolNameReadMyNotes must equal
+// notesTool.Definition().Function.Name (tool_notes.go).
+// TestTurnToolsKeysMatchDefinitionNames and
+// TestToolNameConstantsMatchTheRunnersDefinitions (handler_internal_test.go)
+// pin the first and third; the surcharge assertion in
+// "POST /ai/chat runs a tool, charges the surcharge" pins the second
 // behaviorally, by showing the money actually move.
 const (
-	ToolNameReadCourse = "read_course"
-	ToolNameWebSearch  = "web_search"
+	ToolNameReadCourse  = "read_course"
+	ToolNameWebSearch   = "web_search"
+	ToolNameReadMyNotes = "read_my_notes"
 )
 
 // KnownToolNames is every tool name the platform will accept in
@@ -106,7 +110,7 @@ const (
 // happen. unavailableToolNames below is the other half — the one that makes
 // the sentence above true at the boundary rather than only in this comment.
 func KnownToolNames() []string {
-	return []string{ToolNameReadCourse, ToolNameWebSearch}
+	return []string{ToolNameReadCourse, ToolNameWebSearch, ToolNameReadMyNotes}
 }
 
 // unavailableToolNames is every KNOWN name that this deployment has no
@@ -123,8 +127,12 @@ func KnownToolNames() []string {
 // accepts every known name, whether or not it is wired — the preference is
 // durable, see above). It is "you can switch this on, and on this
 // deployment it will do nothing until an operator sets the key".
-func (h *Handler) unavailableToolNames() []string {
-	registered := TurnTools(h.courses, h.search, h.maxSearches)
+//
+// uid is threaded through to TurnTools purely to keep this call shaped like
+// the real one Chat makes — read_my_notes's own availability (below) does
+// not depend on its value, only on whether h.notes is nil.
+func (h *Handler) unavailableToolNames(uid uuid.UUID) []string {
+	registered := TurnTools(h.courses, h.search, h.maxSearches, h.notes, uid, "")
 	var out []string
 	for _, name := range KnownToolNames() {
 		if _, ok := registered[name]; !ok {
@@ -369,14 +377,28 @@ func registerTool(m map[string]ToolRunner, r ToolRunner) {
 // search may be nil (no BRAVE_API_KEY configured). The web_search runner is
 // then not registered at all, rather than registered over a nil provider:
 // an advertised tool that always fails still costs the learner the tokens of
-// the tool_call round that discovers it.
-func TurnTools(courses CourseQuerier, search SearchProvider, maxSearchesPerTurn int) map[string]ToolRunner {
-	tools := make(map[string]ToolRunner, 2)
+// the tool_call round that discovers it. notes may be nil the same way (a
+// wiring mistake, since a real deployment always has one — see
+// HandlerDeps.Notes's doc comment) and is nil-checked for the identical
+// reason.
+//
+// userID is Task 12's addition, and it exists for exactly one purpose: it
+// is the ONLY value that ever reaches NewNotesTool's userID parameter. The
+// caller (Chat, below) reads it from the authenticated session — never from
+// the request body — before TurnTools is ever called, so by the time
+// read_my_notes exists as a ToolRunner it is already bound to a learner the
+// model cannot rename. See tool_notes.go's package doc comment for why that
+// binding has to happen at construction and nowhere later.
+func TurnTools(courses CourseQuerier, search SearchProvider, maxSearchesPerTurn int, notes NotesQuerier, userID uuid.UUID, courseSlug string) map[string]ToolRunner {
+	tools := make(map[string]ToolRunner, 3)
 	if courses != nil {
 		registerTool(tools, NewCourseTool(courses))
 	}
 	if search != nil {
 		registerTool(tools, NewSearchTool(search, maxSearchesPerTurn))
+	}
+	if notes != nil {
+		registerTool(tools, NewNotesTool(notes, userID, courseSlug))
 	}
 	return tools
 }
@@ -431,6 +453,16 @@ type HandlerDeps struct {
 	// key configured.
 	Search SearchProvider
 
+	// Notes backs read_my_notes: the asking learner's own progress and
+	// annotations for one course. Unlike Search this has no "not configured"
+	// state in a real deployment — internal/userdata needs only the same
+	// pool every other route already has, no third-party key — but TurnTools
+	// still nil-checks it, mirroring Courses/Search, so a wiring mistake
+	// here makes the tool silently unavailable (never advertised) rather
+	// than reaching a nil NotesQuerier the first time a learner's turn
+	// actually calls it.
+	Notes NotesQuerier
+
 	// UserID reads the authenticated learner's id out of the request. It is
 	// a function, not a direct call to auth.UID, for a hard reason: package
 	// internal/auth imports THIS package (auth.Repo.CreateUserWithSignupCredit
@@ -455,6 +487,7 @@ type Handler struct {
 	limiter     *RateLimiter
 	courses     CourseQuerier
 	search      SearchProvider
+	notes       NotesQuerier
 	userID      func(*fiber.Ctx) uuid.UUID
 	model       string
 	maxSearches int
@@ -470,6 +503,7 @@ func NewHandler(d HandlerDeps) *Handler {
 		limiter:     d.Limiter,
 		courses:     d.Courses,
 		search:      d.Search,
+		notes:       d.Notes,
 		userID:      d.UserID,
 		model:       d.Model,
 		maxSearches: d.MaxSearchesPerTurn,
@@ -662,8 +696,12 @@ func (h *Handler) Chat(c *fiber.Ctx) error {
 	}
 	agent := &Agent{
 		Client: h.client,
-		// Debt 9: a NEW tool set for this turn and no other.
-		Tools:    TurnTools(h.courses, h.search, h.maxSearches),
+		// Debt 9: a NEW tool set for this turn and no other. uid here is
+		// EXACTLY the uid this function's own auth check above already
+		// verified — read_my_notes (tool_notes.go) is bound to it at
+		// construction and reads no other value, ever, no matter what a
+		// tool_call's arguments claim.
+		Tools:    TurnTools(h.courses, h.search, h.maxSearches, h.notes, uid, courseSlug),
 		Settings: settings,
 	}
 
@@ -1024,7 +1062,7 @@ func (h *Handler) GetConfig(c *fiber.Ctx) error {
 	if err != nil {
 		return h.internal(c, "ai.GetConfig", err)
 	}
-	return c.JSON(newConfigResponse(stored, h.unavailableToolNames()))
+	return c.JSON(newConfigResponse(stored, h.unavailableToolNames(uid)))
 }
 
 // PutConfig serves PUT /ai/config.
@@ -1086,7 +1124,7 @@ func (h *Handler) PutConfig(c *fiber.Ctx) error {
 	if err != nil {
 		return h.internal(c, "ai.PutConfig/readback", err)
 	}
-	return c.JSON(newConfigResponse(saved, h.unavailableToolNames()))
+	return c.JSON(newConfigResponse(saved, h.unavailableToolNames(uid)))
 }
 
 // NAMING NOTE, load-bearing: this parameter is called `stored` rather than

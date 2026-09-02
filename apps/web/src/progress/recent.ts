@@ -3,36 +3,52 @@
  * mới (`pages/Dashboard.tsx`, route `/`) đặt ra, tách khỏi React để trả lời
  * được bằng một bài test thuần.
  *
- * Cả hai đọc DEXIE, không đọc mạng, và đó là một quyết định chứ không phải một
- * sự tiện tay. Trang chủ là màn hình đầu tiên mọi phiên mở ra; ruling F5 đã
- * chốt một lần rằng thứ người học thấy ở đây phải đúng khi không có mạng.
- * `GET /stats` biết tổng phút và chuỗi ngày, nhưng nó KHÔNG biết chương nào là
- * chương đang dở — nó chỉ đếm `chaptersDone` theo course. Câu trả lời cho "mở
- * cái gì bây giờ" nằm trong `db.progress`, ngay trên máy.
+ * ## Task 9, Pha 3: đổi nguồn, KHÔNG đổi câu hỏi
  *
- * `liveQuery` chứ không phải một lần đọc: một chương được đánh dấu đã đọc ở tab
- * khác, hoặc một ghi chú kéo về từ `sync/engine.ts`'s `pull()`, phải đổi được
- * màn hình này mà không cần tải lại trang — cùng tính chất `course/owned.ts`
- * đã dựa vào cho danh sách khoá học.
+ * Tới hết Task 8, cả hai đọc DEXIE qua `liveQuery` — `db.progress`/
+ * `db.annotations` — và đó từng là một quyết định có chủ ý (ruling F5: trang
+ * chủ là màn hình đầu tiên mọi phiên mở ra, và nó phải đúng khi không có
+ * mạng). Task 9 gỡ tiền đề "không cần mạng" ấy CÓ CHỦ Ý, cùng lý do Task 6 đã
+ * gỡ nó khỏi `useProgress`: tên nhánh (`pha3/du-lieu-len-may-chu`) nói đúng
+ * việc đang làm — máy chủ là nguồn DUY NHẤT, và biết "chương nào đang dở"
+ * không còn free về mạng nữa. Hai hook dưới đây nay đọc `GET /progress` /
+ * `GET /annotations` qua TanStack Query (`api/progress.ts`, `api/annotations.ts`,
+ * Task 5), đúng `progressQueryKey()`/`annotationsQueryKey()` KHÔNG tham số mà
+ * `useProgress`/`useAnnotations` đã dùng — nên bốn nơi gọi (đây, cộng
+ * `pages/Progress.tsx`'s `useLocalProgress`, `pages/Settings.tsx`'s đếm ghi
+ * chú) chia sẻ đúng MỘT request `GET /progress` và MỘT request
+ * `GET /annotations` cho toàn app, không phải bốn.
+ *
+ * `useQuery` chứ không phải một lần đọc: hai hook này tự động vẽ lại khi cache
+ * của `progressQueryKey()`/`annotationsQueryKey()` đổi — một chương được đánh
+ * dấu đã đọc (`useProgress`'s optimistic patch) hay một ghi chú mới tạo
+ * (`useAnnotations`) đổi được màn hình này ngay, không cần tải lại trang,
+ * cùng tính chất `liveQuery` từng cho — chỉ khác nguồn phát.
  */
 
-import { liveQuery } from 'dexie';
-import { useEffect, useState } from 'react';
-import type { AnnotationRow, ProgressRow } from '../db/local';
-import { db } from '../db/local';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { type Ann, annotationsQueryKey, fetchAnnotations } from '../api/annotations';
+import { type ProgressRow, fetchProgress, progressQueryKey } from '../api/progress';
 
 /**
  * Course được chạm tới GẦN ĐÂY NHẤT, theo `updatedAt` của bảng `progress`.
  *
  * So sánh bằng `Date.parse`, không so chuỗi thô — cùng lý do `db/local.ts`'s
- * `mergeRow` viết ra dài dòng: máy chủ định dạng `updatedAt` bằng
- * `time.RFC3339Nano`, thứ BỎ HẲN phần thập phân khi thời điểm rơi đúng giây
- * chẵn, và `'.'` (0x2E) sắp trước `'Z'` (0x5A) nên `...00.500Z` so chuỗi lại
- * NHỎ hơn `...00Z`. Một hàng mới hơn nửa giây sẽ thua, và cái thua ấy im lặng.
+ * `mergeRow` viết ra dài dòng (bản Dexie cũ của module này): máy chủ định
+ * dạng `updatedAt` bằng `time.RFC3339Nano`, thứ BỎ HẲN phần thập phân khi
+ * thời điểm rơi đúng giây chẵn, và `'.'` (0x2E) sắp trước `'Z'` (0x5A) nên
+ * `...00.500Z` so chuỗi lại NHỎ hơn `...00Z`. Một hàng mới hơn nửa giây sẽ
+ * thua, và cái thua ấy im lặng.
  *
  * Hàng có `updatedAt` không parse được bị BỎ QUA thay vì được coi là `NaN`:
  * mọi phép so sánh với `NaN` đều `false`, nên nó sẽ không bao giờ thắng — đúng
  * hướng an toàn, nhưng do tình cờ. Lọc ra trước làm điều ấy thành cố ý.
+ *
+ * Nhận `ProgressRow` của `api/progress.ts` (Task 5), không phải bản Dexie —
+ * hai kiểu trùng hình dạng byte-for-byte (`courseId`/`chapterId`/`status`/
+ * `done`/`updatedAt`), nên hàm THUẦN này không đổi một dòng nào ở Task 9;
+ * chỉ nguồn nạp vào nó đổi (`useLastStudiedCourseId` bên dưới).
  */
 export function pickLastStudiedCourseId(rows: readonly ProgressRow[]): string | null {
   let bestId: string | null = null;
@@ -49,36 +65,38 @@ export function pickLastStudiedCourseId(rows: readonly ProgressRow[]): string | 
 }
 
 /**
- * `null` = "chưa có hàng nào"; `undefined` = "Dexie chưa trả lời".
+ * `null` = "chưa có hàng nào"; `undefined`/pending = "chưa có câu trả lời".
  *
- * Hai trạng thái ấy KHÔNG được gộp: lần phát đầu tiên của `liveQuery` là bất
- * đồng bộ, nên coi giá trị khởi tạo là "không có gì" sẽ nháy trạng thái rỗng
- * vào mặt mọi người học đang có dở dang — đúng lỗi mà `course/owned.ts` đã
- * phải tách `settled` ra để tránh, và đúng lỗi mà `Dashboard.test.tsx` có một
- * bài riêng canh ("does not flash the empty-library note").
+ * Hai trạng thái ấy KHÔNG được gộp: lần trả lời đầu tiên của `GET /progress`
+ * là bất đồng bộ, nên coi giá trị khởi tạo là "không có gì" sẽ nháy trạng
+ * thái rỗng vào mặt mọi người học đang có dở dang — đúng lỗi mà
+ * `course/owned.ts` từng tách `settled` ra để tránh (module đó đã gỡ ở
+ * Task 13), và đúng lỗi mà `Dashboard.test.tsx` có một bài riêng canh ("does
+ * not flash the empty-library note").
  */
 export interface LastStudied {
   readonly courseId: string | null;
   readonly settled: boolean;
 }
 
+/**
+ * Một mảng rỗng CHIA SẺ Ở MỨC MODULE, không phải `data: rows = []` của
+ * `useQuery` (một mảng MỚI mỗi lần vẽ trong lúc câu hỏi chưa có dữ liệu). Xem
+ * `useProgress.ts`'s `EMPTY_ROWS` — cùng bẫy, cùng cách tránh: một tham chiếu
+ * mới mỗi lần vẽ sẽ vô hiệu `useMemo` bên dưới trên mọi lần vẽ trong lúc
+ * `GET /progress` đang chờ hoặc đang lỗi-rồi-thử-lại.
+ */
+const EMPTY_PROGRESS_ROWS: ProgressRow[] = [];
+
 export function useLastStudiedCourseId(): LastStudied {
-  const [courseId, setCourseId] = useState<string | null | undefined>(undefined);
+  const { data: rows = EMPTY_PROGRESS_ROWS, isPending } = useQuery({
+    queryKey: progressQueryKey(),
+    queryFn: () => fetchProgress(),
+  });
 
-  useEffect(() => {
-    const subscription = liveQuery(() => db.progress.toArray()).subscribe({
-      next: (rows) => setCourseId(pickLastStudiedCourseId(rows)),
-      error: (err) => {
-        console.error('progress/recent: local progress query failed', err);
-        // Một bảng không đọc được không được phép treo trang chủ ở "đang tải"
-        // mãi mãi — `course/owned.ts` xử lý cùng một cách, vì cùng một lý do.
-        setCourseId(null);
-      },
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+  const courseId = useMemo(() => pickLastStudiedCourseId(rows), [rows]);
 
-  return { courseId: courseId ?? null, settled: courseId !== undefined };
+  return { courseId, settled: !isPending };
 }
 
 /**
@@ -86,10 +104,11 @@ export function useLastStudiedCourseId(): LastStudied {
  *
  * Thứ tự ưu tiên, mỗi bậc có lý do riêng:
  *
- *  1. **Khoá vừa chạm tới gần nhất** (`db.progress`). Đúng trong hầu hết mọi
- *     phiên, và nó KHÔNG cần `courseIds` trả lời xong — một hàng progress tự
- *     nó đã là quyền sở hữu, nên chờ nguồn kia chỉ làm chậm màn hình đầu tiên
- *     mà không đổi câu trả lời.
+ *  1. **Khoá vừa chạm tới gần nhất** (`GET /progress`, qua
+ *     `useLastStudiedCourseId` ở trên). Đúng trong hầu hết mọi phiên, và nó
+ *     KHÔNG cần `courseIds` trả lời xong — một hàng progress tự nó đã là
+ *     quyền sở hữu, nên chờ nguồn kia chỉ làm chậm màn hình đầu tiên mà
+ *     không đổi câu trả lời.
  *  2. **Khoá đầu tiên** trong `courseIds`, theo bất kỳ thứ tự chỗ gọi đã sắp
  *     sẵn — ổn định giữa các lần vẽ nếu chỗ gọi giữ thứ tự ổn định.
  *
@@ -114,24 +133,24 @@ export function pickFocusCourse(courseIds: readonly string[], lastStudiedCourseI
  * ------------------------------------------------------------------ */
 
 /**
- * Ghi chú CÒN SỐNG, mới nhất trước, cắt còn `limit`.
+ * Ghi chú mới nhất trước, cắt còn `limit`.
  *
- * `deletedAt != null` là BIA MỘ, không phải một hàng đã biến mất
- * (`db/local.ts`'s `AnnotationRow`): nó phải còn nằm đó để lan sang thiết bị
- * khác. Lọc ở đây, chứ không xoá, là cách duy nhất đúng — và là lý do hàm này
- * không dùng thẳng chỉ mục `updatedAt` của Dexie mà sắp trong JS: một
- * `orderBy('updatedAt')` vẫn phải lọc bia mộ sau đó, nên nó không tiết kiệm
- * được lượt duyệt nào, trong khi so chuỗi thô của chỉ mục lại vấp đúng cái bẫy
- * RFC3339Nano mà `pickLastStudiedCourseId` vừa nói ở trên.
+ * Không còn lọc bia mộ ở đây. `Ann` (`api/annotations.ts`, Task 5) không có
+ * `deletedAt`: migration 0009 gỡ hẳn cột tombstone, `DELETE /annotations/:id`
+ * là một xoá THẬT, và `GET /annotations` không bao giờ trả một hàng đã xoá —
+ * việc lọc mà bản Dexie của hàm này từng làm nay xảy ra Ở MÁY CHỦ, một lần,
+ * cho mọi thiết bị, thay vì lặp lại ở từng nơi đọc `AnnotationRow[]`. Hàm này
+ * vẫn không dùng chỉ mục `updatedAt` của Dexie (không còn Dexie để dùng) —
+ * sắp trong JS như cũ, vì cùng cái bẫy RFC3339Nano mà
+ * `pickLastStudiedCourseId` nói ở trên vẫn áp dụng cho so sánh chuỗi thô.
  */
-export function pickRecentNotes(rows: readonly AnnotationRow[], limit: number): AnnotationRow[] {
+export function pickRecentNotes(rows: readonly Ann[], limit: number): Ann[] {
   return rows
-    .filter((row) => row.deletedAt === null || row.deletedAt === undefined)
     .map((row) => ({ row, at: Date.parse(row.updatedAt) }))
     .sort((a, b) => {
       const byTime = (Number.isNaN(b.at) ? 0 : b.at) - (Number.isNaN(a.at) ? 0 : a.at);
       // `id` phá hoà: hai ghi chú cùng mili giây phải xếp cùng một thứ tự ở mọi
-      // lần vẽ, nếu không danh sách sẽ tự xáo lại sau mỗi lần `liveQuery` phát.
+      // lần vẽ, nếu không danh sách sẽ tự xáo lại sau mỗi lần cache phát lại.
       return byTime !== 0 ? byTime : a.row.id.localeCompare(b.row.id);
     })
     .slice(0, limit)
@@ -139,23 +158,20 @@ export function pickRecentNotes(rows: readonly AnnotationRow[], limit: number): 
 }
 
 export interface RecentNotes {
-  readonly notes: readonly AnnotationRow[];
+  readonly notes: readonly Ann[];
   readonly settled: boolean;
 }
 
+/** Xem `EMPTY_PROGRESS_ROWS` ở trên — cùng lý do, cho `annotationsQueryKey()`. */
+const EMPTY_ANNOTATION_ROWS: Ann[] = [];
+
 export function useRecentNotes(limit: number): RecentNotes {
-  const [notes, setNotes] = useState<AnnotationRow[] | null>(null);
+  const { data: rows = EMPTY_ANNOTATION_ROWS, isPending } = useQuery({
+    queryKey: annotationsQueryKey(),
+    queryFn: () => fetchAnnotations(),
+  });
 
-  useEffect(() => {
-    const subscription = liveQuery(() => db.annotations.toArray()).subscribe({
-      next: (rows) => setNotes(pickRecentNotes(rows, limit)),
-      error: (err) => {
-        console.error('progress/recent: local annotation query failed', err);
-        setNotes([]);
-      },
-    });
-    return () => subscription.unsubscribe();
-  }, [limit]);
+  const notes = useMemo(() => pickRecentNotes(rows, limit), [rows, limit]);
 
-  return { notes: notes ?? [], settled: notes !== null };
+  return { notes, settled: !isPending };
 }

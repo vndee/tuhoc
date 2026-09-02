@@ -32,17 +32,18 @@ const API_URL = process.env.VITE_API_URL ?? `http://localhost:${process.env.TUHO
 
 export default defineConfig({
   testDir: './e2e',
-  // Final whole-branch review, Important 4: `make test-e2e` ran all four
-  // specs unfiltered, and one of them was red for a reason that predates
-  // this phase and belongs to it: `p2.spec.ts` navigates to a chapter in
-  // course `so-dau-phay-dong` (see its own `COURSE_ID` constant), but
+  // Final whole-branch review, Important 4 (Pha 2) found `make test-e2e` red
+  // for a reason that predated that review and was never this phase's own
+  // subsystem to fix: `p2.spec.ts` navigated to a chapter in course
+  // `so-dau-phay-dong` (see its own history in that file), but
   // `scripts/test-e2e.sh`'s seed step only ever publishes ONE course to
   // the e2e stack — `mau-hop-le` (`fixtures/format-v2/valid-course`, the
   // shared TS/Go fixture corpus's zero-finding case, chosen there for
-  // that reason). `so-dau-phay-dong` was never seeded, so
-  // `GET /courses/so-dau-phay-dong/chapters/p2-2` 404s and `.katex` never
-  // renders — a missing fixture, not a course-serving regression, and
-  // P2 (annotations) is not this phase's subsystem to fix.
+  // that reason). `so-dau-phay-dong` was never seeded, so every request
+  // p2.spec.ts made 404d before it ever reached the annotation behaviour
+  // it meant to test — a missing fixture, not a course-serving regression.
+  // That review quarantined the file here (a `testIgnore` entry) rather
+  // than leave a permanently-red spec in the gate.
   //
   // `s2.spec.ts` held a SECOND entry here for one Pha 2 commit: Task 16
   // deleted the phase-1 AI/BYOK key vault app it drove FIRST, in one
@@ -54,42 +55,43 @@ export default defineConfig({
   // (spec §8: "số dư hiện, trừ đúng, hết chặn, config giữ"), against a
   // fake DeepSeek double (`scripts/fake_deepseek.py`) rather than the
   // real API — see that spec file's own top comment for the full
-  // reasoning. It runs unfiltered, same as `p1.spec.ts`/`widget.spec.ts`
-  // below; nothing about it belongs in this list.
+  // reasoning.
   //
-  // Quarantined here, not silently: `p1.spec.ts` (this phase's own P1
-  // definition-of-done gate), `widget.spec.ts` (spec §8's sandboxed-
-  // widget proof, also this phase's) and `s2.spec.ts` (the AI/credit
-  // gate, above) are what `make test-e2e` asserts from now on — the only
-  // three specs actually exercising what this phase built. Un-skip a
-  // file by deleting its entry below once its own subsystem re-seeds
-  // what it needs (`p2.spec.ts`: a second course, or a fixture switch)
-  // or is otherwise made independently green — this list is not a place
-  // to add a SECOND entry without the same kind of investigation that
-  // put this one here.
-  testIgnore: ['**/p2.spec.ts'],
+  // Task 13 of Pha 3 (`.superpowers/sdd/2026-09-01-pha3-du-lieu-len-may-chu/
+  // task-13-brief.md`) is what un-quarantines `p2.spec.ts`: it now targets
+  // `mau-hop-le`/`c1` — the course/chapter this script already seeds for
+  // `p1.spec.ts`/`widget.spec.ts`, and the SAME chapter `p1.spec.ts` proves
+  // renders KaTeX; `c2` was left to `widget.spec.ts` alone so the two
+  // gates do not share a chapter — and its scenarios were rewritten around
+  // the fact that this phase deleted the local-first Dexie/outbox/sync-
+  // engine layer entirely (see that file's own header comment for what
+  // replaced the old "wait for two devices to converge" shape). No
+  // `testIgnore` entry is left below: every spec `testDir` finds now runs
+  // unfiltered, which is what `make test-e2e` asserts from this task on.
   // One real network round trip per assertion, two independent browser
-  // contexts, and a deliberate wait for a 15s server-side sync timer (see
-  // e2e/p1.spec.ts) — this is not a fast suite, and 90s is a real budget
-  // for it, not a copy-pasted default.
+  // contexts, a real build+seed of the stack underneath — this is not a
+  // fast suite, and 90s is a real per-test budget for that, not a
+  // copy-pasted default.
+  //
+  // Task 13 of Pha 3: this used to also cover a deliberate wait for two
+  // independent 15s server-side sync timers (`p1.spec.ts`'s cross-device
+  // assertion, `p2.spec.ts`'s before this task). Both timers, and the
+  // local-first Dexie/outbox layer they belonged to, are gone — a mark-read
+  // or an annotation write is now a synchronous request, and a second
+  // device sees it on its own next read (a reload), not on a poll. Left at
+  // 90s anyway: `p2.spec.ts`'s failure-path scenario still deliberately
+  // delays an aborted request by a few hundred ms to give the optimistic
+  // paint a real window to be observed before it rolls back (see that
+  // file), and registration/login can themselves wait out `helpers.ts`'s
+  // own `/auth/*` rate-limit budget — neither of those is a 15s-timer wait,
+  // but both eat into a single test's budget.
   timeout: 90_000,
   // Deliberately Playwright's own stock default (5s), not a suite-wide
-  // bump — fix-round-1 finding: an earlier draft set this globally to
-  // 45_000 to cover the one assertion that genuinely needs it (the
-  // cross-device sync wait, which polls across two independent 15s
-  // server timers — see p1.spec.ts). That gave every OTHER assertion in
-  // this file — `.katex` visibility, `#mark-btn.on`, the pre-login
-  // redirect, the pre-mark "nothing done yet" check — the same 45s of
-  // slack, none of which they need: a regression that made the initial
-  // chapter render take, say, 20s would still have passed silently. The
-  // one assertion that actually needs more than 5s
-  // (`courseHomeChapterLink(...).toHaveClass(/\bdone\b/, ...)`) sets its
-  // own explicit `{ timeout: 45_000 }` inline instead — see that call
-  // site's own comment. `expectVizCanvasDrawn`'s pixel-ratio check
-  // likewise carries its own explicit `expect.poll(..., { timeout:
-  // 10_000 })`, chosen for its own reason (one animation frame, never
-  // 5s), not this default. No timeout override left here at all: fast
-  // checks stay fast-failing, slow checks say why inline.
+  // bump. No assertion in this directory needs more than that any more —
+  // see this file's `timeout` comment above for what used to and no longer
+  // does (the cross-device 15s-timer waits). No timeout override left
+  // here at all: fast checks stay fast-failing, slow checks say why
+  // inline, at the call site.
   fullyParallel: false,
   workers: 1,
   // Never retry silently: this suite exists to tell the truth about

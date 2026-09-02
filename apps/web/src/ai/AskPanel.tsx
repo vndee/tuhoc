@@ -262,6 +262,26 @@ export function AskPanel({
       </p>
 
       {/*
+        Task 12 (Pha 3) — `read_my_notes` bật MẶC ĐỊNH (migration 0010, mọi
+        tài khoản kể cả tài khoản đã tồn tại từ trước), và bật mặc định mà
+        KHÔNG nói cho người học biết là một quyết định khác, không ai chọn.
+        THƯỜNG TRỰC, cùng vị trí câu "không có trí nhớ" ngay trên — đúng từ
+        câu hỏi đầu tiên, trước khi tool thật sự được gọi lượt nào.
+
+        `<Link state={{section:'ai'}}>`, giống hệt cơ chế `pages/Settings.
+        tsx` đã dựng cho lời mời nạp credit bên dưới: `href` ở nguyên
+        "/settings" (mục nào đang xem không nằm trong URL), và `state` là
+        thứ khiến trang đích tự cuộn tới đúng mục Trợ lý AI — nơi công tắc
+        `read_my_notes` (AgentConfigPanel.tsx) thật sự tắt được nó.
+      */}
+      <p className="ai-panel-notice" data-testid="ai-reads-notes-notice">
+        {t('ai.readsYourNotes')}{' '}
+        <Link to="/settings" state={{ section: 'ai' }}>
+          {t('account.settings')}
+        </Link>
+      </p>
+
+      {/*
         HẾT CREDIT — và trạng thái này KHÔNG CÓ LỐI RA TỰ PHỤC VỤ hôm nay.
         Thanh toán là Pha 4 (spec §7); `CreditPanel.tsx` vẽ số dư và sổ dùng,
         không nút nạp. Câu chữ nói thẳng điều đó (`ai.panel.noCredit`, xem

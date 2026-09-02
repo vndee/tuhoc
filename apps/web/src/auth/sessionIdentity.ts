@@ -195,6 +195,32 @@ export function sessionWasSuperseded(): boolean {
 }
 
 /**
+ * Whose session this tab has ESTABLISHED, first-hand: a user id, `null` for
+ * "nobody", or `undefined` for "this tab has not found out yet".
+ *
+ * Not the same question as `sessionWasSuperseded()`, and the difference is
+ * the whole reason both exist. Supersession is a statement about an EVENT
+ * (somebody else took the browser while I was collecting); this is a
+ * statement about a FACT that outlives that event (who I believe the
+ * browser belongs to right now). A tab that is told it was superseded and
+ * then re-establishes the identity itself — the ordinary case: an unfocused
+ * tab refocuses, `useMe` refetches, `GET /me` answers B — has
+ * `sessionWasSuperseded()` back to `false` and this value changed from A to
+ * B. Anything that COLLECTED data under A must be able to notice the second
+ * thing after the first has stopped being visible; see `api/events.ts`'s
+ * `queueOwner`, which stamps its queue with this value for exactly that
+ * reason.
+ *
+ * Deliberately returns the raw three-state value rather than collapsing
+ * `undefined` into `null`: "nobody is signed in" and "this tab does not
+ * know yet" must not compare equal, or a queue stamped before the first
+ * `GET /me` answered would look like it belonged to a logged-out browser.
+ */
+export function establishedSessionUser(): string | null | undefined {
+  return localUser;
+}
+
+/**
  * Runs `listener` when another tab announces a session change. Returns the
  * unsubscribe.
  *

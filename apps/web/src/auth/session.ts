@@ -1,6 +1,8 @@
 import type { QueryClient } from '@tanstack/react-query';
+import { resetEventQueue } from '../api/events';
 import { resetSessionScopedQueries } from '../api/useMe';
-import { clearLocalData, readSessionVerifiedAt } from '../db/local';
+import { clearLegacyLocalData } from '../db/legacyDrain';
+import { clearUserContent } from '../db/localStorage';
 import { announceSessionUser } from './sessionIdentity';
 
 /**
@@ -10,13 +12,70 @@ import { announceSessionUser } from './sessionIdentity';
  * Before this existed there were two of them, and every auth transition had
  * to remember both:
  *
- *   - `clearLocalData()` (`../db/local`) — the durable half: every Dexie
- *     table plus every `localStorage` key holding the user's own words.
+ *   - `clearLocalData()` (originally `../db/local`, now `clearUserContent()`
+ *     in `../db/localStorage` — see "Task 10" below) — the durable half:
+ *     every `localStorage` key holding the user's own words (Dexie itself,
+ *     and the table clear this used to also perform, are gone with Task 10).
  *   - `resetSessionScopedQueries()` (`../api/useMe`) — the in-memory half:
  *     the module-level `queryClient` in `App.tsx`, which really does hold
  *     user data (`['stats']`, `['course', …]`, every progress-derived entry).
  *
- * Both call sites happened to be correct. That is not the point.
+ * Task 8's fix round (Pha 3) added a third, after a review caught this
+ * function NOT calling it:
+ *
+ *   - `resetEventQueue()` (`../api/events`) — the queued-but-unflushed half:
+ *     `api/events.ts`'s in-memory `queue`, which can hold up to one flush
+ *     interval's worth of heartbeats at the exact moment a session ends.
+ *     Unlike the other two, this is NOT durable and NOT React state — it
+ *     is a plain module-level array — but it is exactly as much "this
+ *     account's data left in the browser" as the other two are, and an
+ *     unreset queue leaking into the NEXT signed-in account's session is
+ *     the identical failure shape ruling P2-F18 names for the other two
+ *     (see `api/events.ts`'s own header and
+ *     `test/eventQueueHandoff.test.tsx` for the end-to-end proof this
+ *     function's own test suite now pins).
+ *
+ * Task 11's review finding added a fourth, for the identical reason as the
+ * third — a review caught a queue this function did not know about:
+ *
+ *   - `queryClient.getMutationCache().clear()` — the paused-but-unresumed
+ *     half: TanStack Query's default `networkMode: 'online'` (this repo
+ *     configures nothing else — `App.tsx`'s `new QueryClient()` is bare)
+ *     PAUSES a mutation started while offline rather than failing it, and
+ *     auto-resumes every paused mutation the instant `onlineManager` next
+ *     reports connectivity — see `@tanstack/query-core`'s
+ *     `QueryClient.mount()`, which subscribes to `onlineManager` for
+ *     exactly this. A resumed mutation replays through `api/client.ts`'s
+ *     `send()`, which always sends `credentials: 'include'` — whatever
+ *     cookie is valid AT RESUME TIME, not the account that started the
+ *     write. On the one `queryClient` this app ever builds, that account
+ *     can by then be somebody else entirely: A goes offline mid-write, the
+ *     mutation pauses, A logs out, B signs in, connectivity returns — and
+ *     without this, A's paused write reaches the server under B's cookie.
+ *     Clearing the cache's tracked mutation set is what makes
+ *     `resumePausedMutations()` find nothing to resume (it iterates
+ *     `getAll()` on that same set); see `session.test.ts`'s own
+ *     "the mutation half" describe block for the account-handoff proof.
+ *
+ * The final whole-branch review added a fifth, and this one is not a store
+ * somebody newly opened — it is one this function USED to clear and
+ * silently stopped clearing:
+ *
+ *   - `clearLegacyLocalData()` (`../db/legacyDrain`) — the Dexie-era
+ *     `'tuhoc'` IndexedDB database. Until Task 10, `clearLocalData()` ended
+ *     with `await Promise.all(db.tables.map((t) => t.clear()))`, which
+ *     emptied `outbox` — the queued-but-unsent progress and annotation
+ *     writes — on both auth transitions. Task 10 removed Dexie and that
+ *     line went with it, leaving the database on disk with nothing in this
+ *     codebase clearing it, while `db/legacyDrain.ts` gained a fresh reason
+ *     to READ it. The result was a cross-account leak with a longer fuse
+ *     than the other four: A's unsent notes sat in the browser through B's
+ *     login and were pushed to `POST /sync` on B's next page load, where
+ *     `auth.UID(c)` INSERTed them into B's account. See that module's
+ *     header for why the server's own owner-scoping cannot catch an INSERT,
+ *     and `test/legacyDrainHandoff.test.tsx` for the end-to-end proof.
+ *
+ * Every call site happened to be correct once it existed. That is not the point.
  * *"Two truth points, remember to call both"* is the exact SHAPE of the
  * cross-account leak fixed in `97a6e02`, one level up: there, a second store
  * of user content (the note draft in `localStorage`) was opened that the
@@ -28,30 +87,64 @@ import { announceSessionUser } from './sessionIdentity';
  * nothing anywhere enforcing it, is that warning with the copies moved from
  * inside one function to across two.
  *
- * **Why here and not in `db/local.ts`.** Merging downward would make the
- * persistence layer import react-query — wrong direction, and it would put a
- * UI-cache concern inside the module whose whole job is IndexedDB. `auth/` is
- * the layer where both dependencies are already at hand and where "a session
- * is ending" is the native vocabulary, so the merge goes UP.
+ * **Why here and not in `db/localStorage.ts`.** Merging downward would make
+ * the persistence layer import react-query — wrong direction, and it would
+ * put a UI-cache concern inside a module whose whole job is a handful of
+ * `localStorage` keys. `auth/` is the layer where both dependencies are
+ * already at hand and where "a session is ending" is the native vocabulary,
+ * so the merge goes UP. (Before Task 10 this also argued from IndexedDB —
+ * Dexie is gone now, but the direction-of-import argument stands unchanged.)
  *
- * **What it deliberately does NOT do.** It does not `stopSync()` and it does
- * not seed `me`. Both call sites need those, but they need them with
- * different values and, in `useLogout`'s case, in a more elaborate order that
- * this function has no business knowing (a bounded final flush, two epoch
- * bumps, `POST /auth/logout`). This is the clearing step only — the semantics
- * of clearing are unchanged from the two calls it replaces, including their
- * order.
+ * **What it deliberately does NOT do.** It does not stop any background sync
+ * (there is none left to stop as of Task 10 — see that task's report) and it
+ * does not seed `me`. Both call sites need the seed, but with different
+ * values and, in `useLogout`'s case, after a more elaborate wait this
+ * function has no business knowing about (a bounded wait for in-flight
+ * mutations, `POST /auth/logout`). It also does not attempt to FLUSH
+ * `api/events.ts`'s queue before dropping it — a best-effort flush needs the
+ * departing account's cookie to still be valid, which is a fact only
+ * `useLogout.ts` (not `Login.tsx`'s arriving-account path, and not this
+ * function, called from both) can know; see `useLogout.ts`'s
+ * `bestEffortFinalFlush` for where that flush happens, strictly BEFORE this
+ * function is ever called. This is the clearing step only — the semantics of
+ * clearing are unchanged from the calls it replaces, including their order.
  *
  * **Order, which is load-bearing and is the reason this is one function
- * rather than two exports.** `clearLocalData()` first and awaited, then the
- * query cache. Both call sites already did exactly this, for reasons written
- * out at each of them: the durable rows must be gone before anything can read
- * or push them, and the cache reset must land before the caller seeds `me` on
- * the very next line, or it would wipe the seed it is supposed to leave
- * behind.
+ * rather than separate exports.** The durable half first, then the query
+ * cache, then the event queue, then the mutation cache. The first two: both
+ * call sites already did exactly this before this function existed, for
+ * reasons written out at each of them — the durable rows must be gone
+ * before anything can read or push them, and the cache reset must land
+ * before the caller seeds `me` on the very next line, or it would wipe the
+ * seed it is supposed to leave behind. The event-queue and mutation-cache
+ * resets are placed last and are, unlike the first two, NOT
+ * order-dependent on anything else here — one is a bare in-memory array,
+ * the other a `Set` inside `queryClient`'s own `MutationCache`, and neither
+ * has a reader racing it or a seed for it to clobber — so both are simply
+ * appended after the two steps whose order genuinely matters, rather than
+ * interleaved among them. Nothing orders the two of them relative to each
+ * other either, for the same reason.
  *
- * The tripwire that keeps a third call site from quietly appearing lives in
- * `./session.test.ts`, next to this function's own tests.
+ * (Task 10 note, still true after Task 11: every step this function itself
+ * performs is synchronous — `clearUserContent()`,
+ * `resetSessionScopedQueries`/`resetEventQueue`, and
+ * `getMutationCache().clear()` all were, and are. `clearSession` stays
+ * declared `async` purely for interface stability with its existing callers
+ * (`await clearSession(queryClient)` at both call sites), not because
+ * anything inside it still yields to the event loop.)
+ *
+ * The tripwire that keeps a third call site from quietly appearing — for
+ * the four NAMED halves above (`clearUserContent`,
+ * `resetSessionScopedQueries`, `resetEventQueue`, `clearLegacyLocalData`) —
+ * lives in
+ * `./session.test.ts`'s `SESSION_CLEARERS`, next to this function's own
+ * tests. `getMutationCache().clear()` is deliberately NOT a fourth entry in
+ * that list: it is a plain method call on the `QueryClient` this function
+ * is already handed, not an importable function authored elsewhere that a
+ * future call site could reach for directly instead of going through here
+ * (the way the other three could, and the exact shape `SESSION_CLEARERS`
+ * exists to catch). There is nothing to name as a second import site of a
+ * TanStack Query built-in.
  */
 export async function clearSession(queryClient: QueryClient): Promise<void> {
   // Debt C-1 — the OTHER tabs, told first, synchronously, before either
@@ -76,76 +169,47 @@ export async function clearSession(queryClient: QueryClient): Promise<void> {
   // `api/useMe.ts` announces the concrete identity a moment later, from the
   // one place that actually learns it.
   //
-  // Earliest, not merely early: the alternative — announcing after the
-  // clearing resolves — would leave the whole of `clearLocalData()`'s
-  // IndexedDB round trip inside the window in which another tab can still
-  // push under the new cookie. Being synchronous and first makes that
-  // window as narrow as client-side code can make it. It cannot be closed
-  // entirely from here; see the report for what would.
+  // Earliest, not merely early — kept true even though the durable clear
+  // below is synchronous now (Task 10): another tab's own `postMessage`/
+  // event delivery is not, so announcing first still narrows the window as
+  // much as client-side code can. It cannot be closed entirely from here;
+  // see the report for what would.
   announceSessionUser(null);
-  await clearLocalData();
+  clearUserContent();
+  // The FIFTH half, and the oldest of them: the Dexie-era `'tuhoc'`
+  // database. It held this same durable role until Task 10 — the old
+  // `clearLocalData()` ended with a `table.clear()` over every Dexie
+  // table, `outbox` included — and when Dexie left, the database stayed on
+  // disk with nothing left in this codebase clearing it. The final
+  // whole-branch review found what that produced: `db/legacyDrain.ts`
+  // pushing A's unsent, never-server-seen notes to `POST /sync` under
+  // whoever's cookie was current on a later page load, where
+  // `auth.UID(c)` files them under that account (see that module's header
+  // for why the server's own owner-scoping cannot catch an INSERT).
+  //
+  // Deliberately NOT awaited — see `clearLegacyLocalData`'s own doc for
+  // the `blocked` hazard that makes awaiting a way for an old tab to hang
+  // this one's logout. It is a fire-and-forget that cannot reject, so
+  // there is no rejection to handle here.
+  void clearLegacyLocalData();
   resetSessionScopedQueries(queryClient);
-}
-
-/**
- * How long after the last confirmed `GET /me` this device may still open a
- * protected page **while the server cannot be reached at all**. Seven days.
- *
- * Where the number comes from, and what it is not:
- *
- *  - **The ceiling.** `apps/api/internal/auth/usecase.go`'s
- *    `SessionTTL = 30 * 24 * time.Hour`, and it does NOT slide —
- *    `Repo.FindValidSession` filters on `expires_at > now()` and never
- *    moves it. So the cookie this device is standing in for is worthless
- *    at most 30 days after the login that created it. A window anywhere
- *    near that would let a device keep opening the reader long after the
- *    session it is impersonating had died, which is the one thing an
- *    optimistic render must not be allowed to do indefinitely.
- *  - **The floor.** The feature has to survive a real stretch of no
- *    network: a long flight, a trip, a week of bad connectivity. A window
- *    of hours would make "reading offline" a promise the app breaks
- *    exactly when it is needed.
- *
- * **It is a decay policy, not a security boundary, and it must not be read
- * as one.** The real boundary is the server: nothing behind this door is
- * fetched — every API call is failing, which is the precondition for being
- * here at all — so what an expired-but-unexpired-looking device can open is
- * only what is already on its own disk, which anybody with the browser
- * profile can read out of IndexedDB regardless. A device whose clock is
- * moved backwards can also make a stale marker look fresh; that is
- * acceptable for the same reason, and worth saying out loud rather than
- * pretending the timestamp is doing more than it is.
- *
- * The window is also not the usual way this ends. The normal end is the
- * next HTTP response of any kind: a 401 sends the reader to `/login`
- * immediately, whatever the marker says (see `RequireAuth`).
- */
-export const OFFLINE_READ_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
-/**
- * May this device render a protected page on its own authority, right now?
- *
- * True only when `GET /me` confirmed a signed-in user here recently enough
- * — where "here" means this browser's current local session, because the
- * marker is a `db.meta` row that `clearLocalData()` empties on both auth
- * transitions (see `SESSION_VERIFIED_KEY` in `db/local.ts`).
- *
- * `now` is injectable for tests only.
- *
- * A marker stamped in the FUTURE is refused rather than trusted: it means
- * the clock moved between the write and this read, and the only two
- * readings of that are "the clock is wrong now" and "it was wrong then".
- * Neither is a reason to open a door, and refusing is the direction that
- * fails closed.
- *
- * The caller must have established that no HTTP response arrived before
- * asking — see `serverAnswered` in `api/client.ts`. This function answers
- * "what does the device believe", never "is the session valid"; only the
- * server can answer the second, and when it does, its answer wins.
- */
-export async function offlineSessionIsUsable(now: number = Date.now()): Promise<boolean> {
-  const verifiedAt = await readSessionVerifiedAt();
-  if (verifiedAt === null) return false;
-  const age = now - verifiedAt;
-  return age >= 0 && age < OFFLINE_READ_MAX_AGE_MS;
+  // Unconditional, and never preceded by an attempted flush HERE — see
+  // this function's own "What it deliberately does NOT do" above. Whatever
+  // a departing account's queue still holds at this point is dropped,
+  // whether or not `useLogout.ts`'s own best-effort flush (which runs
+  // strictly before this function, while the cookie was still valid)
+  // managed to send it.
+  resetEventQueue();
+  // Task 11 review finding — the mutation half of the same hazard. A
+  // mutation PAUSED by `networkMode: 'online'` (the default; see this
+  // function's own doc comment) is not "in flight" in any sense
+  // `waitForMutationsToSettle` (`useLogout.ts`) can wait out while offline —
+  // it never called `fetch` at all — so it is still sitting in
+  // `queryClient`'s mutation cache when this line runs. Emptying that cache
+  // is what stops TanStack's own `resumePausedMutations()` (fired the next
+  // time `onlineManager` reports connectivity — see `@tanstack/query-core`'s
+  // `QueryClient.mount()`) from finding it and replaying it under whatever
+  // cookie is valid THEN, which may by that point belong to a different
+  // account entirely on this same tab's one `queryClient`.
+  queryClient.getMutationCache().clear();
 }

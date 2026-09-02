@@ -1,4 +1,4 @@
-import { db } from '../db/local';
+import { queueEvent } from '../api/events';
 
 /** The chapter this device currently considers "open," as `getCtx()` reports it at the moment of a given tick — not necessarily the chapter that was open when `startHeartbeat` was first called. See `startHeartbeat`'s own doc comment for why that distinction matters. */
 export interface HeartbeatCtx {
@@ -76,11 +76,12 @@ const ACTIVITY_EVENT_TYPES = ['pointerdown', 'keydown', 'scroll'] as const;
  *
  * IDEMPOTENCY (`at`): generated ONCE, at the moment a tick decides to
  * queue an event (`Date.now()`, captured into a local `now` before
- * anything else runs), and stored directly into the outbox row — never
- * regenerated later. This mirrors `setProgress`'s `updatedAt` in
- * src/db/local.ts exactly, for the same reason: the sync engine's flush
- * (`src/sync/engine.ts`) resends whatever `row` is sitting in the
- * outbox verbatim on every retry, so `at` MUST be stable across those
+ * anything else runs), and stored directly into the queued `StudyEvent`
+ * — never regenerated later. This mirrors `setProgress`'s `updatedAt` in
+ * src/db/local.ts exactly, for the same reason: `../api/events.ts`'s
+ * `flushEvents` resends a failed batch's events VERBATIM on the next
+ * attempt (see that module's own doc on why a failed flush keeps its
+ * events rather than dropping them), so `at` MUST be stable across those
  * retries for the server's `(user_id, course_id, chapter_id, kind, at)`
  * dedupe key to actually recognize a retried batch as "the same event"
  * rather than minting a fresh row (and fresh minutes) on every retry. A
@@ -126,25 +127,19 @@ export function startHeartbeat(getCtx: () => HeartbeatCtx | null): () => void {
     const ctx = getCtx();
     if (ctx === null) return;
 
-    void db.outbox
-      .add({
-        table: 'events',
-        row: {
-          courseId: ctx.courseId,
-          chapterId: ctx.chapterId,
-          kind: 'heartbeat',
-          meta: {},
-          at: new Date(now).toISOString(),
-        },
-      })
-      .catch((err: unknown) => {
-        // Same defensive posture as src/sync/engine.ts's runCycle: an
-        // unexpected IndexedDB failure (quota exceeded, a blocked
-        // version upgrade, ...) here must not become an unhandled
-        // promise rejection inside a bare setInterval callback, which
-        // has no caller to propagate a rejection to.
-        console.error('tuhoc heartbeat: failed to queue heartbeat event', err);
-      });
+    // `queueEvent` is synchronous and never touches the network — it only
+    // appends to `../api/events.ts`'s in-memory queue, which
+    // `startEventFlusher` (mounted in App.tsx next to `startSync()`)
+    // drains on its own slower cadence. Unlike the pre-Task-8 `db.outbox
+    // .add(...)` this replaced, there is no promise here to reject and
+    // nothing to catch.
+    queueEvent({
+      courseId: ctx.courseId,
+      chapterId: ctx.chapterId,
+      kind: 'heartbeat',
+      meta: {},
+      at: new Date(now).toISOString(),
+    });
   };
 
   const timer = setInterval(tick, HEARTBEAT_INTERVAL_MS);

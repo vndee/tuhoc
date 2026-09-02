@@ -17,6 +17,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vndee/tuhoc-api/internal/ai"
@@ -28,6 +29,7 @@ import (
 	"github.com/vndee/tuhoc-api/internal/pkgcheck"
 	"github.com/vndee/tuhoc-api/internal/rating"
 	"github.com/vndee/tuhoc-api/internal/stats"
+	"github.com/vndee/tuhoc-api/internal/userdata"
 	// appsync is internal/sync under an explicit alias, not its default
 	// package name ("sync"): that name collides with the standard
 	// library's own "sync" package (sync.Mutex etc.), and this file is
@@ -209,9 +211,19 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// session cookie.
 	//
 	// So the app ceiling stays high for the one route that needs it, and
-	// the two that do not get their old 4 MiB back through the bodyLimit
-	// middleware above (appsync.MaxPushBytes, stats.MaxBatchBytes) plus a
-	// cap on ITEMS, which is the bound the byte limit cannot supply.
+	// the routes that do not get their old 4 MiB back through the bodyLimit
+	// middleware above (appsync.MaxPushBytes, stats.MaxBatchBytes,
+	// userdata.MaxWriteBytes) plus a cap on ITEMS or on CHARACTERS, which
+	// is the bound the byte limit cannot supply.
+	//
+	// "The two that do not" is what this said until the final whole-branch
+	// review counted them: Pha 3 added four more body-carrying routes
+	// (PUT /progress, POST /annotations, PATCH /annotations/:id — the REST
+	// replacement for POST /sync's two halves) and gave none of them a
+	// limit, so each quietly took the 21 MiB ceiling. A convention that is
+	// only written down in a comment is a convention new routes do not
+	// join; server_test.go's TestRouteScopedBodyLimits now enumerates every
+	// route that must have one.
 	//
 	// This limit is NOT the package size rule and must never be mistaken
 	// for it: it bounds the bytes on the wire, while the rule that matters
@@ -278,22 +290,62 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// end, ahead of Task 7/8's routes depending on the same pattern.
 	app.Get("/me", auth.RequireWithUsecase(authUsecase), authHandler.Me)
 
-	// Sync routes (Task 7). These deliberately mount behind
+	// Sync route (Task 7; Pha 3 Task 3 cut GET /sync — see
+	// internal/sync/handler.go's package note for why POST /sync alone
+	// survives and for how long). It deliberately mounts behind
 	// auth.Require(deps.Pool) — the brief-mandated entry point named in
 	// ruling F3 — rather than auth.RequireWithUsecase(authUsecase) as /me
 	// does above: the task brief names auth.Require(pool) specifically as
-	// the interface Task 7 depends on, so these routes are what actually
+	// the interface Task 7 depends on, so this route is what actually
 	// exercises that exact entry point (RequireWithUsecase is only an
 	// internal optimization /me's own wiring uses to avoid building a
 	// second, equivalent auth Usecase/Repo pair over the same pool).
 	//
-	// POST carries bodyLimit(appsync.MaxPushBytes) ahead of the auth
+	// bodyLimit(appsync.MaxPushBytes) is mounted ahead of the auth
 	// middleware: this route has no use for POST /courses's 21 MiB app
 	// ceiling and never did, and putting the limit first means an
-	// oversized body never reaches the pool. GET has no body to limit.
+	// oversized body never reaches the pool.
 	syncHandler := appsync.NewHandler(appsync.NewUsecase(appsync.NewRepo(deps.Pool)))
-	app.Get("/sync", auth.Require(deps.Pool), syncHandler.Pull)
 	app.Post("/sync", bodyLimit(appsync.MaxPushBytes), auth.Require(deps.Pool), syncHandler.Push)
+
+	// Progress routes (Pha 3, Task 1). The REST replacement for the
+	// progress half of /sync: the browser is no longer local-first, so
+	// there is no outbox and no LWW timestamp for a client to carry — see
+	// internal/userdata's own doc comment. Mounted behind the same
+	// auth.Require(deps.Pool) entry point as every route below.
+	//
+	// userdataRepo is held in its own variable, not inlined, for the same
+	// reason catalogUsecase is below: the AI routes' read_my_notes tool
+	// (Task 12) reuse it through notesQuerier — one Repo over one pool,
+	// instead of a second equivalent *userdata.Repo built just for that
+	// tool.
+	userdataRepo := userdata.NewRepo(deps.Pool)
+	userdataHandler := userdata.NewHandler(userdata.NewUsecase(userdataRepo))
+	//
+	// bodyLimit(userdata.MaxWriteBytes) on the WRITE route only, mounted
+	// ahead of auth the same way /sync's and /events/batch's are: these
+	// routes have no use for PUT /admin/courses/:slug's 21 MiB app ceiling
+	// and never did — inheriting it was an omission, not a decision (final
+	// whole-branch review, Important 3). GET /progress carries no body, so
+	// a limit on it would be a line that can never fire.
+	app.Get("/progress", auth.Require(deps.Pool), userdataHandler.ListProgress)
+	app.Put("/progress", bodyLimit(userdata.MaxWriteBytes), auth.Require(deps.Pool), userdataHandler.PutProgress)
+
+	// Annotation routes (Pha 3, Task 2). The REST replacement for the
+	// annotations half of /sync, same non-local-first reasoning as
+	// /progress above — plus a real DELETE, since migration 0009 dropped
+	// annotations.deleted_at: this package never writes a tombstone,
+	// unlike internal/sync's push path (see that package's repo.go for how
+	// it now translates an incoming tombstone into a real delete instead).
+	//
+	// Same route-scoped bodyLimit as PUT /progress above, on the two verbs
+	// that carry a body. GET and DELETE do not, so neither is wrapped —
+	// see MaxWriteBytes's own doc comment, and note that the ceiling that
+	// bounds what a learner can actually STORE is MaxNoteChars, not this.
+	app.Get("/annotations", auth.Require(deps.Pool), userdataHandler.ListAnnotations)
+	app.Post("/annotations", bodyLimit(userdata.MaxWriteBytes), auth.Require(deps.Pool), userdataHandler.CreateAnnotation)
+	app.Patch("/annotations/:id", bodyLimit(userdata.MaxWriteBytes), auth.Require(deps.Pool), userdataHandler.PatchAnnotation)
+	app.Delete("/annotations/:id", auth.Require(deps.Pool), userdataHandler.DeleteAnnotation)
 
 	// Stats routes (Task 8). Mounted behind auth.Require(deps.Pool) — the
 	// same brief-mandated entry point and ruling (F3) as sync's routes
@@ -459,6 +511,13 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 		Credits: ai.NewService(deps.Pool),
 		Courses: courseQuerier{uc: catalogUsecase},
 		Search:  aiSearch,
+		// Notes backs read_my_notes (Task 12): the SAME userdataRepo the
+		// /progress and /annotations routes above use, through notesQuerier
+		// — one Repo over one pool, not a second stack built just for this
+		// tool. Unlike Search, there is no "not configured" branch here: a
+		// real deployment always has deps.Pool, so this is never nil in
+		// production (only in tests that do not need the tool available).
+		Notes: notesQuerier{repo: userdataRepo},
 		// The learner is whoever the session cookie says, never anything in
 		// the request. Passed in as a function because internal/auth imports
 		// internal/ai (the signup grant), so internal/ai cannot import auth
@@ -529,4 +588,62 @@ func (q courseQuerier) ChapterHTML(ctx context.Context, slug, chapterID string) 
 	// prose. courseTool strips tags from what it gets back anyway.
 	html, _, _, err := q.uc.GetChapter(ctx, slug, chapterID)
 	return html, err
+}
+
+// notesQuerier adapts internal/userdata's read side to the narrow surface
+// the read_my_notes tool needs (ai.NotesQuerier) — the same reason
+// courseQuerier above exists for read_course, and for a stronger version of
+// the same constraint: internal/ai cannot import internal/userdata AT ALL
+// (not a style choice this time — internal/userdata's handler.go imports
+// internal/auth, and internal/auth's repo.go imports internal/ai for the
+// signup-credit grant, so ai -> userdata -> auth -> ai is a real import
+// cycle, confirmed with `go build`, not assumed). This adapter is the one
+// place in the whole module allowed to see both packages and translate
+// between their row types.
+//
+// UNLIKE courseQuerier's two PUBLIC-course reads, both methods here are
+// gated on userID — they answer only about the SAME learner who is asking.
+// This adapter does not add or remove that scoping; it exists to translate
+// types, not to decide whose data comes back. The tool that calls it
+// (tool_notes.go's notesTool) is what fixes userID to the authenticated
+// caller before Progress/Notes is ever invoked — see ai.NewNotesTool's doc
+// comment for why that binding happens at construction and nowhere later.
+type notesQuerier struct {
+	repo *userdata.Repo
+}
+
+// Progress filters userdata.Repo.ListProgress's whole-account result down
+// to ONE course. Repo has no course-scoped progress query of its own — it
+// answers "every progress row for this learner, every course", which is
+// exactly right for pages/Progress.tsx's cross-course dashboard — so the
+// per-course filter lives here, in the one caller that needs a single
+// course's slice of it.
+func (q notesQuerier) Progress(ctx context.Context, userID uuid.UUID, courseID string) ([]ai.NotesProgressRow, error) {
+	rows, err := q.repo.ListProgress(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ai.NotesProgressRow, 0, len(rows))
+	for _, r := range rows {
+		if r.CourseID != courseID {
+			continue
+		}
+		out = append(out, ai.NotesProgressRow{ChapterID: r.ChapterID, Status: r.Status, Done: r.Done})
+	}
+	return out, nil
+}
+
+// Notes maps straight onto Repo.ListAnnotations, which already accepts a
+// courseID filter (its own SQL WHERE clause) — no extra filtering needed
+// here, unlike Progress above.
+func (q notesQuerier) Notes(ctx context.Context, userID uuid.UUID, courseID string) ([]ai.NotesAnnotationRow, error) {
+	rows, err := q.repo.ListAnnotations(ctx, userID, courseID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ai.NotesAnnotationRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ai.NotesAnnotationRow{ChapterID: r.ChapterID, Anchor: r.Anchor, Note: r.Note})
+	}
+	return out, nil
 }

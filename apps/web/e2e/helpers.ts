@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 /**
  * Shared fixtures for the Playwright suites in this directory —
  * `p1.spec.ts` (the fast definition-of-done gate), `p2.spec.ts` (the
- * annotation phase's own gate, currently quarantined), and `s2.spec.ts`
+ * annotation phase's own gate), and `s2.spec.ts`
  * (Pha 2's AI/credit gate, Task 18). (`viz.spec.ts` was deleted by Task 11
  * of the server-side pivot alongside course-wide `viz.js` — see the
  * Makefile's `test-e2e` comment. `s2.spec.ts` itself has a more tangled
@@ -344,11 +344,11 @@ export function isBenignAuthCheck401(msg: ConsoleMessage): boolean {
  * from the chapter), and in the new layout the common case is that nothing
  * had to be clicked at all.
  *
- * The id is deliberately still `#rail-tab-notes`: `p2.spec.ts` read it
- * directly (×4), and so did `s1.spec.ts` (×2) before Task 13 deleted it. Note
- * that `p2.spec.ts` is currently quarantined in `playwright.config.ts` — so as
- * things stand NO running gate reads this id, and a change to it would go
- * unnoticed until p2 is repaired. See the comment on the button itself in
+ * The id is deliberately still `#rail-tab-notes`: `p2.spec.ts` reads it
+ * (via this helper), and so did `s1.spec.ts` before that file was deleted
+ * (Task 13 of the server-side-pivot spec). `p2.spec.ts` is no longer
+ * quarantined (Task 13 of Pha 3) — a change to this id is caught by a
+ * running gate. See the comment on the button itself in
  * `src/reader/ChapterView.tsx`.
  */
 export async function openNotesTab(page: Page): Promise<void> {

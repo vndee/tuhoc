@@ -61,7 +61,7 @@ import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
-import { clearLocalData } from '../db/local';
+import { clearUserContent } from '../db/localStorage';
 
 // Bốn script của course-kit không tải được trong jsdom, và bài kiểm này không
 // nói gì về chúng — nó nói về đường THÁO. Cùng cách mock như
@@ -112,12 +112,12 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 beforeEach(async () => {
-  await clearLocalData();
+  await clearUserContent();
   window.CourseKit = { renderKatex: vi.fn(), initViz: vi.fn(), REDRAWS: [], VIZ: {} };
   window.history.pushState({}, '', '/c/demo/c1');
 });
 afterEach(async () => {
-  await clearLocalData();
+  await clearUserContent();
 });
 
 /** Màn hình đang thật sự hiển thị một chương — không phải "URL trỏ vào chương". */
