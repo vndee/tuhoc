@@ -101,11 +101,13 @@ describe('App startup wiring (App.tsx)', () => {
 
     render(<App />);
 
-    // `.auth-page` — same witness `Login.test.tsx` cites this file for
-    // (`giữ nguyên lớp .auth-page mà syncLifecycle.test.tsx bám vào`):
+    // `.landing` — from 02/09/2026 a logged-out visitor at `/` sees the
+    // landing page (`pages/HomeGate.tsx`), no longer a redirect to `/login`;
+    // the landing's root class is the witness that startup finished for
+    // somebody the app does not know:
     // proof the app actually settled on the sign-in screen, not merely that
     // some render happened.
-    await waitFor(() => expect(document.querySelector('.auth-page')).toBeInTheDocument());
+    await waitFor(() => expect(document.querySelector('.landing')).toBeInTheDocument());
     expect(drainSpy).not.toHaveBeenCalled();
   }, OVERSUBSCRIBED_MS);
 
@@ -139,7 +141,7 @@ describe('App startup wiring (App.tsx)', () => {
 
     render(<App />);
 
-    await waitFor(() => expect(document.querySelector('.auth-page')).toBeInTheDocument());
+    await waitFor(() => expect(document.querySelector('.landing')).toBeInTheDocument());
     expect(startFlusherSpy).not.toHaveBeenCalled();
   }, OVERSUBSCRIBED_MS);
 });

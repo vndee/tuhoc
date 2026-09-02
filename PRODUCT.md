@@ -47,25 +47,17 @@ Chủ dự án chọn ba lời hứa phải giữ bằng mọi giá khi thiết 
 3. **Gia sư AI chạy trên máy chủ, trả bằng credit.** Không cần key riêng,
    không cài gì.
 
-### Một sự thật đang MÂU THUẪN với mã — ghi nguyên văn, chưa giải quyết
+### Đọc là công khai — mâu thuẫn đã giải quyết 02/09/2026
 
-Chủ dự án viết: *"phải có tài khoản mới đọc được do chúng ta phải lưu các
-notes, comments nữa."*
+Chủ dự án từng viết (02/09, phỏng vấn init): *"phải có tài khoản mới đọc được
+do chúng ta phải lưu các notes, comments nữa."* Mã đang chạy nói ngược lại
+(reader `/c/:courseId/:chapterId` công khai; spec pivot §9: *"ai cũng đọc được
+mọi course, không cần đăng nhập"*).
 
-Mã đang chạy nói ngược lại: reader (`/c/:courseId/:chapterId`) là route
-**công khai**, và trang chủ hứa *"Đọc toàn bộ giáo trình miễn phí — không cần
-tài khoản."* Đây là tiền đề của Pha 1 (spec `2026-08-25-server-side-pivot.md`
-§9: *"ai cũng đọc được mọi course, không cần đăng nhập"*) và là thứ e2e
-`p1.spec.ts` đang canh.
-
-Hệ quả cho mọi việc thiết kế từ đây:
-
-- **Không được** viết lại trang chủ để *khẳng định* "không cần tài khoản" như
-  một lời hứa — chủ dự án đã rút lời hứa đó.
-- **Cũng không được** tự ý chặn reader sau đăng nhập trong một lượt thiết kế:
-  đó là thay đổi sản phẩm (route, e2e, spec §9), cần một quyết định và một
-  task riêng, không phải một cú sửa CSS.
-- Trạng thái ghi nhận: **hướng đã chốt = cần tài khoản để đọc; mã chưa theo.**
+**Quyết định, cùng ngày, khi làm landing page:** *"Đọc miễn phí không cần tài
+khoản; tài khoản để ghi chú, tiến độ, gia sư AI."* Mã giữ nguyên; landing và
+trang đăng nhập nói đúng câu ấy. Ghi chú và tiến độ cần tài khoản vì chúng
+được lưu theo người; đọc thì không.
 
 ## Operating Context
 

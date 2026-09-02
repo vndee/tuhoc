@@ -257,17 +257,31 @@ export const en: Messages = {
   'progress.course.aria': (percent: string) => `${percent}% complete`,
   'progress.course.minutes': (minutes: string) => `${minutes} minutes studied`,
 
-  'login.pitch.headline': 'Courses are open to everyone.',
-  /** `login.pitch.lede` and `login.point.ownKey` rewritten at task-15 — see vi.ts's comment. */
-  'login.pitch.lede':
-    'Open a course and start reading right away — nothing to install, nothing to download. Highlight a passage to take a note right on the page, or ask the AI assistant right there.',
-  /* Tên riêng "Tự học" KHÔNG đi vào đây: bài "en còn tiếng Việt" ở
-     `i18n.test.ts` cho phép đúng hai khoá (`app.name`, `lang.name.vi`), và một
-     nhãn trợ năng không đáng làm danh sách ấy dài thêm. */
-  'login.pitch.aria': 'What this platform does',
-  'login.point.free': 'Read every course free — no account needed',
-  'login.point.ownKey': 'An AI assistant on our own servers, paid for with credit — no key of your own needed',
-  'login.point.sync': 'Sign in and your progress and notes follow you across devices',
+  // ── Landing (`pages/Landing.tsx`) — `/` for visitors who are not signed in ──
+  'landing.question': 'Ten thousand test runs all passed. How can it still be wrong?',
+  'landing.lede': 'Read the textbooks free, no account needed. An account keeps your notes, your progress, and a tutor who knows what you wrote.',
+  'landing.read.h': 'Read',
+  'landing.read.verb': 'Try reading',
+  'landing.read.catalog': 'Open the course catalog',
+  'landing.read.meta': 'Free · no account needed',
+  'landing.account.cta': 'Create an account',
+  'landing.example': 'Example',
+  'landing.note.h': 'Margin note (example)',
+  'landing.note.how': 'Highlight a sentence while reading and the note anchors to that sentence. Hover the note to see its source.',
+  'landing.ask.h': 'Ask the tutor (example)',
+  'landing.ask.you': 'You',
+  'landing.ask.tutor': 'Tutor',
+  'landing.ask.margin.h': 'What the tutor knows',
+  'landing.ask.margin.p': 'Your notes and progress — on by default, switchable in Settings. Paid with your account’s credit; no key of your own.',
+  'landing.progress.h': 'Back to where you left off (example)',
+  'landing.progress.margin.h': 'The same on every device',
+  'landing.progress.margin.p': 'Progress and notes are stored with your account on the server. Open another machine, sign in, and you are on the chapter you left.',
+  'landing.catalog.h': 'Courses open now',
+  'landing.catalog.empty': 'No course has been published yet.',
+  'landing.catalog.error': 'The course catalog could not be loaded right now.',
+  'landing.catalog.all': 'See all',
+  'landing.login.cta': 'Sign in',
+
 
   'login.title': 'Sign in',
   'login.heading.login': 'Welcome back',
