@@ -121,13 +121,15 @@ function runeLength(s: string): number {
   return Array.from(s).length;
 }
 
-/** Nhãn dịch cho từng tên tool THẬT (`ToolNameReadCourse`/`ToolNameWebSearch`,
- *  `handler.go`). Một tên chưa biết (server thêm tool mới, web chưa cập
- *  nhật) hiện NGUYÊN VĂN tên đó thay vì vỡ — server vẫn là nơi quyết định
- *  tool nào tồn tại (`available_tools`); web chỉ chưa có nhãn đẹp cho nó. */
+/** Nhãn dịch cho từng tên tool THẬT (`ToolNameReadCourse`/`ToolNameWebSearch`/
+ *  `ToolNameReadMyNotes`, `handler.go`). Một tên chưa biết (server thêm tool
+ *  mới, web chưa cập nhật) hiện NGUYÊN VĂN tên đó thay vì vỡ — server vẫn là
+ *  nơi quyết định tool nào tồn tại (`available_tools`); web chỉ chưa có
+ *  nhãn đẹp cho nó. */
 const TOOL_LABEL_KEYS: Readonly<Record<string, MessageKey>> = {
   read_course: 'settings.ai.toolReadCourse',
   web_search: 'settings.ai.toolWebSearch',
+  read_my_notes: 'settings.ai.toolReadMyNotes',
 };
 
 function toolLabel(name: string, t: Translate): string {

@@ -200,6 +200,13 @@ export const vi = {
     'Công cụ có nhãn "chưa bật trên máy chủ này" vẫn lưu được lựa chọn của bạn, nhưng máy chủ chưa được cấu hình để chạy nó — trợ lý sẽ bỏ qua cho tới khi quản trị viên bật.',
   'settings.ai.toolReadCourse': 'Đọc nội dung khoá học',
   'settings.ai.toolWebSearch': 'Tìm kiếm trên web',
+  // Task 12 (Pha 3) — nhãn thứ ba cho `AgentConfigPanel.tsx`'s
+  // `TOOL_LABEL_KEYS`, cùng hàng với hai khoá trên. `read_my_notes` bật
+  // MẶC ĐỊNH (`ai.readsYourNotes` nói điều đó ở panel hỏi–đáp); công tắc ở
+  // đây là nơi thật sự tắt được nó, và một nhãn tiếng Việt/Anh đọc được thay
+  // vì tên kỹ thuật "read_my_notes" trần trụi đúng cho một tool BẬT SẴN từ
+  // ngày đầu, không phải một tool người học tự bật.
+  'settings.ai.toolReadMyNotes': 'Đọc tiến độ và ghi chú của bạn',
   'settings.ai.save': 'Lưu cấu hình',
   'settings.ai.saved': 'Đã lưu.',
   'settings.ai.saveUnknownTool': 'Một công cụ trong danh sách không còn tồn tại. Tải lại trang rồi thử lại.',
@@ -678,6 +685,18 @@ export const vi = {
   // hỏng, vì nó đúng ngay cả ở câu hỏi ĐẦU TIÊN. Xem `useAI.ts`'s doc comment
   // cho lý do máy chủ không có trí nhớ giữa các lượt.
   'ai.panel.noMemory': 'Mỗi câu hỏi là một lượt riêng — trợ lý không nhớ những câu bạn đã hỏi trước đó.',
+  // MẶC ĐỊNH BẬT, VÀ NGƯỜI HỌC PHẢI ĐƯỢC BÁO (task-12, Pha 3). `read_my_notes`
+  // (công cụ phía máy chủ, `apps/api/internal/ai/tool_notes.go`) đọc tiến độ
+  // và ghi chú của CHÍNH người đang hỏi cho course đang mở — migration 0010
+  // bật nó cho MỌI tài khoản, kể cả những tài khoản đã tồn tại từ trước. Bật
+  // mặc định là quyết định của chủ dự án; KHÔNG nói cho người học biết là một
+  // quyết định khác mà không ai chọn — câu này, cộng đường dẫn sang Cài đặt
+  // ngay sau nó trong `AskPanel.tsx`, là chỗ nói ra và chỗ tắt được.
+  //
+  // THƯỜNG TRỰC, cùng vị trí `ai.panel.noMemory` ngay trên: đúng ngay từ câu
+  // hỏi đầu tiên, không đợi tool thật sự được gọi lượt nào.
+  'ai.readsYourNotes':
+    'Gia sư có thể đọc tiến độ và ghi chú của bạn cho khoá học này để trả lời sát hơn.',
   // `ai.panel.noCredit` thay cho cặp Pha 1 `needsSetup`/`unavailable` (đã bỏ
   // — xem `git log` trên tệp này): Pha 2 không còn key cắm theo máy, và
   // không còn bản dựng nào thiếu route AI, nên cả hai trạng thái đó không
