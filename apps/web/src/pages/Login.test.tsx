@@ -6,7 +6,6 @@ import { setupServer } from 'msw/node';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { meQueryKey } from '../api/useMe';
-import { SESSION_VERIFIED_KEY } from '../auth/session';
 import { clearUserContent, USER_CONTENT_KEYS } from '../db/localStorage';
 import { Login } from './Login';
 import { t } from '../i18n';
@@ -367,8 +366,8 @@ describe('Login page', () => {
 
 /**
  * Puts a value in the ONE local store left after Task 10 — the
- * user-content `localStorage` key and the offline-read marker — so
- * "nothing survives" can never pass vacuously.
+ * user-content `localStorage` keys — so "nothing survives" can never pass
+ * vacuously.
  *
  * Task 10 note, replacing the old version of this fixture: it used to seed
  * Dexie's `progress`/`annotations`/`outbox`/`meta` tables too. Those
@@ -378,10 +377,14 @@ describe('Login page', () => {
  * possibly inherit. What remains capable of surviving on THIS BROWSER,
  * across an auth transition, is `localStorage` — which is exactly what
  * `clearSession()` (`auth/session.ts`) still exists to clear.
+ *
+ * Task 11 note: this used to also seed `SESSION_VERIFIED_KEY`, the
+ * offline-read marker — removed along with `<RequireAuth>`'s offline
+ * branch, its only reader. `USER_CONTENT_KEYS` is the whole of what
+ * survives an auth transition now.
  */
 function seedPreviousUsersLocalData(): void {
   for (const key of USER_CONTENT_KEYS) window.localStorage.setItem(key, "previous user's private note");
-  window.localStorage.setItem(SESSION_VERIFIED_KEY, '2026-08-19T10:00:00.000Z');
 }
 
 /**
@@ -422,7 +425,6 @@ describe('Login — local state does not survive a change of signed-in user (C1)
     await waitFor(() => expect(screen.getByText('Home dashboard')).toBeInTheDocument());
 
     for (const key of USER_CONTENT_KEYS) expect(window.localStorage.getItem(key)).toBeNull();
-    expect(window.localStorage.getItem(SESSION_VERIFIED_KEY)).toBeNull();
   });
 
   it('registering on a browser that still holds a previous user\'s data clears it too', async () => {
@@ -440,7 +442,6 @@ describe('Login — local state does not survive a change of signed-in user (C1)
 
     await waitFor(() => expect(screen.getByText('Home dashboard')).toBeInTheDocument());
     for (const key of USER_CONTENT_KEYS) expect(window.localStorage.getItem(key)).toBeNull();
-    expect(window.localStorage.getItem(SESSION_VERIFIED_KEY)).toBeNull();
   });
 
   it('an already-authenticated visitor to /login never renders the sign-in form (deferred-minor #18)', async () => {

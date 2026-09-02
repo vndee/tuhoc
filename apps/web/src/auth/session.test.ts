@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { QueryClient } from '@tanstack/react-query';
+import { onlineManager, QueryClient } from '@tanstack/react-query';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,14 +19,7 @@ import { api } from '../api/client';
 import { flushEvents, queueEvent } from '../api/events';
 import { meQueryKey } from '../api/useMe';
 import { USER_CONTENT_KEYS } from '../db/localStorage';
-import {
-  clearSession,
-  OFFLINE_READ_MAX_AGE_MS,
-  offlineSessionIsUsable,
-  readSessionVerifiedAt,
-  rememberSessionVerified,
-  SESSION_VERIFIED_KEY,
-} from './session';
+import { clearSession } from './session';
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -51,15 +44,12 @@ describe('clearSession — the one door out of a session', () => {
     expect(vi.mocked(api.post)).not.toHaveBeenCalled();
   });
 
-  it('empties the durable half: every key holding the user’s own words, and the offline marker', async () => {
+  it('empties the durable half: every key holding the user’s own words', async () => {
     for (const key of USER_CONTENT_KEYS) window.localStorage.setItem(key, 'nửa câu đang viết');
-    await rememberSessionVerified();
-    expect(await offlineSessionIsUsable()).toBe(true);
 
     await clearSession(new QueryClient());
 
     for (const key of USER_CONTENT_KEYS) expect(window.localStorage.getItem(key)).toBeNull();
-    expect(window.localStorage.getItem(SESSION_VERIFIED_KEY)).toBeNull();
   });
 
   it('empties the in-memory half too — the cache entries that really do hold the departing user’s data', async () => {
@@ -118,130 +108,76 @@ describe('clearSession — the one door out of a session', () => {
   });
 });
 
-/* ====================================================================== *
- * offlineSessionIsUsable — how long a device may stand in for the server
- * ====================================================================== */
-
-describe('offlineSessionIsUsable — the offline reading window', () => {
-  const T = Date.parse('2026-08-21T10:00:00.000Z');
-
-  it('is false on a device nobody has ever signed in on', async () => {
-    expect(await offlineSessionIsUsable(T)).toBe(false);
+/**
+ * Task 11 review finding (Pha 3): TanStack Query's default
+ * `networkMode: 'online'` (this repo configures nothing else — see
+ * `App.tsx`'s bare `new QueryClient()`) PAUSES a mutation that is sent while
+ * offline, rather than failing it, and AUTO-RESUMES every paused mutation
+ * the instant `onlineManager` reports connectivity again
+ * (`@tanstack/query-core`'s `QueryClient.mount()` subscribes to
+ * `onlineManager` and calls `resumePausedMutations()` on it — see that
+ * package's own `queryClient.ts`). A resumed mutation replays through
+ * `api/client.ts`'s `send()`, which always sends `credentials: 'include'` —
+ * i.e. whatever cookie is valid AT RESUME TIME, not the account that
+ * started the write.
+ *
+ * Concretely, in the same tab, on the ONE `queryClient` `App.tsx` ever
+ * builds: learner A goes offline mid-write, the mutation pauses, A logs
+ * out, learner B signs in, connectivity returns — and without this,
+ * A's paused write would replay and reach the server under B's cookie.
+ * This phase has already paid two fix rounds for exactly this shape of bug
+ * (a queue of A's study events POSTed under B's session — see
+ * `api/events.ts`'s `queueGeneration` and `test/eventQueueHandoff.test.tsx`)
+ * — the mutation cache was the one queue nothing had wired into the door
+ * yet.
+ *
+ * The fix is `getMutationCache().clear()`, called from `clearSession()`
+ * itself (see that function, above) — not a new clearing path: emptying the
+ * cache's tracked mutation set is what makes `resumePausedMutations()`
+ * find nothing to resume, because it iterates `getAll()` on that same set.
+ * The paused request's own promise is simply never continued; nothing
+ * cancels an in-flight `fetch`, because there isn't one — a PAUSED mutation
+ * with `networkMode: 'online'` never called `fetch` in the first place (see
+ * `@tanstack/query-core`'s `retryer.ts`: `canStart()` is false while
+ * offline, so `start()` calls `pause()` before `run()` ever executes).
+ */
+describe('clearSession — the mutation half (TanStack’s auto-resume hazard)', () => {
+  afterEach(() => {
+    // Every other describe block in this file runs "online" implicitly
+    // (jsdom's default); restore that so a failure here cannot leak into
+    // an unrelated test run after it in the same file.
+    onlineManager.setOnline(true);
   });
 
-  it('is true immediately after GET /me confirmed a user here', async () => {
-    await rememberSessionVerified(new Date(T));
+  it('a paused mutation belonging to A must not replay under B’s session once connectivity returns', async () => {
+    const queryClient = new QueryClient();
 
-    expect(await offlineSessionIsUsable(T)).toBe(true);
+    // A is mid-write when the network drops. `networkMode: 'online'`
+    // (the default, unconfigured here) means the mutation PAUSES rather
+    // than sends — `fetch` is never called while offline.
+    onlineManager.setOnline(false);
+    const mutation = queryClient.getMutationCache().build(queryClient, {
+      mutationFn: () => api.post('/progress/toggle', { chapterId: 'ch1' }),
+    });
+    void mutation.execute({ chapterId: 'ch1' }).catch(() => {});
+    await vi.waitFor(() => expect(mutation.state.isPaused).toBe(true));
+    expect(vi.mocked(api.post)).not.toHaveBeenCalled();
+
+    // A logs out — same tab, same queryClient — exactly clearSession()'s job.
+    await clearSession(queryClient);
+
+    // B signs in (irrelevant to this test which account, if any, is
+    // current — the hazard is that the SAME queryClient carries A's
+    // mutation forward regardless), then connectivity returns.
+    onlineManager.setOnline(true);
+    await queryClient.resumePausedMutations();
+
+    // If A's paused mutation was still tracked, TanStack would have
+    // auto-resumed it here and sent it with `credentials: 'include'` —
+    // under WHATEVER cookie is valid now, B's.
+    expect(vi.mocked(api.post)).not.toHaveBeenCalled();
+    expect(queryClient.getMutationCache().getAll()).toEqual([]);
   });
-
-  it('is still true one millisecond before the window closes, and false one millisecond after', async () => {
-    await rememberSessionVerified(new Date(T));
-
-    expect(await offlineSessionIsUsable(T + OFFLINE_READ_MAX_AGE_MS - 1)).toBe(true);
-    expect(await offlineSessionIsUsable(T + OFFLINE_READ_MAX_AGE_MS)).toBe(false);
-    expect(await offlineSessionIsUsable(T + OFFLINE_READ_MAX_AGE_MS + 1)).toBe(false);
-  });
-
-  it('stays well inside the server session it stands in for', () => {
-    // apps/api/internal/auth/usecase.go's `SessionTTL = 30 * 24 * time.Hour`,
-    // and it is NOT sliding — `FindValidSession` never moves `expires_at`.
-    // So the longest a server session can live is 30 days from the login
-    // that created it. This window has to be a fraction of that, or a
-    // device could keep reading long after the cookie it is standing in
-    // for became worthless.
-    const SERVER_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-    expect(OFFLINE_READ_MAX_AGE_MS).toBeLessThan(SERVER_SESSION_TTL_MS / 4);
-    expect(OFFLINE_READ_MAX_AGE_MS).toBeGreaterThan(24 * 60 * 60 * 1000);
-  });
-
-  it('refuses a marker stamped in the future — a clock that moved fails closed', async () => {
-    await rememberSessionVerified(new Date(T + 60_000));
-
-    expect(await offlineSessionIsUsable(T)).toBe(false);
-  });
-
-  it('is false again the moment the session ends, because clearSession() took the marker with it', async () => {
-    await rememberSessionVerified(new Date(T));
-    expect(await offlineSessionIsUsable(T)).toBe(true);
-
-    await clearSession(new QueryClient());
-
-    expect(await offlineSessionIsUsable(T)).toBe(false);
-  });
-});
-
-/* ====================================================================== *
- * The offline-read marker — storage-level checks (Task 10: moved here from
- * db/local.test.ts's "the 'somebody was signed in here' marker" describe
- * block, adapted from Dexie's db.meta to a localStorage key)
- * ====================================================================== */
-
-describe('the offline-read marker, at the storage level', () => {
-  it('round-trips as a parsed instant', async () => {
-    await rememberSessionVerified(new Date('2026-08-21T10:00:00.000Z'));
-
-    expect(await readSessionVerifiedAt()).toBe(Date.parse('2026-08-21T10:00:00.000Z'));
-  });
-
-  it('is absent until something writes it, and unreadable garbage reads as absent', async () => {
-    expect(await readSessionVerifiedAt()).toBeNull();
-
-    window.localStorage.setItem(SESSION_VERIFIED_KEY, 'không phải mốc thời gian');
-    // `Date.parse` of junk is NaN, and NaN would sail through every
-    // `now - verifiedAt < window` comparison as `false` — which happens to
-    // be the safe answer, but only by accident. Answering `null` makes the
-    // safe answer deliberate.
-    expect(await readSessionVerifiedAt()).toBeNull();
-  });
-
-  it('holds NO identity — only an instant, and that is what makes it cheap to be wrong about', async () => {
-    // The whole reason `<RequireAuth>` can consult this marker without
-    // repeating P2's cross-account leak: even in the worst case (a stale
-    // value nothing erased), it says "somebody was signed in on this device
-    // at T" and cannot say WHO. There is no name, no email, no user id to
-    // render at the next person. If a future edit adds one, this fails.
-    await rememberSessionVerified(new Date('2026-08-21T10:00:00.000Z'));
-
-    expect(window.localStorage.getItem(SESSION_VERIFIED_KEY)).toBe('2026-08-21T10:00:00.000Z');
-  });
-
-  it('still writes normally when no clear happens around it', async () => {
-    await clearSession(new QueryClient());
-    await rememberSessionVerified(new Date('2026-08-21T10:00:00.000Z'));
-
-    expect(await readSessionVerifiedAt()).toBe(Date.parse('2026-08-21T10:00:00.000Z'));
-  });
-
-  // Removed by Task 10, on purpose, WITH a reason (not "dọn dẹp"):
-  // `db/local.test.ts` used to carry
-  // "cannot be resurrected by a write that lands AFTER the browser was
-  // declared clean" — a test that gated `db.meta.put`'s Dexie transaction
-  // behind a manually-controlled promise to prove the (now-removed)
-  // generation-counter guard closed the window where a WRITE already in
-  // flight when a CLEAR ran could still land afterward. That window existed
-  // because a Dexie `put()` is asynchronous — it schedules a transaction
-  // that may not commit for one or more further ticks, during which a
-  // concurrent `clear()` could run to completion.
-  //
-  // `rememberSessionVerified`/`clearSessionVerifiedMarker` (session.ts) are
-  // both a single synchronous `localStorage.setItem`/`removeItem` call with
-  // no `await` anywhere inside them. There is no tick during which either
-  // one is "in flight" for the other to race — by the time either function
-  // returns, its write has already fully happened. The interleaving this
-  // removed test constructed (gate the write, let a clear finish, then
-  // release the write) cannot be built against a synchronous store: there
-  // is no gate to hold, because there is no async step to intercept. This
-  // is verified structurally (reading `rememberSessionVerified`'s body in
-  // session.ts — no `await`), not merely assumed.
-  //
-  // What this does NOT close, and never did: the ordering between two
-  // independent event-loop callbacks (`GET /me`'s effect firing vs. a
-  // logout click's `clearSession()`) is still whatever order the browser
-  // happens to run them in — but that was ALSO true of the old Dexie
-  // version, whose generation guard only protected the narrower window
-  // during ITS OWN in-flight write, not this broader scheduling question.
-  // Nothing was given up here that the old test actually covered.
 });
 
 /* ====================================================================== *
@@ -423,45 +359,11 @@ describe('no third way to end a session', () => {
     expect(violations).toEqual([]);
   });
 
-  /**
-   * The marker `offlineSessionIsUsable` reads is the ONE durable thing this
-   * phase added that says "somebody was signed in on this device". It is a
-   * `localStorage` key that `clearSession()` (this file) empties with
-   * nothing written for it at either call site — but that only stays true
-   * while the set of places that WRITE it stays small enough to reason
-   * about.
-   *
-   * Two files may name it: `auth/session.ts` DEFINES it (Task 10 moved the
-   * definition here from `db/local.ts`'s Dexie `db.meta` table, which no
-   * longer exists — see session.ts's own doc comment on
-   * `rememberSessionVerified`), and `auth/RequireAuth.tsx` is the one
-   * surface that both writes and reads it — it writes exactly when
-   * `GET /me` has confirmed a user, which is the only fact the marker is
-   * allowed to record. A third writer is how this would go wrong: a call
-   * from somewhere that has NOT confirmed a user would make the marker mean
-   * something weaker than it says, and every offline render downstream
-   * would inherit that.
-   *
-   * Moving the DEFINITION is not a weakening of this check: the invariant
-   * is still "exactly these two files may name `rememberSessionVerified`",
-   * enforced the same way — only WHICH file holds the definition changed,
-   * and `session.ts` replacing `db/local.ts` in this list is that move
-   * reflected honestly, not the check being loosened to pass.
-   */
-  const MARKER_WRITER = 'rememberSessionVerified';
-  const MARKER_WRITER_ALLOWED_IN = [
-    join('apps', 'web', 'src', 'auth', 'session.ts'),
-    join('apps', 'web', 'src', 'auth', 'RequireAuth.tsx'),
-  ];
-
-  it('only RequireAuth writes the offline-read marker, and it is the same file that reads it', () => {
-    const watched = new Set([MARKER_WRITER]);
-    const writers = productionSourceFiles()
-      .filter((file) => clearersNamedIn(file, readFileSync(file, 'utf-8'), watched).has(MARKER_WRITER))
-      .map(label);
-
-    expect(writers.sort()).toEqual([...MARKER_WRITER_ALLOWED_IN].sort());
-  });
+  // Task 11 removed the offline-read marker (`rememberSessionVerified`,
+  // `SESSION_VERIFIED_KEY`, and the "only RequireAuth writes it" scan that
+  // used to live here) along with `<RequireAuth>`'s offline branch — the
+  // marker had exactly one reader, that branch, and no reader means nothing
+  // left to protect the marker's meaning for.
 
   it('the door is actually used: both auth transitions go through it', () => {
     // The complement of the scan above. Without this, deleting BOTH call

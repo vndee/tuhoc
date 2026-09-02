@@ -97,12 +97,16 @@ describe('AdminGuard', () => {
   });
 
   /**
-   * Fail CLOSED. RequireAuth's own offline branch would let an already-
-   * authorized visitor keep a page that is already on screen when a
-   * refetch fails with no response — there is no such page here (nothing
-   * about /admin is meant to work offline; publishing needs a live
-   * connection regardless), so an errored `/me` gets the exact same
-   * treatment as a confirmed non-admin: away, not "stay just in case".
+   * Fail CLOSED. `RequireAuth`'s own `authorizedOnce` exception (see that
+   * component's own doc comment — not its offline branch, which Task 11
+   * removed) would let an already-authorized visitor keep a page that is
+   * already on screen when a `/me` refetch gets NO RESPONSE at all — there
+   * is no such exception here, and this test's own 500 would not qualify
+   * for it even in `RequireAuth` (that exception only ever applies when no
+   * response arrives; a 500 is an answer). Nothing about /admin is meant
+   * to work offline — publishing needs a live connection regardless — so
+   * an errored `/me` gets the exact same treatment as a confirmed
+   * non-admin: away, not "stay just in case".
    */
   it('a `/me` that errors (500) is treated as NOT admin — redirected to "/", not left showing the guarded page', async () => {
     server.use(http.get('/me', () => HttpResponse.json({ error: 'boom' }, { status: 500 })));

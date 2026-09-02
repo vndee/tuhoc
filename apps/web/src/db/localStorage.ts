@@ -61,10 +61,12 @@ export const DEVICE_PREFERENCE_KEYS = ['itbook-theme', 'itbook-lang'] as const;
  * enforced, not advisory.
  *
  * The runtime half (nothing may bypass these functions and reach
- * `localStorage` directly) is pinned by `localStorage.test.ts` — with one
- * documented exception, `auth/session.ts`'s offline-read marker, which is
- * neither user content nor a device preference; see that file's own doc
- * comment and `localStorage.test.ts`'s `PERSISTENCE` list.
+ * `localStorage` directly) is pinned by `localStorage.test.ts`'s
+ * `PERSISTENCE` scan. Task 11 (Pha 3) removed the one exception this used
+ * to name — `auth/session.ts`'s offline-read marker, a session-lifecycle
+ * value that was neither user content nor a device preference. Its one
+ * reader (`<RequireAuth>`'s offline branch) is gone, and with it the last
+ * reason anything outside this file touched `localStorage` directly.
  */
 export type LocalStorageKey = (typeof USER_CONTENT_KEYS)[number] | (typeof DEVICE_PREFERENCE_KEYS)[number];
 

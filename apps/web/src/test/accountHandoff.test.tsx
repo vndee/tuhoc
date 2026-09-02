@@ -44,7 +44,6 @@ import { type Anchor, type AnchorColor, selectionToAnchor } from '../annotations
 import { type CardFocus, DRAFT_KEY, MarginCards } from '../annotations/MarginCards';
 import { normalizeContainer } from '../annotations/normalize';
 import { type Ann, type ChapterContent, useAnnotations } from '../annotations/useAnnotations';
-import { RequireAuth } from '../auth/RequireAuth';
 import { useLogout } from '../auth/useLogout';
 import { Login } from '../pages/Login';
 import { LanguageProvider } from '../i18n/LanguageProvider';
@@ -126,25 +125,18 @@ function makeAnchor(html: string, quote: string, color: AnchorColor = 'y'): Anch
  * accident (both accounts sharing one course/chapter id in this fixture,
  * with nothing here otherwise telling them apart). Defaults to `'u-a'`
  * because every `seedNote` in this file seeds AS A, and A is always the
- * first account in every scenario; `setMe`/`bSignsIn` are the two places it
- * changes.
+ * first account in every scenario; `bSignsIn` (via the real `/auth/login`
+ * handler below) is the one place it changes.
+ *
+ * (`setMe`, a direct `/me` mock setter that let a test declare "this is A"
+ * or "this is B" without a real login, used to live here too — Task 11
+ * removed it along with the only tests that called it, the offline-branch
+ * scenarios at the end of this file.)
  */
 let annotationRows: Ann[];
 let rowOwners: Map<string, string>;
 let currentAccountId: string;
 let patchCount: number;
-
-/** The one place `/me` is configured — every `server.use(http.get('/me', ...))`
- * in the old version of this file is now this call, so `currentAccountId`
- * can never drift out of step with what `/me` actually answers. */
-function setMe(user: { id: string; email: string; name: string } | null): void {
-  if (user) currentAccountId = user.id;
-  server.use(
-    user
-      ? http.get('/me', () => HttpResponse.json(user))
-      : http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })),
-  );
-}
 
 /** Upserts by `id`, matching Dexie's `put` semantics the pre-Task-7 version
  * of this function relied on — some tests call this TWICE with the SAME id
@@ -267,39 +259,10 @@ function Browser({
   );
 }
 
-/**
- * The same browser, but with the real route guard in front of the reader —
- * which is what a COLD page load actually goes through, and what Task 7b
- * changed. `<Browser>` above mounts `<Reader/>` directly because its
- * subject is the note draft; this one's subject is the guard's new
- * offline branch, so the guard has to be in the tree.
- *
- * A fresh `QueryClient` per render is the point, not a detail: it is what
- * makes a second `render(...)` a COLD LOAD rather than a re-render. Nothing
- * of the previous session's in-memory cache survives it, so everything the
- * guard decides has to come from the durable stores — exactly as after F5.
- */
-function GuardedBrowser({ at = '/' }: { at?: string }) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={[at]}>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <RequireAuth>
-                <Reader />
-                <LogoutButton />
-              </RequireAuth>
-            }
-          />
-          <Route path="/login" element={<Login />} />
-        </Routes>
-      </MemoryRouter></LanguageProvider></ThemeProvider>
-    </QueryClientProvider>
-  );
-}
+// `GuardedBrowser` (the same browser, with the real `<RequireAuth>` guard in
+// front of the reader) used to live here, for Task 7b's offline-branch
+// scenarios below. Task 11 removed both — see the note at the end of this
+// file.
 
 const server = setupServer(
   // Nobody is signed in, by default — this is how the app says that (see api/useMe.ts).
@@ -555,122 +518,18 @@ describe('one browser, two accounts — the note draft is the departing user’s
   }, 20_000);
 });
 
-/* ====================================================================== *
- * Task 7b — the same handover, with the network down on the far side
- * ====================================================================== */
-
-const A = { id: 'u-a', email: 'a@example.com', name: 'A' };
-const B = { id: 'u-b', email: 'b@example.com', name: 'B' };
-
-/** `GET /me` never reaches a server: `fetch` rejects with a bare TypeError, no status, no body. */
-const NETWORK_IS_DOWN = http.get('/me', () => HttpResponse.error());
-
-/** A cold load: nothing of the previous tree, nothing of its query cache. */
-function coldLoad(at = '/'): void {
-  cleanup();
-  render(<GuardedBrowser at={at} />);
-}
-
-/**
- * Task 7b lets `<RequireAuth>` render a protected page when `GET /me` never
- * reached a server. That is a decision about AUTHENTICATION, and this is
- * where it has to be paid for: the one thing it may never do is put A's
- * words in front of B.
- *
- * The property being tested is not "the guard is strict" — a guard that
- * refused everything would pass a negative test and break the feature. It
- * is that the offline render is driven by THIS BROWSER'S CURRENT local
- * session: whatever `clearSession()` last left behind, and nothing older.
- * So both directions are here, and the positive one runs first, because a
- * negative result means nothing until the setup is known to work.
- */
-describe('one browser, two accounts — reading offline must never open the previous account’s reader', () => {
-  it('positive control: A’s own device, A’s own session, network dead — A reads their own note', async () => {
-    setMe(A);
-    const row = await seedNote('44444444-4444-4444-8444-444444444444', A_PRIVATE);
-
-    render(<GuardedBrowser />);
-    await waitForCards(1);
-    expect(within(cardFor(row.id)).getByText(A_PRIVATE)).toBeInTheDocument();
-
-    // The plane takes off.
-    server.use(NETWORK_IS_DOWN);
-    coldLoad();
-
-    // Before Task 7b this was the sign-in screen — the bug this whole task
-    // exists for, measured in a real browser in task-7-report.md §5.5.
-    await waitForCards(1);
-    expect(within(cardFor(row.id)).getByText(A_PRIVATE)).toBeInTheDocument();
-  }, 20_000);
-
-  it('A signs out, then the network dies: a cold load shows the outage, not A’s reader', async () => {
-    setMe(A);
-    await seedNote('55555555-5555-4555-8555-555555555555', A_PRIVATE);
-
-    render(<GuardedBrowser />);
-    await waitForCards(1);
-
-    // The real hook — and the real `clearSession()` inside it, which takes
-    // the offline marker with it directly (Task 10: the marker moved from
-    // Dexie's `db.meta` to a `localStorage` key `clearSession()` clears by
-    // name — see `auth/session.ts`'s `clearSessionVerifiedMarker`).
-    fireEvent.click(screen.getByRole('button', { name: 'Đăng xuất' }));
-    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument(), { timeout: 10_000 });
-
-    server.use(NETWORK_IS_DOWN);
-    coldLoad();
-
-    expect(await screen.findByText(/kết nối/i)).toBeInTheDocument();
-    expect(screen.queryByTestId('chapter')).not.toBeInTheDocument();
-    expect(document.body.textContent ?? '').not.toContain(A_PRIVATE);
-  }, 20_000);
-
-  it('B signs in on A’s browser, then the network dies: B reads B’s empty library, never A’s note', async () => {
-    // The full handover, and the one that matters: the offline door is OPEN
-    // for B (B has a live local session, so the feature works for them) and
-    // what is behind it is B's own empty local database.
-    setMe(A);
-    await seedNote('66666666-6666-4666-8666-666666666666', A_PRIVATE);
-
-    render(<GuardedBrowser />);
-    await waitForCards(1);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Đăng xuất' }));
-    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument(), { timeout: 10_000 });
-
-    setMe(B);
-    await bSignsIn();
-    await waitFor(() => expect(screen.getByTestId('chapter')).toBeInTheDocument());
-
-    server.use(NETWORK_IS_DOWN);
-    coldLoad();
-
-    // The guard opened — B is not punished for A having been here.
-    await waitFor(() => expect(screen.getByTestId('chapter')).toBeInTheDocument());
-    expect(screen.queryByText(/kết nối/i)).not.toBeInTheDocument();
-    // And it opened onto B's own browser state, which holds nothing of A's
-    // — `waitForCards(0)` is now the whole of that claim (Task 10 removed
-    // the local `db.annotations` table this used to also check directly;
-    // annotations are exclusively server-side, scoped by session cookie).
-    await waitForCards(0);
-    expect(document.body.textContent ?? '').not.toContain(A_PRIVATE);
-  }, 20_000);
-
-  it('A never logged out, but the server says 401: the answer wins over the marker, offline branch or not', async () => {
-    // The bound on how long a device may stand in for the server: not a
-    // timer, the first HTTP response that arrives. A dead cookie plus a
-    // live network is a closed door on the very next load.
-    setMe(A);
-    await seedNote('77777777-7777-4777-8777-777777777777', A_PRIVATE);
-
-    render(<GuardedBrowser />);
-    await waitForCards(1);
-
-    setMe(null);
-    coldLoad();
-
-    await waitFor(() => expect(screen.getByLabelText(/email/i)).toBeInTheDocument());
-    expect(screen.queryByTestId('chapter')).not.toBeInTheDocument();
-    expect(document.body.textContent ?? '').not.toContain(A_PRIVATE);
-  }, 20_000);
-});
+// Task 7b's "one browser, two accounts — reading offline must never open
+// the previous account's reader" describe block lived here (`GuardedBrowser`,
+// `coldLoad`, `NETWORK_IS_DOWN`, `A`, `B`, and five tests) and is gone: Task
+// 11 removed the offline branch it exercised
+// (`offlineSessionIsUsable`/`rememberSessionVerified`, the `sessionVerifiedAt`
+// marker) along with `<RequireAuth>`'s offline branch itself. With no branch
+// left that could ever render `children` from local state alone, the
+// account-boundary property this block existed to prove — "the previous
+// account's local session never opens this device's reader for the next
+// account" — is now vacuously true for THAT surface: there is no local
+// authority left to consult, only the server's answer for THIS request. The
+// account-boundary concern this phase introduced instead — a paused
+// react-query mutation replaying under the next signed-in account's cookie
+// once connectivity returns — is covered in `auth/session.test.ts`'s
+// "the mutation half" describe block.

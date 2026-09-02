@@ -650,6 +650,14 @@ export const en: Messages = {
   'auth.error.unknown': 'An unknown error occurred. Please try again.',
   'auth.error.unreachable':
     'Could not reach the server. You may be offline, or the server may be misconfigured (CORS/DNS).',
+  // Task 11 (Pha 3): what `<RequireAuth>` shows when NO response ever
+  // arrived for `GET /me` — not a server that answered with an error
+  // (`auth.error.unreachable` above already covers that), but "this page
+  // needs a network connection to open, and this device cannot ask the
+  // server whether a session still exists." A separate key because this is
+  // not a LOGIN failure — the viewer may well already be signed in; the
+  // device just cannot reach the server to confirm it.
+  'auth.needsNetwork': 'This page needs a network connection to open. Please check your connection and try again.',
 
   'registry.error.notConfigured':
     'No registry address is configured. Set the VITE_REGISTRY_URL environment variable (the registry’s base address, e.g. https://<org>.github.io/<repo>) at build time, or use the public registry once it exists.',

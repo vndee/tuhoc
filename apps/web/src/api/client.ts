@@ -283,33 +283,39 @@ export const api = {
  * request never got one: the transport failed and this page knows nothing
  * about its own session.
  *
- * This is the single distinction `<RequireAuth>`'s offline branch rests on,
- * so it is worth being precise about what falls on each side, measured
- * rather than assumed (see `client.test.ts`, and task-7b-report.md for the
- * same four cases driven through a real browser):
+ * Task 11 (Pha 3) removed `<RequireAuth>`'s offline branch, which used to
+ * be the reason this distinction existed — this doc comment used to say so,
+ * and that reason died with the branch. The distinction itself did not:
+ * `<RequireAuth>` still uses this to decide BETWEEN ITS TWO ERROR SCREENS —
+ * an inline "the server is having trouble" message when a response did
+ * arrive, versus a dedicated needs-network message when none did (with one
+ * narrow exception for a page already authorized before the failure — see
+ * `authorizedOnce` there). A 401 is still not the same fact as silence, and
+ * collapsing them would still be wrong, just for a smaller reason than
+ * before: an outage must not read as a logout, and a device that cannot
+ * reach the server at all is not the same as one the server has actually
+ * refused. What falls on each side is measured rather than assumed (see
+ * `client.test.ts`, and task-7b-report.md for the same four cases driven
+ * through a real browser):
  *
  *  - **401 → answered.** The server looked at the cookie and said nobody is
- *    signed in. That is a fact, not a silence, and it outranks anything
- *    this device believes about itself. (`useMe` turns it into `null` data
- *    before it ever reaches here.)
+ *    signed in. That is a fact, not a silence. (`useMe` turns it into
+ *    `null` data before it ever reaches here.)
  *  - **500 / 502 / 503 → answered.** Something on the other end is broken,
- *    but the network reached it. A reachable, broken server is NOT an
- *    offline device, and the existing behaviour — an inline outage message
- *    — is kept for it deliberately. Widening the offline branch to cover
- *    5xx would mean a bad deploy silently flipped every reader into
- *    local-only mode with no request ever failing to leave the machine.
+ *    but the network reached it. A reachable, broken server must not read
+ *    as a needs-network prompt — a bad deploy is not the same failure as a
+ *    reader's own dead wifi, and the two need different next actions (wait
+ *    for the deploy to be fixed, versus check your connection).
  *  - **Offline, DNS failure, connection refused, a blocked or CORS-refused
  *    request → NOT answered.** All four arrive here as the same bare
  *    `TypeError` from `fetch`, with no status and no body. The browser
  *    deliberately refuses to tell a page which one it was — so they cannot
- *    be told apart, and this function does not pretend to. What makes that
- *    acceptable is the other side of the door: see
- *    `offlineSessionIsUsable` in `auth/session.ts` for why "unknown" only
- *    ever unlocks the device's OWN local data.
+ *    be told apart, and this function does not pretend to.
  *  - **Anything else thrown → NOT answered.** A bug in our own code
  *    reaching this predicate reads as "we do not know", never as "the
- *    server answered". Failing that way round is what keeps a future
- *    mistake from being read as authorization.
+ *    server answered" — a wrong needs-network message is a smaller mistake
+ *    than a wrong server-outage message would be, since only the latter
+ *    claims to know something a bug cannot actually have established.
  */
 export function serverAnswered(error: unknown): boolean {
   return error instanceof ApiError;

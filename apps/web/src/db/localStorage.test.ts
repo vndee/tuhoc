@@ -133,13 +133,13 @@ function productionSourceFiles(): string[] {
 const PERSISTENCE: readonly { readonly name: string; readonly allowedIn: readonly string[]; readonly why: string }[] = [
   {
     name: 'localStorage',
-    allowedIn: [join('apps', 'web', 'src', 'db', 'localStorage.ts'), join('apps', 'web', 'src', 'auth', 'session.ts')],
-    why:
-      'go through readLocalStorage/writeLocalStorage, whose key type forces the key to be classified as content or preference first — ' +
-      "the one deliberate exception is auth/session.ts's own offline-read marker (`sessionVerifiedAt`), which is neither: it holds no " +
-      "user content and describes no device preference, it is per-SESSION state that clearSession() (the same file) clears directly. " +
-      'Task 10 moved it out of `db/local.ts`\'s Dexie `db.meta` table (removed with Dexie itself) with nowhere else honest to put it — ' +
-      'see session.ts\'s own doc comment.',
+    // Task 11 (Pha 3) removed the one exception this list used to name —
+    // auth/session.ts's offline-read marker (`sessionVerifiedAt`), which
+    // went with `<RequireAuth>`'s offline branch, its only reader. Nothing
+    // outside db/localStorage.ts has a reason to touch `localStorage`
+    // directly any more.
+    allowedIn: [join('apps', 'web', 'src', 'db', 'localStorage.ts')],
+    why: 'go through readLocalStorage/writeLocalStorage, whose key type forces the key to be classified as content or preference first',
   },
   {
     name: 'sessionStorage',
