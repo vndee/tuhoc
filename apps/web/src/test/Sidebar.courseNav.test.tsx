@@ -3,7 +3,19 @@ import { render, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { MemoryRouter } from 'react-router-dom';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Review fix (Task 13, Pha 3): mocked the same way `api/useMe.test.tsx`
+// mocks it, and for the identical reason — this file's own regression test
+// below proves "no request fired" by watching `redirectToLogin` (a hard
+// `window.location.href` navigation, `api/client.ts`'s fallback for a 401
+// discovered outside a component tree) never get called, independent of
+// whatever jsdom does or does not implement for real navigation.
+vi.mock('../api/navigation', () => ({
+  redirectToLogin: vi.fn(),
+}));
+
+import { redirectToLogin } from '../api/navigation';
 import { Sidebar } from '../shell/Sidebar';
 import type { Manifest } from '../course/types';
 import { clearUserContent } from '../db/localStorage';
@@ -50,7 +62,10 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 beforeEach(async () => {
   await clearUserContent();
 });
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  vi.mocked(redirectToLogin).mockClear();
+});
 afterAll(() => server.close());
 
 function renderSidebar(initialPath: string) {
@@ -212,5 +227,61 @@ describe('Sidebar course name (.sb-title)', () => {
 
     await within(document.getElementById('nav')!).findByText(/không tải được/i);
     expect(document.querySelector('.sb-title')).toBeNull();
+  });
+});
+
+/**
+ * Review fix (Task 13, Pha 3) — the fast, non-Docker regression test for
+ * the `Sidebar.tsx`/`useProgress.ts` fix in this same commit. The e2e
+ * suite (`p1.spec.ts` §5) proves the end-to-end symptom is gone, but it
+ * needs Docker and takes minutes — not something a developer editing
+ * `Sidebar.tsx` runs on every save. The Go fix in this same commit got an
+ * equivalent fast assertion (`annotations_test.go`'s `doRaw`, checked on
+ * every 201/204 call site); this is that same shape for the web half.
+ *
+ * Asserts on the REQUEST NOT BEING FIRED, not on the absence of a
+ * rendered error — the bug was a fired `GET /progress` (which then 401s
+ * and hard-redirects), not a rendering symptom, so a gate that only
+ * checked "nothing looks wrong on screen" would not have caught it: the
+ * old, broken code also rendered nothing wrong for a signed-out visitor
+ * (the `doneCount`/`totalChapters` math degrades gracefully to 0/N), and
+ * MSW would have answered the errant request from the SAME baseline
+ * `/progress` handler above regardless — the request happening at all is
+ * the whole bug.
+ */
+describe('Sidebar — chưa đăng nhập thì không gọi GET /progress (Task 13, Pha 3)', () => {
+  it('signed-out trên /c/:courseId: không có request GET /progress nào, và không điều hướng /login', async () => {
+    server.use(
+      // `/me` answering 401 (not just an override that omits the handler
+      // — `onUnhandledRequest: 'error'` would fail this test for the
+      // wrong reason otherwise) is what `useMe()` treats as "nobody is
+      // signed in" — see `api/useMe.ts`'s own `fetchMe` doc.
+      http.get('/me', () => new HttpResponse(null, { status: 401 })),
+      http.get('/courses/demo', () => HttpResponse.json(manifest)),
+    );
+    let progressCalls = 0;
+    server.use(
+      http.get('/progress', () => {
+        progressCalls += 1;
+        return HttpResponse.json({ progress: [] });
+      }),
+    );
+
+    renderSidebar('/c/demo');
+
+    // Let the manifest resolve (real signal: the course outline is on
+    // screen) so `useMe()`'s own query has had a real turn to settle too
+    // — both queries start on mount, and there is no user-visible event
+    // to await for "useMe finished answering false." A short, bounded
+    // wait after that is the same shape `test/CourseHome.test.tsx`'s
+    // "chưa đăng nhập" test uses for the identical reason (its own
+    // comment: "there is nothing to wait FOR ... waiting proves the
+    // state never arrives rather than merely hasn't yet").
+    const nav = document.getElementById('nav')!;
+    await within(nav).findAllByRole('link');
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(progressCalls, 'GET /progress must not fire for a signed-out visitor').toBe(0);
+    expect(redirectToLogin, 'a signed-out visitor on a public course page must not be redirected').not.toHaveBeenCalled();
   });
 });
