@@ -341,9 +341,33 @@ khoá thành credit + config agent, CMS thêm màn credit + bảng giá, **gỡ
 
 ### Pha 3 — Dữ liệu lên máy chủ
 
-`/progress` `/notes` `/annotations` nguồn sự thật qua TanStack Query,
-`POST /migrate` di trú một lần, gỡ `db/` + `sync/`, `RequireAuth` bỏ nhánh
-ngoại tuyến, agent thêm tool đọc tiến độ/ghi chú.
+> **Sửa 2026-09-01 (Task 14):** hai dòng dưới đây, gạch ngang, là bản kế
+> hoạch — đã ship KHÁC hai chỗ, ghi lại để plan và spec không nói hai
+> chuyện. Chi tiết đầy đủ ở `docs/superpowers/plans/2026-09-01-pha3-ban-giao.md`.
+>
+> ~~`/progress` `/notes` `/annotations` nguồn sự thật qua TanStack Query,~~
+> ~~`POST /migrate` di trú một lần, gỡ `db/` + `sync/`, `RequireAuth` bỏ nhánh~~
+> ~~ngoại tuyến, agent thêm tool đọc tiến độ/ghi chú.~~
+>
+> Thứ đã ship: **hai** resource REST, không ba — `/notes` chưa bao giờ có
+> bảng riêng, "ghi chú" luôn là cột `note` của chính hàng `annotations`
+> (`apps/api/migrations/0001_init.up.sql`). Và **không có `POST /migrate`**:
+> chủ dự án chọn không xây một endpoint di trú mới, mà giữ `POST /sync` cũ
+> sống thêm một cửa sổ (gói `internal/sync`, xem chú thích đầu tệp
+> `apps/api/internal/sync/handler.go`) làm đường flush một lần cho outbox cũ
+> còn sót trên máy người học, rồi `apps/web/src/db/legacyDrain.ts` gọi đúng
+> route ấy một lần rồi `indexedDB.deleteDatabase(...)` — flush trước, xoá
+> sau, không đảo thứ tự. `GET /sync` thì xoá thật (không còn client nào gọi).
+> `db/` không gỡ trọn — `apps/web/src/db/legacyDrain.ts` (cú flush một lần)
+> và `db/localStorage.ts` (localStorage thường, không phải Dexie) còn sống;
+> thứ gỡ là Dexie/`liveQuery`/outbox làm NGUỒN SỰ THẬT. `sync/` (bộ máy
+> client, hai đồng hồ 15s) gỡ trọn, đúng như câu trên nói.
+
+`/progress` và `/annotations` (ghi chú là cột `note` của annotation) nguồn sự
+thật qua TanStack Query, một cú flush cuối qua `POST /sync` cũ rồi xoá
+IndexedDB (không phải một endpoint `/migrate` mới), gỡ Dexie làm nguồn sự
+thật + bộ máy `sync/` phía client, `RequireAuth` bỏ nhánh ngoại tuyến, agent
+thêm tool đọc tiến độ/ghi chú (`read_my_notes`).
 
 **Ship được:** cùng một tiến độ trên hai máy, không có bước đồng bộ nào.
 

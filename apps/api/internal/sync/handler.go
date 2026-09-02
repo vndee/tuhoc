@@ -90,14 +90,21 @@ const MaxPushBytes int64 = 4 << 20
 // session cookie. This is the bound on that, and the byte limit above is
 // the bound on the ~20× RAM amplification BodyParser costs.
 //
-// The number is chosen against the client, not against an attacker: the
-// web client (apps/web/src/sync/engine.ts) sends its WHOLE outbox in one
-// request with no chunking, so a cap it can exceed strands a long-offline
-// device permanently — it would 413 forever and never drain. 10 000
-// items is over 80 hours of continuous active reading at one heartbeat
-// per 30 s, far beyond any realistic offline window. Lowering it is a
-// client change first (chunked flushes), a server change second; that
-// pairing is recorded in docs/carried-forward.md.
+// The number was chosen against the client, not against an attacker, back
+// when the client was apps/web/src/sync/engine.ts (deleted, Task 10 of
+// Pha 3): it sent its WHOLE outbox in one request with no chunking, so a
+// cap it could exceed would have stranded a long-offline device
+// permanently — 413 forever, never draining. 10 000 items was over 80
+// hours of continuous active reading at one heartbeat per 30 s, far beyond
+// any realistic offline window.
+//
+// The only caller left is apps/web/src/db/legacyDrain.ts (this package's
+// one-time outbox flush — see this file's own package comment), and it
+// already sends in 1000-item batches (LEGACY_BATCH_SIZE), well under this
+// ceiling — nothing left to strand it. This constant stays at its old
+// value rather than being tightened, since the whole package is dead code
+// on a schedule (see the 30-day deletion condition above); see
+// docs/carried-forward.md for that condition.
 const MaxItemsPerPush = 10000
 
 // Handler holds the HTTP-layer concerns for sync: parsing requests,

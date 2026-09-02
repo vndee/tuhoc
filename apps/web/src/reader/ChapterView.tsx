@@ -836,21 +836,24 @@ export function ChapterView({
  * What lives here, and why:
  *  - `useAnnotations` + `<SelectionToolbar>` (creates a highlight/note) +
  *    `<MarginCards>`/`<OrphanPanel>` (reads them back) + the "Ghi chú (N)"
- *    toggle button — creating and painting an annotation is writing to
- *    `db.annotations`, which syncs to the server under THIS reader's
+ *    toggle button — creating and painting an annotation writes straight to
+ *    `POST`/`PATCH`/`DELETE /annotations` (Task 5/7, Pha 3 — TanStack Query
+ *    over the server, no Dexie in between any more) under THIS reader's
  *    account; an anonymous highlight would have nowhere of its own to live.
  *  - `useProgress` + the exercise checkboxes — same reasoning, for
- *    `db.progress`. Nothing else in the tree can create a `.box.ex .box-h`
- *    checkbox, so an anonymous chapter simply renders with none of them, not
- *    with dead ones — a checkbox that appears and does nothing is worse than
- *    one that is absent.
+ *    `GET`/`PUT /progress`. Nothing else in the tree can create a `.box.ex
+ *    .box-h` checkbox, so an anonymous chapter simply renders with none of
+ *    them, not with dead ones — a checkbox that appears and does nothing is
+ *    worse than one that is absent.
  *  - The `#mark-btn` CLICK wiring (icon/label/class + the toggle itself).
  *    `ChapterView` still hides the button itself whenever this component is
  *    not mounted (its own effect, keyed on the same `confirmedLoggedIn`) —
  *    the same "worse than absent" reasoning applies to it too.
- *  - The study heartbeat (`startHeartbeat`) — it queues `db.outbox` rows
- *    attributed to an account; there is no account to attribute them to for
- *    an anonymous visit.
+ *  - The study heartbeat (`startHeartbeat`) — it queues into an in-memory
+ *    queue (Task 8, Pha 3), flushed in batches to `POST /events/batch`
+ *    (`api/events.ts`), attributed to an account; there is no account to
+ *    attribute them to for an anonymous visit. `db.outbox` and the 15s sync
+ *    engine that used to carry this are both gone (Task 10, Pha 3).
  *
  * What does NOT live here, deliberately — see `ChapterView`'s own doc for the
  * full reasoning on each: the chapter's HTML/KaTeX/widget rendering, the

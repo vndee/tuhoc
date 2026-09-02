@@ -33,11 +33,20 @@ import { useProgress } from '../progress/useProgress';
  * dưới `statsQueryKey` dùng chung với `/progress`, chỉ để lấy `stats.courses[]`
  * (khoá học đã học ở MÁY KHÁC — xem "Nguồn danh sách" bên dưới).
  *
- * ## Ruling F5 còn nguyên
+ * ## Ruling F5, thu hẹp phạm vi (Pha 3)
  *
- * Số chương đã đọc và chương kế tiếp đều tính từ `useProgress` — dữ liệu CỤC
- * BỘ — không từ `stats.courses[].chaptersDone`. Trang này phải đúng khi không
- * có mạng, vì nó là trang mở ra trước cả khi ai kịp biết mình có mạng hay không.
+ * Số chương đã đọc và chương kế tiếp vẫn tính từ `useProgress`, không từ
+ * `stats.courses[].chaptersDone` — nhưng KHÔNG còn vì lý do ruling F5 gốc nêu
+ * ("trang này phải đúng khi không có mạng"). Task 6/9, Pha 3 gỡ tiền đề
+ * offline đó có chủ ý: `useProgress` nay đọc `GET /progress` qua TanStack
+ * Query, không còn Dexie/`liveQuery` nào ở dưới, nên trang này KHÔNG còn đúng
+ * khi mất mạng — mất mạng hiện lỗi/loading như mọi trang khác của app. Lý do
+ * còn sống để vẫn dùng `useProgress` thay vì `stats.courses[].chaptersDone`
+ * là ĐỘ TRỄ, không phải TÍNH SẴN CÓ: `useProgress` ghi LẠC QUAN, một chương
+ * đánh dấu đã đọc hiện lên NGAY trong cache trước khi `PUT /progress` trả
+ * lời, còn `stats.courses[].chaptersDone` chỉ nhích lên sau khi request ấy
+ * xong VÀ `/stats` được hỏi lại (cùng lý do `pages/Progress.tsx`'s chú thích
+ * cùng tên nêu cho vòng hoàn thành theo khoá).
  *
  * ## Nguồn danh sách course, sau khi luồng import chết (Task 13)
  *
