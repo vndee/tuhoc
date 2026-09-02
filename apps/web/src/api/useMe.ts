@@ -154,15 +154,28 @@ function nobodyResult(query: UseQueryResult<Me | null, Error>): UseQueryResult<M
  * restored: one place asks *whose session is this* and everything
  * downstream is told.
  *
- * **It is not a lockout, and that distinction is load-bearing.**
- * `superseded` is one-way only until this tab establishes an identity
- * FIRST-HAND (`announceSessionUser`, below), which is exactly what happens
- * the moment its own `GET /me` answers — refocus the tab, or sign in on it,
- * and it is an ordinary signed-in tab again with no special case anywhere.
- * The arriving learner is never trapped: the tab performing an auth
- * transition never marks ITSELF superseded (`BroadcastChannel` does not
- * echo a tab's own message), so `<Login>` and `useLogout` are untouched by
- * this.
+ * **It is not a lockout, and that distinction is load-bearing — with one
+ * open exception, measured and tracked as debt rather than assumed away**
+ * (`docs/carried-forward.md`, Pha 3, "Mặt nạ `superseded` DÍNH khi trình
+ * duyệt quay lại ĐÚNG người cũ"). `superseded` is one-way only until this
+ * tab establishes an identity FIRST-HAND (`announceSessionUser`, below)
+ * that DIFFERS from what it already believed. That is exactly what happens
+ * the moment its own `GET /me` answers with a DIFFERENT user — refocus the
+ * tab, or sign in on it as somebody else, and it is an ordinary signed-in
+ * tab again with no special case anywhere. It is NOT what happens when
+ * `GET /me` answers with the SAME user this tab already believed in (the
+ * browser can reach that state without this tab's belief ever changing —
+ * e.g. that account signing out and back in from another tab while this
+ * one sat in the background): `announceSessionUser` early-returns on
+ * `localUser === user` before touching `superseded`, and — because
+ * `settledUser` below has not changed either, across the whole detour —
+ * the announce effect does not even run again to try. Measured: this hook
+ * keeps reporting `nobody` after such a round trip until the tab reloads
+ * or the visitor establishes a DIFFERENT identity by hand. The arriving
+ * learner is never trapped by a DIFFERENT identity, though: the tab
+ * performing an auth transition never marks ITSELF superseded
+ * (`BroadcastChannel` does not echo a tab's own message), so `<Login>` and
+ * `useLogout` are untouched by this.
  *
  * **What it deliberately does NOT do.** It does not clear the cached `me`
  * entry, and it does not refetch. The cache still holds whatever the last

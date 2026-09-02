@@ -1100,7 +1100,8 @@ trả lời vào `runErr`, và phần còn lại là rủi ro đã đo, đã ghi
 Thi công 01/09/2026, 14 task. Spec: `2026-08-25-server-side-pivot.md` §4/§9. Plan:
 `2026-09-01-pha3-du-lieu-len-may-chu.md`. Bàn giao đầy đủ:
 `docs/superpowers/plans/2026-09-01-pha3-ban-giao.md`. Mục dưới đây là bốn khoản Task 14 (tài liệu)
-được giao ghi lại — mỗi khoản do một vòng review trong pha tìm ra, không phải do Task 14 tự phát
+được giao ghi lại, cộng một khoản bổ sung tìm được sau đó ở vòng review hẹp cuối cùng (mục cuối tệp
+này) — mỗi khoản do một vòng review trong pha tìm ra, không phải do Task 14 tự phát
 hiện, trừ khi ghi rõ khác.
 
 ## `POST /sync` là mã chết theo lịch — điều kiện xoá, và lỗ đã biết
@@ -1245,3 +1246,81 @@ rủi ro trừu tượng.
 (§3/§4) vào chuỗi `test.describe.serial` của `p2.spec.ts`. Hạ tầng cần (course `mau-hop-le`, chương
 `c1`, hai `BrowserContext` cho hai thiết bị) đã có sẵn từ §1/§2 hiện tại — việc thêm chỉ là các bước
 dựng lại nội dung chương dưới một ghi chú đã tồn tại rồi lặp lại cú chọn.
+
+## Mặt nạ `superseded` DÍNH khi trình duyệt quay lại ĐÚNG người cũ — vòng review hẹp cuối cùng bắt được
+
+**Trạng thái: hở, fail-closed, chưa vá.** `apps/web/src/auth/sessionIdentity.ts`'s `receive()` và
+`announceSessionUser()` mỗi hàm có một early-return khi giá trị mới TRÙNG với niềm tin cục bộ hiện
+tại — `receive()`: `if (data.user === localUser) return;`; `announceSessionUser()`:
+`if (localUser === user) return;`. Cả hai đường đều thoát TRƯỚC khi chạm `superseded`; chỉ nhánh
+KHÔNG bằng nhau mới xoá cờ. Với `receive()` điều đó đúng ý (không có gì THAY ĐỔI nên không có gì để
+báo `superseded`) — nhưng nó bỏ sót đúng một trường hợp: cờ đã bị bật `true` bởi một thông báo TRƯỚC
+đó, và thông báo hiện tại tình cờ khớp lại với `localUser`.
+
+**Kịch bản đo được (probe dùng một lần, ghi lại làm bằng chứng chứ không phải suy luận):** tab 1
+đăng xuất A rồi đăng nhập lại ĐÚNG A, trong khi tab 2 đang mở trang đọc công khai và trước đó đã tự
+xác lập `localUser = 'u-a'`.
+
+1. A đăng xuất ở tab 1 → `clearSession()` công bố `null`. Tab 2's `receive()` thấy `null !== 'u-a'`
+   → `superseded = true`. `receive()` KHÔNG cập nhật `localUser` (nó chỉ làm vậy khi `localUser` còn
+   `undefined`), nên `localUser` của tab 2 vẫn đứng nguyên ở `'u-a'` suốt từ đây.
+2. A đăng nhập lại ở tab 1 → công bố `'u-a'`. Tab 2's `receive()` thấy `'u-a' === localUser ('u-a')`
+   → early-return ở nhánh trùng giá trị, `superseded` giữ nguyên `true`.
+3. Một lần `GET /me` MỚI của chính tab 2 (refetch do `staleTime` hết hạn, hoặc cửa sổ được focus lại)
+   trả lời `'u-a'` — vẫn đúng người trình duyệt đang thuộc về. `useMe.ts`'s hiệu ứng công bố
+   (`useEffect(..., [settledUser])`) không chạy lại: `settledUser` đã là `'u-a'` từ trước khi mọi
+   chuyện xảy ra (cache của TanStack Query không bị `sessionIdentity.ts` đụng tới) và vẫn là `'u-a'`
+   sau, nên giá trị dependency KHÔNG đổi và effect bị React bỏ qua — `announceSessionUser('u-a')`
+   không bao giờ được gọi cho trường hợp này. Giả sử nó được gọi bằng cách khác, nó cũng early-return
+   ở nhánh trùng giá trị của chính nó trước khi chạm `superseded`.
+
+Đo được: sau bước 3, tab 2 đọc `{ superseded: true, text: 'nobody' }` — dính vĩnh viễn cho tới khi
+tải lại trang hoặc người dùng tự tay đăng nhập lại (một `GET /me` mà `settledUser` đổi giá trị THẬT
+sự, ví dụ đăng nhập thành một người khác, mới chạy lại effect và xoá được cờ).
+
+**Vì sao fail-closed, không phải rò rỉ:** `nobodyResult()` (`useMe.ts`) là câu trả lời "chưa ai đăng
+nhập" — giống hệt một khách vãng lai. Không dữ liệu của ai bị lộ sang người khác; A chỉ bị từ chối
+xem CHÍNH dữ liệu của A.
+
+**Hậu quả người dùng thấy, và vì sao bán kính mới hơn bản thân điều kiện:** điều kiện dính cờ này có
+từ trước vòng sửa cuối — trước đây `RequireAuth` tự đọc `sessionWasSuperseded()` qua
+`useSyncExternalStore` riêng, và dính cờ chỉ đẩy trang được bảo vệ về `/login`, một điều hướng cứng,
+không phải một trang câm lặng. Từ khi mặt nạ chuyển hẳn vào `useMe()` (rà soát toàn nhánh, bước 5;
+xem chú thích "NỬA MÀN HÌNH CỦA C-1 KHÔNG BIẾN MẤT" ở `RequireAuth.tsx`), MỌI nơi gọi `useMe()` thừa
+kế cùng cờ — kể cả `reader/ChapterView.tsx`'s `AuthedReaderExtras`, sống trên tuyến đọc CÔNG KHAI,
+gắn chỉ bằng `me.isSuccess && me.data != null`, không đứng sau `<RequireAuth>`. Tab 2 dính cờ mất chú
+thích, tiến độ và heartbeat, và hiện đúng lời mời "khách vãng lai" — dù CHÍNH A đang ngồi ở tab đó —
+cho tới khi tải lại trang hoặc tự đăng nhập lại trong chính tab này.
+
+**Khẳng định sai `useMe.ts` từng ghi, đã sửa cùng lúc với mục nợ này:** doc comment ở mục "It is not
+a lockout…" nói cờ được xoá "the moment its own `GET /me` answers" — đúng khi `GET /me` trả lời một
+người KHÁC với niềm tin cũ, nhưng SAI trong đúng ca đo được ở trên: một `GET /me` trả lời TRÙNG người
+tab đã tin không xoá được cờ, vì cả hai điểm xoá (`receive()`, `announceSessionUser()`) chỉ xoá ở
+nhánh giá trị THAY ĐỔI, và hiệu ứng công bố còn không chạy lại để thử. Đã viết lại đoạn đó tại chỗ để
+nêu rõ trường hợp ngoại lệ này thay vì khẳng định vô điều kiện.
+
+**Sửa một dòng, chưa áp dụng (đây là tài liệu, không phải mã):** cho `receive()` xoá `superseded`
+(và gọi `notifyListeners()`) cả khi `data.user === localUser`, thay vì early-return im lặng — nghĩa
+là mọi thông báo tự nó xác nhận lại "trình duyệt này thuộc về ai" đều xoá cờ, bất kể trùng hay khác
+giá trị cũ.
+
+**Bối cảnh liên quan, KHÔNG PHẢI hồi quy — ghi cùng mục để không ai đọc nhầm thành hai món nợ:**
+
+- `annotations/MarginCards.tsx` dòng 487, cleanup unmount gọi `flush()` — mặt nạ khiến nó bắn một
+  `PATCH /annotations/:id` cho một bản nháp chưa lưu đúng lúc bàn giao. Không rò: `PatchAnnotation`
+  where theo cả `id` VÀ `user_id`, nên dưới B nó khớp 0 dòng → 404; không ai đăng nhập thì 401, và
+  `redirectOn401` mặc định `true` nên tab bị điều hướng cứng sang `/login`. Bản debounce cũ, trước
+  khi có bản vá cờ này, cũng làm y hệt — đổi THỜI ĐIỂM bắn request, không đổi hành vi.
+- `useAnnotations` không có unmount-unpaint: đốm tô sáng (highlight span) của A vẫn còn trong DOM
+  chương sau khi lớp ghi unmount — chữ ghi chú thì biến mất vì sống trong React, chỉ đốm tô là còn.
+  Đây là một THU HẸP so với trạng thái trước bản vá `superseded`, không phải một lỗ lộ mới do vòng
+  sửa này tạo ra.
+
+**Chưa có bài kiểm nào phủ đúng ca này:** `test/supersededTabWrites.test.tsx`'s "KHÔNG phải một cái
+khoá vĩnh viễn…" chỉ đo trường hợp tab 2 tự xác lập lại thành một người KHÁC (B) — đúng nhánh
+`receive()`/`announceSessionUser()` xoá được cờ, không phải nhánh đang hở ở đây.
+
+**Điều kiện đóng:** vá một dòng ở `receive()` như trên; thêm một bài kiểm cho đúng chuỗi "đăng xuất
+rồi đăng nhập lại ĐÚNG người" (chưa tồn tại, xem trên); đo lại bằng đột biến trước khi coi là kín,
+theo đúng bài học "một dây bẫy còn xanh không có nghĩa nó còn đo thứ nó từng đo" ở mục *Confused
+deputy* của tệp này.
