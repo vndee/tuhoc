@@ -392,25 +392,6 @@ html[data-theme='dark'] #topbar #lang-select {
   color: var(--ink);
 }
 
-/* Chip tài khoản: cùng lý do, cùng cách chữa. */
-#app:not(.reading) .tn-account {
-  color: var(--color-brand-700);
-  background: var(--color-brand-100);
-}
-
-html[data-theme='dark'] #app:not(.reading) .tn-account {
-  color: var(--color-brand-200);
-  background: rgba(127, 86, 217, 0.25);
-}
-
-#app:not(.reading) .tn-account:hover {
-  background: var(--color-brand-200);
-}
-
-html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
-  background: rgba(127, 86, 217, 0.35);
-}
-
 
 /* ══════════════════════════════════════════════════════════════════════════
    CHỮ TỰ XUỐNG DÒNG THEO BỀ NGANG THẬT
@@ -861,8 +842,10 @@ html[data-theme='dark'] #app:not(.reading) .tn-account:hover {
   font-weight: 600;
 }
 
+/* `--accent-soft` chứ không phải hằng tím của kit cũ: màu nhấn của thế giới
+   này là một xanh duy nhất, và chế độ tối lấy nó từ cùng một token. */
 html[data-theme='dark'] #app:not(.reading) .set-identity-avatar {
-  background: rgba(127, 86, 217, 0.25);
+  background: var(--accent-soft);
   color: var(--color-brand-200);
 }
 
@@ -1332,11 +1315,6 @@ html[data-theme='dark'] #app:not(.reading) .btn.danger:hover {
   font-weight: 600;
 }
 
-html[data-theme='dark'] #app:not(.reading) .tn-account-disc {
-  background: rgba(127, 86, 217, 0.25);
-  color: var(--color-brand-200);
-}
-
 #app:not(.reading) .tn-account[aria-expanded='true'] .tn-account-caret {
   transform: rotate(180deg);
 }
@@ -1745,7 +1723,7 @@ html[data-theme='dark'] #app:not(.reading) .tn-menu-danger:hover {
 }
 
 html[data-theme='dark'] .ai-turn-q {
-  background: rgba(127, 86, 217, 0.2);
+  background: var(--accent-soft);
   color: var(--color-brand-100);
 }
 

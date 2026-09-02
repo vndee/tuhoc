@@ -117,6 +117,8 @@ Hệ quả cho mọi việc thiết kế từ đây:
 - **Tên sản phẩm và nhận diện**: xem Brand Commitments.
 - **Đọc có cần tài khoản không**: xem Positioning.
 
+- **Ghi chú chưa mở được "đúng đoạn" từ ngoài chương.** Ghi chú neo vào đoạn (anchor do reader đặt, mờ với phần còn lại của client), nhưng reader chưa cuộn tới một ghi chú theo URL/hash. Mọi liên kết tới ghi chú từ `/` hôm nay chỉ mở CHƯƠNG. Đây là khoảng trống của reader (ngoài phạm vi vòng 2026-09-02, theo yêu cầu giữ nguyên phần đọc), không phải của trang chủ.
+
 ## Brand Commitments
 
 **Không có.** Chủ dự án xác nhận cả tên *"Tự học"* lẫn monogram hiện tại đều

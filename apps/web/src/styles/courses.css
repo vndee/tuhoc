@@ -5,10 +5,17 @@
  * MỘT danh mục công khai — tiêu đề, câu dẫn, rồi một danh sách. Không tab,
  * không nút, không hộp thoại.
  *
- * Thế giới: giáo trình LaTeX (xem đầu `home.css`). Danh mục được xếp như một
- * MỤC LỤC CÓ ĐÁNH SỐ: số thứ tự sans ở cột trái cố định, tên khoá serif cỡ lớn,
- * mô tả serif nhỏ hơn, hairline giữa các mục. Không bìa, không monogram, không
- * thẻ — một danh mục dài thì mật độ chữ quan trọng hơn trang trí.
+ * Thế giới: giáo trình LaTeX (xem đầu `home.css`). Danh mục xếp như một
+ * thư mục tham khảo: tên khoá serif cỡ lớn, mô tả serif nhỏ hơn, hairline giữa
+ * các mục. Không bìa, không monogram, không thẻ — một danh mục dài thì mật độ
+ * chữ quan trọng hơn trang trí.
+ *
+ * KHÔNG ĐÁNH SỐ, và đây là một quyết định lật lại bản trước: bản ấy đếm
+ * `01`, `02` bằng CSS counter. Reviewer kết thúc gọi đúng tên — thứ tự của một
+ * danh mục công khai không mang nghĩa nào (không phải lộ trình, không phải
+ * xếp hạng), nên con số là trang trí; và số hai chữ số có `0` dẫn đầu là
+ * costume của dashboard biên tập, không phải cách LaTeX đánh số. Khi nào danh
+ * mục có thứ tự thật (một lộ trình gợi ý), số quay lại dưới dạng `1.`.
  * ══════════════════════════════════════════════════════════════════════════ */
 
 .courses-note {
@@ -22,36 +29,20 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  counter-reset: course;
-  /* Hairline mực trên đầu danh sách, cùng ngữ pháp với `.doc-head`. */
-  border-top: 1px solid var(--rule);
+  /* KHÔNG kẻ đầu danh sách: `.doc-head` ngay trên đã kết bằng một hairline
+     mực, thêm một kẻ nữa cách 30px là hai đường song song — đo trên ảnh 1440,
+     nó đọc như một lỗi. Mỗi mục tự kết bằng kẻ dưới của nó. */
 }
 
 .courses-item {
-  counter-increment: course;
   border-bottom: 1px solid var(--rule);
 }
 
 .courses-item-link {
-  display: grid;
-  grid-template-columns: 3.4em minmax(0, 1fr);
-  column-gap: 10px;
-  align-items: baseline;
+  display: block;
   padding: 16px 0 18px;
   text-decoration: none;
   color: inherit;
-}
-
-/* Số thứ tự do CSS đếm — nó là trình bày, không phải dữ liệu, nên không có
-   trong DOM và không lọt vào tên trợ năng của liên kết. */
-.courses-item-link::before {
-  content: counter(course, decimal-leading-zero);
-  font-family: var(--font-sans);
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
 }
 
 /* Tiền tố hai id: thắng `#app:not(.reading) #content h2` của app-screens.css —
@@ -81,7 +72,6 @@
 }
 
 .courses-item-desc {
-  grid-column: 2;
   margin: 6px 0 0;
   font-family: var(--font-serif);
   font-size: 15.5px;

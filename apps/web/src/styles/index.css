@@ -69,7 +69,12 @@
   --sans: var(--font-sans);
 
   --surface-1: #ffffff;
-  --page: var(--color-gray-50);
+  /* GIẤY LÀ MỘT TỜ. Hợp đồng hướng (giáo trình LaTeX) đặt giấy #FFFFFF; bản
+     trước để `--page` là gray-50 trong khi running head đứng trên `--surface-1`
+     trắng — đo trên ảnh: hai tờ giấy trong một khung. Trang và running head
+     nay cùng một màu. `--panel` vẫn gray-50 cho các mặt phẳng phụ (hover,
+     ô nhập) của Cài đặt/Admin — đó không phải giấy, đó là nền của điều khiển. */
+  --page: #ffffff;
   --panel: var(--color-gray-50);
 
   --ink: var(--color-gray-900);
@@ -92,21 +97,27 @@
    cho một máy đặt hệ điều hành ở chế độ tối nhận màu nhấn tối TRÊN NỀN SÁNG.
    Hai nửa của cùng một bảng, mỗi nửa nghe một tín hiệu khác nhau.
 
-   `brand-400` chứ không phải `brand-600`: trên nền gray-950 màu ấy tụt dưới
+   `brand-400` chứ không phải `brand-600`: trên nền tối màu ấy tụt dưới
    ngưỡng tương phản đọc được. Đó cũng đúng thói quen reader.css vốn có — nó
    tự nâng `--accent` lên một bậc trong khối tối. */
 html[data-theme='dark'] {
-  --surface-1: var(--color-gray-900);
-  --page: var(--color-gray-950);
-  --panel: var(--color-gray-900);
+  /* TỐI = ĐÊM PDF: đảo giấy và mực, KHÔNG phải slate xanh của kit. gray-950
+     (#0c111d) của Untitled UI ngả xanh — đó là "chế độ tối của một dashboard",
+     và đo trên ảnh nó là đúng cái mà hợp đồng hướng tránh. Thang dưới đây là
+     xám TRUNG TÍNH: giấy #171717 (nghịch đảo của mực #1A1A1A, hạ một bậc để
+     không bám đen tuyền), mực #ececec (không trắng tinh — giấy đêm không loé),
+     kẻ #333. Màu nhấn vẫn brand-400: một xanh duy nhất trên nền trung tính. */
+  --surface-1: #202020;
+  --page: #171717;
+  --panel: #202020;
 
-  --ink: var(--color-gray-50);
-  --ink-2: var(--color-gray-300);
-  --ink-3: var(--color-gray-400);
+  --ink: #ececec;
+  --ink-2: #b4b4b4;
+  --ink-3: #8c8c8c;
 
-  --rule: var(--color-gray-800);
-  --rule-strong: var(--color-gray-700);
-  --grid: var(--color-gray-800);
+  --rule: #333333;
+  --rule-strong: #474747;
+  --grid: #333333;
 
   --accent: var(--color-brand-400);
   /* brand-400 (#4d92cc) ở alpha 22% — cùng màu nhấn với `--accent` của khối này, không còn hằng tím của kit cũ. */

@@ -194,42 +194,36 @@
   margin: 0 0 40px;
 }
 
-.cont-course {
-  margin: 0 0 10px;
-}
-
-.cont-course a {
-  color: var(--ink-3);
-  text-decoration: none;
-  transition: color 150ms ease-out;
-}
-
-.cont-course a:hover,
-.cont-course a:focus-visible {
-  color: var(--ink);
-}
-
 .cont-link {
   display: block;
   color: var(--ink);
   text-decoration: none;
 }
 
+/* ĐỘNG TỪ LÀ RUN-IN, KHÔNG PHẢI EYEBROW. Bản trước để "ĐỌC TIẾP" là một dòng
+   riêng đứng TRÊN tên chương, và tên khoá lại đứng trên nữa — hai nhãn chồng
+   lên một tiêu đề, đúng thứ craft-floor cấm và đúng thứ đầu tệp này hứa không
+   làm. Nay động từ nằm TRONG `<h2>`, cùng dòng, như `\paragraph{Đọc tiếp}`:
+   sans hẹp viết hoa cỡ nhỏ, màu nhấn, rồi số chương, rồi tên chương serif lớn.
+   Tên trợ năng của liên kết đọc là "Đọc tiếp 1.2 Ba nghĩa vụ…". */
 .cont-verb {
-  display: block;
+  flex: none;
   font-family: var(--font-sans);
   font-size: 12.5px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--accent);
-  margin: 0 0 8px;
+  /* Nâng nhẹ để đường gốc của chữ hoa nhỏ ngồi đúng đường gốc của serif lớn. */
+  position: relative;
+  top: -0.15em;
 }
 
 .cont-chapter {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 14px;
+  gap: 6px 14px;
   font-family: var(--font-serif);
   font-weight: 400;
   font-size: clamp(26px, 3vw, 34px);
@@ -269,12 +263,35 @@
   outline-offset: 6px;
 }
 
+/* Dòng meta là một CÂU serif dưới hành động: tên khoá (liên kết) · số chương
+   đã đọc · phút đã học — "chương, đoạn, phút" của hợp đồng, trừ "đoạn" vì dữ
+   liệu tiến độ chỉ theo chương (ghi ở brief). Serif chứ không sans: đây là văn,
+   không phải nhãn. */
 .cont-meta {
-  font-family: var(--font-sans);
-  font-size: 13.5px;
+  font-family: var(--font-serif);
+  font-size: 15.5px;
+  line-height: 1.5;
   color: var(--ink-2);
   margin: 14px 0 0;
   font-variant-numeric: tabular-nums;
+}
+
+.cont-course {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.12em;
+  text-decoration-color: var(--rule-strong);
+  transition: text-decoration-color 150ms ease-out;
+}
+
+.cont-course:hover,
+.cont-course:focus-visible {
+  text-decoration-color: var(--accent);
+}
+
+.cont-sep {
+  color: var(--ink-3);
 }
 
 .cont-done {
@@ -409,6 +426,30 @@
   line-height: 1.5;
   color: var(--ink-2);
   margin: 0 0 6px;
+}
+
+/* Trích đoạn là liên kết tới chương của ghi chú. Hợp đồng hứa "bấm vào đúng
+   đoạn"; reader hôm nay chưa cuộn tới một ghi chú (anchor mờ với client, không
+   có hash-scroll) nên liên kết mở CHƯƠNG và nhãn "Mở chương" nói đúng điều đó
+   — khoảng trống ghi ở PRODUCT.md. Hover: gạch chân trích đoạn bằng màu nhấn,
+   cùng 150ms ease-out với mọi liên kết khác của trang. */
+.mnote-quote-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.12em;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 150ms ease-out;
+}
+
+.mnote:hover .mnote-quote-link,
+.mnote-quote-link:focus-visible {
+  text-decoration-color: var(--accent);
+}
+
+.mnote-quote-link:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .mnote-formula {
@@ -564,14 +605,6 @@
 .prog-year-btn:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: 4px;
-}
-
-@media (max-width: 900px) {
-  .prog-years {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 4px 18px;
-  }
 }
 
 /* Khoá học trong năm, kèm trọng số: tên + một đường kẻ 2px + phần trăm. */
@@ -749,4 +782,77 @@
 
 .prog-year-courses {
   margin-top: 24px;
+}
+
+/* ── /progress DƯỚI 900px — ĐỨNG CUỐI TỆP CÓ CHỦ Ý ──────────────────────────
+   Khối này từng nằm giữa tệp, TRƯỚC các luật gốc `.prog-cal-grid,
+   .prog-cal-months` (cùng độ đặc hiệu) — và thua theo thứ tự: đo ở 375px, hàng
+   nhãn tháng vẫn `minmax(0, 1fr)`, với `width: max-content` mỗi cột phình ra
+   47px, hàng nhãn rộng 2680px trong khi lưới ô chỉ 739px — chỉ "Tháng 1" lọt
+   vào khung nhìn. Media query phải đứng sau mọi luật gốc mà nó ghi đè.
+
+   Đo trên ảnh 390px: 53 cột lịch chia đều bề ngang thành ô ~3px, nhãn tháng
+   chồng lên nhau thành một dải không đọc được, tên khoá bị cắt "Bất biến …"
+   trong khi thanh 2px trang trí giữ 80–160px, và "Chọn năm" — thứ điều khiển
+   mọi thứ phía trên — rơi xuống đáy trang. Bốn quyết định:
+   1. Lề (chọn năm) lên TRƯỚC thân khi xếp một cột: nó là điều khiển của thân.
+      Chỉ ở `.prog`; ở `/` ghi chú lề vẫn đứng sau khối Tiếp tục.
+   2. Lịch giữ ô 11px thật và CUỘN NGANG trong `.prog-cal` — một tờ lịch năm
+      không co lại được, nó lật. Chú giải dính mép trái để không trôi theo.
+   3. Chỉ hiện nhãn tháng lẻ: ~112px cho mỗi nhãn, không chồng.
+   4. Hàng trọng số: tên khoá chiếm cả hàng và được xuống dòng; thanh + % ở
+      hàng dưới. Tên là dữ liệu, thanh là minh hoạ — dữ liệu không nhường. */
+@media (max-width: 900px) {
+  .prog .doc-margin {
+    order: -1;
+  }
+
+  .prog-years {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px 18px;
+  }
+
+  .prog-cal {
+    overflow-x: auto;
+    padding-bottom: 6px;
+  }
+
+  .prog-cal-grid,
+  .prog-cal-months {
+    grid-template-columns: repeat(53, 11px);
+    gap: 2px;
+    width: max-content;
+  }
+
+  .prog-cal-week {
+    gap: 2px;
+  }
+
+  .prog-cal-cell {
+    width: 11px;
+    height: 11px;
+  }
+
+  .prog-cal-month:nth-child(even) {
+    visibility: hidden;
+  }
+
+  .prog-heat-legend {
+    position: sticky;
+    left: 0;
+    width: max-content;
+  }
+
+  .prog-weight {
+    grid-template-columns: minmax(0, 1fr) 3.2em;
+    row-gap: 6px;
+    padding: 10px 0 12px;
+  }
+
+  .prog-weight-name {
+    grid-column: 1 / -1;
+    white-space: normal;
+    overflow: visible;
+  }
 }

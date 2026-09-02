@@ -131,6 +131,82 @@
   outline-offset: 4px;
 }
 
+/* ── CỤM ĐIỀU KHIỂN BÊN PHẢI: CHỮ VÀ NÉT, KHÔNG HỘP ─────────────────────────
+   Bản trước để nguyên chrome của kit: nút tìm/đổi giao diện có viền + bo 8px +
+   bóng, bộ chọn ngôn ngữ đóng khung, tài khoản là một đĩa tròn tô màu. Trong
+   một running head typeset, bốn cái hộp ấy là bốn thẻ nhỏ — đúng thứ OWN-WORLD
+   nói "không thẻ". Nay chúng cùng ngữ pháp với ba mục điều hướng: chữ sans hẹp
+   / biểu tượng nét, màu `--ink-2`, hover lên `--ink`, focus là một viền 1px
+   màu nhấn. Chỉ trong khung app: `#app:not(.reading)` giữ nguyên thanh của
+   reader, nơi `#topbar .tb-btn` của app-screens.css vẫn đứng. Độ đặc hiệu hai
+   id để thắng đúng luật ấy. */
+#app:not(.reading) #topbar .tb-btn,
+#app:not(.reading) #topbar #lang-select {
+  height: 32px;
+  min-width: 0;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  box-shadow: none;
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: color 150ms ease-out;
+}
+
+#app:not(.reading) #topbar #lang-select {
+  padding: 0 20px 0 6px;
+  background-position: right 2px center;
+}
+
+#app:not(.reading) #topbar .tb-btn:hover,
+#app:not(.reading) #topbar #lang-select:hover {
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--ink);
+}
+
+#app:not(.reading) #topbar .tb-btn:focus-visible,
+#app:not(.reading) #topbar #lang-select:focus-visible,
+#app:not(.reading) #topbar .tn-account:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+/* Tài khoản: hai chữ cái đầu, cùng cỡ và cùng màu với mục điều hướng — không
+   đĩa, không nền brand. Mũi tên nhỏ giữ nguyên vai "đây là một menu". */
+#app:not(.reading) #topbar .tn-account {
+  height: 32px;
+  padding: 0;
+  gap: 2px;
+  border-radius: 0;
+  color: var(--ink-2);
+  transition: color 150ms ease-out;
+}
+
+#app:not(.reading) #topbar .tn-account:hover {
+  color: var(--ink);
+}
+
+#app:not(.reading) #topbar .tn-account-disc {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0 2px 0 6px;
+}
+
 /* ════════════════════════════════════════════════════════════════════════════
    ĐẦU THANH BÊN — mục lục tự khai nó là mục lục
    ════════════════════════════════════════════════════════════════════════════ */
