@@ -92,30 +92,17 @@ async function renderLoginForm(initialEntry: InitialEntry = '/login') {
  *   3. cột trái KHÔNG có ô nhập nào — nó là chữ, không phải một form thứ hai;
  *      và form thật thì nằm trọn trong nửa phải.
  */
-describe('Login — hai cột: sản phẩm tự giới thiệu bên trái, form bên phải', () => {
-  /**
-   * TÊN SẢN PHẨM ĐÃ RỜI SANG CỘT FORM, và bài này đi theo nó thay vì được nới
-   * lỏng. Bản dựng đã duyệt đặt nhãn hiệu ở góc trên–trái cột form; người dùng
-   * xác nhận lại bằng đúng chữ ("cái logo phải là ở pane bên trái chứ"). Điều
-   * bài kiểm này canh — trang tự khai nó là gì, và lời rao có mặt chứ không
-   * phải một panel rỗng — không đổi; chỉ chỗ của một trong hai đổi.
-   */
-  it('trang tự khai tên sản phẩm, và panel lời rao có một câu lớn cùng ba gạch đầu dòng', async () => {
+describe('Login — chỉ còn form: lời giới thiệu đã sang landing (02/09/2026)', () => {
+  it('không còn panel giới thiệu; nhãn hiệu, nút chủ đề và bộ chọn ngôn ngữ vẫn ở trong cột form', async () => {
     await renderLoginForm();
-
-    const pitch = document.querySelector('.auth-pitch');
+    expect(document.querySelector('.auth-pitch')).toBeNull();
     const side = document.querySelector('.auth-side');
-    expect(pitch).not.toBeNull();
     expect(side).toHaveTextContent(t('vi', 'app.name'));
-    expect(screen.getByRole('heading', { name: t('vi', 'login.pitch.headline') })).toBeInTheDocument();
-    expect(pitch).toHaveTextContent(t('vi', 'login.pitch.lede'));
-
-    const points = screen.getByRole('list', { name: t('vi', 'login.pitch.aria') });
-    expect(Array.from(points.querySelectorAll('li')).map((li) => li.textContent)).toEqual([
-      t('vi', 'login.point.free'),
-      t('vi', 'login.point.ownKey'),
-      t('vi', 'login.point.sync'),
-    ]);
+    // Hai điều khiển thiết bị ở lại trên route không có thanh trên — "CỬA"
+    // (i18n/LanguageProvider.test.tsx) đo bộ chọn ngôn ngữ qua <App/>; ở đây
+    // chỉ cần chúng nằm TRONG cột form, không bị bỏ rơi cùng panel ảnh.
+    expect(side?.querySelector('#lang-select')).not.toBeNull();
+    expect(side?.querySelector('.auth-chrome-btn')).not.toBeNull();
   });
 
   /**
@@ -200,36 +187,16 @@ describe('Login — hai cột: sản phẩm tự giới thiệu bên trái, form
     }
   });
 
-  it('hai nửa là hai con của cùng MỘT trang, không phải hai trang xếp chồng', async () => {
+  it('trang chỉ còn MỘT cột: `.auth-page` có đúng một con là `.auth-side`, và form nằm trọn trong đó', async () => {
     await renderLoginForm();
-
     const page = document.querySelector('.auth-page');
-    const pitch = document.querySelector('.auth-pitch');
     const side = document.querySelector('.auth-side');
-
     expect(page).not.toBeNull();
-    expect(pitch?.parentElement).toBe(page);
-    expect(side?.parentElement).toBe(page);
-  });
-
-  it('form nằm TRỌN trong nửa phải, và nửa trái không có một ô nhập nào', async () => {
-    await renderLoginForm();
-
-    const pitch = document.querySelector('.auth-pitch');
-    const side = document.querySelector('.auth-side');
-
-    expect(pitch?.querySelectorAll('input')).toHaveLength(0);
+    expect(Array.from(page?.children ?? [])).toEqual([side]);
     expect(side).toContainElement(screen.getByLabelText(/email/i));
     expect(side).toContainElement(screen.getByLabelText(/^mật khẩu$/i));
     expect(side).toContainElement(screen.getByRole('button', { name: /đăng nhập/i }));
   });
-
-  /**
-   * `.auth-page` là lớp mà `test/syncLifecycle.test.tsx` dùng để nhận ra "đã về
-   * tới trang đăng nhập". Bố cục đổi hẳn ở thay đổi này, nên lớp ấy được ghim
-   * lại đây: đổi tên nó sẽ làm một phép đo về vòng đời ĐỒNG BỘ đỏ ở một tệp
-   * khác, vì một lý do THẨM MỸ — và người sửa sẽ không hiểu vì sao.
-   */
   it('giữ nguyên lớp `.auth-page` mà syncLifecycle.test.tsx bám vào', async () => {
     await renderLoginForm();
     expect(document.querySelectorAll('.auth-page')).toHaveLength(1);

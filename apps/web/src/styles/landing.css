@@ -1,0 +1,186 @@
+/* ══════════════════════════════════════════════════════════════════════════
+ * LANDING — `/` cho khách chưa đăng nhập (`pages/Landing.tsx`)
+ *
+ * Cùng thế giới với `home.css` (giáo trình LaTeX, lề rộng — xem DESIGN.md):
+ * khung `.doc`, đầu trang `.doc-head`, hai cột `.doc-body`, nhãn `.lbl`, đầu
+ * mục `.doc-h`, ghi chú lề `.mnote-*`, mục lục `.toc-*`, hành động `.cont-*`,
+ * danh mục `.courses-*` — tất cả tái dụng nguyên văn từ hệ. Tệp này CHỈ thêm
+ * những gì landing có mà các trang kia không: trích đoạn giáo trình, câu được
+ * bôi đen, biên bản hỏi đáp, và nhịp giữa bốn cảnh.
+ *
+ * Bốn cảnh là bốn `.doc-body.ld-scene` xếp dọc; khoảng cách giữa các cảnh
+ * lớn hơn khoảng cách bên trong một cảnh (tụ chặt, tách rộng).
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+.landing .doc-lede {
+  max-width: 62ch;
+}
+
+.ld-scene {
+  margin: 0 0 56px;
+}
+
+.ld-scene:last-child {
+  margin-bottom: 24px;
+}
+
+.ld-source {
+  margin: 0 0 14px;
+}
+
+/* ── TRÍCH ĐOẠN ────────────────────────────────────────────────────────────
+   Chữ thân của chương, đặt như reader đặt: serif, 17px, đo 65–72ch. Đây là
+   thứ khách đọc thật, nên nó không được nhỏ hơn thân bài trong reader. */
+.ld-excerpt {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--ink);
+  max-width: 66ch;
+}
+
+.ld-excerpt p {
+  margin: 0 0 1em;
+}
+
+.ld-excerpt pre {
+  margin: 0 0 1em;
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  /* Góc vuông: reader.css bo `pre` 10px cho chương, còn trang typeset này không
+     bo gì (DESIGN.md, Shapes). Hai id để thắng luật `#content pre` chung. */
+  border-radius: 0;
+  overflow-x: auto;
+}
+
+#app:not(.reading) #content .ld-excerpt pre {
+  border-radius: 0;
+}
+
+/* Câu được bôi đen: nền vàng của ô ghi chú `--s4` (cùng màu với ô vuông 9px
+   của ghi chú ở lề, nên mắt nối được hai thứ). Gạch chân ẩn, hiện màu nhấn
+   khi rê chuột lên ghi chú lề — chuyển động duy nhất của trang, 150ms
+   ease-out, cùng ngữ pháp với mọi liên kết trong hệ. */
+.ld-hl {
+  background: color-mix(in srgb, var(--s4, #eda100) 26%, transparent);
+  color: inherit;
+  padding: 0 2px;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.14em;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 150ms ease-out;
+}
+
+.ld-scene:has(.mnote:hover) .ld-hl,
+.ld-scene:has(.mnote:focus-within) .ld-hl {
+  text-decoration-color: var(--accent);
+}
+
+.ld-cta {
+  margin-top: 26px;
+}
+
+/* Nhãn "Ví dụ" trong hàng meta của ghi chú: cùng cỡ với tên khoá, nhưng màu
+   nhấn để nó không bị đọc lướt qua. */
+.ld-example {
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ld-margin-note {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  margin: 12px 0 0;
+  max-width: 40ch;
+}
+
+/* ── BIÊN BẢN HỎI ĐÁP ──────────────────────────────────────────────────────
+   Hai lượt, mỗi lượt là một hàng "ai nói · nói gì". Không bong bóng chat,
+   không avatar: đây là biên bản trên giấy, cùng thang chữ với trích đoạn. */
+.ld-qa {
+  margin: 0;
+  display: grid;
+  gap: 18px;
+  max-width: 66ch;
+}
+
+.ld-qa-turn {
+  display: grid;
+  grid-template-columns: 5.5em minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: baseline;
+}
+
+.ld-qa-turn dt {
+  margin: 0;
+}
+
+.ld-qa-turn dd {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 16.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.ld-qa-turn dd p {
+  margin: 0 0 0.6em;
+}
+
+.ld-qa-turn dd p:last-child {
+  margin-bottom: 0;
+}
+
+/* Trích ghi chú trong câu trả lời: nghiêng, kèm đúng ô vàng của ghi chú ở
+   cảnh 1, để khách thấy gia sư đang cầm chính ghi chú ấy. Kẻ trái 1px là
+   hairline, không phải viền màu. */
+.ld-qa-quote {
+  margin: 0 0 0.6em;
+  padding: 2px 0 2px 12px;
+  border-left: 1px solid var(--rule-strong);
+  font-style: italic;
+  color: var(--ink-2);
+}
+
+.ld-qa-quote .mnote-swatch {
+  --mnote-color: var(--s4);
+}
+
+/* Mục lục ví dụ: tiêu đề là chữ, không phải liên kết — cùng cỡ với `.toc-title`. */
+.ld-toc .toc-title {
+  color: var(--ink);
+}
+
+.ld-toc .is-next .toc-title {
+  color: var(--accent);
+}
+
+.ld-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin: 18px 0 0;
+  font-family: var(--font-serif);
+  font-size: 15.5px;
+}
+
+@media (max-width: 900px) {
+  .ld-scene {
+    margin-bottom: 44px;
+  }
+
+  .ld-qa-turn {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+  }
+}

@@ -348,6 +348,13 @@ const MESSAGE_HOMES: readonly string[] = ['packages/i18n/src/messages/en.ts', 'p
  */
 const DEVELOPER_FACING: readonly { readonly file: string; readonly why: string }[] = [
   {
+    file: 'apps/web/src/pages/landingExcerpt.ts',
+    why:
+      'nội dung course, không phải giao diện: trích đoạn chương 1.1 của khoá mẫu công khai bat-bien-vong-lap ' +
+      'cùng ghi chú và biên bản hỏi đáp VÍ DỤ viết bằng ngôn ngữ của khoá (manifest.lang = vi), render với lang="vi" ' +
+      'y như reader — mọi chuỗi giao diện của landing vẫn ở catalog (landing.*)',
+  },
+  {
     file: 'apps/web/src/test/sampleCourse.ts',
     why: 'ngữ liệu của một course mẫu + hướng dẫn `make courses` cho người chạy test; nội dung course, không phải giao diện',
   },
