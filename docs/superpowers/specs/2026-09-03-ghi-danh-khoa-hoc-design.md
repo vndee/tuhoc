@@ -92,7 +92,7 @@ Ba route trong `internal/userdata`, bám đúng hình dạng `progress` và
 
 | Route | Thân | Trả về |
 |---|---|---|
-| `GET /enrollments` | không | `[{"courseId": "...", "createdAt": "..."}]`, mới nhất trước |
+| `GET /enrollments` | không | `{"enrollments": [{"courseId": "...", "createdAt": "..."}]}`, mới nhất trước |
 | `POST /enrollments` | `{"courseId": "..."}` | 201; **idempotent** (`ON CONFLICT DO NOTHING`), bấm lần hai vẫn 201 |
 | `DELETE /enrollments/:courseId` | không | 204; **idempotent**, xoá thứ chưa có vẫn 204 |
 
@@ -104,9 +104,17 @@ Hai route ghi đều idempotent vì cùng một lý do: chúng là hành động
 người bấm nút, và một cú bấm đúp không được phép trở thành lỗi hiện lên mặt
 người ta.
 
-`GET /enrollments` trả mảng rỗng `[]` chứ không phải `null` khi chưa ghi danh
-gì — cùng ràng buộc mà `catalog.List` đã ghi lại lý do: một client gọi `.map()`
-trên `null` sẽ ném lỗi.
+**Thân trả về là một object có khoá, không phải mảng trần** — `{"enrollments":
+[...]}`, đúng hình dạng `GET /progress` (`{"progress": [...]}`) và
+`GET /annotations` (`{"annotations": [...]}`) đang dùng. Bản nháp đầu của tài
+liệu này viết mảng trần và đã sai: `api/client.ts` mặc định TỪ CHỐI một thân
+2xx parse ra mảng, và chỉ mở ngoại lệ ấy cho đúng một lời gọi
+(`adminListCourses`) bằng cờ riêng. Đi mảng trần ở đây là buộc phải mở thêm một
+ngoại lệ nữa cho một route không có lý do gì đặc biệt.
+
+Mảng bên trong rỗng `[]` chứ không phải `null` khi chưa ghi danh gì — dựng bằng
+`make([]enrollmentItem, len(rows))` như hai handler kia, vì `encoding/json`
+biến slice nil thành `null` và một client gọi `.map()` trên `null` sẽ ném lỗi.
 
 ## 4. Web — trang Học tiếp (`pages/Dashboard.tsx`)
 
