@@ -258,8 +258,8 @@ export const en: Messages = {
   'progress.course.minutes': (minutes: string) => `${minutes} minutes studied`,
 
   // ── Landing (`pages/Landing.tsx`) — `/` for visitors who are not signed in ──
-  'landing.question': 'Reading alone — who do you ask when you get stuck?',
-  'landing.lede': 'Read the textbooks free, no account needed. An account keeps your notes, your progress, and a tutor who knows what you wrote.',
+  'landing.question': 'Where you read a technical textbook — and ask right where you get stuck.',
+  'landing.lede': 'Open a long textbook and read it for free, no account needed. Highlight a sentence and the note anchors to that exact sentence — and the AI tutor answers inside the chapter, holding the note you just wrote.',
   'landing.read.h': 'Read',
   'landing.read.verb': 'Try reading',
   'landing.read.catalog': 'Open the course catalog',
@@ -285,6 +285,11 @@ export const en: Messages = {
   'landing.progress.h': 'Back to where you left off (example)',
   'landing.progress.margin.h': 'The same on every device',
   'landing.progress.margin.p': 'Progress and notes are stored with your account on the server. Open another machine, sign in, and you are on the chapter you left.',
+  'landing.can.h': 'What you can do here',
+  'landing.can.read': 'Read — long textbooks with formulas, interactive figures and exercises. Free, no account needed.',
+  'landing.can.note': 'Note — highlight a sentence and the note sticks to that sentence; it does not drift.',
+  'landing.can.ask': 'Ask — the AI tutor answers inside the chapter, knowing which chapter you are on and what you noted. No key of your own.',
+  'landing.can.return': 'Come back — progress and notes live on the server under your account, so any machine opens where you left off.',
   'landing.catalog.h': 'Courses open now',
   'landing.catalog.error': 'The course catalog could not be loaded right now.',
   'landing.catalog.retry': 'Try again',
