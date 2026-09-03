@@ -3,6 +3,7 @@ package userdata
 import (
 	"encoding/json"
 	"errors"
+	"net/url"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -358,11 +359,32 @@ func (h *Handler) CreateEnrollment(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusCreated)
 }
 
+// urlCourseID decodes the ":courseId" path parameter of DELETE
+// /enrollments/:courseId, the same way catalog.Handler's urlSlug decodes
+// ":slug" and for the identical reason: fiber's UnescapePath is off
+// (server.New's fiber.Config never sets it), so a percent-encoded byte in
+// the URL arrives at c.Params verbatim, still encoded. POST /enrollments
+// stores courseId straight from the JSON body — already decoded by
+// encoding/json, e.g. "khoa/a" — and apps/web/src/api/enrollments.ts's
+// DELETE call encodeURIComponent()s that same string into the path, e.g.
+// "khoa%2Fa". Without decoding here, the two never compare equal: the
+// lookup finds no row, Repo.DeleteEnrollment's idempotent "0 rows affected
+// is still success" reports 204 regardless, and the caller is left thinking
+// they un-enrolled when the row is still there.
+func urlCourseID(c *fiber.Ctx) (string, error) {
+	return url.PathUnescape(c.Params("courseId"))
+}
+
 // DeleteEnrollment handles DELETE /enrollments/:courseId -> 204, no body.
 // 204 even when nothing was there to delete: see Repo.DeleteEnrollment's own
 // comment for why there is no 404 to give here.
 func (h *Handler) DeleteEnrollment(c *fiber.Ctx) error {
-	err := h.uc.DeleteEnrollment(c.Context(), auth.UID(c), c.Params("courseId"))
+	courseID, err := urlCourseID(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "courseId is not valid percent-encoding"})
+	}
+
+	err = h.uc.DeleteEnrollment(c.Context(), auth.UID(c), courseID)
 	if errors.Is(err, ErrEmptyCourseID) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "courseId must not be empty"})
 	}
