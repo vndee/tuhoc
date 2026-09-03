@@ -672,8 +672,22 @@ export function ChapterView({
           the login axis — just not yet applied to the enrollment axis. */}
       {confirmedLoggedIn && enrollmentsQuery.isSuccess && !enrolled && (
         <p className="reader-addmine">
-          <button type="button" className="reader-addmine-btn" onClick={() => enroll.mutate()}>
-            {t('reader.addToMine')}
+          {/* Fix round cuối (item 4) — `CourseHome.tsx`'s own enroll button
+              has `disabled={enroll.isPending}` and swaps its label to
+              `course.enrolling` while the request is in flight; this one had
+              neither, so a double-click here (harmless server-side —
+              `POST /enrollments` is idempotent) fired two requests while the
+              two screens disagreed about what a pending enroll looks like.
+              Reusing `course.enrolling` ("Đang thêm…") rather than a
+              near-duplicate reader-scoped string: the label describes the
+              same action ("adding this course"), not a chapter-specific one. */}
+          <button
+            type="button"
+            className="reader-addmine-btn"
+            disabled={enroll.isPending}
+            onClick={() => enroll.mutate()}
+          >
+            {t(enroll.isPending ? 'course.enrolling' : 'reader.addToMine')}
           </button>
         </p>
       )}

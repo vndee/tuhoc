@@ -1605,6 +1605,46 @@ describe('ChapterView', () => {
     });
 
     /**
+     * Fix round cuối (item 4) — `CourseHome.tsx`'s own enroll button has
+     * `disabled={enroll.isPending}` and a `course.enrolling` label; this
+     * one, until this fix, had neither, so the two screens disagreed about
+     * what a pending enroll looks like and a double-click here fired two
+     * `POST /enrollments` (harmless server-side — idempotent — but still the
+     * gap this test closes).
+     */
+    it('Fix round cuối (item 4) — bấm xong: nút vô hiệu hoá, đổi nhãn "Đang thêm…", và một cú bấm đúp không gửi POST lần hai', async () => {
+      server.use(http.get('/enrollments', () => HttpResponse.json({ enrollments: [] })));
+      let postCount = 0;
+      let resolvePost: (() => void) | undefined;
+      server.use(
+        http.post('/enrollments', async () => {
+          postCount += 1;
+          await new Promise<void>((resolve) => {
+            resolvePost = resolve;
+          });
+          return new HttpResponse(null, { status: 201 });
+        }),
+      );
+
+      await renderChapterAndSettle();
+
+      const btn = screen.getByRole('button', { name: t('vi', 'reader.addToMine') });
+      fireEvent.click(btn);
+
+      const pendingBtn = await screen.findByRole('button', { name: t('vi', 'course.enrolling') });
+      expect(pendingBtn).toBeDisabled();
+
+      // Cú bấm thứ hai trong lúc POST đầu còn treo: nút đã vô hiệu hoá, nên
+      // `fireEvent.click` trên nó không kích `onClick` lần hai.
+      fireEvent.click(pendingBtn);
+      await act(async () => {});
+      expect(postCount).toBe(1);
+
+      resolvePost!();
+      await act(async () => {});
+    });
+
+    /**
      * Fix round 1 — `enrolled` reads `(enrollmentsQuery.data ?? []).some(...)`,
      * which is `false` while that query is still pending, not just once it
      * has resolved to "not enrolled". A gate of `confirmedLoggedIn &&
