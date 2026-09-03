@@ -667,3 +667,23 @@ html[data-theme='dark'] .bd-erasure {
     transition-duration: 1ms !important;
   }
 }
+
+/* ── BẠN LÀM ĐƯỢC GÌ Ở ĐÂY ────────────────────────────────────────────────
+   Bốn dòng CHỮ, không phải bốn ô tính năng: hộp tính năng có biểu tượng đúng
+   là thứ luận đề của trang từ chối, và sàn craft cấm thẳng. Mỗi dòng mở đầu
+   bằng một động từ rồi gạch ngang — cùng ngữ pháp với nhãn run-in ở khối hành
+   động, nên mắt đọc ra "đây là bốn việc" mà không cần một cái khung nào. */
+.bd-can-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+  max-width: 68ch;
+}
+
+.bd-can-list li {
+  font-size: clamp(15.5px, 1.25vw, 17.5px);
+  line-height: 1.5;
+  color: var(--ink-2);
+}

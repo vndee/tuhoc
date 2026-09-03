@@ -382,8 +382,8 @@ export const vi = {
   /* ── đăng nhập (`pages/Login.tsx`) ─────────────────────────────────────── */
 
   // ── Landing (`pages/Landing.tsx`) — `/` cho khách chưa đăng nhập ──────
-  'landing.question': 'Đọc một mình, mắc ở đâu thì hỏi ai?',
-  'landing.lede': 'Đọc giáo trình miễn phí, không cần tài khoản. Tài khoản giữ ghi chú, tiến độ, và một gia sư biết bạn đã ghi gì.',
+  'landing.question': 'Nơi đọc giáo trình kỹ thuật — và hỏi ngay tại chỗ bạn mắc.',
+  'landing.lede': 'Mở một giáo trình dài và đọc miễn phí, không cần tài khoản. Bôi đen một câu là có ghi chú neo vào đúng câu ấy — và gia sư AI trả lời ngay trong bài, đọc được chính ghi chú bạn vừa viết.',
   'landing.read.h': 'Đọc',
   'landing.read.verb': 'Đọc thử',
   'landing.read.catalog': 'Mở danh mục khoá học',
@@ -409,6 +409,11 @@ export const vi = {
   'landing.progress.h': 'Quay lại đúng chỗ (ví dụ)',
   'landing.progress.margin.h': 'Trên máy nào cũng vậy',
   'landing.progress.margin.p': 'Tiến độ và ghi chú lưu theo tài khoản trên máy chủ. Mở máy khác, đăng nhập, là ở đúng chương đang dở.',
+  'landing.can.h': 'Bạn làm được gì ở đây',
+  'landing.can.read': 'Đọc — giáo trình dài, có công thức, hình tương tác và bài tập. Miễn phí, không cần tài khoản.',
+  'landing.can.note': 'Ghi — bôi đen một câu, ghi chú dính vào đúng câu đó và không trôi đi đâu.',
+  'landing.can.ask': 'Hỏi — gia sư AI trả lời ngay trong bài, biết bạn đang đọc chương nào và đã ghi gì. Không cần key riêng.',
+  'landing.can.return': 'Quay lại — tiến độ và ghi chú lưu theo tài khoản trên máy chủ, mở máy nào cũng đúng chỗ đang dở.',
   'landing.catalog.h': 'Khoá học đang mở',
   'landing.catalog.error': 'Không tải được danh mục khoá học lúc này.',
   'landing.catalog.retry': 'Thử lại',

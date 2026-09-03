@@ -151,6 +151,28 @@ export function Landing() {
           </section>
         </div>
 
+        {/* ── BẠN LÀM ĐƯỢC GÌ Ở ĐÂY ───────────────────────────────────────
+            Chủ dự án nhìn bản trước và nói: "không hiểu đây là platform gì,
+            không hiểu nó làm được gì". Đúng — trang DIỄN cơ chế mà không bao
+            giờ NÓI mình là cái gì. Bốn dòng này trả lời câu ấy bằng chữ, và
+            chúng là bốn dòng CHỮ chứ không phải bốn ô tính năng có biểu tượng:
+            hộp tính năng đúng là thứ luận đề của trang từ chối.
+
+            Mỗi dòng chỉ nói điều mã đã làm được. Không giá, không "ai cũng
+            xuất bản được" (PRODUCT.md ghi đó còn là khoảng trống), và gia sư
+            đọc GHI CHÚ chứ không đọc tiến độ. */}
+        <section className="bd-scene bd-can" aria-labelledby="bd-can-h">
+          <h2 id="bd-can-h" className="bd-h">
+            {t('landing.can.h')}
+          </h2>
+          <ChalkRule variant={1} />
+          <ul className="bd-can-list">
+            {(['landing.can.read', 'landing.can.note', 'landing.can.ask', 'landing.can.return'] as const).map((key) => (
+              <li key={key}>{t(key)}</li>
+            ))}
+          </ul>
+        </section>
+
         {/* ── DANH MỤC THẬT ───────────────────────────────────────────────
             Đây mới là chỗ trang nói "có gì để đọc", và nó đọc từ máy chủ nên
             không viết cứng môn nào. Rỗng thì nói rỗng; hỏng thì nói hỏng và
