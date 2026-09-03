@@ -583,6 +583,11 @@ export const vi = {
      "Bắt đầu học"), và chưa ghi danh. Không bao giờ đứng cùng lúc với
      `reader.anonNudge` ở trên — xem `reader/ChapterView.tsx`. */
   'reader.addToMine': 'Thêm vào khoá của tôi',
+  /** Fix round 1 — bề mặt cho một cú `POST /enrollments` hỏng từ chương đọc
+   *  (mất mạng, 5xx) — cùng quy ước `course.enrollFailed` đã dùng, tách
+   *  riêng vì đây là một control khác (`reader.addToMine`), không phải để
+   *  dùng chung một khoá cho hai control khác nhau. */
+  'reader.addToMineFailed': 'Không thêm được. Thử lại.',
 
   /* ── chế độ đọc: một cột chữ (`reader/TocDrawer.tsx`, hướng A) ──────────── */
 

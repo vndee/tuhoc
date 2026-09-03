@@ -413,4 +413,46 @@ describe('Task 5 — ghi danh và bỏ ghi danh ngay tại trang khoá', () => {
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
     expect(await screen.findByRole('button', { name: 'Bỏ khỏi khoá của tôi' })).toBeInTheDocument();
   });
+
+  /**
+   * Fix round 1 (Task 6 review — cùng lỗi rơi vào cả `ChapterView.tsx`) —
+   * `enrolled` đọc `(enrollmentsQuery.data ?? []).some(...)`, giá trị `false`
+   * trong LÚC query còn treo, không chỉ khi nó đã trả lời "chưa ghi danh".
+   * Điều kiện `confirmedLoggedIn && !enrolled` một mình không phân biệt được
+   * "đã xác nhận chưa ghi danh" với "chưa biết gì cả" — mọi bài kiểm ở trên
+   * đều đợi `findByRole` xong xuôi mới canh, nên không bài nào từng thấy được
+   * khoảng hở này: một học viên ĐÃ ghi danh sẽ thấy "Bắt đầu học" trong đúng
+   * một round-trip của `GET /enrollments`, rồi nút đổi thành "Bỏ khỏi khoá
+   * của tôi" ngay dưới mắt họ.
+   */
+  it('Fix round 1 — người ĐÃ ghi danh: không được thấy "Bắt đầu học" trong lúc GET /enrollments còn treo', async () => {
+    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(4))));
+
+    let resolveEnrollments: (() => void) | undefined;
+    server.use(
+      http.get('/enrollments', async () => {
+        await new Promise<void>((resolve) => {
+          resolveEnrollments = resolve;
+        });
+        return HttpResponse.json({
+          enrollments: [{ courseId: 'demo', createdAt: '2026-09-03T00:00:00Z' }],
+        });
+      }),
+    );
+
+    renderCourseHome();
+    await screen.findByRole('heading', { name: 'Khóa học demo' });
+
+    // Còn treo: chưa có gì XÁC NHẬN "chưa ghi danh", nên "Bắt đầu học" không
+    // được đoán — và "Bỏ khỏi khoá của tôi" cũng chưa, vì đáp án thật chưa về.
+    expect(screen.queryByRole('button', { name: 'Bắt đầu học' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Bỏ khỏi khoá của tôi' })).not.toBeInTheDocument();
+
+    resolveEnrollments!();
+
+    // Đáp án thật là "đã ghi danh": chỉ lối bỏ ghi danh xuất hiện, không đi
+    // qua một khung hình nào có "Bắt đầu học" trước đó.
+    expect(await screen.findByRole('button', { name: 'Bỏ khỏi khoá của tôi' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Bắt đầu học' })).not.toBeInTheDocument();
+  });
 });

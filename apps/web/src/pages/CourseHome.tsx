@@ -181,8 +181,20 @@ export function CourseHome() {
               {t(read === 0 ? 'home.start' : 'home.continue')}
             </Link>
             {/* Chỉ hiện cho người đã xác nhận đăng nhập — lý do ở khối
-                khai hook phía trên. */}
-            {confirmedLoggedIn && !enrolled && (
+                khai hook phía trên.
+
+                Fix round 1 (Task 6 review, áp lại cho Task 5) —
+                `enrollmentsQuery.isSuccess` là điều kiện THỨ BA, không phải
+                trang trí: `enrolled` mặc định `false` (`(undefined ??
+                []).some(...)`) khi cache còn rỗng, nên trước bản vá này một
+                người ĐÃ ghi danh thấy "Bắt đầu học" trong đúng một round-trip
+                của `GET /enrollments`, rồi nút đổi thành "Bỏ khỏi khoá của
+                tôi" ngay dưới mắt họ. Cùng đúng kỷ luật `ChapterView.tsx`'s
+                doc comment ở `confirmedLoggedIn`/`confirmedLoggedOut` đã đặt
+                ra cho trục đăng nhập — không vẽ gì trên một PHỎNG ĐOÁN về
+                trạng thái máy chủ chưa xác nhận — chỉ chưa từng được áp cho
+                trục ghi danh. */}
+            {confirmedLoggedIn && enrollmentsQuery.isSuccess && !enrolled && (
               <button
                 type="button"
                 className="btn primary"
@@ -192,7 +204,7 @@ export function CourseHome() {
                 {t(enroll.isPending ? 'course.enrolling' : 'course.enroll')}
               </button>
             )}
-            {confirmedLoggedIn && enrolled && (
+            {confirmedLoggedIn && enrollmentsQuery.isSuccess && enrolled && (
               /* KHÔNG hộp xác nhận. Thao tác này chỉ xoá một hàng trong
                  `enrollments`; tiến độ và ghi chú còn nguyên
                  (Repo.DeleteEnrollment), và ghi danh lại khôi phục đúng
