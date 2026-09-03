@@ -135,6 +135,36 @@ describe('Landing — mặt viết tay', () => {
   });
 
   /**
+   * TẦM NHÌN ĐI TRƯỚC SẢN PHẨM, và nhãn là thứ duy nhất giữ nó khỏi thành một
+   * lời hứa. Chủ dự án chốt 03/09/2026: landing được nói thẳng hướng đi, MIỄN
+   * LÀ ghi rõ đây là hướng chứ không phải thứ đang chạy — cụ thể, cá nhân hoá
+   * khoá học CHƯA có (PRODUCT.md, mục Vision). Nếu một lần sửa lời sau này gỡ
+   * mất nhãn, câu ấy đứng lẫn giữa các mục tính năng và thành lời hứa hụt.
+   */
+  it('khối tầm nhìn LUÔN mang nhãn "hướng đi", tách khỏi mục kể tính năng', () => {
+    withCatalog([A_COURSE]);
+
+    const label = screen.getByRole('heading', { name: t('vi', 'landing.vision.label') });
+    expect(label).toBeInTheDocument();
+    expect(t('vi', 'landing.vision.label')).toMatch(/hướng đi/i);
+    expect(t('en', 'landing.vision.label')).toMatch(/where this is going/i);
+
+    // Nhãn phải đứng TRONG cùng khối với câu tầm nhìn, không phải trôi ở đâu đó.
+    const block = label.closest('.bd-vision');
+    expect(block).not.toBeNull();
+    expect(block).toHaveTextContent(t('vi', 'landing.vision.body'));
+
+    // Và khối ấy KHÔNG được nằm trong mục "Bạn làm được gì ở đây".
+    const can = screen.getByRole('heading', { name: t('vi', 'landing.can.h') }).closest('section');
+    expect(can?.contains(block as Node)).toBe(false);
+
+    // Hình mang nghĩa nên nó phải có tên trợ năng, không phải aria-hidden.
+    const figure = document.querySelector('.bd-figure');
+    expect(figure).toHaveAttribute('role', 'img');
+    expect(figure?.getAttribute('aria-label')).toBe(t('vi', 'landing.vision.figure'));
+  });
+
+  /**
    * `.board-room` là lớp mà `test/syncLifecycle.test.tsx` dùng để nhận ra "app
    * đã dựng xong cho một người nó không quen". Đổi tên nó sẽ làm một phép đo về
    * vòng đời ĐỒNG BỘ đỏ ở một tệp khác, vì một lý do THẨM MỸ.

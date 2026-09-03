@@ -111,43 +111,23 @@ export function Landing() {
                 {t('landing.account.cta')}
               </Link>
             </p>
-
-            <ChalkErasure />
           </section>
 
-          {/* ── CƠ CHẾ, VIẾT TAY BA BƯỚC ────────────────────────────────
-              Không còn tờ giấy ghim và không còn trích đoạn của một khoá:
-              chính mặt viết diễn ba bước, bằng chữ trung tính ai đọc cũng
-              hiểu. Mối nối giữa ghi chú và câu trả lời được VẼ — mũi tên
-              xuống ghi chú, dấu ngoặc ôm câu gia sư trích lại. */}
-          <section className="bd-demo" aria-labelledby="bd-demo-h">
-            <h2 id="bd-demo-h" className="bd-demo-h">
-              {t('landing.demo.h')}
+          {/* ── HƯỚNG ĐI, VẼ RA VÀ NÓI RA ────────────────────────────────
+              Chủ dự án chốt 03/09/2026: tầm nhìn là "AI hỗ trợ đào sâu,
+              personalize khoá học", và landing được nói thẳng nó MIỄN LÀ ghi
+              rõ đây là hướng chứ không phải thứ đang chạy. Nhãn `Hướng đi`
+              đứng ngay trên, tách hẳn khỏi mục "Bạn làm được gì ở đây" — chỗ
+              duy nhất trang được phép kể tính năng.
+
+              Hình không phải trang trí nên nó là `role="img"` có tên trợ
+              năng, không phải `aria-hidden`: nó CHÍNH LÀ câu tầm nhìn, vẽ ra. */}
+          <section className="bd-vision" aria-labelledby="bd-vision-h">
+            <h2 id="bd-vision-h" className="bd-vision-label">
+              {t('landing.vision.label')}
             </h2>
-
-            <p className="bd-demo-sentence">
-              <span className="bd-hl">{t('landing.demo.sentence')}</span>
-            </p>
-
-            <ChalkArrow />
-
-            <div className="bd-demo-note">
-              <p className="bd-demo-label">{t('landing.demo.noteLabel')}</p>
-              <p className="bd-note-quote">{t('landing.demo.note')}</p>
-            </div>
-
-            <div className="bd-demo-turn">
-              <p className="bd-demo-label">{t('landing.demo.tutorLabel')}</p>
-              <p className="bd-demo-tutor">{t('landing.demo.tutor')}</p>
-              <div className="bd-held">
-                <ChalkBracket />
-                <blockquote className="bd-quote">{t('landing.demo.note')}</blockquote>
-              </div>
-            </div>
-
-            <p className="bd-note-how">
-              {t('landing.note.how')} <span className="bd-hover-only">{t('landing.note.hover')}</span>
-            </p>
+            <StudyScene label={t('landing.vision.figure')} />
+            <p className="bd-vision-body">{t('landing.vision.body')}</p>
           </section>
         </div>
 
@@ -171,6 +151,44 @@ export function Landing() {
               <li key={key}>{t(key)}</li>
             ))}
           </ul>
+        </section>
+
+      {/* ── CƠ CHẾ, VIẾT TAY BA BƯỚC ────────────────────────────────
+            Không còn tờ giấy ghim và không còn trích đoạn của một khoá:
+            chính mặt viết diễn ba bước, bằng chữ trung tính ai đọc cũng
+            hiểu. Mối nối giữa ghi chú và câu trả lời được VẼ — mũi tên
+            xuống ghi chú, dấu ngoặc ôm câu gia sư trích lại. */}
+        <section className="bd-scene bd-demo" aria-labelledby="bd-demo-h">
+          <h2 id="bd-demo-h" className="bd-demo-h">
+            {t('landing.demo.h')}
+          </h2>
+
+          <div className="bd-demo-steps">
+            <p className="bd-demo-sentence">
+            <span className="bd-hl">{t('landing.demo.sentence')}</span>
+          </p>
+
+          <ChalkArrow />
+
+          <div className="bd-demo-note">
+            <p className="bd-demo-label">{t('landing.demo.noteLabel')}</p>
+            <p className="bd-note-quote">{t('landing.demo.note')}</p>
+          </div>
+
+          <div className="bd-demo-turn">
+            <p className="bd-demo-label">{t('landing.demo.tutorLabel')}</p>
+            <p className="bd-demo-tutor">{t('landing.demo.tutor')}</p>
+            <div className="bd-held">
+              <ChalkBracket />
+              <blockquote className="bd-quote">{t('landing.demo.note')}</blockquote>
+            </div>
+          </div>
+
+          </div>
+
+          <p className="bd-note-how">
+            {t('landing.note.how')} <span className="bd-hover-only">{t('landing.note.hover')}</span>
+          </p>
         </section>
 
         {/* ── DANH MỤC THẬT ───────────────────────────────────────────────
@@ -232,6 +250,97 @@ export function Landing() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * NGƯỜI NGỒI HỌC, VÀ NHỮNG THỨ HỌ ĐANG HỌC.
+ *
+ * Hai bản trước đều bị chủ dự án đọc ra là xấu, và cả hai sai cùng một kiểu:
+ * chúng là SƠ ĐỒ. Một gáy sách có vạch chia thành cái trục đo; ba khung lồng
+ * nhau thành một cửa sổ phần mềm. Không bản nào có người trong đó.
+ *
+ * Bản này là một cảnh: một người ngồi trước cuốn sách mở, và quanh họ là chính
+ * những thứ đang học — một mạng nơ-ron, vài công thức, một hành tinh có vành,
+ * mấy ngôi sao. Đó là "tự học và tự đào sâu" ở dạng nhìn thấy được, và nó nói
+ * ra điều một sơ đồ không nói được: có một NGƯỜI ở đây.
+ *
+ * Ký hiệu toán vẽ bằng `<text>`: `∫`, `Σ`, `π` là notation chứ không phải chữ
+ * giao diện, nên chúng không vào catalog i18n và không đổi theo ngôn ngữ.
+ */
+function StudyScene({ label }: { label: string }) {
+  const stars = [
+    { x: 232, y: 40, r: 8 },
+    { x: 346, y: 132, r: 6 },
+    { x: 196, y: 96, r: 5 },
+  ];
+  const nodes = ['44,66', '44,108', '92,44', '92,86', '136,64'];
+  return (
+    <svg className="bd-figure" viewBox="0 0 380 300" role="img" aria-label={label} focusable="false">
+      <g fill="none" strokeLinecap="round" strokeLinejoin="round">
+        {/* ── NGƯỜI, NHÌN NGHIÊNG, ĐANG CÚI VÀO CUỐN SÁCH ────────────────
+            Nghiêng chứ không chính diện: chính diện thì lưng và vai chồng lên
+            nhau thành một cái gò, đúng lỗi của bản trước. Bàn cắt ngang ở
+            y=258 nên chân bị che, và đó là điều thật khi ngồi vào bàn. */}
+        <circle className="bd-fig-body" cx="118" cy="168" r="21" strokeWidth="3" filter="url(#bd-chalk)" />
+        {/* Gáy: từ cổ đổ xuống hông, cong ra sau rồi cúi tới trước. */}
+        <path className="bd-fig-body" d="M128 188 C 136 204, 132 224, 116 240 C 108 248, 100 254, 96 258" strokeWidth="3" filter="url(#bd-chalk-1)" />
+        {/* Cánh tay với tới cuốn sách. */}
+        <path className="bd-fig-body" d="M133 206 C 152 214, 172 232, 186 248" strokeWidth="2.6" filter="url(#bd-chalk-2)" />
+        {/* Mặt bàn. */}
+        <path className="bd-fig-desk" d="M44 258 C 132 253, 220 255, 306 261" strokeWidth="3" filter="url(#bd-chalk)" />
+
+        {/* ── CUỐN SÁCH MỞ: hai trang chụm vào một gáy ───────────────────── */}
+        <path
+          className="bd-fig-book"
+          d="M192 254 C 202 244, 212 241, 220 246 C 228 241, 240 244, 250 254"
+          strokeWidth="2.4"
+          filter="url(#bd-chalk-1)"
+        />
+        <path className="bd-fig-book" d="M220 246 L220 255 M192 254 C 202 250, 212 248, 220 255 M250 254 C 240 250, 228 249, 220 255" strokeWidth="1.8" filter="url(#bd-chalk-2)" />
+
+        {/* ── MẠNG NƠ-RON ───────────────────────────────────────────────── */}
+        <path
+          className="bd-fig-net"
+          d="M40 62 L88 40 M40 62 L88 82 M40 104 L88 40 M40 104 L88 82 M88 40 L132 60 M88 82 L132 60"
+          strokeWidth="1.8"
+          filter="url(#bd-chalk-2)"
+        />
+        {nodes.map((pt) => {
+          const [cx, cy] = pt.split(',');
+          return <circle key={pt} className="bd-fig-node" cx={cx} cy={cy} r="6" strokeWidth="2.2" filter="url(#bd-chalk)" />;
+        })}
+
+        {/* ── HÀNH TINH: vành là HAI cung, một khuất sau và một vắt trước —
+            một cung đơn dưới bụng hành tinh chỉ đọc ra là cái bát. ───────── */}
+        <circle className="bd-fig-sky" cx="300" cy="80" r="27" strokeWidth="2.6" filter="url(#bd-chalk-1)" />
+        <path className="bd-fig-sky" d="M266 70 C 282 60, 320 60, 336 72" strokeWidth="1.8" filter="url(#bd-chalk-2)" />
+        <path className="bd-fig-sky" d="M264 72 C 274 92, 326 92, 338 70" strokeWidth="2.4" filter="url(#bd-chalk)" />
+
+        {/* ── SAO TÁM TIA: dấu cộng cộng dấu nhân, tia chéo ngắn hơn ─────── */}
+        {stars.map((st) => (
+          <path
+            key={`${st.x}-${st.y}`}
+            className="bd-fig-sky"
+            d={
+              `M${st.x} ${st.y - st.r} L${st.x} ${st.y + st.r} M${st.x - st.r} ${st.y} L${st.x + st.r} ${st.y}` +
+              ` M${st.x - st.r * 0.5} ${st.y - st.r * 0.5} L${st.x + st.r * 0.5} ${st.y + st.r * 0.5}` +
+              ` M${st.x + st.r * 0.5} ${st.y - st.r * 0.5} L${st.x - st.r * 0.5} ${st.y + st.r * 0.5}`
+            }
+            strokeWidth="1.8"
+            filter="url(#bd-chalk)"
+          />
+        ))}
+      </g>
+
+      {/* ── CÔNG THỨC, lơ lửng giữa người và bầu trời ───────────────────── */}
+      <g className="bd-fig-math">
+        <text x="172" y="52" fontSize="27">∫</text>
+        <text x="202" y="60" fontSize="23">Σ</text>
+        <text x="248" y="156" fontSize="21">π</text>
+        <text x="146" y="116" fontSize="20">x²</text>
+      </g>
+    </svg>
   );
 }
 
@@ -372,25 +481,6 @@ function ChalkRule({ variant }: { variant: 0 | 1 | 2 }) {
         strokeLinecap="round"
         filter={`url(#bd-chalk${variant === 0 ? '' : `-${variant}`})`}
       />
-    </svg>
-  );
-}
-
-/**
- * VẾT XOÁ — công việc trước đó, lau đi dở. Không phải trang trí: một mặt viết
- * đang dùng mang dấu của thứ vừa bị lau, và không có nó thì mảng trống dưới
- * hành động chính đọc ra như một cột hụt.
- */
-function ChalkErasure() {
-  return (
-    <svg className="bd-erasure" viewBox="0 0 340 150" aria-hidden="true" focusable="false">
-      <g fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" filter="url(#bd-smudge)">
-        <path d="M14 30 C 60 22, 96 40, 150 28 C 190 19, 214 33, 250 26" />
-        <path d="M20 58 C 74 50, 120 66, 176 54" />
-        <path d="M16 86 C 58 79, 92 94, 138 84 C 170 77, 196 88, 228 82" />
-        <path d="M22 114 C 66 107, 104 120, 148 111" />
-        <path d="M258 44 C 268 62, 262 84, 246 98" />
-      </g>
     </svg>
   );
 }
