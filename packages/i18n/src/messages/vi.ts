@@ -382,7 +382,7 @@ export const vi = {
   /* ── đăng nhập (`pages/Login.tsx`) ─────────────────────────────────────── */
 
   // ── Landing (`pages/Landing.tsx`) — `/` cho khách chưa đăng nhập ──────
-  'landing.question': 'Chạy thử mười nghìn lần đều đúng — sao vẫn có thể sai?',
+  'landing.question': 'Đọc một mình, mắc ở đâu thì hỏi ai?',
   'landing.lede': 'Đọc giáo trình miễn phí, không cần tài khoản. Tài khoản giữ ghi chú, tiến độ, và một gia sư biết bạn đã ghi gì.',
   'landing.read.h': 'Đọc',
   'landing.read.verb': 'Đọc thử',
@@ -390,9 +390,17 @@ export const vi = {
   'landing.read.meta': 'Miễn phí · không cần tài khoản',
   'landing.account.cta': 'Tạo tài khoản',
   'landing.example': 'Ví dụ',
+  'landing.demo.h': 'Cách nó chạy (ví dụ)',
+  'landing.demo.sentence': 'một câu trong chương bạn đang đọc',
+  'landing.demo.noteLabel': 'Ghi chú của bạn',
+  'landing.demo.note': 'chỗ này mình chưa hiểu',
+  'landing.demo.tutorLabel': 'Gia sư',
+  'landing.demo.tutor': 'Trả lời đúng chỗ ấy, và cầm theo chính ghi chú của bạn:',
+  'landing.working.tried': 'đọc lại lần thứ ba',
+  'landing.working.verdict': 'vẫn mắc đúng chỗ cũ',
   'landing.note.h': 'Ghi chú lề (ví dụ)',
-  'landing.note.how': 'Bôi đen một câu khi đọc là ghi chú neo đúng câu ấy.',
-  'landing.note.hover': 'Rê chuột lên ghi chú để thấy câu gốc.',
+  'landing.note.how': 'Ghi chú neo vào đúng câu, không trôi đi đâu cả.',
+  'landing.note.hover': 'Rê chuột lên ghi chú để thấy phấn nối về câu gốc.',
   'landing.ask.h': 'Hỏi gia sư (ví dụ)',
   'landing.ask.you': 'Bạn',
   'landing.ask.tutor': 'Gia sư',
@@ -402,8 +410,8 @@ export const vi = {
   'landing.progress.margin.h': 'Trên máy nào cũng vậy',
   'landing.progress.margin.p': 'Tiến độ và ghi chú lưu theo tài khoản trên máy chủ. Mở máy khác, đăng nhập, là ở đúng chương đang dở.',
   'landing.catalog.h': 'Khoá học đang mở',
-  'landing.catalog.empty': 'Chưa có khoá học nào được xuất bản.',
   'landing.catalog.error': 'Không tải được danh mục khoá học lúc này.',
+  'landing.catalog.retry': 'Thử lại',
   'landing.catalog.all': 'Xem tất cả',
   'landing.login.cta': 'Đăng nhập',
 
