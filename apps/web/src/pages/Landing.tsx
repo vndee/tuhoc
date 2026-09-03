@@ -113,22 +113,14 @@ export function Landing() {
             </p>
           </section>
 
-          {/* ── HƯỚNG ĐI, VẼ RA VÀ NÓI RA ────────────────────────────────
-              Chủ dự án chốt 03/09/2026: tầm nhìn là "AI hỗ trợ đào sâu,
-              personalize khoá học", và landing được nói thẳng nó MIỄN LÀ ghi
-              rõ đây là hướng chứ không phải thứ đang chạy. Nhãn `Hướng đi`
-              đứng ngay trên, tách hẳn khỏi mục "Bạn làm được gì ở đây" — chỗ
-              duy nhất trang được phép kể tính năng.
-
-              Hình không phải trang trí nên nó là `role="img"` có tên trợ
-              năng, không phải `aria-hidden`: nó CHÍNH LÀ câu tầm nhìn, vẽ ra. */}
-          <section className="bd-vision" aria-labelledby="bd-vision-h">
-            <h2 id="bd-vision-h" className="bd-vision-label">
-              {t('landing.vision.label')}
-            </h2>
+          {/* Hình đứng một mình ở cột phải. Nhãn "Hướng đi" và câu tầm nhìn
+              đã gỡ theo yêu cầu chủ dự án (03/09/2026) — tầm nhìn vẫn được ghi
+              ở PRODUCT.md, chỉ là trang chủ thôi in nó ra. Hình KHÔNG thành
+              trang trí vì thế: nó vẫn `role="img"` có tên trợ năng, vì nó vẫn
+              nói ra điều trang này tin. */}
+          <div className="bd-vision">
             <StudyScene label={t('landing.vision.figure')} />
-            <p className="bd-vision-body">{t('landing.vision.body')}</p>
-          </section>
+          </div>
         </div>
 
         {/* ── BẠN LÀM ĐƯỢC GÌ Ở ĐÂY ───────────────────────────────────────

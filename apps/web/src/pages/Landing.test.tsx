@@ -135,33 +135,28 @@ describe('Landing — mặt viết tay', () => {
   });
 
   /**
-   * TẦM NHÌN ĐI TRƯỚC SẢN PHẨM, và nhãn là thứ duy nhất giữ nó khỏi thành một
-   * lời hứa. Chủ dự án chốt 03/09/2026: landing được nói thẳng hướng đi, MIỄN
-   * LÀ ghi rõ đây là hướng chứ không phải thứ đang chạy — cụ thể, cá nhân hoá
-   * khoá học CHƯA có (PRODUCT.md, mục Vision). Nếu một lần sửa lời sau này gỡ
-   * mất nhãn, câu ấy đứng lẫn giữa các mục tính năng và thành lời hứa hụt.
+   * Nhãn "Hướng đi" và câu tầm nhìn đã gỡ khỏi trang theo yêu cầu chủ dự án
+   * (03/09/2026); tầm nhìn vẫn được ghi ở PRODUCT.md. Bài này canh HAI điều
+   * còn lại và cả hai đều đáng canh:
+   *
+   *  - hình vẫn là hình MANG NGHĨA, không phải trang trí — nó phải có tên trợ
+   *    năng thật, vì nó là thứ duy nhất còn nói ra điều trang này tin;
+   *  - và câu tầm nhìn KHÔNG lặng lẽ quay lại giữa các mục kể tính năng. Nếu
+   *    một lượt sửa lời sau này đưa nó về mà không có nhãn phân biệt, nó sẽ
+   *    đọc ra như một lời hứa về thứ chưa chạy (PRODUCT.md, mục Vision).
    */
-  it('khối tầm nhìn LUÔN mang nhãn "hướng đi", tách khỏi mục kể tính năng', () => {
+  it('hình mang tên trợ năng thật, và trang không nói tầm nhìn như một tính năng', () => {
     withCatalog([A_COURSE]);
 
-    const label = screen.getByRole('heading', { name: t('vi', 'landing.vision.label') });
-    expect(label).toBeInTheDocument();
-    expect(t('vi', 'landing.vision.label')).toMatch(/hướng đi/i);
-    expect(t('en', 'landing.vision.label')).toMatch(/where this is going/i);
-
-    // Nhãn phải đứng TRONG cùng khối với câu tầm nhìn, không phải trôi ở đâu đó.
-    const block = label.closest('.bd-vision');
-    expect(block).not.toBeNull();
-    expect(block).toHaveTextContent(t('vi', 'landing.vision.body'));
-
-    // Và khối ấy KHÔNG được nằm trong mục "Bạn làm được gì ở đây".
-    const can = screen.getByRole('heading', { name: t('vi', 'landing.can.h') }).closest('section');
-    expect(can?.contains(block as Node)).toBe(false);
-
-    // Hình mang nghĩa nên nó phải có tên trợ năng, không phải aria-hidden.
     const figure = document.querySelector('.bd-figure');
     expect(figure).toHaveAttribute('role', 'img');
+    expect(figure).not.toHaveAttribute('aria-hidden');
     expect(figure?.getAttribute('aria-label')).toBe(t('vi', 'landing.vision.figure'));
+
+    const rendered = document.body.textContent ?? '';
+    for (const loiHua of [/cá nhân hoá/i, /lộ trình riêng/i, /học thay/i]) {
+      expect(rendered).not.toMatch(loiHua);
+    }
   });
 
   /**

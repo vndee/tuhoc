@@ -691,26 +691,20 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
    Nhãn "Hướng đi" là một `<h2>` thật chứ không phải một dòng chữ nhỏ trang
    trí: nó phải ở trong dàn ý cho người dùng trình đọc màn hình, vì nó là thứ
    duy nhất phân biệt "chúng tôi tin" với "sản phẩm làm được". */
+/* Sau khi nhãn và câu tầm nhìn đi, cột phải chỉ còn HÌNH. Nó phải được căn
+   lại: `align-items: start` của `.bd-stage` dính nó lên đỉnh, để thừa 258px
+   dưới chân trong khi cột trái cao 501px. Nay hình căn giữa theo chiều dọc so
+   với cột chữ, và rộng ra cho hai cột cân nhau. */
 .bd-vision {
   display: grid;
-  justify-items: start;
-  gap: 14px;
-  padding-top: 6px;
+  justify-items: center;
+  align-self: center;
 }
 
-#app:not(.reading) #content .board-room .bd-vision-label {
-  margin: 0;
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--ink-3);
-}
 
 .bd-figure {
-  width: min(300px, 82%);
+  width: min(460px, 100%);
   height: auto;
-  justify-self: center;
 }
 
 /* Người và bàn đậm nhất — đó là nhân vật. Những thứ đang học nhạt hơn một
@@ -739,12 +733,6 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
   font-family: inherit;
 }
 
-.bd-vision-body {
-  margin: 0;
-  font-size: clamp(15px, 1.2vw, 16.5px);
-  line-height: 1.55;
-  color: var(--ink-2);
-}
 
 /* Khối cơ chế nay là một mục riêng, không còn là cột phải của màn đầu. */
 .bd-demo.bd-scene {

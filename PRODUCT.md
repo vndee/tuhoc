@@ -56,9 +56,11 @@ landing không hứa hụt:
   thích ứng, không có nội dung sinh riêng, không có đo hiểu biết. "Personalize
   khoá học" hôm nay mới là *lời nhắc riêng + gia sư đọc ghi chú*, không hơn.
 
-Landing được nói tầm nhìn này (chủ dự án chốt cùng ngày), nhưng phải mang nhãn
-**"Hướng đi"** tách khỏi mục kể tính năng — và `pages/Landing.test.tsx` có một
-bài canh đúng điều đó, để một lần sửa lời sau này không biến nó thành lời hứa.
+Landing từng in tầm nhìn này dưới nhãn **"Hướng đi"**, rồi chủ dự án gỡ nó
+cùng ngày: trang chủ nay chỉ còn HÌNH VẼ nói ra tinh thần ấy, không còn câu
+chữ. Tầm nhìn sống ở đây, không ở trang chủ. Nếu một lượt sửa lời sau này đưa
+nó về, nó phải mang lại nhãn phân biệt — `pages/Landing.test.tsx` canh rằng
+trang không lặng lẽ hứa những thứ ở mục "CHƯA chạy" bên trên.
 
 ## Positioning
 
