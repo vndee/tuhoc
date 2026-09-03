@@ -2,7 +2,26 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Bộ nhận diện, sinh từ MỘT hình học ở apps/web/src/shell/Logo.tsx
+      (hợp đồng hướng: .impeccable/surfaces/apps-web-src-shell-logo-tsx.md).
+      Trước vòng này favicon là một tia sét tím rời rạc, không màu nào của nó
+      có trong bảng màu app, và nó không dính gì tới mark trên thanh trên —
+      tab trình duyệt và khung app là hai sản phẩm khác nhau với người nhìn.
+
+      favicon.svg có NỀN chứ không trong suốt: mark là nét mảnh, và một nét
+      mảnh trong suốt biến mất trên thanh tab tối.
+    -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!--
+      theme-color theo giao diện HỆ ĐIỀU HÀNH, không theo công tắc trong app:
+      nó tô thanh trình duyệt trước khi React chạy, nên nó không đọc được lựa
+      chọn đã lưu ở localStorage. Hai giá trị là hai mặt viết của thế giới app.
+    -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f1e8" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#26312e" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tự học</title>
     <!--

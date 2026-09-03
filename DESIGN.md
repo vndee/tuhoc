@@ -19,6 +19,8 @@ colors:
   rule-strong-night: "#474747"
   panel-night: "#202020"
   theorem-blue-night: "#4d92cc"
+  mark-icon-ground: "#26312e"
+  mark-icon-ink: "#f4f1e8"
 typography:
   display:
     fontFamily: "Charis SIL, Charter, Iowan Old Style, Georgia, Times New Roman, serif"
@@ -139,6 +141,22 @@ components:
     backgroundColor: "{colors.theorem-blue}"
     height: "2px"
     rounded: "{rounded.none}"
+  brand-mark:
+    backgroundColor: "transparent"
+    textColor: "currentColor"
+    rounded: "{rounded.none}"
+    padding: "0"
+    size: "26px"
+  brand-mark-login:
+    backgroundColor: "transparent"
+    textColor: "currentColor"
+    rounded: "{rounded.none}"
+    size: "32px"
+  brand-mark-icon:
+    backgroundColor: "{colors.mark-icon-ground}"
+    textColor: "{colors.mark-icon-ink}"
+    rounded: "{rounded.none}"
+    padding: "0"
   excerpt-code:
     backgroundColor: "{colors.panel}"
     textColor: "{colors.ink}"
@@ -151,6 +169,10 @@ components:
 > Ghi lại **sau khi dựng xong**, từ mã đã ship (2026-09-02, hướng "Giáo trình LaTeX, lề rộng", seed 57dcb485, chế độ Operate). Mọi giá trị dưới đây đọc ra từ `apps/web/src/styles/tokens.css`, `index.css`, `home.css`, `courses.css`, `shell-modes.css`, `landing.css`, `settings-auth.css` và ảnh chụp ở `.impeccable/review/`. Frontmatter là chuẩn; văn xuôi chỉ giải thích chỗ dùng.
 >
 > **Phạm vi.** Hệ này bao phủ running head (`#topbar`), `/` — Học tiếp cho người đã đăng nhập **và landing cho khách chưa đăng nhập** (bề mặt Persuade, `pages/Landing.tsx` qua `pages/HomeGate.tsx`, thêm 02/09/2026, hợp đồng `.impeccable/surfaces/apps-web-src-pages-landing-tsx.md`) —, `/courses`, `/progress`, và **cột form của `/login`** (bố cục một cột giữa trang, hai điều khiển thiết bị góc trên phải, câu trấn an; ô nhập và nút vẫn là kit kế thừa). **Reader** (`packages/course-kit/reader.css`, trang `/c/:courseId/:chapterId`) là một bề mặt riêng, chưa đụng tới, có `--serif`/`--sans` và bảng màu giấy ấm của riêng nó; không mô tả ở đây và không được "sửa cho khớp". Cài đặt, Admin và phần form của Đăng nhập vẫn đứng trên `app-screens.css` cũ (xem cuối tệp).
+>
+> **Bổ sung 03/09/2026 — vòng dấu hiệu.** Vòng này thay **mark và bộ biểu tượng**, không gì khác: `apps/web/src/shell/Logo.tsx`, `scripts/gen-icons.mjs`, năm tệp trong `apps/web/public/`, `manifest.webmanifest`, cặp `theme-color` trong `index.html` (hợp đồng hướng `.impeccable/surfaces/apps-web-src-shell-logo-tsx.md`, seed `d402f7c9`). Mục [Dấu hiệu và bộ biểu tượng](#dấu-hiệu-và-bộ-biểu-tượng-logotsx) dưới đây là phần duy nhất được **đo lại trên bản đã ship** ở ngày này.
+>
+> **⚠ Cảnh báo tồn đọng — frontmatter, mục Colors và mục Typography mô tả một thế giới đã bị thay.** Chúng ghi "giáo trình LaTeX, giấy trắng `#ffffff`", `theorem-blue: #0b5fa5`, và Charis SIL làm mặt chữ display. App đã ship **không** như vậy: thế giới hiện tại là **giấy kem `#f4f1e8` / bảng đá `#26312e`, mực `#23211c`, đất nung `#a94f2b`**, IBM Plex Sans trong khung app, Charis SIL chỉ ở phần đọc, Shantell Sans chỉ ở landing. Chênh lệch ấy có **trước** vòng này một thế hệ thiết kế và **không được đo lại** ở vòng này. Đừng đọc frontmatter, Colors hay Typography như hiện trạng; hai token `mark-icon-ground` / `mark-icon-ink` mới thêm là ngoại lệ, chúng đọc thẳng từ `Logo.tsx`. Cần một lượt `document` riêng cho khung app để hoà lại toàn bộ.
 
 ## Overview
 
@@ -302,9 +324,35 @@ Danh sách không đánh số. Mỗi mục là một liên kết khối `padding
 
 ### Running head (`#topbar`, `.tn-*`)
 - **Nền** `var(--page)`, `border-bottom: 1px solid var(--ink)` — không bóng, không màu khác giấy.
-- **Wordmark** `.tn-wordmark`: serif 18px 400, `--ink`, tracking 0. (Mark bên trái là placeholder, xem cuối tệp.)
+- **Wordmark** `.tn-wordmark`: serif 18px 400, `--ink`, tracking 0. Bên trái nó là **mark** ở 26px (`<Logo size={26} />`) — nét, không hộp, ăn `currentColor`; xem [Dấu hiệu và bộ biểu tượng](#dấu-hiệu-và-bộ-biểu-tượng-logotsx). Chữ trong wordmark là chỗ giữ chỗ (PRODUCT.md); **hình** của mark thì không.
 - **Mục điều hướng** `#topbar .tn-link`: inline-flex 36px cao, `padding: 0 2px; margin: 0 10px`, sans 13px 600 0.08em UPPERCASE, `--ink-2`, `color 150ms ease-out`; hover `--ink`; `.is-active` màu nhấn + `text-decoration: underline 1px; text-underline-offset: 9px`; focus outline 1px offset 4px. Không nền, không viên.
 - **Cụm phải** (`.tb-btn`, `#lang-select`, `.tn-account`): cùng ngữ pháp — cao 32px, `border: 0; border-radius: 0; background: transparent; box-shadow: none`, sans 13px 600 UPPERCASE `--ink-2`, hover `--ink`, focus outline 1px offset 3px. Biểu tượng là nét (SVG stroke), tài khoản là hai chữ cái đầu bằng chữ, không đĩa tô màu. Chỉ trong `#app:not(.reading)` — thanh của reader giữ nguyên.
+
+### Dấu hiệu và bộ biểu tượng (`Logo.tsx`)
+
+**"Nét vượt mép".** Khung mảnh là **đoạn văn**; nét đặc là **vệt người đọc để lại**, và nó dài hơn chỗ được đánh dấu — vượt ra ngoài cả mép trên lẫn mép dưới khung. Không có chữ cái trong hình: PRODUCT.md ghi tên *"Tự học"* là chỗ giữ chỗ và việc đặt tên thuộc chủ dự án, nên một monogram sẽ chết cùng ngày tên đổi. Đây là **ràng buộc của sản phẩm**, không phải một lựa chọn thẩm mỹ có thể lật lại trong một lượt thiết kế.
+
+- **Hình học, lưới 16** (`MARK` trong `Logo.tsx`): khung `x=3.4 y=3.4 w=9.4 h=9.2`, nét viền ở `opacity 0.50`; thanh đặc **tâm** `x=6.2`, chạy `y=0.9 → 15.1` (cao 14.2). Thanh nằm **chếch bên trong** khung, không đè mép trái.
+- **Bề dày theo cỡ RENDER, không theo tỉ lệ** (`weightFor`): `2.8/1.2` ở ≤18px, `2.9/1.3` ở ≤32px, `2.9/1.4` ở ≤96px, `2.8/1.4` trên 96px (thanh/khung). Cùng một độ đậm thị giác từ favicon 16px tới icon 512px.
+- **Trong khung app** (mặc định, không `boxed`): nét lấy `currentColor`, khung lấy cùng màu ấy ở `opacity 0.50`. **Nền của mark là token mặt mà màn chủ sơn** — `--page` ở `/` và `/courses`, `--surface-1` ở `/login`; chênh một bậc là thuộc tính của màn, không phải lệch của mark. Không hộp, không nền riêng, `border-radius: 0` (mark là nét, không phải ô).
+- **Dạng app icon** (`boxed`, và cả năm tệp sinh ra): nền **bảng đá** `#26312e`, nét **kem** `#f4f1e8` — ghim cứng vì nó không có màn chủ nào để thừa kế. **Đất nung bị loại khỏi dạng này**: `#a94f2b` trên `#26312e` chỉ đạt ~2.4:1.
+- **Inset**: `0.78` cho **mọi** dạng có nền (`boxed`, favicon, apple-touch, hai icon `any`). `0.52` **chỉ** cho bản `maskable`, vì Android cắt tròn với vùng an toàn ~80% đường kính. Ở dạng `boxed`, bề dày tính theo `size × 0.66` để bù độ đậm thị giác khi mark chỉ chiếm phần lõi.
+- **Cỡ đang dùng**: 26px trên running head (`TopNav.tsx`), 32px trên `/login` (`Login.tsx`), 16px cho favicon, 180/192/512 cho raster.
+- **Tệp sinh ra**: `favicon.svg` (có **nền**, không trong suốt — nét mảnh trong suốt biến mất trên thanh tab tối), `apple-touch-icon.png` 180, `icon-192.png`, `icon-512.png` (`purpose: any`), `icon-maskable-512.png` (`purpose: maskable`). Manifest: `background_color` và `theme_color` đều `#26312e`.
+- **`theme-color` trong `index.html`** là một **cặp theo giao diện hệ điều hành**, không theo công tắc chủ đề trong app: `#f4f1e8` cho `light`, `#26312e` cho `dark`. Lý do đo được: nó tô thanh trình duyệt **trước** khi React đọc được lựa chọn đã lưu.
+- **`aria-hidden="true"`**: mark không mang tên có thể đọc; tên nằm ở wordmark chữ bên cạnh.
+
+### Named Rules
+
+**Quy tắc Không chữ cái.** Dấu hiệu không mang chữ cái, monogram, hay chữ viết tắt — cho tới khi chủ dự án đặt tên. Nó mang **nghĩa** (đoạn văn và vệt để lại), nên nó sống sót một lần đổi tên. Cũng không dùng cách xếp mặc định của thể loại: sách mở, mũ cử nhân, bóng đèn, tia sét.
+
+**Quy tắc Một hình học.** `MARK` trong `Logo.tsx` là nguồn sự thật duy nhất. `scripts/gen-icons.mjs` **đọc** hằng số ấy ra khỏi mã nguồn và không giữ bản sao; `Logo.icons.test.ts` sinh lại vào thư mục tạm rồi so từng byte với tệp đã ship. Sửa hình ở component rồi chạy `node scripts/gen-icons.mjs`; **không** sửa PNG/SVG bằng trình đồ hoạ. Trong chính vòng dựng này biểu tượng và component đã trôi ra khỏi nhau hai lần mà không gì báo — bài test là chỗ chặn.
+
+**Quy tắc Bề dày theo cỡ render.** Bề dày nét là hàm của **số px được vẽ ra**, không phải của tỉ lệ hình học. Một tệp SVG dùng lại ở mọi cỡ sẽ mảnh dần cho tới khi khung nhoè vào nét. Thêm một cỡ dùng mới thì thêm một bậc vào `weightFor`, đừng để nó rơi vào bậc gần nhất mà không nhìn.
+
+**Quy tắc Khung không biến mất.** Không có bản "bỏ khung ở cỡ nhỏ" và không có bản dời thanh ra mép trái. Cả hai đã thử: bỏ khung còn lại một thanh dọc; dời thanh ra mép làm cạnh trái biến mất sau thanh và khung đọc thành cái ngoặc ba cạnh, mất luôn ý "khung là thứ *được* đánh dấu" (chủ dự án bác). Lòng khung ở cỡ nhỏ được mở bằng cách làm **mảnh** nét khung, không bằng cách bỏ hay dời gì.
+
+**Quy tắc Ngưỡng tương phản chung một mức.** `opacity 0.50` của khung là **giá trị đo**, không phải khẩu vị: 3.09:1 trên kem, 4.06:1 trên bảng đá trong khung app, 4.20:1 trên nền icon. Nó được nâng từ 0.42 (2.49:1) vì cùng bản dựng ấy đã loại đất nung khỏi app icon ở 2.4:1 — một hệ không được dùng hai ngưỡng cho hai màu. 3:1 là **sàn** cho hình đồ hoạ không phải chữ, không phải đích; nếu một mặt viết mới rơi xuống dưới, sửa nền hoặc nâng độ mờ, đừng hạ ngưỡng.
 
 ### Trạng thái rỗng / đang tải / lỗi
 Một đoạn văn, không phải thẻ: `.home-note`/`.prog-note`/`.courses-note` serif nghiêng 16px `--ink-3`; `.home-empty` tiêu đề serif 26px + lede 16.5px, `max-width: 56ch`; lỗi là `<p role="alert">` serif 16px `--ink-2` tại chỗ, không toast.
@@ -345,6 +393,10 @@ Chỉ thêm những gì landing có mà các trang kia không; mọi thứ khác
 - **Do** thuyết phục bằng một trích đoạn thật của giáo trình đặt ở cỡ đọc (serif 17px/1.55, 66ch), với câu bôi đen mang màu bút `--s4` 26% và ghi chú neo đúng câu ấy ở lề; giới hạn lời hứa về gia sư ở việc *đọc ghi chú* (`read_my_notes`).
 - **Do** tách các cảnh của một trang dài bằng khoảng trắng 56px (44px dưới 900px), lớn hơn mọi khoảng bên trong cảnh; giữ thứ tự DOM đoạn → ghi chú → hành động khi về một cột.
 
+- **Do** sinh lại mọi tệp biểu tượng bằng `node apps/web/scripts/gen-icons.mjs` sau khi sửa `MARK`, và chạy `Logo.icons.test.ts` — hình học chỉ có một nguồn.
+- **Do** để mark trong khung app ăn `currentColor` trên đúng token mặt của màn chủ (`--page`, `--surface-1`); chỉ dạng app icon mới ghim màu cứng.
+- **Do** thêm một bậc vào `weightFor` khi mark xuất hiện ở một cỡ render mới.
+
 ### Don't:
 - **Don't** thêm eyebrow/kicker — một dòng nhãn đứng *trên* tiêu đề. Tiêu đề tự đứng; nhãn đi run-in.
 - **Don't** dùng thẻ, `box-shadow`, `border-radius`, nền khác `--page`, hay `border-left` màu (bất kỳ độ dày nào >1px) trong khung `.doc` và running head.
@@ -369,5 +421,9 @@ Chỉ thêm những gì landing có mà các trang kia không; mọi thứ khác
 - `apps/web/src/styles/app-screens.css` (1.896 dòng) vẫn tạo kiểu Cài đặt, Admin, Đăng nhập theo thời Untitled UI: thẻ, `--radius-md/lg/xl` (8/10/12px), `--shadow-xs…lg`, heading sans đậm qua `#app:not(.reading) #content h1/h2/h3`. Khung `.doc` chỉ *thắng* các luật ấy trong địa phận của mình bằng tiền tố hai id; không xoá chúng. Ảnh `login-desktop-light.png` và `settings-desktop-light.png` ở `.impeccable/review/` chỉ để chứng minh CSS dùng chung vẫn chạy.
 - `tokens.css` còn giữ `--radius-*`, `--shadow-*`, `--shadow-ring-brand: 0 0 0 4px #f4ebff` (tím kit cũ) và thang success/warning/error. Chúng là token của màn kế thừa; khung `.doc` không dùng cái nào và không được coi chúng là lựa chọn "có sẵn" của hệ này.
 - `/login` (`settings-auth.css`, `pages/Login.tsx`) từ 02/09/2026 **bỏ panel ảnh giới thiệu**: một cột form `.auth-side` căn giữa cả hai chiều (`flex: 1 1 22rem`, `min-height: 100dvh`, nội dung `max-width: 22rem`, nền `--surface-1`), hai điều khiển thiết bị (chủ đề, ngôn ngữ) ở góc trên phải `.auth-chrome-top` (`top: 16px; right: 16px`) là chữ/nét trên giấy — cao 32px, `border: 0; border-radius: 0; background: transparent; box-shadow: none`, `--ink-2` → `--ink` khi hover, `color 150ms ease-out` — và câu trấn an `.auth-reassure` là một đoạn văn phụ thường (13px `--ink-3`, căn giữa; không hộp, không biểu tượng). Phần còn lại của form (nhan đề sans 28px 600, ô nhập 44px, `.btn.primary`, ring focus `--shadow-ring-brand`, ring trắng 50% của điều khiển) vẫn là kit kế thừa, cùng tồn tại như Cài đặt/Admin; ảnh `login-onecol-light.png`, `login-onecol-mobile.png`. Các khoá `login.pitch.*`/`login.point.*` đã bị gỡ khỏi catalog i18n.
-- Tên sản phẩm "Tự học" và mark xanh vuông bo góc ở góc trái running head là **placeholder** (PRODUCT.md). Mark ấy là hộp tô màu nhấn duy nhất còn lại trên running head; nó chưa được quyết, nên không ghi thành luật hình dạng.
+- **Tên sản phẩm "Tự học" vẫn là placeholder** (PRODUCT.md, Brand Commitments); việc đặt tên là quyết định của chủ dự án và không một lượt thiết kế nào được tự bịa tên mới. **Mark thì không còn là placeholder**: ô vuông bo góc tô màu nhấn ở góc trái running head đã bị gỡ trong vòng 03/09/2026 và thay bằng "Nét vượt mép" — hình đã quyết, chữ thì chưa. Đó chính là lý do dấu hiệu không mang chữ cái. Trên running head hôm nay **không còn hộp tô màu nhấn nào**.
 - `.sb-*` trong `shell-modes.css` (thanh bên khi *trong* một khoá: thanh tiến độ viên 999px, `--grid`) thuộc về vỏ của reader, ngoài phạm vi hệ này.
+- **Don't** đặt chữ cái, monogram hay tên viết tắt vào dấu hiệu, và đừng đóng khung mark trong một ô tô màu bo góc — cả hai đã bị gỡ và cả hai chết cùng ngày sản phẩm được đặt tên.
+- **Don't** sửa `favicon.svg` hay bốn tệp PNG bằng trình đồ hoạ, và đừng để `docs/icons.md`, `gen-icons.mjs` hay một component khác giữ bản sao của hình học.
+- **Don't** làm favicon nền trong suốt, dùng đất nung `#a94f2b` trên bảng đá `#26312e` (~2.4:1), hay hạ độ mờ khung xuống dưới ngưỡng 3:1 để "nhẹ hơn".
+- **Don't** đọc frontmatter, mục Colors hay mục Typography của tệp này như hiện trạng — xem cảnh báo tồn đọng ở đầu tệp.
