@@ -336,14 +336,35 @@ The copy is gone now, so the outcome no longer depends on `courses/` at all.
 
 1. dash.cloudflare.com → Workers & Pages → Create → Pages → Connect to Git → pick this repo.
 2. Build settings:
-   - Build command: `cd apps/web && bun install && bun run build`
-     — **the `bun install` is load-bearing and this line used to omit it**, which
-     fails the build in 2 seconds with `tsc: command not found` (exit 127).
-     Cloudflare installs dependencies automatically only when it finds a manifest
-     at the *root directory* it was pointed at; this repo has **no root
-     `package.json`** and no workspaces (`apps/web` is self-contained, with its
-     own `package.json` and tracked `bun.lock`), so nothing is ever installed on
-     your behalf and `tsc`/`vite` are simply absent when the build script runs.
+   - Build command:
+     ```
+     cd packages/course-format && bun install && cd ../../apps/web && bun install && bun run build
+     ```
+     **Two installs, and both are load-bearing.** This line used to read
+     `cd apps/web && bun run build`, and each missing piece fails differently:
+
+     - **No install at all** → `tsc: command not found`, exit 127, dead in 2
+       seconds. Cloudflare installs dependencies for you only when it finds a
+       manifest at the *root directory* it was pointed at. This repo has **no
+       root `package.json`** and no workspaces — `apps/web` and
+       `packages/course-format` each carry their own `package.json` and tracked
+       `bun.lock` — so nothing is installed on your behalf and `tsc`/`vite` are
+       simply absent.
+     - **Installing only `apps/web`** → `tsc -b` compiles across the project
+       reference into `packages/course-format`, whose own `parse5` and `fflate`
+       live in *its* `node_modules`, not `apps/web`'s. Node resolution walks up
+       from the importing file, so it never sees `apps/web/node_modules`. The
+       build dies with `Cannot find module 'parse5'` plus a cascade of TS2339 /
+       TS4112 errors inside `BoundedTokenizer` — none of which name the real
+       cause. The Makefile has recorded this exact trap since Pha 1 (see
+       `DEP_DIRS` and the comment above it: *"thiếu packages/course-format →
+       test-web thoát 2, lỗi resolve `parse5`"*); `make deps` is the local
+       equivalent of this line.
+
+     **Verified**, not reasoned: a clean `git clone --depth 1` of this repo at
+     `7b89c3d`, then exactly the command above, exits 0 and produces a `dist/`
+     holding `assets/`, `course-kit/`, `index.html`, `favicon.svg` and a
+     `_redirects` that is byte-for-byte `/* /index.html 200`.
    - Build output directory: `apps/web/dist`
    - Root directory: repo root (this is a monorepo; the build command itself `cd`s into `apps/web`)
 3. Settings → Environment variables → add `VITE_API_URL` = `https://api-tuhoc.duy.dev` for the **Production** environment. Unlike `CORS_ORIGIN`, this one cannot be committed anywhere in the repo — it is baked into the JS bundle at build time, so it has to be visible to Cloudflare's own build step. This is a Vite *build-time* variable — it has to be visible to the build step, which is why it's set here and not in `apps/web/wrangler.toml` (see that file's own comment for why a `[vars]` block there wouldn't reach it: those are Pages *Functions* runtime bindings, and this app has no Functions).
