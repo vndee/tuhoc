@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { Logo, MARK, MARK_ICON_GROUND, MARK_ICON_INK } from './Logo';
+import { Logo, MARK, MARK_ICON_ACCENT, MARK_ICON_GROUND, MARK_ICON_INK } from './Logo';
 
 const WEB = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const PUBLIC = path.join(WEB, 'public');
@@ -59,7 +59,7 @@ describe('component vẽ đúng hình học của MARK', () => {
   });
 
   it('nét lấy tâm và chiều dài từ MARK', () => {
-    const m = markup.match(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" fill="currentColor"/);
+    const m = markup.match(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" fill="var\(--accent\)"/);
     expect(m, 'không tìm thấy <rect> của nét trong markup').not.toBeNull();
     const [, x, y, w, h] = m as RegExpMatchArray;
     expect(Number(x) + Number(w) / 2).toBeCloseTo(MARK.bar.cx, 5);
@@ -91,6 +91,10 @@ describe('favicon.svg khớp hình học của Logo', () => {
     expect(Number(attr(f, 'height'))).toBe(MARK.frame.h);
     expect(Number(attr(f, 'opacity'))).toBe(MARK.frame.opacity);
     expect(attr(f, 'stroke')).toBe(MARK_ICON_INK);
+  });
+
+  it('nét của biểu tượng mang màu đất nung bản tối, không phải kem', () => {
+    expect(attr(rect(2), 'fill')).toBe(MARK_ICON_ACCENT);
   });
 
   it('nét nằm CHẾCH BÊN TRONG khung, không đè lên mép trái', () => {

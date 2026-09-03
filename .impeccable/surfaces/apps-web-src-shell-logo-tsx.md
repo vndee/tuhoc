@@ -22,3 +22,29 @@ FIRST VIEWPORT: Trên lưới 16, khung chữ nhật mảnh 9.4×9.2 đặt tạ
 FORM: "Nét vượt mép", ứng viên 5 trong danh sách xếp theo cộng hưởng (bảng phấn và vệt xoá), chủ dự án chọn sau vòng gieo lại thang bạo. Seed d402f7c9.
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+
+## Ba quyết định uỷ quyền (04/09/2026)
+
+Chủ dự án nói "quyết thay tôi" cho ba câu hỏi còn mở. Ghi ở đây vì chúng đổi
+hình đang ship, và vì lý do quan trọng hơn kết luận.
+
+**Lòng khung ở 16px — CHẤP NHẬN, không sửa.** Đo bằng `rsvg-convert` thật:
+khoảng hở giữa mép trong khung trái và nét là 0.8 đơn vị lưới = **0.62 device
+px** ở inset 0.78, nên nó không render được. Mọi cách đóng đều đòi một hình học
+riêng cho cỡ nhỏ — tăng inset lên 0.95 cho 0.76px, dời tâm nét sang 6.4 cho
+0.78px, không cách nào chạm 1px, và cách duy nhất đủ (tâm ~6.9) biến favicon
+thành một hình KHÁC với component. Đó đúng là lỗi cả vòng này dựng ra để đóng.
+Đổi một bảo đảm cấu trúc thật lấy 0.6px không ai nhận ra là đánh đổi tồi.
+
+**Nét chính mang màu nhấn — ĐỔI.** Trước đó nét lấy `currentColor`, cho
+14.24:1 trên kem — đúng bằng giá trị của chữ đứng cạnh, nên mark chìm vào dòng
+chữ như một ký tự nữa. Nay nét lấy `var(--accent)`: 4.84:1 trên kem, 5.32:1
+trên bảng đá, cả hai dư ngưỡng. Khung VẪN `currentColor`, và sự phân đôi ấy
+chính là nghĩa của hình: đoạn văn là mực của trang, nét là của người đọc.
+Dạng app icon lấy `#dd9165` (bản nhấn đã nâng một bậc, 5.32:1 trên bảng đá) —
+không phải `#a94f2b`, vốn chỉ đạt 2.46:1 trên cùng nền ấy.
+
+**Màn đăng nhập 32 → 44px.** Đó là màn duy nhất mark là CHỦ THỂ chứ không phải
+mốc điều hướng, và `weightFor` vốn đã có sẵn bậc cho 44. Trước thay đổi này
+mark chưa bao giờ hiện quá 32px ở đâu trong sản phẩm, nên không có khoảnh khắc
+nào người dùng thấy trọn hình.
