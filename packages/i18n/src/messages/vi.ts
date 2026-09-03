@@ -280,6 +280,10 @@ export const vi = {
   'course.parts.title': (n: string) => `Khoá này đi qua ${n} chặng`,
   'course.parts.hint': 'Chi tiết từng chương nằm ở mục lục bên trái.',
   'course.partCount': (read: string, total: string) => `${read}/${total}`,
+  /** Task 5: nút ghi danh/bỏ ghi danh trên trang khoá — `pages/CourseHome.tsx`. */
+  'course.enroll': 'Bắt đầu học',
+  'course.unenroll': 'Bỏ khỏi khoá của tôi',
+  'course.enrolling': 'Đang thêm…',
   'chapter.notFound': 'Không tìm thấy chương này.',
   'chapter.notFoundInCourse': 'Không tìm thấy chương này trong khóa học.',
 

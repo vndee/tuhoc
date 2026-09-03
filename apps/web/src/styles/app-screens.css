@@ -683,6 +683,30 @@ html[data-theme='dark'] #topbar #lang-select {
   color: var(--ink-3);
 }
 
+/* Lối bỏ ghi danh (Task 5): một liên kết mảnh, KHÔNG phải nút. Nó không được
+   cạnh tranh với hành động chính (`.btn.primary`) ngay bên cạnh — người vào
+   trang này để đọc, không phải để dọn danh sách "Học tiếp" của họ. */
+#app:not(.reading) .ch-unenroll {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  color: var(--ink-3);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+#app:not(.reading) .ch-unenroll:hover {
+  color: var(--accent);
+}
+
+#app:not(.reading) .ch-unenroll:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 #app:not(.reading) .ch-parts-h {
   margin: 0 0 4px;
   font-size: 16px;

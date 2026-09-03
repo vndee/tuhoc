@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { createEnrollment, deleteEnrollment, enrollmentsQueryKey, fetchEnrollments } from '../api/enrollments';
 import { useMe } from '../api/useMe';
 import { flatChapters, nextChapter } from '../course/chapters';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
@@ -53,6 +54,43 @@ export function CourseHome() {
   const me = useMe();
   const confirmedLoggedIn = me.isSuccess && me.data != null;
   const [doneChapterIds, setDoneChapterIds] = useState<ReadonlySet<string>>(new Set());
+
+  /* Task 5 — trước task này KHÔNG nơi nào trong app gọi `createEnrollment`
+   * ngoài chính test của Task 2, nên "Học tiếp" của mọi tài khoản trống vĩnh
+   * viễn. Đây là nơi ghi danh thật sự bắt đầu.
+   *
+   * BẪY RULES OF HOOKS: `courseId` có thể là `undefined` (route không khớp),
+   * và ngay dưới đây component early-return khi vậy. `useQuery`/`useMutation`
+   * phải khai TRƯỚC nhánh return đó — y hệt `manifestQuery` ở trên — nếu
+   * không React sẽ gọi số hook khác nhau giữa các lần render.
+   *
+   * `enabled` khoá theo CẢ `courseId != null` LẪN `confirmedLoggedIn`: một
+   * khách ẩn danh bấm nút này sẽ bị `api.post`'s `redirectOn401` (mặc định
+   * true) hất thẳng sang /login, mất luôn ý định đang đọc trang — và họ
+   * không mất gì khi không thấy nút, vì đọc là công khai và trang đã có lối
+   * mời đăng nhập riêng cho việc đó. Cùng lập luận `reader/ChapterView.tsx`
+   * dùng cho `reader.anonNudge`.
+   */
+  const queryClient = useQueryClient();
+  const enrollmentsQuery = useQuery({
+    queryKey: enrollmentsQueryKey(),
+    queryFn: () => fetchEnrollments(),
+    enabled: courseId != null && confirmedLoggedIn,
+    retry: false,
+  });
+  const enrolled = (enrollmentsQuery.data ?? []).some((e) => e.courseId === courseId);
+
+  const enroll = useMutation({
+    mutationFn: () => createEnrollment(courseId as string),
+    // Nạp lại từ cache đã mất hiệu lực, không tự vá — `enrollmentsQueryKey()`
+    // là đúng khoá "Học tiếp" đọc, nên tự vá ở đây sẽ để cache của trang kia
+    // cũ đi trong im lặng.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: enrollmentsQueryKey() }),
+  });
+  const unenroll = useMutation({
+    mutationFn: () => deleteEnrollment(courseId as string),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: enrollmentsQueryKey() }),
+  });
 
   if (courseId == null) {
     return <p className="ch-lede">{t('course.notFound')}</p>;
@@ -125,6 +163,33 @@ export function CourseHome() {
             >
               {t(read === 0 ? 'home.start' : 'home.continue')}
             </Link>
+            {/* Chỉ hiện cho người đã xác nhận đăng nhập — lý do ở khối
+                khai hook phía trên. */}
+            {confirmedLoggedIn && !enrolled && (
+              <button
+                type="button"
+                className="btn primary"
+                disabled={enroll.isPending}
+                onClick={() => enroll.mutate()}
+              >
+                {t(enroll.isPending ? 'course.enrolling' : 'course.enroll')}
+              </button>
+            )}
+            {confirmedLoggedIn && enrolled && (
+              /* KHÔNG hộp xác nhận. Thao tác này chỉ xoá một hàng trong
+                 `enrollments`; tiến độ và ghi chú còn nguyên
+                 (Repo.DeleteEnrollment), và ghi danh lại khôi phục đúng
+                 trạng thái cũ. Một hộp xác nhận cho một việc hoàn tác được
+                 chỉ dạy người dùng bấm qua mọi hộp xác nhận. */
+              <button
+                type="button"
+                className="ch-unenroll"
+                disabled={unenroll.isPending}
+                onClick={() => unenroll.mutate()}
+              >
+                {t('course.unenroll')}
+              </button>
+            )}
           </div>
         </section>
       )}

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -46,6 +47,12 @@ const server = setupServer(
   // progress by default; the one test that needs a chapter already marked
   // read overrides this with `server.use(...)`.
   http.get('/progress', () => HttpResponse.json({ progress: [] })),
+  // Task 5: `CourseHome` now also asks "is this course already mine" via
+  // `GET /enrollments`, to decide between "Bắt đầu học" and "Bỏ khỏi khoá của
+  // tôi". Default: chưa ghi danh khoá nào — the case every pre-Task-5 test in
+  // this file implicitly assumes. The Task 5 tests below override this per
+  // case with `server.use(...)`.
+  http.get('/enrollments', () => HttpResponse.json({ enrollments: [] })),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
@@ -265,5 +272,106 @@ describe('Task 12 — tiến độ chỉ hiện khi có phiên', () => {
     const counts = Array.from(document.querySelectorAll('.ch-part-count'));
     expect(counts[0]?.getAttribute('data-state')).toBe('partial'); // Phần A: 1/2 (ch-1)
     expect(counts[1]?.getAttribute('data-state')).toBe('none'); // Phần B: 0/2
+  });
+});
+
+/**
+ * Task 5 — trước task này KHÔNG có nơi nào trong app gọi `createEnrollment`
+ * ngoài chính test của nó (Task 2); nghĩa là "Học tiếp" của MỌI tài khoản
+ * trống vĩnh viễn. `/c/:courseId` là nơi hành động ấy xuất hiện.
+ *
+ * Cả ba bài canh trên REQUEST thật app gửi ra (method + path/param + body),
+ * không chỉ trên chuyện nút có mặt hay bấm được — một cú `mutationFn` gọi sai
+ * hàm, sai `courseId`, hoặc quên `await` vẫn có thể để nút "trông đúng" mà
+ * không gửi gì cả.
+ */
+describe('Task 5 — ghi danh và bỏ ghi danh ngay tại trang khoá', () => {
+  it('chưa ghi danh: hiện "Bắt đầu học"; bấm gửi đúng POST /enrollments {courseId}, rồi chuyển sang lối bỏ ghi danh', async () => {
+    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(4))));
+
+    const posted: unknown[] = [];
+    let enrolled = false;
+    server.use(
+      http.get('/enrollments', () =>
+        HttpResponse.json({ enrollments: enrolled ? [{ courseId: 'demo', createdAt: '2026-01-01T00:00:00Z' }] : [] }),
+      ),
+      http.post('/enrollments', async ({ request }) => {
+        posted.push(await request.json());
+        enrolled = true;
+        return new HttpResponse(null, { status: 201 });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderCourseHome();
+
+    const btn = await screen.findByRole('button', { name: 'Bắt đầu học' });
+    await user.click(btn);
+
+    // REQUEST thật, không phải chỉ "nút đã bấm được": đúng method (POST, qua
+    // `http.post`), đúng thân ({courseId: 'demo'} — của khoá đang mở, không
+    // phải một chuỗi rỗng hay `undefined` lọt qua enabled-guard).
+    await waitFor(() => expect(posted).toEqual([{ courseId: 'demo' }]));
+    // `invalidateQueries` phải thật sự khiến trang đọc lại — nút đổi thành lối
+    // bỏ ghi danh, không kẹt ở trạng thái cũ.
+    expect(await screen.findByRole('button', { name: 'Bỏ khỏi khoá của tôi' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Bắt đầu học' })).not.toBeInTheDocument();
+  });
+
+  it('đã ghi danh: hiện lối "Bỏ khỏi khoá của tôi"; bấm gửi đúng DELETE /enrollments/demo, rồi quay lại "Bắt đầu học"', async () => {
+    let enrolled = true;
+    server.use(
+      http.get('/courses/demo', () => HttpResponse.json(buildManifest(4))),
+      http.get('/enrollments', () =>
+        HttpResponse.json({ enrollments: enrolled ? [{ courseId: 'demo', createdAt: '2026-01-01T00:00:00Z' }] : [] }),
+      ),
+    );
+
+    let deletedCourseId: string | undefined;
+    server.use(
+      http.delete('/enrollments/:courseId', ({ params }) => {
+        deletedCourseId = String(params.courseId);
+        enrolled = false;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderCourseHome();
+
+    const btn = await screen.findByRole('button', { name: 'Bỏ khỏi khoá của tôi' });
+    // KHÔNG hộp xác nhận nào đứng giữa cú bấm và request: một cú click duy
+    // nhất phải đủ để gửi DELETE.
+    await user.click(btn);
+
+    await waitFor(() => expect(deletedCourseId).toBe('demo'));
+    expect(await screen.findByRole('button', { name: 'Bắt đầu học' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Bỏ khỏi khoá của tôi' })).not.toBeInTheDocument();
+  });
+
+  it('người đọc CHƯA đăng nhập: không gọi /enrollments, không thấy nút ghi danh hay bỏ ghi danh nào (tránh bị hất sang /login)', async () => {
+    let enrollmentsCallCount = 0;
+    server.use(
+      http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })),
+      http.get('/courses/demo', () => HttpResponse.json(buildManifest(4))),
+      // Đếm lời gọi thay vì chỉ nhìn nút: nếu component lỡ bật query này cho
+      // khách ẩn danh (chỉ khoá theo `courseId`, quên khoá theo
+      // `confirmedLoggedIn`), `api.get`'s `redirectOn401` mặc định sẽ ném
+      // sang /login — thứ mất đi chính là ý định đang đọc trang này. Đếm số
+      // lần gọi bắt được cả trường hợp ấy lẫn trường hợp trùng hợp nút vẫn
+      // ẩn dù request đã bay ra.
+      http.get('/enrollments', () => {
+        enrollmentsCallCount += 1;
+        return HttpResponse.json({ enrollments: [] });
+      }),
+    );
+
+    renderCourseHome();
+    await screen.findByRole('heading', { name: 'Khóa học demo' });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(enrollmentsCallCount).toBe(0);
+    expect(screen.queryByRole('button', { name: 'Bắt đầu học' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Bỏ khỏi khoá của tôi' })).not.toBeInTheDocument();
   });
 });
