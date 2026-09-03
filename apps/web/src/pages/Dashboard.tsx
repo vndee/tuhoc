@@ -80,10 +80,16 @@ import { useProgress } from '../progress/useProgress';
  */
 export function Dashboard() {
   const { t } = useLanguage();
+  // Fix round cuối (item 2) — KHÔNG `retry: false` ở đây nữa. `/progress`
+  // ngay bên cạnh (qua `useLastStudiedCourseId`) giữ nguyên ba lần thử lại
+  // mặc định của `QueryClient` (App.tsx không ghi đè); trước bản vá này
+  // `/enrollments` là nguồn DUY NHẤT trong ba nguồn của trang bỏ ngay ở lần
+  // hỏng đầu, nên nguồn ÍT bền nhất lại là nguồn quyết định cả trang có gì
+  // để vẽ hay không. Một cú chập chờn mạng ngắn giờ có ba lần thử trước khi
+  // trang phải nói thật rằng nó không tải được.
   const enrollmentsQuery = useQuery({
     queryKey: enrollmentsQueryKey(),
     queryFn: () => fetchEnrollments(),
-    retry: false,
   });
   const statsQuery = useStats();
   const lastStudied = useLastStudiedCourseId();
@@ -112,7 +118,21 @@ export function Dashboard() {
         <section className="doc-main">
           {focusCourseId !== undefined && <Continue courseId={focusCourseId} />}
           {focusCourseId === undefined && !settled && <p className="home-note">{t('home.loading')}</p>}
-          {focusCourseId === undefined && settled && <EmptyHome />}
+          {/* Fix round cuối (item 2) — một `GET /enrollments` hỏng KHÔNG được
+              vẽ thành "bạn chưa bắt đầu khoá nào": trước bản vá này
+              `isPending` tắt ngay khi query lỗi, `settled` bật, `enrolledIds`
+              rơi về `[]` (`?? []` ở trên), và trang kết luận "rỗng" — một câu
+              KHẲNG ĐỊNH sai, không phân biệt được với sự thật, cho một người
+              THẬT SỰ có khoá đang học. `role="alert"` + `.lib-notice-server`
+              là quy ước lỗi-tải-server đã có của nhánh này (`CourseHome.tsx`,
+              `ChapterView.tsx`); `progress.error` (`pages/Progress.tsx`) là
+              tiền lệ cho một DÒNG LỖI riêng, tách khỏi trạng thái rỗng. */}
+          {focusCourseId === undefined && enrollmentsQuery.isError && (
+            <p role="alert" className="lib-notice-server">
+              {t('home.enrollmentsError')}
+            </p>
+          )}
+          {focusCourseId === undefined && settled && !enrollmentsQuery.isError && <EmptyHome />}
           {enrolledIds.length > 0 && <MyCourses courseIds={enrolledIds} focusCourseId={focusCourseId} />}
         </section>
 
