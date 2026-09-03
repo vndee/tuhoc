@@ -699,13 +699,13 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
 
 /* Người và bàn đậm nhất — đó là nhân vật. Những thứ đang học nhạt hơn một
    bậc: chúng ở trong đầu người ấy, không đứng ngang hàng với người. */
-.bd-fig-body,
-.bd-fig-desk {
+.bd-fig-book {
   stroke: var(--ink);
 }
 
-.bd-fig-book {
-  stroke: var(--ink-2);
+.bd-fig-lines,
+.bd-fig-rise {
+  stroke: var(--ink-3);
 }
 
 .bd-fig-net,
