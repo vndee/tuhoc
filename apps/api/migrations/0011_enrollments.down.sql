@@ -5,4 +5,4 @@
 -- bảng rỗng, tức mọi người đọc mất ghi danh và phải bấm "Bắt đầu học" lần nữa.
 -- progress và annotations không bị đụng tới, nên không có tiến độ hay ghi chú
 -- nào mất theo.
-DROP TABLE enrollments;
+DROP TABLE IF EXISTS enrollments;
