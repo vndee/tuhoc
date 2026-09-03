@@ -295,3 +295,80 @@ func (h *Handler) DeleteAnnotation(c *fiber.Ctx) error {
 
 	return c.SendStatus(fiber.StatusNoContent)
 }
+
+type enrollmentItem struct {
+	CourseID  string `json:"courseId"`
+	CreatedAt string `json:"createdAt"`
+}
+
+// Object có khoá, không phải mảng trần — cùng hình dạng listProgressResponse
+// và listAnnotationsResponse. api/client.ts phía web mặc định TỪ CHỐI một thân
+// 2xx parse ra mảng, và chỉ mở ngoại lệ cho đúng một lời gọi; đi mảng trần ở
+// đây là buộc phải mở thêm một ngoại lệ nữa mà không có lý do gì.
+type listEnrollmentsResponse struct {
+	Enrollments []enrollmentItem `json:"enrollments"`
+}
+
+type createEnrollmentRequest struct {
+	CourseID string `json:"courseId"`
+}
+
+// ListEnrollments handles GET /enrollments. Mounted behind auth.Require, so
+// auth.UID(c) is always populated by the time this runs.
+func (h *Handler) ListEnrollments(c *fiber.Ctx) error {
+	rows, err := h.uc.ListEnrollments(c.Context(), auth.UID(c))
+	if err != nil {
+		apilog.Internal(c, "userdata.ListEnrollments", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "list enrollments failed"})
+	}
+
+	// make(..., len) chứ không phải slice nil: encoding/json biến nil thành
+	// null, và một client gọi .map() trên null sẽ ném lỗi. Cùng lý do,
+	// cùng cách viết, như ListProgress ở trên.
+	resp := listEnrollmentsResponse{Enrollments: make([]enrollmentItem, len(rows))}
+	for i, e := range rows {
+		resp.Enrollments[i] = enrollmentItem{
+			CourseID:  e.CourseID,
+			CreatedAt: e.CreatedAt.UTC().Format(timeLayout),
+		}
+	}
+	return c.Status(fiber.StatusOK).JSON(resp)
+}
+
+// CreateEnrollment handles POST /enrollments {"courseId":"c"} -> 201, no body.
+//
+// 201 on the second identical call too: the repo's ON CONFLICT DO NOTHING
+// makes this idempotent, and a caller who pressed a button twice has the
+// result they wanted either way. Distinguishing "created" from "already
+// there" would hand the UI a difference it has no use for.
+func (h *Handler) CreateEnrollment(c *fiber.Ctx) error {
+	var req createEnrollmentRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	err := h.uc.CreateEnrollment(c.Context(), auth.UID(c), req.CourseID)
+	if errors.Is(err, ErrEmptyCourseID) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "courseId must not be empty"})
+	}
+	if err != nil {
+		apilog.Internal(c, "userdata.CreateEnrollment", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "create enrollment failed"})
+	}
+	return c.SendStatus(fiber.StatusCreated)
+}
+
+// DeleteEnrollment handles DELETE /enrollments/:courseId -> 204, no body.
+// 204 even when nothing was there to delete: see Repo.DeleteEnrollment's own
+// comment for why there is no 404 to give here.
+func (h *Handler) DeleteEnrollment(c *fiber.Ctx) error {
+	err := h.uc.DeleteEnrollment(c.Context(), auth.UID(c), c.Params("courseId"))
+	if errors.Is(err, ErrEmptyCourseID) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "courseId must not be empty"})
+	}
+	if err != nil {
+		apilog.Internal(c, "userdata.DeleteEnrollment", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "delete enrollment failed"})
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
