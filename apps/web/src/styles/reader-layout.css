@@ -565,12 +565,45 @@
   margin: 0 0 22px;
 }
 
+/* Task 6 (ghi-danh-khoa-hoc) — người ĐÃ đăng nhập nhưng tới thẳng chương này
+   qua liên kết chia sẻ, chưa ghi danh. Đứng đúng chỗ, cùng nhịp lề
+   (`margin: 0 0 22px`) như `.reader-anon-nudge` ngay trên — hai điều kiện
+   loại trừ nhau nên không bao giờ cùng có mặt, nhưng khi CÓ mặt nó phải giữ
+   đúng khoảng cách với phần chữ chương y hệt.
+
+   Nút, không phải khối chữ tĩnh: cùng khung viền/bo góc với nudge (đọc như
+   một lời mời, không phải cảnh báo), nhưng nền trong suốt + chữ màu accent
+   để mắt nhận ra ngay đây là một hành động bấm được, không phải một câu
+   thông báo. Không dùng `.btn.primary` (trang khoá dùng cho "Bắt đầu học") —
+   một CTA đặc màu ngay đầu trang đọc sẽ cạnh tranh với chính phần chữ mà
+   người đọc vừa mở trang ra để đọc. */
+#app.reading .reader-addmine {
+  margin: 0 0 22px;
+}
+
+#app.reading .reader-addmine-btn {
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+#app.reading .reader-addmine-btn:hover {
+  background: var(--accent-soft);
+}
+
 /* In ra giấy: mọi thứ ở trên là chrome màn hình. reader.css đã có một
    stylesheet in riêng; đây chỉ là những thứ tệp này thêm vào. */
 @media print {
   .rd-drawer-root,
   .rd-slot,
-  .reader-anon-nudge {
+  .reader-anon-nudge,
+  .reader-addmine {
     display: none;
   }
 }
