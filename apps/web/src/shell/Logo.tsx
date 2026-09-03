@@ -51,9 +51,21 @@ export interface LogoProps {
    * Nó sống ở khung app, nơi nó có nền kem để đứng.
    */
   boxed?: boolean;
-  /** Màu nét. Mặc định `currentColor` để mark ăn theo màu chữ chỗ đặt nó. */
+  /**
+   * Màu NÉT CHÍNH. Mặc định `var(--accent)` — đất nung ở giao diện sáng,
+   * và bản đã nâng một bậc ở giao diện tối, cả hai đã có sẵn trong
+   * `index.css` cùng lý do của chúng.
+   *
+   * KHÔNG phải `currentColor`, và đó là một quyết định có số đo: mực trên
+   * kem cho 14.24:1 — đúng bằng giá trị của chữ đứng ngay cạnh — nên mark
+   * chìm vào dòng chữ như một ký tự nữa. Đất nung cho 4.84:1 trên kem và
+   * 5.32:1 trên bảng đá: vẫn dư ngưỡng, mà lấy lại được vai của một dấu
+   * hiệu. Khung thì VẪN `currentColor`, nên hình đọc đúng nghĩa nó mang:
+   * đoạn văn là mực của trang, nét là của người đọc.
+   */
   color?: string;
-  /** Màu khung. Mặc định cùng `color`, mờ đi — khung là nền của nét, không cạnh tranh. */
+  /** Màu khung. Mặc định `currentColor` — khung là thứ ĐƯỢC đánh dấu, nên nó
+   *  thuộc về mực của trang, không thuộc về màu của dấu. */
   frameColor?: string;
   className?: string;
 }
@@ -95,10 +107,21 @@ export const MARK = {
 /** Nền và nét của dạng app icon — xem `boxed` ở trên cho lý do. */
 export const MARK_ICON_GROUND = '#26312e';
 export const MARK_ICON_INK = '#f4f1e8';
+/**
+ * Nét chính của dạng app icon: đất nung bản đã nâng một bậc, `5.32:1` trên
+ * nền bảng đá. Không dùng `#a94f2b` (bản sáng) ở đây — nó chỉ đạt 2.46:1
+ * trên cùng nền ấy, và đó là số đo đã loại nó khỏi biểu tượng ngay từ đầu.
+ *
+ * Vì sao biểu tượng mang màu chứ không phải kem trên bảng đá như bản trước:
+ * việc của nó là được NHẬN RA giữa ba mươi biểu tượng khác trên một màn hình
+ * chính. Kem trên nền tối là hình dạng của hàng chục ứng dụng tối giản; đất
+ * nung trên nền tối là hình dạng của đúng một cái.
+ */
+export const MARK_ICON_ACCENT = '#dd9165';
 
 export function Logo({
   size = 26,
-  color = 'currentColor',
+  color = 'var(--accent)',
   frameColor,
   boxed = false,
   className,
@@ -106,8 +129,8 @@ export function Logo({
   // Trong ô, mark chỉ chiếm phần lõi chứ không tràn sát mép, nên nét tính
   // theo cỡ NHỎ HƠN cỡ ô để bù lại độ đậm thị giác.
   const { bar, frame } = weightFor(boxed ? size * 0.66 : size);
-  const ink = boxed ? MARK_ICON_INK : color;
-  const rule = boxed ? MARK_ICON_INK : (frameColor ?? color);
+  const ink = boxed ? MARK_ICON_ACCENT : color;
+  const rule = boxed ? MARK_ICON_INK : (frameColor ?? 'currentColor');
 
   const mark = (
     <>

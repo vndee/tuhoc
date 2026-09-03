@@ -44,6 +44,7 @@ const M = {
 };
 const GROUND = src.match(/MARK_ICON_GROUND = '([^']+)'/)[1];
 const INK = src.match(/MARK_ICON_INK = '([^']+)'/)[1];
+const ACCENT = src.match(/MARK_ICON_ACCENT = '([^']+)'/)[1];
 
 /** Bề dày phải khớp `weightFor` trong Logo.tsx cho cỡ render tương ứng. */
 const svg = (px, inset, bar, frame) =>
@@ -52,7 +53,7 @@ const svg = (px, inset, bar, frame) =>
   `<g transform="translate(8,8) scale(${inset}) translate(-8,-8)">` +
   `<rect x="${M.fx}" y="${M.fy}" width="${M.fw}" height="${M.fh}" fill="none" ` +
   `stroke="${INK}" stroke-width="${frame}" opacity="${M.fo}"/>` +
-  `<rect x="${+(M.bcx - bar / 2).toFixed(4)}" y="${M.by}" width="${bar}" height="${M.bh}" fill="${INK}"/>` +
+  `<rect x="${+(M.bcx - bar / 2).toFixed(4)}" y="${M.by}" width="${bar}" height="${M.bh}" fill="${ACCENT}"/>` +
   `</g></svg>`;
 
 fs.writeFileSync(path.join(PUBLIC, 'favicon.svg'), svg(16, M.boxed, 2.8, 1.2));
