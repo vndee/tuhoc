@@ -611,6 +611,26 @@ describe('Học tiếp — trạng thái rỗng và tài khoản', () => {
     expect(screen.queryByRole('heading', { name: tr('vi', 'home.empty.heading') })).not.toBeInTheDocument();
   }, OVERSUBSCRIBED_MS);
 
+  /**
+   * Fix round cuối (item 2) — trước bản vá này, một `GET /enrollments` hỏng
+   * khiến `isPending` tắt ngay (query đã SETTLED, dù ở trạng thái lỗi),
+   * `settled` bật, `enrolledIds` rơi về `[]` (`?? []`), và trang vẽ
+   * `<EmptyHome>` — "Bạn chưa bắt đầu khoá nào" — cho một người CÓ THỂ đang
+   * có khoá đang học thật. Đó là trang KHẲNG ĐỊNH một điều SAI, không phân
+   * biệt được với sự thật, chứ không phải một trạng thái "chưa biết" trung
+   * tính. Bài này canh đúng chỗ đó: một cảnh báo `role="alert"` phải đứng
+   * vào, và nhan đề rỗng kia không được phép xuất hiện.
+   */
+  it('GET /enrollments trả 500: hiện cảnh báo tại chỗ, KHÔNG khẳng định "Bạn chưa bắt đầu khoá nào"', async () => {
+    server.use(http.get('/enrollments', () => new HttpResponse(null, { status: 500 })));
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+
+    renderDashboard();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(tr('vi', 'home.enrollmentsError'));
+    expect(screen.queryByRole('heading', { name: tr('vi', 'home.empty.heading') })).not.toBeInTheDocument();
+  }, OVERSUBSCRIBED_MS);
+
   // BÀI "ĐĂNG XUẤT" ĐÃ CHUYỂN SANG `pages/Settings.test.tsx`.
   //
   // Nút ấy rời Bảng điều khiển cùng vòng thiết kế lại: đăng xuất về đúng chỗ

@@ -304,6 +304,17 @@ export const vi = {
   'home.lede': 'Chỗ bạn đang đọc dở, và những ghi chú gần đây.',
   'account.logout': 'Đăng xuất',
   'home.loading': 'Đang tìm chỗ bạn đọc dở…',
+  /**
+   * Fix round cuối (item 2) — `GET /enrollments` là một trong ba nguồn
+   * `settled` chờ; trước bản vá này một lần hỏng của riêng nó khiến trang
+   * kết luận "chưa ghi danh gì" (`home.empty.heading`) cho một người CÓ khoá
+   * đang học — một khẳng định sai, không phân biệt được với sự thật. Câu
+   * này đứng thay vào chỗ đó khi `enrollmentsQuery.isError`, cùng quy ước
+   * `role="alert"` + `.lib-notice-server` mà `course.enrollFailed`/
+   * `reader.addToMineFailed` đã dùng, và cùng tinh thần `progress.error`
+   * (nguyên nhân giống nhau: số liệu nằm trên máy chủ, cần mạng để lấy).
+   */
+  'home.enrollmentsError': 'Chưa lấy được danh sách khoá của bạn. Phần này nằm trên máy chủ, nên cần mạng.',
   'home.eyebrow': 'Đang đọc',
   'home.continue': 'Đọc tiếp',
   'home.start': 'Bắt đầu đọc',

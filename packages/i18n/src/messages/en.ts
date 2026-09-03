@@ -213,6 +213,7 @@ export const en: Messages = {
   'home.lede': 'Where you left off, and the notes you have been taking.',
   'account.logout': 'Sign out',
   'home.loading': 'Finding where you left off…',
+  'home.enrollmentsError': "Couldn't load your courses. This lives on the server, so it needs a connection.",
   'home.eyebrow': 'Currently reading',
   'home.continue': 'Continue reading',
   'home.start': 'Start reading',
