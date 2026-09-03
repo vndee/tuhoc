@@ -58,3 +58,4 @@ go.work.sum
 .impeccable/build/
 .impeccable/questions/
 .impeccable/live/
+.impeccable/mocks/

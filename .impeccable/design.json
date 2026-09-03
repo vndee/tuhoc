@@ -1,75 +1,544 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-02T12:00:00+07:00",
+  "generatedAt": "2026-09-03T12:00:00+07:00",
   "title": "Design System: Tự học — khung app",
   "scope": {
-    "covers": ["#topbar (running head)", "/ (Học tiếp — đã đăng nhập)", "/ (landing cho khách — Persuade, pages/Landing.tsx qua HomeGate.tsx)", "/courses", "/progress", "/login (cột form một cột, điều khiển thiết bị, câu trấn an — ô nhập/nút vẫn kit kế thừa)"],
-    "excludes": ["packages/course-kit/reader.css và trang /c/:courseId/:chapterId — bề mặt riêng, chưa đụng", "Cài đặt / Admin / form của Đăng nhập (ô nhập, nút, ring) — app-screens.css kế thừa"],
-    "sources": ["apps/web/src/styles/tokens.css", "apps/web/src/styles/index.css", "apps/web/src/styles/home.css", "apps/web/src/styles/courses.css", "apps/web/src/styles/shell-modes.css", "apps/web/src/styles/landing.css", "apps/web/src/styles/settings-auth.css", ".impeccable/surfaces/apps-web-src-pages-landing-tsx.md", ".impeccable/review/*.png"]
+    "covers": [
+      "#topbar (running head)",
+      "/ (Học tiếp — đã đăng nhập)",
+      "/ (landing cho khách — Persuade, pages/Landing.tsx qua HomeGate.tsx)",
+      "/courses",
+      "/progress",
+      "/login (cột form một cột, điều khiển thiết bị, câu trấn an — ô nhập/nút vẫn kit kế thừa)",
+      "Dấu hiệu và bộ biểu tượng (apps/web/src/shell/Logo.tsx, scripts/gen-icons.mjs, apps/web/public/*, manifest.webmanifest, theme-color trong index.html) — vòng 03/09/2026, seed d402f7c9"
+    ],
+    "excludes": [
+      "packages/course-kit/reader.css và trang /c/:courseId/:chapterId — bề mặt riêng, chưa đụng",
+      "Cài đặt / Admin / form của Đăng nhập (ô nhập, nút, ring) — app-screens.css kế thừa"
+    ],
+    "sources": [
+      "apps/web/src/styles/tokens.css",
+      "apps/web/src/styles/index.css",
+      "apps/web/src/styles/home.css",
+      "apps/web/src/styles/courses.css",
+      "apps/web/src/styles/shell-modes.css",
+      "apps/web/src/styles/landing.css",
+      "apps/web/src/styles/settings-auth.css",
+      ".impeccable/surfaces/apps-web-src-pages-landing-tsx.md",
+      ".impeccable/review/*.png",
+      "apps/web/src/shell/Logo.tsx",
+      "apps/web/scripts/gen-icons.mjs",
+      "apps/web/public/favicon.svg",
+      "apps/web/public/manifest.webmanifest",
+      "apps/web/index.html",
+      "docs/icons.md"
+    ],
+    "staleness": "frontmatter, mục Colors và mục Typography của DESIGN.md mô tả một thế giới ĐÃ BỊ THAY (giấy trắng #ffffff, theorem-blue #0b5fa5, Charis SIL làm display). Thế giới đã ship là giấy kem #f4f1e8 / bảng đá #26312e, mực #23211c, đất nung #a94f2b, IBM Plex Sans trong khung app, Charis SIL chỉ ở phần đọc, Shantell Sans chỉ ở landing. Chênh lệch có trước vòng 03/09/2026 một thế hệ thiết kế và KHÔNG được đo lại ở vòng này; chỉ mục 'Dấu hiệu và bộ biểu tượng' và hai token mark-icon-* là đo trên bản đã ship ngày này."
   },
   "extensions": {
     "colorMeta": {
-      "theorem-blue": { "role": "primary", "displayName": "Xanh định lý", "canonical": "#0b5fa5", "cssVar": "--accent (sáng) = --color-brand-600", "tonalRamp": ["#052c4e", "#073c69", "#094d86", "#0b5fa5", "#2676b8", "#4d92cc", "#85b5de", "#b3d1eb", "#d9e8f5", "#eef5fb", "#f7fafd"] },
-      "theorem-blue-soft": { "role": "primary", "displayName": "Xanh định lý mềm", "canonical": "#d9e8f5", "cssVar": "--accent-soft (sáng) = --color-brand-100", "tonalRamp": ["#052c4e", "#073c69", "#094d86", "#0b5fa5", "#2676b8", "#4d92cc", "#85b5de", "#b3d1eb", "#d9e8f5", "#eef5fb", "#f7fafd"] },
-      "theorem-blue-night": { "role": "primary", "displayName": "Xanh định lý đêm", "canonical": "#4d92cc", "cssVar": "--accent (tối) = --color-brand-400", "tonalRamp": ["#052c4e", "#073c69", "#094d86", "#0b5fa5", "#2676b8", "#4d92cc", "#85b5de", "#b3d1eb", "#d9e8f5", "#eef5fb", "#f7fafd"] },
-      "paper": { "role": "neutral", "displayName": "Giấy", "canonical": "#ffffff", "cssVar": "--page (sáng)", "tonalRamp": ["#0c111d", "#101828", "#1d2939", "#344054", "#475467", "#667085", "#98a2b3", "#d0d5dd", "#eaecf0", "#f2f4f7", "#f9fafb", "#fcfcfd", "#ffffff"] },
-      "ink": { "role": "neutral", "displayName": "Mực", "canonical": "#101828", "cssVar": "--ink (sáng) = --color-gray-900", "tonalRamp": ["#0c111d", "#101828", "#1d2939", "#344054", "#475467", "#667085", "#98a2b3", "#d0d5dd", "#eaecf0", "#f2f4f7", "#f9fafb", "#fcfcfd"] },
-      "ink-2": { "role": "neutral", "displayName": "Mực 2", "canonical": "#475467", "cssVar": "--ink-2 (sáng) = --color-gray-600", "tonalRamp": ["#0c111d", "#101828", "#1d2939", "#344054", "#475467", "#667085", "#98a2b3", "#d0d5dd", "#eaecf0", "#f2f4f7", "#f9fafb", "#fcfcfd"] },
-      "ink-3": { "role": "neutral", "displayName": "Mực 3", "canonical": "#667085", "cssVar": "--ink-3 (sáng) = --color-gray-500", "tonalRamp": ["#0c111d", "#101828", "#1d2939", "#344054", "#475467", "#667085", "#98a2b3", "#d0d5dd", "#eaecf0", "#f2f4f7", "#f9fafb", "#fcfcfd"] },
-      "rule": { "role": "neutral", "displayName": "Kẻ", "canonical": "#eaecf0", "cssVar": "--rule (sáng) = --color-gray-200", "tonalRamp": ["#0c111d", "#101828", "#1d2939", "#344054", "#475467", "#667085", "#98a2b3", "#d0d5dd", "#eaecf0", "#f2f4f7", "#f9fafb", "#fcfcfd"] },
-      "rule-strong": { "role": "neutral", "displayName": "Kẻ đậm", "canonical": "#d0d5dd", "cssVar": "--rule-strong (sáng) = --color-gray-300", "tonalRamp": ["#0c111d", "#101828", "#1d2939", "#344054", "#475467", "#667085", "#98a2b3", "#d0d5dd", "#eaecf0", "#f2f4f7", "#f9fafb", "#fcfcfd"] },
-      "paper-night": { "role": "neutral", "displayName": "Giấy đêm", "canonical": "#171717", "cssVar": "--page (tối)", "tonalRamp": ["#171717", "#202020", "#333333", "#474747", "#8c8c8c", "#b4b4b4", "#ececec"] },
-      "ink-night": { "role": "neutral", "displayName": "Mực đêm", "canonical": "#ececec", "cssVar": "--ink (tối)", "tonalRamp": ["#171717", "#202020", "#333333", "#474747", "#8c8c8c", "#b4b4b4", "#ececec"] },
-      "ink-2-night": { "role": "neutral", "displayName": "Mực 2 đêm", "canonical": "#b4b4b4", "cssVar": "--ink-2 (tối)", "tonalRamp": ["#171717", "#202020", "#333333", "#474747", "#8c8c8c", "#b4b4b4", "#ececec"] },
-      "ink-3-night": { "role": "neutral", "displayName": "Mực 3 đêm", "canonical": "#8c8c8c", "cssVar": "--ink-3 (tối)", "tonalRamp": ["#171717", "#202020", "#333333", "#474747", "#8c8c8c", "#b4b4b4", "#ececec"] },
-      "rule-night": { "role": "neutral", "displayName": "Kẻ đêm", "canonical": "#333333", "cssVar": "--rule (tối)", "tonalRamp": ["#171717", "#202020", "#333333", "#474747", "#8c8c8c", "#b4b4b4", "#ececec"] },
-      "rule-strong-night": { "role": "neutral", "displayName": "Kẻ đậm đêm", "canonical": "#474747", "cssVar": "--rule-strong (tối)", "tonalRamp": ["#171717", "#202020", "#333333", "#474747", "#8c8c8c", "#b4b4b4", "#ececec"] },
-      "panel": { "role": "neutral", "displayName": "Nền verbatim", "canonical": "#f9fafb", "cssVar": "--panel (sáng) = --color-gray-50", "tonalRamp": ["#0c111d", "#101828", "#1d2939", "#344054", "#475467", "#667085", "#98a2b3", "#d0d5dd", "#eaecf0", "#f2f4f7", "#f9fafb", "#fcfcfd"] },
-      "panel-night": { "role": "neutral", "displayName": "Nền verbatim đêm", "canonical": "#202020", "cssVar": "--panel (tối)", "tonalRamp": ["#171717", "#202020", "#333333", "#474747", "#8c8c8c", "#b4b4b4", "#ececec"] }
+      "theorem-blue": {
+        "role": "primary",
+        "displayName": "Xanh định lý",
+        "canonical": "#0b5fa5",
+        "cssVar": "--accent (sáng) = --color-brand-600",
+        "tonalRamp": [
+          "#052c4e",
+          "#073c69",
+          "#094d86",
+          "#0b5fa5",
+          "#2676b8",
+          "#4d92cc",
+          "#85b5de",
+          "#b3d1eb",
+          "#d9e8f5",
+          "#eef5fb",
+          "#f7fafd"
+        ]
+      },
+      "theorem-blue-soft": {
+        "role": "primary",
+        "displayName": "Xanh định lý mềm",
+        "canonical": "#d9e8f5",
+        "cssVar": "--accent-soft (sáng) = --color-brand-100",
+        "tonalRamp": [
+          "#052c4e",
+          "#073c69",
+          "#094d86",
+          "#0b5fa5",
+          "#2676b8",
+          "#4d92cc",
+          "#85b5de",
+          "#b3d1eb",
+          "#d9e8f5",
+          "#eef5fb",
+          "#f7fafd"
+        ]
+      },
+      "theorem-blue-night": {
+        "role": "primary",
+        "displayName": "Xanh định lý đêm",
+        "canonical": "#4d92cc",
+        "cssVar": "--accent (tối) = --color-brand-400",
+        "tonalRamp": [
+          "#052c4e",
+          "#073c69",
+          "#094d86",
+          "#0b5fa5",
+          "#2676b8",
+          "#4d92cc",
+          "#85b5de",
+          "#b3d1eb",
+          "#d9e8f5",
+          "#eef5fb",
+          "#f7fafd"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Giấy",
+        "canonical": "#ffffff",
+        "cssVar": "--page (sáng)",
+        "tonalRamp": [
+          "#0c111d",
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#d0d5dd",
+          "#eaecf0",
+          "#f2f4f7",
+          "#f9fafb",
+          "#fcfcfd",
+          "#ffffff"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Mực",
+        "canonical": "#101828",
+        "cssVar": "--ink (sáng) = --color-gray-900",
+        "tonalRamp": [
+          "#0c111d",
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#d0d5dd",
+          "#eaecf0",
+          "#f2f4f7",
+          "#f9fafb",
+          "#fcfcfd"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Mực 2",
+        "canonical": "#475467",
+        "cssVar": "--ink-2 (sáng) = --color-gray-600",
+        "tonalRamp": [
+          "#0c111d",
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#d0d5dd",
+          "#eaecf0",
+          "#f2f4f7",
+          "#f9fafb",
+          "#fcfcfd"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Mực 3",
+        "canonical": "#667085",
+        "cssVar": "--ink-3 (sáng) = --color-gray-500",
+        "tonalRamp": [
+          "#0c111d",
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#d0d5dd",
+          "#eaecf0",
+          "#f2f4f7",
+          "#f9fafb",
+          "#fcfcfd"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Kẻ",
+        "canonical": "#eaecf0",
+        "cssVar": "--rule (sáng) = --color-gray-200",
+        "tonalRamp": [
+          "#0c111d",
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#d0d5dd",
+          "#eaecf0",
+          "#f2f4f7",
+          "#f9fafb",
+          "#fcfcfd"
+        ]
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Kẻ đậm",
+        "canonical": "#d0d5dd",
+        "cssVar": "--rule-strong (sáng) = --color-gray-300",
+        "tonalRamp": [
+          "#0c111d",
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#d0d5dd",
+          "#eaecf0",
+          "#f2f4f7",
+          "#f9fafb",
+          "#fcfcfd"
+        ]
+      },
+      "paper-night": {
+        "role": "neutral",
+        "displayName": "Giấy đêm",
+        "canonical": "#171717",
+        "cssVar": "--page (tối)",
+        "tonalRamp": [
+          "#171717",
+          "#202020",
+          "#333333",
+          "#474747",
+          "#8c8c8c",
+          "#b4b4b4",
+          "#ececec"
+        ]
+      },
+      "ink-night": {
+        "role": "neutral",
+        "displayName": "Mực đêm",
+        "canonical": "#ececec",
+        "cssVar": "--ink (tối)",
+        "tonalRamp": [
+          "#171717",
+          "#202020",
+          "#333333",
+          "#474747",
+          "#8c8c8c",
+          "#b4b4b4",
+          "#ececec"
+        ]
+      },
+      "ink-2-night": {
+        "role": "neutral",
+        "displayName": "Mực 2 đêm",
+        "canonical": "#b4b4b4",
+        "cssVar": "--ink-2 (tối)",
+        "tonalRamp": [
+          "#171717",
+          "#202020",
+          "#333333",
+          "#474747",
+          "#8c8c8c",
+          "#b4b4b4",
+          "#ececec"
+        ]
+      },
+      "ink-3-night": {
+        "role": "neutral",
+        "displayName": "Mực 3 đêm",
+        "canonical": "#8c8c8c",
+        "cssVar": "--ink-3 (tối)",
+        "tonalRamp": [
+          "#171717",
+          "#202020",
+          "#333333",
+          "#474747",
+          "#8c8c8c",
+          "#b4b4b4",
+          "#ececec"
+        ]
+      },
+      "rule-night": {
+        "role": "neutral",
+        "displayName": "Kẻ đêm",
+        "canonical": "#333333",
+        "cssVar": "--rule (tối)",
+        "tonalRamp": [
+          "#171717",
+          "#202020",
+          "#333333",
+          "#474747",
+          "#8c8c8c",
+          "#b4b4b4",
+          "#ececec"
+        ]
+      },
+      "rule-strong-night": {
+        "role": "neutral",
+        "displayName": "Kẻ đậm đêm",
+        "canonical": "#474747",
+        "cssVar": "--rule-strong (tối)",
+        "tonalRamp": [
+          "#171717",
+          "#202020",
+          "#333333",
+          "#474747",
+          "#8c8c8c",
+          "#b4b4b4",
+          "#ececec"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Nền verbatim",
+        "canonical": "#f9fafb",
+        "cssVar": "--panel (sáng) = --color-gray-50",
+        "tonalRamp": [
+          "#0c111d",
+          "#101828",
+          "#1d2939",
+          "#344054",
+          "#475467",
+          "#667085",
+          "#98a2b3",
+          "#d0d5dd",
+          "#eaecf0",
+          "#f2f4f7",
+          "#f9fafb",
+          "#fcfcfd"
+        ]
+      },
+      "panel-night": {
+        "role": "neutral",
+        "displayName": "Nền verbatim đêm",
+        "canonical": "#202020",
+        "cssVar": "--panel (tối)",
+        "tonalRamp": [
+          "#171717",
+          "#202020",
+          "#333333",
+          "#474747",
+          "#8c8c8c",
+          "#b4b4b4",
+          "#ececec"
+        ]
+      },
+      "mark-icon-ground": {
+        "role": "neutral",
+        "displayName": "Bảng đá (nền app icon)",
+        "canonical": "#26312e",
+        "cssVar": "MARK_ICON_GROUND (Logo.tsx) — hằng số TS, không phải biến CSS",
+        "tonalRamp": [
+          "#0b0f0e",
+          "#131917",
+          "#1b2321",
+          "#26312e",
+          "#3a4b47",
+          "#556e68",
+          "#7c948e",
+          "#a9bdb7",
+          "#d3e0dc",
+          "#eef3f1"
+        ]
+      },
+      "mark-icon-ink": {
+        "role": "neutral",
+        "displayName": "Kem (nét app icon)",
+        "canonical": "#f4f1e8",
+        "cssVar": "MARK_ICON_INK (Logo.tsx) — hằng số TS, không phải biến CSS",
+        "tonalRamp": [
+          "#241f13",
+          "#3a3320",
+          "#52492f",
+          "#6d6242",
+          "#8b7f5c",
+          "#a99d7d",
+          "#c6bda3",
+          "#ded8c6",
+          "#f4f1e8",
+          "#fbfaf5"
+        ]
+      }
     },
     "derivedColors": [
-      { "name": "heat-l0", "value": "color-mix(in srgb, var(--ink) 8%, var(--page))", "purpose": "Ô lịch không học." },
-      { "name": "heat-l1", "value": "color-mix(in srgb, var(--accent) 28%, var(--page))", "purpose": "Bậc 1 lịch năm." },
-      { "name": "heat-l2", "value": "color-mix(in srgb, var(--accent) 50%, var(--page))", "purpose": "Bậc 2 lịch năm." },
-      { "name": "heat-l3", "value": "color-mix(in srgb, var(--accent) 74%, var(--page))", "purpose": "Bậc 3 lịch năm." },
-      { "name": "heat-l4", "value": "var(--accent)", "purpose": "Bậc 4 lịch năm." },
-      { "name": "link-underline-rest", "value": "color-mix(in srgb, var(--accent) 55%, transparent)", "purpose": "Màu gạch chân nghỉ của .doc-link." },
-      { "name": "excerpt-highlight", "value": "color-mix(in srgb, var(--s4, #eda100) 26%, transparent)", "purpose": "Nền của câu được bôi đen trong trích đoạn landing (mark.ld-hl) — màu bút --s4 của ghi chú neo vào câu ấy, không phải màu nhấn." }
+      {
+        "name": "heat-l0",
+        "value": "color-mix(in srgb, var(--ink) 8%, var(--page))",
+        "purpose": "Ô lịch không học."
+      },
+      {
+        "name": "heat-l1",
+        "value": "color-mix(in srgb, var(--accent) 28%, var(--page))",
+        "purpose": "Bậc 1 lịch năm."
+      },
+      {
+        "name": "heat-l2",
+        "value": "color-mix(in srgb, var(--accent) 50%, var(--page))",
+        "purpose": "Bậc 2 lịch năm."
+      },
+      {
+        "name": "heat-l3",
+        "value": "color-mix(in srgb, var(--accent) 74%, var(--page))",
+        "purpose": "Bậc 3 lịch năm."
+      },
+      {
+        "name": "heat-l4",
+        "value": "var(--accent)",
+        "purpose": "Bậc 4 lịch năm."
+      },
+      {
+        "name": "link-underline-rest",
+        "value": "color-mix(in srgb, var(--accent) 55%, transparent)",
+        "purpose": "Màu gạch chân nghỉ của .doc-link."
+      },
+      {
+        "name": "excerpt-highlight",
+        "value": "color-mix(in srgb, var(--s4, #eda100) 26%, transparent)",
+        "purpose": "Nền của câu được bôi đen trong trích đoạn landing (mark.ld-hl) — màu bút --s4 của ghi chú neo vào câu ấy, không phải màu nhấn."
+      }
     ],
     "typographyMeta": {
-      "display": { "displayName": "Tiêu đề trang", "purpose": ".doc-title — Học tiếp / Khoá học / Tiến độ. text-wrap: balance." },
-      "headline": { "displayName": "Tên chương (hành động chính)", "purpose": ".cont-chapter trên /. Cũng 26px cho tiêu đề trạng thái rỗng." },
-      "sentence": { "displayName": "Câu số liệu", "purpose": ".prog-sentence — câu mở đầu /progress, max-width 34em, text-wrap: pretty." },
-      "title": { "displayName": "Tên khoá", "purpose": ".courses-item-title 22px; biến thể 17px (.prog-row-title), 16.5px (.toc-title)." },
-      "lede": { "displayName": "Câu dẫn nghiêng", "purpose": ".doc-lede 17px --ink-2, max-width 60ch (72ch trên landing). Cùng giọng: trích đoạn ghi chú 14.5px, dòng nguồn trích .ld-source 14.5px --ink-3, .ld-qa-quote --ink-2, câu trạng thái 16px --ink-3." },
-      "body": { "displayName": "Thân", "purpose": ".cont-meta, .mnote-text, .courses-item-desc, .prog-weight, .ld-actions — 15.5px, đo 56–62ch. Landing đặt chữ được đọc thật lớn hơn: .ld-excerpt 17px/1.55 66ch, .ld-qa-turn dd 16.5px/1.55, .ld-margin-note 15px/1.5 --ink-2 40ch." },
-      "label": { "displayName": "Nhãn", "purpose": ".lbl, .doc-h; .cont-verb ở 12.5px màu nhấn." },
-      "label-nav": { "displayName": "Nhãn running head", "purpose": "#topbar .tn-link, .tb-btn, #lang-select, .tn-account-disc." },
-      "numeral": { "displayName": "Chữ số", "purpose": ".toc-num, .prog-weight-pct, .prog-row-n, .prog-row-minutes — tabular-nums." }
+      "display": {
+        "displayName": "Tiêu đề trang",
+        "purpose": ".doc-title — Học tiếp / Khoá học / Tiến độ. text-wrap: balance."
+      },
+      "headline": {
+        "displayName": "Tên chương (hành động chính)",
+        "purpose": ".cont-chapter trên /. Cũng 26px cho tiêu đề trạng thái rỗng."
+      },
+      "sentence": {
+        "displayName": "Câu số liệu",
+        "purpose": ".prog-sentence — câu mở đầu /progress, max-width 34em, text-wrap: pretty."
+      },
+      "title": {
+        "displayName": "Tên khoá",
+        "purpose": ".courses-item-title 22px; biến thể 17px (.prog-row-title), 16.5px (.toc-title)."
+      },
+      "lede": {
+        "displayName": "Câu dẫn nghiêng",
+        "purpose": ".doc-lede 17px --ink-2, max-width 60ch (72ch trên landing). Cùng giọng: trích đoạn ghi chú 14.5px, dòng nguồn trích .ld-source 14.5px --ink-3, .ld-qa-quote --ink-2, câu trạng thái 16px --ink-3."
+      },
+      "body": {
+        "displayName": "Thân",
+        "purpose": ".cont-meta, .mnote-text, .courses-item-desc, .prog-weight, .ld-actions — 15.5px, đo 56–62ch. Landing đặt chữ được đọc thật lớn hơn: .ld-excerpt 17px/1.55 66ch, .ld-qa-turn dd 16.5px/1.55, .ld-margin-note 15px/1.5 --ink-2 40ch."
+      },
+      "label": {
+        "displayName": "Nhãn",
+        "purpose": ".lbl, .doc-h; .cont-verb ở 12.5px màu nhấn."
+      },
+      "label-nav": {
+        "displayName": "Nhãn running head",
+        "purpose": "#topbar .tn-link, .tb-btn, #lang-select, .tn-account-disc."
+      },
+      "numeral": {
+        "displayName": "Chữ số",
+        "purpose": ".toc-num, .prog-weight-pct, .prog-row-n, .prog-row-minutes — tabular-nums."
+      }
     },
     "fonts": [
-      { "name": "--font-serif", "value": "'Charis SIL', 'Charter', 'Iowan Old Style', Georgia, 'Times New Roman', serif", "source": "@fontsource, subset vietnamese", "definedIn": "apps/web/src/styles/tokens.css" },
-      { "name": "--font-sans", "value": "'Archivo Narrow', 'Arial Narrow', 'Roboto Condensed', system-ui, sans-serif", "source": "@fontsource", "definedIn": "apps/web/src/styles/tokens.css" },
-      { "name": "--font-mono", "value": "ui-monospace stack", "source": "tokens.css", "definedIn": "apps/web/src/styles/tokens.css", "purpose": "Chỉ dùng ở pre của trích đoạn landing, 13.5px/1.5." }
+      {
+        "name": "--font-serif",
+        "value": "'Charis SIL', 'Charter', 'Iowan Old Style', Georgia, 'Times New Roman', serif",
+        "source": "@fontsource, subset vietnamese",
+        "definedIn": "apps/web/src/styles/tokens.css"
+      },
+      {
+        "name": "--font-sans",
+        "value": "'Archivo Narrow', 'Arial Narrow', 'Roboto Condensed', system-ui, sans-serif",
+        "source": "@fontsource",
+        "definedIn": "apps/web/src/styles/tokens.css"
+      },
+      {
+        "name": "--font-mono",
+        "value": "ui-monospace stack",
+        "source": "tokens.css",
+        "definedIn": "apps/web/src/styles/tokens.css",
+        "purpose": "Chỉ dùng ở pre của trích đoạn landing, 13.5px/1.5."
+      }
     ],
     "shadows": [],
     "borders": [
-      { "name": "hrule-ink", "value": "1px solid var(--ink)", "purpose": "Kết đầu trang (.doc-head), đầu mục có nhãn (.doc-h), running head (#topbar border-bottom)." },
-      { "name": "hairline-rule", "value": "1px solid var(--rule)", "purpose": "Ngăn hàng: .toc-row, .mnote, .courses-item, .prog-row, .prog-weight; viền .mnote-formula." },
-      { "name": "hairline-inset", "value": "inset 0 0 0 1px var(--rule)", "purpose": "Ô lịch chưa rõ (.prog-heat-unknown) — hairline không chiếm chỗ, không phải bóng." },
-      { "name": "focus-ring", "value": "outline: 1px solid var(--accent); outline-offset: 3px–6px", "purpose": "focus-visible trên mọi thứ bấm được trong khung." },
-      { "name": "verbatim-box", "value": "1px solid var(--rule) + background var(--panel), border-radius 0", "purpose": "Khối pre trong trích đoạn landing (.ld-excerpt pre) — verbatim của giáo trình, không phải thẻ." },
-      { "name": "quote-hairline", "value": "border-left: 1px solid var(--rule-strong)", "purpose": "Trích ghi chú trong lượt trả lời của biên bản (.ld-qa-quote); hairline xám, không phải viền màu." }
+      {
+        "name": "hrule-ink",
+        "value": "1px solid var(--ink)",
+        "purpose": "Kết đầu trang (.doc-head), đầu mục có nhãn (.doc-h), running head (#topbar border-bottom)."
+      },
+      {
+        "name": "hairline-rule",
+        "value": "1px solid var(--rule)",
+        "purpose": "Ngăn hàng: .toc-row, .mnote, .courses-item, .prog-row, .prog-weight; viền .mnote-formula."
+      },
+      {
+        "name": "hairline-inset",
+        "value": "inset 0 0 0 1px var(--rule)",
+        "purpose": "Ô lịch chưa rõ (.prog-heat-unknown) — hairline không chiếm chỗ, không phải bóng."
+      },
+      {
+        "name": "focus-ring",
+        "value": "outline: 1px solid var(--accent); outline-offset: 3px–6px",
+        "purpose": "focus-visible trên mọi thứ bấm được trong khung."
+      },
+      {
+        "name": "verbatim-box",
+        "value": "1px solid var(--rule) + background var(--panel), border-radius 0",
+        "purpose": "Khối pre trong trích đoạn landing (.ld-excerpt pre) — verbatim của giáo trình, không phải thẻ."
+      },
+      {
+        "name": "quote-hairline",
+        "value": "border-left: 1px solid var(--rule-strong)",
+        "purpose": "Trích ghi chú trong lượt trả lời của biên bản (.ld-qa-quote); hairline xám, không phải viền màu."
+      }
     ],
     "motion": [
-      { "name": "underline-reveal", "value": "text-decoration-color 150ms ease-out", "purpose": "Chuyển động duy nhất của khung: gạch chân 1px từ transparent/màu nghỉ lên --accent khi hover/focus." },
-      { "name": "ink-shift", "value": "color 150ms ease-out", "purpose": "Đi kèm underline-reveal ở nơi màu chữ cũng đổi (.toc-title, .prog-year-btn, .tn-link, .tb-btn, .auth-chrome-btn)." },
-      { "name": "note-anchors-sentence", "value": "text-decoration-color 150ms ease-out qua .ld-read:has(.mnote:hover), :has(.mnote:focus-within)", "purpose": "Chuyển động duy nhất của landing: rê/focus ghi chú ở lề thì câu gốc trong trích đoạn (mark.ld-hl) hiện gạch chân --accent. Cùng ngữ pháp underline-reveal, kích hoạt từ xa." }
+      {
+        "name": "underline-reveal",
+        "value": "text-decoration-color 150ms ease-out",
+        "purpose": "Chuyển động duy nhất của khung: gạch chân 1px từ transparent/màu nghỉ lên --accent khi hover/focus."
+      },
+      {
+        "name": "ink-shift",
+        "value": "color 150ms ease-out",
+        "purpose": "Đi kèm underline-reveal ở nơi màu chữ cũng đổi (.toc-title, .prog-year-btn, .tn-link, .tb-btn, .auth-chrome-btn)."
+      },
+      {
+        "name": "note-anchors-sentence",
+        "value": "text-decoration-color 150ms ease-out qua .ld-read:has(.mnote:hover), :has(.mnote:focus-within)",
+        "purpose": "Chuyển động duy nhất của landing: rê/focus ghi chú ở lề thì câu gốc trong trích đoạn (mark.ld-hl) hiện gạch chân --accent. Cùng ngữ pháp underline-reveal, kích hoạt từ xa."
+      }
     ],
     "breakpoints": [
-      { "name": "doc-stack", "value": "900px", "purpose": ".doc-body về một cột, row-gap 40px; /progress lề lên trước, lịch cuộn ngang ô 11px; landing: cảnh cách 44px, .ld-read về một cột theo DOM đoạn → ghi chú → hành động, .ld-qa-turn một cột row-gap 4px." },
-      { "name": "hover-none", "value": "@media (hover: none)", "purpose": "Ẩn .ld-hover-only — câu hướng dẫn rê chuột chỉ có nghĩa nơi có con trỏ." },
-      { "name": "topbar-wrap", "value": "980px", "purpose": "#topbar xuống hai hàng, .tn-nav chiếm trọn hàng dưới, ẩn wordmark chữ." }
+      {
+        "name": "doc-stack",
+        "value": "900px",
+        "purpose": ".doc-body về một cột, row-gap 40px; /progress lề lên trước, lịch cuộn ngang ô 11px; landing: cảnh cách 44px, .ld-read về một cột theo DOM đoạn → ghi chú → hành động, .ld-qa-turn một cột row-gap 4px."
+      },
+      {
+        "name": "hover-none",
+        "value": "@media (hover: none)",
+        "purpose": "Ẩn .ld-hover-only — câu hướng dẫn rê chuột chỉ có nghĩa nơi có con trỏ."
+      },
+      {
+        "name": "topbar-wrap",
+        "value": "980px",
+        "purpose": "#topbar xuống hai hàng, .tn-nav chiếm trọn hàng dưới, ẩn wordmark chữ."
+      }
     ],
     "layout": {
       "docMaxWidth": "72rem",
@@ -84,7 +553,91 @@
       "transcriptTurn": ".ld-qa-turn: 5.5em minmax(0,1fr), column-gap 12px, baseline; .ld-qa gap 18px, 66ch",
       "loginColumn": ".auth-side flex 1 1 22rem, min-height 100dvh, căn giữa; .auth-side-inner max-width 22rem; .auth-chrome-top top 16px right 16px"
     },
-    "themeSwitch": "html[data-theme='dark'] only — never prefers-color-scheme; all theme tokens live in apps/web/src/styles/index.css"
+    "themeSwitch": "html[data-theme='dark'] only — never prefers-color-scheme; all theme tokens live in apps/web/src/styles/index.css",
+    "brandMark": {
+      "geometryGrid": 16,
+      "frame": {
+        "x": 3.4,
+        "y": 3.4,
+        "w": 9.4,
+        "h": 9.2,
+        "opacity": 0.5
+      },
+      "bar": {
+        "cx": 6.2,
+        "y": 0.9,
+        "h": 14.2,
+        "note": "cx là TÂM; thanh nằm chếch bên trong khung, không đè mép trái"
+      },
+      "weightForRenderSize": [
+        {
+          "upTo": 18,
+          "bar": 2.8,
+          "frame": 1.2
+        },
+        {
+          "upTo": 32,
+          "bar": 2.9,
+          "frame": 1.3
+        },
+        {
+          "upTo": 96,
+          "bar": 2.9,
+          "frame": 1.4
+        },
+        {
+          "above": 96,
+          "bar": 2.8,
+          "frame": 1.4
+        }
+      ],
+      "inset": {
+        "boxed": 0.78,
+        "icon": 0.78,
+        "maskable": 0.52
+      },
+      "contrast": {
+        "frameOnCream": "3.09:1",
+        "frameOnSlateInApp": "4.06:1",
+        "frameOnIconGround": "4.20:1",
+        "rejected": {
+          "opacity0.42": "2.49:1",
+          "terracottaOnSlate": "~2.4:1"
+        }
+      },
+      "sizesInUse": [
+        {
+          "px": 26,
+          "where": "TopNav.tsx"
+        },
+        {
+          "px": 32,
+          "where": "Login.tsx"
+        },
+        {
+          "px": 16,
+          "where": "favicon.svg"
+        },
+        {
+          "px": 180,
+          "where": "apple-touch-icon.png"
+        },
+        {
+          "px": 192,
+          "where": "icon-192.png"
+        },
+        {
+          "px": 512,
+          "where": "icon-512.png / icon-maskable-512.png"
+        }
+      ],
+      "themeColor": {
+        "light": "#f4f1e8",
+        "dark": "#26312e",
+        "note": "theo giao diện HỆ ĐIỀU HÀNH, không theo công tắc chủ đề trong app — nó tô thanh trình duyệt trước khi React đọc được lựa chọn đã lưu"
+      },
+      "singleSource": "MARK trong apps/web/src/shell/Logo.tsx; gen-icons.mjs đọc hằng số ra khỏi mã nguồn, Logo.icons.test.ts so từng byte"
+    }
   },
   "components": [
     {
@@ -190,6 +743,22 @@
       "description": "Nút không nền không viền; năm đang xem màu nhấn + gạch chân offset 6px. Kiểu nút DUY NHẤT trong khung .doc.",
       "html": "<div class=\"ds-prog-years\"><button class=\"ds-prog-year-btn ds-on\" type=\"button\">2026</button><button class=\"ds-prog-year-btn\" type=\"button\">2025</button></div>",
       "css": ".ds-prog-years { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; } .ds-prog-year-btn { appearance: none; background: none; border: 0; padding: 4px 0; font-family: var(--font-sans, 'Archivo Narrow', 'Arial Narrow', sans-serif); font-size: 15px; font-weight: 500; color: var(--ink-2, #475467); cursor: pointer; font-variant-numeric: tabular-nums; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 6px; text-decoration-color: transparent; transition: color 150ms ease-out, text-decoration-color 150ms ease-out; } .ds-prog-year-btn:hover { color: var(--ink, #101828); } .ds-prog-year-btn.ds-on { color: var(--accent, #0b5fa5); text-decoration-color: var(--accent, #0b5fa5); } .ds-prog-year-btn:focus-visible { outline: 1px solid var(--accent, #0b5fa5); outline-offset: 4px; }"
+    },
+    {
+      "name": "Dấu hiệu — trong khung app",
+      "kind": "custom",
+      "refersTo": "brand-mark",
+      "description": "\"Nét vượt mép\" ở 26px trên running head (32px trên /login). Nét ăn currentColor, khung cùng màu ở opacity 0.50; nền là token mặt của màn chủ. Không hộp, không chữ cái.",
+      "html": "<span class=\"ds-mark\"><svg width=\"26\" height=\"26\" viewBox=\"0 0 16 16\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\"><rect x=\"3.4\" y=\"3.4\" width=\"9.4\" height=\"9.2\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.3\" opacity=\"0.5\"/><rect x=\"4.75\" y=\"0.9\" width=\"2.9\" height=\"14.2\" fill=\"currentColor\"/></svg></span>",
+      "css": ".ds-mark{display:inline-flex;color:#23211c;background:transparent;border-radius:0}.ds-mark svg{display:block}.ds-mark-icon{display:inline-flex;border-radius:0}.ds-mark-icon svg{display:block}"
+    },
+    {
+      "name": "Dấu hiệu — dạng app icon",
+      "kind": "custom",
+      "refersTo": "brand-mark-icon",
+      "description": "Dạng có nền: bảng đá #26312e, nét kem #f4f1e8, inset 0.78 (0.52 chỉ cho bản maskable). Ghim màu cứng vì không có màn chủ để thừa kế; đất nung bị loại ở đây (~2.4:1).",
+      "html": "<span class=\"ds-mark-icon\"><svg width=\"64\" height=\"64\" viewBox=\"0 0 16 16\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\"><rect width=\"16\" height=\"16\" fill=\"#26312e\"/><g transform=\"translate(8,8) scale(0.78) translate(-8,-8)\"><rect x=\"3.4\" y=\"3.4\" width=\"9.4\" height=\"9.2\" fill=\"none\" stroke=\"#f4f1e8\" stroke-width=\"1.3\" opacity=\"0.5\"/><rect x=\"4.75\" y=\"0.9\" width=\"2.9\" height=\"14.2\" fill=\"#f4f1e8\"/></g></svg></span>",
+      "css": ".ds-mark{display:inline-flex;color:#23211c;background:transparent;border-radius:0}.ds-mark svg{display:block}.ds-mark-icon{display:inline-flex;border-radius:0}.ds-mark-icon svg{display:block}"
     }
   ],
   "narrative": {
@@ -205,19 +774,96 @@
       "Tối = đêm PDF, xám trung tính, công tắc tường minh."
     ],
     "rules": [
-      { "name": "Quy tắc Một mực nhấn", "body": "Khung app có đúng một màu ngoài thang xám. Nó chỉ xuất hiện trên thứ bấm được hoặc đang được chọn; mọi thứ khác là mực. Nếu một màn cần màu thứ hai, đó là dấu hiệu màn ấy đang muốn thành dashboard.", "section": "colors" },
-      { "name": "Quy tắc Đêm PDF", "body": "Tối là đảo giấy/mực sang xám trung tính (#171717 / #ececec / #333333), nhấn nâng đúng một bậc (brand-600 → brand-400). Không slate, không xanh tím, không prefers-color-scheme. Mọi màu của khung là token của index.css, nên home.css/courses.css/shell-modes.css không được chứa một luật [data-theme] nào.", "section": "colors" },
-      { "name": "Quy tắc Giấy một tờ", "body": "--page và nền running head là cùng một giá trị. Không có \"surface\" thứ hai trong khung .doc; --panel (gray-50 sáng / #202020 tối) là nền của điều khiển ở Cài đặt/Admin và của khối mã pre trong trích đoạn giáo trình (verbatim — một mảng chữ máy đặt trên giấy, kẻ 1px --rule, góc vuông), không phải giấy và không phải nền của một nhóm nội dung.", "section": "colors" },
-      { "name": "Quy tắc Sans ở lề", "body": "Sans hẹp chỉ cho nhãn, số mục, đầu cột, running head và điều khiển. Không một đoạn văn, tên chương, mô tả hay câu meta nào được đặt bằng sans. Kiểm: nếu câu có động từ và kết bằng dấu chấm, nó là serif.", "section": "typography" },
-      { "name": "Quy tắc Run-in, không eyebrow", "body": "Không có dòng nhãn nào đứng trên một tiêu đề. Khi tiêu đề cần một động từ hay một số, chúng đứng trong cùng thẻ heading, cùng dòng, cỡ nhỏ hơn (.cont-verb 12.5px sans nhấn, .cont-num 0.5em) — như \\paragraph{}. Tên trợ năng của liên kết vẫn đọc liền \"Đọc tiếp 1.2 Tên chương\".", "section": "typography" },
-      { "name": "Quy tắc Không đậm", "body": "Heading serif là weight 400. Phân cấp làm bằng cỡ (40 → 34 → 22 → 17 → 16.5) và hairline, không bằng độ đậm. Sans 600 ở 12–13px là ngoại lệ duy nhất, vì chữ hẹp viết hoa cỡ nhỏ cần nét để đọc.", "section": "typography" },
-      { "name": "Quy tắc Không thẻ", "body": "Không box-shadow, không border-radius, không nền khác màu giấy, không border-left màu quanh một nhóm nội dung trong khung .doc và running head. Muốn nhóm thì kẻ một hairline hoặc thêm khoảng trắng. Ô vuông 9px màu bút tô ở ghi chú lề là dữ liệu (màu bút của chính ghi chú), không phải trang trí — và nó cũng vuông góc. Cùng lý do, câu được bôi đen trong trích đoạn mang nền --s4 26% (màu bút của ghi chú neo vào nó) chứ không phải màu nhấn; và khối pre trên --panel là verbatim, không phải thẻ.", "section": "elevation" },
-      { "name": "Quy tắc \\hrule", "body": "Kẻ mực (--ink) cho ranh giới cấu trúc: dưới đầu trang, dưới đầu mục có nhãn. Kẻ xám (--rule) cho ranh giới lặp: giữa các hàng của một danh sách. Không có kẻ trên đầu danh sách ngay dưới .doc-head (hai đường song song đọc như lỗi — đã đo).", "section": "elevation" },
-      { "name": "Quy tắc Tên chương là nút", "body": "Hành động chính của một trang trong khung là một liên kết serif cỡ lớn mang tên thứ sẽ mở, không phải một nút màu. Nút màu không tồn tại trong khung .doc.", "section": "components" },
-      { "name": "Quy tắc Gạch chân 150ms", "body": "Toàn bộ ngữ pháp chuyển động của khung là transition: text-decoration-color 150ms ease-out (kèm color ở nơi màu chữ cũng đổi). Gạch chân 1px từ transparent (hoặc màu nghỉ) lên --accent. Không transform, không opacity, không đổi nền, không chuyển động nào khác được thêm vào.", "section": "components" },
-      { "name": "Quy tắc Hai id", "body": "app-screens.css đặt #app:not(.reading) #content h1/h2/h3 bằng sans đậm (độ đặc hiệu 2,1,1). Mọi heading serif của khung .doc (.doc-title, .doc-h, .cont-chapter, .home-empty-h, .courses-item-title) phải được khai báo với tiền tố #app:not(.reading) #content để thắng đúng ở địa phận này; đây là chỗ duy nhất trong home.css/courses.css dùng id. Thêm một heading mới vào khung mà quên tiền tố thì nó ra sans đậm 18–30px — đã đo.", "section": "components" },
-      { "name": "Quy tắc Ví dụ có nhãn", "body": "Mọi nội dung minh hoạ trên một bề mặt Persuade — ghi chú, biên bản, hàng tiến độ — phải mang chữ \"ví dụ\"/\"(ví dụ)\" tại chỗ (trong hàng meta bằng .ld-example, trong chính đầu mục .doc-h), đọc được ở 390px. Trích đoạn và danh mục là dữ liệu thật và không mang nhãn ấy. Một ví dụ không nhãn là một lời hứa sai.", "section": "components" },
-      { "name": "Quy tắc Media query cuối tệp", "body": "Khối @media (max-width: 900px) của /progress phải đứng sau mọi luật gốc cùng độ đặc hiệu mà nó ghi đè (đo: đặt giữa tệp thì hàng nhãn tháng phình 2680px ở 375px). Luật mới cho khung .doc thêm vào trước khối media ở cuối home.css.", "section": "components" }
+      {
+        "name": "Quy tắc Một mực nhấn",
+        "body": "Khung app có đúng một màu ngoài thang xám. Nó chỉ xuất hiện trên thứ bấm được hoặc đang được chọn; mọi thứ khác là mực. Nếu một màn cần màu thứ hai, đó là dấu hiệu màn ấy đang muốn thành dashboard.",
+        "section": "colors"
+      },
+      {
+        "name": "Quy tắc Đêm PDF",
+        "body": "Tối là đảo giấy/mực sang xám trung tính (#171717 / #ececec / #333333), nhấn nâng đúng một bậc (brand-600 → brand-400). Không slate, không xanh tím, không prefers-color-scheme. Mọi màu của khung là token của index.css, nên home.css/courses.css/shell-modes.css không được chứa một luật [data-theme] nào.",
+        "section": "colors"
+      },
+      {
+        "name": "Quy tắc Giấy một tờ",
+        "body": "--page và nền running head là cùng một giá trị. Không có \"surface\" thứ hai trong khung .doc; --panel (gray-50 sáng / #202020 tối) là nền của điều khiển ở Cài đặt/Admin và của khối mã pre trong trích đoạn giáo trình (verbatim — một mảng chữ máy đặt trên giấy, kẻ 1px --rule, góc vuông), không phải giấy và không phải nền của một nhóm nội dung.",
+        "section": "colors"
+      },
+      {
+        "name": "Quy tắc Sans ở lề",
+        "body": "Sans hẹp chỉ cho nhãn, số mục, đầu cột, running head và điều khiển. Không một đoạn văn, tên chương, mô tả hay câu meta nào được đặt bằng sans. Kiểm: nếu câu có động từ và kết bằng dấu chấm, nó là serif.",
+        "section": "typography"
+      },
+      {
+        "name": "Quy tắc Run-in, không eyebrow",
+        "body": "Không có dòng nhãn nào đứng trên một tiêu đề. Khi tiêu đề cần một động từ hay một số, chúng đứng trong cùng thẻ heading, cùng dòng, cỡ nhỏ hơn (.cont-verb 12.5px sans nhấn, .cont-num 0.5em) — như \\paragraph{}. Tên trợ năng của liên kết vẫn đọc liền \"Đọc tiếp 1.2 Tên chương\".",
+        "section": "typography"
+      },
+      {
+        "name": "Quy tắc Không đậm",
+        "body": "Heading serif là weight 400. Phân cấp làm bằng cỡ (40 → 34 → 22 → 17 → 16.5) và hairline, không bằng độ đậm. Sans 600 ở 12–13px là ngoại lệ duy nhất, vì chữ hẹp viết hoa cỡ nhỏ cần nét để đọc.",
+        "section": "typography"
+      },
+      {
+        "name": "Quy tắc Không thẻ",
+        "body": "Không box-shadow, không border-radius, không nền khác màu giấy, không border-left màu quanh một nhóm nội dung trong khung .doc và running head. Muốn nhóm thì kẻ một hairline hoặc thêm khoảng trắng. Ô vuông 9px màu bút tô ở ghi chú lề là dữ liệu (màu bút của chính ghi chú), không phải trang trí — và nó cũng vuông góc. Cùng lý do, câu được bôi đen trong trích đoạn mang nền --s4 26% (màu bút của ghi chú neo vào nó) chứ không phải màu nhấn; và khối pre trên --panel là verbatim, không phải thẻ.",
+        "section": "elevation"
+      },
+      {
+        "name": "Quy tắc \\hrule",
+        "body": "Kẻ mực (--ink) cho ranh giới cấu trúc: dưới đầu trang, dưới đầu mục có nhãn. Kẻ xám (--rule) cho ranh giới lặp: giữa các hàng của một danh sách. Không có kẻ trên đầu danh sách ngay dưới .doc-head (hai đường song song đọc như lỗi — đã đo).",
+        "section": "elevation"
+      },
+      {
+        "name": "Quy tắc Tên chương là nút",
+        "body": "Hành động chính của một trang trong khung là một liên kết serif cỡ lớn mang tên thứ sẽ mở, không phải một nút màu. Nút màu không tồn tại trong khung .doc.",
+        "section": "components"
+      },
+      {
+        "name": "Quy tắc Gạch chân 150ms",
+        "body": "Toàn bộ ngữ pháp chuyển động của khung là transition: text-decoration-color 150ms ease-out (kèm color ở nơi màu chữ cũng đổi). Gạch chân 1px từ transparent (hoặc màu nghỉ) lên --accent. Không transform, không opacity, không đổi nền, không chuyển động nào khác được thêm vào.",
+        "section": "components"
+      },
+      {
+        "name": "Quy tắc Hai id",
+        "body": "app-screens.css đặt #app:not(.reading) #content h1/h2/h3 bằng sans đậm (độ đặc hiệu 2,1,1). Mọi heading serif của khung .doc (.doc-title, .doc-h, .cont-chapter, .home-empty-h, .courses-item-title) phải được khai báo với tiền tố #app:not(.reading) #content để thắng đúng ở địa phận này; đây là chỗ duy nhất trong home.css/courses.css dùng id. Thêm một heading mới vào khung mà quên tiền tố thì nó ra sans đậm 18–30px — đã đo.",
+        "section": "components"
+      },
+      {
+        "name": "Quy tắc Ví dụ có nhãn",
+        "body": "Mọi nội dung minh hoạ trên một bề mặt Persuade — ghi chú, biên bản, hàng tiến độ — phải mang chữ \"ví dụ\"/\"(ví dụ)\" tại chỗ (trong hàng meta bằng .ld-example, trong chính đầu mục .doc-h), đọc được ở 390px. Trích đoạn và danh mục là dữ liệu thật và không mang nhãn ấy. Một ví dụ không nhãn là một lời hứa sai.",
+        "section": "components"
+      },
+      {
+        "name": "Quy tắc Media query cuối tệp",
+        "body": "Khối @media (max-width: 900px) của /progress phải đứng sau mọi luật gốc cùng độ đặc hiệu mà nó ghi đè (đo: đặt giữa tệp thì hàng nhãn tháng phình 2680px ở 375px). Luật mới cho khung .doc thêm vào trước khối media ở cuối home.css.",
+        "section": "components"
+      },
+      {
+        "name": "Quy tắc Không chữ cái",
+        "body": "Dấu hiệu không mang chữ cái, monogram, hay chữ viết tắt — cho tới khi chủ dự án đặt tên. Nó mang nghĩa (đoạn văn và vệt để lại), nên nó sống sót một lần đổi tên. Cũng không dùng cách xếp mặc định của thể loại: sách mở, mũ cử nhân, bóng đèn, tia sét.",
+        "section": "components"
+      },
+      {
+        "name": "Quy tắc Một hình học",
+        "body": "MARK trong Logo.tsx là nguồn sự thật duy nhất. scripts/gen-icons.mjs đọc hằng số ấy ra khỏi mã nguồn và không giữ bản sao; Logo.icons.test.ts sinh lại vào thư mục tạm rồi so từng byte với tệp đã ship. Sửa hình ở component rồi chạy node scripts/gen-icons.mjs; không sửa PNG/SVG bằng trình đồ hoạ.",
+        "section": "components"
+      },
+      {
+        "name": "Quy tắc Bề dày theo cỡ render",
+        "body": "Bề dày nét là hàm của số px được vẽ ra, không phải của tỉ lệ hình học. Một tệp SVG dùng lại ở mọi cỡ sẽ mảnh dần cho tới khi khung nhoè vào nét. Thêm một cỡ dùng mới thì thêm một bậc vào weightFor.",
+        "section": "components"
+      },
+      {
+        "name": "Quy tắc Khung không biến mất",
+        "body": "Không có bản bỏ khung ở cỡ nhỏ và không có bản dời thanh ra mép trái. Bỏ khung còn lại một thanh dọc; dời thanh ra mép làm cạnh trái biến mất sau thanh và khung đọc thành cái ngoặc ba cạnh. Lòng khung ở cỡ nhỏ được mở bằng cách làm mảnh nét khung.",
+        "section": "shapes"
+      },
+      {
+        "name": "Quy tắc Ngưỡng tương phản chung một mức",
+        "body": "opacity 0.50 của khung là giá trị đo: 3.09:1 trên kem, 4.06:1 trên bảng đá trong khung app, 4.20:1 trên nền icon. Nó được nâng từ 0.42 (2.49:1) vì cùng bản dựng ấy đã loại đất nung khỏi app icon ở 2.4:1 — một hệ không được dùng hai ngưỡng cho hai màu. 3:1 là sàn cho hình đồ hoạ không phải chữ, không phải đích.",
+        "section": "colors"
+      }
     ],
     "dos": [
       "Do đặt mọi thân chữ, tiêu đề, câu meta, mô tả bằng --font-serif weight 400; phân cấp bằng cỡ (clamp(30px,3.4vw,40px) → clamp(26px,3vw,34px) → 22px → 17px → 16.5px → 15.5px).",
@@ -232,7 +878,10 @@
       "Do nói về tài khoản đúng một câu: \"đọc miễn phí không cần tài khoản; tài khoản giữ ghi chú, tiến độ, gia sư AI\" (PRODUCT.md, 02/09/2026) — trên landing và /login.",
       "Do gắn nhãn \"ví dụ\"/\"(ví dụ)\" tại chỗ cho mọi ghi chú, biên bản, hàng tiến độ minh hoạ (.ld-example sans 12px 600 0.04em UPPERCASE --accent trong hàng meta, hoặc ngay trong .doc-h).",
       "Do thuyết phục bằng một trích đoạn thật của giáo trình đặt ở cỡ đọc (serif 17px/1.55, 66ch), với câu bôi đen mang màu bút --s4 26% và ghi chú neo đúng câu ấy ở lề; giới hạn lời hứa về gia sư ở việc đọc ghi chú (read_my_notes).",
-      "Do tách các cảnh của một trang dài bằng khoảng trắng 56px (44px dưới 900px), lớn hơn mọi khoảng bên trong cảnh; giữ thứ tự DOM đoạn → ghi chú → hành động khi về một cột."
+      "Do tách các cảnh của một trang dài bằng khoảng trắng 56px (44px dưới 900px), lớn hơn mọi khoảng bên trong cảnh; giữ thứ tự DOM đoạn → ghi chú → hành động khi về một cột.",
+      "Do sinh lại mọi tệp biểu tượng bằng `node apps/web/scripts/gen-icons.mjs` sau khi sửa `MARK`, và chạy `Logo.icons.test.ts` — hình học chỉ có một nguồn.",
+      "Do để mark trong khung app ăn `currentColor` trên đúng token mặt của màn chủ (`--page`, `--surface-1`); chỉ dạng app icon mới ghim màu cứng.",
+      "Do thêm một bậc vào `weightFor` khi mark xuất hiện ở một cỡ render mới."
     ],
     "donts": [
       "Don't thêm eyebrow/kicker — một dòng nhãn đứng trên tiêu đề. Tiêu đề tự đứng; nhãn đi run-in.",
@@ -249,15 +898,23 @@
       "Don't đưa giá, lời chứng thực, logo đối tác, hình stock hay hero-ba-cột-icon lên landing; bằng chứng là trích đoạn, ghi chú, biên bản, mục lục và danh mục thật.",
       "Don't để một ví dụ đứng không nhãn, và không hứa gia sư \"biết tiến độ\" — mã chỉ đọc ghi chú.",
       "Don't liên kết tới một chương chưa có trong danh mục công khai; hành động chính trỏ về /courses và mục lục ví dụ thành chữ trơn --ink khi khoá mẫu chưa xuất bản.",
-      "Don't vẽ biên bản hỏi đáp thành bong bóng chat có avatar; một lượt là dt.lbl + dd serif trên cùng hàng lưới."
+      "Don't vẽ biên bản hỏi đáp thành bong bóng chat có avatar; một lượt là dt.lbl + dd serif trên cùng hàng lưới.",
+      "Don't đặt chữ cái, monogram hay tên viết tắt vào dấu hiệu, và đừng đóng khung mark trong một ô tô màu bo góc — cả hai đã bị gỡ và cả hai chết cùng ngày sản phẩm được đặt tên.",
+      "Don't sửa `favicon.svg` hay bốn tệp PNG bằng trình đồ hoạ, và đừng để `docs/icons.md`, `gen-icons.mjs` hay một component khác giữ bản sao của hình học.",
+      "Don't làm favicon nền trong suốt, dùng đất nung `#a94f2b` trên bảng đá `#26312e` (~2.4:1), hay hạ độ mờ khung xuống dưới ngưỡng 3:1 để \"nhẹ hơn\".",
+      "Don't đọc frontmatter, mục Colors hay mục Typography của tệp này như hiện trạng — xem cảnh báo tồn đọng ở đầu tệp."
     ],
     "notCanonized": [
       "app-screens.css: thẻ, --radius-md/lg/xl, --shadow-*, heading sans đậm — kế thừa Untitled UI cho Cài đặt/Admin/Đăng nhập; cùng tồn tại, không phải luật của hệ này.",
       "tokens.css: --radius-*, --shadow-*, --shadow-ring-brand #f4ebff (tím kit cũ), thang success/warning/error — khai báo còn đó, khung .doc không dùng.",
-      "Mark xanh vuông bo góc ở góc trái running head và tên 'Tự học' — placeholder theo PRODUCT.md; không ghi thành luật hình dạng.",
       "/login: nhan đề sans 28px 600, ô nhập 44px, .btn.primary, ring focus --shadow-ring-brand và ring trắng 50% trên điều khiển thiết bị — kit kế thừa còn lại sau khi bỏ panel ảnh (02/09/2026); cùng tồn tại, không phải luật của hệ. Chỉ bố cục một cột, điều khiển chữ/nét 32px không viền, và câu trấn an 13px --ink-3 là theo hệ.",
       "landing: .ld-excerpt pre khai báo hai id (#app:not(.reading) #content) để thắng luật bo 10px của #content pre — cùng cơ chế với Quy tắc Hai id, là chi phí kế thừa của reader.css, không phải luật mới.",
-      "Ba lệch hợp đồng (không có 'đoạn' trong dòng Tiếp tục, ghi chú lề mở CHƯƠNG, mục lục không có %) — là giới hạn dữ liệu/reader, ghi ở brief và PRODUCT.md, không phải quyết định thiết kế."
+      "Ba lệch hợp đồng (không có 'đoạn' trong dòng Tiếp tục, ghi chú lề mở CHƯƠNG, mục lục không có %) — là giới hạn dữ liệu/reader, ghi ở brief và PRODUCT.md, không phải quyết định thiết kế.",
+      "Ô vuông bo góc tô màu nhấn ở góc trái running head: đã bị gỡ ở vòng 03/09/2026 và thay bằng mark 'Nét vượt mép'. Không ghi lại thành luật hình dạng — nó không còn tồn tại. Tên 'Tự học' thì vẫn là placeholder (PRODUCT.md).",
+      "docs/icons.md ghi hình học SAI so với bản đã ship: 'khung x=4.2 y=3.6 w=8.6 h=8.8; thanh đè lên mép trái khung'. MARK đã ship là x=3.4 y=3.4 w=9.4 h=9.2 với thanh tâm x=6.2 nằm chếch bên trong. Đây là một lỗi tài liệu mà bản dựng đang mang, không phải một biến thể của hệ — sửa docs/icons.md, đừng kế thừa nó.",
+      "Logo.tsx khai MARK là 'một nguồn sự thật' nhưng JSX bên dưới vẫn viết lại các con số (3.4/9.4/9.2/6.2/0.9/14.2, scale 0.78) thay vì đọc MARK. Bài test chỉ canh favicon.svg khớp MARK, nên component và MARK vẫn có thể trôi. Ghi lại như một lỗ hổng của bản dựng, không ghi thành cách viết chuẩn.",
+      "Chú thích trong Logo.tsx ghi '3.9:1 trên bảng đá'; giá trị đo là 4.06:1 trong khung app và 4.20:1 trên nền icon. Lấy số đo, không lấy số trong chú thích.",
+      "frontmatter + mục Colors + mục Typography của DESIGN.md: mô tả một thế giới đã bị thay (giấy trắng, theorem-blue, Charis SIL làm display). Giữ nguyên và gắn cảnh báo thay vì viết lại — vòng này chỉ có quyền trên mark và bộ biểu tượng; cần một lượt document riêng cho khung app."
     ]
   }
 }
