@@ -271,7 +271,7 @@ export function Login() {
             {/* Không `boxed`: cùng lý do đã gỡ ô vuông quanh mark trên thanh
                 trên ở vòng 1 — một ô app-icon tô nền bo góc là vật của phần
                 mềm, không của một mặt viết tay. */}
-            <Logo size={32} />
+            <Logo size={44} />
             <span>{t('app.name')}</span>
           </p>
           {/*
