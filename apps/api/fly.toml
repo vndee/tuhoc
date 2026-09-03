@@ -47,11 +47,14 @@ primary_region = "sin" # Singapore. Closest Fly region to Vietnam-based
 # `fly secrets set DATABASE_URL=...` (docs/deploy.md), and [env] values in
 # fly.toml are committed to git, so no secret may live here.
 #
-# CORS_ORIGIN below is a placeholder: it must be replaced with the exact
-# origin the Cloudflare Pages site is served from (scheme + host, no
-# trailing slash, no path) before the first real deploy — see
-# docs/deploy.md's cross-origin cookie analysis for why an exact origin
-# (not a wildcard) is required here.
+# CORS_ORIGIN below is the exact origin the Cloudflare Pages site is served
+# from (scheme + host, no trailing slash, no path) — see docs/deploy.md's
+# cross-origin cookie analysis for why an exact origin (not a wildcard) is
+# required here. The host is not arbitrary either: this API is deployed at
+# api.duy.dev, so web and API are different ORIGINS but the same SITE
+# (registrable domain duy.dev), which is what lets the session cookie's
+# hardcoded SameSite=Lax survive the fetch. A host under a different
+# registrable domain passes CORS and then 401s every authenticated call.
 #
 # AI (hệ thống con Pha 2) — HAI BÍ MẬT, KHÔNG ĐƯỢC ĐẶT Ở ĐÂY:
 #
@@ -73,7 +76,7 @@ primary_region = "sin" # Singapore. Closest Fly region to Vietnam-based
 # một proxy hay một endpoint giả lập.
 [env]
   PORT = "8080"
-  CORS_ORIGIN = "https://REPLACE-WITH-PAGES-ORIGIN"
+  CORS_ORIGIN = "https://tuhoc.duy.dev"
   COOKIE_SECURE = "true"
 
 [http_service]
