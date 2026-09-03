@@ -80,11 +80,25 @@ describe('pickLastStudiedCourseId', () => {
 });
 
 describe('pickFocusCourse', () => {
-  it('khoá vừa đọc gần nhất thắng mọi thứ khác — kể cả khi courseIds rỗng', () => {
-    // Một hàng progress TỰ NÓ đã là quyền sở hữu, nên chờ một danh sách
-    // course khác chỉ làm chậm màn hình đầu tiên mà không đổi câu trả lời.
-    expect(pickFocusCourse([], 'dang-doc')).toBe('dang-doc');
-    expect(pickFocusCourse(['khac'], 'dang-doc')).toBe('dang-doc');
+  it('khoá vừa đọc gần nhất thắng — NHƯNG chỉ khi khoá ấy còn nằm trong courseIds', () => {
+    // Trước đây một hàng progress tự nó đã đủ, bất kể courseIds — nhưng
+    // `progress` và `enrollments` không có khoá ngoại (migration 0011), nên
+    // "vừa đọc" một mình không còn là bằng chứng "còn thuộc về người này".
+    expect(pickFocusCourse(['dang-doc'], 'dang-doc')).toBe('dang-doc');
+    expect(pickFocusCourse(['khac', 'dang-doc'], 'dang-doc')).toBe('dang-doc');
+  });
+
+  /**
+   * Ca BỎ GHI DANH — lý do thêm điều kiện `courseIds.includes(...)` này.
+   * `DeleteEnrollment` chỉ xoá đúng hàng `enrollments`; hàng `progress` của
+   * khoá đó sống sót nguyên vẹn, nên `lastStudiedCourseId` vẫn trỏ tới một
+   * khoá người này VỪA RỜI BỎ. Không có điều kiện này, "Học tiếp" mãi mãi
+   * hiện lại khoá đã bỏ — và nút "Bỏ khỏi khoá của tôi" (Task 5) sẽ trông
+   * như không làm gì cả, dù nó đã xoá đúng hàng ghi danh.
+   */
+  it('khoá vừa đọc gần nhất nhưng đã BỎ GHI DANH (không còn trong courseIds) bị bỏ qua', () => {
+    expect(pickFocusCourse(['con-lai'], 'da-bo-ghi-danh')).toBe('con-lai');
+    expect(pickFocusCourse([], 'da-bo-ghi-danh')).toBeUndefined();
   });
 
   // Bậc "khoá thiết bị này ĐANG GIỮ" đã rời đi cùng luồng import (Task 13):
