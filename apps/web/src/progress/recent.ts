@@ -105,26 +105,47 @@ export function useLastStudiedCourseId(): LastStudied {
  * Thứ tự ưu tiên, mỗi bậc có lý do riêng:
  *
  *  1. **Khoá vừa chạm tới gần nhất** (`GET /progress`, qua
- *     `useLastStudiedCourseId` ở trên). Đúng trong hầu hết mọi phiên, và nó
- *     KHÔNG cần `courseIds` trả lời xong — một hàng progress tự nó đã là
- *     quyền sở hữu, nên chờ nguồn kia chỉ làm chậm màn hình đầu tiên mà
- *     không đổi câu trả lời.
+ *     `useLastStudiedCourseId` ở trên) — **NHƯNG chỉ khi khoá ấy còn có mặt
+ *     trong `courseIds`.** `progress` (migration 0001) và `enrollments`
+ *     (migration 0011) là hai bảng ĐỘC LẬP, không có khoá ngoại nào nối
+ *     chúng — migration 0011's comment nói rõ đây là lựa chọn có chủ ý, cùng
+ *     lý do `progress` đã chọn trước đó: gỡ một ghi danh không được phép kéo
+ *     theo xoá tiến độ. Hệ quả là `PutProgress` không kiểm tra ghi danh, và
+ *     `DeleteEnrollment` chỉ xoá đúng hàng `enrollments` — hàng `progress`
+ *     sống sót nguyên vẹn. Không có điều kiện `courseIds.includes(...)` này,
+ *     một người GHI DANH → ĐỌC → BỎ GHI DANH vẫn thấy khoá ấy nằm ở "Học
+ *     tiếp" MÃI MÃI, vì `lastStudiedCourseId` không bao giờ quên nó; nút "Bỏ
+ *     khỏi khoá của tôi" (Task 5) khi ấy sẽ trông như không hoạt động, dù nó
+ *     đã xoá đúng hàng ghi danh. Đây cũng là quyết định trong
+ *     `docs/superpowers/specs/2026-09-03-ghi-danh-khoa-hoc-design.md` §2:
+ *     không backfill từ `progress`, nên người đang đọc dở PHẢI thấy "Học
+ *     tiếp" rỗng cho tới khi tự bấm "Bắt đầu học" — một `lastStudiedCourseId`
+ *     thắng vô điều kiện sẽ âm thầm lách qua đúng quyết định ấy.
  *  2. **Khoá đầu tiên** trong `courseIds`, theo bất kỳ thứ tự chỗ gọi đã sắp
- *     sẵn — ổn định giữa các lần vẽ nếu chỗ gọi giữ thứ tự ổn định.
+ *     sẵn — ổn định giữa các lần vẽ nếu chỗ gọi giữ thứ tự ổn định. Đây cũng
+ *     là bậc mà khoá vừa đọc gần nhất RƠI XUỐNG khi nó đã bị bỏ ghi danh.
  *
  * Từng có một bậc thứ hai riêng — "một khoá thiết bị này ĐANG GIỮ" — cho một
  * course đã nhập vào `db.packages` nhưng chưa có hàng progress nào. Bậc ấy
  * mất đi cùng luồng import (Task 13): không còn "giữ" course nào theo nghĩa
- * đó, mọi course đọc thẳng từ máy chủ. `courseIds` giờ do chỗ gọi tự hợp từ
- * bất kỳ nguồn nào nó cho là hợp lý làm gợi ý (`pages/Dashboard.tsx` hợp danh
- * mục công khai với `stats.courses[]`) — hàm này không còn biết, và không cần
- * biết, course đến từ đâu.
+ * đó, mọi course đọc thẳng từ máy chủ.
+ *
+ * `courseIds` là danh sách khoá NGƯỜI NÀY ĐÃ GHI DANH (`GET /enrollments`),
+ * không phải danh mục công khai. Bản trước của chú thích này nói chỗ gọi được
+ * hợp "bất kỳ nguồn nào nó cho là hợp lý", và `pages/Dashboard.tsx` đã hợp
+ * danh mục chung vào — nên mọi tài khoản đều có một "khoá đang dở" chưa từng
+ * mở. Hàm này vẫn không cần biết khoá đến từ đâu; điều đổi là chỗ gọi không
+ * còn được phép đưa vào đây thứ không thuộc về người dùng — và, kể từ đây,
+ * `courseIds` không còn chỉ là "gợi ý khi chưa đọc gì" mà còn là TẤM LƯỚI lọc
+ * khoá vừa đọc gần nhất.
  *
  * `undefined` = "chưa có gì để tiếp tục". Chỗ gọi phân biệt nó với "chưa biết"
  * bằng `settled`, KHÔNG bằng giá trị này.
  */
 export function pickFocusCourse(courseIds: readonly string[], lastStudiedCourseId: string | null): string | undefined {
-  if (lastStudiedCourseId !== null && lastStudiedCourseId !== '') return lastStudiedCourseId;
+  if (lastStudiedCourseId !== null && lastStudiedCourseId !== '' && courseIds.includes(lastStudiedCourseId)) {
+    return lastStudiedCourseId;
+  }
   return courseIds[0];
 }
 

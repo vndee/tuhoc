@@ -34,14 +34,30 @@ import { useProgress } from '../progress/useProgress';
  *
  * *"Người này có những khoá nào"* → `GET /progress` (`useLocalProgress` bên
  * dưới, tên hàm giữ nguyên từ trước Task 9 dù nguồn đã đổi — xem chú thích
- * của chính hàm), KHÔNG phải danh mục công khai (`fetchCatalog`). Sau khi
- * luồng import chết (Task 13), "sở hữu" một khoá không còn nghĩa gì — danh
- * mục là chung, ai cũng thấy y hệt nhau — nên trang này hỏi một câu hẹp hơn
- * và đúng hơn: "tôi đã học chương nào của khoá nào". Cũng KHÔNG phải
- * `stats.courses[]`: danh sách ấy chỉ chứa khoá máy chủ đã thấy nhịp học
- * hoặc chương hoàn thành, nên một khoá vừa đọc dở, chưa kịp có nhịp học hay
- * chương hoàn thành nào được server đếm, sẽ biến mất khỏi trang tiến độ nếu
- * đây là nguồn duy nhất.
+ * của chính hàm), KHÔNG phải danh mục công khai (`fetchCatalog`).
+ *
+ * Câu ở đây TỪNG là "sở hữu một khoá không còn nghĩa gì — danh mục là
+ * chung, ai cũng thấy y hệt nhau". Đúng ở Task 13 (luồng import chết, hệ
+ * thống chỉ có một khoá và một người đọc), sai kể từ khi có nhiều khoá và
+ * nhiều người đọc — và bản thiết kế
+ * `docs/superpowers/specs/2026-09-03-ghi-danh-khoa-hoc-design.md` khôi phục
+ * "khoá của tôi" thành một khái niệm CÓ nghĩa trở lại: bảng `enrollments`
+ * thật, tường minh bằng nút "Bắt đầu học" (`pages/CourseHome.tsx`), đọc qua
+ * `GET /enrollments` (`api/enrollments.ts`). Trang NÀY vẫn không đọc nguồn
+ * đó — nó hỏi một câu KHÁC và hẹp hơn, đúng từ trước tới giờ và vẫn đúng:
+ * "tôi đã học chương nào của khoá nào", không phải "khoá nào là của tôi".
+ *
+ * Hệ quả đã biết, ghi lại đúng như spec §7: vì ĐỌC một khoá không tự ghi
+ * danh (bảng quyết định của spec đó), có thể tồn tại tiến độ của một khoá
+ * KHÔNG nằm trong `enrollments` — trang này sẽ hiện khoá đó, còn Học tiếp
+ * (`pages/Dashboard.tsx`, nguồn `GET /enrollments`) thì không. Hai trang trả
+ * lời hai câu khác nhau, và đó là câu trả lời ĐÚNG cho cả hai — không phải
+ * lỗi đồng bộ giữa chúng.
+ *
+ * Cũng KHÔNG phải `stats.courses[]`: danh sách ấy chỉ chứa khoá máy chủ đã
+ * thấy nhịp học hoặc chương hoàn thành, nên một khoá vừa đọc dở, chưa kịp có
+ * nhịp học hay chương hoàn thành nào được server đếm, sẽ biến mất khỏi
+ * trang tiến độ nếu đây là nguồn duy nhất.
  *
  * *"Bao nhiêu phút, chuỗi mấy ngày"* → `useStats()` từ `api/stats.ts`, dùng
  * chung với `pages/Dashboard.tsx`'s `statsQueryKey`, nên hai trang không cùng

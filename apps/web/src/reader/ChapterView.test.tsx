@@ -125,6 +125,16 @@ const server = setupServer(
   // behaviour as before; the handful of tests that care about the OTHER
   // shape (Task 12's own block, below) override this with `server.use`.
   http.get('/me', () => HttpResponse.json({ id: 'u1', email: 'a@vi.vn', name: 'Người học' })),
+  // Task 6 (ghi-danh-khoa-hoc): `ChapterView` now also queries `GET
+  // /enrollments` for every signed-in reader (to decide whether "Thêm vào
+  // khoá của tôi" makes sense) — the exact same `onUnhandledRequest: 'error'`
+  // trap Task 12's `/me` handler above already names: every test in this file
+  // that reaches a signed-in reader fires this request too, so a default
+  // handler here is required before ANY of them stop erroring. Empty by
+  // default — "not yet enrolled" — the one shape every test that doesn't
+  // care about enrollment implicitly wants; the Task 6 block below overrides
+  // it where the enrollment state itself is what's under test.
+  http.get('/enrollments', () => HttpResponse.json({ enrollments: [] })),
   http.get('/progress', () => HttpResponse.json({ progress: progressRows })),
   http.put('/progress', async ({ request }) => {
     const body = (await request.json()) as { courseId: string; chapterId: string; status: string; done: boolean };
@@ -1522,6 +1532,200 @@ describe('ChapterView', () => {
       resolveMe!();
       await settleChapter();
       expect(screen.queryByText(t('vi', 'reader.anonNudge'))).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * Task 6 (ghi-danh-khoa-hoc) — người đọc tới THẲNG một chương qua liên kết
+   * chia sẻ, chưa từng ghé `/c/:courseId` (nơi Task 5 đã có "Bắt đầu
+   * học"/"Bỏ khỏi khoá của tôi"), cần một cách để thêm khoá vào "Học tiếp"
+   * mà không phải tự rời chương đi tìm trang khoá. `reader.addToMine`
+   * đứng đúng chỗ `reader.anonNudge` (Task 12) đứng — xem đó cho nudge ẩn
+   * danh, đây là nửa còn lại cho người ĐÃ đăng nhập.
+   *
+   * Bốn bài canh đúng bốn điều brief đòi, trên REQUEST/response thật (method
+   * + path + body), không chỉ trên "nút có mặt": đã đăng nhập + chưa ghi
+   * danh ⇒ hiện; đã ghi danh ⇒ KHÔNG hiện (nút hết nghĩa); chưa đăng nhập ⇒
+   * không hiện (họ có nudge riêng — hai lời mời chồng nhau là một lời mời bị
+   * bỏ qua); bấm ⇒ đúng `POST /enrollments {courseId}` của khoá đang đọc.
+   */
+  describe('Task 6 — lối ghi danh cho người vào thẳng', () => {
+    it('đã đăng nhập, chưa ghi danh khoá này ⇒ hiện "Thêm vào khoá của tôi"', async () => {
+      server.use(http.get('/enrollments', () => HttpResponse.json({ enrollments: [] })));
+
+      await renderChapterAndSettle();
+
+      expect(screen.getByRole('button', { name: t('vi', 'reader.addToMine') })).toBeInTheDocument();
+    });
+
+    it('đã ghi danh khoá này ⇒ KHÔNG hiện nút, vì nó không còn nghĩa gì', async () => {
+      server.use(
+        http.get('/enrollments', () =>
+          HttpResponse.json({ enrollments: [{ courseId: 'demo', createdAt: '2026-09-03T00:00:00Z' }] }),
+        ),
+      );
+
+      await renderChapterAndSettle();
+
+      expect(screen.queryByRole('button', { name: t('vi', 'reader.addToMine') })).not.toBeInTheDocument();
+    });
+
+    it('khách CHƯA đăng nhập ⇒ không hiện nút — họ đã có reader.anonNudge riêng một dòng bên cạnh', async () => {
+      server.use(http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
+
+      await renderChapterAndSettle({}, { expectSession: false });
+
+      // Đối chứng dương: nudge của khách vẫn đứng đó — hai lời mời không
+      // cùng lúc biến mất cả hai vì một điều kiện sai.
+      expect(screen.getByText(t('vi', 'reader.anonNudge'))).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: t('vi', 'reader.addToMine') })).not.toBeInTheDocument();
+    });
+
+    it('bấm nút gửi đúng POST /enrollments {courseId} của khoá đang đọc', async () => {
+      server.use(http.get('/enrollments', () => HttpResponse.json({ enrollments: [] })));
+      const posted: unknown[] = [];
+      server.use(
+        http.post('/enrollments', async ({ request }) => {
+          posted.push(await request.json());
+          return new HttpResponse(null, { status: 201 });
+        }),
+      );
+
+      await renderChapterAndSettle();
+
+      const btn = screen.getByRole('button', { name: t('vi', 'reader.addToMine') });
+      fireEvent.click(btn);
+      await act(async () => {});
+
+      // REQUEST thật gửi ra, không chỉ "nút bấm được": đúng method (POST,
+      // qua `http.post`), đúng thân ({courseId: 'demo'} — của khoá `demo`
+      // đang mở trong `renderChapterView`, không phải chuỗi rỗng hay
+      // `undefined` lọt qua `enabled`/prop).
+      expect(posted).toEqual([{ courseId: 'demo' }]);
+    });
+
+    /**
+     * Fix round cuối (item 4) — `CourseHome.tsx`'s own enroll button has
+     * `disabled={enroll.isPending}` and a `course.enrolling` label; this
+     * one, until this fix, had neither, so the two screens disagreed about
+     * what a pending enroll looks like and a double-click here fired two
+     * `POST /enrollments` (harmless server-side — idempotent — but still the
+     * gap this test closes).
+     */
+    it('Fix round cuối (item 4) — bấm xong: nút vô hiệu hoá, đổi nhãn "Đang thêm…", và một cú bấm đúp không gửi POST lần hai', async () => {
+      server.use(http.get('/enrollments', () => HttpResponse.json({ enrollments: [] })));
+      let postCount = 0;
+      let resolvePost: (() => void) | undefined;
+      server.use(
+        http.post('/enrollments', async () => {
+          postCount += 1;
+          await new Promise<void>((resolve) => {
+            resolvePost = resolve;
+          });
+          return new HttpResponse(null, { status: 201 });
+        }),
+      );
+
+      await renderChapterAndSettle();
+
+      const btn = screen.getByRole('button', { name: t('vi', 'reader.addToMine') });
+      fireEvent.click(btn);
+
+      const pendingBtn = await screen.findByRole('button', { name: t('vi', 'course.enrolling') });
+      expect(pendingBtn).toBeDisabled();
+
+      // Cú bấm thứ hai trong lúc POST đầu còn treo: nút đã vô hiệu hoá, nên
+      // `fireEvent.click` trên nó không kích `onClick` lần hai.
+      fireEvent.click(pendingBtn);
+      await act(async () => {});
+      expect(postCount).toBe(1);
+
+      resolvePost!();
+      await act(async () => {});
+    });
+
+    /**
+     * Fix round 1 — `enrolled` reads `(enrollmentsQuery.data ?? []).some(...)`,
+     * which is `false` while that query is still pending, not just once it
+     * has resolved to "not enrolled". A gate of `confirmedLoggedIn &&
+     * !enrolled` alone therefore cannot tell "confirmed not enrolled" apart
+     * from "don't know yet" — it shows the button on the SECOND shape too, for
+     * exactly as long as `GET /enrollments` takes to answer, then yanks it
+     * away the instant the real (enrolled) answer lands. The four tests above
+     * cannot catch this: `renderChapterAndSettle` always awaits full
+     * settlement, so by the time any of them assert, `/enrollments` has
+     * already resolved.
+     *
+     * This is the identical mistake the file's own doc comment on
+     * `confirmedLoggedIn`/`confirmedLoggedOut` (see `ChapterView`'s top)
+     * already forbids on the LOGIN axis — never render off a guess about
+     * server-confirmed state — just not yet applied to the enrollment axis.
+     */
+    it('đã ghi danh khoá này: không được thấy nút trong lúc GET /enrollments còn treo — đoán sai còn tệ hơn chậm', async () => {
+      let resolveEnrollments: (() => void) | undefined;
+      server.use(
+        http.get('/enrollments', async () => {
+          await new Promise<void>((resolve) => {
+            resolveEnrollments = resolve;
+          });
+          return HttpResponse.json({
+            enrollments: [{ courseId: 'demo', createdAt: '2026-09-03T00:00:00Z' }],
+          });
+        }),
+      );
+
+      await renderChapterAndSettle();
+
+      // Còn treo: chưa có gì XÁC NHẬN "chưa ghi danh", nên nút không được đoán.
+      expect(screen.queryByRole('button', { name: t('vi', 'reader.addToMine') })).not.toBeInTheDocument();
+
+      resolveEnrollments!();
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+
+      // Đáp án thật là "đã ghi danh" — nút vẫn phải vắng mặt, không phải
+      // "vắng mặt rồi hiện ra rồi biến mất lại".
+      expect(screen.queryByRole('button', { name: t('vi', 'reader.addToMine') })).not.toBeInTheDocument();
+    });
+
+    /**
+     * Fix round 1 — `enroll` only had `onSuccess` before this round; nothing
+     * read `enroll.isError`, so a failed `POST /enrollments` left the button
+     * exactly where it was with nothing telling the reader it did not go
+     * through. Same failure surface Task 5 shipped for `CourseHome.tsx`'s own
+     * enroll button (`role="alert"`, `.lib-notice-server`), and the same
+     * `useMutation` self-clearing-on-retry contract already proven for
+     * `progress.saveError`/`annotations.saveError` in `AuthedReaderExtras`
+     * below.
+     */
+    it('Fix round 1 — POST /enrollments trả 500: hiện thông báo lỗi tại chỗ; bấm lại và thành công thì thông báo biến mất', async () => {
+      server.use(http.get('/enrollments', () => HttpResponse.json({ enrollments: [] })));
+      let shouldFail = true;
+      server.use(
+        http.post('/enrollments', () => {
+          if (shouldFail) return new HttpResponse(null, { status: 500 });
+          return new HttpResponse(null, { status: 201 });
+        }),
+      );
+
+      await renderChapterAndSettle();
+
+      const btn = screen.getByRole('button', { name: t('vi', 'reader.addToMine') });
+      fireEvent.click(btn);
+
+      // Một request hỏng KHÔNG được lặng lẽ biến mất: nút vẫn đứng đó (còn
+      // "Thêm vào khoá của tôi" — request thật sự hỏng, không lỡ coi như đã
+      // ghi danh), và `role="alert"` phải hiện đúng câu.
+      expect(await screen.findByRole('alert')).toHaveTextContent(t('vi', 'reader.addToMineFailed'));
+      expect(screen.getByRole('button', { name: t('vi', 'reader.addToMine') })).toBeInTheDocument();
+
+      // Bấm lại — lần này server trả 201 — thông báo cũ phải biến mất, không
+      // kẹt lại dưới một nút giờ đã hoạt động.
+      shouldFail = false;
+      fireEvent.click(screen.getByRole('button', { name: t('vi', 'reader.addToMine') }));
+
+      await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
     });
   });
 });

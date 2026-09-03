@@ -198,6 +198,14 @@ export const en: Messages = {
   'course.parts.title': (n: string) => `This course runs through ${n} parts`,
   'course.parts.hint': 'Each chapter is listed in the contents on the left.',
   'course.partCount': (read: string, total: string) => `${read}/${total}`,
+  /** Task 5: enroll/unenroll button on the course page — `pages/CourseHome.tsx`. */
+  'course.enroll': 'Start this course',
+  'course.unenroll': 'Remove from my courses',
+  'course.enrolling': 'Adding…',
+  /** Fix round 1: surface for a failed enroll/un-enroll (network drop,
+   *  5xx) — before this the button just quietly stopped being `isPending`. */
+  'course.enrollFailed': "Couldn't enroll. Try again.",
+  'course.unenrollFailed': "Couldn't remove this course. Try again.",
   'chapter.notFound': 'Chapter not found.',
   'chapter.notFoundInCourse': 'That chapter is not in this course.',
 
@@ -205,6 +213,7 @@ export const en: Messages = {
   'home.lede': 'Where you left off, and the notes you have been taking.',
   'account.logout': 'Sign out',
   'home.loading': 'Finding where you left off…',
+  'home.enrollmentsError': "Couldn't load your courses. This lives on the server, so it needs a connection.",
   'home.eyebrow': 'Currently reading',
   'home.continue': 'Continue reading',
   'home.start': 'Start reading',
@@ -219,8 +228,7 @@ export const en: Messages = {
   'home.notes.open': 'Open the chapter',
   'home.notes.formula': 'formula',
   'home.notes.aria': (course: string) => `Open this note in ${course}`,
-  'toc.next': 'Next',
-  'toc.done': 'Read',
+  'home.myCourses': 'My courses',
 
   /** Dashboard empty state, after the import flow died — see vi.ts's comment. */
   'home.empty.heading': 'You have not started a course yet',
@@ -397,6 +405,15 @@ export const en: Messages = {
   'reader.exerciseCheckbox': (index: string) => `Mark exercise ${index} as done`,
   'reader.exerciseDone': 'Done',
   'reader.anonNudge': 'Sign in to keep progress, notes, and ask the AI.',
+  /* Task 6 (ghi-danh-khoa-hoc) — a signed-in reader who arrived straight at
+     this chapter via a shared link (never visited `/c/:courseId`, where
+     Task 5 already has "Start this course"), and isn't enrolled yet. Never
+     shown alongside `reader.anonNudge` above — see `reader/ChapterView.tsx`. */
+  'reader.addToMine': 'Add to my courses',
+  /** Fix round 1 — surface for a failed `POST /enrollments` from the reader
+   *  (network drop, 5xx) — same convention as `course.enrollFailed`, kept as
+   *  its own key since this is a different control (`reader.addToMine`). */
+  'reader.addToMineFailed': "Couldn't add it. Try again.",
 
   'reader.toc': 'Contents',
   'reader.tocOpen': 'Open the course contents',

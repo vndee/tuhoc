@@ -178,3 +178,30 @@ func (uc *Usecase) PatchAnnotation(ctx context.Context, userID, id uuid.UUID, no
 func (uc *Usecase) DeleteAnnotation(ctx context.Context, userID, id uuid.UUID) (bool, error) {
 	return uc.repo.DeleteAnnotation(ctx, userID, id)
 }
+
+// ErrEmptyCourseID là câu trả lời cho một courseId rỗng. Nó là lỗi của NGƯỜI
+// GỌI, không phải của máy chủ, nên handler dựng 400 chứ không 500.
+var ErrEmptyCourseID = errors.New("userdata: courseId must not be empty")
+
+func (uc *Usecase) ListEnrollments(ctx context.Context, userID uuid.UUID) ([]EnrollmentRow, error) {
+	return uc.repo.ListEnrollments(ctx, userID)
+}
+
+// CreateEnrollment kiểm đúng một điều: courseId không rỗng. KHÔNG kiểm khoá có
+// tồn tại trong published_courses hay không, và đó là cố ý — cùng lập luận
+// khiến cột là text chứ không phải khoá ngoại (migration 0011): một khoá gỡ
+// xuất bản rồi đăng lại phải tìm thấy người đọc cũ, nên tồn tại-lúc-ghi-danh
+// không phải điều kiện đúng để kiểm.
+func (uc *Usecase) CreateEnrollment(ctx context.Context, userID uuid.UUID, courseID string) error {
+	if courseID == "" {
+		return ErrEmptyCourseID
+	}
+	return uc.repo.CreateEnrollment(ctx, userID, courseID)
+}
+
+func (uc *Usecase) DeleteEnrollment(ctx context.Context, userID uuid.UUID, courseID string) error {
+	if courseID == "" {
+		return ErrEmptyCourseID
+	}
+	return uc.repo.DeleteEnrollment(ctx, userID, courseID)
+}

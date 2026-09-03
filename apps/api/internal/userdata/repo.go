@@ -243,3 +243,78 @@ func (r *Repo) DeleteAnnotation(ctx context.Context, userID, id uuid.UUID) (bool
 	}
 	return tag.RowsAffected() > 0, nil
 }
+
+// EnrollmentRow là một hàng ghi danh. UserID vắng mặt có chủ ý, cùng lý do
+// ProgressRow không có nó: người gọi đã biết (auth.UID), và nó không bao giờ
+// được lấy từ đầu vào của client.
+type EnrollmentRow struct {
+	CourseID  string
+	CreatedAt time.Time
+}
+
+// ListEnrollments trả mọi ghi danh của userID, mới nhất trước — đúng thứ tự
+// idx_enrollments_user đã phủ, nên câu này không phải sắp xếp thêm lần nào.
+func (r *Repo) ListEnrollments(ctx context.Context, userID uuid.UUID) ([]EnrollmentRow, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT course_id, created_at
+		 FROM enrollments
+		 WHERE user_id = $1
+		 ORDER BY created_at DESC`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("userdata: list enrollments: %w", err)
+	}
+	defer rows.Close()
+
+	out := []EnrollmentRow{}
+	for rows.Next() {
+		var e EnrollmentRow
+		if err := rows.Scan(&e.CourseID, &e.CreatedAt); err != nil {
+			return nil, fmt.Errorf("userdata: scan enrollment row: %w", err)
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("userdata: list enrollments: %w", err)
+	}
+	return out, nil
+}
+
+// ON CONFLICT DO NOTHING chứ không phải DO UPDATE: ghi danh lần hai KHÔNG được
+// dời created_at, vì "khoá này là của tôi từ bao giờ" phải giữ nguyên câu trả
+// lời đầu tiên. Cú bấm đúp không phải một sự kiện thứ hai.
+const createEnrollmentSQL = `
+INSERT INTO enrollments (user_id, course_id) VALUES ($1, $2)
+ON CONFLICT (user_id, course_id) DO NOTHING;
+`
+
+// CreateEnrollment ghi danh userID vào courseID. Idempotent: gọi lại không
+// lỗi và không đổi gì.
+func (r *Repo) CreateEnrollment(ctx context.Context, userID uuid.UUID, courseID string) error {
+	if _, err := r.pool.Exec(ctx, createEnrollmentSQL, userID, courseID); err != nil {
+		return fmt.Errorf("userdata: create enrollment (course=%s): %w", courseID, err)
+	}
+	return nil
+}
+
+// DeleteEnrollment gỡ courseID khỏi danh sách của userID.
+//
+// KHÔNG trả bool "có xoá được không", khác PatchAnnotation/DeleteAnnotation ở
+// trên: những hàm ấy trả bool để handler dựng 404, vì id ở đó là uuid client
+// sinh ra và "không tìm thấy" là một câu trả lời có nghĩa. Ở đây không có gì
+// để 404: xoá một ghi danh chưa tồn tại đã đạt đúng kết quả người dùng muốn.
+//
+// Câu này chỉ chạm bảng enrollments. progress và annotations của cùng cặp
+// (người dùng, khoá) KHÔNG bị đụng tới — đó là toàn bộ quyết định "bỏ ghi danh
+// chỉ rời danh sách", và TestDeleteEnrollmentKeepsProgressAndAnnotations là
+// thứ giữ nó khỏi bị vô hiệu bởi một câu DELETE thêm vào sau này.
+func (r *Repo) DeleteEnrollment(ctx context.Context, userID uuid.UUID, courseID string) error {
+	if _, err := r.pool.Exec(ctx,
+		`DELETE FROM enrollments WHERE user_id = $1 AND course_id = $2`,
+		userID, courseID,
+	); err != nil {
+		return fmt.Errorf("userdata: delete enrollment (course=%s): %w", courseID, err)
+	}
+	return nil
+}
