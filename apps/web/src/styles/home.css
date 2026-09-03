@@ -39,23 +39,21 @@
    luật khác của khung `.doc` (p, a, span, li) không bị luật chung nào cạnh tranh. */
 
 #app:not(.reading) #content .doc-title {
-  font-family: var(--font-serif);
-  font-weight: 400;
-  font-size: clamp(30px, 3.4vw, 40px);
-  line-height: 1.1;
-  letter-spacing: -0.01em;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: clamp(28px, 3.2vw, 42px);
+  line-height: 1.12;
+  letter-spacing: -0.005em;
   color: var(--ink);
   margin: 0;
 }
 
 #app:not(.reading) #content .doc-h {
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: 17px;
   line-height: 1.3;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-2);
   margin: 0 0 12px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--ink);
@@ -90,19 +88,21 @@
 }
 
 .doc-title {
-  font-family: var(--font-serif);
-  font-weight: 400;
-  font-size: clamp(30px, 3.4vw, 40px);
-  line-height: 1.1;
-  letter-spacing: -0.01em;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: clamp(28px, 3.2vw, 42px);
+  line-height: 1.12;
+  letter-spacing: -0.005em;
   color: var(--ink);
   margin: 0;
   text-wrap: balance;
 }
 
+/* Câu dẫn là lời của GIAO DIỆN nói về trang, không phải văn của tác giả —
+   nên nó theo nét tay. Serif ở lại đúng chỗ của nó: văn xuôi do tác giả viết
+   (mô tả khoá, thân chương, câu ghi chú trích lại). */
 .doc-lede {
-  font-family: var(--font-serif);
-  font-style: italic;
+  font-family: var(--font-sans);
   font-size: 17px;
   line-height: 1.5;
   color: var(--ink-2);
@@ -133,21 +133,19 @@
    cạnh chữ lớn", để bốn chỗ không tự chọn bốn cỡ khác nhau. */
 .lbl {
   font-family: var(--font-sans);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 14.5px;
+  font-weight: 400;
   color: var(--ink-3);
 }
 
-/* Đầu mục lề và đầu mục trong cột chính: nhãn + hairline mực dưới. */
+/* Đầu mục lề và đầu mục trong cột chính: nét tay + hairline mực dưới. Chữ
+   HOA giãn chữ đã đi cùng thế giới typeset cũ — trên một mặt viết tay, thứ
+   bậc đi bằng cỡ và độ đậm, không bằng chữ hoa. */
 .doc-h {
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: 17px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-2);
   margin: 0 0 12px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--ink);
@@ -209,14 +207,9 @@
 .cont-verb {
   flex: none;
   font-family: var(--font-sans);
-  font-size: 12.5px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 15px;
+  font-weight: 400;
   color: var(--accent);
-  /* Nâng nhẹ để đường gốc của chữ hoa nhỏ ngồi đúng đường gốc của serif lớn. */
-  position: relative;
-  top: -0.15em;
 }
 
 .cont-chapter {
@@ -246,6 +239,7 @@
 /* Hover/focus: gạch chân hairline màu nhấn chạy dưới tên chương — chuyển động
    duy nhất của khối này, 150ms, từ trạng thái đã thấy được. */
 .cont-title {
+  font-family: var(--font-sans);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.12em;
@@ -350,7 +344,7 @@
 }
 
 .toc-title {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: 16.5px;
   line-height: 1.4;
   color: var(--ink);
@@ -455,9 +449,7 @@
 .mnote-formula {
   font-family: var(--font-sans);
   font-style: normal;
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 12px;
   color: var(--ink-3);
   padding: 0 4px;
   border: 1px solid var(--rule);
@@ -753,8 +745,6 @@
   margin-bottom: 6px;
   font-family: var(--font-sans);
   font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--ink-3);
 }
 

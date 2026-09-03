@@ -268,7 +268,10 @@ export function Login() {
               (mark, nhan đề, câu dẫn) căn giữa; từ hàng tab trở xuống căn trái,
               vì một ô nhập căn giữa thì mắt không có mép nào để bám. */}
           <p className="auth-brand">
-            <Logo size={34} boxed />
+            {/* Không `boxed`: cùng lý do đã gỡ ô vuông quanh mark trên thanh
+                trên ở vòng 1 — một ô app-icon tô nền bo góc là vật của phần
+                mềm, không của một mặt viết tay. */}
+            <Logo size={32} />
             <span>{t('app.name')}</span>
           </p>
           {/*

@@ -74,7 +74,7 @@ export function Logo({
   const showPages = (boxed ? size * 0.72 : size) >= 18;
 
   const strokeColor = boxed ? '#fff' : color;
-  const pagesColor = boxed ? 'var(--color-brand-200)' : (pageColor ?? color);
+  const pagesColor = boxed ? 'var(--accent-soft)' : (pageColor ?? color);
 
   return (
     <svg
@@ -86,7 +86,7 @@ export function Logo({
       className={className}
       aria-hidden="true"
     >
-      {boxed && <rect width="28" height="28" rx="7" fill="var(--color-brand-600)" />}
+      {boxed && <rect width="28" height="28" rx="7" fill="var(--accent)" />}
       <path
         d="M8 9.5h12M14 9.5V20"
         stroke={strokeColor}

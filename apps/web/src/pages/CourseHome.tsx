@@ -104,10 +104,16 @@ export function CourseHome() {
           khác trên trang này. */}
       {target !== undefined && (
         <section className="ch-resume">
-          <p className="ch-resume-eyebrow">{t(read === 0 ? 'home.start' : 'home.eyebrow')}</p>
+          {/* NHÃN RUN-IN, không phải eyebrow. Sàn craft cấm thẳng một dòng
+              nhãn đứng TRÊN một đầu mục: đầu mục tự đứng được. Nhưng chữ ở
+              đây ("Đọc tiếp"/"Bắt đầu") không phải một nhãn phân loại — nó
+              nói ra hành động, nên xoá là mất nghĩa. Nó vào thẳng trong đầu
+              mục, đúng cách khối Tiếp tục ở Học tiếp (`.cont-verb`) và ô
+              hành động của landing đã làm. */}
           <div className="ch-resume-row">
             <div className="ch-resume-body">
               <h2 className="ch-resume-title">
+                <span className="ch-resume-verb">{t(read === 0 ? 'home.start' : 'home.eyebrow')}</span>
                 {target.num !== '' && <span className="ch-resume-num">{target.num}</span>}
                 {target.title}
               </h2>

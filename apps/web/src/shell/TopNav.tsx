@@ -75,7 +75,13 @@ export function TopNav() {
   return (
     <>
       <div className="tn-brand flex items-center gap-2.5">
-        <Logo size={28} boxed />
+        {/* KHÔNG `boxed` nữa (vòng 1, 03/09/2026). Ô vuông bo góc 7px tô
+            `--color-brand-600` là mảnh cuối cùng của kit Untitled UI còn đứng
+            trên màn: trong thế giới "một bàn tay, hai mặt viết" không có góc
+            bo và không có khối tô nền, nên nó là màu lạ duy nhất trên trang.
+            HÌNH của mark không đổi — nó là quyết định của chủ dự án
+            (PRODUCT.md, Brand Commitments), chỉ cái hộp quanh nó đi. */}
+        <Logo size={26} />
         <span className="tn-wordmark">
           {t('app.name')}
         </span>
