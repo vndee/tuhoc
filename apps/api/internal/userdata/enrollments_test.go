@@ -3,6 +3,7 @@ package userdata_test
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -161,5 +162,40 @@ func TestPostEnrollmentRejectsEmptyCourseID(t *testing.T) {
 		map[string]string{"courseId": ""}, cookie)
 	if res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", res.StatusCode)
+	}
+}
+
+// TestDeleteEnrollmentDecodesPercentEncodedCourseID is the direct
+// regression test for DeleteEnrollment's own doc comment (mirroring
+// catalog's urlSlug / TestPublishSlugNeedingURLEncodingRoundTrips): fiber's
+// UnescapePath is off (server.New's fiber.Config never sets it), so a
+// courseId containing a character encodeURIComponent would escape — a "/",
+// exactly the case apps/web/src/api/enrollments.ts sends — arrives at
+// c.Params("courseId") still percent-encoded. POST stores the courseId from
+// the JSON body (already decoded), so a DELETE that never decodes its own
+// path segment looks for the wrong string and matches nothing: the row
+// survives, the caller gets a 204 anyway (idempotent-delete's "already
+// gone" shape, indistinguishable from "actually deleted"), and the web UI
+// is left showing a course as still enrolled after "Bỏ khỏi khoá của tôi".
+func TestDeleteEnrollmentDecodesPercentEncodedCourseID(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool)
+	cookie := registerUser(t, app, "enroll-slash")
+
+	courseID := "khoa/a"
+	res, body := doRequest(t, app, http.MethodPost, "/enrollments",
+		map[string]string{"courseId": courseID}, cookie)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("POST status = %d, want 201; body = %s", res.StatusCode, body)
+	}
+
+	res, body = doRequest(t, app, http.MethodDelete, "/enrollments/"+url.PathEscape(courseID), nil, cookie)
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE status = %d, want 204; body = %s", res.StatusCode, body)
+	}
+
+	_, listBody := doRequest(t, app, http.MethodGet, "/enrollments", nil, cookie)
+	if strings.Contains(string(listBody), courseID) {
+		t.Fatalf("enrollment %q still listed after DELETE with a percent-encoded path: %s", courseID, listBody)
 	}
 }
