@@ -659,12 +659,36 @@ export function ChapterView({
           have no way, short of leaving it, to add the course to "Học tiếp".
           Never rendered together with the nudge just above —
           `confirmedLoggedIn`/`confirmedLoggedOut` cannot both be true — so
-          this is not two invitations stacked on top of each other. */}
-      {confirmedLoggedIn && !enrolled && (
+          this is not two invitations stacked on top of each other.
+
+          Fix round 1 — `enrollmentsQuery.isSuccess` is load-bearing, not
+          decorative: `enrolled` defaults `false` while that query is still
+          pending (`(undefined ?? []).some(...)`), so gating on
+          `confirmedLoggedIn && !enrolled` alone showed this button to an
+          ALREADY-enrolled reader for one round trip, then yanked it away the
+          instant `/enrollments` resolved. Exactly the guess-before-the-server-
+          confirms mistake this file's own doc comment on
+          `confirmedLoggedIn`/`confirmedLoggedOut` (above) already forbids on
+          the login axis — just not yet applied to the enrollment axis. */}
+      {confirmedLoggedIn && enrollmentsQuery.isSuccess && !enrolled && (
         <p className="reader-addmine">
           <button type="button" className="reader-addmine-btn" onClick={() => enroll.mutate()}>
             {t('reader.addToMine')}
           </button>
+        </p>
+      )}
+      {/* Fix round 1 — the same failure surface Task 5 shipped for
+          `CourseHome.tsx`'s own enroll button, and the same reasoning
+          `AuthedReaderExtras` already uses below for `progress.saveError`/
+          `annotations.saveError`: not a toast (this codebase has none),
+          declarative off `enroll.isError` rather than an `onError` callback
+          (`useMutation` clears `isError` on its own the moment the next
+          `mutate()` starts, so a retry silently clears this with no extra
+          state), `role="alert"` + `.lib-notice-server` reused as-is rather
+          than inventing a reader-scoped twin. */}
+      {enroll.isError && (
+        <p role="alert" className="lib-notice-server">
+          {t('reader.addToMineFailed')}
         </p>
       )}
       <div ref={containerRef} />

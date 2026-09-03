@@ -409,6 +409,10 @@ export const en: Messages = {
      Task 5 already has "Start this course"), and isn't enrolled yet. Never
      shown alongside `reader.anonNudge` above — see `reader/ChapterView.tsx`. */
   'reader.addToMine': 'Add to my courses',
+  /** Fix round 1 — surface for a failed `POST /enrollments` from the reader
+   *  (network drop, 5xx) — same convention as `course.enrollFailed`, kept as
+   *  its own key since this is a different control (`reader.addToMine`). */
+  'reader.addToMineFailed': "Couldn't add it. Try again.",
 
   'reader.toc': 'Contents',
   'reader.tocOpen': 'Open the course contents',

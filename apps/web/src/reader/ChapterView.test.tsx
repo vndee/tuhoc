@@ -1603,5 +1603,89 @@ describe('ChapterView', () => {
       // `undefined` lọt qua `enabled`/prop).
       expect(posted).toEqual([{ courseId: 'demo' }]);
     });
+
+    /**
+     * Fix round 1 — `enrolled` reads `(enrollmentsQuery.data ?? []).some(...)`,
+     * which is `false` while that query is still pending, not just once it
+     * has resolved to "not enrolled". A gate of `confirmedLoggedIn &&
+     * !enrolled` alone therefore cannot tell "confirmed not enrolled" apart
+     * from "don't know yet" — it shows the button on the SECOND shape too, for
+     * exactly as long as `GET /enrollments` takes to answer, then yanks it
+     * away the instant the real (enrolled) answer lands. The four tests above
+     * cannot catch this: `renderChapterAndSettle` always awaits full
+     * settlement, so by the time any of them assert, `/enrollments` has
+     * already resolved.
+     *
+     * This is the identical mistake the file's own doc comment on
+     * `confirmedLoggedIn`/`confirmedLoggedOut` (see `ChapterView`'s top)
+     * already forbids on the LOGIN axis — never render off a guess about
+     * server-confirmed state — just not yet applied to the enrollment axis.
+     */
+    it('đã ghi danh khoá này: không được thấy nút trong lúc GET /enrollments còn treo — đoán sai còn tệ hơn chậm', async () => {
+      let resolveEnrollments: (() => void) | undefined;
+      server.use(
+        http.get('/enrollments', async () => {
+          await new Promise<void>((resolve) => {
+            resolveEnrollments = resolve;
+          });
+          return HttpResponse.json({
+            enrollments: [{ courseId: 'demo', createdAt: '2026-09-03T00:00:00Z' }],
+          });
+        }),
+      );
+
+      await renderChapterAndSettle();
+
+      // Còn treo: chưa có gì XÁC NHẬN "chưa ghi danh", nên nút không được đoán.
+      expect(screen.queryByRole('button', { name: t('vi', 'reader.addToMine') })).not.toBeInTheDocument();
+
+      resolveEnrollments!();
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+
+      // Đáp án thật là "đã ghi danh" — nút vẫn phải vắng mặt, không phải
+      // "vắng mặt rồi hiện ra rồi biến mất lại".
+      expect(screen.queryByRole('button', { name: t('vi', 'reader.addToMine') })).not.toBeInTheDocument();
+    });
+
+    /**
+     * Fix round 1 — `enroll` only had `onSuccess` before this round; nothing
+     * read `enroll.isError`, so a failed `POST /enrollments` left the button
+     * exactly where it was with nothing telling the reader it did not go
+     * through. Same failure surface Task 5 shipped for `CourseHome.tsx`'s own
+     * enroll button (`role="alert"`, `.lib-notice-server`), and the same
+     * `useMutation` self-clearing-on-retry contract already proven for
+     * `progress.saveError`/`annotations.saveError` in `AuthedReaderExtras`
+     * below.
+     */
+    it('Fix round 1 — POST /enrollments trả 500: hiện thông báo lỗi tại chỗ; bấm lại và thành công thì thông báo biến mất', async () => {
+      server.use(http.get('/enrollments', () => HttpResponse.json({ enrollments: [] })));
+      let shouldFail = true;
+      server.use(
+        http.post('/enrollments', () => {
+          if (shouldFail) return new HttpResponse(null, { status: 500 });
+          return new HttpResponse(null, { status: 201 });
+        }),
+      );
+
+      await renderChapterAndSettle();
+
+      const btn = screen.getByRole('button', { name: t('vi', 'reader.addToMine') });
+      fireEvent.click(btn);
+
+      // Một request hỏng KHÔNG được lặng lẽ biến mất: nút vẫn đứng đó (còn
+      // "Thêm vào khoá của tôi" — request thật sự hỏng, không lỡ coi như đã
+      // ghi danh), và `role="alert"` phải hiện đúng câu.
+      expect(await screen.findByRole('alert')).toHaveTextContent(t('vi', 'reader.addToMineFailed'));
+      expect(screen.getByRole('button', { name: t('vi', 'reader.addToMine') })).toBeInTheDocument();
+
+      // Bấm lại — lần này server trả 201 — thông báo cũ phải biến mất, không
+      // kẹt lại dưới một nút giờ đã hoạt động.
+      shouldFail = false;
+      fireEvent.click(screen.getByRole('button', { name: t('vi', 'reader.addToMine') }));
+
+      await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    });
   });
 });
