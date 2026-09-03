@@ -80,6 +80,23 @@ export function CourseHome() {
   });
   const enrolled = (enrollmentsQuery.data ?? []).some((e) => e.courseId === courseId);
 
+  /* Fix round 1 — `enroll.isError`/`unenroll.isError` là bề mặt lỗi, không
+   * phải một callback `onError` riêng: trước bản vá này một cú bấm hỏng (mất
+   * mạng, 5xx) không để lại dấu vết nào — nút hết `isPending` và im re, học
+   * viên không biết gì đã (không) xảy ra. Cùng hợp đồng đã CHỨNG MINH đúng ở
+   * `useProgress.saveError`/`useAnnotations.saveError` (xem doc của
+   * `saveError` ở `annotations/useAnnotations.ts`): `useMutation` tự đặt
+   * `isError = true` khi `mutationFn` reject, và tự XOÁ nó ngay khi lần
+   * `mutate()` KẾ TIẾP bắt đầu — nên không cần state cục bộ nào để "dọn" lỗi
+   * cũ, và một lần bấm lại thành công tự động che luôn thông báo cũ. Nơi vẽ
+   * ra là JSX dưới, ngay dưới `.ch-resume-row` — `role="alert"`,
+   * `.lib-notice-server` tái dùng nguyên (không phải toast — codebase này
+   * không có toast, xem `ChapterView.tsx`/`Rating.tsx` cùng lớp).
+   *
+   * 401 KHÔNG phải lỗ hổng: `api.post`/`api.del` mặc định `redirectOn401:
+   * true`, nên một phiên hết hạn tự hất sang /login trước khi kịp render
+   * `isError` — chỉ những lỗi CÒN LẠI (mất mạng, 5xx, …) mới cần bề mặt này.
+   */
   const enroll = useMutation({
     mutationFn: () => createEnrollment(courseId as string),
     // Nạp lại từ cache đã mất hiệu lực, không tự vá — `enrollmentsQueryKey()`
@@ -191,6 +208,21 @@ export function CourseHome() {
               </button>
             )}
           </div>
+          {/* Fix round 1 — bề mặt DUY NHẤT cho một cú ghi danh/bỏ ghi danh
+              hỏng. `role="alert"`, `.lib-notice-server` tái dùng nguyên từ
+              `registry/Rating.tsx` (không phải toast, codebase này không
+              có). Tự biến mất ở lần `mutate()` kế tiếp — xem chú thích tại
+              chỗ khai `enroll`/`unenroll` phía trên. */}
+          {enroll.isError && (
+            <p role="alert" className="lib-notice-server">
+              {t('course.enrollFailed')}
+            </p>
+          )}
+          {unenroll.isError && (
+            <p role="alert" className="lib-notice-server">
+              {t('course.unenrollFailed')}
+            </p>
+          )}
         </section>
       )}
 
