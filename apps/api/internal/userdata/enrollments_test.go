@@ -113,6 +113,18 @@ func TestDeleteEnrollmentKeepsProgressAndAnnotations(t *testing.T) {
 		t.Fatalf("DELETE status = %d, want 204", res.StatusCode)
 	}
 
+	// The row itself must actually be gone — "chỉ rời danh sách" means the
+	// enrollments row is the ONE thing this DELETE is allowed to remove.
+	// Without this check, a Repo.DeleteEnrollment that silently did nothing
+	// (wrong WHERE clause, or the statement body lost entirely) would still
+	// pass every test in this file: the handler returns 204 regardless of
+	// rows affected, and no other test re-queries /enrollments after a real
+	// enrollment's DELETE.
+	_, enrollBody := doRequest(t, app, http.MethodGet, "/enrollments", nil, cookie)
+	if strings.Contains(string(enrollBody), "khoa-a") {
+		t.Fatalf("enrollment still listed after DELETE: %s", enrollBody)
+	}
+
 	_, progressBody := doRequest(t, app, http.MethodGet, "/progress", nil, cookie)
 	if !strings.Contains(string(progressBody), `"chapterId":"c1"`) {
 		t.Fatalf("progress row disappeared after un-enrolling: %s", progressBody)
