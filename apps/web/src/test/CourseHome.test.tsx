@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useParams } from 'react-router-dom';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { CourseHome } from '../pages/CourseHome';
 import { Sidebar } from '../shell/Sidebar';
@@ -77,7 +77,20 @@ afterAll(() => server.close());
  *
  * `<Sidebar>` đọc `useLocation`, nên nó phải nằm TRONG `<MemoryRouter>` chứ
  * không nằm trong `<Routes>` — nó là chrome dựng CẠNH route, đúng như `App.tsx`.
+ *
+ * Fix round cuối (item 3) — thêm route `/c/:courseId/:chapterId`, stub theo
+ * đúng khuôn `Login.test.tsx`'s own `<div>Chapter content</div>`: "Bắt đầu
+ * học" giờ điều hướng sau khi ghi danh xong (spec §5, "rồi đi tới chương
+ * đầu"), nên các bài canh chuyện đó cần một đích thật để `<CourseHome>`
+ * điều hướng TỚI và một cách để đọc lại courseId/chapterId nó nhận được —
+ * không chỉ "URL đã đổi". Route này vô hại với mọi bài KHÔNG bấm "Bắt đầu
+ * học": không request nào, không hiệu ứng nào, nếu điều hướng không xảy ra.
  */
+function ChapterRouteStub() {
+  const { courseId, chapterId } = useParams<{ courseId: string; chapterId: string }>();
+  return <p data-testid="landed-chapter">{`${courseId}/${chapterId}`}</p>;
+}
+
 function renderCourseHome(initialPath = '/c/demo') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -86,6 +99,7 @@ function renderCourseHome(initialPath = '/c/demo') {
         <Sidebar />
         <Routes>
           <Route path="/c/:courseId" element={<CourseHome />} />
+          <Route path="/c/:courseId/:chapterId" element={<ChapterRouteStub />} />
         </Routes>
       </MemoryRouter></LanguageProvider>
     </QueryClientProvider>,
@@ -286,18 +300,26 @@ describe('Task 12 — tiến độ chỉ hiện khi có phiên', () => {
  * không gửi gì cả.
  */
 describe('Task 5 — ghi danh và bỏ ghi danh ngay tại trang khoá', () => {
-  it('chưa ghi danh: hiện "Bắt đầu học"; bấm gửi đúng POST /enrollments {courseId}, rồi chuyển sang lối bỏ ghi danh', async () => {
+  /**
+   * Fix round cuối (item 3, spec §5) — trước bản vá này, một người đã đăng
+   * nhập và XÁC NHẬN chưa ghi danh thấy CẢ liên kết đọc ("Bắt đầu đọc") LẪN
+   * nút ghi danh ("Bắt đầu học") đứng cạnh nhau — hai hành động sơ cấp giống
+   * hệt nhau về kiểu dáng (`btn primary`) trong cùng MỘT `.ch-resume-row`,
+   * trên một trang mà toàn bộ lập luận thiết kế là "MỘT hành động". Bài này
+   * canh cả hai nửa: (1) trước khi bấm, CHỈ một hành động sơ cấp đứng đó, và
+   * (2) bấm nó gửi đúng `POST /enrollments {courseId}` RỒI điều hướng thẳng
+   * tới chương ĐẦU TIÊN của khoá — không còn ở lại trang khoá để đổi nút
+   * thành "Bỏ khỏi khoá của tôi" nữa (đó là hành vi CŨ mà quyết định của chủ
+   * sản phẩm đã thay).
+   */
+  it('chưa ghi danh, đã xác nhận: đúng MỘT hành động sơ cấp ("Bắt đầu học"); bấm gửi đúng POST /enrollments {courseId} rồi tới chương đầu', async () => {
     server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(4))));
 
     const posted: unknown[] = [];
-    let enrolled = false;
     server.use(
-      http.get('/enrollments', () =>
-        HttpResponse.json({ enrollments: enrolled ? [{ courseId: 'demo', createdAt: '2026-01-01T00:00:00Z' }] : [] }),
-      ),
+      http.get('/enrollments', () => HttpResponse.json({ enrollments: [] })),
       http.post('/enrollments', async ({ request }) => {
         posted.push(await request.json());
-        enrolled = true;
         return new HttpResponse(null, { status: 201 });
       }),
     );
@@ -306,16 +328,30 @@ describe('Task 5 — ghi danh và bỏ ghi danh ngay tại trang khoá', () => {
     renderCourseHome();
 
     const btn = await screen.findByRole('button', { name: 'Bắt đầu học' });
+
+    // (1) MỘT hành động sơ cấp, không hai: liên kết đọc ("Bắt đầu đọc"/"Đọc
+    // tiếp") không được đứng cạnh nút ghi danh một khi ghi danh đã XÁC NHẬN
+    // là chưa có — nó phải bị THAY THẾ, không phải bị che.
+    const row = document.querySelector('.ch-resume-row');
+    expect(row).not.toBeNull();
+    const primaryActions = Array.from(row!.querySelectorAll('.btn.primary'));
+    expect(primaryActions).toHaveLength(1);
+    expect(primaryActions[0]).toBe(btn);
+    expect(screen.queryByRole('link', { name: 'Bắt đầu đọc' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Đọc tiếp' })).not.toBeInTheDocument();
+
     await user.click(btn);
 
-    // REQUEST thật, không phải chỉ "nút đã bấm được": đúng method (POST, qua
-    // `http.post`), đúng thân ({courseId: 'demo'} — của khoá đang mở, không
-    // phải một chuỗi rỗng hay `undefined` lọt qua enabled-guard).
+    // (2) REQUEST thật, không phải chỉ "nút đã bấm được": đúng method (POST,
+    // qua `http.post`), đúng thân ({courseId: 'demo'} — của khoá đang mở,
+    // không phải một chuỗi rỗng hay `undefined` lọt qua enabled-guard).
     await waitFor(() => expect(posted).toEqual([{ courseId: 'demo' }]));
-    // `invalidateQueries` phải thật sự khiến trang đọc lại — nút đổi thành lối
-    // bỏ ghi danh, không kẹt ở trạng thái cũ.
-    expect(await screen.findByRole('button', { name: 'Bỏ khỏi khoá của tôi' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Bắt đầu học' })).not.toBeInTheDocument();
+
+    // Điều hướng tới CHƯƠNG ĐẦU của khoá (`ch-1`, `buildManifest`'s chương
+    // thứ nhất) — spec §5 "rồi đi tới chương đầu". `<CourseHome>` phải rời
+    // hẳn khỏi trang này, không còn "Bỏ khỏi khoá của tôi" nào để tìm ở đây
+    // nữa (đó là hành vi trước bản vá này).
+    expect(await screen.findByTestId('landed-chapter')).toHaveTextContent('demo/ch-1');
   });
 
   it('đã ghi danh: hiện lối "Bỏ khỏi khoá của tôi"; bấm gửi đúng DELETE /enrollments/demo, rồi quay lại "Bắt đầu học"', async () => {
@@ -349,6 +385,28 @@ describe('Task 5 — ghi danh và bỏ ghi danh ngay tại trang khoá', () => {
     expect(screen.queryByRole('button', { name: 'Bỏ khỏi khoá của tôi' })).not.toBeInTheDocument();
   });
 
+  /**
+   * Fix round cuối (item 3, spec §5) — "Đã ghi danh ⇒ giữ nguyên liên kết đọc
+   * tiếp hiện có, và thêm một lối 'Bỏ khỏi khoá của tôi'." Chỉ RIÊNG trường
+   * hợp CHƯA ghi danh mới thay thế liên kết đọc; một khi đã ghi danh, cả hai
+   * phải đứng cùng nhau — bài trên (357) chỉ canh nút bỏ ghi danh, không canh
+   * liên kết đọc có còn đứng đó hay không.
+   */
+  it('đã ghi danh: liên kết đọc CÙNG lối "Bỏ khỏi khoá của tôi" đứng cạnh nhau, không có nút "Bắt đầu học" nào', async () => {
+    server.use(
+      http.get('/courses/demo', () => HttpResponse.json(buildManifest(4))),
+      http.get('/enrollments', () =>
+        HttpResponse.json({ enrollments: [{ courseId: 'demo', createdAt: '2026-01-01T00:00:00Z' }] }),
+      ),
+    );
+
+    renderCourseHome();
+
+    expect(await screen.findByRole('link', { name: 'Bắt đầu đọc' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Bỏ khỏi khoá của tôi' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Bắt đầu học' })).not.toBeInTheDocument();
+  });
+
   it('người đọc CHƯA đăng nhập: không gọi /enrollments, không thấy nút ghi danh hay bỏ ghi danh nào (tránh bị hất sang /login)', async () => {
     let enrollmentsCallCount = 0;
     server.use(
@@ -373,6 +431,11 @@ describe('Task 5 — ghi danh và bỏ ghi danh ngay tại trang khoá', () => {
     expect(enrollmentsCallCount).toBe(0);
     expect(screen.queryByRole('button', { name: 'Bắt đầu học' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Bỏ khỏi khoá của tôi' })).not.toBeInTheDocument();
+    // Fix round cuối (item 3) — khách ẩn danh không mất lối đọc: liên kết
+    // "Bắt đầu đọc" vẫn đứng đó, vì nó không bao giờ bị thay bằng nút ghi
+    // danh trừ khi ghi danh đã ĐƯỢC XÁC NHẬN là chưa có — điều không thể xảy
+    // ra với một khách chưa đăng nhập.
+    expect(screen.getByRole('link', { name: 'Bắt đầu đọc' })).toBeInTheDocument();
   });
 
   it('Fix round 1 — POST /enrollments trả 500: hiện thông báo lỗi tại chỗ; bấm lại và thành công thì thông báo biến mất', async () => {
@@ -406,12 +469,15 @@ describe('Task 5 — ghi danh và bỏ ghi danh ngay tại trang khoá', () => {
     expect(screen.getByRole('button', { name: 'Bắt đầu học' })).toBeInTheDocument();
 
     // Bấm lại — lần này server trả 201 — thông báo cũ phải biến mất, không
-    // được kẹt lại dưới một nút giờ đã hoạt động.
+    // được kẹt lại dưới một nút giờ đã hoạt động. Fix round cuối (item 3):
+    // một lần bấm thành công giờ điều hướng thẳng tới chương đầu (spec §5),
+    // nên "đã hoạt động" nghĩa là ĐI ĐƯỢC tới đó — không còn ở lại trang này
+    // để đổi nút thành "Bỏ khỏi khoá của tôi" nữa.
     shouldFail = false;
     await user.click(screen.getByRole('button', { name: 'Bắt đầu học' }));
 
-    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
-    expect(await screen.findByRole('button', { name: 'Bỏ khỏi khoá của tôi' })).toBeInTheDocument();
+    expect(await screen.findByTestId('landed-chapter')).toHaveTextContent('demo/ch-1');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   /**
