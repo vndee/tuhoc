@@ -21,9 +21,9 @@ THESIS: Trang là một MẶT VIẾT TAY diễn đúng ba bước của cơ ch�
 
 OWN-WORLD: một bàn tay, hai mặt — sáng là bút chì trên giấy kem `#f4f1e8` (mực `#23211c`), tối là phấn trên bảng đá `#26312e` (mực `#eef1ea`); vàng `#e8c547` bôi câu, cam `#c4603a`/`#dd9165` là dấu sửa; Shantell Sans là nét tay duy nhất; mọi khung, gạch, mũi tên, ngoặc, máng phấn là nét vẽ tay SVG qua bộ lọc nhiễu — không `border` CSS, không khối CSS giả làm vật, không một nhãn HOA giãn chữ nào.
 
-STORY: khách hiểu ĐÂY LÀ CÁI GÌ ở ngay nhan đề, thấy trang tin vào điều gì (mục "Hướng đi" có hình xương-sống-và-nhánh), đọc bốn dòng nói mình làm được gì, thấy cơ chế diễn ra bằng chữ trung tính, rồi bấm vào một khoá THẬT trong danh mục.
+STORY: khách hiểu ĐÂY LÀ CÁI GÌ ở ngay nhan đề, thấy trang tin vào điều gì (hình vẽ cuốn sách mở ra công thức và mô hình), đọc bốn dòng nói mình làm được gì, thấy cơ chế diễn ra bằng chữ trung tính, rồi bấm vào một khoá THẬT trong danh mục.
 
-FIRST VIEWPORT: nhan đề viết tay 53px góc trên trái GỌI TÊN THỂ LOẠI, dưới là một lối đã thử bị gạch xoá và ô đóng khung tay "Đọc thử — <tên khoá thật>"; bên phải là mục "Hướng đi": hình phấn gáy sách với sáu vạch chương và ba nhánh cong kết ở dấu hỏi, ô ghi chú vàng, vòng xoáy — cùng câu tầm nhìn. Cơ chế ba bước xuống thành mục riêng, vì nó là BẰNG CHỨNG nên đứng sau lời tuyên bố.
+FIRST VIEWPORT: nhan đề viết tay 53px góc trên trái GỌI TÊN THỂ LOẠI, dưới là một lối đã thử bị gạch xoá và ô đóng khung tay "Đọc thử — <tên khoá thật>"; bên phải là hình phấn: một cuốn sách mở, và từ nó bay lên mạng nơ-ron, ký hiệu toán, hành tinh có vành, mấy ngôi sao. Không nhãn, không câu — hình tự nói. Cơ chế ba bước xuống thành mục riêng, vì nó là BẰNG CHỨNG nên đứng sau lời tuyên bố.
 
 FORM: mặt viết tay (bảng phấn giảng đường, đảo cực theo chủ đề), ứng viên 1 trong danh sách của tôi, thẻ IMPECCABLE'S PICK; seed 7f29cad4; code-led. Nét vẽ chữ ký: mũi tên tự vẽ ra khi chạm câu hoặc ghi chú, `stroke-dashoffset`, có `prefers-reduced-motion`.
 

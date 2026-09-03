@@ -398,8 +398,6 @@ export const vi = {
   'landing.working.verdict': 'vẫn tắc ở chỗ cũ',
   'landing.note.how': 'Ghi chú bám vào câu, không trôi đi đâu.',
   'landing.note.hover': 'Rê chuột lên ghi chú để thấy nét nối về câu gốc.',
-  'landing.vision.label': 'Hướng đi',
-  'landing.vision.body': 'Sách vẫn là gốc; AI không học thay ai. Việc của nó là để bạn đừng dừng lại ở chỗ chưa hiểu.',
   'landing.vision.figure': 'Hình vẽ phấn: một cuốn sách mở, và từ nó bay lên những thứ nó dạy — một mạng nơ-ron, vài ký hiệu toán, một hành tinh có vành và mấy ngôi sao.',
   'landing.can.h': 'Ở đây bạn có thể',
   'landing.can.read': 'Đọc hết một cuốn giáo trình, kèm công thức và hình tương tác. Không mất tiền, không cần tài khoản.',

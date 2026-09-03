@@ -274,8 +274,6 @@ export const en: Messages = {
   'landing.working.verdict': 'still stuck in the same spot',
   'landing.note.how': 'The note holds on to the sentence; it does not drift.',
   'landing.note.hover': 'Hover the note to see the line back to its sentence.',
-  'landing.vision.label': 'Where this is going',
-  'landing.vision.body': 'The book is still the ground; the AI learns for nobody. Its job is to keep you from stopping at what you do not follow.',
   'landing.vision.figure': 'A chalk drawing: an open book, and rising from it the things it teaches — a neural network, a few mathematical symbols, a ringed planet and some stars.',
   'landing.can.h': 'Here you can',
   'landing.can.read': 'Read a whole textbook, formulas and interactive figures included. No money, no account.',
