@@ -2,33 +2,42 @@
 version: 1
 slug: "apps-web-src-pages-landing-tsx"
 primary_target: "apps/web/src/pages/Landing.tsx"
-related_targets: ["apps/web/src/routes.tsx","apps/web/src/pages/Login.tsx"]
+related_targets: ["apps/web/src/routes.tsx","apps/web/src/styles/landing.css"]
 ---
 
 # Landing — `/` cho khách chưa đăng nhập
 
-**Phạm vi & chế độ:** Persuade. Một trang, đứng ở `/` khi `useMe()` trả null; người đã đăng nhập vẫn thấy Học tiếp. `/login` giữ form và hai điều khiển (chủ đề, ngôn ngữ), bỏ khối giới thiệu.
+**Phạm vi & chế độ:** Persuade. Một trang, đứng ở `/` khi `useMe()` trả null; người đã đăng nhập vẫn thấy Học tiếp. Landing có **thế giới hình riêng**, không dùng lại khung `.doc` của vỏ app (quyết định 03/09/2026: chủ dự án nói trang cũ "nhìn giống trang đã đăng nhập hơn là landing page"). `/login` không đổi.
 
-**Khán giả & việc của họ:** người tự học nói chung, tới lần đầu qua một đường dẫn, muốn biết trong 10 giây "đây là gì và tôi bấm gì". Hành động chính: **Đọc thử chương này** (miễn phí, không cần tài khoản — quyết định 02/09/2026, PRODUCT.md). Hành động phụ: Tạo tài khoản, để ghi chú, tiến độ, gia sư AI đi theo mình.
+**Khán giả & việc của họ:** người tự học nói chung, tới lần đầu qua một đường dẫn, muốn biết trong 10 giây "đây là gì và tôi bấm gì". Hành động chính: **Đọc thử chương này** (miễn phí, không cần tài khoản — PRODUCT.md). Hành động phụ: Tạo tài khoản, để ghi chú, tiến độ, gia sư AI đi theo mình.
 
-**Bằng chứng thật:** trích đoạn chương 1.1 của khoá mẫu công khai `bat-bien-vong-lap`; một ghi chú lề và một câu trả lời gia sư viết cho ví dụ, **gắn nhãn "ví dụ"** ở mọi chỗ khách có thể tưởng là thật; CTA chỉ trỏ tới chương khi danh mục công khai có khoá ấy, nếu không trỏ về `/courses`.
+**Bằng chứng thật:** danh mục THẬT từ `GET /courses` — và chỉ nó. **Không một khoá nào được viết cứng** (yêu cầu chủ dự án 03/09/2026: *"không nên để một khoá học cụ thể như vậy, khoá này không phải ai cũng quan tâm và không phải ai cũng hiểu nó là gì"*); ba bước cơ chế dùng chữ trung tính gắn nhãn **"ví dụ"**. Hành động chính trỏ tới khoá ĐẦU TIÊN trong danh mục cùng tên thật của nó; danh mục rỗng hoặc hỏng thì trỏ về `/courses`.
 
-**Ràng buộc:** không giá, không testimonial, không logo đối tác, không hình stock; không câu nào mã chưa làm; thế giới DESIGN.md giữ nguyên (giấy một tờ, serif thân, sans hẹp nhãn, hairline, một xanh, không thẻ, không eyebrow trên tiêu đề, một chuyển động 150ms).
+**Ràng buộc:** không giá, không testimonial, không logo đối tác, không hình stock; không câu nào mã chưa làm; song ngữ vi/en ở cả hai catalog; `packages/course-kit/reader.css` và vỏ app không được đụng tới; CSS của landing không được rò sang trang khác.
 
 ## Direction contract
 
-THESIS: Landing là hành trình của MỘT câu hỏi qua sản phẩm — đọc, mắc, ghi chú, hỏi, quay lại đúng chỗ — không phải danh sách tính năng với hero và ba cột icon.
+THESIS: Trang là một MẶT VIẾT TAY diễn đúng ba bước của cơ chế — câu được gạch, ghi chú của bạn, gia sư cầm chính ghi chú ấy. Từ chối cả hero-ba-ô-tính-năng lẫn trang typeset của vỏ app.
 
-OWN-WORLD: giấy #ffffff, mực gray-900, một xanh #0b5fa5, hairline gray-200; Charis SIL thân, Archivo Narrow nhãn; khung `.doc` 2/3 + 1/3; ô màu ghi chú 9px; tối là đêm PDF trung tính.
+OWN-WORLD: một bàn tay, hai mặt — sáng là bút chì trên giấy kem `#f4f1e8` (mực `#23211c`), tối là phấn trên bảng đá `#26312e` (mực `#eef1ea`); vàng `#e8c547` bôi câu, cam `#c4603a`/`#dd9165` là dấu sửa; Shantell Sans là nét tay duy nhất; mọi khung, gạch, mũi tên, ngoặc, máng phấn là nét vẽ tay SVG qua bộ lọc nhiễu — không `border` CSS, không khối CSS giả làm vật, không một nhãn HOA giãn chữ nào.
 
-STORY: khách hiểu "đọc là công khai, tài khoản giữ ghi chú và gia sư biết mình đã ghi gì", tin vì thấy đoạn sách thật + ghi chú neo đúng câu + câu trả lời trích ghi chú, rồi bấm Đọc thử.
+STORY: khách hiểu đọc là miễn phí, thấy cơ chế diễn ra trước mắt bằng chữ trung tính, rồi bấm vào một khoá THẬT trong danh mục.
 
-FIRST VIEWPORT: tiêu đề `\title` là câu hỏi của người học (serif 40px); dưới là trích đoạn 1.1 với câu được bôi đen; lề: ghi chú neo câu ấy; ngay dưới đoạn: "Đọc thử chương này →" (liên kết serif lớn, không nút màu) và "Tạo tài khoản" là doc-link.
+FIRST VIEWPORT: câu hỏi viết tay 53px góc trên trái, dưới là một lối đã thử bị gạch xoá và ô đóng khung tay "Đọc thử — <tên khoá thật>"; bên phải là ba bước của cơ chế, mũi tên chạy từ câu được bôi vàng xuống ghi chú, dấu ngoặc vàng ôm câu gia sư trích lại.
 
-FORM: seed 57dcb485, code-led; bốn chặng xếp dọc trong cùng khung; hover ghi chú gạch chân câu gốc 150ms; không motion khác.
+FORM: mặt viết tay (bảng phấn giảng đường, đảo cực theo chủ đề), ứng viên 1 trong danh sách của tôi, thẻ IMPECCABLE'S PICK; seed 7f29cad4; code-led. Nét vẽ chữ ký: mũi tên tự vẽ ra khi chạm câu hoặc ghi chú, `stroke-dashoffset`, có `prefers-reduced-motion`.
 
-FINISH: mỗi chặng là một cảnh khác nhau (trích đoạn, biên bản hỏi đáp, hàng mục lục có tiến độ, danh mục), không chặng nào là hộp tính năng; nhãn "ví dụ" đọc được ở 390px.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
+
+## Nâng từ những hướng bị loại
+
+- **Kraftwerk man-machine** → cơ chế phải được VẼ RA, không phải nói ra: mũi tên phấn là một nét thật nối ba thứ.
+- **Cracktro scroller** → phân cấp gánh bằng mật độ phấn và cỡ chữ, không thêm hộp hay panel nào.
+- **Nixie counter** → đổi trạng thái là một sự kiện vật lý: phấn được vẽ ra, không phải một sắc độ đổi nhẹ.
+- **Đèn washi Akari** → nền là một trường có cam kết, không phải giấy trắng rắc dấu lên.
+- **Plate book Breton** → danh mục đọc ra như bảng kê có đánh số, đúng lời hứa "khoá học là gói mở".
 
 ## Chưa quyết
 
 - Reader chưa cuộn tới ghi chú theo URL: liên kết từ ghi chú ví dụ mở chương, không mở đoạn.
+- Thanh trên của vỏ app ẩn hết khi chưa đăng nhập (`TopNav.tsx:88`): khách trên landing không có lối đăng nhập ở chrome. Chưa quyết sẽ sửa ở vỏ app hay landing tự mang lối vào.

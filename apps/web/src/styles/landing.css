@@ -1,238 +1,669 @@
 /* ══════════════════════════════════════════════════════════════════════════
  * LANDING — `/` cho khách chưa đăng nhập (`pages/Landing.tsx`)
  *
- * Cùng thế giới với `home.css` (giáo trình LaTeX, lề rộng — xem DESIGN.md):
- * khung `.doc`, đầu trang `.doc-head`, hai cột `.doc-body`, nhãn `.lbl`, đầu
- * mục `.doc-h`, ghi chú lề `.mnote-*`, mục lục `.toc-*`, hành động `.cont-*`,
- * danh mục `.courses-*` — tất cả tái dụng nguyên văn từ hệ. Tệp này CHỈ thêm
- * những gì landing có mà các trang kia không: trích đoạn giáo trình, câu được
- * bôi đen, biên bản hỏi đáp, và nhịp giữa bốn cảnh.
+ * THẾ GIỚI RIÊNG, không phải khung `.doc` của vỏ app. Hợp đồng hướng:
+ * `.impeccable/surfaces/apps-web-src-pages-landing-tsx.md`, seed 7f29cad4.
  *
- * Bốn cảnh là bốn `.doc-body.ld-scene` xếp dọc; khoảng cách giữa các cảnh
- * lớn hơn khoảng cách bên trong một cảnh (tụ chặt, tách rộng).
+ * MỘT BÀN TAY, HAI MẶT VIẾT. Chủ dự án chọn nền kem ("nền màu vàng vàng như
+ * trong demo", 03/09/2026), và nền kem không đi được với chữ phấn trắng —
+ * `#eef1ea` trên `#f4f1e8` là vô hình. Nên thế giới không đổi bảng lấy giấy;
+ * nó ĐẢO CỰC theo thời gian trong ngày:
+ *   - sáng: bút chì trên giấy kem;
+ *   - tối:  phấn trên bảng đá.
+ * Chữ viết tay (Shantell Sans), mọi nét vẽ tay qua bộ lọc nhiễu, và vàng nhấn
+ * giữ nguyên ở cả hai. Công tắc sáng/tối vì thế vẫn có việc thật để làm.
+ *
+ * Token đặt tên theo VAI, không theo màu: `--ground`, `--ink`, `--hl`. Một
+ * token tên `--chalk` sẽ nói dối ở nửa số thời gian.
+ *
+ * KHÔNG CÒN TỜ GIẤY GHIM và không còn trích đoạn của một khoá cụ thể (yêu cầu
+ * chủ dự án 03/09/2026). Mặt viết tự diễn cơ chế bằng chữ trung tính; danh mục
+ * thật ở dưới mới là chỗ nói có gì để đọc.
+ *
+ * QUY TẮC HAI ID: `app-screens.css` nạp SAU tệp này và đặt
+ * `#app:not(.reading) #content h1/h2/h3`, `#content select`, `#content-wrap`
+ * padding — hai id một class. Mọi luật ở đây đụng tới cùng phần tử phải mang
+ * cùng số id cộng một class, nếu không nó thua im lặng.
  * ══════════════════════════════════════════════════════════════════════════ */
 
-.landing .doc-lede {
-  max-width: 72ch;
+/* ── MẶT VIẾT ─────────────────────────────────────────────────────────────── */
+
+.board-room {
+  /* SÁNG: bút chì trên giấy kem. */
+  --ground: #f4f1e8;
+  --ink: #23211c;
+  --ink-2: #4a473f;
+  --ink-3: #6e6a5f;
+  --hl: #e8c547;
+  --mark: #c4603a;
+  --room: #e6e0d2;
+
+  min-height: 100dvh;
+  background: var(--room);
+  padding: 22px;
+  box-sizing: border-box;
+  scrollbar-color: var(--ink-3) var(--ground);
 }
 
-/* Đầu trang gọn hơn `home.css` một bậc: đo ở 1440×900, hành động chính của
-   cảnh 1 phải nằm trên nếp gấp của một laptop có thanh trình duyệt (~780px). */
-.landing .doc-head {
-  padding-bottom: 12px;
-  margin-bottom: 16px;
+html[data-theme='dark'] .board-room {
+  /* TỐI: phấn trên bảng đá. Cùng bàn tay, cùng nét, đảo cực. */
+  --ground: #26312e;
+  --ink: #eef1ea;
+  --ink-2: #bcc9c0;
+  --ink-3: #9cada1;
+  --hl: #e8c547;
+  --mark: #dd9165;
+  --room: #0e100f;
 }
 
-.landing .doc-h {
-  margin-bottom: 10px;
+/* Thoát khỏi khung của vỏ app. Cùng khuôn với `.auth-page` trong
+   `settings-auth.css`: hai id cộng một class để thắng `app-screens.css`. */
+#app:not(.reading) #content-wrap:has(.board-room) {
+  padding: 0;
+  display: block;
 }
 
-/* Cảnh 1: ba mục — đoạn, ghi chú lề, hành động. Máy bàn: đoạn và hành động
-   xếp dọc ở cột chính, lề chiếm cả hai hàng. Dưới 900px lưới thành một cột và
-   thứ tự DOM (đoạn → ghi chú → hành động) giữ ghi chú sát câu nó neo vào. */
-.ld-read {
-  grid-template-rows: auto auto;
+#app:not(.reading) #content:has(.board-room) {
+  max-width: none;
+  padding: 0;
+  font-size: initial;
 }
 
-.ld-read > .doc-main {
-  grid-column: 1;
-  grid-row: 1;
+.board {
+  position: relative;
+  min-height: calc(100dvh - 44px);
+  box-sizing: border-box;
+  padding: clamp(20px, 3.2vw, 46px) clamp(18px, 3.4vw, 52px) 0;
+  background-color: var(--ground);
+  /* HẠT CỦA MẶT VIẾT. Giấy có thớ, đá bảng có vân; không có nó thì đây chỉ là
+     một hình chữ nhật màu. Ở 0.05 nó dưới ngưỡng nhận ra, trên ngưỡng cảm. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  color: var(--ink);
+  font-family: 'Shantell Sans Variable', 'Shantell Sans', var(--font-sans), system-ui, sans-serif;
+  box-shadow: 0 16px 44px -14px rgb(0 0 0 / 30%);
+  overflow: hidden;
 }
 
-.ld-read > .doc-margin {
-  grid-column: 2;
-  grid-row: 1 / span 2;
+html[data-theme='dark'] .board {
+  box-shadow: 0 16px 44px -14px rgb(0 0 0 / 55%);
 }
 
-.ld-read > .ld-act {
-  grid-column: 1;
-  grid-row: 2;
-  min-width: 0;
+.bd-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
 }
 
-.ld-scene {
-  margin: 0 0 56px;
+/* `reader.css` cho MỌI `<a>` một `border-bottom` mờ màu nhấn — đúng cho một
+   liên kết giữa đoạn văn của giáo trình, sai cho mọi thứ ở đây, và
+   `text-decoration: none` KHÔNG gỡ được nó vì đây là `border`. `#topbar` đã
+   phải tự gỡ đúng luật này (`app-screens.css`); mặt viết cũng vậy. */
+#app:not(.reading) #content .board-room a,
+#app:not(.reading) #content .board-room a:hover {
+  border-bottom: none;
 }
 
-.ld-scene:last-child {
-  margin-bottom: 24px;
+/* ── ĐẦU TRANG ────────────────────────────────────────────────────────────── */
+
+.bd-chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: clamp(26px, 5vh, 54px);
 }
 
-/* Nguồn trích: serif nghiêng nhỏ, KHÔNG phải một dòng nhãn viết hoa nữa dưới
-   đầu mục "Đọc" — hai dòng nhãn chồng nhau là thứ reviewer gọi tên. */
-.ld-source {
-  margin: 0 0 8px;
-  font-family: var(--font-serif);
-  font-style: italic;
+.bd-wordmark {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+
+.bd-chrome-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Điều khiển ở đây là CHỮ VÀ NÉT, không phải nút có nền. */
+#app:not(.reading) #content .board-room .bd-chrome-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: color 150ms ease-out;
+}
+
+#app:not(.reading) #content .board-room .bd-chrome-btn:hover {
+  color: var(--ink);
+}
+
+#app:not(.reading) #content .board-room #lang-select {
+  /* `.tb-btn` (reader.css) mang theo cả kiểu lẫn thứ tự của một nút thanh
+     trên: bỏ `appearance` thì trình duyệt vẽ chevron RIÊNG chồng lên chevron
+     của ta, và `order` của nó đẩy bộ chọn ra sau lối đăng nhập. */
+  appearance: none;
+  -webkit-appearance: none;
+  order: 0;
+  margin: 0;
+  height: 32px;
+  padding: 0 22px 0 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' stroke='%234a473f' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+}
+
+html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' stroke='%23bcc9c0' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+#app:not(.reading) #content .board-room #lang-select:hover {
+  color: var(--ink);
+}
+
+#app:not(.reading) #content .board-room #lang-select option {
+  color: var(--ink);
+  background: var(--ground);
+}
+
+#app:not(.reading) #content .board-room .bd-chrome-link {
+  color: var(--ink-2);
+  font-size: 15px;
+  text-decoration: none;
+  padding: 0 2px;
+  transition: color 150ms ease-out;
+}
+
+#app:not(.reading) #content .board-room .bd-chrome-link:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 0.22em;
+  text-decoration-thickness: 1px;
+}
+
+/* ── MÀN ĐẦU: TRÁI NÓI, PHẢI DIỄN CƠ CHẾ ─────────────────────────────────── */
+
+.bd-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(26px, 4vw, 64px);
+  align-items: start;
+}
+
+#app:not(.reading) #content .board-room .bd-q {
+  margin: 0 0 14px;
+  font-family: inherit;
+  font-size: clamp(29px, 4vw, 53px);
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.bd-lede {
+  margin: 0 0 clamp(22px, 3.4vh, 34px);
+  font-size: clamp(16px, 1.25vw, 18.5px);
+  line-height: 1.5;
+  color: var(--ink-2);
+  max-width: 40ch;
+}
+
+/* ── CÁI GẠCH XOÁ ────────────────────────────────────────────────────────
+   Một lối đã thử và bỏ, nằm giữa câu dẫn và hành động: nó là lý do câu hỏi ở
+   nhan đề là câu hỏi thật. Nét gạch là SVG vẽ tay phủ lên chữ, còn `<s>` giữ
+   nghĩa cho trình đọc màn hình — `text-decoration` của trình duyệt bị tắt vì
+   một đường kẻ thẳng băng không thuộc về mặt viết này. */
+
+.bd-working {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 0 0 clamp(20px, 3vh, 30px);
+  font-size: clamp(15px, 1.2vw, 17px);
+  line-height: 1.45;
+}
+
+.bd-strike {
+  position: relative;
+  display: inline-block;
+  color: var(--ink-3);
+}
+
+.bd-strike s {
+  text-decoration: none;
+}
+
+.bd-strike-mark {
+  position: absolute;
+  left: -3px;
+  top: 46%;
+  width: calc(100% + 6px);
+  height: 10px;
+  color: var(--mark);
+  pointer-events: none;
+}
+
+.bd-verdict {
+  color: var(--ink);
+}
+
+/* ── HÀNH ĐỘNG CHÍNH: MỘT Ô ĐÓNG KHUNG BẰNG TAY ──────────────────────────
+   Trên một mặt viết, thứ được khoanh khung là KẾT QUẢ. Đó là ngữ pháp sẵn có
+   của thế giới này, nên hành động chính mượn đúng nó — không nút tô nền. */
+
+.bd-act {
+  margin: 0 0 12px;
+}
+
+#app:not(.reading) #content .board-room .bd-cta {
+  position: relative;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 15px 26px 17px;
+  color: var(--ink);
+  text-decoration: none;
+  max-width: 100%;
+}
+
+.bd-box {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: var(--ink-2);
+  transition: color 160ms ease-out;
+  pointer-events: none;
+}
+
+#app:not(.reading) #content .board-room .bd-cta:hover .bd-box,
+#app:not(.reading) #content .board-room .bd-cta:focus-visible .bd-box {
+  color: var(--mark);
+}
+
+/* Trên mặt viết người ta viết chữ thường: không một nhãn HOA giãn chữ nào
+   trên trang này. Vòng soát đầu bắt sáu cái, và chúng chính là ngữ pháp
+   dashboard mà chủ dự án đã từ chối. */
+.bd-cta-verb {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.bd-cta-title {
+  font-size: clamp(17px, 1.5vw, 21px);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.bd-act-meta {
+  margin: 0;
   font-size: 14.5px;
   color: var(--ink-3);
 }
 
-/* ── TRÍCH ĐOẠN ────────────────────────────────────────────────────────────
-   Chữ thân của chương, đặt như reader đặt: serif, 17px, đo 65–72ch. Đây là
-   thứ khách đọc thật, nên nó không được nhỏ hơn thân bài trong reader. */
-.ld-excerpt {
-  font-family: var(--font-serif);
-  font-size: 17px;
-  line-height: 1.55;
-  color: var(--ink);
-  max-width: 66ch;
-}
-
-.ld-excerpt p {
-  margin: 0 0 0.8em;
-}
-
-.ld-excerpt pre {
-  margin: 0 0 0.8em;
-  padding: 8px 14px;
-  font-family: var(--font-mono);
-  font-size: 13.5px;
-  line-height: 1.5;
-  color: var(--ink);
-  background: var(--panel);
-  border: 1px solid var(--rule);
-  /* Góc vuông: reader.css bo `pre` 10px cho chương, còn trang typeset này không
-     bo gì (DESIGN.md, Shapes). Hai id để thắng luật `#content pre` chung. */
-  border-radius: 0;
-  overflow-x: auto;
-}
-
-#app:not(.reading) #content .ld-excerpt pre {
-  border-radius: 0;
-}
-
-/* Câu được bôi đen: nền vàng của ô ghi chú `--s4` (cùng màu với ô vuông 9px
-   của ghi chú ở lề, nên mắt nối được hai thứ). Gạch chân ẩn, hiện màu nhấn
-   khi rê chuột lên ghi chú lề — chuyển động duy nhất của trang, 150ms
-   ease-out, cùng ngữ pháp với mọi liên kết trong hệ. */
-.ld-hl {
-  background: color-mix(in srgb, var(--s4, #eda100) 26%, transparent);
-  color: inherit;
-  padding: 0 2px;
+#app:not(.reading) #content .board-room .bd-link {
+  color: var(--ink-2);
   text-decoration: underline;
   text-decoration-thickness: 1px;
-  text-underline-offset: 0.14em;
-  text-decoration-color: transparent;
-  transition: text-decoration-color 150ms ease-out;
+  text-underline-offset: 0.22em;
+  text-decoration-color: color-mix(in srgb, var(--ink-2) 45%, transparent);
+  transition: color 150ms ease-out, text-decoration-color 150ms ease-out;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
 }
 
-.ld-read:has(.mnote:hover) .ld-hl,
-.ld-read:has(.mnote:focus-within) .ld-hl {
-  text-decoration-color: var(--accent);
+#app:not(.reading) #content .board-room .bd-link:hover {
+  color: var(--mark);
+  text-decoration-color: var(--mark);
 }
 
-.ld-cta {
-  margin-top: 10px;
-}
-
-/* Nhãn "Ví dụ" trong hàng meta của ghi chú: cùng cỡ với tên khoá, nhưng màu
-   nhấn để nó không bị đọc lướt qua. */
-.ld-example {
-  color: var(--accent);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.ld-margin-note {
-  font-family: var(--font-serif);
-  font-size: 15px;
-  line-height: 1.5;
+/* VẾT XOÁ: công việc trước, lau đi dở. Nằm ngoài đường đọc, mờ, và biến mất
+   khi hai cột xếp chồng vì lúc ấy không còn mảng trống nào để nói. */
+.bd-erasure {
+  display: block;
+  width: min(340px, 92%);
+  height: auto;
+  margin: clamp(36px, 6vh, 68px) 0 0 6px;
   color: var(--ink-2);
-  margin: 12px 0 0;
+  opacity: 0.1;
+  pointer-events: none;
+}
+
+/* Trên đá, vết lau ăn ánh sáng nên hiện rõ hơn trên giấy — cùng một vết, hai
+   độ mờ, để nó luôn ở dưới ngưỡng "một hình vẽ" và trên ngưỡng "đã có gì ở
+   đây". */
+html[data-theme='dark'] .bd-erasure {
+  opacity: 0.16;
+}
+
+/* ── CƠ CHẾ, VIẾT TAY BA BƯỚC ────────────────────────────────────────────
+   Câu được gạch → ghi chú của bạn → gia sư cầm chính ghi chú ấy. Không tờ
+   giấy, không trích đoạn của một khoá: chữ trung tính, ai đọc cũng hiểu. */
+
+.bd-demo {
+  display: grid;
+  justify-items: start;
+  padding-top: 6px;
+}
+
+#app:not(.reading) #content .board-room .bd-demo-h {
+  margin: 0 0 18px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
+
+.bd-demo-sentence {
+  margin: 0;
+  font-size: clamp(17px, 1.6vw, 21px);
+  line-height: 1.45;
+  color: var(--ink);
+  max-width: 30ch;
+}
+
+/* Câu được bôi đen. Cùng vàng với ghi chú và với mũi tên — màu là thứ nối ba
+   chỗ ấy lại, chính xác hơn bất kỳ mũi tên nào. */
+.bd-hl {
+  background: color-mix(in srgb, var(--hl) 42%, transparent);
+  color: inherit;
+  padding: 0 3px;
+  transition: background-color 160ms ease-out;
+}
+
+.bd-demo:has(.bd-demo-note:hover) .bd-hl,
+.bd-demo:has(.bd-demo-sentence:hover) .bd-hl {
+  background: color-mix(in srgb, var(--hl) 82%, transparent);
+}
+
+.bd-arrow {
+  width: min(160px, 55%);
+  height: auto;
+  margin: 2px 0 0 clamp(6px, 6%, 44px);
+  overflow: visible;
+}
+
+.bd-arrow-base {
+  stroke: var(--ink-3);
+}
+
+.bd-arrow-live {
+  stroke: var(--hl);
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 620ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bd-arrow-head {
+  transition-delay: 260ms;
+}
+
+.bd-demo:has(.bd-demo-note:hover) .bd-arrow-live,
+.bd-demo:has(.bd-demo-sentence:hover) .bd-arrow-live {
+  stroke-dashoffset: 0;
+}
+
+.bd-demo-note {
+  margin-top: 4px;
+  max-width: 34ch;
+}
+
+.bd-demo-label {
+  margin: 0 0 4px;
+  font-size: 14.5px;
+  color: var(--ink-3);
+}
+
+.bd-note-quote {
+  margin: 0;
+  font-size: clamp(16px, 1.4vw, 19px);
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.bd-demo-turn {
+  margin-top: clamp(22px, 3.4vh, 34px);
   max-width: 40ch;
 }
 
-/* ── BIÊN BẢN HỎI ĐÁP ──────────────────────────────────────────────────────
-   Hai lượt, mỗi lượt là một hàng "ai nói · nói gì". Không bong bóng chat,
-   không avatar: đây là biên bản trên giấy, cùng thang chữ với trích đoạn. */
-.ld-qa {
-  margin: 0;
-  display: grid;
-  gap: 18px;
-  max-width: 66ch;
-}
-
-.ld-qa-turn {
-  display: grid;
-  grid-template-columns: 5.5em minmax(0, 1fr);
-  column-gap: 12px;
-  align-items: baseline;
-}
-
-.ld-qa-turn dt {
-  margin: 0;
-}
-
-.ld-qa-turn dd {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-size: 16.5px;
-  line-height: 1.55;
-  color: var(--ink);
-}
-
-.ld-qa-turn dd p {
-  margin: 0 0 0.6em;
-}
-
-.ld-qa-turn dd p:last-child {
-  margin-bottom: 0;
-}
-
-/* Trích ghi chú trong câu trả lời: nghiêng, kèm đúng ô vàng của ghi chú ở
-   cảnh 1, để khách thấy gia sư đang cầm chính ghi chú ấy. Kẻ trái 1px là
-   hairline, không phải viền màu. */
-.ld-qa-quote {
-  margin: 0 0 0.6em;
-  padding: 2px 0 2px 12px;
-  border-left: 1px solid var(--rule-strong);
-  font-style: italic;
+.bd-demo-tutor {
+  margin: 0 0 10px;
+  font-size: 16px;
+  line-height: 1.5;
   color: var(--ink-2);
 }
 
-.ld-qa-quote .mnote-swatch {
-  --mnote-color: var(--s4);
+/* Câu gia sư TRÍCH LẠI từ ghi chú, và bàn tay ÔM lấy nó bằng một dấu ngoặc.
+   Mối nối phải được VẼ, không chỉ cùng màu. */
+.bd-held {
+  position: relative;
+  padding-left: 26px;
 }
 
-/* Mục lục ví dụ dùng nguyên `.toc-*` của home.css: khi tiêu đề là liên kết
-   (khoá đã xuất bản) nó mang đúng kiểu liên kết của mục lục thật, kể cả màu
-   nhấn ở hàng "tiếp theo"; khi là chữ trơn thì không có luật riêng nào tô nó. */
-span.toc-title {
+.bd-held .bd-bracket {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 13px;
+  height: 100%;
+  color: var(--hl);
+}
+
+.bd-quote {
+  margin: 0;
+  padding: 0;
+  font-size: 16.5px;
+  line-height: 1.5;
   color: var(--ink);
 }
 
-/* Câu "rê chuột…" chỉ có nghĩa ở nơi có con trỏ. */
+.bd-note-how {
+  margin: clamp(20px, 3vh, 30px) 0 0;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  max-width: 42ch;
+}
+
+/* ── DANH MỤC THẬT ───────────────────────────────────────────────────────── */
+
+.bd-scene {
+  margin-top: clamp(40px, 6vh, 72px);
+}
+
+.bd-scene-last {
+  margin-bottom: clamp(30px, 5vh, 52px);
+}
+
+#app:not(.reading) #content .board-room .bd-h {
+  margin: 0;
+  font-family: inherit;
+  font-size: clamp(20px, 2vw, 26px);
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink);
+}
+
+.bd-rule {
+  display: block;
+  width: 100%;
+  height: 8px;
+  margin: 8px 0 24px;
+  color: var(--ink-3);
+  opacity: 0.75;
+}
+
+.bd-cat {
+  max-width: 68ch;
+}
+
+.bd-state {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink-2);
+}
+
+.bd-courses {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#app:not(.reading) #content .board-room .bd-course {
+  display: block;
+  padding: 16px 0;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.bd-course-title {
+  display: block;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.bd-course-desc {
+  display: block;
+  margin-top: 3px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  max-width: 56ch;
+}
+
+#app:not(.reading) #content .board-room .bd-course:hover .bd-course-title {
+  color: var(--mark);
+  text-decoration: underline;
+  text-underline-offset: 0.22em;
+  text-decoration-thickness: 1px;
+}
+
+/* ── MÁNG PHẤN: CÁI KẾT THẬT ─────────────────────────────────────────────
+   Cả gờ máng lẫn mẩu phấn nằm trên nó đều được VẼ. Ở vòng soát đầu chúng là
+   hai khối CSS giả làm vật, và reviewer đọc ra mẩu phấn như một ảnh hỏng. */
+
+.bd-tray {
+  margin-top: clamp(30px, 5vh, 52px);
+  padding-bottom: clamp(26px, 4vh, 40px);
+}
+
+.bd-ledge {
+  display: block;
+  width: 100%;
+  height: 26px;
+  color: var(--ink-3);
+}
+
+.bd-ledge-stub {
+  fill: var(--ink-2);
+  stroke: none;
+}
+
+.bd-tray-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 24px;
+  margin: 14px 0 0;
+  font-size: 15px;
+}
+
+/* ── BỀ MẶT CỦA TRÌNH DUYỆT ──────────────────────────────────────────────
+   Những phần không do ta vẽ vẫn phải thuộc về thế giới này. */
+
+.board-room ::selection {
+  background: var(--hl);
+  color: #23211c;
+}
+
+#app:not(.reading) #content .board-room a:focus-visible,
+#app:not(.reading) #content .board-room button:focus-visible,
+#app:not(.reading) #content .board-room select:focus-visible {
+  outline: 2px solid var(--mark);
+  outline-offset: 3px;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* ── CO GIÃN ─────────────────────────────────────────────────────────────── */
+
 @media (hover: none) {
-  .ld-hover-only {
+  .bd-hover-only {
     display: none;
   }
 }
 
-.ld-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 22px;
-  margin: 18px 0 0;
-  font-family: var(--font-serif);
-  font-size: 15.5px;
+@media (max-width: 1080px) {
+  .bd-stage {
+    grid-template-columns: minmax(0, 1fr);
+    gap: clamp(30px, 5vh, 46px);
+  }
+
+  /* Không còn mảng trống nào để vết xoá nói tới khi hai cột đã xếp chồng. */
+  .bd-erasure {
+    display: none;
+  }
+
+  .bd-demo-sentence,
+  .bd-demo-note,
+  .bd-demo-turn {
+    max-width: 46ch;
+  }
 }
 
-@media (max-width: 900px) {
-  .ld-scene {
-    margin-bottom: 44px;
+@media (max-width: 640px) {
+  .board-room {
+    padding: 0;
   }
 
-  .ld-read > .doc-main,
-  .ld-read > .doc-margin,
-  .ld-read > .ld-act {
-    grid-column: 1;
-    grid-row: auto;
+  .board {
+    min-height: 100dvh;
+    padding: 20px 18px 0;
+    box-shadow: none;
   }
 
-  .ld-qa-turn {
-    grid-template-columns: minmax(0, 1fr);
-    row-gap: 4px;
+  .bd-arrow {
+    width: 120px;
+    margin-left: 10px;
+  }
+}
+
+/* Ai tắt chuyển động thì nét vàng có sẵn, không vẽ ra. Nội dung y hệt. */
+@media (prefers-reduced-motion: reduce) {
+  .bd-arrow-live {
+    stroke-dashoffset: 0;
+    transition: none;
+  }
+
+  #app:not(.reading) #content .board-room * {
+    transition-duration: 1ms !important;
   }
 }

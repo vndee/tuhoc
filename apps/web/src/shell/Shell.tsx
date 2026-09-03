@@ -44,7 +44,10 @@ export interface ShellProps {
    */
   inCourse?: boolean;
   /**
-   * `true` trên `/login` — màn hình đăng nhập, thứ KHÔNG có thanh trên.
+   * `true` trên `/login`, và trên `/` khi chưa có phiên (03/09/2026) — hai
+   * màn hình TRƯỚC-TÀI-KHOẢN, thứ KHÔNG có thanh trên. Landing mang thế giới
+   * hình riêng và tự dựng nhãn hiệu cùng hai điều khiển thiết bị của nó
+   * (`pages/Landing.tsx`), đúng như trang đăng nhập đã làm.
    *
    * Người dùng yêu cầu: "bỏ top shell ra khỏi trang đăng nhập". Nó đúng ở một
    * mức sâu hơn thẩm mỹ: thanh trên mang nhãn hiệu, ba đích điều hướng, ô tìm
