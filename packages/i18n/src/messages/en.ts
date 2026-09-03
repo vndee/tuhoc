@@ -220,9 +220,6 @@ export const en: Messages = {
   'home.notes.formula': 'formula',
   'home.notes.aria': (course: string) => `Open this note in ${course}`,
   'home.myCourses': 'My courses',
-  'home.myCoursesEmpty': 'You have not started any course yet.',
-  'toc.next': 'Next',
-  'toc.done': 'Read',
 
   /** Dashboard empty state, after the import flow died — see vi.ts's comment. */
   'home.empty.heading': 'You have not started a course yet',
