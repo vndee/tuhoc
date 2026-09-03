@@ -274,6 +274,11 @@ describe('Học tiếp — MỘT hành động', () => {
     server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(4))));
     server.use(http.get('/stats', () => new Promise(() => {})));
     server.use(http.get('/courses', () => new Promise(() => {})));
+    // Section A (rà soát Task 3): `pickFocusCourse` nay chỉ tin
+    // `lastStudiedCourseId` khi khoá ấy CÒN nằm trong `enrollments` — một hàng
+    // `progress` không còn đủ một mình. `enroll('demo')` là thứ khiến khoá này
+    // còn được chọn làm tiêu điểm; thiếu nó, trang rơi về `EmptyHome`.
+    enroll('demo');
     await markRead('demo', 'ch-1');
     await markRead('demo', 'ch-2');
 
@@ -303,6 +308,11 @@ describe('Học tiếp — MỘT hành động', () => {
         }),
       ),
     );
+    // Chỉ 'demo' được ghi danh — 'so-dau-phay-dong' cố tình KHÔNG, để giữ
+    // đúng khẳng định bên dưới ("khoá kia KHÔNG có mặt", kể cả trong danh
+    // sách "Khoá của tôi" sau này): một hàng progress không kèm ghi danh
+    // không còn đủ để khoá đó xuất hiện ở đây (Section A).
+    enroll('demo');
     // Hai khoá, hai mốc thời gian. `so-dau-phay-dong` cũ hơn ba ngày.
     await markRead('so-dau-phay-dong', 'p0-1', '2026-08-17T09:00:00Z');
     await markRead('demo', 'ch-1', '2026-08-20T09:00:00Z');
@@ -319,6 +329,7 @@ describe('Học tiếp — MỘT hành động', () => {
   it('đọc hết khoá là một TRẠNG THÁI, không phải ngõ cụt — nút mở lại chương cuối', async () => {
     server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(2))));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+    enroll('demo'); // Section A: lastStudied một mình không còn đủ.
     await markRead('demo', 'ch-1');
     await markRead('demo', 'ch-2');
 
@@ -350,6 +361,7 @@ describe('Học tiếp — MỘT hành động', () => {
     // câu giải thích không kèm lối đi tiếp thì vẫn là ngõ cụt.
     server.use(http.get('/courses/demo', () => new HttpResponse(null, { status: 404 })));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+    enroll('demo'); // Section A: lastStudied một mình không còn đủ.
     await markRead('demo', 'ch-1');
 
     renderDashboard();
@@ -381,6 +393,7 @@ describe('Học tiếp — MỘT hành động', () => {
         }),
       ),
     );
+    enroll('demo'); // Section A: lastStudied một mình không còn đủ.
     await markRead('demo', 'ch-1');
 
     renderDashboard();
