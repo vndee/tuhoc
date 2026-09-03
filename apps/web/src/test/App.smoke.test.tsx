@@ -18,6 +18,10 @@ describe('App shell', () => {
   });
 
   it('renders the topbar button ids reader.css and later tasks depend on', () => {
+    // `/courses` chứ không phải `/`: `/` cho khách chưa đăng nhập là landing,
+    // và landing KHÔNG có thanh trên (`App.tsx`: `authScreen`). Các id dưới đây
+    // thuộc về thanh trên, nên bài này phải đứng ở một route còn dựng nó.
+    window.history.pushState({}, '', '/courses');
     render(<App />);
     for (const id of ['menu-btn', 'crumb', 'mark-btn', 'theme-btn', 'prev-btn', 'next-btn']) {
       expect(document.getElementById(id)).toBeInTheDocument();

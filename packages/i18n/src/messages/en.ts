@@ -257,17 +257,35 @@ export const en: Messages = {
   'progress.course.aria': (percent: string) => `${percent}% complete`,
   'progress.course.minutes': (minutes: string) => `${minutes} minutes studied`,
 
-  'login.pitch.headline': 'Courses are open to everyone.',
-  /** `login.pitch.lede` and `login.point.ownKey` rewritten at task-15 — see vi.ts's comment. */
-  'login.pitch.lede':
-    'Open a course and start reading right away — nothing to install, nothing to download. Highlight a passage to take a note right on the page, or ask the AI assistant right there.',
-  /* Tên riêng "Tự học" KHÔNG đi vào đây: bài "en còn tiếng Việt" ở
-     `i18n.test.ts` cho phép đúng hai khoá (`app.name`, `lang.name.vi`), và một
-     nhãn trợ năng không đáng làm danh sách ấy dài thêm. */
-  'login.pitch.aria': 'What this platform does',
-  'login.point.free': 'Read every course free — no account needed',
-  'login.point.ownKey': 'An AI assistant on our own servers, paid for with credit — no key of your own needed',
-  'login.point.sync': 'Sign in and your progress and notes follow you across devices',
+  // ── Landing (`pages/Landing.tsx`) — `/` for visitors who are not signed in ──
+  'landing.question': 'Studying alone, without groping in the dark alone.',
+  'landing.lede': 'The books are open for anyone to read, no account needed. Highlight what you do not follow and the note lands on that exact spot. The AI tutor reads that note and answers on the page you are reading.',
+  'landing.read.verb': 'Try reading',
+  'landing.read.catalog': 'Open the course catalog',
+  'landing.read.meta': 'Free · no account needed',
+  'landing.account.cta': 'Create an account',
+  'landing.demo.h': 'One exchange, for example',
+  'landing.demo.sentence': 'a sentence in the chapter you are reading',
+  'landing.demo.noteLabel': 'Your note',
+  'landing.demo.note': "I don't follow this bit",
+  'landing.demo.tutorLabel': 'Tutor',
+  'landing.demo.tutor': 'Answers right there, quoting your note back:',
+  'landing.working.tried': 'read it a third time',
+  'landing.working.verdict': 'still stuck in the same spot',
+  'landing.note.how': 'The note holds on to the sentence; it does not drift.',
+  'landing.note.hover': 'Hover the note to see the line back to its sentence.',
+  'landing.vision.figure': 'A chalk drawing: an open book, and rising from it the things it teaches — a neural network, a few mathematical symbols, a ringed planet and some stars.',
+  'landing.can.h': 'Here you can',
+  'landing.can.read': 'Read a whole textbook, formulas and interactive figures included. No money, no account.',
+  'landing.can.note': 'Highlight a sentence and write a note. The note holds on to that sentence.',
+  'landing.can.ask': 'Ask the tutor on the page you are reading. It reads the note you just wrote.',
+  'landing.can.return': 'Close the laptop, open another one. Still where you left off.',
+  'landing.catalog.h': 'Courses open now',
+  'landing.catalog.error': 'The course catalog could not be loaded right now.',
+  'landing.catalog.retry': 'Try again',
+  'landing.catalog.all': 'See all',
+  'landing.login.cta': 'Sign in',
+
 
   'login.title': 'Sign in',
   'login.heading.login': 'Welcome back',

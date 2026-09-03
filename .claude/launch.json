@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "tuhoc-api",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/vndee/Documents/claude/tuhoc/apps/api && export DATABASE_URL='postgres://tuhoc:tuhoc@localhost:55433/tuhoc?sslmode=disable' PORT=8080 CORS_ORIGIN='http://localhost:5173' COOKIE_SECURE=false ADMIN_TOKEN='dev-admin-token' && export DEEPSEEK_API_KEY=\"$(grep -E '^DEEPSEEK_API_KEY=' /Users/vndee/Documents/claude/tuhoc/.env | cut -d= -f2-)\" && exec go run ./cmd/api"
+      ],
+      "port": 8080
+    },
+    {
+      "name": "tuhoc-web",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/vndee/Documents/claude/tuhoc/apps/web && VITE_API_URL=http://localhost:8080 exec bun run dev"
+      ],
+      "port": 5173
+    }
+  ]
+}

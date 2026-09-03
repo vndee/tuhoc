@@ -1,3 +1,18 @@
 {
-  "buildPath": "code"
+  "buildPath": "code",
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "apps/web/src/styles/index.css"
+        ],
+        "createdAt": "2026-09-03T06:07:13.671Z",
+        "reason": "Claude quyết, bằng chứng trong mã: dải trái 3px của .ann-card (index.css:809) và .ann-orphan (:1112) KHÔNG phải tab trang trí — nó mang màu highlight của chính ghi chú, đè theo từng ghi chú ở .ann-card-y/-g/-b/-p (:822-836) bằng --s4/--s3/--s1/--s5, tức là kênh nối ghi chú với vệt bôi trong bài, cơ chế lõi của sản phẩm (PRODUCT.md, Positioning, lời hứa 1). Hai điểm side-tab THẬT trong cùng tệp (.ann-sheet, .ai-panel-quote) đã được sửa ở vòng 5B ngày 03/09/2026, nên lệnh tắt theo tệp này không còn che giấu phát hiện nào."
+      }
+    ]
+  }
 }

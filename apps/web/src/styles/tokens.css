@@ -75,7 +75,15 @@
      Inter/IBM Plex đã rời khỏi đây: cả hai nằm trong danh sách phông "mặc
      định mọi mô hình ship", và không lý do nào ngoài quán tính giữ chúng. */
   --font-serif: 'Charis SIL', 'Charter', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
-  --font-sans: 'Archivo Narrow', 'Arial Narrow', 'Roboto Condensed', system-ui, sans-serif;
+  /* NÉT TAY LÀ GIỌNG CỦA GIAO DIỆN (vòng 1, 03/09/2026). Archivo Narrow đã
+     rời vai này: nó là sans hẹp của thế giới typeset cũ. Trong thế giới "một
+     bàn tay, hai mặt viết", mọi thứ GIAO DIỆN tự nói ra — nhan đề, nhãn, mục
+     điều hướng, nút, số mục — đều là chữ viết tay; còn `--font-serif` giữ
+     đúng vai cũ của nó là chữ ĐỌC, tức là nội dung. Hai giọng, hai địa phận,
+     và ranh giới ấy chính là ý tưởng của landing đem vào cả app.
+     Bản variable một trục `wght` 300–800, subset `vietnamese` đã kiểm: dấu
+     tiếng Việt không chồng ở 53px. */
+  --font-sans: 'Shantell Sans Variable', 'Shantell Sans', 'Archivo Narrow', system-ui, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
 
   /* ── BRAND ──────────────────────────────────────────────────────────────
@@ -87,17 +95,27 @@
      Chiến lược màu là Restrained (Operate): trung tính + một nhấn. Nhấn dùng
      cho hành động chính, mục đang chọn, trạng thái — không bao giờ để tô nền
      một vùng lớn hay trang trí. */
-  --color-brand-25: #f7fafd;
-  --color-brand-50: #eef5fb;
-  --color-brand-100: #d9e8f5;
-  --color-brand-200: #b3d1eb;
-  --color-brand-300: #85b5de;
-  --color-brand-400: #4d92cc;
-  --color-brand-500: #2676b8;
-  --color-brand-600: #0b5fa5;
-  --color-brand-700: #094d86;
-  --color-brand-800: #073c69;
-  --color-brand-900: #052c4e;
+  /* ── ĐẤT NUNG, KHÔNG CÒN XANH (vòng 2, 03/09/2026) ──────────────────────
+     Thang này từng là xanh "hộp định lý" #0b5fa5 của thế giới giáo trình
+     LaTeX. Thế giới ấy đã đi, và một thang xanh nằm lại là lý do khiến số
+     "1/3" trên trang khoá, huy hiệu ở Thư viện và nút ở Admin vẫn xanh trong
+     khi cả app đã sang mực nâu trên giấy kem.
+
+     Đổi đích cả thang chứ không vá từng chỗ: mọi màn CHƯA chuyển (Cài đặt,
+     Admin, Thư viện) thôi xanh ngay lập tức, và các vòng sau chỉ còn phải lo
+     HÌNH DÁNG — thẻ, bo góc, bóng — chứ không phải màu. Neo ở bậc 600 =
+     `--accent` của bản sáng (#a94f2b, 4.84:1 trên giấy kem). */
+  --color-brand-25: #fdf8f6;
+  --color-brand-50: #faeee9;
+  --color-brand-100: #f4dbd1;
+  --color-brand-200: #e8bda9;
+  --color-brand-300: #d99a7c;
+  --color-brand-400: #dd9165;
+  --color-brand-500: #b8613a;
+  --color-brand-600: #a94f2b;
+  --color-brand-700: #8c3f22;
+  --color-brand-800: #6d301a;
+  --color-brand-900: #4d2112;
 
   /* ── GRAY ───────────────────────────────────────────────────────────────
      Nền, chữ, viền — gần như mọi thứ còn lại. */
@@ -154,7 +172,7 @@
   /* ── VÒNG FOCUS ─────────────────────────────────────────────────────────
      4px, trên MỌI thứ bấm được. Đây là thứ bản đang chạy không có, và là khác
      biệt lớn nhất với người dùng bàn phím. */
-  --shadow-ring-brand: 0 0 0 4px #f4ebff;
+  --shadow-ring-brand: 0 0 0 4px #f4dbd1;
   --shadow-ring-gray: 0 0 0 4px #f2f4f7;
   --shadow-ring-error: 0 0 0 4px #fee4e2;
 }

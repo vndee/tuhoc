@@ -58,14 +58,32 @@ const CHAPTER_ROUTE = /^\/c\/[^/]+\/[^/]+/;
 // mục lục nhưng không phải đang đọc.
 const COURSE_ROUTE = /^\/c\/[^/]+/;
 
-// `/login` — màn hình duy nhất KHÔNG có thanh trên. Xem `ShellProps.authScreen`.
+// `/login` — và, từ 03/09/2026, `/` khi chưa có phiên. Hai màn hình
+// TRƯỚC-TÀI-KHOẢN, cả hai đều không có thanh trên. Xem `ShellProps.authScreen`.
 const AUTH_ROUTE = /^\/login/;
 
 function AppShell() {
   const { theme, toggle: toggleTheme } = useThemeContext();
   const { open: mobileNavOpen, toggle: toggleMobileNav } = useMobileNav();
   const location = useLocation();
-  const authScreen = AUTH_ROUTE.test(location.pathname);
+  const me = useMe();
+  /**
+   * Thanh trên mang nhãn hiệu, ba đích điều hướng, ô tìm kiếm và chip tài
+   * khoản — bốn thứ mà một người CHƯA ĐĂNG NHẬP không dùng được cái nào. Lý
+   * do ấy đã bỏ thanh trên khỏi `/login`; từ 03/09/2026 nó cũng đúng y hệt ở
+   * `/`, nơi khách gặp landing (`pages/HomeGate.tsx`). Landing có thế giới
+   * hình riêng và tự mang nhãn hiệu, hai điều khiển thiết bị và lối đăng nhập
+   * viết bằng phấn trên bảng của nó; để lại một dải 64px của vỏ app phía trên
+   * là đúng điều chủ dự án gọi tên — "nhìn giống trang đã đăng nhập".
+   *
+   * Điều kiện là `!me.data`, KHÔNG phải `me.data === null`: trong lúc `GET
+   * /me` chưa trả lời thì `HomeGate` chưa vẽ gì cả, nên dựng thanh trên ở
+   * quãng ấy chỉ để gỡ nó đi ngay sau đó là một cú nháy chrome cho đúng những
+   * người đã đăng nhập. `useMe()` là truy vấn dùng chung (`meQueryKey`,
+   * `staleTime: 60_000`) mà `RequireAuth`, `TopNav` và `useSyncLifecycle`
+   * cùng đọc — hỏi thêm ở đây không tốn một request nào.
+   */
+  const authScreen = AUTH_ROUTE.test(location.pathname) || (location.pathname === '/' && !me.data);
 
   useSyncLifecycle();
   useLegacyDrain();

@@ -121,7 +121,14 @@ describe('CỬA: đổi được ngôn ngữ trong ứng dụng thật', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    const selector = screen.getByLabelText('Ngôn ngữ giao diện');
+    /**
+     * `findBy`, không phải `getBy`: ở `/` cổng `HomeGate` chờ `GET /me` trả lời
+     * trước khi chọn giữa landing và Học tiếp, nên bộ chọn tới sau một nhịp.
+     * Và đây mới đúng là điều cổng này canh từ 03/09/2026 — bộ chọn nằm trên
+     * MÀN HÌNH ĐẦU TIÊN một người lạ nhìn thấy, không phải trên trang đăng
+     * nhập họ chưa chắc tới: `/` không còn đẩy khách sang `/login`.
+     */
+    const selector = await screen.findByLabelText('Ngôn ngữ giao diện');
     expect(document.documentElement.lang).toBe('vi');
 
     await user.selectOptions(selector, 'en');
