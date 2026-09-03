@@ -23,7 +23,7 @@ import (
 //     cross-site, which forces SameSite=None.
 //
 // The project owner already owns duy.dev and has settled on
-// tuhoc.duy.dev + api.duy.dev. Same site. Lax is sufficient. (Phase 1
+// tuhoc.duy.dev + api-tuhoc.duy.dev. Same site. Lax is sufficient. (Phase 1
 // planned a third subdomain for the key vault; Pha 2 Task 16 deleted it,
 // and this argument never depended on the count.) C-3 is
 // therefore closed by a DECISION, and this file is that decision written
@@ -287,7 +287,7 @@ func (h *Handler) setSessionCookie(c *fiber.Ctx, s Session) {
 	benign := map[string]string{
 		"apps/api/internal/auth/handler.go": strings.ToLower(`package auth
 // SameSite is scoped to the registrable domain, so tuhoc.duy.dev and
-// api.duy.dev are same-site and Lax cookies flow between them.
+// api-tuhoc.duy.dev are same-site and Lax cookies flow between them.
 func (h *Handler) setSessionCookie(c *fiber.Ctx, s Session) {
 	c.Cookie(&fiber.Cookie{
 		Name:     CookieName,
@@ -328,7 +328,7 @@ func TestSessionCookieIsNeverSameSiteNone(t *testing.T) {
 			"Setting None removes that defense outright, and every credentialed "+
 			"state-changing route becomes reachable cross-site.\n"+
 			"This is debt C-3, and it is closed by a DEPLOYMENT DECISION: web "+
-			"and API are subdomains of one apex (tuhoc.duy.dev / api.duy.dev), "+
+			"and API are subdomains of one apex (tuhoc.duy.dev / api-tuhoc.duy.dev), "+
 			"which is same-SITE, so Lax works as written and no code change is "+
 			"needed. See docs/deploy.md §0.\n"+
 			"If you are genuinely moving to the cross-site (free-hostname) "+

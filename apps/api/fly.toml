@@ -51,7 +51,7 @@ primary_region = "sin" # Singapore. Closest Fly region to Vietnam-based
 # from (scheme + host, no trailing slash, no path) — see docs/deploy.md's
 # cross-origin cookie analysis for why an exact origin (not a wildcard) is
 # required here. The host is not arbitrary either: this API is deployed at
-# api.duy.dev, so web and API are different ORIGINS but the same SITE
+# api-tuhoc.duy.dev, so web and API are different ORIGINS but the same SITE
 # (registrable domain duy.dev), which is what lets the session cookie's
 # hardcoded SameSite=Lax survive the fetch. A host under a different
 # registrable domain passes CORS and then 401s every authenticated call.

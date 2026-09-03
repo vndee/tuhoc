@@ -19,7 +19,7 @@ Ghi lại lúc kết thúc P1 (nhánh `p1-platform-core`, 37 commit, hợp nhấ
 **Món nợ này đóng bằng một QUYẾT ĐỊNH, không bằng mã.** Cookie phiên vốn đã là `SameSite=Lax`
 (`apps/api/internal/auth/handler.go:164,180`); C-3 chỉ cắn nếu chọn phương án **tên miền miễn phí** ở
 `docs/deploy.md` §0, thứ bắt buộc `None`. Chủ dự án đã có `duy.dev` và chốt `tuhoc.duy.dev` +
-`api.duy.dev` — khác **origin** nhưng **cùng site**, nên `Lax` là đủ và **không cần
+`api-tuhoc.duy.dev` — khác **origin** nhưng **cùng site**, nên `Lax` là đủ và **không cần
 đổi một dòng mã nào**. (Bố cục ấy từng có một tên miền con thứ ba, `vault.duy.dev`, cho kho khoá;
 Pha 2 Task 16 gỡ kho khoá. Lập luận "cùng site" không phụ thuộc vào số tên miền con.)
 
