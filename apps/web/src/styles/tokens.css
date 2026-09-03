@@ -75,15 +75,35 @@
      Inter/IBM Plex đã rời khỏi đây: cả hai nằm trong danh sách phông "mặc
      định mọi mô hình ship", và không lý do nào ngoài quán tính giữ chúng. */
   --font-serif: 'Charis SIL', 'Charter', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
-  /* NÉT TAY LÀ GIỌNG CỦA GIAO DIỆN (vòng 1, 03/09/2026). Archivo Narrow đã
-     rời vai này: nó là sans hẹp của thế giới typeset cũ. Trong thế giới "một
-     bàn tay, hai mặt viết", mọi thứ GIAO DIỆN tự nói ra — nhan đề, nhãn, mục
-     điều hướng, nút, số mục — đều là chữ viết tay; còn `--font-serif` giữ
-     đúng vai cũ của nó là chữ ĐỌC, tức là nội dung. Hai giọng, hai địa phận,
-     và ranh giới ấy chính là ý tưởng của landing đem vào cả app.
+  /* NÉT TAY Ở NGOÀI, KHÔNG Ở TRONG (03/09/2026, vòng sửa sau khi thấy app
+     chạy thật). Vòng 1 của đợt đổi thế giới trỏ `--font-sans` sang Shantell
+     Sans với lập luận "mọi thứ GIAO DIỆN tự nói ra đều là chữ viết tay".
+     Lập luận ấy đúng cho LANDING và sai cho phần còn lại, vì nó bỏ qua một
+     ràng buộc mà chỉ nhìn app chạy thật mới thấy: khung app không đứng cạnh
+     landing, nó đứng cạnh NỘI DUNG CHƯƠNG. Tên chương trong mục lục ở
+     `Dashboard` và tiêu đề chính chương ấy trong `Reader` cách nhau đúng một
+     cú bấm, nên hai chỗ đó phải cùng một giọng — bằng không mỗi lần vào ra
+     một chương là một lần đổi chữ.
+
+     Nên `--font-sans` khớp ĐÚNG chuỗi `--sans` của
+     `packages/course-kit/reader.css` (dòng 31), không phải một họ chữ "gần
+     giống": course-kit là thứ không được sửa, nên nó là bên đặt chuẩn và
+     token này là bên đi theo. Hai tệp sẽ lệch lặng lẽ nếu ai đó đổi một
+     bên — đó là cái giá đã biết của việc course-kit bất khả xâm phạm, và rẻ
+     hơn giá của việc mỗi trang một giọng.
+
+     Archivo Narrow cũng KHÔNG quay lại: nó là sans hẹp của thế giới typeset
+     cũ và cũng không phải thứ nội dung chương dùng. Import của nó ở
+     `index.css` giữ lại vì `--font-serif` không thay được nó ở vai nhãn hẹp
+     nếu sau này cần — nhưng không token nào trỏ tới nó nữa. */
+  --font-sans: 'IBM Plex Sans Variable', 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* CHỮ VIẾT TAY, CHỈ CHO LANDING. Tách thành token riêng thay vì để landing
+     thừa kế `--font-sans`: landing là thế giới bảng phấn, và chữ phấn là một
+     nửa của thế giới ấy. `landing.css` gọi token này ở `.board-room`; không
+     màn nào khác được phép gọi.
      Bản variable một trục `wght` 300–800, subset `vietnamese` đã kiểm: dấu
      tiếng Việt không chồng ở 53px. */
-  --font-sans: 'Shantell Sans Variable', 'Shantell Sans', 'Archivo Narrow', system-ui, sans-serif;
+  --font-hand: 'Shantell Sans Variable', 'Shantell Sans', cursive;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
 
   /* ── BRAND ──────────────────────────────────────────────────────────────

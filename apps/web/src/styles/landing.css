@@ -29,6 +29,14 @@
 /* ── MẶT VIẾT ─────────────────────────────────────────────────────────────── */
 
 .board-room {
+  /* CHỮ PHẤN SỐNG Ở ĐÂY, VÀ CHỈ Ở ĐÂY. Trước đó landing không đặt
+     `font-family` nào cả — nó thừa kế `--font-sans`, và `--font-sans` là chữ
+     viết tay, nên landing đúng chữ một cách tình cờ. Khi `--font-sans` quay
+     về khớp nội dung chương (xem `tokens.css`), sự tình cờ ấy sẽ lấy mất chữ
+     phấn của landing mà không báo gì. Dòng dưới là thứ biến nó thành có chủ
+     đích: thế giới bảng phấn tự khai giọng của mình, không mượn của app. */
+  font-family: var(--font-hand);
+
   /* SÁNG: bút chì trên giấy kem. */
   --ground: #f4f1e8;
   --ink: #23211c;
@@ -88,7 +96,14 @@ html[data-theme='dark'] .board-room {
      một hình chữ nhật màu. Ở 0.05 nó dưới ngưỡng nhận ra, trên ngưỡng cảm. */
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
   color: var(--ink);
-  font-family: 'Shantell Sans Variable', 'Shantell Sans', var(--font-sans), system-ui, sans-serif;
+  /* KHÔNG có `font-family` ở đây nữa. Dòng cũ viết cứng
+     `'Shantell Sans Variable', 'Shantell Sans', var(--font-sans), system-ui,
+     sans-serif` — vô hại lúc nó được viết, vì `--font-sans` KHI ẤY cũng là
+     Shantell, nên cả chuỗi chỉ nói một điều hai lần. Khi `--font-sans` quay
+     về khớp nội dung chương, cùng dòng ấy bung ra thành Shantell, Shantell,
+     IBM Plex…, sans-serif, rồi system-ui, sans-serif lần nữa: vẫn dựng đúng
+     chữ, nhưng là một bản sao thứ hai của token đã ngừng nói thật.
+     `.board-room` khai `--font-hand` một lần, và `.board` thừa kế. */
   box-shadow: 0 16px 44px -14px rgb(0 0 0 / 30%);
   overflow: hidden;
 }
