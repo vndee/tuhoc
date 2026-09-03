@@ -198,6 +198,10 @@ export const en: Messages = {
   'course.parts.title': (n: string) => `This course runs through ${n} parts`,
   'course.parts.hint': 'Each chapter is listed in the contents on the left.',
   'course.partCount': (read: string, total: string) => `${read}/${total}`,
+  /** Task 5: enroll/unenroll button on the course page — `pages/CourseHome.tsx`. */
+  'course.enroll': 'Start this course',
+  'course.unenroll': 'Remove from my courses',
+  'course.enrolling': 'Adding…',
   'chapter.notFound': 'Chapter not found.',
   'chapter.notFoundInCourse': 'That chapter is not in this course.',
 
