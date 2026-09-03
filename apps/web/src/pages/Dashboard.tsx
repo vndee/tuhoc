@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { Fragment } from 'react';
+import { Fragment, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { colorOf, quoteOf } from '../annotations/useAnnotations';
 import type { Ann } from '../api/annotations';
-import { catalogQueryKey, fetchCatalog } from '../api/catalog';
+import { enrollmentsQueryKey, fetchEnrollments } from '../api/enrollments';
 import { useStats } from '../api/stats';
 import { flatChapters, nextChapter } from '../course/chapters';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
@@ -56,15 +56,20 @@ import { useProgress } from '../progress/useProgress';
  * NGAY trong cache trước khi `PUT /progress` trả lời, còn `chaptersDone` chỉ
  * nhích lên sau khi request ấy xong VÀ `/stats` được hỏi lại.
  *
- * ## Nguồn danh sách course, sau khi luồng import chết (Task 13)
+ * ## Nguồn danh sách course, sau khi cắt đường rò từ danh mục chung
  *
  * Server là nơi DUY NHẤT một course sống (`tuhoc publish`), và `GET /courses`
- * (`fetchCatalog`) là DANH MỤC CÔNG KHAI. Trang này không hỏi "người này SỞ HỮU
- * khoá nào" — câu ấy không còn nghĩa — mà hỏi hai câu hẹp hơn:
+ * (`fetchCatalog`) là DANH MỤC CÔNG KHAI — mọi course có trên hệ thống, không
+ * phải course của người này. Trang này chỉ hỏi những gì THUỘC VỀ người đang
+ * đăng nhập, qua hai câu hẹp:
  *
  *  1. **Khoá đang đọc dở** — `useLastStudiedCourseId()` (`GET /progress`).
- *  2. **Chưa đọc gì cả thì gợi ý khoá nào** — khoá ĐẦU TIÊN trong danh mục,
- *     hợp với mọi course `stats.courses[]` biết (học ở máy khác).
+ *  2. **Chưa đọc gì cả thì gợi ý khoá nào** — khoá ĐẦU TIÊN người này đã GHI
+ *     DANH (`GET /enrollments`, `api/enrollments.ts`), không phải khoá đầu
+ *     bảng chữ cái của danh mục chung. Trước `/enrollments`, phần này hợp
+ *     danh mục công khai với `stats.courses[]` làm gợi ý — nên MỌI tài
+ *     khoản, kể cả một tài khoản vừa tạo, đều có sẵn một "khoá đang dở" nó
+ *     chưa từng mở; `Dashboard.test.tsx` có bài canh riêng cho đúng lỗi đó.
  *
  * ## Trạng thái rỗng vẫn phải THÀNH HÀNH ĐỘNG (ràng buộc 5 của đặc tả)
  *
@@ -73,15 +78,26 @@ import { useProgress } from '../progress/useProgress';
  */
 export function Dashboard() {
   const { t } = useLanguage();
-  const catalogQuery = useQuery({ queryKey: catalogQueryKey(), queryFn: fetchCatalog, retry: false });
+  const enrollmentsQuery = useQuery({
+    queryKey: enrollmentsQueryKey(),
+    queryFn: () => fetchEnrollments(),
+    retry: false,
+  });
   const statsQuery = useStats();
   const lastStudied = useLastStudiedCourseId();
 
-  const focusCourseId = pickFocusCourse(fallbackCourseIds(catalogQuery.data, statsQuery.data?.courses), lastStudied.courseId);
-  // "Chưa biết" KHÔNG được vẽ thành "không có gì": danh mục, /stats và
+  // Chỉ khoá ĐÃ GHI DANH mới được vào đây. Trước đây tham số này là hợp của
+  // danh mục công khai với stats.courses[] — tức là mọi khoá trên hệ thống —
+  // nên một tài khoản chưa mở gì vẫn có "khoá đang dở".
+  const enrolledIds = useMemo(
+    () => (enrollmentsQuery.data ?? []).map((e) => e.courseId),
+    [enrollmentsQuery.data],
+  );
+  const focusCourseId = pickFocusCourse(enrolledIds, lastStudied.courseId);
+  // "Chưa biết" KHÔNG được vẽ thành "không có gì": enrollments, /stats và
   // `progress` đều phải trả lời xong. Nháy trạng thái rỗng vào mặt một người
   // đang đọc dở là lỗi mà `Dashboard.test.tsx` đã có bài canh riêng.
-  const settled = !catalogQuery.isPending && !statsQuery.isPending && lastStudied.settled;
+  const settled = !enrollmentsQuery.isPending && !statsQuery.isPending && lastStudied.settled;
 
   return (
     <div className="home doc">
@@ -103,25 +119,6 @@ export function Dashboard() {
       </div>
     </div>
   );
-}
-
-/**
- * `catalog ∪ stats.courses[]`, sorted — the fallback set `pickFocusCourse`
- * reaches for only when NOTHING is in progress (see that function's own doc
- * comment for why the union does not matter once a progress row exists).
- *
- * Catalog ids first because they need no further lookup; `stats.courses[]`
- * ids folded in because a course studied on ANOTHER device is still this
- * reader's course even if the catalog no longer lists it.
- */
-function fallbackCourseIds(
-  catalog: { slug: string }[] | undefined,
-  statsCourses: { courseId: string }[] | undefined,
-): string[] {
-  const ids = new Set<string>();
-  for (const course of catalog ?? []) ids.add(course.slug);
-  for (const course of statsCourses ?? []) ids.add(course.courseId);
-  return Array.from(ids).sort();
 }
 
 /**
