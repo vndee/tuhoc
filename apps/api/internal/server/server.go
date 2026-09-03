@@ -331,6 +331,16 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	app.Get("/progress", auth.Require(deps.Pool), userdataHandler.ListProgress)
 	app.Put("/progress", bodyLimit(userdata.MaxWriteBytes), auth.Require(deps.Pool), userdataHandler.PutProgress)
 
+	// Enrollment routes. "Khoá nào là CỦA người này" — câu hỏi mà danh mục
+	// công khai (GET /courses) không trả lời được và không nên trả lời.
+	//
+	// bodyLimit chỉ bọc POST. GET và DELETE không mang thân, nên một giới
+	// hạn đặt lên chúng là một dòng không bao giờ chạy được — cùng lập luận
+	// đã ghi ở GET /progress ngay trên.
+	app.Get("/enrollments", auth.Require(deps.Pool), userdataHandler.ListEnrollments)
+	app.Post("/enrollments", bodyLimit(userdata.MaxWriteBytes), auth.Require(deps.Pool), userdataHandler.CreateEnrollment)
+	app.Delete("/enrollments/:courseId", auth.Require(deps.Pool), userdataHandler.DeleteEnrollment)
+
 	// Annotation routes (Pha 3, Task 2). The REST replacement for the
 	// annotations half of /sync, same non-local-first reasoning as
 	// /progress above — plus a real DELETE, since migration 0009 dropped

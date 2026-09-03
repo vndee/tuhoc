@@ -280,6 +280,14 @@ export const vi = {
   'course.parts.title': (n: string) => `Khoá này đi qua ${n} chặng`,
   'course.parts.hint': 'Chi tiết từng chương nằm ở mục lục bên trái.',
   'course.partCount': (read: string, total: string) => `${read}/${total}`,
+  /** Task 5: nút ghi danh/bỏ ghi danh trên trang khoá — `pages/CourseHome.tsx`. */
+  'course.enroll': 'Bắt đầu học',
+  'course.unenroll': 'Bỏ khỏi khoá của tôi',
+  'course.enrolling': 'Đang thêm…',
+  /** Fix round 1: bề mặt cho một cú ghi danh/bỏ ghi danh hỏng (mất mạng,
+   *  5xx) — trước đó nút chỉ lặng lẽ hết `isPending` mà không nói gì. */
+  'course.enrollFailed': 'Không ghi danh được. Thử lại.',
+  'course.unenrollFailed': 'Không bỏ ghi danh được. Thử lại.',
   'chapter.notFound': 'Không tìm thấy chương này.',
   'chapter.notFoundInCourse': 'Không tìm thấy chương này trong khóa học.',
 
@@ -296,6 +304,17 @@ export const vi = {
   'home.lede': 'Chỗ bạn đang đọc dở, và những ghi chú gần đây.',
   'account.logout': 'Đăng xuất',
   'home.loading': 'Đang tìm chỗ bạn đọc dở…',
+  /**
+   * Fix round cuối (item 2) — `GET /enrollments` là một trong ba nguồn
+   * `settled` chờ; trước bản vá này một lần hỏng của riêng nó khiến trang
+   * kết luận "chưa ghi danh gì" (`home.empty.heading`) cho một người CÓ khoá
+   * đang học — một khẳng định sai, không phân biệt được với sự thật. Câu
+   * này đứng thay vào chỗ đó khi `enrollmentsQuery.isError`, cùng quy ước
+   * `role="alert"` + `.lib-notice-server` mà `course.enrollFailed`/
+   * `reader.addToMineFailed` đã dùng, và cùng tinh thần `progress.error`
+   * (nguyên nhân giống nhau: số liệu nằm trên máy chủ, cần mạng để lấy).
+   */
+  'home.enrollmentsError': 'Chưa lấy được danh sách khoá của bạn. Phần này nằm trên máy chủ, nên cần mạng.',
   'home.eyebrow': 'Đang đọc',
   'home.continue': 'Đọc tiếp',
   'home.start': 'Bắt đầu đọc',
@@ -310,8 +329,7 @@ export const vi = {
   'home.notes.open': 'Mở chương',
   'home.notes.formula': 'công thức',
   'home.notes.aria': (course: string) => `Mở ghi chú này trong ${course}`,
-  'toc.next': 'Tiếp theo',
-  'toc.done': 'Đã đọc',
+  'home.myCourses': 'Khoá của tôi',
 
   /**
    * Trạng thái rỗng của Bảng điều khiển, sau khi luồng import chết.
@@ -571,6 +589,16 @@ export const vi = {
      không phải mặc định trong lúc còn chờ /me trả lời, kẻo nó nháy lên cho cả
      người đã đăng nhập rồi mới biến mất. Xem `reader/ChapterView.tsx`. */
   'reader.anonNudge': 'Đăng nhập để lưu tiến độ, ghi chú và hỏi AI.',
+  /* Task 6 (ghi-danh-khoa-hoc) — người ĐÃ đăng nhập nhưng tới thẳng chương
+     này qua liên kết chia sẻ (chưa từng ghé `/c/:courseId`, nơi Task 5 đã có
+     "Bắt đầu học"), và chưa ghi danh. Không bao giờ đứng cùng lúc với
+     `reader.anonNudge` ở trên — xem `reader/ChapterView.tsx`. */
+  'reader.addToMine': 'Thêm vào khoá của tôi',
+  /** Fix round 1 — bề mặt cho một cú `POST /enrollments` hỏng từ chương đọc
+   *  (mất mạng, 5xx) — cùng quy ước `course.enrollFailed` đã dùng, tách
+   *  riêng vì đây là một control khác (`reader.addToMine`), không phải để
+   *  dùng chung một khoá cho hai control khác nhau. */
+  'reader.addToMineFailed': 'Không thêm được. Thử lại.',
 
   /* ── chế độ đọc: một cột chữ (`reader/TocDrawer.tsx`, hướng A) ──────────── */
 

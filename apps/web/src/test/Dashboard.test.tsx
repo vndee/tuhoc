@@ -42,10 +42,15 @@ function catalogManifest(): Manifest {
   };
 }
 
-function demoManifest(chapterCount: number): Manifest {
+/**
+ * `id`/`title` mặc định giữ nguyên mọi chỗ gọi cũ (chỉ truyền `chapterCount`)
+ * — hai tham số thêm chỉ phục vụ bài "Khoá của tôi" bên dưới, nơi cần hai
+ * manifest CÙNG HÌNH DẠNG nhưng khác `id`/tiêu đề.
+ */
+function demoManifest(chapterCount: number, id = 'demo', title = 'Khóa học demo'): Manifest {
   return {
-    id: 'demo',
-    title: 'Khóa học demo',
+    id,
+    title,
     description: 'Mô tả demo',
     lang: 'vi',
     version: '1.0.0',
@@ -163,6 +168,21 @@ function markRead(courseId: string, chapterId: string, updatedAt = new Date().to
 }
 
 /**
+ * Một hàng `GET /enrollments` (`api/enrollments.ts`'s `Enrollment` —
+ * `{courseId, createdAt}`). `Dashboard.tsx` gọi `useQuery` trên
+ * `enrollmentsQueryKey()` một cách VÔ ĐIỀU KIỆN để chọn "chưa đọc gì cả thì
+ * gợi ý khoá nào" (xem file đó's "Nguồn danh sách course" doc), nên
+ * `GET /enrollments` bắn ra ở MỌI bài trong tệp này — mặc định "chưa ghi danh
+ * gì" (`beforeEach` dưới); `enroll` đăng ký lại handler với hàng thật cho
+ * những bài cần một khoá "chưa đọc gì nhưng ĐÃ ghi danh" làm gợi ý.
+ */
+let enrollmentRows: Array<{ courseId: string; createdAt: string }> = [];
+function enroll(courseId: string, createdAt = new Date().toISOString()) {
+  enrollmentRows.push({ courseId, createdAt });
+  server.use(http.get('/enrollments', () => HttpResponse.json({ enrollments: enrollmentRows })));
+}
+
+/**
  * Một hàng `GET /annotations` (`api/annotations.ts`'s `Ann` — không có
  * `deletedAt`: máy chủ xoá THẬT, migration 0009). Task 9 trước đây dựng ghi
  * chú bằng `db.annotations.put(...)` (bản `AnnotationRow` của Dexie, có
@@ -191,8 +211,11 @@ function seedNote(overrides: Partial<Ann> & Pick<Ann, 'id'>): void {
 
 beforeEach(() => {
   server.use(http.get('/courses/so-dau-phay-dong', () => HttpResponse.json(catalogManifest())));
-  // The default catalog. Tests that care about the catalog itself
-  // override this; the rest get a learner who holds one course.
+  // Danh mục công khai. `Dashboard.tsx` không còn đọc endpoint LIỆT KÊ này kể
+  // từ khi cắt đường rò (fallbackCourseIds đã xoá) — handler này chỉ còn ở
+  // đây để một request lạc (nếu có) không làm MSW's `onUnhandledRequest:
+  // 'error'` đỏ oan; khoá "so-dau-phay-dong" nào được chọn làm gợi ý là do
+  // `/enrollments` (dưới), không phải do danh mục này.
   server.use(http.get('/courses', () => HttpResponse.json([catalogEntry('so-dau-phay-dong', 'Số dấu phẩy động')])));
   // Task 6, Pha 3: `ContinueCard` calls `useProgress` unconditionally once
   // it has a course to show, so `GET /progress` fires on every test that
@@ -200,6 +223,12 @@ beforeEach(() => {
   // re-registers this handler with real rows for tests that need them.
   progressRows = [];
   server.use(http.get('/progress', () => HttpResponse.json({ progress: progressRows })));
+  // `Dashboard.tsx` calls `useQuery` on `enrollmentsQueryKey()`
+  // unconditionally to pick "chưa đọc gì cả thì gợi ý khoá nào" — default to
+  // "chưa ghi danh gì"; `enroll` (above) re-registers this handler with real
+  // rows for tests that need an enrolled-but-unread course as the pick.
+  enrollmentRows = [];
+  server.use(http.get('/enrollments', () => HttpResponse.json({ enrollments: enrollmentRows })));
   // Task 9, Pha 3: `RecentNotes` calls `useRecentNotes` unconditionally on
   // every render, so `GET /annotations` fires on every test too — default to
   // "no notes yet"; `seedNote` (above) re-registers this handler with real
@@ -250,6 +279,11 @@ describe('Học tiếp — MỘT hành động', () => {
     server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(4))));
     server.use(http.get('/stats', () => new Promise(() => {})));
     server.use(http.get('/courses', () => new Promise(() => {})));
+    // Section A (rà soát Task 3): `pickFocusCourse` nay chỉ tin
+    // `lastStudiedCourseId` khi khoá ấy CÒN nằm trong `enrollments` — một hàng
+    // `progress` không còn đủ một mình. `enroll('demo')` là thứ khiến khoá này
+    // còn được chọn làm tiêu điểm; thiếu nó, trang rơi về `EmptyHome`.
+    enroll('demo');
     await markRead('demo', 'ch-1');
     await markRead('demo', 'ch-2');
 
@@ -257,10 +291,10 @@ describe('Học tiếp — MỘT hành động', () => {
 
     expect(await screen.findByText('Khóa học demo')).toBeInTheDocument();
     // Chương 3 — chương ĐẦU TIÊN chưa đọc, không phải chương sau chương vừa đọc.
-    // Hỏi đúng HEADING của khối "Tiếp tục": từ vòng thiết kế lại (giáo trình
-    // LaTeX), trang chủ còn vẽ cả mục lục khoá, nên "Chương 3" xuất hiện hai
-    // lần — một ở heading đang dở, một ở dòng mục lục. Chỉ heading mới là câu
-    // trả lời cho "mở cái gì bây giờ"; dòng mục lục có bài canh riêng bên dưới.
+    // Task 4: mục lục đầy đủ đã rời khỏi trang này (sang `/c/:slug`), nên
+    // "Chương 3" chỉ còn xuất hiện đúng MỘT lần — ở heading của khối "Tiếp
+    // tục" — và `findByRole('heading', ...)` vẫn là câu hỏi đúng cho "mở cái
+    // gì bây giờ", dù nay không còn một dòng mục lục nào để phân biệt với.
     expect(await screen.findByRole('heading', { name: /chương 3/i })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/2\s*\/\s*4/)).toBeInTheDocument());
     expect(cta()).toHaveAttribute('href', '/c/demo/ch-3');
@@ -279,6 +313,11 @@ describe('Học tiếp — MỘT hành động', () => {
         }),
       ),
     );
+    // Chỉ 'demo' được ghi danh — 'so-dau-phay-dong' cố tình KHÔNG, để giữ
+    // đúng khẳng định bên dưới ("khoá kia KHÔNG có mặt", kể cả trong danh
+    // sách "Khoá của tôi" sau này): một hàng progress không kèm ghi danh
+    // không còn đủ để khoá đó xuất hiện ở đây (Section A).
+    enroll('demo');
     // Hai khoá, hai mốc thời gian. `so-dau-phay-dong` cũ hơn ba ngày.
     await markRead('so-dau-phay-dong', 'p0-1', '2026-08-17T09:00:00Z');
     await markRead('demo', 'ch-1', '2026-08-20T09:00:00Z');
@@ -295,6 +334,7 @@ describe('Học tiếp — MỘT hành động', () => {
   it('đọc hết khoá là một TRẠNG THÁI, không phải ngõ cụt — nút mở lại chương cuối', async () => {
     server.use(http.get('/courses/demo', () => HttpResponse.json(demoManifest(2))));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+    enroll('demo'); // Section A: lastStudied một mình không còn đủ.
     await markRead('demo', 'ch-1');
     await markRead('demo', 'ch-2');
 
@@ -309,6 +349,10 @@ describe('Học tiếp — MỘT hành động', () => {
 
   it('chưa đọc chương nào thì lời mời là "bắt đầu", và nó trỏ vào chương đầu', async () => {
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+    // Trước khi cắt đường rò, khoá "chưa đọc gì" này lên màn hình vì nó là
+    // course DUY NHẤT trong danh mục mặc định (`beforeEach`) — một sự trùng
+    // hợp, không phải quyền sở hữu. Nay gợi ý phải đến từ ghi danh THẬT.
+    enroll('so-dau-phay-dong');
 
     renderDashboard();
 
@@ -322,6 +366,7 @@ describe('Học tiếp — MỘT hành động', () => {
     // câu giải thích không kèm lối đi tiếp thì vẫn là ngõ cụt.
     server.use(http.get('/courses/demo', () => new HttpResponse(null, { status: 404 })));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+    enroll('demo'); // Section A: lastStudied một mình không còn đủ.
     await markRead('demo', 'ch-1');
 
     renderDashboard();
@@ -353,6 +398,7 @@ describe('Học tiếp — MỘT hành động', () => {
         }),
       ),
     );
+    enroll('demo'); // Section A: lastStudied một mình không còn đủ.
     await markRead('demo', 'ch-1');
 
     renderDashboard();
@@ -377,6 +423,35 @@ describe('Học tiếp — MỘT hành động', () => {
     expect(meta).toHaveTextContent('Khóa học demo');
     expect(meta).toHaveTextContent(tr('vi', 'progress.course.minutes', '120'));
     expect(screen.getAllByText(/phút đã học/i)).toHaveLength(1);
+  }, OVERSUBSCRIBED_MS);
+});
+
+describe('Học tiếp — Khoá của tôi', () => {
+  it('mỗi khoá đã ghi danh có một dòng, kèm số chương đã đọc', async () => {
+    // Hai manifest riêng, cùng hình dạng `demoManifest` nhưng khác id/tiêu đề
+    // — tiêu đề chứa đúng slug (không dấu) để `findByRole('link', {name:
+    // /khoa-a/i})` khớp được cả liên kết trong khối "Tiếp tục" (khoá tiêu
+    // điểm) lẫn liên kết trong danh sách "Khoá của tôi" (khoá còn lại).
+    server.use(http.get('/courses/khoa-a', () => HttpResponse.json(demoManifest(2, 'khoa-a', 'Khoa-A'))));
+    server.use(http.get('/courses/khoa-b', () => HttpResponse.json(demoManifest(3, 'khoa-b', 'Khoa-B'))));
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+    enroll('khoa-a');
+    enroll('khoa-b');
+    // 'khoa-b' đọc TRƯỚC, 'khoa-a' đọc SAU — 'khoa-a' thắng làm TIÊU ĐIỂM
+    // (Section A/`pickFocusCourse`'s bậc 1: khoá vừa đọc gần nhất, vì cả hai
+    // đều đã ghi danh), và 'khoa-b' rơi xuống danh sách "Khoá của tôi" —
+    // NHƯNG vẫn còn nguyên chương đã đọc của nó, đúng thứ bài này canh ("kèm
+    // số chương đã đọc"), không phải một "0/N" luôn-đúng-do-tình-cờ.
+    await markRead('khoa-b', 'ch-1', '2026-09-01T00:00:00Z');
+    await markRead('khoa-a', 'ch-1', '2026-09-03T00:00:00Z');
+
+    renderDashboard();
+
+    expect(await screen.findByText(tr('vi', 'home.myCourses'))).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /khoa-a/i })).toBeInTheDocument();
+    const rowB = (await screen.findByRole('link', { name: /khoa-b/i })).closest('li');
+    expect(rowB).not.toBeNull();
+    expect(rowB).toHaveTextContent(tr('vi', 'home.chapters', '1', '3'));
   }, OVERSUBSCRIBED_MS);
 });
 
@@ -438,8 +513,53 @@ describe('Học tiếp — ghi chú gần đây', () => {
 });
 
 describe('Học tiếp — trạng thái rỗng và tài khoản', () => {
-  it('says there is nothing to continue yet, rather than rendering a blank area, when the catalog is empty', async () => {
-    server.use(http.get('/courses', () => HttpResponse.json([])));
+  it('danh mục có khoá nhưng người dùng chưa ghi danh ⇒ KHÔNG mượn khoá nào từ danh mục chung (lỗi chủ sản phẩm báo)', async () => {
+    // Đây là lỗi thật chủ sản phẩm báo, viết thành thứ chạy được: trước khi
+    // cắt đường rò này, `Dashboard.tsx`'s `fallbackCourseIds()` (đã xoá) hợp
+    // danh mục công khai (GET /courses) với `stats.courses[]` rồi lấy phần tử
+    // ĐẦU theo bảng chữ cái làm "khoá đang dở" — nên MỌI tài khoản, kể cả một
+    // tài khoản vừa tạo, chưa ghi danh khoá nào, vẫn thấy "Học tiếp" hiện ra
+    // một khoá nó chưa từng mở, với "0/N chương đã đọc" và một hành động
+    // không có thật.
+    //
+    // Danh mục dưới đây CÓ khoá, và khoá đầu bảng chữ cái ('aaa-...') có
+    // manifest tải được thật — nên nếu trang còn mượn nhầm, nó sẽ THẬT SỰ vẽ
+    // ra được khối "Tiếp tục" của khoá ấy (không dừng ở "course.loading" hay
+    // một lỗi mạng do quên stub manifest), và tên khoá 'Khoá A' sẽ lên màn
+    // hình — đúng thứ bài này canh, không phải một hiệu ứng phụ khác.
+    server.use(
+      http.get('/courses', () =>
+        HttpResponse.json([catalogEntry('aaa-khoa-dau-bang-chu-cai', 'Khoá A'), catalogEntry('zzz-khoa-cuoi', 'Khoá Z')]),
+      ),
+      http.get('/courses/aaa-khoa-dau-bang-chu-cai', () =>
+        HttpResponse.json({
+          id: 'aaa-khoa-dau-bang-chu-cai',
+          title: 'Khoá A',
+          description: '',
+          lang: 'vi',
+          version: '1.0.0',
+          runtime: '^1',
+          parts: [{ title: 'Phần 1', chapters: [{ id: 'c1', num: '1', title: 'Chương 1', short: 'Chương 1', file: 'chapters/c1.html' }] }],
+        }),
+      ),
+      http.get('/enrollments', () => HttpResponse.json({ enrollments: [] })),
+      http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })),
+    );
+
+    renderDashboard();
+
+    expect(await screen.findByRole('heading', { name: tr('vi', 'home.empty.heading') })).toBeInTheDocument();
+    expect(screen.queryByText('Khoá A')).not.toBeInTheDocument();
+    expect(screen.queryByText('Khoá Z')).not.toBeInTheDocument();
+  }, OVERSUBSCRIBED_MS);
+
+  it('says there is nothing to continue yet, rather than rendering a blank area, when there are no enrollments', async () => {
+    // Trước khi cắt đường rò, bài này canh "danh mục rỗng" — nhưng danh mục
+    // chưa từng là nguồn ĐÚNG của "khoá đang dở"; nó chỉ trùng hợp là rỗng ở
+    // cùng lúc `beforeEach`'s enrollments mặc định cũng rỗng. Đăng ký lại rõ
+    // ràng ở đây (dù trùng với mặc định) để bài không còn ngầm dựa vào một
+    // nguồn dữ liệu mà `Dashboard.tsx` không còn đọc.
+    server.use(http.get('/enrollments', () => HttpResponse.json({ enrollments: [] })));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
 
     renderDashboard();
@@ -461,8 +581,10 @@ describe('Học tiếp — trạng thái rỗng và tài khoản', () => {
     // new account opens onto — và đặc tả IA nhắc lại nó thành ràng buộc thứ 5:
     // "Trang chủ khi chưa có khoá học nào vẫn phải thành hành động, không phải
     // ngõ cụt." Trước Task 13 hành động ấy là "nhập một gói"; nay là "mở danh
-    // mục" — mọi course đã sẵn trên máy chủ, không ai cần nhập gì nữa.
-    server.use(http.get('/courses', () => HttpResponse.json([])));
+    // mục" — mọi course đã sẵn trên máy chủ, không ai cần nhập gì nữa. Danh
+    // mục trống không còn là điều kiện: nguồn "chưa đọc gì" nay là
+    // `/enrollments`, nên đó là thứ được đặt rỗng ở đây.
+    server.use(http.get('/enrollments', () => HttpResponse.json({ enrollments: [] })));
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
 
     renderDashboard();
@@ -475,8 +597,10 @@ describe('Học tiếp — trạng thái rỗng và tài khoản', () => {
     expect(screen.queryByText(/github/i)).not.toBeInTheDocument();
   }, OVERSUBSCRIBED_MS);
 
-  it('does not flash the "nothing to continue" note while GET /courses is still in flight', async () => {
-    server.use(http.get('/courses', () => new Promise(() => {}))); // never resolves
+  it('does not flash the "nothing to continue" note while GET /enrollments is still in flight', async () => {
+    // `settled` giờ chờ `enrollmentsQuery`, không phải `catalogQuery` (đã
+    // xoá) — bài này canh đúng nguồn mới đang giữ `settled` false.
+    server.use(http.get('/enrollments', () => new Promise(() => {}))); // never resolves
     server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
 
     renderDashboard();
@@ -484,6 +608,26 @@ describe('Học tiếp — trạng thái rỗng và tài khoản', () => {
     // Nhan đề chứng minh trang đã dựng; lời nhắn kia chưa được phép có mặt, vì
     // "không khoá nào trả về" vẫn chưa đúng.
     expect(await screen.findByRole('heading', { name: /học tiếp/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: tr('vi', 'home.empty.heading') })).not.toBeInTheDocument();
+  }, OVERSUBSCRIBED_MS);
+
+  /**
+   * Fix round cuối (item 2) — trước bản vá này, một `GET /enrollments` hỏng
+   * khiến `isPending` tắt ngay (query đã SETTLED, dù ở trạng thái lỗi),
+   * `settled` bật, `enrolledIds` rơi về `[]` (`?? []`), và trang vẽ
+   * `<EmptyHome>` — "Bạn chưa bắt đầu khoá nào" — cho một người CÓ THỂ đang
+   * có khoá đang học thật. Đó là trang KHẲNG ĐỊNH một điều SAI, không phân
+   * biệt được với sự thật, chứ không phải một trạng thái "chưa biết" trung
+   * tính. Bài này canh đúng chỗ đó: một cảnh báo `role="alert"` phải đứng
+   * vào, và nhan đề rỗng kia không được phép xuất hiện.
+   */
+  it('GET /enrollments trả 500: hiện cảnh báo tại chỗ, KHÔNG khẳng định "Bạn chưa bắt đầu khoá nào"', async () => {
+    server.use(http.get('/enrollments', () => new HttpResponse(null, { status: 500 })));
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+
+    renderDashboard();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(tr('vi', 'home.enrollmentsError'));
     expect(screen.queryByRole('heading', { name: tr('vi', 'home.empty.heading') })).not.toBeInTheDocument();
   }, OVERSUBSCRIBED_MS);
 

@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { createEnrollment, deleteEnrollment, enrollmentsQueryKey, fetchEnrollments } from '../api/enrollments';
 import { useMe } from '../api/useMe';
 import { flatChapters, nextChapter } from '../course/chapters';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
@@ -44,6 +45,7 @@ export function splitPartTitle(title: string): [string | undefined, string] {
 export function CourseHome() {
   const { courseId } = useParams<{ courseId: string }>();
   const { t } = useLanguage();
+  const navigate = useNavigate();
   const manifestQuery = useQuery({
     queryKey: manifestQueryKey(courseId ?? ''),
     queryFn: () => loadManifest(courseId as string),
@@ -53,6 +55,75 @@ export function CourseHome() {
   const me = useMe();
   const confirmedLoggedIn = me.isSuccess && me.data != null;
   const [doneChapterIds, setDoneChapterIds] = useState<ReadonlySet<string>>(new Set());
+
+  /* Task 5 — trước task này KHÔNG nơi nào trong app gọi `createEnrollment`
+   * ngoài chính test của Task 2, nên "Học tiếp" của mọi tài khoản trống vĩnh
+   * viễn. Đây là nơi ghi danh thật sự bắt đầu.
+   *
+   * BẪY RULES OF HOOKS: `courseId` có thể là `undefined` (route không khớp),
+   * và ngay dưới đây component early-return khi vậy. `useQuery`/`useMutation`
+   * phải khai TRƯỚC nhánh return đó — y hệt `manifestQuery` ở trên — nếu
+   * không React sẽ gọi số hook khác nhau giữa các lần render.
+   *
+   * `enabled` khoá theo CẢ `courseId != null` LẪN `confirmedLoggedIn`: một
+   * khách ẩn danh bấm nút này sẽ bị `api.post`'s `redirectOn401` (mặc định
+   * true) hất thẳng sang /login, mất luôn ý định đang đọc trang — và họ
+   * không mất gì khi không thấy nút, vì đọc là công khai và trang đã có lối
+   * mời đăng nhập riêng cho việc đó. Cùng lập luận `reader/ChapterView.tsx`
+   * dùng cho `reader.anonNudge`.
+   */
+  const queryClient = useQueryClient();
+  const enrollmentsQuery = useQuery({
+    queryKey: enrollmentsQueryKey(),
+    queryFn: () => fetchEnrollments(),
+    enabled: courseId != null && confirmedLoggedIn,
+    retry: false,
+  });
+  const enrolled = (enrollmentsQuery.data ?? []).some((e) => e.courseId === courseId);
+
+  /* Fix round 1 — `enroll.isError`/`unenroll.isError` là bề mặt lỗi, không
+   * phải một callback `onError` riêng: trước bản vá này một cú bấm hỏng (mất
+   * mạng, 5xx) không để lại dấu vết nào — nút hết `isPending` và im re, học
+   * viên không biết gì đã (không) xảy ra. Cùng hợp đồng đã CHỨNG MINH đúng ở
+   * `useProgress.saveError`/`useAnnotations.saveError` (xem doc của
+   * `saveError` ở `annotations/useAnnotations.ts`): `useMutation` tự đặt
+   * `isError = true` khi `mutationFn` reject, và tự XOÁ nó ngay khi lần
+   * `mutate()` KẾ TIẾP bắt đầu — nên không cần state cục bộ nào để "dọn" lỗi
+   * cũ, và một lần bấm lại thành công tự động che luôn thông báo cũ. Nơi vẽ
+   * ra là JSX dưới, ngay dưới `.ch-resume-row` — `role="alert"`,
+   * `.lib-notice-server` tái dùng nguyên (không phải toast — codebase này
+   * không có toast, xem `ChapterView.tsx`/`Rating.tsx` cùng lớp).
+   *
+   * 401 KHÔNG phải lỗ hổng: `api.post`/`api.del` mặc định `redirectOn401:
+   * true`, nên một phiên hết hạn tự hất sang /login trước khi kịp render
+   * `isError` — chỉ những lỗi CÒN LẠI (mất mạng, 5xx, …) mới cần bề mặt này.
+   */
+  const enroll = useMutation({
+    mutationFn: () => createEnrollment(courseId as string),
+    // Nạp lại từ cache đã mất hiệu lực, không tự vá — `enrollmentsQueryKey()`
+    // là đúng khoá "Học tiếp" đọc, nên tự vá ở đây sẽ để cache của trang kia
+    // cũ đi trong im lặng.
+    //
+    // Fix round cuối (item 3, spec §5) — "Bắt đầu học" giờ cũng ĐIỀU HƯỚNG,
+    // tới CHƯƠNG ĐẦU TIÊN của khoá (`flatChapters(manifest)[0]`), không phải
+    // `target` (biến ở dưới, "chương kế tiếp chưa đọc"): ghi danh là một sự
+    // kiện tách biệt khỏi tiến độ đọc đã có trước đó — spec §7 ghi rõ tiến độ
+    // và ghi danh có thể lệch nhau (đọc không tự ghi danh) — nên nút này luôn
+    // mở đúng ĐIỂM BẮT ĐẦU của khoá, bất kể người học đã đọc dở tới đâu.
+    // Đọc `manifestQuery.data` trực tiếp (không phải biến `chapters` khai bên
+    // dưới): closure này được tạo lại mỗi lần render và chỉ THỰC THI sau khi
+    // nút bấm được — nghĩa là bởi lúc `mutate()` chạy, manifest chắc chắn đã
+    // tải xong (nút ẩn đi trong lúc `manifestQuery` còn `pending`/`isError`).
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: enrollmentsQueryKey() });
+      const firstChapter = flatChapters(manifestQuery.data)[0];
+      if (firstChapter !== undefined) navigate(`/c/${courseId}/${firstChapter.id}`);
+    },
+  });
+  const unenroll = useMutation({
+    mutationFn: () => deleteEnrollment(courseId as string),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: enrollmentsQueryKey() }),
+  });
 
   if (courseId == null) {
     return <p className="ch-lede">{t('course.notFound')}</p>;
@@ -72,6 +143,20 @@ export function CourseHome() {
   const read = chapters.filter((chapter) => doneChapterIds.has(chapter.id)).length;
   const next = nextChapter(chapters, doneChapterIds);
   const target = next ?? chapters[chapters.length - 1];
+
+  // Fix round cuối (item 3, spec §5) — "MỘT hành động", không hai. Trước bản
+  // vá này, một người đã đăng nhập và XÁC NHẬN CHƯA ghi danh thấy CẢ liên kết
+  // đọc (`btn primary`, "Bắt đầu đọc") LẪN nút ghi danh (`btn primary`, "Bắt
+  // đầu học") đứng cạnh nhau trong cùng `.ch-resume-row` — hai nút sơ cấp
+  // giống hệt nhau về kiểu dáng, trên một trang mà toàn bộ lập luận thiết kế
+  // là "MỘT hành động". `confirmedNotEnrolled` giờ là điều kiện DUY NHẤT quyết
+  // định "Bắt đầu học" có THAY THẾ liên kết đọc hay không — mọi trường hợp
+  // khác (khách ẩn danh, hoặc một phiên đã đăng nhập nhưng `GET /enrollments`
+  // CHƯA xác nhận xong) giữ nguyên liên kết đọc, đúng như hôm nay: đọc là công
+  // khai, không được phép biến mất sau một phỏng đoán về trạng thái ghi danh
+  // chưa có câu trả lời.
+  const confirmedNotEnrolled = confirmedLoggedIn && enrollmentsQuery.isSuccess && !enrolled;
+  const confirmedEnrolled = confirmedLoggedIn && enrollmentsQuery.isSuccess && enrolled;
 
   return (
     <div className="ch-page">
@@ -119,13 +204,63 @@ export function CourseHome() {
               </h2>
               <p className="ch-resume-meta">{t('library.meta.chapters', String(read), String(chapters.length))}</p>
             </div>
-            <Link
-              to={`/c/${courseId}/${target.id}`}
-              className="btn primary"
-            >
-              {t(read === 0 ? 'home.start' : 'home.continue')}
-            </Link>
+            {/* Liên kết đọc: hành động mặc định cho khách ẩn danh và cho một
+                phiên đã đăng nhập nhưng chưa xác nhận xong ghi danh. THAY THẾ
+                bằng nút "Bắt đầu học" bên dưới — không đứng cạnh nó — một khi
+                `confirmedNotEnrolled` xác nhận xong (xem khai biến phía trên).
+                Đọc vẫn công khai: một khách chưa có tài khoản, hay đang chờ
+                `/me` trả lời, không được phép mất lối đọc này. */}
+            {!confirmedNotEnrolled && (
+              <Link to={`/c/${courseId}/${target.id}`} className="btn primary">
+                {t(read === 0 ? 'home.start' : 'home.continue')}
+              </Link>
+            )}
+            {/* "Bắt đầu học" — hành động chính khi đã XÁC NHẬN chưa ghi danh
+                (spec §5). `onSuccess` (khai ở `enroll` phía trên) điều hướng
+                thẳng tới chương đầu tiên, nên đây là điểm kết thúc của lối
+                đọc phía trên trong đúng lượt render này — không phải một nút
+                thứ hai đứng cạnh nó. */}
+            {confirmedNotEnrolled && (
+              <button
+                type="button"
+                className="btn primary"
+                disabled={enroll.isPending}
+                onClick={() => enroll.mutate()}
+              >
+                {t(enroll.isPending ? 'course.enrolling' : 'course.enroll')}
+              </button>
+            )}
+            {confirmedEnrolled && (
+              /* KHÔNG hộp xác nhận. Thao tác này chỉ xoá một hàng trong
+                 `enrollments`; tiến độ và ghi chú còn nguyên
+                 (Repo.DeleteEnrollment), và ghi danh lại khôi phục đúng
+                 trạng thái cũ. Một hộp xác nhận cho một việc hoàn tác được
+                 chỉ dạy người dùng bấm qua mọi hộp xác nhận. */
+              <button
+                type="button"
+                className="ch-unenroll"
+                disabled={unenroll.isPending}
+                onClick={() => unenroll.mutate()}
+              >
+                {t('course.unenroll')}
+              </button>
+            )}
           </div>
+          {/* Fix round 1 — bề mặt DUY NHẤT cho một cú ghi danh/bỏ ghi danh
+              hỏng. `role="alert"`, `.lib-notice-server` tái dùng nguyên từ
+              `registry/Rating.tsx` (không phải toast, codebase này không
+              có). Tự biến mất ở lần `mutate()` kế tiếp — xem chú thích tại
+              chỗ khai `enroll`/`unenroll` phía trên. */}
+          {enroll.isError && (
+            <p role="alert" className="lib-notice-server">
+              {t('course.enrollFailed')}
+            </p>
+          )}
+          {unenroll.isError && (
+            <p role="alert" className="lib-notice-server">
+              {t('course.unenrollFailed')}
+            </p>
+          )}
         </section>
       )}
 
