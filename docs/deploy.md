@@ -81,7 +81,38 @@ That test is not an obstacle to route around. It is where this decision is recor
 2. **Replace `TestSessionCookieIsNeverSameSiteNone` with a test that gates the replacement** — i.e. one that fails if a state-changing route accepts a request without a valid Origin/token. Deleting it and putting nothing in its place returns the repo to the state C-3 described, where the string "CSRF" appeared nowhere in `apps/api` and no gate existed at all.
 3. Only then flip the attribute, and make `COOKIE_SECURE=true` mandatory rather than recommended.
 
-**Why the default is safe today:** the project owner owns `duy.dev` and the deployment is `tuhoc.duy.dev` + `api.duy.dev`. Those are different origins but the **same site**, so `SameSite=Lax` cookies flow between them and no code change is needed. (Phase 1 planned a third subdomain, `vault.duy.dev`, for the key store; Pha 2 Task 16 deleted the key store, so there are two deployables, not three — and the SameSite argument never depended on how many there were.) C-3 is closed by that decision, not by new code — and the test above is what keeps the decision from being undone by accident.
+**Why the default is safe today:** the project owner owns `duy.dev` and the deployment is `tuhoc.duy.dev` + `api-tuhoc.duy.dev`. Those are different origins but the **same site**, so `SameSite=Lax` cookies flow between them and no code change is needed. (Phase 1 planned a third subdomain, `vault.duy.dev`, for the key store; Pha 2 Task 16 deleted the key store, so there are two deployables, not three — and the SameSite argument never depended on how many there were.) C-3 is closed by that decision, not by new code — and the test above is what keeps the decision from being undone by accident.
+
+### 0a. DNS: two CNAME records, and why the order matters
+
+`duy.dev`'s DNS is hosted at **GoDaddy**, not Cloudflare. That is fine and needs no
+transfer: both Cloudflare Pages and Render validate a custom domain by CNAME, and
+everything here is a subdomain, so the one thing external DNS genuinely cannot do —
+a CNAME at the apex — never comes up.
+
+Two records, added under GoDaddy -> My Products -> `duy.dev` -> DNS -> Manage Zones:
+
+| Type | Name | Value | Serves |
+|---|---|---|---|
+| CNAME | `tuhoc` | `<pages-project>.pages.dev` | the web app |
+| CNAME | `api-tuhoc` | `<render-service>.onrender.com` | the API |
+
+**Take each target from the platform, do not type it from this table.** Both
+Cloudflare and Render print the exact hostname to point at when you add the custom
+domain in their dashboard, and Render's is per-service.
+
+**Add the custom domain in the dashboard FIRST, then the CNAME at GoDaddy** — not
+the other way round. Both platforms issue the TLS certificate by polling DNS for a
+record they are already expecting; a CNAME that arrives before the platform knows
+about the domain just resolves to a host that answers for someone else's project.
+
+**Budget for the wait, and know why there is no half-working state.** `.dev` is on
+the HSTS preload list baked into every major browser, so there is no `http://`
+fallback to test with: until the certificate is issued the hostname is not reachable
+at all, and the browser refuses rather than warns. That is normal for the first few
+minutes, not a misconfiguration. GoDaddy's default TTL is 1 hour — set it to 600
+seconds while you are setting this up, so a typo costs ten minutes instead of an
+hour.
 
 This runbook's steps assume the custom-domain path. If you go the no-domain route, apply the code change above **before** relying on any authenticated flow, and treat every `CORS_ORIGIN`/`VITE_API_URL` value below as "the `*.pages.dev`/`*.onrender.com` hostname" instead of "the subdomain."
 
@@ -280,16 +311,16 @@ the design-world rollout — the numbers below replace the task-16-era
 ```
 dist/index.html                   2.22 kB
 dist/assets/index-*.css         491.26 kB │ gzip: 286.85 kB
-dist/assets/index-*.js          520.61 kB │ gzip: 156.67 kB
+dist/assets/index-*.js          520.63 kB │ gzip: 156.66 kB
 ```
 Vite warns that the JS chunk is over its 500 kB advisory limit. That is a
 warning, not an error, and it is about the **uncompressed** figure; what
-crosses the wire is the 156.67 kB gzip line. Code-splitting is worth doing
+crosses the wire is the 156.66 kB gzip line. Code-splitting is worth doing
 later — it is not a deploy blocker.
 
 The build was also run with the real production value baked in
-(`VITE_API_URL=https://api.duy.dev bun run build`) and the result checked:
-`https://api.duy.dev` appears in `dist/assets/index-*.js` and no
+(`VITE_API_URL=https://api-tuhoc.duy.dev bun run build`) and the result checked:
+`https://api-tuhoc.duy.dev` appears in `dist/assets/index-*.js` and no
 `localhost:8080` survives anywhere in the bundle.
 `dist/` contains `_redirects`, `course-kit/`, `index.html`, `favicon.svg`, `assets/` — confirmed with `ls dist` and `cat dist/_redirects` (see §7 for why the redirects rule's exact contents matter). There is no `dist/courses/`: commit dafd4eb removed the copy that used to create it.
 
@@ -308,7 +339,7 @@ The copy is gone now, so the outcome no longer depends on `courses/` at all.
    - Build command: `cd apps/web && bun run build`
    - Build output directory: `apps/web/dist`
    - Root directory: repo root (this is a monorepo; the build command itself `cd`s into `apps/web`)
-3. Settings → Environment variables → add `VITE_API_URL` = `https://api.duy.dev` for the **Production** environment. Unlike `CORS_ORIGIN`, this one cannot be committed anywhere in the repo — it is baked into the JS bundle at build time, so it has to be visible to Cloudflare's own build step. This is a Vite *build-time* variable — it has to be visible to the build step, which is why it's set here and not in `apps/web/wrangler.toml` (see that file's own comment for why a `[vars]` block there wouldn't reach it: those are Pages *Functions* runtime bindings, and this app has no Functions).
+3. Settings → Environment variables → add `VITE_API_URL` = `https://api-tuhoc.duy.dev` for the **Production** environment. Unlike `CORS_ORIGIN`, this one cannot be committed anywhere in the repo — it is baked into the JS bundle at build time, so it has to be visible to Cloudflare's own build step. This is a Vite *build-time* variable — it has to be visible to the build step, which is why it's set here and not in `apps/web/wrangler.toml` (see that file's own comment for why a `[vars]` block there wouldn't reach it: those are Pages *Functions* runtime bindings, and this app has no Functions).
 4. Deploy. Cloudflare runs the build command itself and picks up `apps/web/dist/_redirects` automatically — no extra config needed for the SPA fallback.
 5. Verify: load `https://<project>.pages.dev/c/<any-course-id>/<any-chapter-id>` directly (not via in-app navigation) — it should render the reader, not a Cloudflare 404. This exercises the exact case the `_redirects` file exists for.
 
@@ -316,7 +347,7 @@ The copy is gone now, so the outcome no longer depends on `courses/` at all.
 
 ```bash
 cd apps/web
-VITE_API_URL=https://api.duy.dev bun run build
+VITE_API_URL=https://api-tuhoc.duy.dev bun run build
 bunx wrangler pages deploy dist --project-name=tuhoc-web
 ```
 

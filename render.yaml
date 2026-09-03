@@ -44,7 +44,7 @@ services:
       # refuses to combine a wildcard origin with credentials.
       #
       # This value is no longer a placeholder, and the host it names is not
-      # arbitrary. The API is deployed at api.duy.dev, so the two are
+      # arbitrary. The API is deployed at api-tuhoc.duy.dev, so the two are
       # different ORIGINS but the same SITE (registrable domain duy.dev).
       # That is what lets the session cookie's hardcoded SameSite=Lax reach
       # the API on ordinary fetch/XHR calls — see docs/deploy.md §0 and
