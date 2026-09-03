@@ -37,14 +37,23 @@ services:
     envVars:
       - key: PORT
         value: "8080"
-      # CORS_ORIGIN is a placeholder: replace with the exact Cloudflare
-      # Pages origin (scheme + host, no trailing slash, no path) before the
-      # first real deploy. It must be an exact origin, never "*" — the API
-      # sends AllowCredentials:true (see apps/api/internal/server/server.go),
-      # and Fiber's CORS middleware refuses to combine a wildcard origin
-      # with credentials.
+      # CORS_ORIGIN is the exact origin the Cloudflare Pages site is served
+      # from — scheme + host, no trailing slash, no path. It must be an exact
+      # origin, never "*": the API sends AllowCredentials:true (see
+      # apps/api/internal/server/server.go), and Fiber's CORS middleware
+      # refuses to combine a wildcard origin with credentials.
+      #
+      # This value is no longer a placeholder, and the host it names is not
+      # arbitrary. The API is deployed at api.duy.dev, so the two are
+      # different ORIGINS but the same SITE (registrable domain duy.dev).
+      # That is what lets the session cookie's hardcoded SameSite=Lax reach
+      # the API on ordinary fetch/XHR calls — see docs/deploy.md §0 and
+      # apps/api/internal/auth/csrf_samesite_test.go. Pointing this at a
+      # host under a DIFFERENT registrable domain (a *.pages.dev default
+      # hostname, say) makes CORS pass and every authenticated request 401,
+      # because the browser stops attaching the cookie.
       - key: CORS_ORIGIN
-        value: https://REPLACE-WITH-PAGES-ORIGIN
+        value: https://tuhoc.duy.dev
       - key: COOKIE_SECURE
         value: "true"
       # DATABASE_URL is a secret: `sync: false` means Render prompts for

@@ -206,7 +206,7 @@ Both share the same free-tier caveat: **the container sleeps after inactivity an
 
    The API logs a startup warning naming each missing AI key, so `render logs` immediately after the first deploy tells you whether you filled these in.
 5. After the service is created, go to its **Environment** tab and fix the two placeholder values `render.yaml` ships with:
-   - `CORS_ORIGIN` → `https://app.yourdomain.com` (or your Pages project's `*.pages.dev` URL if not using a custom domain — see §0)
+   - `CORS_ORIGIN` — **already filled in**: `render.yaml` ships `https://tuhoc.duy.dev`, the real Pages origin (§0). Only touch this if you rename the Pages project or move the site.
    - Confirm `COOKIE_SECURE=true` and `PORT=8080` are present (they ship with real values already, not placeholders).
 6. Deploy. Render builds the image itself from `apps/api/Dockerfile` on its own infrastructure — this sidesteps the local cross-compile trap entirely (§7 below), since Render's builders target their own runtime architecture directly; you never need to pass `--platform` yourself on this path.
 7. Once live, the service URL is `https://tuhoc-api.onrender.com` (or `https://<service-name>.onrender.com` if you renamed it in `render.yaml`) unless you've attached a custom domain. Verify: `curl https://tuhoc-api.onrender.com/healthz` should return `{"ok":true}` (allow up to ~60s for the first request if the service just spun up — see §6).
@@ -273,12 +273,24 @@ Pick names before you start if you're following the custom-domain path from §0 
 cd apps/web && bun install && bun run build
 ```
 
-**Verified**: exit 0. Output:
+**Verified**: exit 0. Output, re-measured on the current `main` (`2587436`, after
+the design-world rollout — the numbers below replace the task-16-era
+`387.84 kB` CSS / `337.38 kB` JS, which an operator would otherwise read as
+"my build is wrong"):
 ```
 dist/index.html                   2.22 kB
-dist/assets/index-*.css         387.84 kB
-dist/assets/index-*.js          337.38 kB
+dist/assets/index-*.css         491.26 kB │ gzip: 286.85 kB
+dist/assets/index-*.js          520.61 kB │ gzip: 156.67 kB
 ```
+Vite warns that the JS chunk is over its 500 kB advisory limit. That is a
+warning, not an error, and it is about the **uncompressed** figure; what
+crosses the wire is the 156.67 kB gzip line. Code-splitting is worth doing
+later — it is not a deploy blocker.
+
+The build was also run with the real production value baked in
+(`VITE_API_URL=https://api.duy.dev bun run build`) and the result checked:
+`https://api.duy.dev` appears in `dist/assets/index-*.js` and no
+`localhost:8080` survives anywhere in the bundle.
 `dist/` contains `_redirects`, `course-kit/`, `index.html`, `favicon.svg`, `assets/` — confirmed with `ls dist` and `cat dist/_redirects` (see §7 for why the redirects rule's exact contents matter). There is no `dist/courses/`: commit dafd4eb removed the copy that used to create it.
 
 `dist/courses/` is **never created**, whether or not someone ran `make courses`
@@ -296,7 +308,7 @@ The copy is gone now, so the outcome no longer depends on `courses/` at all.
    - Build command: `cd apps/web && bun run build`
    - Build output directory: `apps/web/dist`
    - Root directory: repo root (this is a monorepo; the build command itself `cd`s into `apps/web`)
-3. Settings → Environment variables → add `VITE_API_URL` = `https://api.yourdomain.com` (or your API host's default hostname — see §0) for the **Production** environment. This is a Vite *build-time* variable — it has to be visible to the build step, which is why it's set here and not in `apps/web/wrangler.toml` (see that file's own comment for why a `[vars]` block there wouldn't reach it: those are Pages *Functions* runtime bindings, and this app has no Functions).
+3. Settings → Environment variables → add `VITE_API_URL` = `https://api.duy.dev` for the **Production** environment. Unlike `CORS_ORIGIN`, this one cannot be committed anywhere in the repo — it is baked into the JS bundle at build time, so it has to be visible to Cloudflare's own build step. This is a Vite *build-time* variable — it has to be visible to the build step, which is why it's set here and not in `apps/web/wrangler.toml` (see that file's own comment for why a `[vars]` block there wouldn't reach it: those are Pages *Functions* runtime bindings, and this app has no Functions).
 4. Deploy. Cloudflare runs the build command itself and picks up `apps/web/dist/_redirects` automatically — no extra config needed for the SPA fallback.
 5. Verify: load `https://<project>.pages.dev/c/<any-course-id>/<any-chapter-id>` directly (not via in-app navigation) — it should render the reader, not a Cloudflare 404. This exercises the exact case the `_redirects` file exists for.
 
@@ -304,7 +316,7 @@ The copy is gone now, so the outcome no longer depends on `courses/` at all.
 
 ```bash
 cd apps/web
-VITE_API_URL=https://api.yourdomain.com bun run build
+VITE_API_URL=https://api.duy.dev bun run build
 bunx wrangler pages deploy dist --project-name=tuhoc-web
 ```
 
@@ -416,7 +428,7 @@ Both builds exited 0 — the failure mode isn't a build error, it's a container 
 | `BRAVE_API_KEY` | **Yes — same risk class as `DEEPSEEK_API_KEY`** | Render: Environment tab (`sync: false`). Fly: `flyctl secrets set BRAVE_API_KEY=...` (never in `fly.toml`'s `[env]`). | The platform's own credential to the Brave Search API (the agent's web-search tool — spec §3.2). Unset just switches that one tool off. See the note below the table. |
 | `GITHUB_TOKEN` | **Yes** | Render: Environment tab (`sync: false` in `render.yaml`). Fly: `flyctl secrets set GITHUB_TOKEN=...` (never in `fly.toml`'s `[env]`). | A read-only, fine-grained PAT scoped to the registry repository's Discussions — the platform's OWN credential, against PUBLIC data, so a leak costs nothing that is not already public. Unset is the correct value today (§5c). Was missing from this table entirely until the Pha 2 review fix round, while §4a's step 4 already told operators to fill it in. |
 | `GITHUB_DISCUSSIONS_REPO` | No | `render.yaml` `[env]` (ships as `""`) / `fly.toml` `[env]` | Names the repository whose Discussions get embedded, as `"owner/name"`. Deliberately separate from the token: a token says who we are, not what we may read. Empty switches Discussions off, same as an empty `GITHUB_TOKEN`. |
-| `CORS_ORIGIN` | No, but environment-specific | `render.yaml` `[env]` / `fly.toml` `[env]` — both ship with an obvious `REPLACE-WITH-PAGES-ORIGIN` placeholder | Not a credential, but must be your *exact* production origin, not the placeholder, or CORS silently rejects the web app. |
+| `CORS_ORIGIN` | No, but environment-specific | `render.yaml` `[env]` / `fly.toml` `[env]` — both now carry the real value, `https://tuhoc.duy.dev` | Not a credential, but must be the *exact* production origin (scheme + host, no trailing slash, no path) or CORS silently rejects the web app. It also has to stay under the same registrable domain as the API, or CORS passes and the cookie stops flowing (§0). |
 | `PORT` | No | `render.yaml` / `fly.toml` `[env]` | Fixed at `8080`, matches the Dockerfile's `EXPOSE`. |
 | `COOKIE_SECURE` | No | `render.yaml` / `fly.toml` `[env]` | Ships as `"true"` already — production is always https on both sides. |
 | `VITE_API_URL` | No, but must not be committed with a real backend URL if you consider that sensitive routing info | Cloudflare Pages dashboard (Environment variables) for git-integration builds, or exported in the shell for CLI builds | Baked into the public JS bundle at build time either way — it's visible to anyone who opens devtools, so "secret" isn't really the right frame for it; it's environment-specific, not confidential. |
