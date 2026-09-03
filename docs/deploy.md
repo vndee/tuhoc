@@ -145,6 +145,23 @@ Accounts you'll need (all free to create, no purchases in this runbook):
 **[unverified — needs a live account]** — the steps below are precise, but I did not create a Neon account (out of scope: "do not create accounts").
 
 1. Sign up at neon.tech, create a project (e.g. `tuhoc`), default Postgres version is fine.
+**Pick the region to match your API host, not your readers.** `render.yaml` asks
+for `region: singapore` (closest to Vietnam-based readers), but **only the
+Blueprint path reads that file** — a Web Service created by hand in the dashboard
+silently lands in Oregon, and Render cannot move a service between regions after
+creation. Measured on this deployment: the free plan would not give us Singapore,
+so the API runs on `gcp-us-west1` (Oregon). With Neon in `ap-southeast-1` the
+reader's request crossed the Pacific once and then *every query crossed it again*
+— a three-query request costs ~180ms + 3×180ms instead of ~180ms + ~15ms. The
+database therefore lives in **AWS US West 2 (Oregon)**, next to the API. That is
+not a preference about where readers are; the reader's one long hop is already
+fixed by where Render put the service, and co-locating the database only removes
+the hops that were pure waste. If you ever do get the API into Singapore, move the
+database back with it — they belong together, wherever "together" turns out to be.
+Neon cannot move a project between regions either: create a new project, re-run §3
+against it, and swap `DATABASE_URL`. Do it before you have data, when the whole
+migration costs one `migrate up`.
+
 2. Neon's dashboard shows **two** connection strings for the same database — this distinction matters and is easy to miss:
    - **Pooled** (hostname ends in `-pooler`): `postgres://user:pass@ep-xxxx-pooler.region.aws.neon.tech/tuhoc?sslmode=require`
    - **Direct** (no `-pooler`): `postgres://user:pass@ep-xxxx.region.aws.neon.tech/tuhoc?sslmode=require`
