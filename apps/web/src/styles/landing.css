@@ -38,6 +38,15 @@
   --mark: #c4603a;
   --room: #e6e0d2;
 
+  /* MỘT CỘT NỘI DUNG CHO CẢ TRANG.
+     Trước đó mỗi khối tự đặt khổ riêng — 74ch ở mục, 68ch ở danh mục, 42ch ở
+     câu chú, còn mặt giấy thì rộng 1298px. Kết quả: chữ ngắt ở 829px và thừa
+     470px bên phải, và chữ ngắt ở ba chỗ khác nhau nên trông như ngắt bừa.
+     Không chữa được bằng cách cho chữ dài ra: ở 17.5px thì 829px đã là ~95 ký
+     tự một dòng, quá dài để đọc. Nên thu CỘT lại cho khớp chữ, và mặt giấy
+     giữ nguyên bề rộng — đó chính là lề của một trang viết. */
+  --bd-col: 820px;
+
   min-height: 100dvh;
   background: var(--room);
   padding: 22px;
@@ -105,6 +114,14 @@ html[data-theme='dark'] .board {
 }
 
 /* ── ĐẦU TRANG ────────────────────────────────────────────────────────────── */
+
+.bd-chrome,
+.bd-stage,
+.bd-scene,
+.bd-tray {
+  max-width: var(--bd-col);
+  margin-inline: auto;
+}
 
 .bd-chrome {
   display: flex;
@@ -225,7 +242,6 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
   font-size: clamp(16px, 1.25vw, 18.5px);
   line-height: 1.5;
   color: var(--ink-2);
-  max-width: 40ch;
 }
 
 /* ── CÁI GẠCH XOÁ ────────────────────────────────────────────────────────
@@ -371,7 +387,6 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
   font-size: clamp(17px, 1.6vw, 21px);
   line-height: 1.45;
   color: var(--ink);
-  max-width: 30ch;
 }
 
 /* Câu được bôi đen. Cùng vàng với ghi chú và với mũi tên — màu là thứ nối ba
@@ -417,7 +432,6 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
 
 .bd-demo-note {
   margin-top: 4px;
-  max-width: 34ch;
 }
 
 .bd-demo-label {
@@ -435,7 +449,6 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
 
 .bd-demo-turn {
   margin-top: clamp(18px, 2.6vh, 26px);
-  max-width: 40ch;
 }
 
 .bd-demo-tutor {
@@ -474,7 +487,6 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
   font-size: 14.5px;
   line-height: 1.5;
   color: var(--ink-3);
-  max-width: 42ch;
 }
 
 /* ── DANH MỤC THẬT ───────────────────────────────────────────────────────── */
@@ -485,7 +497,6 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
    đọc ra trống, chứ không phải khoảng cách giữa các mục. */
 .bd-scene {
   margin-top: clamp(34px, 4.6vh, 56px);
-  max-width: 74ch;
 }
 
 .bd-scene-last {
@@ -547,7 +558,6 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
   font-size: 15px;
   line-height: 1.5;
   color: var(--ink-3);
-  max-width: 56ch;
 }
 
 #app:not(.reading) #content .board-room .bd-course:hover .bd-course-title {
@@ -617,11 +627,6 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
     gap: clamp(30px, 5vh, 46px);
   }
 
-  .bd-demo-sentence,
-  .bd-demo-note,
-  .bd-demo-turn {
-    max-width: 46ch;
-  }
 }
 
 @media (max-width: 640px) {
@@ -732,7 +737,6 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
   font-size: clamp(15px, 1.2vw, 16.5px);
   line-height: 1.55;
   color: var(--ink-2);
-  max-width: 42ch;
 }
 
 /* Khối cơ chế nay là một mục riêng, không còn là cột phải của màn đầu. */
