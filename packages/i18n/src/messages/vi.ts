@@ -311,9 +311,6 @@ export const vi = {
   'home.notes.formula': 'công thức',
   'home.notes.aria': (course: string) => `Mở ghi chú này trong ${course}`,
   'home.myCourses': 'Khoá của tôi',
-  'home.myCoursesEmpty': 'Bạn chưa ghi danh khoá nào.',
-  'toc.next': 'Tiếp theo',
-  'toc.done': 'Đã đọc',
 
   /**
    * Trạng thái rỗng của Bảng điều khiển, sau khi luồng import chết.
