@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
@@ -9,6 +9,7 @@ import { type ChapterContent, useAnnotations } from '../annotations/useAnnotatio
 import { AskPanel } from '../ai/AskPanel';
 import { DeepDive } from '../ai/DeepDive';
 import { type SelectionExcerpt, chapterSystemPrompt } from '../ai/prompts';
+import { createEnrollment, enrollmentsQueryKey, fetchEnrollments } from '../api/enrollments';
 import { useMe } from '../api/useMe';
 import { describeCourseError, loadChapter } from '../course/loader';
 import { useLanguage } from '../i18n/LanguageProvider';
@@ -145,6 +146,40 @@ export function ChapterView({
   const me = useMe();
   const confirmedLoggedIn = me.isSuccess && me.data != null;
   const confirmedLoggedOut = me.isSuccess && me.data == null;
+
+  /**
+   * Task 6 (ghi-danh-khoa-hoc) — a reader who lands straight on this chapter
+   * via a shared link, never having visited `/c/:courseId` (where Task 5
+   * already put "Bắt đầu học"/"Bỏ khỏi khoá của tôi"), still needs a way to
+   * add the course to "Học tiếp" without leaving the chapter to go find the
+   * course page. Same three functions from `api/enrollments.ts`, same
+   * `useQuery`/`useMutation` shape Task 5 declared in `CourseHome.tsx` — this
+   * file's own copy, not a shared one (nothing is shared between the two
+   * screens besides those three functions).
+   *
+   * `enabled: confirmedLoggedIn`, not `courseId != null` the way `CourseHome`
+   * gates it: `courseId` here is always present (a required prop, see
+   * `ChapterViewProps` above), so the one remaining condition is the same one
+   * `CourseHome`'s own doc comment gives — an anonymous visitor calling
+   * `POST /enrollments` would get hijacked mid-read by `redirectOn401`.
+   * Declared unconditionally, alongside `chapterQuery` below and every other
+   * hook in this component, never behind an `if` — the same rules-of-hooks
+   * discipline the file's own doc comment on `confirmedLoggedIn` above names.
+   */
+  const queryClient = useQueryClient();
+  const enrollmentsQuery = useQuery({
+    queryKey: enrollmentsQueryKey(),
+    queryFn: () => fetchEnrollments(),
+    enabled: confirmedLoggedIn,
+    retry: false,
+  });
+  const enrolled = (enrollmentsQuery.data ?? []).some((e) => e.courseId === courseId);
+  const enroll = useMutation({
+    mutationFn: () => createEnrollment(courseId),
+    // Nạp lại từ cache đã mất hiệu lực — cùng khoá "Học tiếp" đọc, nên tự vá
+    // ở đây sẽ để cache của trang kia cũ đi trong im lặng (xem `CourseHome`).
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: enrollmentsQueryKey() }),
+  });
 
   // The table-of-contents drawer's "done" marks (Ruling F4-adjacent) — public
   // UI (every reader gets a TOC), fed by session-only data. Stays the empty
@@ -619,6 +654,19 @@ export function ChapterView({
           is signed in" (`confirmedLoggedOut`), never on a guess. See this
           component's own doc for why that is not simply `!confirmedLoggedIn`. */}
       {confirmedLoggedOut && <p className="reader-anon-nudge">{t('reader.anonNudge')}</p>}
+      {/* Task 6 (ghi-danh-khoa-hoc) — the other half of the same idea, for a
+          reader who IS signed in: they arrived straight at this chapter and
+          have no way, short of leaving it, to add the course to "Học tiếp".
+          Never rendered together with the nudge just above —
+          `confirmedLoggedIn`/`confirmedLoggedOut` cannot both be true — so
+          this is not two invitations stacked on top of each other. */}
+      {confirmedLoggedIn && !enrolled && (
+        <p className="reader-addmine">
+          <button type="button" className="reader-addmine-btn" onClick={() => enroll.mutate()}>
+            {t('reader.addToMine')}
+          </button>
+        </p>
+      )}
       <div ref={containerRef} />
       {/* One `<WidgetFrame>` portalled into each placeholder `widgetTargets`
           found inside `containerRef`'s subtree — the innerHTML write put

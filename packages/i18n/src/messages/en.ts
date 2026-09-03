@@ -404,6 +404,11 @@ export const en: Messages = {
   'reader.exerciseCheckbox': (index: string) => `Mark exercise ${index} as done`,
   'reader.exerciseDone': 'Done',
   'reader.anonNudge': 'Sign in to keep progress, notes, and ask the AI.',
+  /* Task 6 (ghi-danh-khoa-hoc) — a signed-in reader who arrived straight at
+     this chapter via a shared link (never visited `/c/:courseId`, where
+     Task 5 already has "Start this course"), and isn't enrolled yet. Never
+     shown alongside `reader.anonNudge` above — see `reader/ChapterView.tsx`. */
+  'reader.addToMine': 'Add to my courses',
 
   'reader.toc': 'Contents',
   'reader.tocOpen': 'Open the course contents',

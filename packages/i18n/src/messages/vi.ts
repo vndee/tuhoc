@@ -578,6 +578,11 @@ export const vi = {
      không phải mặc định trong lúc còn chờ /me trả lời, kẻo nó nháy lên cho cả
      người đã đăng nhập rồi mới biến mất. Xem `reader/ChapterView.tsx`. */
   'reader.anonNudge': 'Đăng nhập để lưu tiến độ, ghi chú và hỏi AI.',
+  /* Task 6 (ghi-danh-khoa-hoc) — người ĐÃ đăng nhập nhưng tới thẳng chương
+     này qua liên kết chia sẻ (chưa từng ghé `/c/:courseId`, nơi Task 5 đã có
+     "Bắt đầu học"), và chưa ghi danh. Không bao giờ đứng cùng lúc với
+     `reader.anonNudge` ở trên — xem `reader/ChapterView.tsx`. */
+  'reader.addToMine': 'Thêm vào khoá của tôi',
 
   /* ── chế độ đọc: một cột chữ (`reader/TocDrawer.tsx`, hướng A) ──────────── */
 

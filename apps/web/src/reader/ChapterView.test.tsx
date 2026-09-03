@@ -125,6 +125,16 @@ const server = setupServer(
   // behaviour as before; the handful of tests that care about the OTHER
   // shape (Task 12's own block, below) override this with `server.use`.
   http.get('/me', () => HttpResponse.json({ id: 'u1', email: 'a@vi.vn', name: 'Người học' })),
+  // Task 6 (ghi-danh-khoa-hoc): `ChapterView` now also queries `GET
+  // /enrollments` for every signed-in reader (to decide whether "Thêm vào
+  // khoá của tôi" makes sense) — the exact same `onUnhandledRequest: 'error'`
+  // trap Task 12's `/me` handler above already names: every test in this file
+  // that reaches a signed-in reader fires this request too, so a default
+  // handler here is required before ANY of them stop erroring. Empty by
+  // default — "not yet enrolled" — the one shape every test that doesn't
+  // care about enrollment implicitly wants; the Task 6 block below overrides
+  // it where the enrollment state itself is what's under test.
+  http.get('/enrollments', () => HttpResponse.json({ enrollments: [] })),
   http.get('/progress', () => HttpResponse.json({ progress: progressRows })),
   http.put('/progress', async ({ request }) => {
     const body = (await request.json()) as { courseId: string; chapterId: string; status: string; done: boolean };
@@ -1522,6 +1532,76 @@ describe('ChapterView', () => {
       resolveMe!();
       await settleChapter();
       expect(screen.queryByText(t('vi', 'reader.anonNudge'))).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * Task 6 (ghi-danh-khoa-hoc) — người đọc tới THẲNG một chương qua liên kết
+   * chia sẻ, chưa từng ghé `/c/:courseId` (nơi Task 5 đã có "Bắt đầu
+   * học"/"Bỏ khỏi khoá của tôi"), cần một cách để thêm khoá vào "Học tiếp"
+   * mà không phải tự rời chương đi tìm trang khoá. `reader.addToMine`
+   * đứng đúng chỗ `reader.anonNudge` (Task 12) đứng — xem đó cho nudge ẩn
+   * danh, đây là nửa còn lại cho người ĐÃ đăng nhập.
+   *
+   * Bốn bài canh đúng bốn điều brief đòi, trên REQUEST/response thật (method
+   * + path + body), không chỉ trên "nút có mặt": đã đăng nhập + chưa ghi
+   * danh ⇒ hiện; đã ghi danh ⇒ KHÔNG hiện (nút hết nghĩa); chưa đăng nhập ⇒
+   * không hiện (họ có nudge riêng — hai lời mời chồng nhau là một lời mời bị
+   * bỏ qua); bấm ⇒ đúng `POST /enrollments {courseId}` của khoá đang đọc.
+   */
+  describe('Task 6 — lối ghi danh cho người vào thẳng', () => {
+    it('đã đăng nhập, chưa ghi danh khoá này ⇒ hiện "Thêm vào khoá của tôi"', async () => {
+      server.use(http.get('/enrollments', () => HttpResponse.json({ enrollments: [] })));
+
+      await renderChapterAndSettle();
+
+      expect(screen.getByRole('button', { name: t('vi', 'reader.addToMine') })).toBeInTheDocument();
+    });
+
+    it('đã ghi danh khoá này ⇒ KHÔNG hiện nút, vì nó không còn nghĩa gì', async () => {
+      server.use(
+        http.get('/enrollments', () =>
+          HttpResponse.json({ enrollments: [{ courseId: 'demo', createdAt: '2026-09-03T00:00:00Z' }] }),
+        ),
+      );
+
+      await renderChapterAndSettle();
+
+      expect(screen.queryByRole('button', { name: t('vi', 'reader.addToMine') })).not.toBeInTheDocument();
+    });
+
+    it('khách CHƯA đăng nhập ⇒ không hiện nút — họ đã có reader.anonNudge riêng một dòng bên cạnh', async () => {
+      server.use(http.get('/me', () => HttpResponse.json({ error: 'unauthenticated' }, { status: 401 })));
+
+      await renderChapterAndSettle({}, { expectSession: false });
+
+      // Đối chứng dương: nudge của khách vẫn đứng đó — hai lời mời không
+      // cùng lúc biến mất cả hai vì một điều kiện sai.
+      expect(screen.getByText(t('vi', 'reader.anonNudge'))).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: t('vi', 'reader.addToMine') })).not.toBeInTheDocument();
+    });
+
+    it('bấm nút gửi đúng POST /enrollments {courseId} của khoá đang đọc', async () => {
+      server.use(http.get('/enrollments', () => HttpResponse.json({ enrollments: [] })));
+      const posted: unknown[] = [];
+      server.use(
+        http.post('/enrollments', async ({ request }) => {
+          posted.push(await request.json());
+          return new HttpResponse(null, { status: 201 });
+        }),
+      );
+
+      await renderChapterAndSettle();
+
+      const btn = screen.getByRole('button', { name: t('vi', 'reader.addToMine') });
+      fireEvent.click(btn);
+      await act(async () => {});
+
+      // REQUEST thật gửi ra, không chỉ "nút bấm được": đúng method (POST,
+      // qua `http.post`), đúng thân ({courseId: 'demo'} — của khoá `demo`
+      // đang mở trong `renderChapterView`, không phải chuỗi rỗng hay
+      // `undefined` lọt qua `enabled`/prop).
+      expect(posted).toEqual([{ courseId: 'demo' }]);
     });
   });
 });
