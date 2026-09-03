@@ -254,55 +254,74 @@ export function Landing() {
 }
 
 /**
- * NGƯỜI NGỒI HỌC, VÀ NHỮNG THỨ HỌ ĐANG HỌC.
+ * CUỐN SÁCH MỞ, VÀ NHỮNG THỨ BAY LÊN TỪ NÓ.
  *
- * Hai bản trước đều bị chủ dự án đọc ra là xấu, và cả hai sai cùng một kiểu:
- * chúng là SƠ ĐỒ. Một gáy sách có vạch chia thành cái trục đo; ba khung lồng
- * nhau thành một cửa sổ phần mềm. Không bản nào có người trong đó.
+ * Ba bản trước lần lượt là: một gáy sách có vạch chia (đọc thành cái trục đo),
+ * ba khung lồng nhau (đọc thành cửa sổ phần mềm), và một người ngồi học. Chủ
+ * dự án bỏ nốt hình người: cuốn sách mở ra công thức và mô hình là đủ, và một
+ * dáng người vẽ bằng vài nét thì luôn là chỗ yếu nhất của hình.
  *
- * Bản này là một cảnh: một người ngồi trước cuốn sách mở, và quanh họ là chính
- * những thứ đang học — một mạng nơ-ron, vài công thức, một hành tinh có vành,
- * mấy ngôi sao. Đó là "tự học và tự đào sâu" ở dạng nhìn thấy được, và nó nói
- * ra điều một sơ đồ không nói được: có một NGƯỜI ở đây.
+ * Còn lại là một cảnh gọn: cuốn sách mở ở dưới, và từ nó bay lên đúng những
+ * thứ nó dạy — mạng nơ-ron, ký hiệu toán, hành tinh có vành, mấy ngôi sao. Ba
+ * nét ngắn bốc lên từ gáy sách là thứ nối hai nửa lại; không có chúng thì cụm
+ * trên chỉ là mấy hình trôi nổi cạnh một cuốn sách.
  *
  * Ký hiệu toán vẽ bằng `<text>`: `∫`, `Σ`, `π` là notation chứ không phải chữ
  * giao diện, nên chúng không vào catalog i18n và không đổi theo ngôn ngữ.
  */
 function StudyScene({ label }: { label: string }) {
   const stars = [
-    { x: 232, y: 40, r: 8 },
-    { x: 346, y: 132, r: 6 },
-    { x: 196, y: 96, r: 5 },
+    { x: 236, y: 34, r: 8 },
+    { x: 340, y: 130, r: 6 },
+    { x: 150, y: 40, r: 5 },
   ];
-  const nodes = ['44,66', '44,108', '92,44', '92,86', '136,64'];
+  const nodes = ['40,88', '40,130', '88,66', '88,108', '132,86'];
   return (
     <svg className="bd-figure" viewBox="0 0 380 300" role="img" aria-label={label} focusable="false">
       <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-        {/* ── NGƯỜI, NHÌN NGHIÊNG, ĐANG CÚI VÀO CUỐN SÁCH ────────────────
-            Nghiêng chứ không chính diện: chính diện thì lưng và vai chồng lên
-            nhau thành một cái gò, đúng lỗi của bản trước. Bàn cắt ngang ở
-            y=258 nên chân bị che, và đó là điều thật khi ngồi vào bàn. */}
-        <circle className="bd-fig-body" cx="118" cy="168" r="21" strokeWidth="3" filter="url(#bd-chalk)" />
-        {/* Gáy: từ cổ đổ xuống hông, cong ra sau rồi cúi tới trước. */}
-        <path className="bd-fig-body" d="M128 188 C 136 204, 132 224, 116 240 C 108 248, 100 254, 96 258" strokeWidth="3" filter="url(#bd-chalk-1)" />
-        {/* Cánh tay với tới cuốn sách. */}
-        <path className="bd-fig-body" d="M133 206 C 152 214, 172 232, 186 248" strokeWidth="2.6" filter="url(#bd-chalk-2)" />
-        {/* Mặt bàn. */}
-        <path className="bd-fig-desk" d="M44 258 C 132 253, 220 255, 306 261" strokeWidth="3" filter="url(#bd-chalk)" />
-
-        {/* ── CUỐN SÁCH MỞ: hai trang chụm vào một gáy ───────────────────── */}
+        {/* ── CUỐN SÁCH MỞ ──────────────────────────────────────────────
+            Hai TỨ GIÁC khép kín, không phải hai đường cong. Bản trước vẽ hai
+            nét cong vồng lên ở mép ngoài và mắt đọc ra ngay là ĐÔI CÁNH: một
+            cuốn sách mở thì mép ngoài THẤP hơn gáy, và nó có bề dày. */}
         <path
           className="bd-fig-book"
-          d="M192 254 C 202 244, 212 241, 220 246 C 228 241, 240 244, 250 254"
-          strokeWidth="2.4"
+          d="M92 254 C 128 244, 164 242, 188 250 L188 278 C 162 270, 126 272, 96 282 Z"
+          strokeWidth="3"
+          filter="url(#bd-chalk)"
+        />
+        <path
+          className="bd-fig-book"
+          d="M288 254 C 252 244, 216 242, 192 250 L192 278 C 218 270, 254 272, 284 282 Z"
+          strokeWidth="3"
           filter="url(#bd-chalk-1)"
         />
-        <path className="bd-fig-book" d="M220 246 L220 255 M192 254 C 202 250, 212 248, 220 255 M250 254 C 240 250, 228 249, 220 255" strokeWidth="1.8" filter="url(#bd-chalk-2)" />
+        {/* Bề dày của tập giấy dưới mỗi trang. */}
+        <path
+          className="bd-fig-lines"
+          d="M96 282 C 126 272, 162 270, 188 278 M284 282 C 254 272, 218 270, 192 278"
+          strokeWidth="1.6"
+          filter="url(#bd-chalk-2)"
+        />
+        {/* Vài dòng chữ trên trang, gợi ý thôi. */}
+        <path
+          className="bd-fig-lines"
+          d="M114 258 C 134 252, 156 251, 174 255 M114 266 C 134 260, 156 259, 174 263 M206 255 C 224 251, 246 252, 266 258 M206 263 C 224 259, 246 260, 266 266"
+          strokeWidth="1.4"
+          filter="url(#bd-chalk-2)"
+        />
+        {/* Ba nét bốc lên từ gáy, xoè ra — thứ nối cuốn sách với những gì nó
+            dạy. Bản trước chụm quá sát nên chúng đọc thành một dấu ngoặc. */}
+        <path
+          className="bd-fig-rise"
+          d="M172 236 C 160 222, 154 208, 152 194 M190 234 C 190 218, 190 206, 190 192 M208 236 C 220 222, 226 208, 228 194"
+          strokeWidth="1.8"
+          filter="url(#bd-chalk-1)"
+        />
 
         {/* ── MẠNG NƠ-RON ───────────────────────────────────────────────── */}
         <path
           className="bd-fig-net"
-          d="M40 62 L88 40 M40 62 L88 82 M40 104 L88 40 M40 104 L88 82 M88 40 L132 60 M88 82 L132 60"
+          d="M40 88 L88 66 M40 88 L88 108 M40 130 L88 66 M40 130 L88 108 M88 66 L132 86 M88 108 L132 86"
           strokeWidth="1.8"
           filter="url(#bd-chalk-2)"
         />
@@ -311,13 +330,12 @@ function StudyScene({ label }: { label: string }) {
           return <circle key={pt} className="bd-fig-node" cx={cx} cy={cy} r="6" strokeWidth="2.2" filter="url(#bd-chalk)" />;
         })}
 
-        {/* ── HÀNH TINH: vành là HAI cung, một khuất sau và một vắt trước —
-            một cung đơn dưới bụng hành tinh chỉ đọc ra là cái bát. ───────── */}
-        <circle className="bd-fig-sky" cx="300" cy="80" r="27" strokeWidth="2.6" filter="url(#bd-chalk-1)" />
-        <path className="bd-fig-sky" d="M266 70 C 282 60, 320 60, 336 72" strokeWidth="1.8" filter="url(#bd-chalk-2)" />
-        <path className="bd-fig-sky" d="M264 72 C 274 92, 326 92, 338 70" strokeWidth="2.4" filter="url(#bd-chalk)" />
+        {/* ── HÀNH TINH: vành là HAI cung, một khuất sau và một vắt trước ── */}
+        <circle className="bd-fig-sky" cx="302" cy="76" r="27" strokeWidth="2.6" filter="url(#bd-chalk-1)" />
+        <path className="bd-fig-sky" d="M268 66 C 284 56, 322 56, 338 68" strokeWidth="1.8" filter="url(#bd-chalk-2)" />
+        <path className="bd-fig-sky" d="M266 68 C 276 88, 328 88, 340 66" strokeWidth="2.4" filter="url(#bd-chalk)" />
 
-        {/* ── SAO TÁM TIA: dấu cộng cộng dấu nhân, tia chéo ngắn hơn ─────── */}
+        {/* ── SAO TÁM TIA ───────────────────────────────────────────────── */}
         {stars.map((st) => (
           <path
             key={`${st.x}-${st.y}`}
@@ -333,12 +351,12 @@ function StudyScene({ label }: { label: string }) {
         ))}
       </g>
 
-      {/* ── CÔNG THỨC, lơ lửng giữa người và bầu trời ───────────────────── */}
+      {/* ── KÝ HIỆU TOÁN, giữa sách và bầu trời ─────────────────────────── */}
       <g className="bd-fig-math">
-        <text x="172" y="52" fontSize="27">∫</text>
-        <text x="202" y="60" fontSize="23">Σ</text>
-        <text x="248" y="156" fontSize="21">π</text>
-        <text x="146" y="116" fontSize="20">x²</text>
+        <text x="176" y="80" fontSize="30">∫</text>
+        <text x="210" y="118" fontSize="24">Σ</text>
+        <text x="256" y="164" fontSize="22">π</text>
+        <text x="140" y="170" fontSize="21">x²</text>
       </g>
     </svg>
   );
