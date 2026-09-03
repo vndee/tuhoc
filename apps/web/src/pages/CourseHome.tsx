@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { createEnrollment, deleteEnrollment, enrollmentsQueryKey, fetchEnrollments } from '../api/enrollments';
 import { useMe } from '../api/useMe';
 import { flatChapters, nextChapter } from '../course/chapters';
@@ -45,6 +45,7 @@ export function splitPartTitle(title: string): [string | undefined, string] {
 export function CourseHome() {
   const { courseId } = useParams<{ courseId: string }>();
   const { t } = useLanguage();
+  const navigate = useNavigate();
   const manifestQuery = useQuery({
     queryKey: manifestQueryKey(courseId ?? ''),
     queryFn: () => loadManifest(courseId as string),
@@ -102,7 +103,22 @@ export function CourseHome() {
     // Nạp lại từ cache đã mất hiệu lực, không tự vá — `enrollmentsQueryKey()`
     // là đúng khoá "Học tiếp" đọc, nên tự vá ở đây sẽ để cache của trang kia
     // cũ đi trong im lặng.
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: enrollmentsQueryKey() }),
+    //
+    // Fix round cuối (item 3, spec §5) — "Bắt đầu học" giờ cũng ĐIỀU HƯỚNG,
+    // tới CHƯƠNG ĐẦU TIÊN của khoá (`flatChapters(manifest)[0]`), không phải
+    // `target` (biến ở dưới, "chương kế tiếp chưa đọc"): ghi danh là một sự
+    // kiện tách biệt khỏi tiến độ đọc đã có trước đó — spec §7 ghi rõ tiến độ
+    // và ghi danh có thể lệch nhau (đọc không tự ghi danh) — nên nút này luôn
+    // mở đúng ĐIỂM BẮT ĐẦU của khoá, bất kể người học đã đọc dở tới đâu.
+    // Đọc `manifestQuery.data` trực tiếp (không phải biến `chapters` khai bên
+    // dưới): closure này được tạo lại mỗi lần render và chỉ THỰC THI sau khi
+    // nút bấm được — nghĩa là bởi lúc `mutate()` chạy, manifest chắc chắn đã
+    // tải xong (nút ẩn đi trong lúc `manifestQuery` còn `pending`/`isError`).
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: enrollmentsQueryKey() });
+      const firstChapter = flatChapters(manifestQuery.data)[0];
+      if (firstChapter !== undefined) navigate(`/c/${courseId}/${firstChapter.id}`);
+    },
   });
   const unenroll = useMutation({
     mutationFn: () => deleteEnrollment(courseId as string),
@@ -127,6 +143,20 @@ export function CourseHome() {
   const read = chapters.filter((chapter) => doneChapterIds.has(chapter.id)).length;
   const next = nextChapter(chapters, doneChapterIds);
   const target = next ?? chapters[chapters.length - 1];
+
+  // Fix round cuối (item 3, spec §5) — "MỘT hành động", không hai. Trước bản
+  // vá này, một người đã đăng nhập và XÁC NHẬN CHƯA ghi danh thấy CẢ liên kết
+  // đọc (`btn primary`, "Bắt đầu đọc") LẪN nút ghi danh (`btn primary`, "Bắt
+  // đầu học") đứng cạnh nhau trong cùng `.ch-resume-row` — hai nút sơ cấp
+  // giống hệt nhau về kiểu dáng, trên một trang mà toàn bộ lập luận thiết kế
+  // là "MỘT hành động". `confirmedNotEnrolled` giờ là điều kiện DUY NHẤT quyết
+  // định "Bắt đầu học" có THAY THẾ liên kết đọc hay không — mọi trường hợp
+  // khác (khách ẩn danh, hoặc một phiên đã đăng nhập nhưng `GET /enrollments`
+  // CHƯA xác nhận xong) giữ nguyên liên kết đọc, đúng như hôm nay: đọc là công
+  // khai, không được phép biến mất sau một phỏng đoán về trạng thái ghi danh
+  // chưa có câu trả lời.
+  const confirmedNotEnrolled = confirmedLoggedIn && enrollmentsQuery.isSuccess && !enrolled;
+  const confirmedEnrolled = confirmedLoggedIn && enrollmentsQuery.isSuccess && enrolled;
 
   return (
     <div className="ch-page">
@@ -174,27 +204,23 @@ export function CourseHome() {
               </h2>
               <p className="ch-resume-meta">{t('library.meta.chapters', String(read), String(chapters.length))}</p>
             </div>
-            <Link
-              to={`/c/${courseId}/${target.id}`}
-              className="btn primary"
-            >
-              {t(read === 0 ? 'home.start' : 'home.continue')}
-            </Link>
-            {/* Chỉ hiện cho người đã xác nhận đăng nhập — lý do ở khối
-                khai hook phía trên.
-
-                Fix round 1 (Task 6 review, áp lại cho Task 5) —
-                `enrollmentsQuery.isSuccess` là điều kiện THỨ BA, không phải
-                trang trí: `enrolled` mặc định `false` (`(undefined ??
-                []).some(...)`) khi cache còn rỗng, nên trước bản vá này một
-                người ĐÃ ghi danh thấy "Bắt đầu học" trong đúng một round-trip
-                của `GET /enrollments`, rồi nút đổi thành "Bỏ khỏi khoá của
-                tôi" ngay dưới mắt họ. Cùng đúng kỷ luật `ChapterView.tsx`'s
-                doc comment ở `confirmedLoggedIn`/`confirmedLoggedOut` đã đặt
-                ra cho trục đăng nhập — không vẽ gì trên một PHỎNG ĐOÁN về
-                trạng thái máy chủ chưa xác nhận — chỉ chưa từng được áp cho
-                trục ghi danh. */}
-            {confirmedLoggedIn && enrollmentsQuery.isSuccess && !enrolled && (
+            {/* Liên kết đọc: hành động mặc định cho khách ẩn danh và cho một
+                phiên đã đăng nhập nhưng chưa xác nhận xong ghi danh. THAY THẾ
+                bằng nút "Bắt đầu học" bên dưới — không đứng cạnh nó — một khi
+                `confirmedNotEnrolled` xác nhận xong (xem khai biến phía trên).
+                Đọc vẫn công khai: một khách chưa có tài khoản, hay đang chờ
+                `/me` trả lời, không được phép mất lối đọc này. */}
+            {!confirmedNotEnrolled && (
+              <Link to={`/c/${courseId}/${target.id}`} className="btn primary">
+                {t(read === 0 ? 'home.start' : 'home.continue')}
+              </Link>
+            )}
+            {/* "Bắt đầu học" — hành động chính khi đã XÁC NHẬN chưa ghi danh
+                (spec §5). `onSuccess` (khai ở `enroll` phía trên) điều hướng
+                thẳng tới chương đầu tiên, nên đây là điểm kết thúc của lối
+                đọc phía trên trong đúng lượt render này — không phải một nút
+                thứ hai đứng cạnh nó. */}
+            {confirmedNotEnrolled && (
               <button
                 type="button"
                 className="btn primary"
@@ -204,7 +230,7 @@ export function CourseHome() {
                 {t(enroll.isPending ? 'course.enrolling' : 'course.enroll')}
               </button>
             )}
-            {confirmedLoggedIn && enrollmentsQuery.isSuccess && enrolled && (
+            {confirmedEnrolled && (
               /* KHÔNG hộp xác nhận. Thao tác này chỉ xoá một hàng trong
                  `enrollments`; tiến độ và ghi chú còn nguyên
                  (Repo.DeleteEnrollment), và ghi danh lại khôi phục đúng
