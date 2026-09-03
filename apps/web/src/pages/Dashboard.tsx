@@ -7,7 +7,6 @@ import { enrollmentsQueryKey, fetchEnrollments } from '../api/enrollments';
 import { useStats } from '../api/stats';
 import { flatChapters, nextChapter } from '../course/chapters';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
-import type { Manifest } from '../course/types';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { pickFocusCourse, useLastStudiedCourseId, useRecentNotes } from '../progress/recent';
 import { useProgress } from '../progress/useProgress';
@@ -23,10 +22,13 @@ import { useProgress } from '../progress/useProgress';
  * ## Hình dạng trang, theo hợp đồng
  *
  * Cột chính (2/3): dòng "Tiếp tục" — tên chương đang dở là MỘT liên kết serif
- * cỡ lớn, không nút màu — rồi mục lục của khoá ấy với dấu đã đọc từng chương.
+ * cỡ lớn, không nút màu — rồi danh sách khoá đã ghi danh, mỗi khoá một dòng.
+ * Mục lục đầy đủ ở `/c/:slug`, không ở đây: trang này chỉ được có MỘT hành
+ * động, và bốn mươi bốn dòng mục lục dưới một hành động là để cái dài hơn
+ * thắng cái quan trọng hơn.
  * Cột lề (1/3): ba-năm ghi chú gần nhất, như chú lề của một cuốn sách. Không
  * thẻ, không bóng, không eyebrow; phân cấp bằng cỡ serif, hairline và một màu
- * nhấn. Kiểu nằm ở `styles/home.css` (`.doc-*`, `.cont-*`, `.toc-*`, `.mnote-*`).
+ * nhấn. Kiểu nằm ở `styles/home.css` (`.doc-*`, `.cont-*`, `.mine-*`, `.mnote-*`).
  *
  * ## Thứ đã rời khỏi tệp này, và vì sao
  *
@@ -111,6 +113,7 @@ export function Dashboard() {
           {focusCourseId !== undefined && <Continue courseId={focusCourseId} />}
           {focusCourseId === undefined && !settled && <p className="home-note">{t('home.loading')}</p>}
           {focusCourseId === undefined && settled && <EmptyHome />}
+          {enrolledIds.length > 0 && <MyCourses courseIds={enrolledIds} focusCourseId={focusCourseId} />}
         </section>
 
         <aside className="doc-margin">
@@ -122,7 +125,8 @@ export function Dashboard() {
 }
 
 /**
- * "TIẾP TỤC" + MỤC LỤC của khoá đang dở.
+ * "TIẾP TỤC" — hành động DUY NHẤT của trang: tên chương đang dở của khoá tiêu
+ * điểm. Mục lục đầy đủ của khoá này đứng ở `/c/:slug`, không ở đây.
  *
  * Trạng thái lỗi của khối này cũng phải là một hành động: một gói hỏng, một
  * manifest 404 — tất cả kết thúc ở đây, và một câu giải thích không có lối đi
@@ -167,103 +171,103 @@ function Continue({ courseId }: { courseId: string }) {
   const targetHref = target === undefined ? `/c/${courseId}` : `/c/${courseId}/${target.id}`;
 
   return (
-    <>
-      <section className="cont">
-        {/* HÀNH ĐỘNG CHÍNH LÀ TÊN CHƯƠNG. Động từ là run-in TRONG cùng dòng của
-            <h2> — không có nhãn nào đứng trên tiêu đề (bản trước xếp tên khoá
-            và động từ thành hai tầng eyebrow; reviewer kết thúc gọi đúng tên).
-            Tên trợ năng đọc là "Đọc tiếp 1.2 Tên chương", và không có nút màu
-            nào để cạnh tranh với nó. */}
-        <Link to={targetHref} className="cont-link">
-          <h2 className="cont-chapter">
-            <span className="cont-verb">{t(ctaKey)}</span>
-            {target !== undefined && target.num !== '' && <span className="cont-num">{target.num}</span>}
-            <span className="cont-title">{target?.title ?? manifest.title}</span>
-          </h2>
+    <section className="cont">
+      {/* HÀNH ĐỘNG CHÍNH LÀ TÊN CHƯƠNG. Động từ là run-in TRONG cùng dòng của
+          <h2> — không có nhãn nào đứng trên tiêu đề (bản trước xếp tên khoá
+          và động từ thành hai tầng eyebrow; reviewer kết thúc gọi đúng tên).
+          Tên trợ năng đọc là "Đọc tiếp 1.2 Tên chương", và không có nút màu
+          nào để cạnh tranh với nó. */}
+      <Link to={targetHref} className="cont-link">
+        <h2 className="cont-chapter">
+          <span className="cont-verb">{t(ctaKey)}</span>
+          {target !== undefined && target.num !== '' && <span className="cont-num">{target.num}</span>}
+          <span className="cont-title">{target?.title ?? manifest.title}</span>
+        </h2>
+      </Link>
+
+      {/* Dòng meta là một câu: tên khoá (liên kết về trang khoá) · chương đã
+          đọc · phút đã học. Dấu chấm giữa là trình bày, ẩn với trình đọc. */}
+      <p className="cont-meta">
+        <Link to={`/c/${courseId}`} className="cont-course">
+          {manifest.title}
         </Link>
-
-        {/* Dòng meta là một câu: tên khoá (liên kết về trang khoá) · chương đã
-            đọc · phút đã học. Dấu chấm giữa là trình bày, ẩn với trình đọc. */}
-        <p className="cont-meta">
-          <Link to={`/c/${courseId}`} className="cont-course">
-            {manifest.title}
-          </Link>
-          <span className="cont-sep" aria-hidden="true">
-            {' · '}
-          </span>
-          {total > 0 ? t('home.chapters', String(read), String(total)) : t('home.chaptersUnknown', String(read))}
-          {minutes > 0 && (
-            <>
-              <span className="cont-sep" aria-hidden="true">
-                {' · '}
-              </span>
-              {t('progress.course.minutes', String(minutes))}
-            </>
-          )}
-          {next === undefined && total > 0 && <span className="cont-done"> {t('home.finished')}</span>}
-        </p>
-      </section>
-
-      <Toc courseId={courseId} manifest={manifest} doneChapterIds={doneChapterIds} nextId={next?.id} />
-    </>
+        <span className="cont-sep" aria-hidden="true">
+          {' · '}
+        </span>
+        {total > 0 ? t('home.chapters', String(read), String(total)) : t('home.chaptersUnknown', String(read))}
+        {minutes > 0 && (
+          <>
+            <span className="cont-sep" aria-hidden="true">
+              {' · '}
+            </span>
+            {t('progress.course.minutes', String(minutes))}
+          </>
+        )}
+        {next === undefined && total > 0 && <span className="cont-done"> {t('home.finished')}</span>}
+      </p>
+    </section>
   );
 }
 
 /**
- * Mục lục của khoá đang dở, kiểu `\tableofcontents`: số mục, tiêu đề, dấu đã
- * đọc. Đây là câu trả lời thứ hai cho "mở cái gì bây giờ" — chương kế tiếp
- * mang màu nhấn ngay trong danh sách — và là thứ khiến người học thấy CẢ khoá
- * chứ không chỉ một chương, mà không cần một trang khác.
+ * "KHOÁ CỦA TÔI" — một dòng cho mỗi khoá đã ghi danh, TRỪ khoá đang là tiêu
+ * điểm ở trên.
  *
- * Dấu đã đọc là một SVG nhỏ, không phải ký tự ✓: một glyph Unicode đứng thay
- * cho một hệ biểu tượng là đúng thứ craft-floor gọi tên.
+ * MỘT DÒNG, không phải một thẻ, và KHÔNG phải mục lục. Đặc tả IA của trang này
+ * chỉ cho phép MỘT hành động; khối `Continue` ở trên đã dùng hết suất ấy.
+ * Khối này trả lời một câu khác — "tôi còn khoá nào nữa" — nên nó phải nhỏ
+ * hơn hành động kia một bậc rõ rệt, bằng không cái dài hơn sẽ thắng cái quan
+ * trọng hơn (cùng lỗi đã đuổi bảng số liệu và mục lục 44 chương ra khỏi trang
+ * này).
+ *
+ * Khoá đang là tiêu điểm bị BỎ QUA: nó vừa được nói bằng cỡ chữ lớn nhất
+ * trang, in lại tên nó ngay dưới là nói hai lần.
  */
-function Toc({
-  courseId,
-  manifest,
-  doneChapterIds,
-  nextId,
-}: {
-  courseId: string;
-  manifest: Manifest;
-  doneChapterIds: ReadonlySet<string>;
-  nextId: string | undefined;
-}) {
+function MyCourses({ courseIds, focusCourseId }: { courseIds: readonly string[]; focusCourseId: string | undefined }) {
   const { t } = useLanguage();
+  const rest = courseIds.filter((id) => id !== focusCourseId);
+  if (rest.length === 0) return null;
+
   return (
-    <nav className="toc" aria-label={manifest.title}>
-      {manifest.parts.map((part, index) => (
-        <div key={`${part.title}-${index}`}>
-          <p className="toc-part lbl">{part.title}</p>
-          <ul className="toc-rows">
-            {part.chapters.map((chapter) => {
-              const done = doneChapterIds.has(chapter.id);
-              const isNext = chapter.id === nextId;
-              const cls = ['toc-row', done ? 'is-done' : null, isNext ? 'is-next' : null].filter(Boolean).join(' ');
-              return (
-                <li key={chapter.id} className={cls}>
-                  <span className="toc-num">{chapter.num}</span>
-                  <Link to={`/c/${courseId}/${chapter.id}`} className="toc-title">
-                    {chapter.title}
-                  </Link>
-                  <span className="toc-mark">
-                    {done && (
-                      <>
-                        <svg width="12" height="12" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                          <path d="M4 10.5l4 4 8-9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                        {t('toc.done')}
-                      </>
-                    )}
-                    {!done && isNext && t('toc.next')}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
-    </nav>
+    <section className="mine">
+      <h2 className="mine-title">{t('home.myCourses')}</h2>
+      <ul className="mine-list">
+        {rest.map((id) => (
+          <MyCourseRow key={id} courseId={id} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * Một dòng. Manifest tra không được thì dòng ấy BIẾN MẤT, không hiện lỗi: một
+ * ghi danh trỏ tới khoá đã gỡ xuất bản là trạng thái hợp lệ (migration 0011
+ * cố ý không có khoá ngoại), và một dòng đỏ ở đây chỉ nói với người đọc một
+ * chuyện họ không làm gì được.
+ */
+function MyCourseRow({ courseId }: { courseId: string }) {
+  const { t } = useLanguage();
+  const manifestQuery = useQuery({
+    queryKey: manifestQueryKey(courseId),
+    queryFn: () => loadManifest(courseId),
+    retry: false,
+  });
+  const { doneChapterIds } = useProgress(courseId);
+
+  const manifest = manifestQuery.data;
+  if (manifest === undefined) return null;
+
+  const chapters = flatChapters(manifest);
+  const read = chapters.filter((chapter) => doneChapterIds.has(chapter.id)).length;
+
+  return (
+    <li className="mine-row">
+      <Link to={`/c/${courseId}`} className="mine-link">
+        {manifest.title}
+      </Link>
+      <span className="mine-meta">{t('home.chapters', String(read), String(chapters.length))}</span>
+    </li>
   );
 }
 

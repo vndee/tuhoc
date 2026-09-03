@@ -42,10 +42,15 @@ function catalogManifest(): Manifest {
   };
 }
 
-function demoManifest(chapterCount: number): Manifest {
+/**
+ * `id`/`title` mặc định giữ nguyên mọi chỗ gọi cũ (chỉ truyền `chapterCount`)
+ * — hai tham số thêm chỉ phục vụ bài "Khoá của tôi" bên dưới, nơi cần hai
+ * manifest CÙNG HÌNH DẠNG nhưng khác `id`/tiêu đề.
+ */
+function demoManifest(chapterCount: number, id = 'demo', title = 'Khóa học demo'): Manifest {
   return {
-    id: 'demo',
-    title: 'Khóa học demo',
+    id,
+    title,
     description: 'Mô tả demo',
     lang: 'vi',
     version: '1.0.0',
@@ -286,10 +291,10 @@ describe('Học tiếp — MỘT hành động', () => {
 
     expect(await screen.findByText('Khóa học demo')).toBeInTheDocument();
     // Chương 3 — chương ĐẦU TIÊN chưa đọc, không phải chương sau chương vừa đọc.
-    // Hỏi đúng HEADING của khối "Tiếp tục": từ vòng thiết kế lại (giáo trình
-    // LaTeX), trang chủ còn vẽ cả mục lục khoá, nên "Chương 3" xuất hiện hai
-    // lần — một ở heading đang dở, một ở dòng mục lục. Chỉ heading mới là câu
-    // trả lời cho "mở cái gì bây giờ"; dòng mục lục có bài canh riêng bên dưới.
+    // Task 4: mục lục đầy đủ đã rời khỏi trang này (sang `/c/:slug`), nên
+    // "Chương 3" chỉ còn xuất hiện đúng MỘT lần — ở heading của khối "Tiếp
+    // tục" — và `findByRole('heading', ...)` vẫn là câu hỏi đúng cho "mở cái
+    // gì bây giờ", dù nay không còn một dòng mục lục nào để phân biệt với.
     expect(await screen.findByRole('heading', { name: /chương 3/i })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/2\s*\/\s*4/)).toBeInTheDocument());
     expect(cta()).toHaveAttribute('href', '/c/demo/ch-3');
@@ -418,6 +423,35 @@ describe('Học tiếp — MỘT hành động', () => {
     expect(meta).toHaveTextContent('Khóa học demo');
     expect(meta).toHaveTextContent(tr('vi', 'progress.course.minutes', '120'));
     expect(screen.getAllByText(/phút đã học/i)).toHaveLength(1);
+  }, OVERSUBSCRIBED_MS);
+});
+
+describe('Học tiếp — Khoá của tôi', () => {
+  it('mỗi khoá đã ghi danh có một dòng, kèm số chương đã đọc', async () => {
+    // Hai manifest riêng, cùng hình dạng `demoManifest` nhưng khác id/tiêu đề
+    // — tiêu đề chứa đúng slug (không dấu) để `findByRole('link', {name:
+    // /khoa-a/i})` khớp được cả liên kết trong khối "Tiếp tục" (khoá tiêu
+    // điểm) lẫn liên kết trong danh sách "Khoá của tôi" (khoá còn lại).
+    server.use(http.get('/courses/khoa-a', () => HttpResponse.json(demoManifest(2, 'khoa-a', 'Khoa-A'))));
+    server.use(http.get('/courses/khoa-b', () => HttpResponse.json(demoManifest(3, 'khoa-b', 'Khoa-B'))));
+    server.use(http.get('/stats', () => HttpResponse.json({ totalMinutes: 0, streakDays: 0, days: [], courses: [] })));
+    enroll('khoa-a');
+    enroll('khoa-b');
+    // 'khoa-b' đọc TRƯỚC, 'khoa-a' đọc SAU — 'khoa-a' thắng làm TIÊU ĐIỂM
+    // (Section A/`pickFocusCourse`'s bậc 1: khoá vừa đọc gần nhất, vì cả hai
+    // đều đã ghi danh), và 'khoa-b' rơi xuống danh sách "Khoá của tôi" —
+    // NHƯNG vẫn còn nguyên chương đã đọc của nó, đúng thứ bài này canh ("kèm
+    // số chương đã đọc"), không phải một "0/N" luôn-đúng-do-tình-cờ.
+    await markRead('khoa-b', 'ch-1', '2026-09-01T00:00:00Z');
+    await markRead('khoa-a', 'ch-1', '2026-09-03T00:00:00Z');
+
+    renderDashboard();
+
+    expect(await screen.findByText(tr('vi', 'home.myCourses'))).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /khoa-a/i })).toBeInTheDocument();
+    const rowB = (await screen.findByRole('link', { name: /khoa-b/i })).closest('li');
+    expect(rowB).not.toBeNull();
+    expect(rowB).toHaveTextContent(tr('vi', 'home.chapters', '1', '3'));
   }, OVERSUBSCRIBED_MS);
 });
 

@@ -310,6 +310,8 @@ export const vi = {
   'home.notes.open': 'Mở chương',
   'home.notes.formula': 'công thức',
   'home.notes.aria': (course: string) => `Mở ghi chú này trong ${course}`,
+  'home.myCourses': 'Khoá của tôi',
+  'home.myCoursesEmpty': 'Bạn chưa ghi danh khoá nào.',
   'toc.next': 'Tiếp theo',
   'toc.done': 'Đã đọc',
 

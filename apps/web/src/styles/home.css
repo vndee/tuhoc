@@ -301,85 +301,48 @@
   max-width: 56ch;
 }
 
-/* ── MỤC LỤC (kiểu `\tableofcontents`) ──────────────────────────────────────
-   Mỗi chương một dòng: số mục (sans, cột cố định), tiêu đề (serif), dấu đã
-   đọc ở mép phải. Hàng ngăn bằng hairline xám; phần ngăn bằng nhãn. Chương
-   KẾ TIẾP mang màu nhấn — đó là câu trả lời thứ hai cho "mở cái gì bây giờ",
-   nhìn thấy được ngay trong danh sách. */
-.toc {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+/* KHỐI "KHOÁ CỦA TÔI". Nhỏ hơn hành động phía trên đúng một bậc, và cùng ngôn
+   ngữ với phần còn lại của trang: gạch chân mảnh, không thẻ, không bóng. */
+.mine {
+  margin-top: 44px;
 }
 
-.toc-part {
-  margin: 20px 0 4px;
-}
-
-.toc-part:first-child {
-  margin-top: 0;
-}
-
-.toc-rows {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.toc-row {
-  display: grid;
-  grid-template-columns: 3.4em minmax(0, 1fr) auto;
-  column-gap: 10px;
-  align-items: baseline;
-  padding: 7px 0;
-  border-bottom: 1px solid var(--rule);
-}
-
-.toc-num {
-  font-family: var(--font-sans);
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-}
-
-.toc-title {
-  font-family: var(--font-sans);
-  font-size: 16.5px;
-  line-height: 1.4;
-  color: var(--ink);
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 0.12em;
-  text-decoration-color: transparent;
-  transition: text-decoration-color 150ms ease-out, color 150ms ease-out;
-}
-
-.toc-title:hover,
-.toc-title:focus-visible {
-  text-decoration-color: var(--accent);
-}
-
-.toc-row.is-done .toc-title {
-  color: var(--ink-2);
-}
-
-.toc-row.is-next .toc-title {
-  color: var(--accent);
-}
-
-.toc-mark {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.mine-title {
   font-family: var(--font-sans);
   font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
   color: var(--ink-3);
-  white-space: nowrap;
+  margin: 0 0 10px;
 }
 
-.toc-mark svg {
-  color: var(--accent);
+.mine-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mine-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.mine-link {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  color: var(--ink);
+}
+
+.mine-meta {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
 }
 
 /* ── LỀ: GHI CHÚ GẦN ĐÂY (marginalia) ──────────────────────────────────────

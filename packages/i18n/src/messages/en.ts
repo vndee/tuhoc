@@ -219,6 +219,8 @@ export const en: Messages = {
   'home.notes.open': 'Open the chapter',
   'home.notes.formula': 'formula',
   'home.notes.aria': (course: string) => `Open this note in ${course}`,
+  'home.myCourses': 'My courses',
+  'home.myCoursesEmpty': 'You have not started any course yet.',
   'toc.next': 'Next',
   'toc.done': 'Read',
 
