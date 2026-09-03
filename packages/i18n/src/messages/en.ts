@@ -202,6 +202,10 @@ export const en: Messages = {
   'course.enroll': 'Start this course',
   'course.unenroll': 'Remove from my courses',
   'course.enrolling': 'Adding…',
+  /** Fix round 1: surface for a failed enroll/un-enroll (network drop,
+   *  5xx) — before this the button just quietly stopped being `isPending`. */
+  'course.enrollFailed': "Couldn't enroll. Try again.",
+  'course.unenrollFailed': "Couldn't remove this course. Try again.",
   'chapter.notFound': 'Chapter not found.',
   'chapter.notFoundInCourse': 'That chapter is not in this course.',
 

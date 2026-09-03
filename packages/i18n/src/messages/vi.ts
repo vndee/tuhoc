@@ -284,6 +284,10 @@ export const vi = {
   'course.enroll': 'Bắt đầu học',
   'course.unenroll': 'Bỏ khỏi khoá của tôi',
   'course.enrolling': 'Đang thêm…',
+  /** Fix round 1: bề mặt cho một cú ghi danh/bỏ ghi danh hỏng (mất mạng,
+   *  5xx) — trước đó nút chỉ lặng lẽ hết `isPending` mà không nói gì. */
+  'course.enrollFailed': 'Không ghi danh được. Thử lại.',
+  'course.unenrollFailed': 'Không bỏ ghi danh được. Thử lại.',
   'chapter.notFound': 'Không tìm thấy chương này.',
   'chapter.notFoundInCourse': 'Không tìm thấy chương này trong khóa học.',
 

@@ -374,4 +374,43 @@ describe('Task 5 — ghi danh và bỏ ghi danh ngay tại trang khoá', () => {
     expect(screen.queryByRole('button', { name: 'Bắt đầu học' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Bỏ khỏi khoá của tôi' })).not.toBeInTheDocument();
   });
+
+  it('Fix round 1 — POST /enrollments trả 500: hiện thông báo lỗi tại chỗ; bấm lại và thành công thì thông báo biến mất', async () => {
+    server.use(http.get('/courses/demo', () => HttpResponse.json(buildManifest(4))));
+
+    let shouldFail = true;
+    let enrolled = false;
+    server.use(
+      http.get('/enrollments', () =>
+        HttpResponse.json({ enrollments: enrolled ? [{ courseId: 'demo', createdAt: '2026-01-01T00:00:00Z' }] : [] }),
+      ),
+      http.post('/enrollments', () => {
+        if (shouldFail) return new HttpResponse(null, { status: 500 });
+        enrolled = true;
+        return new HttpResponse(null, { status: 201 });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderCourseHome();
+
+    const btn = await screen.findByRole('button', { name: 'Bắt đầu học' });
+    await user.click(btn);
+
+    // Một request hỏng KHÔNG được lặng lẽ biến mất: trước bản vá này, nút chỉ
+    // hết `isPending` mà không nói gì — học viên bấm "Bắt đầu học" và, theo
+    // như màn hình thấy, không có gì xảy ra. `role="alert"` phải xuất hiện
+    // với đúng câu, và nút phải CÒN là "Bắt đầu học" (không lỡ chuyển sang đã
+    // ghi danh dù request thật sự đã hỏng).
+    expect(await screen.findByRole('alert')).toHaveTextContent('Không ghi danh được. Thử lại.');
+    expect(screen.getByRole('button', { name: 'Bắt đầu học' })).toBeInTheDocument();
+
+    // Bấm lại — lần này server trả 201 — thông báo cũ phải biến mất, không
+    // được kẹt lại dưới một nút giờ đã hoạt động.
+    shouldFail = false;
+    await user.click(screen.getByRole('button', { name: 'Bắt đầu học' }));
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(await screen.findByRole('button', { name: 'Bỏ khỏi khoá của tôi' })).toBeInTheDocument();
+  });
 });
