@@ -115,10 +115,14 @@ export function useLastStudiedCourseId(): LastStudied {
  * Từng có một bậc thứ hai riêng — "một khoá thiết bị này ĐANG GIỮ" — cho một
  * course đã nhập vào `db.packages` nhưng chưa có hàng progress nào. Bậc ấy
  * mất đi cùng luồng import (Task 13): không còn "giữ" course nào theo nghĩa
- * đó, mọi course đọc thẳng từ máy chủ. `courseIds` giờ do chỗ gọi tự hợp từ
- * bất kỳ nguồn nào nó cho là hợp lý làm gợi ý (`pages/Dashboard.tsx` hợp danh
- * mục công khai với `stats.courses[]`) — hàm này không còn biết, và không cần
- * biết, course đến từ đâu.
+ * đó, mọi course đọc thẳng từ máy chủ.
+ *
+ * `courseIds` là danh sách khoá NGƯỜI NÀY ĐÃ GHI DANH (`GET /enrollments`),
+ * không phải danh mục công khai. Bản trước của chú thích này nói chỗ gọi được
+ * hợp "bất kỳ nguồn nào nó cho là hợp lý", và `pages/Dashboard.tsx` đã hợp
+ * danh mục chung vào — nên mọi tài khoản đều có một "khoá đang dở" chưa từng
+ * mở. Hàm này vẫn không cần biết khoá đến từ đâu; điều đổi là chỗ gọi không
+ * còn được phép đưa vào đây thứ không thuộc về người dùng.
  *
  * `undefined` = "chưa có gì để tiếp tục". Chỗ gọi phân biệt nó với "chưa biết"
  * bằng `settled`, KHÔNG bằng giá trị này.
