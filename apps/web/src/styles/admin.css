@@ -66,9 +66,9 @@
   padding: 18px 20px;
   margin-bottom: 28px;
   border: 1px solid var(--rule);
-  border-radius: var(--radius-xl);
+  border-radius: 0;
   background: var(--surface-1);
-  box-shadow: var(--shadow-xs);
+  box-shadow: none;
 }
 
 .admin-upload-heading {
@@ -124,10 +124,8 @@
 }
 
 .admin-table th {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
   color: var(--ink-3);
 }
 
@@ -179,7 +177,7 @@
   margin-top: 16px;
   padding: 14px 16px;
   border: 1px solid var(--color-error-200);
-  border-radius: var(--radius-lg);
+  border-radius: 0;
   background: var(--color-error-50);
 }
 
@@ -207,10 +205,8 @@
 }
 
 .admin-findings-table th {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
   color: var(--color-error-700);
 }
 

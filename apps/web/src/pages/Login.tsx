@@ -223,113 +223,55 @@ export function Login() {
       làm hỏng một phép đo về vòng đời đồng bộ vì một lý do thẩm mỹ.
     */
     <div className="auth-page">
-      {/*
-        NỬA PHẢI (`order: 2` ở CSS — nó đứng trước trong DOM vì thứ tự ĐỌC là
-        form trước, lời rao sau; xem `styles/settings-auth.css`).
-
-        Nó mang hai điều khiển mà trang này không còn thanh trên để chứa: nút
-        chủ đề và bộ chọn ngôn ngữ. Nhãn hiệu thì KHÔNG — nó ở đầu cột form,
-        đúng bản dựng ("cái logo phải là ở pane bên trái chứ").
-
-        BỘ CHỌN NGÔN NGỮ Ở ĐÂY LÀ BẢN DUY NHẤT trên route này, và đó là điều
-        kiện chứ không phải một chi tiết: `App.tsx` không dựng thanh trên trên
-        `/login` nữa, nên nếu chỗ này không có nó thì một người không đọc được
-        tiếng Việt gặp màn hình đầu tiên của sản phẩm mà không có đường đổi
-        ngôn ngữ. `i18n/LanguageProvider.test.tsx` ("CỬA") lái `<App/>` thật và
-        đo đúng câu ấy — và nó đo trên `/login`, vì một người chưa đăng nhập bị
-        đẩy về đây.
-      */}
-      <section className="auth-pitch">
-        <div className="auth-pitch-top">
-          <div className="auth-chrome">
-            <button
-              type="button"
-              className="auth-chrome-btn"
-              aria-label={t(theme === 'dark' ? 'topbar.themeToLight' : 'topbar.themeToDark')}
-              aria-pressed={theme === 'dark'}
-              onClick={toggleTheme}
-            >
-              {theme === 'dark' ? (
-                <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                  <circle cx="10" cy="10" r="3.6" stroke="currentColor" strokeWidth="1.6" />
-                  <path
-                    d="M10 2.4v1.9M10 15.7v1.9M17.6 10h-1.9M4.3 10H2.4M15.4 4.6l-1.3 1.3M6 14l-1.4 1.4M15.4 15.4l-1.3-1.3M6 6L4.6 4.6"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              ) : (
-                <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                  <path
-                    d="M16.5 12.4A6.8 6.8 0 017.6 3.5a6.9 6.9 0 108.9 8.9z"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              )}
-            </button>
-            <LanguageSwitcher />
-          </div>
-        </div>
-
-        {/*
-          KHỐI CHỮ CHỒNG LÊN ĐÁY ẢNH — hình dạng của mẫu Untitled UI "log in
-          split quote image", nhưng KHÔNG phải nội dung của nó.
-
-          Mẫu ấy đặt ở đây một LỜI CHỨNG THỰC của khách hàng: câu trích trong
-          ngoặc kép, tên người, chức danh, công ty, năm ngôi sao. Sản phẩm này
-          chưa có khách hàng nào, nên dựng ba thứ ấy ra là bịa một bài đánh giá
-          — và một bài đánh giá bịa trên chính màn hình đăng ký là thứ không
-          sửa lại được bằng một dòng chú thích ở đâu đó.
-
-          Thay vào đó là lời của CHÍNH SẢN PHẨM, đúng câu đã có trên canvas đã
-          duyệt, và không có ngoặc kép: ngoặc kép sẽ ngụ ý một người nào đó đã
-          nói nó. Ba gạch đầu dòng ở dưới là ba tính chất mà mã trong repo này
-          thật sự giữ, không phải ba khẩu hiệu.
-        */}
-        <div className="auth-pitch-body">
-          <h1 className="auth-pitch-h">{t('login.pitch.headline')}</h1>
-          <p className="auth-pitch-lede">{t('login.pitch.lede')}</p>
-          <ul className="auth-points" aria-label={t('login.pitch.aria')}>
-            {(['login.point.free', 'login.point.ownKey', 'login.point.sync'] as const).map((key) => (
-              <li key={key}>
-                <svg
-                  className="auth-tick"
-                  width="15"
-                  height="15"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M3 8.5 6.5 12 13 4.5" />
-                </svg>
-                <span>{t(key)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
-
-      {/*
-        NỬA TRÁI: form. Không còn là một thẻ nổi — nó LÀ nửa trang.
-        Lớp là `auth-side`, KHÔNG `auth-panel`: `id="auth-panel"` đã thuộc về
-        `<div role="tabpanel">` ngay dưới đây, và hai thứ khác hẳn nhau mang
-        cùng một cái tên là cách rẻ nhất để người sau sửa nhầm.
-      */}
       <section className="auth-side">
+        {/* Hai điều khiển của thiết bị — chủ đề và ngôn ngữ — ở góc trên phải
+            của cột form. Chúng từng nằm trên panel ảnh bên phải; panel ấy đã
+            rời sang landing (02/09/2026: `/login` chỉ còn form), nhưng hai
+            điều khiển thì không đi được: `App.tsx` không dựng thanh trên trên
+            route này, và `i18n/LanguageProvider.test.tsx` ("CỬA") đo đúng
+            rằng một người chưa đọc được tiếng Việt vẫn đổi được ngôn ngữ ở
+            màn hình đầu tiên họ gặp. */}
+        <div className="auth-chrome auth-chrome-top">
+          <button
+            type="button"
+            className="auth-chrome-btn"
+            aria-label={t(theme === 'dark' ? 'topbar.themeToLight' : 'topbar.themeToDark')}
+            aria-pressed={theme === 'dark'}
+            onClick={toggleTheme}
+          >
+            {theme === 'dark' ? (
+              <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <circle cx="10" cy="10" r="3.6" stroke="currentColor" strokeWidth="1.6" />
+                <path
+                  d="M10 2.4v1.9M10 15.7v1.9M17.6 10h-1.9M4.3 10H2.4M15.4 4.6l-1.3 1.3M6 14l-1.4 1.4M15.4 15.4l-1.3-1.3M6 6L4.6 4.6"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+              </svg>
+            ) : (
+              <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  d="M16.5 12.4A6.8 6.8 0 017.6 3.5a6.9 6.9 0 108.9 8.9z"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+          </button>
+          <LanguageSwitcher />
+        </div>
         <div className="auth-side-inner">
           {/* Nhãn hiệu ĐỨNG GIỮA, ngay trên nhan đề — chỗ mẫu Untitled UI đặt
               nó, và nó ở cột trái đúng như người dùng yêu cầu. Ba dòng đầu cột
               (mark, nhan đề, câu dẫn) căn giữa; từ hàng tab trở xuống căn trái,
               vì một ô nhập căn giữa thì mắt không có mép nào để bám. */}
           <p className="auth-brand">
-            <Logo size={34} boxed />
+            {/* Không `boxed`: cùng lý do đã gỡ ô vuông quanh mark trên thanh
+                trên ở vòng 1 — một ô app-icon tô nền bo góc là vật của phần
+                mềm, không của một mặt viết tay. */}
+            <Logo size={32} />
             <span>{t('app.name')}</span>
           </p>
           {/*
@@ -377,17 +319,7 @@ export function Login() {
             KHÔNG MẤT GÌ nếu chưa đăng nhập ngay, cho người chỉ đọc cột form mà
             bỏ qua panel bên trái.
           */}
-          <p className="auth-reassure">
-            <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path
-                d="M10 2.6l5.7 2.2v4.6c0 3.4-2.3 6.5-5.7 7.9-3.4-1.4-5.7-4.5-5.7-7.9V4.8L10 2.6z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span>{t('login.reassure')}</span>
-          </p>
+          <p className="auth-reassure">{t('login.reassure')}</p>
 
           {/*
             ĐỔI TAB, KHÔNG PHẢI ĐIỀU HƯỚNG: hai form là hai tab của cùng một

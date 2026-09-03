@@ -10,6 +10,15 @@ describe('theme toggle', () => {
     window.localStorage.clear();
     delete document.documentElement.dataset.theme;
     delete window.CourseKit;
+    /**
+     * `/courses`, KHÔNG phải `/`. Từ 03/09/2026 `/` không dựng thanh trên cho
+     * một người chưa đăng nhập (`App.tsx`: `authScreen`) — landing mang nhãn
+     * hiệu và hai điều khiển thiết bị của chính nó, viết bằng phấn. `#theme-btn`
+     * là nút của THANH TRÊN, nên hai bài dưới phải đứng ở một route công khai
+     * còn thanh trên. Bản thân nút phấn của landing có bộ test riêng
+     * (`pages/Landing.test.tsx`).
+     */
+    window.history.pushState({}, '', '/courses');
   });
 
   it('defaults to light when nothing is stored', () => {

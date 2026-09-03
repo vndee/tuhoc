@@ -381,48 +381,35 @@ export const vi = {
 
   /* ── đăng nhập (`pages/Login.tsx`) ─────────────────────────────────────── */
 
-  /**
-   * NỬA TRÁI — SẢN PHẨM TỰ GIỚI THIỆU.
-   *
-   * `/login` là màn hình đầu tiên của mọi người dùng mới, và trước đây nó là
-   * một thẻ trôi giữa màn hình trống: người chưa có tài khoản đọc xong vẫn
-   * không biết mình sắp đăng ký cái gì. Ba gạch đầu dòng dưới đây không phải
-   * khẩu hiệu — mỗi câu tương ứng một tính chất mà mã trong repo này thật sự
-   * giữ: khoá học đọc được ngay, miễn phí, không cần tài khoản (máy chủ phục
-   * vụ mọi khoá học công khai — không còn gói nào để tải), trợ lý AI chạy
-   * trên máy chủ của nền tảng và trả bằng credit (`internal/ai`,
-   * `ai/serverClient.ts`) — không còn key riêng nào để người học tự giữ, tiến
-   * độ và ghi chú đồng bộ qua tài khoản (`sync/engine.ts`).
-   *
-   * GẠCH ĐẦU DÒNG THỨ NHẤT VÀ THỨ BA ĐỔI Ở TASK 14 (spec
-   * `2026-08-25-server-side-pivot.md` §0.2) — khoá cũng đổi tên
-   * (`login.point.offline` → `login.point.free`, `login.point.private` →
-   * `login.point.sync`) để chỗ nào còn trỏ khoá cũ nổ compile thay vì lặng lẽ
-   * trống. Bản cũ hứa "gói nằm trên máy bạn, đọc ngoại tuyến" — đúng khi
-   * course còn là một gói tải về cất trong `db/local.ts`; sai từ khi course
-   * chuyển hẳn lên máy chủ, vì đọc mà mất mạng giờ là hỏng chứ không phải một
-   * tính năng. Bullet thứ ba từng là "course riêng tư không lộ ra registry" —
-   * khái niệm ấy cũng rời đi cùng registry riêng tư (`courses.lede` đã tự
-   * khai "mọi khoá học đều công khai"), nên chỗ của nó nay là lời hứa đồng bộ.
-   *
-   * GẠCH ĐẦU DÒNG THỨ HAI (`login.point.ownKey`) VÀ CÂU LEDE ĐỔI Ở TASK 15
-   * (bàn giao Pha 1 §2, cùng spec §0.1) — KHOÁ GIỮ NGUYÊN TÊN, chỉ đổi giá
-   * trị: `ownKey` mô tả một TÍNH CHẤT ("có một trợ lý AI"), không phải cơ chế
-   * đứng sau nó, nên tên khoá không sai theo cách buộc phải đổi tên như hai
-   * khoá kia. Bản cũ hứa "trợ lý AI chạy bằng key của chính bạn, và key
-   * không đi qua máy chủ của chúng tôi" — đúng khi kho khoá ở origin riêng
-   * còn là đường DUY NHẤT gọi AI; sai từ khi `internal/ai` ship (Task 11) và
-   * `useAI.ts` chuyển hẳn sang gọi máy chủ. `login.pitch.lede` mắc cùng lỗi ở
-   * một câu phụ ("hỏi trợ lý AI bằng key của chính bạn") — sửa luôn ở đây,
-   * cùng thời điểm, vì cùng một lời hứa chết theo cùng một sự kiện.
-   */
-  'login.pitch.headline': 'Khoá học mở cho mọi người.',
-  'login.pitch.lede':
-    'Mở một khoá học và đọc ngay — không cần cài đặt, không cần chờ tải. Bôi đen một đoạn để ghi chú thẳng lên trang, hoặc hỏi trợ lý AI ngay trong bài.',
-  'login.pitch.aria': 'Tự học làm được gì',
-  'login.point.free': 'Đọc toàn bộ giáo trình miễn phí — không cần tài khoản',
-  'login.point.ownKey': 'Trợ lý AI chạy trên máy chủ của chúng tôi, trả bằng credit — không cần key của riêng bạn',
-  'login.point.sync': 'Đăng nhập để tiến độ và ghi chú theo bạn trên mọi thiết bị',
+  // ── Landing (`pages/Landing.tsx`) — `/` cho khách chưa đăng nhập ──────
+  'landing.question': 'Học một mình, không mò mẫm một mình.',
+  'landing.lede': 'Sách mở sẵn cho mọi người đọc, không cần tài khoản. Bôi đen chỗ chưa hiểu để ghi chú vào đúng chỗ đó. Gia sư AI đọc được ghi chú ấy và trả lời ngay trong trang bạn đang đọc.',
+  'landing.read.verb': 'Đọc thử',
+  'landing.read.catalog': 'Mở danh mục khoá học',
+  'landing.read.meta': 'Miễn phí · không cần tài khoản',
+  'landing.account.cta': 'Tạo tài khoản',
+  'landing.demo.h': 'Một lượt hỏi, ví dụ',
+  'landing.demo.sentence': 'một câu trong chương bạn đang đọc',
+  'landing.demo.noteLabel': 'Ghi chú của bạn',
+  'landing.demo.note': 'chỗ này mình chưa hiểu',
+  'landing.demo.tutorLabel': 'Gia sư',
+  'landing.demo.tutor': 'Trả lời ngay chỗ đó, và trích lại ghi chú của bạn:',
+  'landing.working.tried': 'đọc lại lần thứ ba',
+  'landing.working.verdict': 'vẫn tắc ở chỗ cũ',
+  'landing.note.how': 'Ghi chú bám vào câu, không trôi đi đâu.',
+  'landing.note.hover': 'Rê chuột lên ghi chú để thấy nét nối về câu gốc.',
+  'landing.vision.figure': 'Hình vẽ phấn: một cuốn sách mở, và từ nó bay lên những thứ nó dạy — một mạng nơ-ron, vài ký hiệu toán, một hành tinh có vành và mấy ngôi sao.',
+  'landing.can.h': 'Ở đây bạn có thể',
+  'landing.can.read': 'Đọc hết một cuốn giáo trình, kèm công thức và hình tương tác. Không mất tiền, không cần tài khoản.',
+  'landing.can.note': 'Bôi đen một câu rồi viết ghi chú. Ghi chú bám vào câu đó.',
+  'landing.can.ask': 'Hỏi gia sư ngay trong trang đang đọc. Nó đọc được ghi chú bạn vừa viết.',
+  'landing.can.return': 'Đóng máy rồi mở máy khác. Vẫn đúng chỗ đang dở.',
+  'landing.catalog.h': 'Khoá học đang mở',
+  'landing.catalog.error': 'Không tải được danh mục khoá học lúc này.',
+  'landing.catalog.retry': 'Thử lại',
+  'landing.catalog.all': 'Xem tất cả',
+  'landing.login.cta': 'Đăng nhập',
+
 
   'login.title': 'Đăng nhập',
   'login.heading.login': 'Chào mừng trở lại',

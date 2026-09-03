@@ -108,8 +108,6 @@
   font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--ink-2);
   text-decoration: none;
   transition: color 150ms ease-out;
@@ -153,8 +151,6 @@
   font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   transition: color 150ms ease-out;
 }
 
@@ -202,8 +198,6 @@
   font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   padding: 0 2px 0 6px;
 }
 
@@ -215,8 +209,6 @@
   margin: 0 0 6px;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--ink-3);
 }
 
@@ -251,7 +243,7 @@
 .sb-prog-fill {
   height: 100%;
   border-radius: 999px;
-  background: var(--color-brand-600);
+  background: var(--accent);
   transition: width 0.2s ease;
 }
 

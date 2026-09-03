@@ -226,6 +226,15 @@
 }
 
 @media (max-width: 980px) {
+  /* Thanh trên tụt xuống `min-height: 56px` từ đây (`shell-modes.css`), nên
+     `--rd-chrome-h` phải tụt theo — nếu không, dải tiến độ vừa được ghim ở
+     `top: calc(--rd-chrome-h - 2px)` sẽ treo lơ lửng cách mép thanh trên 8px
+     và chữ chạy qua khe ấy. Đo được đúng 8px ở 900px và 390px trước khi sửa.
+     Nút mục lục nổi cũng neo theo biến này, nên nó được chỉnh cùng lúc. */
+  #app.reading {
+    --rd-chrome-h: 58px;
+  }
+
   /* Chữ của hai nút bên trái rụng đi như `.mk-lbl` của `#mark-btn`, để thanh
      trên ở màn hẹp còn chỗ cho breadcrumb — nhưng bằng cách GIẤU KHỎI MẮT chứ
      không `display:none`. Khác biệt không phải thẩm mỹ: tên trợ năng của hai
@@ -351,10 +360,8 @@
    không ở trong `#rail`. */
 .rd-h {
   margin: 16px 6px 8px;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  font-size: 14px;
+  font-weight: 400;
   color: var(--ink-3);
 }
 
@@ -466,6 +473,22 @@
 #app.reading #progwrap {
   height: 2px;
   background: var(--rule);
+  /* GHIM DƯỚI THANH TRÊN. `#topbar` là `position: sticky; top: 0` và đứng yên,
+     nhưng `reader.css` để `#progwrap` ở `position: relative` trong luồng
+     thường — nên dải tiến độ trôi mất khỏi đỉnh ngay khi người ta bắt đầu đọc.
+     Đo được ở 50% chương: `top: -2699px`, ngoài khung nhìn. Con số nó báo luôn
+     đúng; thứ hỏng là nó không còn ở đó để ai nhìn.
+
+     `top` lấy từ chiều cao thật của thanh trên chứ không viết cứng 64px:
+     `--rd-chrome-h` (66px = 64 thanh trên + 2 dải) đã là con số ấy trừ đi
+     chính dải này, nên `calc(... - 2px)` đặt dải sát mép dưới thanh trên ở mọi
+     bề ngang, kể cả màn hẹp nơi thanh trên còn 56px.
+
+     Luật sống ở phía app, không sửa `packages/course-kit/reader.css` — cùng
+     ranh giới đã giữ suốt vòng 5B. */
+  position: sticky;
+  top: calc(var(--rd-chrome-h) - 2px);
+  z-index: 30;
 }
 
 #app.reading #progbar {
@@ -550,4 +573,16 @@
   .reader-anon-nudge {
     display: none;
   }
+}
+
+/* ── NHÃN PHẦN TRONG MỤC LỤC KHI ĐANG ĐỌC (vòng 5B, 03/09/2026) ───────────
+   `packages/course-kit/reader.css` viết hoa và giãn chữ nhãn này. Chủ dự án
+   chọn đổi VỎ của vùng đọc mà GIỮ NGUYÊN thân chương, nên luật ở đây đè cho
+   mục lục — thanh bên và ngăn kéo đều là vỏ — còn tệp nguồn của reader thì
+   không đụng tới, và `app-screens.css` đã lo phần `:not(.reading)` ở vòng 2. */
+#app.reading .nav-part {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 14px;
+  font-weight: 400;
 }

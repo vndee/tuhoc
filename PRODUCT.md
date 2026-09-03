@@ -35,6 +35,33 @@ Thành công là: người học quay lại, mở đúng chỗ đang dở, thấ
 mình đúng đoạn, và khi kẹt thì hỏi được một gia sư **biết họ đã đọc gì và đã
 ghi gì**.
 
+## Vision
+
+Ghi 03/09/2026, từ lời chủ dự án: *"AI hỗ trợ đào sâu, personalize khoá học,
+tôi tin đây là xu hướng mới của giáo dục."*
+
+**Một cuốn sách hay là xương sống, không phải trần nhà.** Lớp học kế tiếp không
+phải một khoá quay sẵn, cũng không phải một con bot trả lời hộ — mà là một cuốn
+giáo trình mà ai đọc cũng đi sâu hơn theo đường của riêng mình: AI đọc đúng chỗ
+người học đang mắc và đúng ghi chú họ vừa viết, rồi mở tiếp từ đó. Người học vẫn
+là người làm việc; AI làm cho việc ấy đi xa hơn.
+
+**Phần nào của tầm nhìn ĐÃ chạy, phần nào CHƯA** — ranh giới này là điều giữ cho
+landing không hứa hụt:
+
+- **Đã chạy:** gia sư đọc chương đang mở (`read_course`) và ghi chú của chính
+  người học (`read_my_notes`, mặc định bật, có công bố), trả lời ngay trong bài;
+  người dùng đặt được lời nhắc riêng cho agent ở `/settings`.
+- **CHƯA chạy:** bản thân khoá học không đổi theo người học. Không có lộ trình
+  thích ứng, không có nội dung sinh riêng, không có đo hiểu biết. "Personalize
+  khoá học" hôm nay mới là *lời nhắc riêng + gia sư đọc ghi chú*, không hơn.
+
+Landing từng in tầm nhìn này dưới nhãn **"Hướng đi"**, rồi chủ dự án gỡ nó
+cùng ngày: trang chủ nay chỉ còn HÌNH VẼ nói ra tinh thần ấy, không còn câu
+chữ. Tầm nhìn sống ở đây, không ở trang chủ. Nếu một lượt sửa lời sau này đưa
+nó về, nó phải mang lại nhãn phân biệt — `pages/Landing.test.tsx` canh rằng
+trang không lặng lẽ hứa những thứ ở mục "CHƯA chạy" bên trên.
+
 ## Positioning
 
 Chủ dự án chọn ba lời hứa phải giữ bằng mọi giá khi thiết kế lại:
@@ -47,25 +74,17 @@ Chủ dự án chọn ba lời hứa phải giữ bằng mọi giá khi thiết 
 3. **Gia sư AI chạy trên máy chủ, trả bằng credit.** Không cần key riêng,
    không cài gì.
 
-### Một sự thật đang MÂU THUẪN với mã — ghi nguyên văn, chưa giải quyết
+### Đọc là công khai — mâu thuẫn đã giải quyết 02/09/2026
 
-Chủ dự án viết: *"phải có tài khoản mới đọc được do chúng ta phải lưu các
-notes, comments nữa."*
+Chủ dự án từng viết (02/09, phỏng vấn init): *"phải có tài khoản mới đọc được
+do chúng ta phải lưu các notes, comments nữa."* Mã đang chạy nói ngược lại
+(reader `/c/:courseId/:chapterId` công khai; spec pivot §9: *"ai cũng đọc được
+mọi course, không cần đăng nhập"*).
 
-Mã đang chạy nói ngược lại: reader (`/c/:courseId/:chapterId`) là route
-**công khai**, và trang chủ hứa *"Đọc toàn bộ giáo trình miễn phí — không cần
-tài khoản."* Đây là tiền đề của Pha 1 (spec `2026-08-25-server-side-pivot.md`
-§9: *"ai cũng đọc được mọi course, không cần đăng nhập"*) và là thứ e2e
-`p1.spec.ts` đang canh.
-
-Hệ quả cho mọi việc thiết kế từ đây:
-
-- **Không được** viết lại trang chủ để *khẳng định* "không cần tài khoản" như
-  một lời hứa — chủ dự án đã rút lời hứa đó.
-- **Cũng không được** tự ý chặn reader sau đăng nhập trong một lượt thiết kế:
-  đó là thay đổi sản phẩm (route, e2e, spec §9), cần một quyết định và một
-  task riêng, không phải một cú sửa CSS.
-- Trạng thái ghi nhận: **hướng đã chốt = cần tài khoản để đọc; mã chưa theo.**
+**Quyết định, cùng ngày, khi làm landing page:** *"Đọc miễn phí không cần tài
+khoản; tài khoản để ghi chú, tiến độ, gia sư AI."* Mã giữ nguyên; landing và
+trang đăng nhập nói đúng câu ấy. Ghi chú và tiến độ cần tài khoản vì chúng
+được lưu theo người; đọc thì không.
 
 ## Operating Context
 

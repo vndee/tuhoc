@@ -18,9 +18,9 @@
  * mục có thứ tự thật (một lộ trình gợi ý), số quay lại dưới dạng `1.`.
  * ══════════════════════════════════════════════════════════════════════════ */
 
+/* Câu của GIAO DIỆN nói về danh mục (rỗng, đang tải, hỏng) — nét tay. */
 .courses-note {
-  font-family: var(--font-serif);
-  font-style: italic;
+  font-family: var(--font-sans);
   font-size: 16px;
   color: var(--ink-3);
 }
@@ -47,11 +47,14 @@
 
 /* Tiền tố hai id: thắng `#app:not(.reading) #content h2` của app-screens.css —
    lý do đầy đủ ở đầu `home.css`, khối "VÌ SAO CÁC HEADING…". */
+/* Tên khoá là một MỤC app đóng khung, không phải văn xuôi của tác giả — nét
+   tay, cùng luật với landing. `.courses-item-desc` ngay dưới thì GIỮ serif:
+   đó mới là chữ do tác giả viết. */
 #app:not(.reading) #content .courses-item-title {
   margin: 0;
-  font-family: var(--font-serif);
-  font-weight: 400;
-  font-size: 22px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 21px;
   line-height: 1.25;
   color: var(--ink);
   text-decoration: underline;

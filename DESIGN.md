@@ -1,6 +1,6 @@
 ---
 name: Tự học — khung app
-description: Giáo trình LaTeX lề rộng — trang typeset trắng/mực với một xanh định lý; áp dụng cho running head, /, /courses, /progress (KHÔNG áp dụng cho reader).
+description: Giáo trình LaTeX lề rộng — trang typeset trắng/mực với một xanh định lý; áp dụng cho running head, / (Học tiếp và landing cho khách), /courses, /progress, cột form /login (KHÔNG áp dụng cho reader).
 colors:
   paper: "#ffffff"
   ink: "#101828"
@@ -8,6 +8,7 @@ colors:
   ink-3: "#667085"
   rule: "#eaecf0"
   rule-strong: "#d0d5dd"
+  panel: "#f9fafb"
   theorem-blue: "#0b5fa5"
   theorem-blue-soft: "#d9e8f5"
   paper-night: "#171717"
@@ -16,6 +17,7 @@ colors:
   ink-3-night: "#8c8c8c"
   rule-night: "#333333"
   rule-strong-night: "#474747"
+  panel-night: "#202020"
   theorem-blue-night: "#4d92cc"
 typography:
   display:
@@ -79,6 +81,7 @@ spacing:
   head: "30px"
   section: "36px"
   block: "40px"
+  scene: "56px"
 components:
   action-chapter:
     textColor: "{colors.ink}"
@@ -136,13 +139,18 @@ components:
     backgroundColor: "{colors.theorem-blue}"
     height: "2px"
     rounded: "{rounded.none}"
+  excerpt-code:
+    backgroundColor: "{colors.panel}"
+    textColor: "{colors.ink}"
+    padding: "8px 14px"
+    rounded: "{rounded.none}"
 ---
 
 # Design System: Tự học — khung app
 
-> Ghi lại **sau khi dựng xong**, từ mã đã ship (2026-09-02, hướng "Giáo trình LaTeX, lề rộng", seed 57dcb485, chế độ Operate). Mọi giá trị dưới đây đọc ra từ `apps/web/src/styles/tokens.css`, `index.css`, `home.css`, `courses.css`, `shell-modes.css` và ảnh chụp ở `.impeccable/review/`. Frontmatter là chuẩn; văn xuôi chỉ giải thích chỗ dùng.
+> Ghi lại **sau khi dựng xong**, từ mã đã ship (2026-09-02, hướng "Giáo trình LaTeX, lề rộng", seed 57dcb485, chế độ Operate). Mọi giá trị dưới đây đọc ra từ `apps/web/src/styles/tokens.css`, `index.css`, `home.css`, `courses.css`, `shell-modes.css`, `landing.css`, `settings-auth.css` và ảnh chụp ở `.impeccable/review/`. Frontmatter là chuẩn; văn xuôi chỉ giải thích chỗ dùng.
 >
-> **Phạm vi.** Hệ này bao phủ running head (`#topbar`), `/` (Học tiếp), `/courses`, `/progress`. **Reader** (`packages/course-kit/reader.css`, trang `/c/:courseId/:chapterId`) là một bề mặt riêng, chưa đụng tới, có `--serif`/`--sans` và bảng màu giấy ấm của riêng nó; không mô tả ở đây và không được "sửa cho khớp". Cài đặt, Admin, Đăng nhập vẫn đứng trên `app-screens.css` cũ (xem cuối tệp).
+> **Phạm vi.** Hệ này bao phủ running head (`#topbar`), `/` — Học tiếp cho người đã đăng nhập **và landing cho khách chưa đăng nhập** (bề mặt Persuade, `pages/Landing.tsx` qua `pages/HomeGate.tsx`, thêm 02/09/2026, hợp đồng `.impeccable/surfaces/apps-web-src-pages-landing-tsx.md`) —, `/courses`, `/progress`, và **cột form của `/login`** (bố cục một cột giữa trang, hai điều khiển thiết bị góc trên phải, câu trấn an; ô nhập và nút vẫn là kit kế thừa). **Reader** (`packages/course-kit/reader.css`, trang `/c/:courseId/:chapterId`) là một bề mặt riêng, chưa đụng tới, có `--serif`/`--sans` và bảng màu giấy ấm của riêng nó; không mô tả ở đây và không được "sửa cho khớp". Cài đặt, Admin và phần form của Đăng nhập vẫn đứng trên `app-screens.css` cũ (xem cuối tệp).
 
 ## Overview
 
@@ -152,9 +160,11 @@ Khung app là một **trang giáo trình đã typeset**, không phải một das
 
 Đây là thế giới của chế độ *Operate*: người quay lại một chương khó lần thứ n, cần thấy ngay mình dừng đâu và nghĩ gì. Hành động chính của trang chủ vì thế **không phải một nút màu** mà là tên chương dở, một liên kết serif cỡ lớn với động từ run-in đứng trước — như `\paragraph{Đọc tiếp}`. Trang tiến độ mở bằng một **câu tiếng Việt hoàn chỉnh**, không phải ba ô số liệu. Chuyển động chỉ có một: đường gạch chân hairline hiện lên trong 150ms.
 
+Landing cho khách là cùng thế giới ấy ở chế độ *Persuade*, dựng theo cấu trúc **"hành trình của một câu hỏi"**: thay vì kể tính năng, trang cho khách **đọc một trích đoạn thật** của giáo trình với một ghi chú ví dụ neo đúng câu ở lề, rồi một biên bản hỏi gia sư trích lại chính ghi chú ấy, một hàng mục lục có tiến độ, và danh mục thật. Bốn cảnh xếp dọc trong cùng khung `.doc`; không cảnh nào là hộp tính năng, không hero, không nút màu — hành động chính vẫn là tên chương. Trang được phép nói đúng một sự thật về tài khoản: *đọc miễn phí không cần tài khoản; tài khoản giữ ghi chú, tiến độ, gia sư AI* (PRODUCT.md, 02/09/2026).
+
 Chế độ tối là **"đêm của trình đọc PDF"**: đảo giấy/mực sang xám trung tính (không phải slate ngả xanh của kit dashboard), giữ nguyên một xanh nhấn nâng một bậc để đọc được. Công tắc là `html[data-theme]`, không bao giờ là `prefers-color-scheme`.
 
-Những gì hệ này **từ chối có chủ ý** (đã xác nhận qua hợp đồng hướng và vòng kết thúc): dashboard thẻ–KPI–tím; eyebrow/kicker trên tiêu đề; số thứ tự trang trí (`01`, `02`); nút màu cho hành động chính; Inter/IBM Plex trong khung app.
+Những gì hệ này **từ chối có chủ ý** (đã xác nhận qua hợp đồng hướng và vòng kết thúc): dashboard thẻ–KPI–tím; eyebrow/kicker trên tiêu đề; số thứ tự trang trí (`01`, `02`); nút màu cho hành động chính; Inter/IBM Plex trong khung app. Riêng landing còn từ chối: giá, lời chứng thực, logo đối tác, hình stock, và mọi ví dụ giả làm dữ liệu thật.
 
 **Key Characteristics:**
 - Trung tính + đúng MỘT màu nhấn (#0b5fa5 sáng / #4d92cc tối).
@@ -191,13 +201,13 @@ Bộ `*-night` là cùng vai trong chế độ tối. Không có gray-950 (#0c11
 
 **Quy tắc Đêm PDF.** Tối là đảo giấy/mực sang xám **trung tính** (#171717 / #ececec / #333333), nhấn nâng đúng một bậc (brand-600 → brand-400). Không slate, không xanh tím, không `prefers-color-scheme`. Mọi màu của khung là token của `index.css`, nên `home.css`/`courses.css`/`shell-modes.css` không được chứa một luật `[data-theme]` nào.
 
-**Quy tắc Giấy một tờ.** `--page` và nền running head là cùng một giá trị. Không có "surface" thứ hai trong khung `.doc`; `--panel` (gray-50) chỉ là nền của điều khiển ở Cài đặt/Admin, không phải giấy.
+**Quy tắc Giấy một tờ.** `--page` và nền running head là cùng một giá trị. Không có "surface" thứ hai trong khung `.doc`; `--panel` (gray-50 sáng / #202020 tối) là nền của điều khiển ở Cài đặt/Admin và của khối mã `pre` trong trích đoạn giáo trình (`verbatim` — một mảng chữ máy đặt *trên* giấy, kẻ `1px --rule`, góc vuông), không phải giấy và không phải nền của một nhóm nội dung.
 
 ## Typography
 
 **Display/Body Font:** Charis SIL (dự phòng Charter, Iowan Old Style, Georgia) — `--font-serif`, nạp qua `@fontsource`, subset `vietnamese`.
 **Label Font:** Archivo Narrow (dự phòng Arial Narrow, Roboto Condensed, system-ui) — `--font-sans`.
-**Mono:** `--font-mono` (ui-monospace stack) — khai báo, chưa dùng trong khung.
+**Mono:** `--font-mono` (ui-monospace stack) — chỉ dùng ở khối `pre` của trích đoạn giáo trình trên landing (13.5px, 1.5).
 
 **Character:** Serif thường, không đậm, nhấn bằng **cỡ** — trang typeset không có bold heading. Sans hẹp viết hoa có tracking đứng cạnh serif lớn như chú thích ở lề: nhỏ, đều, không tranh giọng. Hai họ chữ không bao giờ đổi vai.
 
@@ -206,8 +216,8 @@ Bộ `*-night` là cùng vai trong chế độ tối. Không có gray-950 (#0c11
 - **Headline** (400, `clamp(26px, 3vw, 34px)`, 1.15, -0.01em): tên chương trong khối Tiếp tục (`.cont-chapter`) — hành động chính của `/`. Cũng dùng cho tiêu đề trạng thái rỗng ở 26px.
 - **Sentence** (400, `clamp(22px, 2.6vw, 30px)`, 1.35): câu mở đầu `/progress` ("Bạn đã học 11 phút, với chuỗi 3 ngày liên tục."), `max-width: 34em`, `text-wrap: pretty`.
 - **Title** (400, 22px, 1.25): tên khoá trong danh mục `/courses`. Biến thể nhỏ: 17px cho tên khoá ở hàng tiến độ, 16.5px cho tiêu đề chương trong mục lục.
-- **Lede** (400 *italic*, 17px, 1.5, `--ink-2`): câu dẫn dưới tiêu đề trang, `max-width: 60ch`. Cùng giọng nghiêng cho trích đoạn ghi chú (14.5px) và câu trạng thái/đang tải (16px, `--ink-3`) — nghiêng = `\emph`, "đây là lời nói, không phải giao diện".
-- **Body** (400, 15.5px, 1.5): dòng meta, thân ghi chú, mô tả khoá (`max-width: 62ch`), hàng trọng số. Đo 56–62ch.
+- **Lede** (400 *italic*, 17px, 1.5, `--ink-2`): câu dẫn dưới tiêu đề trang, `max-width: 60ch` (72ch trên landing). Cùng giọng nghiêng cho trích đoạn ghi chú (14.5px), dòng nguồn trích trên landing (`.ld-source`, 14.5px, `--ink-3`), câu ghi chú trích trong biên bản (`.ld-qa-quote`, `--ink-2`) và câu trạng thái/đang tải (16px, `--ink-3`) — nghiêng = `\emph`, "đây là lời nói, không phải giao diện".
+- **Body** (400, 15.5px, 1.5): dòng meta, thân ghi chú, mô tả khoá (`max-width: 62ch`), hàng trọng số, hàng liên kết cuối landing. Đo 56–62ch. Trên landing, chữ *được đọc thật* đặt lớn hơn thân meta: trích đoạn giáo trình 17px/1.55 `--ink` (`max-width: 66ch` — không nhỏ hơn thân bài của reader), lượt biên bản 16.5px/1.55 `--ink`, ghi chú lề giải thích 15px/1.5 `--ink-2` (`max-width: 40ch`).
 - **Label** (600, 12px, 0.08em, UPPERCASE, `--ink-3`): `.lbl` và `.doc-h` — tên phần trong mục lục, đầu cột lề, đầu mục trong cột chính. Động từ run-in dùng cùng kiểu ở 12.5px và màu nhấn.
 - **Label-nav** (600, 13px, 0.08em, UPPERCASE): ba mục running head, nút tìm/đổi giao diện, bộ chọn ngôn ngữ, hai chữ cái tài khoản.
 - **Numeral** (500, 12.5px, `tabular-nums`, `--ink-3`): số mục "1.2" trong mục lục, phần trăm, số chương, phút. Số mục trong headline là `0.5em` của tên chương.
@@ -227,6 +237,8 @@ Bộ `*-night` là cùng vai trong chế độ tối. Không có gray-950 (#0c11
 
 **Dưới 900px**: một cột, `row-gap: 40px`. Ở `/` lề xếp *sau* cột chính (ghi chú đứng sau khối Tiếp tục). Ở `/progress` lề xếp *trước* (`order: -1`) vì "Chọn năm" điều khiển mọi thứ phía dưới; danh sách năm chuyển sang hàng ngang. Lịch 53 tuần giữ ô 11px thật và **cuộn ngang** trong `.prog-cal` (một tờ lịch năm không co, nó lật); chỉ hiện nhãn tháng lẻ; chú giải `position: sticky; left: 0`. Hàng trọng số: tên khoá chiếm trọn hàng và xuống dòng, thanh + % xuống hàng dưới — dữ liệu không nhường chỗ cho minh hoạ.
 
+**Bốn cảnh của landing** (`.doc-body.ld-scene`, `landing.css`): bốn thân hai cột xếp dọc trong cùng `.doc`, `margin-bottom: 56px` giữa các cảnh (44px dưới 900px), cảnh cuối 24px — *tụ chặt, tách rộng*: khoảng giữa hai cảnh luôn lớn hơn mọi khoảng bên trong một cảnh (đầu mục 10px, ghi chú lề 12px, hành động 10px, hàng liên kết 18px). Đầu trang landing gọn hơn một bậc (`padding-bottom: 12px; margin-bottom: 16px`, `.doc-h` `margin-bottom: 10px`) để hành động chính của cảnh 1 nằm trên nếp gấp ~780px của laptop 1440×900 (đo trên `landing-first-viewport.png`). Cảnh 1 là lưới ba mục `.ld-read`: `grid-template-rows: auto auto`, cột chính hàng 1 là trích đoạn, **lề chiếm cả hai hàng** (`grid-row: 1 / span 2`), hành động `.ld-act` ở cột chính hàng 2 — ngay dưới đoạn, không nằm trong `.doc-main`. Dưới 900px cả ba về một cột theo thứ tự DOM *đoạn → ghi chú → hành động*, để ghi chú đứng sát câu nó neo vào thay vì rơi xuống sau hành động.
+
 **Running head** (`#topbar`): cao 64px, `padding: 0 16px` (biến `--topbar-pad-x`, dùng chung với máng trái của reader), `gap: 10px`. Dưới 980px: `height: auto; min-height: 56px`, xuống dòng, hàng dưới là ba mục điều hướng chiếm trọn bề ngang (cuộn ngang, ẩn thanh cuộn); wordmark chữ ẩn, chỉ còn mark.
 
 **Nhịp dọc** (đo trong `home.css`): hàng danh sách `7px 0`; ghi chú và hàng tiến độ `12px 0 14px`; mục khoá `16px 0 18px`; đầu mục `margin-bottom: 12px`, `padding-bottom: 8px`; khoảng giữa phần trong mục lục 20px; dưới đầu trang 30px; giữa các khối `/progress` 36px; dưới khối Tiếp tục 40px. Khoảng trên một heading luôn lớn hơn khoảng dưới.
@@ -242,7 +254,7 @@ Hai dạng "viền" duy nhất tồn tại: `1px solid var(--ink)` (kết đầu
 `tokens.css` còn khai báo `--shadow-xs…xl` và `--shadow-ring-*` từ thời Untitled UI; khung `.doc` và running head **không dùng** bất kỳ cái nào (`box-shadow: none` được đặt tường minh trên các điều khiển của running head). Chúng thuộc về màn kế thừa, không phải hệ này.
 
 ### Named Rules
-**Quy tắc Không thẻ.** Không `box-shadow`, không `border-radius`, không nền khác màu giấy, không `border-left` màu quanh một nhóm nội dung trong khung `.doc` và running head. Muốn nhóm thì kẻ một hairline hoặc thêm khoảng trắng. Ô vuông 9px màu bút tô ở ghi chú lề là *dữ liệu* (màu bút của chính ghi chú), không phải trang trí — và nó cũng vuông góc.
+**Quy tắc Không thẻ.** Không `box-shadow`, không `border-radius`, không nền khác màu giấy, không `border-left` màu quanh một nhóm nội dung trong khung `.doc` và running head. Muốn nhóm thì kẻ một hairline hoặc thêm khoảng trắng. Ô vuông 9px màu bút tô ở ghi chú lề là *dữ liệu* (màu bút của chính ghi chú), không phải trang trí — và nó cũng vuông góc. Cùng lý do, câu được bôi đen trong trích đoạn mang nền `--s4` 26% (màu bút của ghi chú neo vào nó) chứ không phải màu nhấn; và khối `pre` trên `--panel` là `verbatim`, không phải thẻ.
 
 **Quy tắc `\hrule`.** Kẻ mực (`--ink`) cho ranh giới cấu trúc: dưới đầu trang, dưới đầu mục có nhãn. Kẻ xám (`--rule`) cho ranh giới lặp: giữa các hàng của một danh sách. Không có kẻ trên đầu danh sách ngay dưới `.doc-head` (hai đường song song đọc như lỗi — đã đo).
 
@@ -297,12 +309,22 @@ Danh sách không đánh số. Mỗi mục là một liên kết khối `padding
 ### Trạng thái rỗng / đang tải / lỗi
 Một đoạn văn, không phải thẻ: `.home-note`/`.prog-note`/`.courses-note` serif nghiêng 16px `--ink-3`; `.home-empty` tiêu đề serif 26px + lede 16.5px, `max-width: 56ch`; lỗi là `<p role="alert">` serif 16px `--ink-2` tại chỗ, không toast.
 
+### Landing — bốn cảnh (`.ld-*`)
+Chỉ thêm những gì landing có mà các trang kia không; mọi thứ khác (`.doc-head`, `.doc-h`, `.lbl`, `.doc-link`, `.mnote-*`, `.toc-*`, `.cont-*`, `.courses-*`) tái dụng nguyên văn từ hệ và không có biến thể riêng.
+- **Cảnh 1 — Đọc.** Dòng nguồn trích `.ld-source`: serif *nghiêng* 14.5px `--ink-3`, `margin: 0 0 8px`, đứng dưới `.doc-h` "Đọc" — **không** phải một dòng nhãn viết hoa thứ hai. Trích đoạn `.ld-excerpt`: serif 17px/1.55 `--ink`, `max-width: 66ch`, đoạn cách `0.8em`; khối `pre` mono 13.5px/1.5 trên `--panel`, `border: 1px solid var(--rule)`, `padding: 8px 14px`, `border-radius: 0` (khai báo với hai id `#app:not(.reading) #content` để thắng luật bo 10px của `#content pre` — reader bo, trang typeset không). **Câu được bôi đen** `mark.ld-hl`: nền `color-mix(in srgb, var(--s4, #eda100) 26%, transparent)` — đúng màu bút của ghi chú ở lề (ô vuông 9px `.mnote-c-y`), `padding: 0 2px`, chữ `inherit`; gạch chân 1px `text-underline-offset: 0.14em` màu `transparent`. Lề: một `.mnote` thật (cùng markup Học tiếp) với hàng meta có nhãn `.ld-example` — sans 12px 600, `0.04em`, UPPERCASE, **màu nhấn** (`--accent`) để chữ "Ví dụ" không bị lướt qua — rồi ghi chú giải thích `.ld-margin-note` (serif 15px/1.5 `--ink-2`, `margin-top: 12px`, 40ch). Hành động `.ld-act`: `.cont-link` với `.cont-verb` "Đọc thử" / số / tên chương, `margin-top: 10px`; trỏ tới chương chỉ khi khoá mẫu có trong danh mục công khai, không thì trỏ `/courses` và bỏ số chương; `.cont-meta` là câu về tài khoản với `.cont-course` "Tạo tài khoản".
+- **Tương tác chữ ký (chuyển động duy nhất của trang).** Rê chuột hoặc đưa focus vào ghi chú ở lề (`.ld-read:has(.mnote:hover)`, `:has(.mnote:focus-within)`) thì gạch chân của câu gốc trong trích đoạn chuyển `text-decoration-color` từ `transparent` lên `--accent` trong `150ms ease-out` — cùng ngữ pháp với mọi liên kết trong hệ (Quy tắc Gạch chân 150ms). Câu hướng dẫn "rê chuột…" mang `.ld-hover-only` và ẩn trong `@media (hover: none)`. Không có chuyển động nào khác.
+- **Cảnh 2 — Hỏi.** Biên bản `.ld-qa`: một `<dl>` lưới `gap: 18px`, 66ch; mỗi lượt `.ld-qa-turn` là hàng `5.5em minmax(0,1fr)`, `column-gap: 12px`, canh baseline — `dt.lbl` là người nói (sans 12px, cùng lớp nhãn của hệ), `dd` serif 16.5px/1.55 `--ink`, đoạn cách `0.6em`. Không bong bóng chat, không avatar. Trích ghi chú trong câu trả lời `.ld-qa-quote`: `blockquote` *nghiêng* `--ink-2`, `padding: 2px 0 2px 12px`, `border-left: 1px solid var(--rule-strong)` (hairline, không phải viền màu), kèm chính ô vuông 9px `.mnote-swatch` với `--mnote-color: var(--s4)` — khách thấy gia sư cầm đúng ghi chú của cảnh 1. Dưới 900px lượt về một cột, `row-gap: 4px`. Đầu mục cảnh nói ngay "ví dụ".
+- **Cảnh 3 — Quay lại đúng chỗ.** Nguyên `.toc-*` của Học tiếp (`.is-done` ✓, `.is-next` màu nhấn). Tiêu đề hàng là liên kết chỉ khi khoá mẫu đã xuất bản; chưa thì là `span.toc-title` màu `--ink` — màu nhấn là tín hiệu bấm được, không đứng trên chữ trơn.
+- **Cảnh 4 — Danh mục thật.** Nguyên `.courses-*` từ `GET /courses`; rỗng/lỗi là một câu `.ld-margin-note`, không ô giữ chỗ. Kết bằng `.ld-actions`: hàng `.doc-link` flex `gap: 8px 22px`, `margin-top: 18px`, serif 15.5px (Tất cả khoá · Tạo tài khoản · Đăng nhập).
+
 ### Named Rules
 **Quy tắc Tên chương là nút.** Hành động chính của một trang trong khung là một liên kết serif cỡ lớn mang tên thứ sẽ mở, không phải một nút màu. Nút màu không tồn tại trong khung `.doc`.
 
 **Quy tắc Gạch chân 150ms.** Toàn bộ ngữ pháp chuyển động của khung là `transition: text-decoration-color 150ms ease-out` (kèm `color` ở nơi màu chữ cũng đổi). Gạch chân 1px từ `transparent` (hoặc màu nghỉ) lên `--accent`. Không `transform`, không `opacity`, không đổi nền, không chuyển động nào khác được thêm vào.
 
 **Quy tắc Hai id.** `app-screens.css` đặt `#app:not(.reading) #content h1/h2/h3` bằng sans đậm (độ đặc hiệu 2,1,1). Mọi heading serif của khung `.doc` (`.doc-title`, `.doc-h`, `.cont-chapter`, `.home-empty-h`, `.courses-item-title`) phải được khai báo với tiền tố `#app:not(.reading) #content` để thắng đúng ở địa phận này; đây là chỗ *duy nhất* trong `home.css`/`courses.css` dùng id. Thêm một heading mới vào khung mà quên tiền tố thì nó ra sans đậm 18–30px — đã đo.
+
+**Quy tắc Ví dụ có nhãn.** Mọi nội dung minh hoạ trên một bề mặt Persuade — ghi chú, biên bản, hàng tiến độ — phải mang chữ "ví dụ"/"(ví dụ)" *tại chỗ* (trong hàng meta bằng `.ld-example`, trong chính đầu mục `.doc-h`), đọc được ở 390px. Trích đoạn và danh mục là dữ liệu thật và không mang nhãn ấy. Một ví dụ không nhãn là một lời hứa sai.
 
 **Quy tắc Media query cuối tệp.** Khối `@media (max-width: 900px)` của `/progress` phải đứng **sau** mọi luật gốc cùng độ đặc hiệu mà nó ghi đè (đo: đặt giữa tệp thì hàng nhãn tháng phình 2680px ở 375px). Luật mới cho khung `.doc` thêm vào *trước* khối media ở cuối `home.css`.
 
@@ -318,6 +340,10 @@ Một đoạn văn, không phải thẻ: `.home-note`/`.prog-note`/`.courses-not
 - **Do** lấy màu từ token của `index.css` (`--page`, `--ink*`, `--rule*`, `--accent`) và pha bậc trung gian bằng `color-mix(... , var(--page))` để chế độ tối tự đúng.
 - **Do** đặt cột lề (1fr) cho thứ *đứng cạnh* nội dung — ghi chú, chọn năm, chú giải — và cho nó xếp xuống (hoặc lên, nếu nó là điều khiển) dưới 900px.
 - **Do** đưa mọi chuỗi giao diện vào cả hai catalog `packages/i18n` (vi và en) trước khi hiển thị.
+- **Do** nói về tài khoản đúng một câu: "đọc miễn phí không cần tài khoản; tài khoản giữ ghi chú, tiến độ, gia sư AI" (PRODUCT.md, 02/09/2026) — trên landing và `/login`.
+- **Do** gắn nhãn "ví dụ"/"(ví dụ)" tại chỗ cho mọi ghi chú, biên bản, hàng tiến độ minh hoạ (`.ld-example` sans 12px 600 0.04em UPPERCASE `--accent` trong hàng meta, hoặc ngay trong `.doc-h`).
+- **Do** thuyết phục bằng một trích đoạn thật của giáo trình đặt ở cỡ đọc (serif 17px/1.55, 66ch), với câu bôi đen mang màu bút `--s4` 26% và ghi chú neo đúng câu ấy ở lề; giới hạn lời hứa về gia sư ở việc *đọc ghi chú* (`read_my_notes`).
+- **Do** tách các cảnh của một trang dài bằng khoảng trắng 56px (44px dưới 900px), lớn hơn mọi khoảng bên trong cảnh; giữ thứ tự DOM đoạn → ghi chú → hành động khi về một cột.
 
 ### Don't:
 - **Don't** thêm eyebrow/kicker — một dòng nhãn đứng *trên* tiêu đề. Tiêu đề tự đứng; nhãn đi run-in.
@@ -331,6 +357,10 @@ Một đoạn văn, không phải thẻ: `.home-note`/`.prog-note`/`.courses-not
 - **Don't** đặt luật `@media` cho khung `.doc` trước luật gốc của nó trong `home.css`.
 - **Don't** chỉnh `packages/course-kit/reader.css` hay ghi đè `--serif` của reader để "khớp" với khung; reader là bề mặt riêng, chủ dự án nói phần đọc đã ổn.
 - **Don't** kẻ hairline ở đầu một danh sách đứng ngay dưới `.doc-head` (hai đường song song).
+- **Don't** đưa giá, lời chứng thực, logo đối tác, hình stock hay hero-ba-cột-icon lên landing; bằng chứng là trích đoạn, ghi chú, biên bản, mục lục và danh mục thật.
+- **Don't** để một ví dụ đứng không nhãn, và không hứa gia sư "biết tiến độ" — mã chỉ đọc ghi chú.
+- **Don't** liên kết tới một chương chưa có trong danh mục công khai; hành động chính trỏ về `/courses` và mục lục ví dụ thành chữ trơn `--ink` khi khoá mẫu chưa xuất bản.
+- **Don't** vẽ biên bản hỏi đáp thành bong bóng chat có avatar; một lượt là `dt.lbl` + `dd` serif trên cùng hàng lưới.
 
 ---
 
@@ -338,6 +368,6 @@ Một đoạn văn, không phải thẻ: `.home-note`/`.prog-note`/`.courses-not
 
 - `apps/web/src/styles/app-screens.css` (1.896 dòng) vẫn tạo kiểu Cài đặt, Admin, Đăng nhập theo thời Untitled UI: thẻ, `--radius-md/lg/xl` (8/10/12px), `--shadow-xs…lg`, heading sans đậm qua `#app:not(.reading) #content h1/h2/h3`. Khung `.doc` chỉ *thắng* các luật ấy trong địa phận của mình bằng tiền tố hai id; không xoá chúng. Ảnh `login-desktop-light.png` và `settings-desktop-light.png` ở `.impeccable/review/` chỉ để chứng minh CSS dùng chung vẫn chạy.
 - `tokens.css` còn giữ `--radius-*`, `--shadow-*`, `--shadow-ring-brand: 0 0 0 4px #f4ebff` (tím kit cũ) và thang success/warning/error. Chúng là token của màn kế thừa; khung `.doc` không dùng cái nào và không được coi chúng là lựa chọn "có sẵn" của hệ này.
-- Trang đăng nhập/landing (bề mặt Persuade) chưa được thiết kế lại và **không được** khẳng định "không cần tài khoản" (PRODUCT.md, mâu thuẫn chưa giải quyết).
+- `/login` (`settings-auth.css`, `pages/Login.tsx`) từ 02/09/2026 **bỏ panel ảnh giới thiệu**: một cột form `.auth-side` căn giữa cả hai chiều (`flex: 1 1 22rem`, `min-height: 100dvh`, nội dung `max-width: 22rem`, nền `--surface-1`), hai điều khiển thiết bị (chủ đề, ngôn ngữ) ở góc trên phải `.auth-chrome-top` (`top: 16px; right: 16px`) là chữ/nét trên giấy — cao 32px, `border: 0; border-radius: 0; background: transparent; box-shadow: none`, `--ink-2` → `--ink` khi hover, `color 150ms ease-out` — và câu trấn an `.auth-reassure` là một đoạn văn phụ thường (13px `--ink-3`, căn giữa; không hộp, không biểu tượng). Phần còn lại của form (nhan đề sans 28px 600, ô nhập 44px, `.btn.primary`, ring focus `--shadow-ring-brand`, ring trắng 50% của điều khiển) vẫn là kit kế thừa, cùng tồn tại như Cài đặt/Admin; ảnh `login-onecol-light.png`, `login-onecol-mobile.png`. Các khoá `login.pitch.*`/`login.point.*` đã bị gỡ khỏi catalog i18n.
 - Tên sản phẩm "Tự học" và mark xanh vuông bo góc ở góc trái running head là **placeholder** (PRODUCT.md). Mark ấy là hộp tô màu nhấn duy nhất còn lại trên running head; nó chưa được quyết, nên không ghi thành luật hình dạng.
 - `.sb-*` trong `shell-modes.css` (thanh bên khi *trong* một khoá: thanh tiến độ viên 999px, `--grid`) thuộc về vỏ của reader, ngoài phạm vi hệ này.

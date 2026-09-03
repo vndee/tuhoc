@@ -168,6 +168,22 @@ test.describe('P1 definition-of-done gate', () => {
     await widgetCounter.click();
     await expect(widgetCounter).toHaveText('1');
 
+    // `#progwrap` — dải tiến độ đọc — phải Ở LẠI trên màn hình khi chương cuộn.
+    // Con số nó báo luôn đúng (`reader/readingProgress.ts` có bài kiểm riêng cho
+    // phép tính), nhưng nó nằm trong luồng thường ngay dưới một `#topbar`
+    // STICKY, nên nó trôi mất khỏi đỉnh và người đọc chỉ thấy nó ở màn đầu
+    // tiên. Chủ dự án báo 03/09/2026: "thanh progress khi đọc 1 trang không
+    // chạy theo" — lỗi có sẵn từ trước, không phải hồi quy, và đây là hàng rào
+    // giữ cho nó được ghim. Đo ở giữa chương chứ không ở đỉnh: ở đỉnh thì một
+    // dải trôi tự do vẫn nằm trong khung nhìn, nên bài kiểm sẽ xanh vô nghĩa.
+    await p1.evaluate(() => {
+      window.scrollTo(0, (document.documentElement.scrollHeight - window.innerHeight) * 0.5);
+    });
+    await expect(p1.locator('#progwrap')).toBeInViewport();
+    await expect
+      .poll(() => p1.evaluate(() => document.getElementById('progbar')?.style.width))
+      .not.toBe('0%');
+
     // ---------------------------------------------------------------
     // Judgment 3 — what a "second device" must not share. `browser.
     // newContext()` gives a genuinely separate cookie jar, localStorage,

@@ -6,7 +6,7 @@ import { AdminPricing } from './admin/AdminPricing';
 import { RequireAuth } from './auth/RequireAuth';
 import { CourseHome } from './pages/CourseHome';
 import { Courses } from './pages/Courses';
-import { Dashboard } from './pages/Dashboard';
+import { HomeGate } from './pages/HomeGate';
 import { Login } from './pages/Login';
 import { Progress } from './pages/Progress';
 import { Reader } from './pages/Reader';
@@ -53,14 +53,11 @@ export function AppRoutes() {
         còn tồn tại (server là nguồn duy nhất của mọi course, qua
         `tuhoc publish`), nên chỉ còn hai loại thật: nơi chốn và thiết lập.
       */}
-      <Route
-        path="/"
-        element={
-          <RequireAuth>
-            <Dashboard />
-          </RequireAuth>
-        }
-      />
+      {/* `/` KHÔNG còn bọc `<RequireAuth>` (02/09/2026): khách chưa đăng nhập
+          gặp landing, người đã đăng nhập vẫn thấy Học tiếp — xem
+          `pages/HomeGate.tsx` cho ba trạng thái của phiên. Mọi route cần
+          phiên khác vẫn qua `<RequireAuth>` như cũ. */}
+      <Route path="/" element={<HomeGate />} />
       <Route path="/login" element={<Login />} />
 
       {/*
