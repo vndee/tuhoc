@@ -35,6 +35,31 @@ Thành công là: người học quay lại, mở đúng chỗ đang dở, thấ
 mình đúng đoạn, và khi kẹt thì hỏi được một gia sư **biết họ đã đọc gì và đã
 ghi gì**.
 
+## Vision
+
+Ghi 03/09/2026, từ lời chủ dự án: *"AI hỗ trợ đào sâu, personalize khoá học,
+tôi tin đây là xu hướng mới của giáo dục."*
+
+**Một cuốn sách hay là xương sống, không phải trần nhà.** Lớp học kế tiếp không
+phải một khoá quay sẵn, cũng không phải một con bot trả lời hộ — mà là một cuốn
+giáo trình mà ai đọc cũng đi sâu hơn theo đường của riêng mình: AI đọc đúng chỗ
+người học đang mắc và đúng ghi chú họ vừa viết, rồi mở tiếp từ đó. Người học vẫn
+là người làm việc; AI làm cho việc ấy đi xa hơn.
+
+**Phần nào của tầm nhìn ĐÃ chạy, phần nào CHƯA** — ranh giới này là điều giữ cho
+landing không hứa hụt:
+
+- **Đã chạy:** gia sư đọc chương đang mở (`read_course`) và ghi chú của chính
+  người học (`read_my_notes`, mặc định bật, có công bố), trả lời ngay trong bài;
+  người dùng đặt được lời nhắc riêng cho agent ở `/settings`.
+- **CHƯA chạy:** bản thân khoá học không đổi theo người học. Không có lộ trình
+  thích ứng, không có nội dung sinh riêng, không có đo hiểu biết. "Personalize
+  khoá học" hôm nay mới là *lời nhắc riêng + gia sư đọc ghi chú*, không hơn.
+
+Landing được nói tầm nhìn này (chủ dự án chốt cùng ngày), nhưng phải mang nhãn
+**"Hướng đi"** tách khỏi mục kể tính năng — và `pages/Landing.test.tsx` có một
+bài canh đúng điều đó, để một lần sửa lời sau này không biến nó thành lời hứa.
+
 ## Positioning
 
 Chủ dự án chọn ba lời hứa phải giữ bằng mọi giá khi thiết kế lại:

@@ -343,25 +343,10 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
   text-decoration-color: var(--mark);
 }
 
-/* VẾT XOÁ: công việc trước, lau đi dở. Nằm ngoài đường đọc, mờ, và biến mất
-   khi hai cột xếp chồng vì lúc ấy không còn mảng trống nào để nói. */
-.bd-erasure {
-  display: block;
-  width: min(340px, 92%);
-  height: auto;
-  margin: clamp(36px, 6vh, 68px) 0 0 6px;
-  color: var(--ink-2);
-  opacity: 0.1;
-  pointer-events: none;
-}
 
 /* Trên đá, vết lau ăn ánh sáng nên hiện rõ hơn trên giấy — cùng một vết, hai
    độ mờ, để nó luôn ở dưới ngưỡng "một hình vẽ" và trên ngưỡng "đã có gì ở
    đây". */
-html[data-theme='dark'] .bd-erasure {
-  opacity: 0.16;
-}
-
 /* ── CƠ CHẾ, VIẾT TAY BA BƯỚC ────────────────────────────────────────────
    Câu được gạch → ghi chú của bạn → gia sư cầm chính ghi chú ấy. Không tờ
    giấy, không trích đoạn của một khoá: chữ trung tính, ai đọc cũng hiểu. */
@@ -627,11 +612,6 @@ html[data-theme='dark'] .bd-erasure {
     gap: clamp(30px, 5vh, 46px);
   }
 
-  /* Không còn mảng trống nào để vết xoá nói tới khi hai cột đã xếp chồng. */
-  .bd-erasure {
-    display: none;
-  }
-
   .bd-demo-sentence,
   .bd-demo-note,
   .bd-demo-turn {
@@ -686,4 +666,110 @@ html[data-theme='dark'] .bd-erasure {
   font-size: clamp(15.5px, 1.25vw, 17.5px);
   line-height: 1.5;
   color: var(--ink-2);
+}
+
+/* ── HƯỚNG ĐI: HÌNH VẼ VÀ CÂU TUYÊN BỐ ────────────────────────────────────
+   Đứng ở cột phải của màn đầu, nơi khối cơ chế từng đứng. Cơ chế là BẰNG
+   CHỨNG nên nó xuống sau lời tuyên bố; chỗ này là điều sản phẩm TIN.
+
+   Nhãn "Hướng đi" là một `<h2>` thật chứ không phải một dòng chữ nhỏ trang
+   trí: nó phải ở trong dàn ý cho người dùng trình đọc màn hình, vì nó là thứ
+   duy nhất phân biệt "chúng tôi tin" với "sản phẩm làm được". */
+.bd-vision {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+  padding-top: 6px;
+}
+
+#app:not(.reading) #content .board-room .bd-vision-label {
+  margin: 0;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
+
+.bd-figure {
+  width: min(300px, 82%);
+  height: auto;
+  justify-self: center;
+}
+
+/* Người và bàn đậm nhất — đó là nhân vật. Những thứ đang học nhạt hơn một
+   bậc: chúng ở trong đầu người ấy, không đứng ngang hàng với người. */
+.bd-fig-body,
+.bd-fig-desk {
+  stroke: var(--ink);
+}
+
+.bd-fig-book {
+  stroke: var(--ink-2);
+}
+
+.bd-fig-net,
+.bd-fig-node,
+.bd-fig-sky {
+  stroke: var(--ink-3);
+}
+
+.bd-fig-node {
+  fill: var(--ground);
+}
+
+.bd-fig-math {
+  fill: var(--ink-3);
+  font-family: inherit;
+}
+
+.bd-vision-body {
+  margin: 0;
+  font-size: clamp(15px, 1.2vw, 16.5px);
+  line-height: 1.55;
+  color: var(--ink-2);
+  max-width: 42ch;
+}
+
+/* Khối cơ chế nay là một mục riêng, không còn là cột phải của màn đầu. */
+.bd-demo.bd-scene {
+  padding-top: 0;
+}
+
+/* Mục cơ chế nay đứng riêng, nên nó lấy lại lưới hai cột của trang: ba bước
+   bên trái, câu giải thích ở lề phải — nếu không, nửa phải bỏ trống nguyên
+   một màn, đúng khuyết điểm vòng soát đầu đã gọi tên. */
+.bd-demo.bd-scene {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: clamp(24px, 3.6vw, 56px);
+  align-items: start;
+}
+
+.bd-demo.bd-scene > .bd-demo-h {
+  grid-column: 1 / -1;
+}
+
+.bd-demo-steps {
+  display: grid;
+  justify-items: start;
+}
+
+.bd-demo.bd-scene > .bd-note-how {
+  grid-column: 2;
+  grid-row: 2;
+  margin-top: 0;
+  align-self: start;
+}
+
+@media (max-width: 1080px) {
+  .bd-demo.bd-scene {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bd-demo.bd-scene > .bd-note-how {
+    grid-column: 1;
+    grid-row: auto;
+    margin-top: clamp(18px, 2.6vh, 26px);
+  }
 }
