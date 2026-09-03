@@ -45,7 +45,7 @@
      Không chữa được bằng cách cho chữ dài ra: ở 17.5px thì 829px đã là ~95 ký
      tự một dòng, quá dài để đọc. Nên thu CỘT lại cho khớp chữ, và mặt giấy
      giữ nguyên bề rộng — đó chính là lề của một trang viết. */
-  --bd-col: 820px;
+  --bd-col: 1140px;
 
   min-height: 100dvh;
   background: var(--room);
@@ -82,7 +82,7 @@ html[data-theme='dark'] .board-room {
   position: relative;
   min-height: calc(100dvh - 44px);
   box-sizing: border-box;
-  padding: clamp(20px, 3.2vw, 46px) clamp(18px, 3.4vw, 52px) 0;
+  padding: clamp(20px, 3.2vw, 44px) clamp(16px, 2.4vw, 34px) 0;
   background-color: var(--ground);
   /* HẠT CỦA MẶT VIẾT. Giấy có thớ, đá bảng có vân; không có nó thì đây chỉ là
      một hình chữ nhật màu. Ở 0.05 nó dưới ngưỡng nhận ra, trên ngưỡng cảm. */
@@ -511,6 +511,13 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
   font-weight: 600;
   letter-spacing: 0;
   color: var(--ink);
+}
+
+/* Gạch dưới rộng đúng bằng đầu mục nó gạch, nhờ khối `.bd-h-line`
+   `inline-block` bọc cả hai — chứ không kéo hết cột. */
+.bd-h-line {
+  display: inline-block;
+  max-width: 100%;
 }
 
 .bd-rule {
