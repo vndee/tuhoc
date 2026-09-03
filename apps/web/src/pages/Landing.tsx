@@ -142,10 +142,16 @@ export function Landing() {
             xuất bản được" (PRODUCT.md ghi đó còn là khoảng trống), và gia sư
             đọc GHI CHÚ chứ không đọc tiến độ. */}
         <section className="bd-scene bd-can" aria-labelledby="bd-can-h">
-          <h2 id="bd-can-h" className="bd-h">
-            {t('landing.can.h')}
-          </h2>
-          <ChalkRule variant={1} />
+          {/* Đầu mục và gạch dưới đi cùng một khối inline-block: người
+              viết tay gạch dưới CHỮ MÌNH VỪA VIẾT, không gạch hết trang.
+              Một gạch kéo hết cột trong khi câu chỉ dài quá nửa là đúng
+              khuyết điểm chủ dự án bắt được ở vòng trước. */}
+          <span className="bd-h-line">
+            <h2 id="bd-can-h" className="bd-h">
+              {t('landing.can.h')}
+            </h2>
+            <ChalkRule variant={1} />
+          </span>
           <ul className="bd-can-list">
             {(['landing.can.read', 'landing.can.note', 'landing.can.ask', 'landing.can.return'] as const).map((key) => (
               <li key={key}>{t(key)}</li>
@@ -197,10 +203,16 @@ export function Landing() {
             cho một đường thử lại — `retry: false` nghĩa là không có lần thử
             nào tự đến. */}
         <section className="bd-scene bd-scene-last" aria-labelledby="bd-cat-h">
-          <h2 id="bd-cat-h" className="bd-h">
-            {t('landing.catalog.h')}
-          </h2>
-          <ChalkRule variant={0} />
+          {/* Đầu mục và gạch dưới đi cùng một khối inline-block: người
+              viết tay gạch dưới CHỮ MÌNH VỪA VIẾT, không gạch hết trang.
+              Một gạch kéo hết cột trong khi câu chỉ dài quá nửa là đúng
+              khuyết điểm chủ dự án bắt được ở vòng trước. */}
+          <span className="bd-h-line">
+            <h2 id="bd-cat-h" className="bd-h">
+              {t('landing.catalog.h')}
+            </h2>
+            <ChalkRule variant={0} />
+          </span>
           <div className="bd-cat">
             {/* Vùng sống bọc ĐÚNG ba câu trạng thái, không bọc cả danh sách:
                 một `aria-live` quanh danh mục sẽ đọc to toàn bộ tên khoá mỗi
