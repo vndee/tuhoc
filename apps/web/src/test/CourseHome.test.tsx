@@ -236,7 +236,11 @@ describe('Task 12 — tiến độ chỉ hiện khi có phiên', () => {
     // rather than merely hasn't yet.
     await new Promise((resolve) => setTimeout(resolve, 30));
 
-    expect(document.querySelector('.ch-resume-eyebrow')?.textContent).toBe('Bắt đầu đọc');
+    // `.ch-resume-verb`, không còn `.ch-resume-eyebrow`: từ 03/09/2026 nhãn
+    // này là RUN-IN bên trong chính đầu mục thay vì một dòng đứng trên nó —
+    // sàn craft của thế giới viết tay cấm eyebrow. Chữ nó nói không đổi, và
+    // đó mới là thứ bài này canh.
+    expect(document.querySelector('.ch-resume-verb')?.textContent).toBe('Bắt đầu đọc');
     const counts = Array.from(document.querySelectorAll('.ch-part-count'));
     expect(counts.length).toBe(2);
     for (const el of counts) {
@@ -257,7 +261,7 @@ describe('Task 12 — tiến độ chỉ hiện khi có phiên', () => {
     renderCourseHome();
     await screen.findByRole('heading', { name: 'Khóa học demo' });
 
-    await waitFor(() => expect(document.querySelector('.ch-resume-eyebrow')?.textContent).toBe('Đang đọc'));
+    await waitFor(() => expect(document.querySelector('.ch-resume-verb')?.textContent).toBe('Đang đọc'));
     const counts = Array.from(document.querySelectorAll('.ch-part-count'));
     expect(counts[0]?.getAttribute('data-state')).toBe('partial'); // Phần A: 1/2 (ch-1)
     expect(counts[1]?.getAttribute('data-state')).toBe('none'); // Phần B: 0/2
