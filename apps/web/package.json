@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "check:stories-bundle": "node scripts/check-story-bundles.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "typecheck": "tsc -b",

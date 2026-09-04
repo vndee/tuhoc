@@ -296,6 +296,29 @@ describe('StoryRenderer', () => {
     expect(screen.getByTestId('story-stage')).toHaveAttribute('data-active-scene', sceneId);
   });
 
+  it('holds a direct hash through passive observer races, then releases it for reader scroll and scene-link navigation', () => {
+    history.replaceState(null, '', '/stories/fixture-story#scene-6');
+    renderStory();
+    observer.emit('scene-5');
+    expect(screen.getByTestId('story-stage')).toHaveAttribute('data-active-scene', 'scene-6');
+    expect(location.hash).toBe('#scene-6');
+
+    act(() => document.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown' })));
+    observer.emit('scene-5');
+    fireEvent.load(plateImageFor('scene-5.webp'));
+    expect(screen.getByTestId('story-stage')).toHaveAttribute('data-active-scene', 'scene-5');
+    expect(location.hash).toBe('#scene-5');
+
+    fireEvent.click(screen.getByRole('link', { name: /^cảnh 0?4:/i }));
+    expect(location.hash).toBe('#scene-4');
+    observer.emitMany([
+      { id: 'scene-4', isIntersecting: false, top: -100 },
+      { id: 'scene-3', isIntersecting: true, top: 450 },
+    ]);
+    expect(screen.getByText('03 / 12')).toBeVisible();
+    expect(location.hash).toBe('#scene-3');
+  });
+
   it('opens a valid initial deep link after image decode, fonts, and RAF while leaving invalid hashes untouched', async () => {
     const decoded = deferred();
     const fonts = deferred();
@@ -386,6 +409,20 @@ describe('StoryRenderer', () => {
     vi.restoreAllMocks();
   });
 
+  it('shows a fallback when the initial active plate errors, then recovers on the next scene', () => {
+    renderStory();
+    setRootGeometry(0, 1000);
+    fireEvent.error(plateImageFor('scene-1.webp'));
+    expect(screen.getByText(/minh hoạ không tải được/i)).toBeVisible();
+    expect(stageLayers().find((layer) => layer.dataset.scene === 'scene-1')).not.toHaveAttribute('aria-hidden');
+
+    observer.emitMany([{ id: 'scene-2', isIntersecting: true, top: 450 }]);
+    fireEvent.load(plateImageFor('scene-2.webp'));
+    expect(screen.getByTestId('story-stage')).toHaveAttribute('data-active-scene', 'scene-2');
+    expect(plateImageFor('scene-2.webp')).toBeVisible();
+    expect(screen.getByTestId('story-stage').querySelectorAll('.story-plate-layer')).toHaveLength(2);
+  });
+
   it('loads scene changes in the hidden permanent layer and survives A to B to C races', async () => {
     vi.useFakeTimers();
     renderStory();
@@ -468,6 +505,7 @@ describe('StoryRenderer', () => {
     await act(async () => { await Promise.resolve(); });
     expect(screen.getByTestId('story-stage')).toHaveAttribute('data-active-scene', 'scene-5');
     expect(stageLayers().find((layer) => layer.dataset.scene === 'scene-5')).not.toHaveAttribute('aria-hidden');
+    act(() => document.dispatchEvent(new WheelEvent('wheel', { bubbles: true })));
     observer.emitMany([
       { id: 'scene-5', isIntersecting: false, top: -100 },
       { id: 'scene-6', isIntersecting: true, top: 450 },
@@ -755,6 +793,12 @@ describe('StoryRenderer', () => {
     expect(screen.getByText(/minh hoạ không tải được/i)).toBeVisible();
     expect(screen.getByText(/chú thích bìa/i)).toBeVisible();
     expect(screen.getByTestId('story-cover-plate')).toHaveStyle({ aspectRatio: '1200 / 800' });
+  });
+
+  it('marks the semantic cover region for production performance and visual gates', () => {
+    renderStory();
+    expect(screen.getByTestId('story-cover')).toHaveClass('story-cover');
+    expect(screen.getByTestId('story-cover')).toHaveAttribute('aria-labelledby', 'story-title');
   });
 
   it('uses zero transition duration for reduced motion', () => {

@@ -118,7 +118,7 @@ function StoryRendererContent({
         activeSceneId={activeSceneId as StorySceneModel['id']}
       >
     <div className="story-renderer">
-      <section className="story-cover" aria-labelledby="story-title">
+      <section className="story-cover" data-testid="story-cover" aria-labelledby="story-title">
         <p>{t('stories.issueLabel', story.meta.issueNumber)}</p>
         <p className="story-cover-counts"><span>{t('stories.sceneCount', story.meta.sceneCount)}</span><span>{t('stories.labCount', story.meta.labCount)}</span></p>
         <h1 id="story-title">{story.meta.title[lang]}</h1>

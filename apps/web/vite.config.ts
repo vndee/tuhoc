@@ -9,6 +9,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 // https://vite.dev/config/
 export default defineConfig({
+  build: { manifest: true },
   // `tailwindcss()` là plugin RIÊNG của Tailwind v4, không phải qua PostCSS —
   // v4 bỏ `tailwind.config.js`, token khai bằng `@theme` ngay trong CSS (xem
   // `src/styles/tokens.css`). Nó phải có mặt ở đây thì `@import "tailwindcss"`
