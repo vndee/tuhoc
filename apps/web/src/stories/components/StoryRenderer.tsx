@@ -50,6 +50,7 @@ function StoryRendererContent({
   const activeScene = story.scenes[activeIndex] ?? story.scenes[0]!;
   const labScene = labSceneId ? story.scenes.find((scene) => scene.id === labSceneId) ?? null : null;
   const stageScene = !mobile && labScene ? labScene : activeScene;
+  const stageAct = story.acts.find((act) => act.sceneIds.includes(stageScene.id));
 
   useEffect(() => {
     if (previousActiveSceneId.current === activeSceneId) return;
@@ -61,7 +62,11 @@ function StoryRendererContent({
     setLabSceneId(null);
   }, [activeSceneId]);
 
-  const sceneLabels = useMemo(() => story.scenes.map((scene, index) => ({ id: scene.id, label: String(index + 1).padStart(2, '0') })), [story.scenes]);
+  const sceneLabels = useMemo(() => story.scenes.map((scene, index) => ({
+    id: scene.id,
+    label: String(index + 1).padStart(2, '0'),
+    accessibleLabel: `${t('stories.sceneLabel', index + 1)}: ${scene.title[lang]}`,
+  })), [lang, story.scenes, t]);
   const labFor = (scene: StorySceneModel) => {
     const value = labStateByScene[scene.id];
     const onChange = (next: unknown) => setLabStateByScene((current) => ({ ...current, [scene.id]: next }));
@@ -128,6 +133,11 @@ function StoryRendererContent({
             alt={story.meta.cover.alt[lang]}
             width={story.meta.cover.width}
             height={story.meta.cover.height}
+            loading="eager"
+            fetchPriority="high"
+            decoding="async"
+            srcSet={story.meta.cover.srcSet}
+            sizes={story.meta.cover.sizes}
             onError={() => setCoverFailed(true)}
           />}
         </figure>
@@ -143,9 +153,10 @@ function StoryRendererContent({
           failedSceneIds={failedSceneIds}
           lab={labScene ? labFor(labScene) : null}
           labSceneId={labSceneId}
+          actId={stageAct?.id}
         /> : null}
         <div className="story-narrative">
-          {story.acts.map((act) => <section className="story-act" key={act.id} aria-labelledby={`${act.id}-title`}>
+          {story.acts.map((act) => <section className="story-act" data-act={act.id} key={act.id} aria-labelledby={`${act.id}-title`}>
             <header><p>{t('stories.actLabel', act.number)}</p><h2 id={`${act.id}-title`}>{act.title[lang]}</h2><p>{act.question[lang]}</p><RichText blocks={act.consequence[lang]} /></header>
             {act.sceneIds.map((id) => {
               const scene = story.scenes.find((item) => item.id === id);

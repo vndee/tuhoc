@@ -12,7 +12,7 @@ export interface StoryShellProps {
   children: ReactNode;
   compact?: boolean;
   progress?: { current: number; total: number };
-  scenes?: Array<{ id: SceneId; label: string }>;
+  scenes?: Array<{ id: SceneId; label: string; accessibleLabel?: string }>;
   activeSceneId?: SceneId;
 }
 
@@ -58,6 +58,7 @@ export function StoryShell({
   const navigator = (insideDrawer = false) => <nav className="story-scene-nav" aria-label={t('stories.contents')}>
     {scenes.map((scene) => <a
       className={scene.id === activeSceneId ? 'is-active' : ''}
+      aria-label={scene.accessibleLabel}
       href={`#${scene.id}`}
       key={scene.id}
       onClick={(event) => {

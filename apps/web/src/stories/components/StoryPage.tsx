@@ -1,16 +1,28 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useLanguage } from '../../i18n/LanguageProvider';
 import { getStoryBySlug } from '../content/registry';
 import type { StoryDefinition, StoryRegistryEntry } from '../types';
 import { StoryRenderer } from './StoryRenderer';
 import { StoryShell } from './StoryShell';
+import { useStoryDocumentMeta } from './useStoryDocumentMeta';
 
 type StoryPageState =
   | { status: 'loading'; slug: string; entry: StoryRegistryEntry | undefined; attempt: number }
   | { status: 'not-found'; slug: string; entry: StoryRegistryEntry | undefined; attempt: number }
   | { status: 'error'; slug: string; entry: StoryRegistryEntry; attempt: number }
   | { status: 'ready'; slug: string; entry: StoryRegistryEntry; attempt: number; story: StoryDefinition };
+
+function ReadyStoryPage({ story }: { story: StoryDefinition }) {
+  const { lang, t } = useLanguage();
+  useStoryDocumentMeta({
+    title: `${story.meta.title[lang]} · ${t('stories.masthead')} · ${t('app.name')}`,
+    description: story.meta.deck[lang],
+    canonicalPath: `/stories/${story.meta.slug}`,
+    lang,
+  });
+  return <StoryRenderer story={story} />;
+}
 
 export default function StoryPage() {
   const { slug = '' } = useParams<{ slug: string }>();
@@ -42,7 +54,7 @@ export default function StoryPage() {
     return () => { current = false; };
   }, [entry, slug, attempt]);
 
-  if (visibleState.status === 'ready') return <StoryRenderer story={visibleState.story} />;
+  if (visibleState.status === 'ready') return <ReadyStoryPage story={visibleState.story} />;
 
   return <StoryShell variant="issue">
     {visibleState.status === 'loading' ? <p className="story-route-status" role="status">{t('stories.loading')}</p> : null}
@@ -53,6 +65,7 @@ export default function StoryPage() {
     {visibleState.status === 'error' ? <section className="story-route-error">
       <p role="alert">{t('stories.loadError')}</p>
       <button type="button" onClick={() => setAttempt((value) => value + 1)}>{t('landing.catalog.retry')}</button>
+      <Link to="/stories">{t('stories.backToCollection')}</Link>
     </section> : null}
   </StoryShell>;
 }

@@ -49,6 +49,7 @@ export const vi = {
 
   'stories.masthead': 'Đặc san',
   'stories.collectionTitle': 'Các số đặc san',
+  'stories.collectionDescription': 'Các số đặc san tương tác của Tự học.',
   'stories.viewAll': 'Xem tất cả các số',
   'stories.openEdition': 'Mở đặc san',
   'stories.issueLabel': (issue: number) => `Số ${String(issue).padStart(2, '0')} · Bài kể tương tác`,
