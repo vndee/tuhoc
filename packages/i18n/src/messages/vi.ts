@@ -251,7 +251,28 @@ export const vi = {
   'topbar.searchPlaceholder': 'Tìm khoá, chương…',
   'topbar.searchOpen': 'Mở ô tìm kiếm',
   'topbar.searchClose': 'Đóng ô tìm kiếm',
-  'topbar.searchSoon': 'Tìm kiếm chưa nối dây — sắp có.',
+  /*
+   * `topbar.searchSoon` ĐÃ XOÁ (04/09/2026). Nó nói "Tìm kiếm chưa nối dây —
+   * sắp có." và đứng làm `title` của một ô `disabled`. Giữ lại một chuỗi hứa
+   * hẹn sau khi thứ ấy đã tới là để lại một lời nói dối trong bảng chuỗi.
+   */
+  'search.groupCourses': 'Khoá học',
+  'search.groupChapters': 'Chương',
+  'search.loading': 'Đang tìm…',
+  'topbar.searchSeeAll': 'Xem tất cả kết quả',
+  'topbar.searchResultsAria': 'Kết quả tìm kiếm',
+
+  'search.title': 'Kết quả tìm kiếm',
+  'search.count': (n: string, q: string) => `${n} kết quả cho “${q}”`,
+  'search.countTruncated': (n: string, q: string) => `Hơn ${n} kết quả cho “${q}” — thử gõ hẹp hơn.`,
+  'search.empty': (q: string) => `Không tìm thấy gì cho “${q}”.`,
+  'search.tooShort': 'Gõ ít nhất hai ký tự để tìm.',
+  'search.tooLong': 'Chuỗi tìm quá dài. Rút ngắn lại rồi thử tiếp.',
+  'search.error': 'Không tìm được. Thử lại sau một lát.',
+  'search.inCourse': (course: string) => `trong ${course}`,
+
+  'sidebar.filterNoMatch': 'Không có chương nào khớp.',
+  'sidebar.filterClear': 'Xoá bộ lọc',
   'account.menuAria': 'Menu tài khoản',
   /** Cùng chữ với nhãn nút `#mark-btn` mà `reader/ChapterView.tsx` ghi đè. */
   'topbar.markRead': 'Đánh dấu đã học',

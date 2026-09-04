@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import { useMe } from '../api/useMe';
@@ -5,6 +6,7 @@ import { CourseNav } from '../course/CourseNav';
 import { describeCourseError, loadManifest, manifestQueryKey } from '../course/loader';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { useProgress } from '../progress/useProgress';
+import type { Part } from '../course/types';
 
 // `/c/:courseId` and `/c/:courseId/:chapterId` both carry a course outline
 // in the sidebar — pulled from the pathname directly (not `useParams`,
@@ -62,6 +64,7 @@ export function Sidebar() {
   const me = useMe();
   const confirmedLoggedIn = me.isSuccess && me.data != null;
   const { doneChapterIds } = useProgress(courseId ?? '', { enabled: courseId != null && confirmedLoggedIn });
+  const [filter, setFilter] = useState('');
 
   // THANH BÊN CHỈ TỒN TẠI KHI CÓ MỘT KHOÁ ĐANG MỞ.
   //
@@ -79,6 +82,7 @@ export function Sidebar() {
 
   const totalChapters = manifestQuery.data?.parts.reduce((n, part) => n + part.chapters.length, 0) ?? 0;
   const doneCount = doneChapterIds.size;
+  const visibleParts = filterParts(manifestQuery.data?.parts ?? [], filter);
 
   return (
     <>
@@ -112,7 +116,27 @@ export function Sidebar() {
             <circle cx="9" cy="9" r="6.5" stroke="currentColor" strokeWidth="1.6" />
             <path d="M18 18L14 14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
           </svg>
-          <input id="nav-search" type="text" placeholder={t('sidebar.searchPlaceholder')} disabled />
+          <input
+            id="nav-search"
+            type="search"
+            placeholder={t('sidebar.searchPlaceholder')}
+            aria-label={t('sidebar.searchPlaceholder')}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setFilter('');
+            }}
+          />
+          {filter !== '' && (
+            <button
+              type="button"
+              className="sb-search-clear"
+              aria-label={t('sidebar.filterClear')}
+              onClick={() => setFilter('')}
+            >
+              ×
+            </button>
+          )}
         </div>
       </div>
       {/*
@@ -134,10 +158,50 @@ export function Sidebar() {
         {manifestQuery.isError && (
           <p className="nav-empty">{describeCourseError(manifestQuery.error, t)}</p>
         )}
-        {manifestQuery.data && (
-          <CourseNav courseId={courseId} parts={manifestQuery.data.parts} doneChapterIds={doneChapterIds} />
+        {manifestQuery.data && visibleParts.length > 0 && (
+          <CourseNav courseId={courseId} parts={visibleParts} doneChapterIds={doneChapterIds} />
+        )}
+        {/* `#nav` LUÔN có gì đó trong nó — luật của chính phần tử này (xem doc
+            đầu tệp), và một bộ lọc không khớp gì là trạng thái thứ tư cần nói
+            ra, cạnh "chưa chọn khoá / đang tải / hỏng". Mục lục trống trơn
+            trông y hệt một khoá không có chương nào. */}
+        {manifestQuery.data && visibleParts.length === 0 && (
+          <p className="nav-empty">{t('sidebar.filterNoMatch')}</p>
         )}
       </nav>
     </>
   );
+}
+
+/**
+ * LỌC MỤC LỤC TẠI CHỖ — không gọi mạng, không endpoint, không trạng thái tải.
+ *
+ * Manifest đã nằm trong bộ nhớ (`manifestQuery.data`), nên câu hỏi "chương nào
+ * của khoá NÀY khớp" trả lời được ngay tại đây. Nó là một câu hỏi khác hẳn câu
+ * ô ở thanh trên hỏi ("chương nào trong MỌI khoá, kể cả trong nội dung bài"),
+ * và trộn hai câu vào một cơ chế sẽ bắt một trong hai phải chờ mạng cho thứ nó
+ * đã có sẵn.
+ *
+ * Một phần rỗng sau khi lọc thì biến mất theo — giữ lại tiêu đề phần với một
+ * danh sách trống dưới nó là vẽ ra một ngăn kéo rỗng.
+ *
+ * KHÔNG bỏ dấu: gõ "chuong" sẽ không ra "Chương". Đó là một thiếu sót có
+ * chủ đích chứ không phải một chỗ quên — ô ở thanh trên cũng phân biệt dấu
+ * (phía máy chủ), và hai ô tìm kiếm trong cùng một app trả lời khác nhau cho
+ * cùng một chuỗi thì tệ hơn cả hai cùng thiếu. Bỏ dấu là một vòng riêng, cho
+ * cả hai cùng lúc.
+ */
+function filterParts(parts: readonly Part[], filter: string): Part[] {
+  const needle = filter.trim().toLocaleLowerCase();
+  if (needle === '') return parts as Part[];
+  return parts
+    .map((part) => ({
+      ...part,
+      chapters: part.chapters.filter(
+        (ch) =>
+          ch.title.toLocaleLowerCase().includes(needle) ||
+          ch.num.toLocaleLowerCase().includes(needle),
+      ),
+    }))
+    .filter((part) => part.chapters.length > 0);
 }
