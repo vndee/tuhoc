@@ -1,6 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { fetchSearch, isQueryLongEnough, searchQueryKey } from '../api/search';
+import {
+  chapterHref,
+  courseHref,
+  fetchSearch,
+  isQueryLongEnough,
+  isQueryTooLong,
+  searchQueryKey,
+} from '../api/search';
 import { useLanguage } from '../i18n/LanguageProvider';
 
 /**
@@ -24,13 +31,21 @@ export function SearchResults() {
   const [params] = useSearchParams();
   const raw = params.get('q') ?? '';
   const q = raw.trim();
-  const enabled = isQueryLongEnough(q);
+  // Ba trạng thái của chính chuỗi truy vấn, tách khỏi ba trạng thái của lượt
+  // gọi mạng. Quá dài là một câu trả lời VĨNH VIỄN — máy chủ trả 400 và sẽ trả
+  // 400 mãi — nên nó không được vẽ bằng câu "Thử lại sau một lát", lời khuyên
+  // duy nhất không giúp được gì ở đây.
+  const tooLong = isQueryTooLong(q);
+  const enabled = isQueryLongEnough(q) && !tooLong;
 
   const query = useQuery({
     queryKey: searchQueryKey(q, PAGE_LIMIT),
     queryFn: () => fetchSearch(q, PAGE_LIMIT),
     enabled,
     retry: false,
+    // Cùng lý do như bảng ở thanh trên (`shell/TopNav.tsx`): mặc định
+    // `staleTime: 0` biến một lần alt-tab thành một lượt quét toàn bộ.
+    staleTime: 30_000,
   });
 
   const total = (query.data?.courses.length ?? 0) + (query.data?.chapters.length ?? 0);
@@ -39,7 +54,7 @@ export function SearchResults() {
     <div className="search-page doc">
       <header className="doc-head">
         <h1 className="doc-title">{t('search.title')}</h1>
-        {!enabled && <p className="doc-lede">{t('search.tooShort')}</p>}
+        {!enabled && <p className="doc-lede">{t(tooLong ? 'search.tooLong' : 'search.tooShort')}</p>}
         {enabled && query.data && total > 0 && (
           <p className="doc-lede">
             {query.data.truncated
@@ -49,7 +64,7 @@ export function SearchResults() {
         )}
       </header>
 
-      {enabled && query.isPending && <p className="courses-note">{t('topbar.searchLoading')}</p>}
+      {enabled && query.isPending && <p className="courses-note">{t('search.loading')}</p>}
       {/* `role="alert"` vì đây là một câu TRẢ LỜI SAI nếu bị bỏ qua: một lượt
           tìm hỏng vẽ như "không có kết quả" nói với người dùng rằng thứ họ
           tìm không tồn tại. */}
@@ -64,11 +79,11 @@ export function SearchResults() {
 
       {query.data && query.data.courses.length > 0 && (
         <section className="search-group">
-          <h2 className="search-group-title">{t('topbar.searchGroupCourses')}</h2>
+          <h2 className="search-group-title">{t('search.groupCourses')}</h2>
           <ul className="courses-list">
             {query.data.courses.map((c) => (
               <li key={c.slug} className="courses-item">
-                <Link to={`/c/${encodeURIComponent(c.slug)}`} className="courses-item-link">
+                <Link to={courseHref(c.slug)} className="courses-item-link">
                   <h3 className="courses-item-title">{c.title}</h3>
                   {c.description !== '' && <p className="courses-item-desc">{c.description}</p>}
                 </Link>
@@ -80,14 +95,11 @@ export function SearchResults() {
 
       {query.data && query.data.chapters.length > 0 && (
         <section className="search-group">
-          <h2 className="search-group-title">{t('topbar.searchGroupChapters')}</h2>
+          <h2 className="search-group-title">{t('search.groupChapters')}</h2>
           <ul className="courses-list">
             {query.data.chapters.map((c) => (
               <li key={`${c.slug}:${c.chapterId}`} className="courses-item">
-                <Link
-                  to={`/c/${encodeURIComponent(c.slug)}/${encodeURIComponent(c.chapterId)}`}
-                  className="courses-item-link"
-                >
+                <Link to={chapterHref(c.slug, c.chapterId)} className="courses-item-link">
                   <h3 className="courses-item-title">{c.chapterTitle}</h3>
                   <p className="search-hit-course">{t('search.inCourse', c.courseTitle)}</p>
                   {/* Ba mảnh từ máy chủ, mảnh giữa bọc `<mark>`. KHÔNG tìm

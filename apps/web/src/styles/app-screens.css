@@ -1406,7 +1406,12 @@ html[data-theme='dark'] #app:not(.reading) .tn-search-hit.is-active {
 }
 
 /* `<mark>` mặc định của trình duyệt là vàng chanh trên đen — nó không thuộc
-   bảng màu nào ở đây, và ở giao diện tối nó chói hẳn lên. */
+   bảng màu nào ở đây, và ở giao diện tối nó chói hẳn lên.
+
+   Luật này CỐ TÌNH mang cả hai bề mặt: nửa `.search-hit-snippet` thuộc trang
+   `/search` ở cuối tệp, nhưng tách nó ra sẽ thành hai định nghĩa cho một màu
+   tô sáng, và hai chỗ ấy sẽ lệch nhau. Khối ở cuối tệp có một dòng trỏ lên
+   đây. */
 #app:not(.reading) .tn-search-hit-snippet mark,
 .search-hit-snippet mark {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
@@ -2111,6 +2116,9 @@ html[data-theme='dark'] .ai-turn-q {
   color: var(--ink-3);
 }
 
+/* Màu tô sáng của `<mark>` trong đoạn trích KHÔNG ở đây — nó dùng chung một
+   luật với bảng thả xuống ở thanh trên (tìm `.tn-search-hit-snippet mark`),
+   để hai bề mặt không thể lệch màu nhau. */
 .search-hit-snippet {
   margin: 0.35rem 0 0;
   font-family: var(--sans);

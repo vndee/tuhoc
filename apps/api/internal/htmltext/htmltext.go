@@ -122,7 +122,7 @@ var stripRawTextTags = map[string]bool{
 	"xmp":       true,
 }
 
-// stripTags lọc HTML thô của một chương thành văn bản thuần cho model đọc:
+// Strip lọc HTML thô của một chương thành văn bản thuần:
 // bỏ mọi thẻ, giữ nguyên chữ, và xoá HẲN nội dung bên trong các thẻ trong
 // stripRawTextTags (không chỉ cặp thẻ mở/đóng của chúng).
 //

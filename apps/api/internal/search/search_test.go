@@ -23,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vndee/tuhoc-api/internal/config"
+	"github.com/vndee/tuhoc-api/internal/search"
 	"github.com/vndee/tuhoc-api/internal/server"
 	"github.com/vndee/tuhoc-api/internal/store"
 )
@@ -431,6 +432,10 @@ func TestSearchOmitsUnpublishedCourse(t *testing.T) {
 }
 
 // TestSearchEmptyResultIsArrayNotNull: `null` làm client ném lỗi ở .map().
+//
+// So khớp NGUYÊN THÂN, không phải "không chứa chữ null". Bản đầu chỉ tìm
+// chuỗi con ấy, nên một handler trả `{}` — hay bỏ hẳn hai khoá — vẫn xanh,
+// trong khi `{}` phá client đúng bằng cách `null` phá.
 func TestSearchEmptyResultIsArrayNotNull(t *testing.T) {
 	pool := store.TestPool(t)
 	app := newTestApp(pool)
@@ -441,8 +446,99 @@ func TestSearchEmptyResultIsArrayNotNull(t *testing.T) {
 		t.Fatalf("GET /search: %v", err)
 	}
 	defer res.Body.Close()
-	raw, _ := io.ReadAll(res.Body)
-	if strings.Contains(string(raw), "null") {
-		t.Errorf("thân trả về có `null`: %s", raw)
+	raw, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	const want = `{"courses":[],"chapters":[],"truncated":false}`
+	if string(raw) != want {
+		t.Errorf("thân trả về = %s, muốn %s", raw, want)
+	}
+}
+
+// TestSearchRejectsInvalidText: hai chuỗi từng thành 500 phải thành 400.
+//
+// Cả hai lọt qua ngưỡng độ dài. "\xff\xfe" vì utf8.RuneCountInString đếm mỗi
+// byte hỏng là một rune; NUL vì nó hợp lệ theo UTF-8. Cái đầu chết ở
+// regexp.Compile và kéo NGUYÊN BYTE truy vấn vào log lỗi của máy chủ; cái sau
+// chết tận trong Postgres (SQLSTATE 22021), sau khi đã mở một kết nối.
+func TestSearchRejectsInvalidText(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool)
+
+	for name, term := range map[string]string{
+		"UTF-8 hỏng":        "\xff\xfe",
+		"NUL":               "a\x00b",
+		"hỏng lẫn chữ thật": "entropy\xff",
+	} {
+		t.Run(name, func(t *testing.T) {
+			status, _ := doSearch(t, app, q(term))
+			if status != http.StatusBadRequest {
+				t.Errorf("status = %d, muốn 400 — chuỗi này thành lỗi máy chủ", status)
+			}
+		})
+	}
+}
+
+// TestSearchNegativeLimitDoesNotPanic: `kept[:limit]` với limit âm panic.
+//
+// Không tới được qua HTTP (ClampLimit đứng chắn ở handler), nên bài này gọi
+// THẲNG usecase — đúng chỗ mà một chỗ gọi thứ hai sẽ đi vào.
+func TestSearchNegativeLimitDoesNotPanic(t *testing.T) {
+	pool := store.TestPool(t)
+	seedCourse(t, pool, "khoa-a", "Khoá A", "mô tả", []chapterFixture{
+		{id: "c1", title: "Chương một", html: "<p>entropy</p>"},
+	})
+
+	uc := search.NewUsecase(search.NewRepo(pool))
+	res, err := uc.Search(context.Background(), "entropy", -1)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(res.Chapters) != 1 {
+		t.Errorf("số hit = %d, muốn 1 — limit âm phải rơi về mặc định", len(res.Chapters))
+	}
+}
+
+// TestSearchOrphanChapterSinksToBottom canh ĐÚNG lời hứa mà chú thích ở
+// usecase.go viết ra: một chương không có trong manifest thì xuống CUỐI.
+//
+// Ca này khác TestSearchKeepsChapterMissingFromManifest ở đúng một điều, và
+// điều ấy là toàn bộ vấn đề: manifest ở đây có NHIỀU chương hơn số ứng viên
+// mà truy vấn trả về. Bài kia seed hai chương và cả hai đều khớp, nên mọi
+// công thức dự phòng đều cho cùng một câu trả lời.
+func TestSearchOrphanChapterSinksToBottom(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool)
+	ctx := context.Background()
+
+	seedCourse(t, pool, "khoa-a", "Khoá A", "mô tả", []chapterFixture{
+		{id: "mo-coi", title: "", html: "<p>entropy ở chương mồ côi</p>"},
+		{id: "c10", title: "Chương mười", html: "<p>entropy ở chương mười</p>"},
+	})
+	// Manifest 40 chương; "c10" đứng thứ 10, và 39 chương còn lại KHÔNG có
+	// nội dung nào khớp — nên chúng không thành ứng viên.
+	chs := make([]map[string]string, 0, 40)
+	for i := 0; i < 40; i++ {
+		chs = append(chs, map[string]string{"id": fmt.Sprintf("c%d", i), "title": fmt.Sprintf("Chương %d", i)})
+	}
+	manifest, err := json.Marshal(map[string]any{
+		"id": "khoa-a", "title": "Khoá A",
+		"parts": []map[string]any{{"title": "P1", "chapters": chs}},
+	})
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE published_courses SET manifest = $1 WHERE slug = 'khoa-a'`, manifest); err != nil {
+		t.Fatalf("cập nhật manifest: %v", err)
+	}
+
+	_, body := doSearch(t, app, q("entropy"))
+	if len(body.Chapters) != 2 {
+		t.Fatalf("số hit = %d, muốn 2: %+v", len(body.Chapters), body.Chapters)
+	}
+	if body.Chapters[0].ChapterID != "c10" || body.Chapters[1].ChapterID != "mo-coi" {
+		t.Errorf("thứ tự = %s, %s — chương ngoài manifest phải xuống CUỐI",
+			body.Chapters[0].ChapterID, body.Chapters[1].ChapterID)
 	}
 }

@@ -61,9 +61,49 @@ export interface SearchResults {
  *  và sẽ nhận một emoji đơn lẻ như thể nó là hai ký tự. */
 export const MIN_QUERY_LENGTH = 2;
 
+/** Trần BYTE, trùng `MaxQueryBytes` phía máy chủ.
+ *
+ *  Không có bản sao này thì một chuỗi quá dài đi ra mạng, nhận về 400, và cả
+ *  hai màn đều vẽ nó bằng câu "Thử lại sau một lát" — một lời khuyên SAI: chờ
+ *  bao lâu cũng không đổi được gì, chỉ rút ngắn mới đổi. Ngưỡng tối thiểu đã
+ *  có bản sao ngay trên; ngưỡng tối đa thì không, và đó là chỗ hở. */
+export const MAX_QUERY_BYTES = 128;
+
 /** Truy vấn đã cắt khoảng trắng có đủ dài để gửi đi không. */
 export function isQueryLongEnough(raw: string): boolean {
   return Array.from(raw.trim()).length >= MIN_QUERY_LENGTH;
+}
+
+/** Quá dài so với thứ máy chủ nhận. Đếm BYTE UTF-8 như máy chủ đếm — một
+ *  chuỗi tiếng Việt 128 ký tự nặng hơn 128 byte, và đếm ký tự ở đây sẽ để nó
+ *  lọt ra mạng rồi nhận 400. */
+export function isQueryTooLong(raw: string): boolean {
+  return new TextEncoder().encode(raw.trim()).length > MAX_QUERY_BYTES;
+}
+
+/**
+ * Đường dẫn tới một khoá và tới một chương.
+ *
+ * Hai hàm này ở ĐÂY, cạnh `ChapterHit`, vì cả hai màn tìm kiếm đều đã import
+ * tệp này. Trước khi có chúng, cùng một chuỗi được gõ tay ở bốn chỗ, và bốn
+ * chỗ ấy đã kịp lệch nhau một lần: hai chỗ dựng `/search?q=` với `.trim()`,
+ * hai chỗ không.
+ *
+ * `encodeURIComponent` chứ không phải `encodeURI`: nó thoát cả `/`, nên một
+ * slug thù địch `//evil.com` thành `/c/%2F%2Fevil.com` — vẫn là một đường
+ * dẫn trong ứng dụng, không phải một origin khác.
+ */
+export function courseHref(slug: string): string {
+  return `/c/${encodeURIComponent(slug)}`;
+}
+
+export function chapterHref(slug: string, chapterId: string): string {
+  return `/c/${encodeURIComponent(slug)}/${encodeURIComponent(chapterId)}`;
+}
+
+/** Trang kết quả đầy đủ cho một truy vấn. */
+export function searchPageHref(q: string): string {
+  return `/search?q=${encodeURIComponent(q.trim())}`;
 }
 
 /**

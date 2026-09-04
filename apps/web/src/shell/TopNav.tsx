@@ -2,8 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
+  chapterHref,
+  courseHref,
   fetchSearch,
   isQueryLongEnough,
+  isQueryTooLong,
+  searchPageHref,
   searchQueryKey,
   type ChapterHit,
   type SearchResults,
@@ -11,6 +15,7 @@ import {
 import { useMe, accountInitials } from '../api/useMe';
 import { useLogout } from '../auth/useLogout';
 import { useLanguage } from '../i18n/LanguageProvider';
+import type { Translate } from '../i18n';
 import { Logo } from './Logo';
 
 /**
@@ -162,11 +167,28 @@ export function TopSearch() {
     return () => window.clearTimeout(id);
   }, [term]);
 
-  const enabled = open && isQueryLongEnough(debounced);
+  // MỘT biểu thức, dùng cho cả "có gọi mạng không" và "có vẽ bảng không".
+  // Hai hằng số giống hệt nhau thì chỉ chờ ngày một cái được sửa mà cái kia
+  // không.
+  //
+  // `tooLong` chặn TRƯỚC khi ra mạng: máy chủ trả 400 cho chuỗi quá 128 byte,
+  // và một 400 vĩnh viễn vẽ ra bằng câu "Thử lại sau một lát" là một lời
+  // khuyên sai — chờ không đổi được gì, chỉ rút ngắn mới đổi.
+  const tooLong = isQueryTooLong(debounced);
+  const panelOpen = open && (tooLong || isQueryLongEnough(debounced));
   const results = useQuery({
     queryKey: searchQueryKey(debounced, PANEL_LIMIT),
     queryFn: () => fetchSearch(debounced, PANEL_LIMIT),
-    enabled,
+    enabled: panelOpen && !tooLong,
+    // `retry: false` khớp `pages/SearchResults.tsx`. Mặc định của TanStack là
+    // ba lần thử với backoff, và bảng này là bề mặt gọi lại sau MỖI nhịp gõ —
+    // nó ít cần thử lại nhất, mà lại là nơi ba lần thử kéo dài trạng thái
+    // "Đang tìm…" lâu nhất trước khi nói ra lỗi.
+    retry: false,
+    // Kết quả chỉ đổi khi có khoá được publish. `staleTime` mặc định là 0, nên
+    // alt-tab đi rồi về là chạy lại nguyên một lượt quét — thứ đắt nhất trong
+    // toàn ứng dụng (xem `internal/search/repo.go`).
+    staleTime: SEARCH_STALE_MS,
   });
 
   // Mở ra thì con trỏ phải nhảy vào ô — nếu không, người dùng bấm xong vẫn
@@ -205,16 +227,16 @@ export function TopSearch() {
     return () => document.removeEventListener('pointerdown', onDown);
   }, [open]);
 
-  // Danh sách PHẲNG của mọi đích bấm được, đúng thứ tự chúng hiện ra — ↑/↓ đi
-  // qua nó, không qua hai nhóm riêng. Người dùng thấy một danh sách; bàn phím
-  // phải đồng ý với mắt.
-  const items: { key: string; to: string }[] = [
-    ...(results.data?.courses ?? []).map((c) => ({ key: `course:${c.slug}`, to: `/c/${encodeURIComponent(c.slug)}` })),
-    ...(results.data?.chapters ?? []).map((c) => ({
-      key: `chapter:${c.slug}:${c.chapterId}`,
-      to: `/c/${encodeURIComponent(c.slug)}/${encodeURIComponent(c.chapterId)}`,
-    })),
-  ];
+  // MỘT nguồn cho thứ tự, và chỉ số phẳng được đóng sẵn vào từng dòng.
+  //
+  // Bản đầu dựng danh sách phẳng ở đây RỒI để `SearchPanelBody` đi lại hai
+  // nhóm với một biến đếm riêng, tra ngược `items[index]?.to ?? seeAll`. Hai
+  // phép đếm ấy không thể lệch nhau trong cùng một lần vẽ — nhưng nếu lệch,
+  // cái `?? seeAll` biến nó thành một liên kết SAI ÂM THẦM (một dòng khoá dẫn
+  // về trang tìm kiếm) thay vì một lỗi nhìn thấy được. Ở đây chỉ còn một phép
+  // đếm, và không còn gì để dự phòng.
+  const groups = buildGroups(results.data, t);
+  const items = groups.flatMap((g) => g.rows);
 
   // Kết quả đổi thì lựa chọn cũ vô nghĩa — giữ lại nó sẽ khiến Enter mở một
   // thứ người dùng không còn nhìn thấy.
@@ -249,14 +271,13 @@ export function TopSearch() {
     if (e.key === 'Enter') {
       e.preventDefault();
       if (active >= 0 && items[active]) go(items[active].to);
-      else if (isQueryLongEnough(term)) go(`/search?q=${encodeURIComponent(term.trim())}`);
+      else if (isQueryLongEnough(term)) go(searchPageHref(term));
     }
   }
 
   if (!meQuery.data) return null;
   if (CHAPTER_ROUTE.test(location.pathname)) return null;
 
-  const showPanel = open && isQueryLongEnough(debounced);
 
   return (
     <div className={open ? 'tn-search-wrap is-open' : 'tn-search-wrap'} ref={wrapRef}>
@@ -291,7 +312,7 @@ export function TopSearch() {
           onChange={(e) => setTerm(e.target.value)}
           tabIndex={open ? 0 : -1}
           role="combobox"
-          aria-expanded={showPanel}
+          aria-expanded={panelOpen}
           aria-controls="topbar-search-results"
           aria-activedescendant={active >= 0 && items[active] ? `tn-hit-${active}` : undefined}
           autoComplete="off"
@@ -302,12 +323,13 @@ export function TopSearch() {
         </span>
       </div>
 
-      {showPanel && (
+      {panelOpen && (
         <div className="tn-search-panel">
           <SearchPanelBody
             results={results}
+            tooLong={tooLong}
             term={debounced}
-            items={items}
+            groups={groups}
             active={active}
             onPick={go}
           />
@@ -317,15 +339,83 @@ export function TopSearch() {
   );
 }
 
+/**
+ * Bao lâu thì một kết quả tìm kiếm được coi là cũ.
+ *
+ * Mặc định của TanStack là 0, nghĩa là mọi lần gắn lại và mọi lần cửa sổ lấy
+ * lại tiêu điểm đều chạy lại nguyên một lượt — mà lượt ấy là thứ đắt nhất
+ * trong toàn ứng dụng: một seq scan qua nguyên văn HTML của mọi chương
+ * (`apps/api/internal/search/repo.go`). Ba mươi giây là khoảng một khoá học
+ * mới được publish rồi trở nên tìm thấy được, và đủ để gõ lui một ký tự rồi
+ * gõ lại không tốn thêm một lượt quét nào.
+ */
+const SEARCH_STALE_MS = 30_000;
+
 /** Số hit mỗi loại trong BẢNG THẢ XUỐNG. Trang `/search` xin nhiều hơn — xem
  *  `pages/SearchResults.tsx`. Đủ để thấy có gì, không đủ để phải cuộn trong
  *  một bảng nổi. */
 const PANEL_LIMIT = 8;
 
+/** Một dòng bấm được trong bảng, đã mang sẵn chỉ số phẳng của nó. */
+interface SearchRowData {
+  index: number;
+  to: string;
+  title: string;
+  subtitle?: string;
+  snippet?: ChapterHit;
+}
+
+interface SearchGroup {
+  key: string;
+  label: string;
+  labelId: string;
+  rows: SearchRowData[];
+}
+
+/**
+ * Kết quả từ máy chủ → các nhóm để vẽ, với chỉ số phẳng đóng sẵn vào từng
+ * dòng.
+ *
+ * Đây là nơi DUY NHẤT quyết định thứ tự, nên `items[i].index === i` đúng theo
+ * cách dựng chứ không theo một lời hứa. `TopSearch` lấy danh sách phẳng bằng
+ * `groups.flatMap`, và bảng chỉ việc `map` — không biến đếm thứ hai, không
+ * phép tra ngược, không giá trị dự phòng che một chỗ lệch.
+ */
+function buildGroups(data: SearchResults | undefined, t: Translate): SearchGroup[] {
+  if (!data) return [];
+  const out: SearchGroup[] = [];
+  let n = 0;
+
+  if (data.courses.length > 0) {
+    out.push({
+      key: 'courses',
+      label: t('search.groupCourses'),
+      labelId: 'tn-group-courses',
+      rows: data.courses.map((c) => ({ index: n++, to: courseHref(c.slug), title: c.title })),
+    });
+  }
+  if (data.chapters.length > 0) {
+    out.push({
+      key: 'chapters',
+      label: t('search.groupChapters'),
+      labelId: 'tn-group-chapters',
+      rows: data.chapters.map((c) => ({
+        index: n++,
+        to: chapterHref(c.slug, c.chapterId),
+        title: c.chapterTitle,
+        subtitle: t('search.inCourse', c.courseTitle),
+        snippet: c,
+      })),
+    });
+  }
+  return out;
+}
+
 interface PanelProps {
   results: UseQueryResult<SearchResults>;
+  tooLong: boolean;
   term: string;
-  items: { key: string; to: string }[];
+  groups: SearchGroup[];
   active: number;
   onPick: (to: string) => void;
 }
@@ -337,29 +427,27 @@ interface PanelProps {
  * vẽ như "không có kết quả" là nói với người dùng rằng thứ họ tìm không tồn
  * tại — một câu trả lời sai, không phải một câu trả lời thiếu.
  */
-function SearchPanelBody({ results, term, items, active, onPick }: PanelProps) {
+function SearchPanelBody({ results, tooLong, term, groups, active, onPick }: PanelProps) {
   const { t } = useLanguage();
 
+  if (tooLong) {
+    return <p className="tn-search-note">{t('search.tooLong')}</p>;
+  }
   if (results.isError) {
     return (
       <p className="tn-search-note" role="alert">
-        {t('topbar.searchError')}
+        {t('search.error')}
       </p>
     );
   }
   if (!results.data) {
-    return <p className="tn-search-note">{t('topbar.searchLoading')}</p>;
+    return <p className="tn-search-note">{t('search.loading')}</p>;
+  }
+  if (groups.length === 0) {
+    return <p className="tn-search-note">{t('search.empty', term)}</p>;
   }
 
-  const { courses, chapters, truncated } = results.data;
-  if (courses.length === 0 && chapters.length === 0) {
-    return <p className="tn-search-note">{t('topbar.searchEmpty', term)}</p>;
-  }
-
-  // Chỉ số PHẲNG chạy xuyên hai nhóm, khớp `items` ở `TopSearch` — nếu hai
-  // cách đánh số lệch nhau thì ↓ tô sáng một dòng và Enter mở một dòng khác.
-  let i = -1;
-  const seeAll = `/search?q=${encodeURIComponent(term)}`;
+  const seeAll = searchPageHref(term);
 
   return (
     <>
@@ -372,54 +460,19 @@ function SearchPanelBody({ results, term, items, active, onPick }: PanelProps) {
         Nhóm thì được: `role="group"` là con hợp lệ của listbox.
       */}
       <div id="topbar-search-results" role="listbox" aria-label={t('topbar.searchResultsAria')}>
-        {courses.length > 0 && (
-          <div className="tn-search-group" role="group" aria-labelledby="tn-group-courses">
-            <p className="tn-search-group-label" id="tn-group-courses">
-              {t('topbar.searchGroupCourses')}
+        {groups.map((g) => (
+          <div key={g.key} className="tn-search-group" role="group" aria-labelledby={g.labelId}>
+            <p className="tn-search-group-label" id={g.labelId}>
+              {g.label}
             </p>
-            {courses.map((c) => {
-              i += 1;
-              const index = i;
-              return (
-                <SearchRow
-                  key={c.slug}
-                  index={index}
-                  active={active === index}
-                  to={items[index]?.to ?? seeAll}
-                  onPick={onPick}
-                  title={c.title}
-                />
-              );
-            })}
+            {g.rows.map((row) => (
+              <SearchRow key={row.to} row={row} active={active === row.index} onPick={onPick} />
+            ))}
           </div>
-        )}
-
-        {chapters.length > 0 && (
-          <div className="tn-search-group" role="group" aria-labelledby="tn-group-chapters">
-            <p className="tn-search-group-label" id="tn-group-chapters">
-              {t('topbar.searchGroupChapters')}
-            </p>
-            {chapters.map((c) => {
-              i += 1;
-              const index = i;
-              return (
-                <SearchRow
-                  key={`${c.slug}:${c.chapterId}`}
-                  index={index}
-                  active={active === index}
-                  to={items[index]?.to ?? seeAll}
-                  onPick={onPick}
-                  title={c.chapterTitle}
-                  subtitle={t('search.inCourse', c.courseTitle)}
-                  snippet={c}
-                />
-              );
-            })}
-          </div>
-        )}
+        ))}
       </div>
 
-      {truncated && (
+      {results.data.truncated && (
         <Link className="tn-search-all" to={seeAll} onClick={() => onPick(seeAll)}>
           {t('topbar.searchSeeAll')}
         </Link>
@@ -429,35 +482,31 @@ function SearchPanelBody({ results, term, items, active, onPick }: PanelProps) {
 }
 
 interface RowProps {
-  index: number;
+  row: SearchRowData;
   active: boolean;
-  to: string;
   onPick: (to: string) => void;
-  title: string;
-  subtitle?: string;
-  snippet?: ChapterHit;
 }
 
-function SearchRow({ index, active, to, onPick, title, subtitle, snippet }: RowProps) {
+function SearchRow({ row, active, onPick }: RowProps) {
   return (
     <Link
-      id={`tn-hit-${index}`}
+      id={`tn-hit-${row.index}`}
       role="option"
       aria-selected={active}
       className={active ? 'tn-search-hit is-active' : 'tn-search-hit'}
-      to={to}
+      to={row.to}
       onClick={(e) => {
         e.preventDefault();
-        onPick(to);
+        onPick(row.to);
       }}
     >
-      <span className="tn-search-hit-title">{title}</span>
-      {subtitle && <span className="tn-search-hit-sub">{subtitle}</span>}
-      {snippet && (
+      <span className="tn-search-hit-title">{row.title}</span>
+      {row.subtitle && <span className="tn-search-hit-sub">{row.subtitle}</span>}
+      {row.snippet && (
         <span className="tn-search-hit-snippet">
-          {snippet.before}
-          <mark>{snippet.match}</mark>
-          {snippet.after}
+          {row.snippet.before}
+          <mark>{row.snippet.match}</mark>
+          {row.snippet.after}
         </span>
       )}
     </Link>

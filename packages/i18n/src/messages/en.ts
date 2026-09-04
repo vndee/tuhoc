@@ -173,12 +173,9 @@ export const en: Messages = {
   'topbar.searchOpen': 'Open search',
   'topbar.searchClose': 'Close search',
   /* `topbar.searchSoon` deleted (04/09/2026) — see the vi catalog's note. */
-  'topbar.searchShortcut': 'Press ⌘K to search',
-  'topbar.searchGroupCourses': 'Courses',
-  'topbar.searchGroupChapters': 'Chapters',
-  'topbar.searchEmpty': (q: string) => `Nothing found for “${q}”.`,
-  'topbar.searchError': 'Search failed. Try again in a moment.',
-  'topbar.searchLoading': 'Searching…',
+  'search.groupCourses': 'Courses',
+  'search.groupChapters': 'Chapters',
+  'search.loading': 'Searching…',
   'topbar.searchSeeAll': 'See all results',
   'topbar.searchResultsAria': 'Search results',
 
@@ -187,6 +184,7 @@ export const en: Messages = {
   'search.countTruncated': (n: string, q: string) => `More than ${n} results for “${q}” — try narrowing it.`,
   'search.empty': (q: string) => `Nothing found for “${q}”.`,
   'search.tooShort': 'Type at least two characters to search.',
+  'search.tooLong': 'That search string is too long. Shorten it and try again.',
   'search.error': 'Search failed. Try again in a moment.',
   'search.inCourse': (course: string) => `in ${course}`,
 

@@ -80,7 +80,7 @@ func TestSearchToolReturnsResultsAsReadableText(t *testing.T) {
 // input, it happens on the ORDINARY success path. Before this test/fix, Title/URL/Snippet
 // went into model-facing content byte-for-byte; a raw `<strong>` tag (or worse, something
 // deliberately crafted to look like a system/tool delimiter) reached the model's context
-// unfiltered. formatHit (tool_search.go) now runs stripTags (tool_course.go, reused as-is —
+// unfiltered. formatHit (tool_search.go) now runs htmltext.Strip (internal/htmltext, reused as-is —
 // same job, same package) over Title/Snippet before they reach content.
 func TestSearchToolStripsHTMLFromResults(t *testing.T) {
 	p := &fakeSearchProvider{hits: []SearchHit{{
@@ -100,7 +100,7 @@ func TestSearchToolStripsHTMLFromResults(t *testing.T) {
 		t.Errorf("out thiếu title đã lọc thẻ (chữ phải còn nguyên, chỉ thẻ bị xoá): %q", out)
 	}
 	if strings.Contains(out, "alert(1)") {
-		t.Errorf("out mang theo nội dung BÊN TRONG <script> — stripTags phải xoá cả thân, không "+
+		t.Errorf("out mang theo nội dung BÊN TRONG <script> — htmltext.Strip phải xoá cả thân, không "+
 			"chỉ cặp thẻ mở/đóng (tool_course.go's stripRawTextTags): %q", out)
 	}
 }
