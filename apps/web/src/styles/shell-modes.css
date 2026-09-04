@@ -56,6 +56,34 @@
   display: none;
 }
 
+/* Special editions own their paper shell, but still run inside `Shell` so
+   the reader's load-bearing ids stay stable for every route. This selector is
+   intentionally more specific than the later app-screen rules: editorial
+   pages must not inherit app chrome spacing or width constraints. */
+#app.editorial-screen #sidebar,
+#app.editorial-screen #topbar,
+#app.editorial-screen #progwrap,
+#app.editorial-screen #rail {
+  display: none;
+}
+
+#app.editorial-screen.editorial-screen #main,
+#app.editorial-screen.editorial-screen #scroller,
+#app.editorial-screen.editorial-screen #content-wrap,
+#app.editorial-screen.editorial-screen #content {
+  width: 100%;
+  max-width: none;
+}
+
+#app.editorial-screen.editorial-screen #main {
+  grid-template-columns: 1fr;
+}
+
+#app.editorial-screen.editorial-screen #content-wrap {
+  justify-content: stretch;
+  padding: 0;
+}
+
 /* ════════════════════════════════════════════════════════════════════════════
    THANH TRÊN — nay mang nhãn hiệu và điều hướng
    ════════════════════════════════════════════════════════════════════════════ */

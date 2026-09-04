@@ -2,17 +2,20 @@ import { Link } from 'react-router-dom';
 import { useLanguage } from '../../i18n/LanguageProvider';
 import { getPublishedStories, storyRegistry } from '../content/registry';
 import type { StoryRegistryEntry } from '../types';
+import { StoryShell } from './StoryShell';
 
 interface StoryIndexProps {
   entries?: readonly StoryRegistryEntry[];
+  landmark?: boolean;
 }
 
-export function StoryIndex({ entries = storyRegistry }: StoryIndexProps) {
+export function StoryIndex({ entries = storyRegistry, landmark = true }: StoryIndexProps) {
   const { lang, t } = useLanguage();
   const stories = getPublishedStories(entries);
+  const className = `story-index${stories.length >= 3 ? ' story-index-many' : ''}`;
 
-  return (
-    <main className={`story-index${stories.length >= 3 ? ' story-index-many' : ''}`}>
+  const content = (
+    <section className={className}>
       <header className="story-index-head">
         <p className="story-index-masthead">{t('stories.masthead')}</p>
         <h1>{t('stories.collectionTitle')}</h1>
@@ -49,6 +52,12 @@ export function StoryIndex({ entries = storyRegistry }: StoryIndexProps) {
           </article>
         ))}
       </div>
-    </main>
+    </section>
   );
+
+  return landmark ? <main className={className}>{content}</main> : content;
+}
+
+export default function StoryIndexPage() {
+  return <StoryShell variant="collection"><StoryIndex landmark={false} /></StoryShell>;
 }

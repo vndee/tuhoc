@@ -62,6 +62,8 @@ export interface ShellProps {
    * và `getByLabelText('Ngôn ngữ giao diện')` sẽ ném lỗi "nhiều phần tử".
    */
   authScreen?: boolean;
+  /** Public special-edition routes replace app chrome without replacing this DOM skeleton. */
+  editorialScreen?: boolean;
 }
 
 /**
@@ -99,6 +101,7 @@ export function Shell({
   reading = false,
   inCourse = false,
   authScreen = false,
+  editorialScreen = false,
 }: ShellProps) {
   // Hai lớp độc lập, không phải một enum: `in-course` là "có một khoá đang
   // mở", `reading` là "đang ở trong một chương của nó". Cái sau kéo theo cái
@@ -107,6 +110,7 @@ export function Shell({
     reading ? 'reading' : null,
     inCourse ? 'in-course' : null,
     authScreen ? 'auth-screen' : null,
+    editorialScreen ? 'editorial-screen' : null,
   ]
     .filter(Boolean)
     .join(' ');
