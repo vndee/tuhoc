@@ -21,7 +21,7 @@ export function makeInitialLabState(definition: LabDefinition): unknown {
     case 'external-memory': return { generation: 0 };
     case 'embodied-calculation': return { step: 0, representation: 'abacus' };
     case 'executable-rules': return { cardIds: definition.config.cards.map((card) => card.id) };
-    case 'computation-limits': return { steps: 0, snapshot: null };
+    case 'computation-limits': return { caseId: definition.config.cases?.[0]?.id, steps: 0, snapshot: null };
     case 'judgment-criteria': return { enabledIds: [] };
     case 'linear-separator': return { angle: definition.config.angle, offset: definition.config.offset, xor: false };
     case 'knowledge-bottleneck': return { changedRuleId: definition.config.changedRuleId };

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { StoryRegistryEntry } from '../types';
-import { getFeaturedStory, getPublishedStories, getStoryBySlug } from './registry';
+import { getFeaturedStory, getPublishedStories, getStoryBySlug, storyRegistry } from './registry';
 
 function makeRegistryEntry(overrides: Partial<StoryRegistryEntry> = {}): StoryRegistryEntry {
   return {
@@ -59,5 +59,15 @@ describe('story registry selectors', () => {
     expect(getPublishedStories([])).toEqual([]);
     expect(getFeaturedStory([])).toBeUndefined();
     expect(getStoryBySlug('anything', [])).toBeUndefined();
+  });
+
+  it('publishes one featured metadata record while keeping its story module cold', () => {
+    expect(storyRegistry).toHaveLength(1);
+    expect(storyRegistry[0]).toMatchObject({ slug: 'a-history-of-ai', published: true, featured: true, sceneCount: 12, labCount: 12 });
+    const load = vi.spyOn(storyRegistry[0], 'load');
+    expect(getPublishedStories()).toEqual([storyRegistry[0]]);
+    expect(getFeaturedStory()).toBe(storyRegistry[0]);
+    expect(load).not.toHaveBeenCalled();
+    load.mockRestore();
   });
 });

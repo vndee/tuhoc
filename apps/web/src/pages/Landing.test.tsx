@@ -4,15 +4,11 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { MemoryRouter } from 'react-router-dom';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { t } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 import { ThemeProvider } from '../theme/ThemeContext';
 import { Landing } from './Landing';
-
-vi.mock('../stories/components/LandingStoryFeature', () => ({
-  LandingStoryFeature: () => <section aria-label="Đặc san thử" data-testid="landing-story-feature" />,
-}));
 
 const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
@@ -128,7 +124,7 @@ describe('Landing — mặt viết tay', () => {
   it('đặt Đặc san sau danh mục và trước máng phấn, không đổi CTA khoá chính', async () => {
     withCatalog([A_COURSE]);
     const catalog = screen.getByRole('heading', { name: t('vi', 'landing.catalog.h') }).closest('section');
-    const stories = screen.getByTestId('landing-story-feature');
+    const stories = screen.getByRole('region', { name: t('vi', 'stories.masthead') });
     const footer = screen.getByRole('contentinfo');
     const read = screen.getByTestId('landing-read');
 
@@ -137,6 +133,8 @@ describe('Landing — mặt viết tay', () => {
     expect(stories.compareDocumentPosition(footer)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     await waitFor(() => expect(read).toHaveAttribute('href', `/c/${A_COURSE.slug}`));
     expect(read).toHaveTextContent(A_COURSE.title);
+    expect(within(stories).getByRole('link', { name: 'Một lịch sử của trí tuệ nhân tạo' }))
+      .toHaveAttribute('href', '/stories/a-history-of-ai');
   });
 
   it('danh mục rỗng: hành động chính về /courses và KHÔNG hứa một khoá nào', async () => {

@@ -14,7 +14,7 @@ const definition: LabRuntimeProps['definition'] = {
       { id: 'tool', kind: 'tool', label: { en: 'Read tool', vi: 'Công cụ đọc' }, permission: 'tool:read' },
       { id: 'data', kind: 'data', label: { en: 'Course data', vi: 'Dữ liệu khoá học' }, permission: 'data:course' },
       { id: 'proposal', kind: 'proposal', label: { en: 'Draft proposal', vi: 'Bản đề xuất' }, permission: null },
-      { id: 'approval', kind: 'approval', label: { en: 'Human approval', vi: 'Phê duyệt của con người' }, permission: 'approval:publish' },
+      { id: 'approval', kind: 'approval', label: { en: 'Human approval', vi: 'Phê duyệt của con người' }, permission: null },
     ],
   },
 };
@@ -38,7 +38,7 @@ describe('AgentTraceLab', () => {
     render(<ControlledLab />);
     fireEvent.click(screen.getByRole('checkbox', { name: /Read tool/i }));
     fireEvent.click(screen.getByRole('checkbox', { name: /Course data/i }));
-    fireEvent.click(screen.getByRole('checkbox', { name: /Human approval/i }));
+    expect(screen.queryByRole('checkbox', { name: /Human approval/i })).not.toBeInTheDocument();
 
     const trace = screen.getByRole('list', { name: /agent trace/i });
     expect(trace).toHaveTextContent(/Model plan.*Read tool.*Course data.*Draft proposal.*Human approval/i);

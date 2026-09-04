@@ -10,13 +10,15 @@ export default function ComputationLimitsLab({ definition, lang, value, onChange
     throw new Error(`ComputationLimitsLab expected definition kind "computation-limits", received "${definition.kind}".`);
   }
 
+  const cases = definition.config.cases ?? [{ id: 'default', label: definition.title, tape: definition.config.tape, startState: definition.config.startState, program: definition.config.program }];
+  const selected = cases.find((item) => item.id === readCaseId(value)) ?? cases[0]!;
   const maxSteps = normalizeLimit(definition.config.maxSteps);
-  const current = readSnapshot(value, definition.config.tape, definition.config.startState);
+  const current = readSnapshot(value, selected.tape, selected.startState);
   const steps = readSteps(value, maxSteps);
   const status = describeStatus(current, steps, maxSteps, lang);
   const advance = () => {
     if (current.halted || steps >= maxSteps) return;
-    onChange({ steps: steps + 1, snapshot: stepMachine(current, definition.config.program) });
+    onChange({ caseId: selected.id, steps: steps + 1, snapshot: stepMachine(current, selected.program) });
   };
 
   return <LabFrame
@@ -28,6 +30,11 @@ export default function ComputationLimitsLab({ definition, lang, value, onChange
     onBack={onBack}
   >
     <div className="story-machine-lab">
+      {cases.length > 1 ? <label>{t(lang, 'stories.lab.machineState')}
+        <select aria-label={t(lang, 'stories.lab.machineState')} value={selected.id} onChange={(event) => onChange({ caseId: event.currentTarget.value, steps: 0, snapshot: null })}>
+          {cases.map((item) => <option key={item.id} value={item.id}>{item.label[lang]}</option>)}
+        </select>
+      </label> : null}
       <p>{t(lang, 'stories.lab.machineState')}: {renderState(current.state)}</p>
       <ol className="story-machine-tape" aria-label={t(lang, 'stories.lab.machineTape')}>
         {current.tape.map((cell, index) => <li key={`${index}-${cell}`} className={index === current.head ? 'is-head' : undefined}>
@@ -39,6 +46,11 @@ export default function ComputationLimitsLab({ definition, lang, value, onChange
       </div>
     </div>
   </LabFrame>;
+}
+
+function readCaseId(value: unknown): string | undefined {
+  return typeof value === 'object' && value !== null && typeof (value as Record<string, unknown>).caseId === 'string'
+    ? (value as Record<string, string>).caseId : undefined;
 }
 
 function readSnapshot(value: unknown, tape: string, startState: string): MachineSnapshot {

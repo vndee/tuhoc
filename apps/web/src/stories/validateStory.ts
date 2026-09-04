@@ -156,7 +156,12 @@ export function validateStory(
         scene.lab.config.steps.forEach((step, stepIndex) => text(step.label, `${path}.lab.config.steps.${stepIndex}.label`));
         break;
       case 'agi-definitions':
-        scene.lab.config.definitions.forEach((definition, definitionIndex) => text(definition.note, `${path}.lab.config.definitions.${definitionIndex}.note`));
+        scene.lab.config.definitions.forEach((definition, definitionIndex) => {
+          text(definition.label, `${path}.lab.config.definitions.${definitionIndex}.label`);
+          text(definition.note, `${path}.lab.config.definitions.${definitionIndex}.note`);
+          text(definition.sourceLabel, `${path}.lab.config.definitions.${definitionIndex}.sourceLabel`);
+          if (!scene.sourceIds.includes(definition.sourceId)) add('missing-source', `${path}.lab.config.definitions.${definitionIndex}.sourceId`, `definition source ${definition.sourceId} is not mapped to this scene`);
+        });
         break;
       default:
         break;

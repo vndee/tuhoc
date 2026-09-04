@@ -8,7 +8,7 @@ export default function AgiDefinitionsLab({ definition, lang, value, onChange, o
     throw new Error(`AgiDefinitionsLab expected definition kind "agi-definitions", received "${definition.kind}".`);
   }
 
-  const definitions: AgiDefinition[] = definition.config.definitions.map(({ id, label, generality, capability, autonomy }) => ({ id, label, generality, capability, autonomy }));
+  const definitions: Array<AgiDefinition & { sourceLabel: string }> = definition.config.definitions.map(({ id, label, sourceLabel, generality, capability, autonomy }) => ({ id, label: label[lang], sourceLabel: sourceLabel[lang], generality, capability, autonomy }));
   const [left, right] = readSelected(value, definitions);
   if (!left || !right) {
     return <LabFrame lang={lang} title={definition.title[lang]} instruction={definition.instruction[lang]} result="—" onReset={onReset} onBack={onBack}>
@@ -50,7 +50,7 @@ export default function AgiDefinitionsLab({ definition, lang, value, onChange, o
   </LabFrame>;
 }
 
-function AxisPlot({ definition, axes, maximum }: { definition: AgiDefinition; axes: Record<keyof AgiPosition, string>; maximum: number }) {
+function AxisPlot({ definition, axes, maximum }: { definition: AgiDefinition & { sourceLabel: string }; axes: Record<keyof AgiPosition, string>; maximum: number }) {
   const position = positionDefinition(definition);
   const entries = Object.entries(axes) as Array<[keyof AgiPosition, string]>;
   return <figure className="story-agi-axis-plot">
@@ -62,11 +62,11 @@ function AxisPlot({ definition, axes, maximum }: { definition: AgiDefinition; ax
         return <g key={axis}><text x="0" y={y}>{label}</text><line x1="112" y1={y - 5} x2="272" y2={y - 5} /><circle cx={112 + width} cy={y - 5} r="6" /><text x="282" y={y}>{position[axis]}</text></g>;
       })}
     </svg>
-    <figcaption>{definition.label}</figcaption>
+    <figcaption>{definition.label} — {definition.sourceLabel}</figcaption>
   </figure>;
 }
 
-function readSelected(value: unknown, definitions: AgiDefinition[]): [AgiDefinition | undefined, AgiDefinition | undefined] {
+function readSelected<T extends AgiDefinition>(value: unknown, definitions: T[]): [T | undefined, T | undefined] {
   const ids = typeof value === 'object' && value !== null ? (value as Record<string, unknown>).selectedIds : undefined;
   const selected = Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
   const left = definitions.find((item) => item.id === selected[0]) ?? definitions[0];
