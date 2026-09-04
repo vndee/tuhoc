@@ -274,7 +274,15 @@ func (u *Usecase) Search(ctx context.Context, q string, limit int) (Results, err
 	}
 	kept := make([]ranked, 0, len(candidates))
 	for _, c := range candidates {
-		before, match, after, ok := snippetAround(htmltext.Strip(c.HTML), re)
+		// Gỡ thẻ CHỈ KHI cần. Kể từ 0012, plain_text được dựng sẵn lúc publish
+		// (catalog/repo.go), nên đường thường không gỡ gì cả — đo trên chương
+		// lớn nhất thật, mỗi lần gỡ tốn 227 µs và ~213 KB cấp phát, và nó chạy
+		// trên MỌI ứng viên trước khi `limit` cắt bất cứ thứ gì.
+		text := c.Text
+		if c.NeedsStrip {
+			text = htmltext.Strip(text)
+		}
+		before, match, after, ok := snippetAround(text, re)
 		if !ok {
 			continue // chặng hai: chỉ khớp trong markup
 		}

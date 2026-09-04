@@ -1,0 +1,37 @@
+-- Văn bản thuần của mỗi chương, dựng SẴN lúc publish thay vì gỡ thẻ lại ở
+-- mỗi lượt tìm kiếm.
+--
+-- ── VÌ SAO CỘT NÀY TỒN TẠI ───────────────────────────────────────────────
+-- GET /search chạy `html ILIKE '%q%'` rồi gỡ thẻ TỪNG ứng viên trong Go để
+-- (a) loại những chỗ chỉ khớp trong markup và (b) cắt đoạn trích. Đo được:
+-- 227 µs và ~213 KB cấp phát cho MỘT chương 33 KB, nhân với trần 200 ứng
+-- viên — tức ~45 ms CPU và ~42 MB rác cho một request in ra tám dòng.
+--
+-- Chính lược này đã có tiền lệ ngay trong 0005: `widget_names` được trích
+-- lúc publish với lý do viết thẳng ở đó — "để GET chương trả kèm đúng widget
+-- mà không phải quét HTML mỗi request". Cột này là cùng một ý, cho cùng một
+-- lý do, ở một đường đọc khác.
+--
+-- Cột này cũng là thứ duy nhất khiến một chỉ mục trở nên KHẢ THI về sau:
+-- không chỉ mục B-tree nào phục vụ được `ILIKE '%…%'`, chỉ `pg_trgm` GIN —
+-- và dựng nó trên `html` là dựng trên markup, tức đánh chỉ mục cho cả tên
+-- lớp CSS. Trên cột này thì nó đánh chỉ mục cho đúng thứ người ta tìm.
+--
+-- ── VÌ SAO NULLABLE, VÀ VÌ SAO KHÔNG BACKFILL Ở ĐÂY ──────────────────────
+-- NULL nghĩa là "chương này publish TRƯỚC 0012, chưa dẫn xuất". Nó không
+-- phải một giá trị thiếu cần vá — nó là một trạng thái đọc được, và
+-- `internal/search` đọc đúng nó để rơi về đường cũ (gỡ thẻ từ `html`) thay
+-- vì im lặng bỏ chương ấy khỏi mọi kết quả.
+--
+-- `NOT NULL DEFAULT ''` sẽ gọn hơn và SAI hơn: chuỗi rỗng không khớp truy
+-- vấn nào, nên mọi chương đã publish sẽ lặng lẽ biến mất khỏi tìm kiếm cho
+-- tới khi ai đó publish lại — một hồi quy dữ liệu không có tín hiệu nào.
+--
+-- Backfill KHÔNG nằm trong tệp này, khác 0008 vốn backfill bằng SQL thuần.
+-- Lý do là một ràng buộc thật, không phải một lựa chọn: gỡ thẻ đúng nghĩa
+-- cần tokenizer HTML5 của Go (bảng mười thẻ raw-text, `internal/htmltext`),
+-- và một bản dựng bằng `regexp_replace` sẽ là ĐỊNH NGHĨA THỨ HAI cho "văn
+-- bản của một chương" — đúng thứ mà việc tách `internal/htmltext` ra khỏi
+-- `internal/ai` tồn tại để tránh. Backfill vì thế chạy trong Go, một lần,
+-- lúc khởi động: `catalog.Repo.BackfillPlainText` (xem `cmd/api/main.go`).
+ALTER TABLE published_chapters ADD COLUMN plain_text text;
