@@ -74,6 +74,13 @@ export const vi = {
   'stories.back': 'Quay lại',
   'stories.illustrationPrefix': 'Minh hoạ',
   'stories.sourceAccessed': (date: string) => `Truy cập ${date}`,
+  'stories.home': 'Trang chủ',
+  'stories.actLabel': (act: number) => `Hồi ${act}`,
+  'stories.sceneLabel': (scene: number) => `Cảnh ${String(scene).padStart(2, '0')}`,
+  'stories.technicalHinge': 'Điểm kỹ thuật',
+  'stories.openQuestion': 'Câu hỏi mở',
+  'stories.coda': 'Vĩ thanh',
+  'stories.prompt': 'Lời nhắc',
 
   /* ── trang CÀI ĐẶT (`pages/Settings.tsx`) ─────────────────────────────────
    *
