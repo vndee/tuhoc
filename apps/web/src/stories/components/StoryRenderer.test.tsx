@@ -558,6 +558,29 @@ describe('StoryRenderer', () => {
     expect(screen.getByRole('link', { name: /^cảnh 0?1:/i })).toHaveAttribute('href', '#scene-1');
   });
 
+  it('shows localized captions for the cover and active desktop plate', () => {
+    renderStory();
+    const stage = screen.getByTestId('story-stage');
+    const coverCaption = within(screen.getByTestId('story-cover')).getByText('Chú thích bìa');
+    const firstCaption = within(stage).getByText('Chú thích cảnh 1');
+    expect(coverCaption.tagName).toBe('FIGCAPTION');
+    expect(firstCaption.closest('figure')).not.toHaveAttribute('aria-hidden');
+    expect(coverCaption).toBeVisible();
+    expect(firstCaption).toBeVisible();
+
+    observer.emit('scene-2');
+    fireEvent.load(plateImageFor('scene-2.webp'));
+    const secondCaption = within(stage).getByText('Chú thích cảnh 2');
+    expect(secondCaption.closest('figure')).not.toHaveAttribute('aria-hidden');
+    expect(firstCaption.closest('figure')).toHaveAttribute('aria-hidden', 'true');
+    expect(secondCaption).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: /ngôn ngữ/i }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /EN/i }));
+    expect(within(screen.getByTestId('story-cover')).getByText('Cover caption')).toBeVisible();
+    expect(within(stage).getByText('Scene 2 caption')).toBeVisible();
+  });
+
   it('binds a stable named act to the stage as the active scene changes', () => {
     const story = makeStoryFixture({ sceneCount: 12 });
     story.acts = [

@@ -141,6 +141,7 @@
 .story-cover-plate {
   margin: 2rem 0 0;
   overflow: hidden;
+  position: relative;
 }
 
 .story-cover-plate img {
@@ -176,6 +177,7 @@
 
 .story-plate-layer {
   inset: 0;
+  margin: 0;
   opacity: 0;
   position: absolute;
   transition: opacity var(--story-crossfade-ms) ease;
@@ -190,6 +192,20 @@
   height: 100%;
   object-fit: contain;
   width: 100%;
+}
+
+.story-cover-caption,
+.story-plate-caption {
+  background: color-mix(in srgb, var(--story-paper) 88%, transparent);
+  bottom: .75rem;
+  color: var(--story-ink);
+  font-family: var(--font-serif);
+  font-size: .875rem;
+  left: .75rem;
+  margin: 0;
+  max-width: min(32rem, calc(100% - 1.5rem));
+  padding: .35rem .5rem;
+  position: absolute;
 }
 
 .story-stage-lab {

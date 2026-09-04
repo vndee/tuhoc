@@ -47,7 +47,7 @@ export default function ConvolutionLab({ definition, lang, value, onChange, onRe
         {definition.config.pixels.map((pixels, pixelRow) => <div key={pixelRow} role="row" className="story-convolution-grid-row">
           {pixels.map((pixel, pixelColumn) => {
             const inKernel = pixelRow >= row && pixelRow < row + definition.config.kernel.length && pixelColumn >= column && pixelColumn < column + definition.config.kernel[0].length;
-            return <span key={`${pixelRow}-${pixelColumn}`} role="gridcell" className={inKernel ? parallel ? 'is-grouped' : 'is-kernel' : undefined} aria-label={`row ${pixelRow}, column ${pixelColumn}: ${pixel}`}>{pixel}</span>;
+            return <span key={`${pixelRow}-${pixelColumn}`} role="gridcell" className={inKernel ? parallel ? 'is-grouped' : 'is-kernel' : undefined} aria-label={t(lang, 'stories.lab.convolutionCell', pixelRow, pixelColumn, pixel)}>{pixel}</span>;
           })}
         </div>)}
       </div>

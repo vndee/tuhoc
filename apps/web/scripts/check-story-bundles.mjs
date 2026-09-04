@@ -6,29 +6,21 @@ const forbidden = [
   /src\/stories\/labs\/(?:external-memory|embodied-calculation|executable-rules|computation-limits|judgment-criteria|linear-separator|knowledge-bottleneck|gradient-descent|convolution|attention|agent-trace|agi-definitions)\//,
 ];
 
-/** Return forbidden modules reachable from an entry through static imports only. */
-export function findStoryStaticLeaks(manifest) {
-  const entryKeys = Object.entries(manifest)
-    .filter(([, chunk]) => chunk.isEntry)
-    .map(([key]) => key);
-  const seen = new Set();
+/** Return forbidden source modules recorded in the entry's static chunk graph. */
+export function findStoryStaticLeaks(evidence) {
   const leaks = new Set();
-
-  const visit = (key) => {
-    if (seen.has(key)) return;
-    seen.add(key);
-    if (forbidden.some((pattern) => pattern.test(key))) leaks.add(key);
-    for (const imported of manifest[key]?.imports ?? []) visit(imported);
-  };
-
-  for (const key of entryKeys) visit(key);
+  for (const chunk of evidence.staticChunks ?? []) {
+    for (const moduleId of chunk.modules ?? []) {
+      if (forbidden.some((pattern) => pattern.test(moduleId))) leaks.add(moduleId);
+    }
+  }
   return [...leaks].sort();
 }
 
 async function main() {
-  const manifestUrl = new URL('../dist/.vite/manifest.json', import.meta.url);
-  const manifest = JSON.parse(await readFile(manifestUrl, 'utf8'));
-  const leaks = findStoryStaticLeaks(manifest);
+  const evidenceUrl = new URL('../dist/.vite/story-static-graph.json', import.meta.url);
+  const evidence = JSON.parse(await readFile(evidenceUrl, 'utf8'));
+  const leaks = findStoryStaticLeaks(evidence);
   if (leaks.length > 0) {
     console.error(`Landing entry statically contains full story/lab modules:\n${leaks.join('\n')}`);
     process.exitCode = 1;

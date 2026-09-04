@@ -8,7 +8,7 @@ export default function AgiDefinitionsLab({ definition, lang, value, onChange, o
     throw new Error(`AgiDefinitionsLab expected definition kind "agi-definitions", received "${definition.kind}".`);
   }
 
-  const definitions: Array<AgiDefinition & { sourceLabel: string }> = definition.config.definitions.map(({ id, label, sourceLabel, generality, capability, autonomy }) => ({ id, label: label[lang], sourceLabel: sourceLabel[lang], generality, capability, autonomy }));
+  const definitions: Array<AgiDefinition & { sourceLabel: string; note: string }> = definition.config.definitions.map(({ id, label, sourceLabel, note, generality, capability, autonomy }) => ({ id, label: label[lang], sourceLabel: sourceLabel[lang], note: note[lang], generality, capability, autonomy }));
   const [left, right] = readSelected(value, definitions);
   if (!left || !right) {
     return <LabFrame lang={lang} title={definition.title[lang]} instruction={definition.instruction[lang]} result="—" onReset={onReset} onBack={onBack}>
@@ -18,7 +18,7 @@ export default function AgiDefinitionsLab({ definition, lang, value, onChange, o
   const difference = compareDefinitions(left, right);
   const update = (side: 0 | 1, id: string) => onChange({ selectedIds: side === 0 ? [id, right.id] : [left.id, id] });
   const axes = axisLabels(lang);
-  const axisMaximum = Math.max(1, ...Object.values(positionDefinition(left)), ...Object.values(positionDefinition(right)));
+  const axisMaximum = 5;
 
   return <LabFrame
     lang={lang}
@@ -50,7 +50,7 @@ export default function AgiDefinitionsLab({ definition, lang, value, onChange, o
   </LabFrame>;
 }
 
-function AxisPlot({ definition, axes, maximum }: { definition: AgiDefinition & { sourceLabel: string }; axes: Record<keyof AgiPosition, string>; maximum: number }) {
+function AxisPlot({ definition, axes, maximum }: { definition: AgiDefinition & { sourceLabel: string; note: string }; axes: Record<keyof AgiPosition, string>; maximum: number }) {
   const position = positionDefinition(definition);
   const entries = Object.entries(axes) as Array<[keyof AgiPosition, string]>;
   return <figure className="story-agi-axis-plot">
@@ -62,7 +62,7 @@ function AxisPlot({ definition, axes, maximum }: { definition: AgiDefinition & {
         return <g key={axis}><text x="0" y={y}>{label}</text><line x1="112" y1={y - 5} x2="272" y2={y - 5} /><circle cx={112 + width} cy={y - 5} r="6" /><text x="282" y={y}>{position[axis]}</text></g>;
       })}
     </svg>
-    <figcaption>{definition.label} — {definition.sourceLabel}</figcaption>
+    <figcaption><span>{definition.label} — {definition.sourceLabel}</span><small>{definition.note}</small></figcaption>
   </figure>;
 }
 

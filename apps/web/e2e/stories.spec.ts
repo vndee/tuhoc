@@ -52,6 +52,23 @@ test('deep link, language, hash, state, and keyboard interaction survive togethe
   await expect(page.getByRole('heading', { name: /Dartmouth, symbolic AI/i })).toBeVisible();
 });
 
+test('cover and desktop plate captions stay visible and localized as the active scene changes', async ({ page }) => {
+  await page.goto(`${ISSUE_PATH}#scene-01`);
+  const cover = page.getByTestId('story-cover');
+  const stage = page.getByTestId('story-stage');
+  await expect(cover.getByText('Minh hoạ: những vật liệu khác nhau giữ và truyền câu hỏi của con người, không dẫn tới một đích tất yếu.')).toBeVisible();
+  await expect(stage.getByText('Minh hoạ: dấu ấn vật chất tồn tại khác với ký ức được truyền miệng.')).toBeVisible();
+
+  await page.getByRole('link', { name: /Cảnh 02:/ }).click();
+  await expect(stage).toHaveAttribute('data-active-scene', 'scene-02');
+  await expect(stage.getByText('Minh hoạ: trạng thái số đi qua cả người vận hành lẫn cơ cấu tính toán.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Ngôn ngữ giao diện' }).click();
+  await page.getByRole('menuitemradio', { name: /English/i }).click();
+  await expect(cover.getByText('Illustration: different materials carry human questions without leading to an inevitable destination.')).toBeVisible();
+  await expect(stage.getByText('Illustration: numerical state passes through both operator and calculating mechanism.')).toBeVisible();
+});
+
 test('public recovery, collection, sources, and a local image failure keep the narrative readable', async ({ page }) => {
   await page.goto('/stories/does-not-exist');
   await expect(page.getByRole('heading', { name: 'Không tìm thấy số đặc san' })).toBeVisible();

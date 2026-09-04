@@ -43,6 +43,23 @@ describe('validateStory', () => {
     ]));
   });
 
+  it.each([-1, 6])('rejects an AGI definition coordinate outside 0–5: %s', (generality) => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'agi-definitions',
+      title: { vi: 'Khung AGI', en: 'AGI frames' },
+      instruction: { vi: 'So sánh', en: 'Compare' },
+      config: { definitions: [
+        { id: 'one', label: { vi: 'Một', en: 'One' }, sourceId: 'source-a', sourceLabel: { vi: 'Nguồn A', en: 'Source A' }, note: { vi: 'Ghi chú', en: 'A note' }, generality, capability: 2, autonomy: 3 },
+        { id: 'two', label: { vi: 'Hai', en: 'Two' }, sourceId: 'source-b', sourceLabel: { vi: 'Nguồn B', en: 'Source B' }, note: { vi: 'Ghi chú', en: 'A note' }, generality: 4, capability: 2, autonomy: 3 },
+      ] },
+    };
+
+    expect(validateStory(story, REGISTERED_LAB_KINDS)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'invalid-lab-config', path: 'scenes.0.lab.config.definitions.0.generality' }),
+    ]));
+  });
+
   it('reports each invalid image, source, provenance, and source reference at its exact path', () => {
     const story = makeStoryFixture();
     story.scenes[0].illustration.src = '';

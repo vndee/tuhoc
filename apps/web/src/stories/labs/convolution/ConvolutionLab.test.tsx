@@ -16,9 +16,9 @@ const definition: LabRuntimeProps['definition'] = {
   },
 };
 
-function ControlledLab() {
+function ControlledLab({ lang = 'en' }: { lang?: 'en' | 'vi' }) {
   const [value, setValue] = useState<unknown>({ row: 0, column: 0, parallel: false });
-  return <ConvolutionLab definition={definition} lang="en" value={value} onChange={setValue} onReset={() => undefined} onBack={() => undefined} />;
+  return <ConvolutionLab definition={definition} lang={lang} value={value} onChange={setValue} onReset={() => undefined} onBack={() => undefined} />;
 }
 
 describe('ConvolutionLab', () => {
@@ -43,5 +43,11 @@ describe('ConvolutionLab', () => {
     expect(screen.getByRole('table', { name: /feature map/i })).toHaveTextContent(featureMap ?? '');
     expect(screen.getByText(/grouped highlights.*intuition.*not a gpu benchmark/i)).toBeVisible();
     expect(screen.queryByText(/gpu speed|faster|milliseconds/i)).not.toBeInTheDocument();
+  });
+
+  it('localizes each gridcell label for Vietnamese readers', () => {
+    render(<ControlledLab lang="vi" />);
+    expect(screen.getByRole('gridcell', { name: 'hàng 0, cột 0: 1' })).toBeVisible();
+    expect(screen.queryByRole('gridcell', { name: /row 0, column 0/i })).not.toBeInTheDocument();
   });
 });

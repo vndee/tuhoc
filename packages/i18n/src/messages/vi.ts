@@ -159,6 +159,7 @@ export const vi = {
   'stories.lab.convolutionMoveRight': 'Đưa kernel sang phải',
   'stories.lab.convolutionDotProduct': (value: number) => `Tích vô hướng: ${value}`,
   'stories.lab.convolutionOrigin': (row: number, column: number) => `Gốc kernel: hàng ${row}, cột ${column}`,
+  'stories.lab.convolutionCell': (row: number, column: number, value: number) => `hàng ${row}, cột ${column}: ${value}`,
   'stories.lab.convolutionFeatureMap': 'Bản đồ đặc trưng',
   'stories.lab.convolutionParallel': 'Trực giác về thứ tự song song',
   'stories.lab.convolutionSequential': 'Các điểm sáng tuần tự',

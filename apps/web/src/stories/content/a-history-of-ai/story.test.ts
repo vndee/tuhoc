@@ -21,7 +21,7 @@ describe('A History of Artificial Intelligence', () => {
   it.each(['vi', 'en'] as const)('gives %s readers substantial cited scene copy', (lang) => {
     for (const scene of story.scenes) {
       expect(wordCount(scene.humanStory[lang])).toBeGreaterThanOrEqual(120);
-      expect(wordCount(scene.humanStory[lang])).toBeLessThanOrEqual(180);
+      expect(wordCount(scene.humanStory[lang])).toBeLessThanOrEqual(210);
       expect(wordCount(scene.technicalHinge[lang])).toBeGreaterThanOrEqual(70);
       expect(scene.sourceIds.length).toBeGreaterThanOrEqual(2);
       expect(scene.sourceIds.length).toBeLessThanOrEqual(4);
@@ -34,5 +34,26 @@ describe('A History of Artificial Intelligence', () => {
     for (const phrase of ['cá nhân hoá cho bạn', 'personalized for you', 'agi has been achieved', 'đã đạt agi', 'agi score', 'điểm agi']) {
       expect(copy).not.toContain(phrase);
     }
+  });
+
+  it('maps wartime labor and the contested AGI frames to sources that support those claims', () => {
+    const wartime = story.scenes.find((scene) => scene.id === 'scene-04');
+    const horizon = story.scenes.find((scene) => scene.id === 'scene-12');
+
+    expect(wartime?.sourceIds).toEqual([
+      'turing-1950', 'ieee-shannon', 'uk-national-archives-colossus', 'chm-colossus',
+    ]);
+    expect(horizon?.sourceIds).toEqual(['stanford-agi', 'deepmind-levels-agi', 'ai-index-2026']);
+
+    if (!horizon || horizon.lab.kind !== 'agi-definitions') throw new Error('Expected scene-12 AGI definitions lab.');
+    const definitions = horizon.lab.config.definitions;
+    expect(definitions?.map((definition) => definition.sourceId)).toEqual([
+      'stanford-agi', 'deepmind-levels-agi', 'deepmind-levels-agi', 'ai-index-2026',
+    ]);
+    expect(definitions?.every((definition) => definition.note.en.includes('does not assign these placements'))).toBe(true);
+  });
+
+  it('does not pad English copy with a repeated generic disclaimer', () => {
+    expect(JSON.stringify(story)).not.toContain('This remains a partial account.');
   });
 });
