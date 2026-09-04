@@ -6,6 +6,7 @@ import { StoryScene } from './StoryScene';
 import { StoryShell } from './StoryShell';
 import { StorySources } from './StorySources';
 import { StoryStage } from './StoryStage';
+import { StoryLabHost } from './StoryLabHost';
 import { activeStoryScenePrivateContext, findOwnedElement, storyShellActivationContext } from './StoryRendererInternals';
 import { useActiveStoryScene } from './useActiveStoryScene';
 import { useStoryLayout } from './useStoryLayout';
@@ -18,15 +19,6 @@ export interface StoryRendererProps {
     onChange: (next: unknown) => void,
     onReset: () => void,
   ) => ReactNode;
-}
-
-function FallbackLab({ scene, lang }: { scene: StorySceneModel; lang: 'vi' | 'en' }) {
-  return <section className="story-lab-fallback" aria-label={scene.lab.title[lang]}>
-    <h3>{scene.lab.title[lang]}</h3>
-    <p>{scene.lab.instruction[lang]}</p>
-    <figure><div className="story-lab-diagram" aria-hidden="true" /><figcaption>{scene.labFallback.diagramLabel[lang]}</figcaption></figure>
-    <p>{scene.labFallback.explanation[lang]}</p>
-  </section>;
 }
 
 function ImageFallback({ image, lang, label }: { image: ResponsiveStoryImage; lang: 'vi' | 'en'; label: string }) {
@@ -70,9 +62,18 @@ function StoryRendererContent({
   }, [activeSceneId]);
 
   const sceneLabels = useMemo(() => story.scenes.map((scene, index) => ({ id: scene.id, label: String(index + 1).padStart(2, '0') })), [story.scenes]);
-  const labFor = (scene: StorySceneModel) => renderLab
-    ? renderLab(scene, labStateByScene[scene.id], (next) => setLabStateByScene((current) => ({ ...current, [scene.id]: next })), () => setLabStateByScene((current) => ({ ...current, [scene.id]: undefined })))
-    : <FallbackLab scene={scene} lang={lang} />;
+  const labFor = (scene: StorySceneModel) => {
+    const value = labStateByScene[scene.id];
+    const onChange = (next: unknown) => setLabStateByScene((current) => ({ ...current, [scene.id]: next }));
+    const onReset = () => setLabStateByScene((current) => {
+      const next = { ...current };
+      delete next[scene.id];
+      return next;
+    });
+    return renderLab
+      ? renderLab(scene, value, onChange, onReset)
+      : <StoryLabHost scene={scene} lang={lang} value={value} onChange={onChange} onReset={onReset} onBack={() => setLabSceneId(null)} />;
+  };
 
   const activateScene = useCallback((id: StorySceneModel['id']) => {
     setActiveSceneId(id);

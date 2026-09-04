@@ -1,4 +1,5 @@
 import type { LabKind, Localized, ResponsiveStoryImage, RichTextBlock, StoryDefinition } from './types';
+import { REGISTERED_LAB_KINDS } from './labs/registry';
 
 export interface StoryValidationIssue {
   code: 'missing-locale' | 'duplicate-id' | 'missing-source' | 'unknown-lab-kind' |
@@ -13,7 +14,7 @@ const unique = (values: readonly string[]) => new Set(values).size === values.le
 
 export function validateStory(
   story: StoryDefinition,
-  registeredKinds: ReadonlySet<LabKind>,
+  registeredKinds: ReadonlySet<LabKind> = REGISTERED_LAB_KINDS,
 ): StoryValidationIssue[] {
   const issues: StoryValidationIssue[] = [];
   const add = (code: StoryValidationIssue['code'], path: string, message: string) => issues.push({ code, path, message });
@@ -182,7 +183,7 @@ export function validateStory(
   return issues;
 }
 
-export function assertValidStory(story: StoryDefinition, registeredKinds: ReadonlySet<LabKind>): void {
+export function assertValidStory(story: StoryDefinition, registeredKinds: ReadonlySet<LabKind> = REGISTERED_LAB_KINDS): void {
   const issues = validateStory(story, registeredKinds);
   if (issues.length > 0) {
     throw new Error(issues.map((issue) => `${issue.path}: ${issue.message}`).join('\n'));

@@ -8,6 +8,7 @@ import { LanguageProvider } from '../../i18n/LanguageProvider';
 import { ThemeProvider } from '../../theme/ThemeContext';
 import { installIntersectionObserver, type ObserverHarness } from '../../test/intersectionObserver';
 import { makeStoryFixture } from '../testing/storyFixture';
+import { labRegistry } from '../labs/registry';
 import type { StoryDefinition, StoryScene as StorySceneModel } from '../types';
 import { RichText } from './RichText';
 import { StoryRenderer } from './StoryRenderer';
@@ -646,6 +647,38 @@ describe('StoryRenderer', () => {
     expect(location.hash).toBe('#scene-3');
   });
 
+  it('preserves each scene lab state across close, reopen, and language changes while reset stays isolated', () => {
+    const renderLab = (scene: StorySceneModel, value: unknown, onChange: (next: unknown) => void, onReset: () => void) => <section>
+      <output>{`${scene.id}:${String(value ?? 'fresh')}`}</output>
+      <button type="button" onClick={() => onChange(`${scene.id}-saved`)}>Save {scene.id}</button>
+      <button type="button" onClick={onReset}>Reset {scene.id}</button>
+    </section>;
+    renderStory(makeStoryFixture({ sceneCount: 12 }), renderLab);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /tự tay thử/i })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Save scene-1' }));
+    expect(screen.getByText('scene-1:scene-1-saved')).toBeVisible();
+
+    observer.emit('scene-2');
+    fireEvent.click(screen.getAllByRole('button', { name: /tự tay thử/i })[1]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Save scene-2' }));
+    expect(screen.getByText('scene-2:scene-2-saved')).toBeVisible();
+
+    observer.emit('scene-1');
+    fireEvent.click(screen.getAllByRole('button', { name: /tự tay thử/i })[0]!);
+    expect(screen.getByText('scene-1:scene-1-saved')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Reset scene-1' }));
+    expect(screen.getByText('scene-1:fresh')).toBeVisible();
+
+    observer.emit('scene-2');
+    fireEvent.click(screen.getAllByRole('button', { name: /tự tay thử/i })[1]!);
+    expect(screen.getByText('scene-2:scene-2-saved')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: /ngôn ngữ/i }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /EN/i }));
+    expect(screen.getByText('scene-2:scene-2-saved')).toBeVisible();
+    expect(location.hash).toBe('#scene-2');
+  });
+
   it('renders semantic scene headings and source disclosures', () => {
     renderStory();
     expect(screen.getByRole('heading', { name: /^cảnh 1$/i, level: 2 })).toBeInTheDocument();
@@ -718,6 +751,16 @@ describe('StoryRenderer', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /tự tay thử/i })[0]!);
     expect(renderLab).toHaveBeenCalledTimes(1);
     expect(screen.getByText('Lab for scene-1')).toBeVisible();
+  });
+
+  it('does not request a production lab chunk until that scene is opened', () => {
+    const loader = vi.spyOn(labRegistry, 'external-memory');
+    renderStory(makeStoryFixture({ sceneCount: 12 }));
+    expect(loader).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getAllByRole('button', { name: /tự tay thử/i })[0]!);
+    expect(loader).toHaveBeenCalledOnce();
+    loader.mockRestore();
   });
 
   it('renders a non-main shell root and a truthful non-modal mobile drawer that closes on selection', () => {
