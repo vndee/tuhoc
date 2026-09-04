@@ -28,6 +28,7 @@ import (
 
 	"github.com/vndee/tuhoc-api/internal/catalog"
 	"github.com/vndee/tuhoc-api/internal/config"
+	"github.com/vndee/tuhoc-api/internal/htmltext"
 	"github.com/vndee/tuhoc-api/internal/pkgcheck"
 	"github.com/vndee/tuhoc-api/internal/server"
 	"github.com/vndee/tuhoc-api/internal/store"
@@ -1415,5 +1416,141 @@ func TestPublicAssetContentTypeAndETag(t *testing.T) {
 	}
 	if len(cachedBody) != 0 {
 		t.Errorf("GET asset 304: want an empty body, got %d bytes", len(cachedBody))
+	}
+}
+
+// TestPublishFillsPlainText: cột dựng lúc publish (migration 0012) thực sự
+// được điền, và điền bằng VĂN BẢN THUẦN chứ không phải HTML đã đổi tên cột.
+//
+// Không có bài này, chuyển `internal/search` sang quét plain_text sẽ hỏng theo
+// cách tệ nhất có thể: không lỗi, không cảnh báo, chỉ là mọi truy vấn trả về
+// rỗng cho mọi khoá publish sau đó.
+func TestPublishFillsPlainText(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool)
+
+	resp, raw := putPackage(t, app, validCourseSlug, validCourseZip(t), "Bearer "+adminToken, nil)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("publish: want 201 got %d body=%s", resp.StatusCode, raw)
+	}
+
+	rows, err := pool.Query(context.Background(),
+		`SELECT chapter_id, html, plain_text FROM published_chapters WHERE slug = $1`, validCourseSlug)
+	if err != nil {
+		t.Fatalf("read chapters: %v", err)
+	}
+	defer rows.Close()
+
+	seen := 0
+	for rows.Next() {
+		var id, html string
+		var plain *string
+		if err := rows.Scan(&id, &html, &plain); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		seen++
+		if plain == nil {
+			t.Errorf("chapter %s: plain_text is NULL after publish", id)
+			continue
+		}
+		// NOT `ContainsAny("<>")`: a chapter that teaches programming has
+		// `if (x < 0)` in its prose, and the corpus this test publishes does
+		// exactly that. "</" is the thing that cannot survive stripping — no
+		// close-tag syntax appears in text a learner reads.
+		if strings.Contains(*plain, "</") {
+			t.Errorf("chapter %s: plain_text still carries markup: %q", id, *plain)
+		}
+		if *plain == html {
+			t.Errorf("chapter %s: plain_text is a verbatim copy of html", id)
+		}
+		if len(*plain) >= len(html) {
+			t.Errorf("chapter %s: plain_text (%d bytes) is not smaller than html (%d bytes)",
+				id, len(*plain), len(html))
+		}
+	}
+	if seen == 0 {
+		t.Fatal("no chapters read back")
+	}
+}
+
+// TestBackfillPlainTextIsIdempotentAndNeverOverwrites đo ba tính chất của
+// catalog.BackfillPlainText, và cả ba đều là chỗ nó có thể làm hỏng dữ liệu:
+// nó điền hàng NULL, nó không đụng lần thứ hai, và nó KHÔNG ghi đè một giá
+// trị đã có — một chương vừa publish lại mang bản dẫn xuất mới nhất, và một
+// backfill lùi nó về bản cũ là mất dữ liệu.
+func TestBackfillPlainTextIsIdempotentAndNeverOverwrites(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool)
+	ctx := context.Background()
+
+	if resp, raw := putPackage(t, app, validCourseSlug, validCourseZip(t), "Bearer "+adminToken, nil); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("publish: want 201 got %d body=%s", resp.StatusCode, raw)
+	}
+
+	// Một chương giả trạng thái "publish trước 0012", và một chương giữ
+	// nguyên giá trị publish vừa ghi.
+	if _, err := pool.Exec(ctx,
+		`UPDATE published_chapters SET plain_text = NULL WHERE slug = $1 AND chapter_id = 'c1'`,
+		validCourseSlug); err != nil {
+		t.Fatalf("giả lập hàng cũ: %v", err)
+	}
+	var untouchedBefore string
+	if err := pool.QueryRow(ctx,
+		`SELECT plain_text FROM published_chapters WHERE slug = $1 AND chapter_id = 'c2'`,
+		validCourseSlug).Scan(&untouchedBefore); err != nil {
+		t.Fatalf("đọc c2 trước backfill: %v", err)
+	}
+
+	repo := catalog.NewRepo(pool)
+	filled, err := repo.BackfillPlainText(ctx)
+	if err != nil {
+		t.Fatalf("BackfillPlainText: %v", err)
+	}
+	if filled != 1 {
+		t.Errorf("số hàng điền = %d, muốn 1", filled)
+	}
+
+	var c1 *string
+	if err := pool.QueryRow(ctx,
+		`SELECT plain_text FROM published_chapters WHERE slug = $1 AND chapter_id = 'c1'`,
+		validCourseSlug).Scan(&c1); err != nil {
+		t.Fatalf("đọc c1 sau backfill: %v", err)
+	}
+	if c1 == nil || *c1 == "" {
+		t.Fatalf("c1 vẫn chưa được điền: %v", c1)
+	}
+	// "</", không phải "<>": xem chú thích cùng loại ở TestPublishFillsPlainText.
+	if strings.Contains(*c1, "</") {
+		t.Errorf("c1 điền bằng markup: %q", *c1)
+	}
+	// Và nó phải bằng đúng thứ publish sẽ ghi — một backfill dựng ra một văn
+	// bản KHÁC với đường publish là hai định nghĩa cho một cột.
+	var c1html string
+	if err := pool.QueryRow(ctx,
+		`SELECT html FROM published_chapters WHERE slug = $1 AND chapter_id = 'c1'`,
+		validCourseSlug).Scan(&c1html); err != nil {
+		t.Fatalf("đọc html của c1: %v", err)
+	}
+	if *c1 != htmltext.Strip(c1html) {
+		t.Errorf("backfill dựng ra văn bản khác với đường publish")
+	}
+
+	var untouchedAfter string
+	if err := pool.QueryRow(ctx,
+		`SELECT plain_text FROM published_chapters WHERE slug = $1 AND chapter_id = 'c2'`,
+		validCourseSlug).Scan(&untouchedAfter); err != nil {
+		t.Fatalf("đọc c2 sau backfill: %v", err)
+	}
+	if untouchedAfter != untouchedBefore {
+		t.Errorf("backfill ghi đè một giá trị đã có")
+	}
+
+	// Chạy lần hai: không hàng nào.
+	again, err := repo.BackfillPlainText(ctx)
+	if err != nil {
+		t.Fatalf("BackfillPlainText lần hai: %v", err)
+	}
+	if again != 0 {
+		t.Errorf("lần hai điền %d hàng, muốn 0 — hàm phải chạy lại được", again)
 	}
 }

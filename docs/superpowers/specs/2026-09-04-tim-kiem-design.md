@@ -18,6 +18,7 @@ Tài liệu này là bản thiết kế cho vòng thay đổi ấy.
 | Ô ở thanh bên | **Lọc mục lục tại chỗ.** Manifest đã nằm sẵn trong bộ nhớ; không gọi mạng. |
 | `⌘K` | **Thành thật.** Gợi ý ấy đã in trên ô từ lâu mà không có handler nào. |
 | Dấu tiếng Việt | **Ngoài phạm vi vòng này.** Gõ "ly thuyet" sẽ không ra "lý thuyết" — xem §7. |
+| Chi phí mỗi lượt tìm | **Cột `plain_text` dựng sẵn lúc publish** (migration 0012) — xem §8, thêm sau vòng review. |
 
 ---
 
@@ -232,3 +233,50 @@ mới. **Điều này phải được đo, không phải được tin**: chạy 
   bỏ bớt hit chứ không thêm được.
 - **Xếp hạng.** Không có điểm liên quan; thứ tự là thứ tự mục lục (§3).
 - **Lịch sử tìm kiếm, gợi ý, đánh dấu chương.** Không.
+
+---
+
+## 8. Chi phí mỗi lượt tìm — quyết định sau vòng review
+
+Vòng review bốn hướng đo được điều mà bản thiết kế ban đầu không nhìn ra:
+`htmltext.Strip` chạy trên **mọi** ứng viên trước khi `limit` cắt bất cứ thứ
+gì. Benchmark trên chương lớn nhất thật (33 KB): **227 µs và ~213 KB cấp phát
+mỗi chương**, nhân với trần 200 ứng viên — tức ~45 ms CPU và ~42 MB rác cho
+một request in ra tám dòng. Và `ORDER BY` nằm TRÊN seq scan thành một nút
+`Sort`, nên `LIMIT 200` không hề bó được phạm vi quét.
+
+**Quyết định: dựng sẵn văn bản thuần lúc publish.** `published_chapters` nhận
+một cột `plain_text`, điền tại đường ghi duy nhất (`catalog/repo.go`), và
+tìm kiếm quét cột ấy.
+
+Đo A/B trên cùng một máy chủ, cùng dữ liệu (47 chương), 30 mẫu sau khi làm
+ấm, truy vấn rộng nhất:
+
+| | trung vị | p90 |
+|---|---|---|
+| Gỡ thẻ mỗi request | 54,5 ms | 104,8 ms |
+| Dựng sẵn | **30,1 ms** | **34,9 ms** |
+
+Phần lớn cái lợi KHÔNG đến từ việc quét ít byte hơn — cột chỉ nhỏ hơn 11%
+(991 kB so với 1111 kB), vì nội dung này nhiều chữ ít markup, và SQL chỉ
+nhanh lên 12%. Nó đến từ chỗ p90 co lại ba lần: 42 MB rác mỗi request biến
+mất, và cùng với nó là áp lực GC.
+
+**Cột NULLABLE, không phải `NOT NULL DEFAULT ''`.** NULL nghĩa là "publish
+trước 0012, chưa dẫn xuất", và câu truy vấn `COALESCE(plain_text, html)` rơi
+về đường cũ cho đúng những hàng ấy. Chuỗi rỗng sẽ gọn hơn và sai hơn: nó
+không khớp truy vấn nào, nên mọi khoá đã publish lặng lẽ biến mất khỏi tìm
+kiếm cho tới khi ai đó publish lại — một hồi quy dữ liệu không có tín hiệu.
+
+**Backfill chạy trong Go lúc khởi động, không trong migration** — khác 0008,
+vốn backfill bằng SQL thuần. Đây là ràng buộc chứ không phải sở thích: gỡ thẻ
+đúng nghĩa cần tokenizer HTML5 của Go và bảng mười thẻ raw-text, và một bản
+dựng bằng `regexp_replace` sẽ là **định nghĩa thứ hai** cho "văn bản của một
+chương" — đúng thứ mà việc tách `internal/htmltext` tồn tại để tránh. Hàm
+chạy lại được (`WHERE plain_text IS NULL`), không bao giờ ghi đè, và không
+gây tử vong nếu hỏng.
+
+**Cột này cũng là thứ khiến một chỉ mục trở nên khả thi về sau.** Không chỉ
+mục B-tree nào phục vụ được `ILIKE '%…%'`; chỉ `pg_trgm` GIN — và dựng nó
+trên `html` là đánh chỉ mục cho cả tên lớp CSS. Trên cột này thì nó đánh chỉ
+mục cho đúng thứ người ta tìm. Vẫn ngoài phạm vi, nhưng nay không còn bị chặn.

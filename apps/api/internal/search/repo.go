@@ -6,10 +6,14 @@
 //
 // # Vì sao lọc hai chặng, và chặng thứ hai đóng cái gì
 //
-// SQL ở đây chỉ lọc THÔ: nó chạy ILIKE trên cột html — tức trên HTML còn
-// nguyên thẻ. Điều đó khiến `<div class="entropy">` khớp truy vấn "entropy"
-// dù bài viết không hề nói tới entropy, và đoạn trích cắt ra sẽ nằm giữa một
-// thuộc tính HTML.
+// SQL ở đây chỉ lọc THÔ. Kể từ migration 0012 nó quét plain_text — văn bản
+// đã gỡ thẻ, dựng sẵn lúc publish — nên hai chuyện xảy ra cùng lúc: chi phí
+// mỗi lượt tìm rơi hẳn, và cái bẫy `<div class="entropy">` khớp một truy vấn
+// "entropy" biến mất ngay từ SQL.
+//
+// Chặng hai VẪN CÒN, và không phải vì quán tính: một chương publish trước
+// 0012 có plain_text NULL, và với nó câu truy vấn rơi về quét html thô — đúng
+// tình trạng cũ, đúng cái bẫy cũ.
 //
 // Chặng hai nằm ở usecase.go: gỡ thẻ rồi TÌM LẠI chuỗi trong văn bản sạch,
 // không thấy thì bỏ hit. Nên hàm ở đây trả về ỨNG VIÊN, không phải kết quả —
@@ -51,14 +55,28 @@ type CourseCandidate struct {
 	Description string
 }
 
-// ChapterCandidate là một chương mà SQL thấy khớp. HTML đi kèm vì chặng hai
-// cần nó — gọi lại từng chương một sau đó là N+1 truy vấn cho đúng dữ liệu
-// vừa có trong tay.
+// ChapterCandidate là một chương mà SQL thấy khớp.
+//
+// Text là văn bản để tìm trong và cắt đoạn trích từ đó. Nó đi kèm ngay đây
+// chứ không lấy sau, vì gọi lại từng chương một là N+1 truy vấn cho đúng dữ
+// liệu vừa có trong tay.
+//
+// NeedsStrip cho biết Text còn là HTML thô hay đã là văn bản thuần. Kể từ
+// migration 0012, published_chapters.plain_text được dựng sẵn lúc publish, nên
+// đường thường là "đã thuần" và chặng hai chỉ còn là một phép tìm chuỗi. Một
+// chương publish TRƯỚC 0012 có plain_text NULL cho tới khi
+// catalog.BackfillPlainText chạy; với nó, Text là HTML thô và người gọi phải
+// tự gỡ thẻ.
+//
+// Cờ này thà có mà thừa còn hơn thiếu: cách khác là lọc thẳng
+// `WHERE plain_text ILIKE $1`, và khi ấy mọi chương chưa dẫn xuất biến mất
+// khỏi mọi kết quả mà không có tín hiệu nào.
 type ChapterCandidate struct {
 	Slug        string
 	CourseTitle string
 	ChapterID   string
-	HTML        string
+	Text        string
+	NeedsStrip  bool
 }
 
 // Repo là tầng SQL của gói. Không giữ luật nào.
@@ -133,11 +151,21 @@ func (r *Repo) SearchCourses(ctx context.Context, q string, limit int) ([]Course
 // để cái trần maxCandidates cắt ở cùng một chỗ giữa hai lần chạy giống hệt
 // nhau, thay vì cắt ngẫu nhiên theo thứ tự Postgres tình cờ trả về.
 func (r *Repo) SearchChapters(ctx context.Context, q string) ([]ChapterCandidate, error) {
+	// COALESCE(plain_text, html): quét văn bản thuần khi đã có, rơi về HTML
+	// thô khi chưa. Sau khi BackfillPlainText chạy, nhánh thứ hai không còn
+	// hàng nào — nhưng nó phải tồn tại, vì thiếu nó thì một chương chưa dẫn
+	// xuất im lặng biến mất khỏi mọi kết quả.
+	//
+	// Quét plain_text rẻ hơn quét html theo HAI cách, không phải một: cột nhỏ
+	// hơn (không thẻ, không thuộc tính), và Postgres không phải giải nén TOAST
+	// một cột html hàng chục KB chỉ để chạy ILIKE trên nó.
 	rows, err := r.pool.Query(ctx,
-		`SELECT pch.slug, pc.title, pch.chapter_id, pch.html
+		`SELECT pch.slug, pc.title, pch.chapter_id,
+		        COALESCE(pch.plain_text, pch.html),
+		        pch.plain_text IS NULL
 		   FROM published_chapters pch
 		   JOIN published_courses pc ON pc.slug = pch.slug
-		  WHERE pch.html ILIKE $1
+		  WHERE COALESCE(pch.plain_text, pch.html) ILIKE $1
 		  ORDER BY pch.slug, pch.chapter_id
 		  LIMIT $2`,
 		likePattern(q), maxCandidates)
@@ -149,7 +177,7 @@ func (r *Repo) SearchChapters(ctx context.Context, q string) ([]ChapterCandidate
 	out := []ChapterCandidate{}
 	for rows.Next() {
 		var c ChapterCandidate
-		if err := rows.Scan(&c.Slug, &c.CourseTitle, &c.ChapterID, &c.HTML); err != nil {
+		if err := rows.Scan(&c.Slug, &c.CourseTitle, &c.ChapterID, &c.Text, &c.NeedsStrip); err != nil {
 			return nil, fmt.Errorf("search: scan published_chapters row: %w", err)
 		}
 		out = append(out, c)

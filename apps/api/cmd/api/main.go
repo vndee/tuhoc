@@ -16,6 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/vndee/tuhoc-api/internal/catalog"
 	"github.com/vndee/tuhoc-api/internal/config"
 	"github.com/vndee/tuhoc-api/internal/server"
 	"github.com/vndee/tuhoc-api/internal/store"
@@ -27,6 +28,14 @@ import (
 // an unresponsive process that just hangs past any readiness-probe window
 // — see fix round 1, finding 2.
 const dbConnectTimeout = 10 * time.Second
+
+// backfillTimeout bounds the one-shot plain_text fill (migration 0012).
+//
+// Generous relative to the work — the fill is one pass over chapters with a
+// NULL plain_text, and it is empty on every boot after the first — but bounded
+// so a stalled connection cannot hold up serving. Exceeding it is logged, not
+// fatal: see the call site.
+const backfillTimeout = 60 * time.Second
 
 // shutdownTimeout bounds how long graceful shutdown waits for in-flight
 // requests to finish before forcing connections closed.
@@ -57,6 +66,36 @@ func main() {
 		}
 		pool = p
 		deps.Pool = pool
+
+		// Backfill published_chapters.plain_text (migration 0012).
+		//
+		// This runs at boot while migrations deliberately do not (see the
+		// note above), and the difference is not an inconsistency: a
+		// migration is SQL, and this particular fill cannot be expressed in
+		// SQL. Deriving a chapter's plain text needs Go's HTML5 tokenizer
+		// and the ten-tag raw-text table in internal/htmltext; a
+		// regexp_replace version would be a SECOND definition of what a
+		// chapter's text is, which is the thing that package was extracted
+		// to prevent. 0012's own comment records the same reasoning at the
+		// point where it declines to backfill.
+		//
+		// Cheap and idempotent: it touches only rows where plain_text IS
+		// NULL, so every boot after the first does one indexless scan of a
+		// small table and writes nothing.
+		//
+		// NOT fatal. A failure here degrades search for chapters published
+		// before 0012 back to the pre-0012 path — the query COALESCEs to
+		// raw html for exactly those rows — and that is not a reason to
+		// refuse to serve the API.
+		backfillCtx, cancelBackfill := context.WithTimeout(context.Background(), backfillTimeout)
+		filled, err := catalog.NewRepo(pool).BackfillPlainText(backfillCtx)
+		cancelBackfill()
+		switch {
+		case err != nil:
+			log.Printf("catalog: plain_text backfill failed (search falls back to scanning raw HTML for pre-0012 chapters): %v", err)
+		case filled > 0:
+			log.Printf("catalog: derived plain_text for %d chapter(s) published before migration 0012", filled)
+		}
 	}
 
 	app := server.New(cfg, deps)

@@ -23,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vndee/tuhoc-api/internal/config"
+	"github.com/vndee/tuhoc-api/internal/htmltext"
 	"github.com/vndee/tuhoc-api/internal/search"
 	"github.com/vndee/tuhoc-api/internal/server"
 	"github.com/vndee/tuhoc-api/internal/store"
@@ -71,12 +72,28 @@ func seedCourse(t *testing.T, pool *pgxpool.Pool, slug, title, description strin
 		t.Fatalf("seed: insert course %s: %v", slug, err)
 	}
 	for _, ch := range chapters {
+		// plain_text điền SẴN, đúng như catalog.Publish làm kể từ migration
+		// 0012 — nếu không, mọi bài test trong tệp này sẽ đo đường DỰ PHÒNG
+		// (quét html thô) và đường thật của production không có ai chạm tới.
+		// Đường dự phòng có bài riêng: seedLegacyChapter bên dưới.
 		if _, err := pool.Exec(ctx,
-			`INSERT INTO published_chapters (slug, chapter_id, file, html)
-			 VALUES ($1, $2, $3, $4)`,
-			slug, ch.id, "chapters/"+ch.id+".html", ch.html); err != nil {
+			`INSERT INTO published_chapters (slug, chapter_id, file, html, plain_text)
+			 VALUES ($1, $2, $3, $4, $5)`,
+			slug, ch.id, "chapters/"+ch.id+".html", ch.html, htmltext.Strip(ch.html)); err != nil {
 			t.Fatalf("seed: insert chapter %s/%s: %v", slug, ch.id, err)
 		}
+	}
+}
+
+// seedLegacyChapter ghi một chương với plain_text NULL — một chương publish
+// TRƯỚC migration 0012, chưa qua BackfillPlainText.
+func seedLegacyChapter(t *testing.T, pool *pgxpool.Pool, slug string, ch chapterFixture) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(),
+		`INSERT INTO published_chapters (slug, chapter_id, file, html, plain_text)
+		 VALUES ($1, $2, $3, $4, NULL)`,
+		slug, ch.id, "chapters/"+ch.id+".html", ch.html); err != nil {
+		t.Fatalf("seed legacy: %s/%s: %v", slug, ch.id, err)
 	}
 }
 
@@ -540,5 +557,45 @@ func TestSearchOrphanChapterSinksToBottom(t *testing.T) {
 	if body.Chapters[0].ChapterID != "c10" || body.Chapters[1].ChapterID != "mo-coi" {
 		t.Errorf("thứ tự = %s, %s — chương ngoài manifest phải xuống CUỐI",
 			body.Chapters[0].ChapterID, body.Chapters[1].ChapterID)
+	}
+}
+
+// TestSearchFindsChapterPublishedBeforePlainTextColumn: một chương có
+// plain_text NULL vẫn tìm ra được.
+//
+// Đây là ca mà `NOT NULL DEFAULT ”` sẽ hỏng im lặng: chuỗi rỗng không khớp
+// truy vấn nào, nên mọi chương đã publish sẽ biến mất khỏi tìm kiếm cho tới
+// khi ai đó publish lại — không lỗi, không cảnh báo, chỉ là kết quả rỗng.
+func TestSearchFindsChapterPublishedBeforePlainTextColumn(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool)
+	seedCourse(t, pool, "khoa-a", "Khoá A", "mô tả", nil)
+	seedLegacyChapter(t, pool, "khoa-a", chapterFixture{
+		id: "cu", html: "<p>Chương cũ vẫn nói về entropy.</p>",
+	})
+
+	_, body := doSearch(t, app, q("entropy"))
+	if len(body.Chapters) != 1 || body.Chapters[0].ChapterID != "cu" {
+		t.Fatalf("chương publish trước 0012 không tìm ra: %+v", body.Chapters)
+	}
+	// Và đoạn trích vẫn sạch thẻ — đường dự phòng gỡ thẻ trong Go.
+	if got := body.Chapters[0].Before; strings.ContainsAny(got, "<>") {
+		t.Errorf("đoạn trích còn thẻ HTML: %q", got)
+	}
+}
+
+// TestSearchDropsMarkupOnlyMatchOnLegacyChapter: chặng lọc thứ hai vẫn phải
+// làm việc trên đường dự phòng, nơi SQL quét HTML còn nguyên thẻ.
+func TestSearchDropsMarkupOnlyMatchOnLegacyChapter(t *testing.T) {
+	pool := store.TestPool(t)
+	app := newTestApp(pool)
+	seedCourse(t, pool, "khoa-a", "Khoá A", "mô tả", nil)
+	seedLegacyChapter(t, pool, "khoa-a", chapterFixture{
+		id: "cu", html: `<div class="entropy-box"><p>Chuyện khác hẳn.</p></div>`,
+	})
+
+	_, body := doSearch(t, app, q("entropy"))
+	if len(body.Chapters) != 0 {
+		t.Fatalf("khớp chỉ trong markup lọt qua đường dự phòng: %+v", body.Chapters)
 	}
 }
