@@ -607,6 +607,77 @@
   list-style-position: inside;
 }
 
+.story-attention-lab,
+.story-agent-trace-lab,
+.story-agi-definitions-lab {
+  display: grid;
+  gap: .85rem;
+}
+
+.story-attention-tokens,
+.story-agi-controls,
+.story-agi-plots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.story-attention-tokens button[aria-pressed='true'] {
+  box-shadow: inset 0 -3px 0 var(--story-accent, var(--accent));
+  font-weight: 700;
+}
+
+.story-attention-map,
+.story-agi-axis-plot svg {
+  max-width: 100%;
+}
+
+.story-attention-map rect {
+  fill: var(--story-accent, var(--accent));
+}
+
+.story-attention-map text,
+.story-agi-axis-plot text {
+  fill: currentColor;
+  font-size: 12px;
+}
+
+.story-agent-trace-lab fieldset {
+  display: grid;
+  gap: .45rem;
+}
+
+.story-agent-trace {
+  display: grid;
+  gap: .45rem;
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.story-agent-trace li {
+  border-left: 3px solid currentColor;
+  padding-left: .5rem;
+}
+
+.story-agent-trace small {
+  display: block;
+}
+
+.story-agi-axis-plot {
+  margin: 0;
+  min-width: min(100%, 18rem);
+}
+
+.story-agi-axis-plot line {
+  stroke: currentColor;
+  stroke-width: 1;
+}
+
+.story-agi-axis-plot circle {
+  fill: var(--story-accent, var(--accent));
+  stroke: currentColor;
+}
+
 .story-scene details,
 .story-all-sources details {
   margin-top: 1rem;
