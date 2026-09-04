@@ -3,6 +3,7 @@ import { useLanguage } from '../../i18n/LanguageProvider';
 import { getPublishedStories, storyRegistry } from '../content/registry';
 import type { StoryRegistryEntry } from '../types';
 import { StoryShell } from './StoryShell';
+import { useStoryDocumentMeta } from './useStoryDocumentMeta';
 
 interface StoryIndexProps {
   entries?: readonly StoryRegistryEntry[];
@@ -59,5 +60,12 @@ export function StoryIndex({ entries = storyRegistry, landmark = true }: StoryIn
 }
 
 export default function StoryIndexPage() {
+  const { lang, t } = useLanguage();
+  useStoryDocumentMeta({
+    title: `${t('stories.collectionTitle')} · ${t('stories.masthead')} · ${t('app.name')}`,
+    description: t('stories.collectionDescription'),
+    canonicalPath: '/stories',
+    lang,
+  });
   return <StoryShell variant="collection"><StoryIndex landmark={false} /></StoryShell>;
 }

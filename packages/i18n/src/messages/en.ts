@@ -48,6 +48,7 @@ export const en: Messages = {
 
   'stories.masthead': 'Special Editions',
   'stories.collectionTitle': 'All special editions',
+  'stories.collectionDescription': 'Interactive special editions from our learning library.',
   'stories.viewAll': 'View all editions',
   'stories.openEdition': 'Open the edition',
   'stories.issueLabel': (issue: number) => `Issue ${String(issue).padStart(2, '0')} · Interactive essay`,

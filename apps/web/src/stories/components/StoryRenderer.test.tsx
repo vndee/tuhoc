@@ -118,6 +118,7 @@ function storyVariant(slug: string, label: string): StoryDefinition {
 }
 
 function setRootGeometry(top: number, height: number): void {
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: height });
   const scroller = document.getElementById('scroller')!;
   Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: height });
   Object.defineProperty(scroller, 'getBoundingClientRect', {
@@ -188,10 +189,10 @@ describe('StoryRenderer', () => {
     consoleError.mockRestore();
   });
 
-  it('uses #scroller as observer root and replaces the hash without growing history', () => {
+  it('uses the scrolling viewport as observer root and replaces the hash without growing history', () => {
     const replace = vi.spyOn(history, 'replaceState');
     renderStory();
-    expect(observer.latestRoot()).toBe(document.getElementById('scroller'));
+    expect(observer.latestRoot()).toBeNull();
     observer.emit('scene-5');
     expect(screen.getByText('05 / 12')).toBeVisible();
     expect(replace).toHaveBeenLastCalledWith(history.state, '', expect.stringMatching(/#scene-5$/));
@@ -235,7 +236,7 @@ describe('StoryRenderer', () => {
     firstScene5.scrollIntoView = firstScroll;
     secondScene5.scrollIntoView = secondScroll;
 
-    fireEvent.click(within(second).getAllByRole('link', { name: '05' })[0]!);
+    fireEvent.click(within(second).getAllByRole('link', { name: /^cảnh 0?5:/i })[0]!);
 
     expect(within(first).getByText('01 / 12')).toBeVisible();
     expect(within(second).getByText('05 / 12')).toBeVisible();
@@ -250,7 +251,7 @@ describe('StoryRenderer', () => {
     setRootGeometry(100, 1000);
     observer.emitMany([
       { id: 'scene-4', isIntersecting: true, top: 500 },
-      { id: 'scene-5', isIntersecting: true, top: 560 },
+      { id: 'scene-5', isIntersecting: true, top: 460 },
     ]);
     expect(screen.getByText('05 / 12')).toBeVisible();
   });
@@ -287,6 +288,12 @@ describe('StoryRenderer', () => {
     expect(container.querySelector('.story-shell')).not.toHaveClass('is-compact');
     observer.emitMany([{ id: 'story-cover-sentinel', isIntersecting: false, top: -20 }]);
     expect(container.querySelector('.story-shell')).toHaveClass('is-compact');
+  });
+
+  it.each(['scene-1', 'scene-6', 'scene-12'])('honors a direct %s hash before observer scroll activation', (sceneId) => {
+    history.replaceState(null, '', `/stories/fixture-story#${sceneId}`);
+    renderStory();
+    expect(screen.getByTestId('story-stage')).toHaveAttribute('data-active-scene', sceneId);
   });
 
   it('opens a valid initial deep link after image decode, fonts, and RAF while leaving invalid hashes untouched', async () => {
@@ -497,6 +504,34 @@ describe('StoryRenderer', () => {
     renderStory();
     expect(screen.queryByTestId('story-stage')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('story-inline-illustration')).toHaveLength(12);
+    const images = screen.getAllByTestId('story-inline-illustration').map((figure) => within(figure).getByRole('img'));
+    expect(images[0]).toHaveAttribute('loading', 'eager');
+    expect(images.slice(1).every((image) => image.getAttribute('loading') === 'lazy')).toBe(true);
+  });
+
+  it('gives the cover priority, keeps only two stage plate slots, and labels every navigator tick', () => {
+    renderStory();
+    const cover = screen.getByRole('img', { name: /bìa câu chuyện mẫu/i });
+    expect(cover).toHaveAttribute('loading', 'eager');
+    expect(cover).toHaveAttribute('fetchpriority', 'high');
+    expect(screen.getByTestId('story-plate-image')).toHaveAttribute('decoding', 'async');
+    expect(screen.getByTestId('story-stage').querySelectorAll('.story-plate-layer')).toHaveLength(2);
+    expect(screen.getAllByRole('navigation', { name: /mục lục/i })[0]!.querySelectorAll('a')).toHaveLength(12);
+    expect(screen.getByRole('link', { name: /^cảnh 0?1:/i })).toHaveAttribute('href', '#scene-1');
+  });
+
+  it('binds a stable named act to the stage as the active scene changes', () => {
+    const story = makeStoryFixture({ sceneCount: 12 });
+    story.acts = [
+      { ...story.acts[0]!, id: 'act-1', number: 1, sceneIds: ['scene-1', 'scene-2', 'scene-3'] },
+      { ...story.acts[0]!, id: 'act-2', number: 2, sceneIds: ['scene-4', 'scene-5', 'scene-6'] },
+      { ...story.acts[0]!, id: 'act-3', number: 3, sceneIds: ['scene-7', 'scene-8', 'scene-9'] },
+      { ...story.acts[0]!, id: 'act-4', number: 4, sceneIds: ['scene-10', 'scene-11', 'scene-12'] },
+    ];
+    renderStory(story);
+    expect(screen.getByTestId('story-stage')).toHaveAttribute('data-act', 'act-1');
+    observer.emit('scene-6');
+    expect(screen.getByTestId('story-stage')).toHaveAttribute('data-act', 'act-2');
   });
 
   it('renders localized public labels and cover issue, scene, and lab counts', () => {
@@ -532,7 +567,7 @@ describe('StoryRenderer', () => {
     renderStory();
     const language = screen.getByRole('button', { name: /ngôn ngữ/i });
     language.focus();
-    fireEvent.click(screen.getAllByRole('link', { name: '05' })[0]!);
+    fireEvent.click(screen.getAllByRole('link', { name: /^cảnh 0?5:/i })[0]!);
     expect(push).not.toHaveBeenCalled();
     expect(replace).toHaveBeenLastCalledWith(history.state, '', expect.stringMatching(/#scene-5$/));
     expect(screen.getByText('05 / 12')).toBeVisible();
@@ -774,8 +809,8 @@ describe('StoryRenderer', () => {
     const drawer = screen.getByRole('region', { name: /mục lục/i });
     expect(drawer).toHaveAttribute('id', 'story-contents-drawer');
     expect(drawer).not.toHaveAttribute('aria-modal');
-    expect(document.activeElement).toBe(within(drawer).getByRole('link', { name: '01' }));
-    fireEvent.click(within(drawer).getByRole('link', { name: '05' }));
+    expect(document.activeElement).toBe(within(drawer).getByRole('link', { name: /^cảnh 0?1:/i }));
+    fireEvent.click(within(drawer).getByRole('link', { name: /^cảnh 0?5:/i }));
     expect(screen.queryByRole('region', { name: /mục lục/i })).not.toBeInTheDocument();
     expect(document.activeElement).toBe(trigger);
     fireEvent.click(trigger);
@@ -807,5 +842,9 @@ describe('StoryRenderer', () => {
     expect(css).toMatch(/\.story-contents-drawer\s*\{[^}]*max-height:[^;}]+/s);
     expect(css).toMatch(/\.story-contents-drawer\s*\{[^}]*overflow-y:\s*auto/s);
     expect(css).not.toMatch(/\.story-shell-back\s*\{[^}]*display:\s*none/s);
+    expect(css).not.toMatch(/\.story-(?:cover-plate|plate-layer)\s+img\s*\{[^}]*filter:/s);
+    expect(css).not.toMatch(/\.story-narrative\s*\{[^}]*(?<!-)width:\s*(?!auto)/s);
+    expect(css).toContain(".story-theme-history-ai .story-stage[data-act='act-4']");
+    expect(css).not.toContain('nth-of-type');
   });
 });

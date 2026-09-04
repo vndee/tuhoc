@@ -11,6 +11,7 @@ export interface StoryStageProps {
   lab: ReactNode;
   labSceneId?: string | null;
   failedSceneIds?: ReadonlySet<string>;
+  actId?: string;
 }
 
 interface VisiblePlate {
@@ -63,6 +64,7 @@ function PlateImage({
     width={scene.illustration.width}
     height={scene.illustration.height}
     alt={scene.illustration.alt[lang]}
+    decoding="async"
     onLoad={onLoad}
     onError={onError}
   />;
@@ -78,6 +80,7 @@ export function StoryStage({
   lab,
   labSceneId = null,
   failedSceneIds = new Set(),
+  actId,
 }: StoryStageProps) {
   const duration = reducedMotion ? 0 : 360;
   const requestKey = plateKey(storySlug, scene);
@@ -151,6 +154,7 @@ export function StoryStage({
     className="story-stage"
     data-testid="story-stage"
     data-active-scene={active.scene.id}
+    data-act={actId}
     data-lab-scene={labSceneId ?? undefined}
     style={{ '--story-crossfade-ms': `${duration}ms` } as CSSProperties}
   >
@@ -174,7 +178,6 @@ export function StoryStage({
         /> : null}
       </div>;
     })}
-    <svg className="story-golden-thread" viewBox="0 0 100 100" aria-hidden="true"><path d="M3 65 C27 18 59 83 97 33" /></svg>
     <div className="story-stage-lab" id={labSceneId ? `story-lab-${labSceneId}` : undefined}>{lab}</div>
   </aside>;
 }

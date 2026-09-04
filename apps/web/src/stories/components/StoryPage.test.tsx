@@ -32,7 +32,7 @@ function deferred<T>() {
 }
 
 function story(slug: string): StoryDefinition {
-  return { meta: { slug } } as StoryDefinition;
+  return { meta: { slug, title: { vi: slug, en: slug }, deck: { vi: slug, en: slug } } } as StoryDefinition;
 }
 
 function entry(slug: string, load: StoryRegistryEntry['load'], published = true): StoryRegistryEntry {

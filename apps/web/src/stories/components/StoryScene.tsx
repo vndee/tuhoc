@@ -16,7 +16,7 @@ export interface StorySceneProps {
   lab: ReactNode;
 }
 
-function InlineIllustration({ scene, lang }: { scene: StorySceneModel; lang: Lang }) {
+function InlineIllustration({ scene, lang, priority }: { scene: StorySceneModel; lang: Lang; priority: boolean }) {
   const [failed, setFailed] = useState(false);
   return <figure data-testid="story-inline-illustration" className="story-inline-illustration" style={{ aspectRatio: `${scene.illustration.width} / ${scene.illustration.height}` }}>
     {failed ? <div className="story-image-fallback"><span>{t(lang, 'stories.imageUnavailable')}</span><small>{scene.illustration.caption[lang]}</small></div> : <img
@@ -25,6 +25,9 @@ function InlineIllustration({ scene, lang }: { scene: StorySceneModel; lang: Lan
       sizes={scene.illustration.sizes}
       width={scene.illustration.width}
       height={scene.illustration.height}
+      loading={priority ? 'eager' : 'lazy'}
+      fetchPriority={priority ? 'high' : 'auto'}
+      decoding="async"
       alt={scene.illustration.alt[lang]}
       onError={() => setFailed(true)}
     />}
@@ -38,7 +41,7 @@ export function StoryScene({ scene, sceneNumber, lang, mobile, active, story, la
     <p className="story-scene-label">{t(lang, 'stories.sceneLabel', sceneNumber)}</p>
     <h2 id={`${scene.id}-title`}>{scene.title[lang]}</h2>
     <p className="story-period">{scene.period[lang]}</p>
-    {mobile ? <InlineIllustration scene={scene} lang={lang} /> : null}
+    {mobile ? <InlineIllustration scene={scene} lang={lang} priority={sceneNumber === 1} /> : null}
     <section className="story-human"><RichText blocks={scene.humanStory[lang]} /></section>
     <section className="story-hinge"><h3>{t(lang, 'stories.technicalHinge')}</h3><RichText blocks={scene.technicalHinge[lang]} /></section>
     <section className="story-lab-entry">

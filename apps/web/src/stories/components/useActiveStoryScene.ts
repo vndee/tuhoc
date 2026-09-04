@@ -34,7 +34,7 @@ function rootGeometry(root: Element | null) {
   return { top: rect.top, height: root.clientHeight || rect.height || window.innerHeight };
 }
 
-/** Maps the #scroller's 45% reading line to a scene without changing focus. */
+/** Maps the browser viewport's 45% reading line to a scene without changing focus. */
 export function useActiveStoryScene(scenes: StoryScene[]): ActiveStoryScene {
   const privateConfig = useContext(activeStoryScenePrivateContext);
   const sceneIds = useMemo(() => new Set(scenes.map((scene) => scene.id)), [scenes]);
@@ -50,7 +50,9 @@ export function useActiveStoryScene(scenes: StoryScene[]): ActiveStoryScene {
   }, [sceneIds]);
 
   useEffect(() => {
-    const root = document.getElementById('scroller');
+    // Editorial pages are descendants of #scroller, but window owns the actual
+    // scroll viewport. Using #scroller's document-height box freezes the reading line.
+    const root = null;
     const retainedIntersections = intersections.current;
     const selectFromIntersections = () => {
       const candidates = [...retainedIntersections.entries()];
