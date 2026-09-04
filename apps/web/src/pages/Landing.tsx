@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { catalogQueryKey, fetchCatalog } from '../api/catalog';
 import lessonDepthUrl from '../assets/landing/lesson-depth.webp';
-import { LANGS, type Lang } from '../i18n';
 import { useLanguage } from '../i18n/LanguageProvider';
+import { PaperLanguageSwitcher } from '../i18n/PaperLanguageSwitcher';
 import { useThemeContext } from '../theme/ThemeContext';
 
 /** `/` cho khách chưa đăng nhập — một câu chuyện ba nhịp: đọc, chạm, hỏi. */
@@ -38,7 +38,7 @@ export function Landing() {
             >
               {theme === 'dark' ? <SunMark /> : <MoonMark />}
             </button>
-            <LandingLanguageSwitcher />
+            <PaperLanguageSwitcher className="bd-language" />
             <Link to="/login" className="bd-chrome-link">
               {t('landing.login.cta')}
             </Link>
@@ -205,157 +205,6 @@ export function Landing() {
 }
 
 /**
- * Riêng landing dùng menu giấy/phấn tự vẽ để phần popup không rơi về ô xanh
- * native của macOS. Những màn hình thuộc app shell vẫn giữ `<LanguageSwitcher>`
- * và `<select>` của hệ điều hành; đây là một ngoại lệ có chủ ý cho surface có
- * art direction riêng, không phải một lần thay semantics trên toàn ứng dụng.
- *
- * Menubutton này tự gánh lại đầy đủ phần `<select>` từng cho miễn phí: tên trợ
- * năng, lựa chọn hiện tại, phím mũi tên, Enter/Space, Escape, trả focus và đóng
- * khi focus/con trỏ đi ra ngoài.
- */
-function LandingLanguageSwitcher() {
-  const { lang, setLang, t } = useLanguage();
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const focusOnOpenRef = useRef(0);
-  const menuId = 'landing-language-menu';
-
-  useEffect(() => {
-    if (!open) return;
-    itemRefs.current[focusOnOpenRef.current]?.focus();
-
-    const closeWhenPointerLeaves = (event: PointerEvent) => {
-      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) setOpen(false);
-    };
-
-    document.addEventListener('pointerdown', closeWhenPointerLeaves);
-    return () => document.removeEventListener('pointerdown', closeWhenPointerLeaves);
-  }, [open]);
-
-  const openMenu = (focusIndex = LANGS.indexOf(lang)) => {
-    focusOnOpenRef.current = Math.max(0, focusIndex);
-    setOpen(true);
-  };
-
-  const closeMenu = (returnFocus = false) => {
-    setOpen(false);
-    if (returnFocus) triggerRef.current?.focus();
-  };
-
-  const choose = (option: Lang) => {
-    if (option !== lang) setLang(option);
-    closeMenu(true);
-  };
-
-  const moveItemFocus = (from: number, step: number) => {
-    const next = (from + step + LANGS.length) % LANGS.length;
-    itemRefs.current[next]?.focus();
-  };
-
-  const handleTriggerKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    event.preventDefault();
-    openMenu(event.key === 'ArrowDown' ? 0 : LANGS.length - 1);
-  };
-
-  const handleItemKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, option: Lang, index: number) => {
-    switch (event.key) {
-      case 'ArrowDown':
-        event.preventDefault();
-        moveItemFocus(index, 1);
-        break;
-      case 'ArrowUp':
-        event.preventDefault();
-        moveItemFocus(index, -1);
-        break;
-      case 'Home':
-        event.preventDefault();
-        itemRefs.current[0]?.focus();
-        break;
-      case 'End':
-        event.preventDefault();
-        itemRefs.current[LANGS.length - 1]?.focus();
-        break;
-      case 'Enter':
-      case ' ':
-        event.preventDefault();
-        choose(option);
-        break;
-      case 'Escape':
-        event.preventDefault();
-        closeMenu(true);
-        break;
-    }
-  };
-
-  return (
-    <div
-      ref={rootRef}
-      className={`bd-language${open ? ' is-open' : ''}`}
-      onBlur={(event) => {
-        if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget)) {
-          setOpen(false);
-        }
-      }}
-    >
-      <button
-        ref={triggerRef}
-        id="lang-select"
-        type="button"
-        className="bd-language-trigger"
-        aria-label={t('lang.switcher.label')}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={menuId}
-        title={t(lang === 'vi' ? 'lang.name.vi' : 'lang.name.en')}
-        onClick={() => (open ? closeMenu() : openMenu())}
-        onKeyDown={handleTriggerKeyDown}
-      >
-        <span>{lang.toUpperCase()}</span>
-      </button>
-
-      {open && (
-        <div id={menuId} className="bd-language-menu" role="menu" aria-label={t('lang.switcher.label')}>
-          <LanguageMenuFrame />
-          {LANGS.map((option, index) => {
-            const selected = option === lang;
-            const optionName = t(option === 'vi' ? 'lang.name.vi' : 'lang.name.en');
-            return (
-              <button
-                key={option}
-                ref={(node) => {
-                  itemRefs.current[index] = node;
-                }}
-                type="button"
-                className="bd-language-option"
-                role="menuitemradio"
-                aria-checked={selected}
-                aria-label={`${option.toUpperCase()} — ${optionName}`}
-                tabIndex={selected ? 0 : -1}
-                onClick={() => choose(option)}
-                onKeyDown={(event) => handleItemKeyDown(event, option, index)}
-              >
-                <span className="bd-language-code">{option.toUpperCase()}</span>
-                <span className="bd-language-name">
-                  <span aria-hidden="true">— </span>
-                  {optionName}
-                </span>
-                <span className="bd-language-check" aria-hidden="true">
-                  {selected && <LanguageCheck />}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
  * Một minh hoạ chỉ được gọi là tương tác khi thao tác làm thay đổi điều người
  * học đang quan sát. Phân bố năm khả năng là ví dụ đủ phổ quát để hiểu bằng
  * mắt, nhưng vẫn là một ý niệm thật của giáo trình chứ không phải sóng trang
@@ -450,31 +299,6 @@ function StoryThread() {
         vectorEffect="non-scaling-stroke"
         filter="url(#bd-chalk-2)"
       />
-    </svg>
-  );
-}
-
-/** Tờ giấy thả xuống có hai nét lệch nhau, tránh thành một popover UI bóng bẩy. */
-function LanguageMenuFrame() {
-  return (
-    <svg
-      className="bd-language-menu-frame"
-      viewBox="0 0 188 94"
-      preserveAspectRatio="none"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path d="M5 5 C47 1, 139 3, 183 6 C187 28, 185 67, 182 89 C137 93, 48 92, 5 88 C2 67, 2 27, 5 5 Z" />
-      <path d="M8 48 C51 46, 137 50, 180 47" />
-    </svg>
-  );
-}
-
-/** Dấu chọn màu vàng như một nét bút chì, không dùng highlight xanh hệ điều hành. */
-function LanguageCheck() {
-  return (
-    <svg viewBox="0 0 22 18" focusable="false">
-      <path d="M3 9.5 L8 14 L19 3" filter="url(#bd-chalk-1)" />
     </svg>
   );
 }

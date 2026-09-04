@@ -351,6 +351,10 @@ const DEVELOPER_FACING: readonly { readonly file: string; readonly why: string }
     file: 'apps/web/src/test/sampleCourse.ts',
     why: 'ngữ liệu của một course mẫu + hướng dẫn `make courses` cho người chạy test; nội dung course, không phải giao diện',
   },
+  {
+    file: 'apps/web/src/stories/testing/storyFixture.ts',
+    why: 'fixture song ngữ chỉ cho bài kiểm story contract; dữ liệu này dựng nội dung mẫu để kiểm kiểu và không bao giờ là chữ giao diện người học thấy',
+  },
 ];
 
 /**

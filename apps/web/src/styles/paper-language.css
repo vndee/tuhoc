@@ -1,0 +1,164 @@
+/* Custom paper menu for editorial surfaces. The resting trigger deliberately
+   remains plain text: the hand-drawn frame belongs to the opened menu only. */
+.paper-language {
+  position: relative;
+  display: inline-grid;
+  width: 44px;
+  height: 44px;
+  place-items: stretch;
+}
+
+.paper-language-trigger {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+#app:not(.reading) #content .paper-language-trigger {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: 0;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#app:not(.reading) #content .paper-language-trigger:hover,
+#app:not(.reading) #content .paper-language.is-open .paper-language-trigger {
+  color: var(--mark);
+}
+
+.paper-language-trigger:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+.paper-language-menu {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 8px);
+  right: -6px;
+  display: grid;
+  width: 188px;
+  min-height: 94px;
+  box-sizing: border-box;
+  padding: 7px 8px;
+  color: var(--ink);
+  background:
+    linear-gradient(112deg, color-mix(in srgb, var(--ground) 92%, var(--hl)), var(--ground) 64%),
+    var(--ground);
+  box-shadow: 0 14px 28px -18px rgb(26 22 13 / 55%);
+  isolation: isolate;
+  animation: paper-language-open 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes paper-language-open {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) rotate(-0.4deg);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(0);
+  }
+}
+
+.paper-language-menu-frame {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.paper-language-menu-frame path {
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.paper-language-filters {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+#app:not(.reading) #content .paper-language-option {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 20px;
+  align-items: center;
+  width: 100%;
+  min-height: 39px;
+  margin: 0;
+  padding: 2px 7px;
+  border: 0;
+  border-radius: 0;
+  color: var(--ink-2);
+  background: transparent;
+  box-shadow: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+#app:not(.reading) #content .paper-language-option:hover,
+#app:not(.reading) #content .paper-language-option:focus-visible {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--hl) 14%, transparent);
+  outline: 0;
+}
+
+.paper-language-code {
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+}
+
+.paper-language-name {
+  font-size: 14px;
+  font-weight: 450;
+  letter-spacing: 0.005em;
+}
+
+.paper-language-check {
+  display: grid;
+  width: 20px;
+  height: 18px;
+  color: var(--hl);
+  place-items: center;
+}
+
+.paper-language-check svg {
+  width: 20px;
+  height: 17px;
+  overflow: visible;
+}
+
+.paper-language-check path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

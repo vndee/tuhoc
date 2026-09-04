@@ -46,6 +46,34 @@ export const en: Messages = {
    */
   'library.courseCount': (count: number) => (count === 1 ? '1 course' : `${count} courses`),
 
+  'stories.masthead': 'Special Editions',
+  'stories.collectionTitle': 'All special editions',
+  'stories.viewAll': 'View all editions',
+  'stories.openEdition': 'Open the edition',
+  'stories.issueLabel': (issue: number) => `Issue ${String(issue).padStart(2, '0')} · Interactive essay`,
+  'stories.sceneCount': (count: number) => `${count} ${count === 1 ? 'scene' : 'scenes'}`,
+  'stories.labCount': (count: number) => `${count} interactive ${count === 1 ? 'lab' : 'labs'}`,
+  'stories.backToCollection': 'Back to all special editions',
+  'stories.progress': (current: number, total: number) =>
+    `${String(current).padStart(2, '0')} / ${String(total).padStart(2, '0')}`,
+  'stories.contents': 'Contents',
+  'stories.closeContents': 'Close contents',
+  'stories.tryIdea': 'Try the idea',
+  'stories.reset': 'Reset',
+  'stories.backToIllustration': 'Back to illustration',
+  'stories.sourcesForScene': 'Sources for this scene',
+  'stories.allSources': 'All sources',
+  'stories.makingOf': 'Making the illustrations',
+  'stories.notFoundTitle': 'Special edition not found',
+  'stories.notFoundBody': 'This edition does not exist or has not been published.',
+  'stories.imageUnavailable': 'Illustration unavailable',
+  'stories.labUnavailable': 'The interactive lab could not load. You can still read its explanation below.',
+  'stories.loading': 'Opening the special edition…',
+  'stories.loadError': 'This special edition could not be opened.',
+  'stories.back': 'Back',
+  'stories.illustrationPrefix': 'Illustration',
+  'stories.sourceAccessed': (date: string) => `Accessed ${date}`,
+
   /* ── trang CÀI ĐẶT (`pages/Settings.tsx`) ─────────────────────────────── */
 
   'settings.nav.aria': 'Settings sections',

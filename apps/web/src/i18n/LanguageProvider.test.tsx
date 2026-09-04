@@ -55,6 +55,22 @@ describe('<LanguageProvider>', () => {
     expect(document.documentElement.lang).toBe('en');
   });
 
+  it('cấp nhãn giao diện đặc san dùng chung với dạng số của từng ngôn ngữ', () => {
+    const { result } = renderHook(() => useLanguage(), { wrapper });
+
+    expect(result.current.t('stories.collectionTitle')).toBe('Các số đặc san');
+    expect(result.current.t('stories.issueLabel', 3)).toBe('Số 03 · Bài kể tương tác');
+    expect(result.current.t('stories.sceneCount', 2)).toBe('2 cảnh');
+
+    act(() => {
+      result.current.setLang('en');
+    });
+
+    expect(result.current.t('stories.collectionTitle')).toBe('All special editions');
+    expect(result.current.t('stories.issueLabel', 3)).toBe('Issue 03 · Interactive essay');
+    expect(result.current.t('stories.sceneCount', 2)).toBe('2 scenes');
+  });
+
   it('lựa chọn sống sót qua một lần tải lại trang', () => {
     const first = renderHook(() => useLanguage(), { wrapper });
     act(() => {
