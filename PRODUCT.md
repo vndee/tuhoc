@@ -62,6 +62,12 @@ chữ. Tầm nhìn sống ở đây, không ở trang chủ. Nếu một lượt
 nó về, nó phải mang lại nhãn phân biệt — `pages/Landing.test.tsx` canh rằng
 trang không lặng lẽ hứa những thứ ở mục "CHƯA chạy" bên trên.
 
+**Quyết định 04/09/2026:** landing tạm thời không nói về personalization.
+Các khoá hiện có được soạn riêng cho chủ dự án, nhưng đó chưa phải năng lực
+sản phẩm công khai. Personalization vẫn là hướng phát triển tương lai; chỉ được
+đưa lên landing khi có cơ chế chạy cho mọi người học và câu chữ phân biệt rõ
+hiện tại với định hướng.
+
 ## Positioning
 
 Chủ dự án chọn ba lời hứa phải giữ bằng mọi giá khi thiết kế lại:

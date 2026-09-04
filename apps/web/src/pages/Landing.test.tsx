@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { MemoryRouter } from 'react-router-dom';
@@ -53,8 +54,45 @@ function withBrokenCatalog() {
 describe('Landing — mặt viết tay', () => {
   it('khung đầu: câu hỏi là nhan đề, câu dẫn nói đúng sự thật đọc-miễn-phí', () => {
     withCatalog([A_COURSE]);
-    expect(screen.getByRole('heading', { level: 1, name: t('vi', 'landing.question') })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Đọc cho kỹ, chạm để thấy, hỏi đến khi hiểu.' }),
+    ).toBeInTheDocument();
     expect(screen.getByText(t('vi', 'landing.lede'))).toBeInTheDocument();
+  });
+
+  it('kết câu chuyện bằng một footer có lối mở danh mục và tài khoản', () => {
+    withCatalog([A_COURSE]);
+
+    const footer = screen.getByRole('contentinfo');
+    expect(within(footer).getByRole('link', { name: t('vi', 'landing.catalog.all') })).toHaveAttribute(
+      'href',
+      '/courses',
+    );
+    expect(within(footer).getByRole('link', { name: t('vi', 'landing.account.cta') })).toHaveAttribute(
+      'href',
+      '/login',
+    );
+  });
+
+  /**
+   * Điểm khác biệt của sản phẩm phải được CHỨNG MINH ở màn đầu, không chỉ kể
+   * bằng một danh sách tính năng. Thanh kéo là ranh giới hành vi của minh hoạ:
+   * nếu nó biến mất hoặc chỉ còn là tranh tĩnh, người mới lại không thấy rằng
+   * bài học ở đây có thể tự tay thử.
+   */
+  it('màn đầu có visualization thật: đổi thanh kéo thì kết luận quan sát cũng đổi', () => {
+    withCatalog([A_COURSE]);
+
+    const lab = screen.getByRole('region', { name: 'Chạm để thấy' });
+    const spread = screen.getByRole('slider', { name: 'Mức độ phân tán' });
+    const observation = screen.getByRole('status', { name: 'Điều đang quan sát' });
+
+    expect(lab).toContainElement(spread);
+    expect(observation).toHaveTextContent('Một khả năng đang nổi trội.');
+
+    fireEvent.change(spread, { target: { value: '86' } });
+
+    expect(observation).toHaveTextContent('Các khả năng đang gần ngang nhau.');
   });
 
   /**
@@ -110,7 +148,8 @@ describe('Landing — mặt viết tay', () => {
     expect(screen.getByText(note, { selector: '.bd-note-quote' })).toBeInTheDocument();
     expect(screen.getByText(note, { selector: 'blockquote' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: t('vi', 'landing.demo.h') })).toBeInTheDocument();
-    expect(t('vi', 'landing.demo.h')).toMatch(/ví dụ/i);
+    expect(screen.getByText(t('vi', 'landing.demo.example'))).toBeInTheDocument();
+    expect(t('vi', 'landing.demo.example')).toMatch(/ví dụ/i);
   });
 
   /**
@@ -123,8 +162,65 @@ describe('Landing — mặt viết tay', () => {
     withCatalog([A_COURSE]);
     expect(screen.getByText(t('vi', 'app.name'), { selector: '.bd-wordmark' })).toBeInTheDocument();
     expect(document.querySelector('.bd-chrome-btn')).not.toBeNull();
-    expect(document.querySelector('#lang-select')).not.toBeNull();
+    expect(screen.getByRole('button', { name: t('vi', 'lang.switcher.label') })).toHaveAttribute(
+      'id',
+      'lang-select',
+    );
     expect(screen.getAllByRole('link', { name: t('vi', 'landing.login.cta') }).length).toBeGreaterThanOrEqual(1);
+  });
+
+  /**
+   * Native `<select>` mở popup xanh của hệ điều hành nên không thể mang ngôn
+   * ngữ giấy/phấn của landing. Menu riêng chỉ đáng tồn tại nếu vẫn giữ đủ hành
+   * vi thật: mở, cho biết lựa chọn hiện tại, đổi catalog và tự đóng.
+   */
+  it('mở menu ngôn ngữ riêng, đánh dấu lựa chọn hiện tại và đổi toàn bộ trang', async () => {
+    const user = userEvent.setup();
+    withCatalog([A_COURSE]);
+
+    const trigger = screen.getByRole('button', { name: t('vi', 'lang.switcher.label') });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+
+    await user.click(trigger);
+
+    const menu = screen.getByRole('menu', { name: t('vi', 'lang.switcher.label') });
+    expect(within(menu).getByRole('menuitemradio', { name: 'VI — Tiếng Việt' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    const english = within(menu).getByRole('menuitemradio', { name: 'EN — English' });
+    expect(english).toHaveAttribute('aria-checked', 'false');
+
+    await user.click(english);
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: t('en', 'landing.question') })).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe('en');
+  });
+
+  it('menu ngôn ngữ dùng được bằng phím mũi tên, Escape và tự đóng khi bấm ra ngoài', async () => {
+    withCatalog([A_COURSE]);
+    const trigger = screen.getByRole('button', { name: t('vi', 'lang.switcher.label') });
+
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+
+    const menu = screen.getByRole('menu', { name: t('vi', 'lang.switcher.label') });
+    const vietnamese = within(menu).getByRole('menuitemradio', { name: 'VI — Tiếng Việt' });
+    const english = within(menu).getByRole('menuitemradio', { name: 'EN — English' });
+    await waitFor(() => expect(vietnamese).toHaveFocus());
+
+    fireEvent.keyDown(vietnamese, { key: 'ArrowDown' });
+    expect(english).toHaveFocus();
+
+    fireEvent.keyDown(english, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+
+    fireEvent.click(trigger);
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
   it('danh mục thật: mỗi khoá là một liên kết tới trang khoá, kèm đường vào tài khoản', async () => {
@@ -151,7 +247,7 @@ describe('Landing — mặt viết tay', () => {
     const figure = document.querySelector('.bd-figure');
     expect(figure).toHaveAttribute('role', 'img');
     expect(figure).not.toHaveAttribute('aria-hidden');
-    expect(figure?.getAttribute('aria-label')).toBe(t('vi', 'landing.vision.figure'));
+    expect(figure).toHaveAccessibleName(t('vi', 'landing.vision.figure'));
 
     const rendered = document.body.textContent ?? '';
     for (const loiHua of [/cá nhân hoá/i, /lộ trình riêng/i, /học thay/i]) {
