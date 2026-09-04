@@ -9,6 +9,7 @@ import { Courses } from './pages/Courses';
 import { HomeGate } from './pages/HomeGate';
 import { Login } from './pages/Login';
 import { Progress } from './pages/Progress';
+import { SearchResults } from './pages/SearchResults';
 import { Reader } from './pages/Reader';
 import { Settings } from './pages/Settings';
 
@@ -82,6 +83,18 @@ export function AppRoutes() {
         thêm một điều kiện chặn nó.
       */}
       <Route path="/courses" element={<Courses />} />
+
+      {/*
+        `/search` — chỗ nút "Xem tất cả" của bảng thả xuống dẫn tới.
+
+        KHÔNG `<RequireAuth>`, cùng lý do `/courses` ngay trên không có: cả
+        endpoint lẫn mọi thứ trang này hiện đều đọc được không cần phiên. Ô
+        tìm kiếm ở thanh trên chỉ hiện cho người đã đăng nhập, nhưng đó là một
+        lựa chọn về giao diện — bọc route này trong `<RequireAuth>` sẽ biến nó
+        thành một ranh giới bảo mật mà phía máy chủ không hề có, tức là một
+        lời hứa giả.
+      */}
+      <Route path="/search" element={<SearchResults />} />
 
       {/*
         `/progress` — nơi các con số THUỘC VỀ. Trước đây chúng nằm trên trang

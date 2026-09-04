@@ -40,6 +40,18 @@ var stripHTMLBlockTags = map[string]bool{
 	"li": true, "ul": true, "ol": true,
 	"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
 	"tr": true, "table": true, "thead": true, "tbody": true,
+	// "td"/"th" THÊM 04/09/2026, khi gói này có người dùng thứ hai.
+	//
+	// Thiếu chúng, các Ô TRONG CÙNG MỘT HÀNG dính liền: một bảng
+	// "<th>Câu hỏi</th><th>Đáp số</th>" strip ra "Câu hỏiĐáp số". Với người
+	// đọc duy nhất trước đây — model — đó là chữ khó đọc nhưng còn suy ra
+	// được từ ngữ cảnh. Với đoạn trích tìm kiếm thì không: người dùng nhìn
+	// thấy đúng chuỗi ấy, dài hai dòng, và nó đọc như văn bản hỏng.
+	//
+	// Đo trên nội dung thật (khoá trong DB dev) chứ không suy từ đặc tả: đoạn
+	// trích đầu tiên vòng này sinh ra mang "KhỏiCâu hỏi định lượngĐáp số" và
+	// "NguồnNguồn này". Cùng một khiếm khuyết, chỉ là trước đây không ai nhìn.
+	"td": true, "th": true,
 	"blockquote": true, "section": true, "article": true,
 	"header": true, "footer": true, "pre": true,
 }

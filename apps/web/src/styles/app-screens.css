@@ -1256,6 +1256,8 @@ html[data-theme='dark'] #app:not(.reading) .btn.danger:hover {
   order: 1;
   display: flex;
   align-items: center;
+  /* Neo cho `.tn-search-panel`, vốn `position: absolute` treo dưới ô. */
+  position: relative;
 }
 
 /* Bề rộng chạy bằng `transition`, và ô nhập LUÔN ở trong cây (xem
@@ -1302,12 +1304,139 @@ html[data-theme='dark'] #app:not(.reading) .btn.danger:hover {
   color: var(--ink);
 }
 
-/* `disabled` nhưng KHÔNG mờ đi: nó vẫn phải đọc được, vì chữ trong nó là lời
-   hứa về việc ô này sẽ làm. Trình duyệt mặc định làm nhạt chữ ô `disabled`. */
-#app:not(.reading) .tn-search-input:disabled {
-  opacity: 1;
-  -webkit-text-fill-color: var(--ink-3);
+/* Quy tắc `.tn-search-input:disabled` ĐÃ GỠ (04/09/2026). Ô không còn trạng
+   thái `disabled` nào — `GET /search` tồn tại rồi — nên một quy tắc không
+   trạng thái nào chạm tới là mã chết đọc như mã sống. */
+
+/* Chữ `x` mà trình duyệt tự vẽ trong `input[type=search]` chỉ có ở WebKit và
+   mang kích thước riêng của nó; ô này có nút xoá của chính mình ở thanh bên,
+   còn ở đây thì Escape làm việc ấy. */
+#app:not(.reading) .tn-search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+/* ── BẢNG KẾT QUẢ ────────────────────────────────────────────────────────── */
+
+#app:not(.reading) .tn-search-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: min(30rem, calc(100vw - 2rem));
+  max-height: min(26rem, 60vh);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 12%);
+  padding: 6px;
+}
+
+#app:not(.reading) .tn-search-group + .tn-search-group {
+  margin-top: 4px;
+  border-top: 1px solid var(--rule);
+  padding-top: 4px;
+}
+
+#app:not(.reading) .tn-search-group-label {
+  margin: 0;
+  padding: 6px 8px 2px;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--ink-3);
+}
+
+#app:not(.reading) .tn-search-hit {
+  display: block;
+  padding: 7px 8px;
+  border-radius: var(--radius-xs);
+  text-decoration: none;
+  color: inherit;
+}
+
+/* `is-active` (bàn phím) và `:hover` (chuột) dùng CHUNG một nền, cố ý: hai
+   thiết bị đang chỉ vào cùng một khái niệm — "dòng sắp mở" — và cho chúng hai
+   vẻ ngoài khác nhau buộc người dùng học hai thứ cho một việc.
+
+   Nền bảng CHÍNH LÀ `--panel`, nên tô `--panel` ở đây là không tô gì cả. Một
+   bậc lên, và bậc ấy đi ngược chiều nhau ở hai bản màu — cùng lý do khiến
+   `a.nav-item:hover` phía trên phải viết ra hai lần thay vì mượn một token
+   ngữ nghĩa. */
+#app:not(.reading) .tn-search-hit:hover,
+#app:not(.reading) .tn-search-hit.is-active {
+  background: var(--color-gray-100);
+}
+
+html[data-theme='dark'] #app:not(.reading) .tn-search-hit:hover,
+html[data-theme='dark'] #app:not(.reading) .tn-search-hit.is-active {
+  background: var(--color-gray-800);
+}
+
+#app:not(.reading) .tn-search-hit-title {
+  display: block;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+#app:not(.reading) .tn-search-hit-sub {
+  display: block;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+/* Đoạn trích gói gọn hai dòng: bảng này để LƯỚT, không để đọc. Ai muốn đọc
+   thì bấm vào, và đó đúng là việc của một kết quả tìm kiếm. */
+#app:not(.reading) .tn-search-hit-snippet {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 2px;
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+/* `<mark>` mặc định của trình duyệt là vàng chanh trên đen — nó không thuộc
+   bảng màu nào ở đây, và ở giao diện tối nó chói hẳn lên. */
+#app:not(.reading) .tn-search-hit-snippet mark,
+.search-hit-snippet mark {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+#app:not(.reading) .tn-search-note {
+  margin: 0;
+  padding: 12px 8px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+#app:not(.reading) .tn-search-all {
+  display: block;
+  margin-top: 4px;
+  border-top: 1px solid var(--rule);
+  padding: 9px 8px 5px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+#app:not(.reading) .tn-search-all:hover {
+  text-decoration: underline;
 }
 
 #app:not(.reading) .tn-search-kbd {
@@ -1936,4 +2065,56 @@ html[data-theme='dark'] .ai-turn-q {
 .ai-panel-thread::-webkit-scrollbar-thumb:hover {
   background: var(--ink-3);
   background-clip: content-box;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THANH BÊN — NÚT XOÁ BỘ LỌC MỤC LỤC
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.sb-search-clear {
+  flex: none;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--ink-3);
+}
+
+.sb-search-clear:hover {
+  color: var(--ink);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TRANG /search
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.search-group + .search-group {
+  margin-top: 2rem;
+}
+
+.search-group-title {
+  margin: 0 0 0.5rem;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.search-hit-course {
+  margin: 0.1rem 0 0;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.search-hit-snippet {
+  margin: 0.35rem 0 0;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-2);
 }

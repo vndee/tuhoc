@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { MemoryRouter } from 'react-router-dom';
@@ -283,5 +284,107 @@ describe('Sidebar — chưa đăng nhập thì không gọi GET /progress (Task 
 
     expect(progressCalls, 'GET /progress must not fire for a signed-out visitor').toBe(0);
     expect(redirectToLogin, 'a signed-out visitor on a public course page must not be redirected').not.toHaveBeenCalled();
+  });
+});
+
+describe('Sidebar — ô lọc mục lục (04/09/2026)', () => {
+  // Ô "Tìm chương…" nằm `disabled` qua nhiều vòng, và không bài test nào ở
+  // đây hỏi tại sao — nó là chrome hợp lệ, chỉ không làm gì. Những bài dưới
+  // đây gõ vào nó.
+
+  it('lọc mục lục ngay tại chỗ, KHÔNG gọi mạng', async () => {
+    let searchCalls = 0;
+    server.use(
+      http.get('/courses/demo', () => HttpResponse.json(manifest)),
+      // Nếu ô này lỡ đi qua `GET /search`, handler này bắt được. Manifest đã
+      // nằm trong bộ nhớ; hỏi máy chủ thứ mình đang cầm là một vòng mạng
+      // thừa và một trạng thái tải người dùng phải nhìn.
+      http.get('/search', () => {
+        searchCalls += 1;
+        return HttpResponse.json({ courses: [], chapters: [], truncated: false });
+      }),
+    );
+    const user = userEvent.setup();
+    renderSidebar('/c/demo');
+
+    const nav = document.getElementById('nav')!;
+    expect(await within(nav).findAllByRole('link')).toHaveLength(2);
+
+    await user.type(screen.getByRole('searchbox', { name: /tìm chương/i }), 'hai');
+    await waitFor(() => expect(within(nav).getAllByRole('link')).toHaveLength(1));
+    expect(within(nav).getByRole('link').textContent).toContain('Chương hai');
+    expect(searchCalls, 'ô lọc mục lục không được gọi mạng').toBe(0);
+  });
+
+  it('lọc được cả theo SỐ chương, không chỉ theo tên', async () => {
+    server.use(http.get('/courses/demo', () => HttpResponse.json(manifest)));
+    const user = userEvent.setup();
+    renderSidebar('/c/demo');
+
+    const nav = document.getElementById('nav')!;
+    await within(nav).findAllByRole('link');
+    await user.type(screen.getByRole('searchbox', { name: /tìm chương/i }), '1.2');
+    await waitFor(() => expect(within(nav).getAllByRole('link')).toHaveLength(1));
+    expect(within(nav).getByRole('link').textContent).toContain('Chương hai');
+  });
+
+  it('không khớp gì thì NÓI RA — mục lục trống trơn trông y hệt một khoá rỗng', async () => {
+    server.use(http.get('/courses/demo', () => HttpResponse.json(manifest)));
+    const user = userEvent.setup();
+    renderSidebar('/c/demo');
+
+    const nav = document.getElementById('nav')!;
+    await within(nav).findAllByRole('link');
+    await user.type(screen.getByRole('searchbox', { name: /tìm chương/i }), 'zzz-không-có');
+
+    await waitFor(() => expect(within(nav).queryAllByRole('link')).toHaveLength(0));
+    expect(within(nav).getByText(/không có chương nào khớp/i)).toBeInTheDocument();
+  });
+
+  it('nút xoá và phím Escape đều trả mục lục về đủ', async () => {
+    server.use(http.get('/courses/demo', () => HttpResponse.json(manifest)));
+    const user = userEvent.setup();
+    renderSidebar('/c/demo');
+
+    const nav = document.getElementById('nav')!;
+    await within(nav).findAllByRole('link');
+    const box = screen.getByRole('searchbox', { name: /tìm chương/i });
+
+    await user.type(box, 'hai');
+    await waitFor(() => expect(within(nav).getAllByRole('link')).toHaveLength(1));
+    await user.click(screen.getByRole('button', { name: /xoá bộ lọc/i }));
+    await waitFor(() => expect(within(nav).getAllByRole('link')).toHaveLength(2));
+
+    await user.type(box, 'hai');
+    await waitFor(() => expect(within(nav).getAllByRole('link')).toHaveLength(1));
+    await user.type(box, '{Escape}');
+    await waitFor(() => expect(within(nav).getAllByRole('link')).toHaveLength(2));
+  });
+
+  it('bỏ luôn tiêu đề phần khi phần ấy không còn chương nào', async () => {
+    server.use(
+      http.get('/courses/demo', () =>
+        HttpResponse.json({
+          ...manifest,
+          parts: [
+            manifest.parts[0],
+            { title: 'Phần 2', chapters: [{ id: 'c3', num: '2.1', title: 'Chương ba', short: '', file: 'chapters/c3.html' }] },
+          ],
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderSidebar('/c/demo');
+
+    const nav = document.getElementById('nav')!;
+    await waitFor(() => expect(within(nav).getAllByRole('link')).toHaveLength(3));
+    expect(within(nav).getByText('Phần 2')).toBeInTheDocument();
+
+    await user.type(screen.getByRole('searchbox', { name: /tìm chương/i }), 'ba');
+    await waitFor(() => expect(within(nav).getAllByRole('link')).toHaveLength(1));
+    // Giữ lại "Phần 1" với một danh sách trống dưới nó là vẽ ra một ngăn kéo
+    // rỗng — người đọc phải tự suy ra rằng nó rỗng vì bộ lọc.
+    expect(within(nav).queryByText('Phần 1')).not.toBeInTheDocument();
+    expect(within(nav).getByText('Phần 2')).toBeInTheDocument();
   });
 });
