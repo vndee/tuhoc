@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { ALL_LAB_KINDS } from './types';
+import { REGISTERED_LAB_KINDS } from './labs/registry';
 import { makeStoryFixture } from './testing/storyFixture';
 import { validateStory } from './validateStory';
 
 describe('validateStory', () => {
   it('accepts a complete bilingual story', () => {
-    expect(validateStory(makeStoryFixture(), new Set(ALL_LAB_KINDS))).toEqual([]);
+    expect(validateStory(makeStoryFixture(), REGISTERED_LAB_KINDS)).toEqual([]);
+  });
+
+  it('uses the production lab registry when no test registry is injected', () => {
+    expect(validateStory(makeStoryFixture())).toEqual([]);
   });
 
   it.each([
@@ -17,7 +21,7 @@ describe('validateStory', () => {
   ])('rejects %s', (_name, breakStory) => {
     const story = makeStoryFixture();
     breakStory(story);
-    expect(validateStory(story, new Set(ALL_LAB_KINDS))).not.toEqual([]);
+    expect(validateStory(story, REGISTERED_LAB_KINDS)).not.toEqual([]);
   });
 
   it('rejects an unregistered lab and a featured unpublished issue', () => {
@@ -34,7 +38,7 @@ describe('validateStory', () => {
     const story = makeStoryFixture();
     story.scenes[0].sourceIds = ['source-a', 'source-a'];
 
-    expect(validateStory(story, new Set(ALL_LAB_KINDS))).toEqual(expect.arrayContaining([
+    expect(validateStory(story, REGISTERED_LAB_KINDS)).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'duplicate-id', path: 'scenes.0.sourceIds' }),
     ]));
   });
@@ -46,7 +50,7 @@ describe('validateStory', () => {
     story.provenance[1].filename = '';
     story.scenes[0].sourceIds.push('missing');
 
-    expect(validateStory(story, new Set(ALL_LAB_KINDS))).toEqual(expect.arrayContaining([
+    expect(validateStory(story, REGISTERED_LAB_KINDS)).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'missing-image-metadata', path: 'scenes.0.illustration.src' }),
       expect.objectContaining({ code: 'invalid-source', path: 'sources.0.url' }),
       expect.objectContaining({ code: 'missing-provenance', path: 'provenance.1.filename' }),
