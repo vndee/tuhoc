@@ -56,6 +56,9 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 	case errors.Is(err, ErrQueryTooLong):
 		return c.Status(fiber.StatusBadRequest).
 			JSON(fiber.Map{"error": "query is too long"})
+	case errors.Is(err, ErrQueryInvalid):
+		return c.Status(fiber.StatusBadRequest).
+			JSON(fiber.Map{"error": "query is not valid text"})
 	case err != nil:
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid query"})
 	}

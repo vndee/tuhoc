@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
 	"regexp"
 	"sort"
 	"strings"
@@ -43,6 +45,10 @@ const (
 var (
 	ErrQueryTooShort = errors.New("search: query is shorter than the minimum")
 	ErrQueryTooLong  = errors.New("search: query is longer than the maximum")
+	// ErrQueryInvalid: truy vấn không phải UTF-8 hợp lệ, hoặc chứa NUL. Cả
+	// hai là lỗi của NGƯỜI GỌI và phải ra 400 — xem NormalizeQuery cho hai
+	// đường mà chúng biến thành 500 nếu không chặn ở đây.
+	ErrQueryInvalid = errors.New("search: query is not valid UTF-8")
 )
 
 // CourseHit là một khoá khớp.
@@ -93,6 +99,21 @@ func NormalizeQuery(raw string) (string, error) {
 	q := strings.TrimSpace(raw)
 	if len(q) > MaxQueryBytes {
 		return "", ErrQueryTooLong
+	}
+	// Hai phép kiểm này đứng TRƯỚC phép đếm rune, và cả hai đều phải có.
+	//
+	// utf8.RuneCountInString đếm MỖI byte hỏng là một rune, nên "\xff\xfe"
+	// đếm ra 2 và lọt qua ngưỡng tối thiểu. Nó đi tiếp tới regexp.Compile,
+	// hàm ấy từ chối UTF-8 không hợp lệ, và lỗi trả về đi vào nhánh 500 —
+	// mang theo NGUYÊN BYTE truy vấn vào log ("invalid UTF-8: `\xff\xfe`").
+	// Đó là 500 cho một lỗi của người gọi, và nó vòng qua đúng bất biến mà
+	// apilog tự đặt cho mình: ghi c.Path(), không bao giờ ghi chuỗi truy vấn.
+	//
+	// NUL thì hợp lệ theo UTF-8 nhưng Postgres từ chối nó trong kiểu text
+	// (SQLSTATE 22021), nên nó cũng thành 500 — ở tận tầng SQL, sau khi đã
+	// mở một kết nối.
+	if !utf8.ValidString(q) || strings.ContainsRune(q, 0) {
+		return "", ErrQueryInvalid
 	}
 	if utf8.RuneCountInString(q) < MinQueryRunes {
 		return "", ErrQueryTooShort
@@ -188,6 +209,13 @@ func snippetAround(text string, re *regexp.Regexp) (before, match, after string,
 
 // Search chạy cả hai chặng và trả về câu trả lời đã sắp.
 func (u *Usecase) Search(ctx context.Context, q string, limit int) (Results, error) {
+	// Kẹp lại Ở ĐÂY dù handler đã gọi ClampLimit. Không phải phòng thủ thừa:
+	// `kept[:limit]` phía dưới panic với limit âm, và thứ duy nhất chặn nó
+	// là một hàm nằm NGOÀI phương thức này. Hai gói hàng xóm (userdata,
+	// catalog) đều đặt luật bên trong usecase; ở đây nó nằm ngoài, và cái
+	// giá của việc ấy là một panic cách một chỗ gọi mới.
+	limit = ClampLimit(limit)
+
 	// (?i) cho khớp không phân biệt hoa thường ĐÚNG THEO UNICODE, và
 	// FindStringIndex trả chỉ số trong chuỗi GỐC. Cách kia — hạ chuỗi về
 	// chữ thường rồi tìm — cho chỉ số trong chuỗi đã hạ, mà phép hạ chữ có
@@ -197,7 +225,11 @@ func (u *Usecase) Search(ctx context.Context, q string, limit int) (Results, err
 	// một biểu thức chính quy khớp mọi thứ.
 	re, err := regexp.Compile("(?i)" + regexp.QuoteMeta(q))
 	if err != nil {
-		return Results{}, err
+		// Không tới được sau khi NormalizeQuery đã kiểm UTF-8: QuoteMeta
+		// thoát mọi ký tự đặc biệt, nên chỉ byte hỏng mới làm hỏng mẫu. Vẫn
+		// bọc theo quy ước của gói — một lỗi trần ở đây sẽ vào apilog mà
+		// không mang tên gói nào.
+		return Results{}, fmt.Errorf("search: compile query pattern: %w", err)
 	}
 
 	courses, err := u.repo.SearchCourses(ctx, q, limit+1)
@@ -246,7 +278,14 @@ func (u *Usecase) Search(ctx context.Context, q string, limit int) (Results, err
 		if !ok {
 			continue // chặng hai: chỉ khớp trong markup
 		}
-		title, order := c.ChapterID, len(candidates)+1 // dự phòng: xuống cuối
+		// math.MaxInt, KHÔNG phải len(candidates)+1. Hai con số ở hai thang
+		// đo khác nhau: `order` từ chapterIndex đếm trong manifest CỦA MỘT
+		// KHOÁ, còn len(candidates) đếm số dòng SQL trả về cho CẢ truy vấn.
+		// Một khoá 40 chương mà truy vấn chỉ khớp 2 thì dự phòng bằng 3, và
+		// chương mồ côi nhảy lên TRƯỚC chương ở vị trí 10 — tức nó "xuống
+		// cuối" hay "lên đầu" tuỳ vào một truy vấn chẳng liên quan rộng bao
+		// nhiêu. TestSearchOrphanChapterSinksToBottom canh đúng ca ấy.
+		title, order := c.ChapterID, math.MaxInt // dự phòng: xuống cuối
 		if mc, found := index[c.Slug][c.ChapterID]; found {
 			if mc.title != "" {
 				title = mc.title

@@ -115,6 +115,82 @@ describe('ô tìm kiếm ở thanh trên', () => {
     expect(option.textContent).toContain('Một đại lượng gọi là');
   });
 
+  it('gõ một từ chỉ gọi mạng MỘT lần — phép hoãn được đo, không chỉ được tin', async () => {
+    // Bài duy nhất trước đây đếm số lần gọi chỉ hỏi "dưới hai ký tự thì im
+    // lặng chứ?". Xoá hẳn `useEffect` hoãn và gõ thẳng `term` ra mạng thì bài
+    // ấy vẫn xanh, trong khi "entropy" bắn bảy request. Đây là bài đo tính
+    // chất mà chú thích trong TopNav.tsx viết ra.
+    let calls = 0;
+    server.use(
+      http.get('/search', () => {
+        calls += 1;
+        return HttpResponse.json({ courses: [], chapters: [hit()], truncated: false });
+      }),
+    );
+    renderSearch();
+    await openAndType('entropy');
+    await screen.findByRole('option', {}, { timeout: 3000 });
+    await new Promise((r) => setTimeout(r, 350));
+    expect(calls, 'bảy phím phải gộp thành một request').toBe(1);
+  });
+
+  it('quá dài thì KHÔNG gọi mạng, và nói ra rằng chờ cũng vô ích', async () => {
+    let calls = 0;
+    server.use(
+      http.get('/search', () => {
+        calls += 1;
+        return HttpResponse.json({ courses: [], chapters: [], truncated: false });
+      }),
+    );
+    renderSearch();
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByRole('button', { name: /mở ô tìm kiếm/i })).toBeTruthy());
+    await user.click(screen.getByRole('button', { name: /mở ô tìm kiếm/i }));
+    // 129 byte — trên đúng trần `MaxQueryBytes` của máy chủ.
+    await user.paste('a'.repeat(129));
+
+    expect(await screen.findByText(/quá dài/i, {}, { timeout: 3000 })).toBeTruthy();
+    expect(calls, 'một 400 chắc chắn không đáng một vòng mạng').toBe(0);
+  });
+
+  it('↑/↓ đi qua CẢ khoá lẫn chương như một danh sách phẳng', async () => {
+    // Ranh giới giữa hai nhóm là chỗ hai phép đếm chỉ số có thể lệch nhau, và
+    // trước bài này mọi fixture điều hướng bàn phím đều để `courses` rỗng —
+    // tức đúng ranh giới ấy chưa từng được đi qua.
+    server.use(
+      http.get('/search', () =>
+        HttpResponse.json({
+          courses: [{ slug: 'khoa-a', title: 'Khoá A', description: 'mô tả' }],
+          chapters: [hit(), hit({ chapterId: 'c2', chapterTitle: 'Chương hai' })],
+          truncated: false,
+        }),
+      ),
+    );
+    renderSearch();
+    const user = await openAndType('entropy');
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(3));
+
+    // Dòng 1 là KHOÁ, dòng 2 và 3 là chương: một ↓ phải mở trang khoá.
+    await user.keyboard('{ArrowDown}{Enter}');
+    await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/c/khoa-a'));
+  });
+
+  it('↓ qua hết danh sách thì quay về "chưa chọn gì", không kẹt ở đáy', async () => {
+    server.use(
+      http.get('/search', () =>
+        HttpResponse.json({ courses: [], chapters: [hit()], truncated: false }),
+      ),
+    );
+    renderSearch();
+    const user = await openAndType('entropy');
+    await screen.findByRole('option', {}, { timeout: 3000 });
+
+    // Một hit: ↓ chọn nó, ↓ nữa bỏ chọn, khi ấy Enter đi tới trang kết quả
+    // chứ không mở lại chương.
+    await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+    await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/search?q=entropy'));
+  });
+
   it('↓ rồi Enter mở đúng chương được tô sáng', async () => {
     server.use(
       http.get('/search', () =>

@@ -256,12 +256,9 @@ export const vi = {
    * sắp có." và đứng làm `title` của một ô `disabled`. Giữ lại một chuỗi hứa
    * hẹn sau khi thứ ấy đã tới là để lại một lời nói dối trong bảng chuỗi.
    */
-  'topbar.searchShortcut': 'Nhấn ⌘K để tìm',
-  'topbar.searchGroupCourses': 'Khoá học',
-  'topbar.searchGroupChapters': 'Chương',
-  'topbar.searchEmpty': (q: string) => `Không tìm thấy gì cho “${q}”.`,
-  'topbar.searchError': 'Không tìm được. Thử lại sau một lát.',
-  'topbar.searchLoading': 'Đang tìm…',
+  'search.groupCourses': 'Khoá học',
+  'search.groupChapters': 'Chương',
+  'search.loading': 'Đang tìm…',
   'topbar.searchSeeAll': 'Xem tất cả kết quả',
   'topbar.searchResultsAria': 'Kết quả tìm kiếm',
 
@@ -270,6 +267,7 @@ export const vi = {
   'search.countTruncated': (n: string, q: string) => `Hơn ${n} kết quả cho “${q}” — thử gõ hẹp hơn.`,
   'search.empty': (q: string) => `Không tìm thấy gì cho “${q}”.`,
   'search.tooShort': 'Gõ ít nhất hai ký tự để tìm.',
+  'search.tooLong': 'Chuỗi tìm quá dài. Rút ngắn lại rồi thử tiếp.',
   'search.error': 'Không tìm được. Thử lại sau một lát.',
   'search.inCourse': (course: string) => `trong ${course}`,
 

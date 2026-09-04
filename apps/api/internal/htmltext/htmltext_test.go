@@ -65,6 +65,22 @@ func TestStripRemovesRawTextBodies(t *testing.T) {
 		})
 	}
 
+	// Dạng TỰ ĐÓNG, đo riêng. Nhánh case html.SelfClosingTagToken trong
+	// Strip mang gần bốn mươi dòng ghi lại một phép đo — nó gọi
+	// z.NextIsNotRawText() để một "<title/>" không nuốt phần còn lại của
+	// chương — và sau khi hàm chuyển gói, bài test DUY NHẤT chạm tới nhánh
+	// ấy còn nằm lại internal/ai (TestCourseToolStripsAllRawTextTagBodies),
+	// đi qua courseTool và một CourseQuerier giả. Tức là gói sở hữu đoạn mã
+	// không còn canh nó: xoá cả nhánh đi thì suite của gói này vẫn xanh.
+	for _, tag := range tags {
+		t.Run(tag+"/tự đóng", func(t *testing.T) {
+			got := htmltext.Strip("<p>trước</p><" + tag + "/><p>sau</p>")
+			if !strings.Contains(got, "trước") || !strings.Contains(got, "sau") {
+				t.Errorf("<%s/> nuốt mất chữ quanh nó: %q", tag, got)
+			}
+		})
+	}
+
 	t.Run("plaintext ăn tới hết tài liệu", func(t *testing.T) {
 		got := htmltext.Strip("<p>giữ lại</p><plaintext>BÍ MẬT<p>và cả cái này</p>")
 		if strings.Contains(got, "BÍ MẬT") || strings.Contains(got, "và cả cái này") {
