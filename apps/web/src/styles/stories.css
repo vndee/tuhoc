@@ -332,7 +332,10 @@
 
 .story-memory-lab,
 .story-abacus-lab,
-.story-rules-lab {
+.story-rules-lab,
+.story-machine-lab,
+.story-judgment-lab,
+.story-separator-lab {
   display: grid;
   gap: .85rem;
 }
@@ -392,6 +395,86 @@
 .story-rule-trace {
   margin: 0;
   padding-left: 1.3rem;
+}
+
+.story-machine-tape,
+.story-criterion-findings,
+.story-separator-text {
+  margin: 0;
+  padding-left: 1.3rem;
+}
+
+.story-machine-tape {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  list-style: none;
+  padding-left: 0;
+}
+
+.story-machine-tape li {
+  border: 1px solid currentColor;
+  display: grid;
+  min-height: 2.8rem;
+  min-width: 2.8rem;
+  place-items: center;
+}
+
+.story-machine-tape li.is-head {
+  background: color-mix(in srgb, var(--story-accent, var(--accent)) 24%, transparent);
+}
+
+.story-machine-tape small {
+  font-family: var(--font-sans);
+  font-size: .65rem;
+}
+
+.story-transcript {
+  border-left: 3px solid var(--story-accent, var(--accent));
+  margin: 0;
+  padding-left: .85rem;
+}
+
+.story-transcript p {
+  margin: .4rem 0;
+}
+
+.story-criteria-controls,
+.story-separator-controls {
+  display: grid;
+  gap: .55rem;
+}
+
+.story-criteria-controls label,
+.story-separator-controls label {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+}
+
+.story-separator-controls input[type='range'] {
+  flex: 1 1 12rem;
+}
+
+.story-separator-diagram {
+  max-width: 100%;
+  overflow: visible;
+}
+
+.story-separator-diagram path {
+  stroke: var(--story-accent, var(--accent));
+  stroke-width: 2;
+}
+
+.story-separator-diagram circle {
+  fill: transparent;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.story-separator-diagram circle.is-wrong {
+  fill: color-mix(in srgb, #b33 65%, transparent);
 }
 
 .story-rule-cards {
