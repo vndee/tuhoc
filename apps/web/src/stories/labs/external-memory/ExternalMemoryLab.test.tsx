@@ -8,7 +8,7 @@ const definition: LabRuntimeProps['definition'] = {
   kind: 'external-memory',
   title: { vi: 'Trí nhớ ngoài', en: 'External memory' },
   instruction: { vi: 'So sánh việc lưu giữ.', en: 'Compare retention.' },
-  config: { generations: 3, oralRetention: 40, symbolicRetention: 80, originalMarks: 12 },
+  config: { generations: 3, oralRetention: 0.4, symbolicRetention: 0.8, originalMarks: 12 },
 };
 
 function ControlledLab({ onReset = vi.fn() }: { onReset?: () => void }) {

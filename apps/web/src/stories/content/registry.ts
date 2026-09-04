@@ -1,6 +1,10 @@
 import type { StoryRegistryEntry } from '../types';
+import { historyOfAiMeta } from './a-history-of-ai/meta';
 
-export const storyRegistry: readonly StoryRegistryEntry[] = [];
+export const storyRegistry: readonly StoryRegistryEntry[] = [{
+  ...historyOfAiMeta,
+  load: () => import('./a-history-of-ai/story'),
+}];
 
 export function getPublishedStories(entries = storyRegistry): StoryRegistryEntry[] {
   return entries.filter((entry) => entry.published).sort((a, b) => b.issueNumber - a.issueNumber);

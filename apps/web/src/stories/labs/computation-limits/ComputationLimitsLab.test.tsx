@@ -39,6 +39,20 @@ function LongStateControlledLab() {
 }
 
 describe('ComputationLimitsLab', () => {
+  it('switches between an authored halting and bounded-continuing case', () => {
+    const twoCases: LabRuntimeProps['definition'] = { ...definition, config: { ...definition.config, maxSteps: 2, cases: [
+      { id: 'halts', label: { vi: 'Dừng', en: 'Halts' }, tape: '0', startState: 'start', program: { start: { write: '1', move: 1, next: 'halt' } } },
+      { id: 'continues', label: { vi: 'Tiếp tục', en: 'Continues' }, tape: '0', startState: 'loop', program: { loop: { write: '1', move: 1, next: 'loop' } } },
+    ] } };
+    function TwoCases() { const [value, setValue] = useState<unknown>({}); return <ComputationLimitsLab definition={twoCases} lang="en" value={value} onChange={setValue} onReset={() => undefined} onBack={() => undefined} />; }
+    render(<TwoCases />);
+    fireEvent.click(screen.getByRole('button', { name: /step machine/i }));
+    expect(screen.getByRole('status')).toHaveTextContent(/halted/i);
+    fireEvent.change(screen.getByRole('combobox', { name: /state/i }), { target: { value: 'continues' } });
+    fireEvent.click(screen.getByRole('button', { name: /step machine/i }));
+    fireEvent.click(screen.getByRole('button', { name: /step machine/i }));
+    expect(screen.getByRole('status')).toHaveTextContent(/2-step limit/i);
+  });
   it('advances the displayed machine exactly one transition for each native button click', () => {
     render(<ControlledLab />);
 

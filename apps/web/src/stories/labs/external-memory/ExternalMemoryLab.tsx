@@ -9,8 +9,8 @@ export default function ExternalMemoryLab({ definition, lang, value, onChange, o
   }
 
   const generation = clampInteger(readNumber(value, 'generation'), 0, definition.config.generations);
-  const oral = projectMemory(generation, definition.config.originalMarks, definition.config.oralRetention / 100);
-  const symbolic = projectMemory(generation, definition.config.originalMarks, definition.config.symbolicRetention / 100);
+  const oral = projectMemory(generation, definition.config.originalMarks, definition.config.oralRetention);
+  const symbolic = projectMemory(generation, definition.config.originalMarks, definition.config.symbolicRetention);
   const maxMarks = Math.max(1, definition.config.originalMarks);
 
   return <LabFrame

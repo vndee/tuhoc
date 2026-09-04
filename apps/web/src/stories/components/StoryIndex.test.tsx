@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
 import type { StoryRegistryEntry } from '../types';
 import { StoryIndex } from './StoryIndex';
+import { storyRegistry } from '../content/registry';
 
 function makeEntry(overrides: Partial<StoryRegistryEntry> = {}): StoryRegistryEntry {
   return {
@@ -42,6 +43,14 @@ function renderIndex(entries: readonly StoryRegistryEntry[]) {
 }
 
 describe('StoryIndex', () => {
+  it('renders the published production metadata without loading the edition', () => {
+    const load = vi.spyOn(storyRegistry[0], 'load');
+    renderIndex(storyRegistry);
+    expect(screen.getByRole('link', { name: 'Một lịch sử của trí tuệ nhân tạo' })).toHaveAttribute('href', '/stories/a-history-of-ai');
+    expect(load).not.toHaveBeenCalled();
+    load.mockRestore();
+  });
+
   it('shows only published edition metadata and never loads story content', () => {
     const published = makeEntry();
     const draft = makeEntry({ slug: 'draft', published: false, title: { vi: 'Bản nháp', en: 'Draft' } });

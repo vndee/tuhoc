@@ -15,6 +15,7 @@ export default function EmbodiedCalculationLab({ definition, lang, value, onChan
   const output = definition.config.left + step;
   const sequence = Array.from({ length: step + 1 }, (_, index) => definition.config.left + index);
   const operations = describeAbacusAddition(definition.config.left, step);
+  const rods = clampInteger(definition.config.rods, 1, 12);
   const setStep = (next: number) => onChange({ step: clampInteger(next, 0, definition.config.right), representation });
 
   return <LabFrame
@@ -38,7 +39,11 @@ export default function EmbodiedCalculationLab({ definition, lang, value, onChan
         <title>{t(lang, 'stories.lab.abacusDiagram')}</title>
         <desc>{t(lang, 'stories.lab.abacusDiagramDescription')}</desc>
         {representation === 'abacus'
-          ? Array.from({ length: definition.config.left + definition.config.right }, (_, index) => <circle key={index} cx={20 + index * 23} cy="55" r="9" className={index < output ? 'is-active' : undefined} />)
+          ? Array.from({ length: rods }, (_, index) => {
+            const operation = operations[index];
+            const digit = placeDigit(output, index);
+            return <g key={index} data-rod={index} aria-label={t(lang, 'stories.lab.abacusRodValue', placeName(lang, index), digit)}><line x1={28 + index * 68} y1="15" x2={28 + index * 68} y2="96" /><circle cx={28 + index * 68} cy={72 - digit * 5} r="9" className={digit > 0 ? 'is-active' : undefined} /><text x={20 + index * 68} y="106">{digit}{operation?.carry ? ' ↗' : ''}</text></g>;
+          })
           : sequence.map((number, index) => <g key={number}><circle cx={28 + index * 53} cy="55" r="18" /><text x={22 + index * 53} y="60">{number}</text></g>)}
       </svg>
       {representation === 'gears' && <p>{t(lang, 'stories.lab.abacusGearSequence')}: {sequence.join(' → ')}</p>}
@@ -47,6 +52,15 @@ export default function EmbodiedCalculationLab({ definition, lang, value, onChan
       </ul>
     </div>
   </LabFrame>;
+}
+
+function placeDigit(value: number, place: number): number {
+  return Math.floor(Math.max(0, value) / 10 ** place) % 10;
+}
+
+function placeName(lang: 'en' | 'vi', place: number): string {
+  const keys = ['stories.lab.abacusOnes', 'stories.lab.abacusTens', 'stories.lab.abacusHundreds', 'stories.lab.abacusThousands'] as const;
+  return keys[place] ? t(lang, keys[place]) : `${10 ** place}`;
 }
 
 function readNumber(value: unknown, key: string): number {

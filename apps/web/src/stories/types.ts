@@ -102,7 +102,7 @@ export type LabDefinition =
   | LabBase<'external-memory', { generations: number; oralRetention: number; symbolicRetention: number; originalMarks: number }>
   | LabBase<'embodied-calculation', { left: number; right: number; rods: number }>
   | LabBase<'executable-rules', { input: number; target: number; cards: Array<{ id: string; operation: 'add' | 'multiply'; operand: number }> }>
-  | LabBase<'computation-limits', { tape: string; startState: string; maxSteps: number; program: Record<string, { write: string; move: -1 | 1; next: string }> }>
+  | LabBase<'computation-limits', { tape: string; startState: string; maxSteps: number; program: Record<string, { write: string; move: -1 | 1; next: string }>; cases?: Array<{ id: string; label: Localized; tape: string; startState: string; program: Record<string, { write: string; move: -1 | 1; next: string }> }> }>
   | LabBase<'judgment-criteria', { transcript: Localized<Array<{ speaker: 'judge' | 'respondent'; text: string }>>; criteria: Array<{ id: string; label: Localized; finding: Localized }> }>
   | LabBase<'linear-separator', { points: Array<{ id: string; x: number; y: number; label: -1 | 1 }>; angle: number; offset: number }>
   | LabBase<'knowledge-bottleneck', { nodes: Array<{ id: string; label: Localized; parentId: string | null }>; changedRuleId: string }>
@@ -110,7 +110,7 @@ export type LabDefinition =
   | LabBase<'convolution', { pixels: number[][]; kernel: number[][]; row: number; column: number }>
   | LabBase<'attention', { examples: Array<{ id: string; tokens: Localized<string[]>; weights: Localized<number[][]>; gloss: Localized }> }>
   | LabBase<'agent-trace', { steps: Array<{ id: string; kind: 'model' | 'tool' | 'data' | 'proposal' | 'approval'; label: Localized; permission: string | null }> }>
-  | LabBase<'agi-definitions', { definitions: Array<{ id: string; label: string; note: Localized; generality: number; capability: number; autonomy: number }> }>;
+  | LabBase<'agi-definitions', { definitions: Array<{ id: string; label: Localized; note: Localized; sourceId: string; sourceLabel: Localized; generality: number; capability: number; autonomy: number }> }>;
 
 export interface LabFallback {
   diagramLabel: Localized;

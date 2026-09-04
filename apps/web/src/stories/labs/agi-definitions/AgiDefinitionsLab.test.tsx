@@ -10,9 +10,9 @@ const definition: LabRuntimeProps['definition'] = {
   instruction: { en: 'Compare definitions.', vi: 'So sánh định nghĩa.' },
   config: {
     definitions: [
-      { id: 'breadth', label: 'Breadth-first', note: { en: 'Broad task coverage.', vi: 'Phạm vi nhiệm vụ rộng.' }, generality: 4, capability: 5, autonomy: 1 },
-      { id: 'agency', label: 'Agency-first', note: { en: 'Independent action matters.', vi: 'Hành động độc lập quan trọng.' }, generality: 6, capability: 4, autonomy: 2 },
-      { id: 'social', label: 'Social-first', note: { en: 'Consequences are social.', vi: 'Hệ quả là xã hội.' }, generality: 4, capability: 3, autonomy: 4 },
+      { id: 'breadth', label: { en: 'Breadth-first', vi: 'Ưu tiên phạm vi' }, sourceId: 'test', sourceLabel: { en: 'Test source', vi: 'Nguồn thử' }, note: { en: 'Broad task coverage.', vi: 'Phạm vi nhiệm vụ rộng.' }, generality: 4, capability: 5, autonomy: 1 },
+      { id: 'agency', label: { en: 'Agency-first', vi: 'Ưu tiên tự chủ' }, sourceId: 'test', sourceLabel: { en: 'Test source', vi: 'Nguồn thử' }, note: { en: 'Independent action matters.', vi: 'Hành động độc lập quan trọng.' }, generality: 6, capability: 4, autonomy: 2 },
+      { id: 'social', label: { en: 'Social-first', vi: 'Ưu tiên xã hội' }, sourceId: 'test', sourceLabel: { en: 'Test source', vi: 'Nguồn thử' }, note: { en: 'Consequences are social.', vi: 'Hệ quả là xã hội.' }, generality: 4, capability: 3, autonomy: 4 },
     ],
   },
 };
