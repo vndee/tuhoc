@@ -47,6 +47,34 @@ export const vi = {
    */
   'library.courseCount': (count: number) => `${count} khóa học`,
 
+  'stories.masthead': 'Đặc san',
+  'stories.collectionTitle': 'Các số đặc san',
+  'stories.viewAll': 'Xem tất cả các số',
+  'stories.openEdition': 'Mở đặc san',
+  'stories.issueLabel': (issue: number) => `Số ${String(issue).padStart(2, '0')} · Bài kể tương tác`,
+  'stories.sceneCount': (count: number) => `${count} cảnh`,
+  'stories.labCount': (count: number) => `${count} lab tương tác`,
+  'stories.backToCollection': 'Trở lại các số đặc san',
+  'stories.progress': (current: number, total: number) =>
+    `${String(current).padStart(2, '0')} / ${String(total).padStart(2, '0')}`,
+  'stories.contents': 'Mục lục',
+  'stories.closeContents': 'Đóng mục lục',
+  'stories.tryIdea': 'Tự tay thử',
+  'stories.reset': 'Đặt lại',
+  'stories.backToIllustration': 'Trở lại tranh',
+  'stories.sourcesForScene': 'Nguồn cho cảnh này',
+  'stories.allSources': 'Toàn bộ nguồn',
+  'stories.makingOf': 'Hậu trường hình ảnh',
+  'stories.notFoundTitle': 'Không tìm thấy số đặc san',
+  'stories.notFoundBody': 'Số này không tồn tại hoặc chưa được phát hành.',
+  'stories.imageUnavailable': 'Minh hoạ không tải được',
+  'stories.labUnavailable': 'Lab tương tác không tải được. Bạn vẫn có thể đọc phần giải thích dưới đây.',
+  'stories.loading': 'Đang mở đặc san…',
+  'stories.loadError': 'Không thể mở số đặc san này.',
+  'stories.back': 'Quay lại',
+  'stories.illustrationPrefix': 'Minh hoạ',
+  'stories.sourceAccessed': (date: string) => `Truy cập ${date}`,
+
   /* ── trang CÀI ĐẶT (`pages/Settings.tsx`) ─────────────────────────────────
    *
    * `/settings` KHÔNG còn là "trang Trợ lý AI". Theo đặc tả IA
