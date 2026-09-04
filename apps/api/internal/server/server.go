@@ -28,6 +28,7 @@ import (
 	"github.com/vndee/tuhoc-api/internal/discuss"
 	"github.com/vndee/tuhoc-api/internal/pkgcheck"
 	"github.com/vndee/tuhoc-api/internal/rating"
+	"github.com/vndee/tuhoc-api/internal/search"
 	"github.com/vndee/tuhoc-api/internal/stats"
 	"github.com/vndee/tuhoc-api/internal/userdata"
 	// appsync is internal/sync under an explicit alias, not its default
@@ -440,6 +441,17 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	app.Get("/courses/:slug", catalogHandler.PublicManifest)
 	app.Get("/courses/:slug/chapters/:chapterId", catalogHandler.PublicChapter)
 	app.Get("/courses/:slug/assets/*", catalogHandler.PublicAsset)
+
+	// GET /search (04/09/2026): tìm trong chính danh mục bốn route trên phục
+	// vụ, nên nó ở ngay đây và cũng công khai — xem search.Handler.Search cho
+	// vì sao "công khai" ở đây là chính sách, không phải một chỗ quên chặn.
+	//
+	// Đường dẫn "/search" không đụng route nào ở trên, nhưng thứ tự đăng ký
+	// vẫn ghi ra: fiber gửi một cặp (method, path) trùng nhau tới route đăng
+	// ký TRƯỚC, và đúng cái bẫy ấy từng giữ PublicList lại nguyên một commit
+	// (xem chú thích ngay trên).
+	searchHandler := search.NewHandler(search.NewUsecase(search.NewRepo(deps.Pool)))
+	app.Get("/search", searchHandler.Search)
 
 	// Admin catalog routes (Task 8): publish/unpublish/rollback/list for
 	// the public catalog Task 9 serves reads from. Every route is mounted

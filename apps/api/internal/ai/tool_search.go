@@ -56,6 +56,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/vndee/tuhoc-api/internal/htmltext"
 )
 
 // searchResultLimit is how many hits ONE web_search call asks the provider for. This is a
@@ -270,7 +272,7 @@ func (t *searchTool) Run(ctx context.Context, argsJSON string) (string, error) {
 // adversarially long query string is the same "pad the context, pad the bill" cost whether or
 // not it is HTML.
 func formatHit(h SearchHit) (title, url, snippet string) {
-	return truncateHitField(stripTags(h.Title)), truncateHitField(h.URL), truncateHitField(stripTags(h.Snippet))
+	return truncateHitField(htmltext.Strip(h.Title)), truncateHitField(h.URL), truncateHitField(htmltext.Strip(h.Snippet))
 }
 
 // truncateHitField cuts s to maxHitFieldRunes RUNES (not bytes), same rune-safe discipline as
