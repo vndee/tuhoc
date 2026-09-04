@@ -73,6 +73,13 @@ export const en: Messages = {
   'stories.back': 'Back',
   'stories.illustrationPrefix': 'Illustration',
   'stories.sourceAccessed': (date: string) => `Accessed ${date}`,
+  'stories.home': 'Home',
+  'stories.actLabel': (act: number) => `Act ${act}`,
+  'stories.sceneLabel': (scene: number) => `Scene ${String(scene).padStart(2, '0')}`,
+  'stories.technicalHinge': 'Technical hinge',
+  'stories.openQuestion': 'Open question',
+  'stories.coda': 'Coda',
+  'stories.prompt': 'Prompt',
 
   /* ── trang CÀI ĐẶT (`pages/Settings.tsx`) ─────────────────────────────── */
 
