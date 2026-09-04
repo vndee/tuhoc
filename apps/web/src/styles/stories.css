@@ -330,6 +330,92 @@
   padding: .5rem .75rem;
 }
 
+.story-memory-lab,
+.story-abacus-lab,
+.story-rules-lab {
+  display: grid;
+  gap: .85rem;
+}
+
+.story-memory-lab label {
+  display: grid;
+  gap: .35rem;
+  max-width: 24rem;
+}
+
+.story-memory-chart,
+.story-abacus-diagram {
+  max-width: 100%;
+  overflow: visible;
+}
+
+.story-memory-chart rect,
+.story-rule-cards rect {
+  fill: color-mix(in srgb, var(--story-accent, var(--accent)) 55%, transparent);
+  stroke: currentColor;
+}
+
+.story-memory-chart text,
+.story-abacus-diagram text,
+.story-rule-cards text {
+  fill: currentColor;
+  font-family: var(--font-sans);
+  font-size: 11px;
+}
+
+.story-lab-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.story-lab-action-row button {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  min-height: var(--story-target-size, 44px);
+  padding: .5rem .75rem;
+}
+
+.story-abacus-diagram circle {
+  fill: transparent;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.story-abacus-diagram circle.is-active {
+  fill: var(--story-accent, var(--accent));
+}
+
+.story-carry-list,
+.story-rule-cards,
+.story-rule-trace {
+  margin: 0;
+  padding-left: 1.3rem;
+}
+
+.story-rule-cards {
+  display: grid;
+  gap: .75rem;
+}
+
+.story-rule-cards li {
+  display: grid;
+  gap: .4rem;
+}
+
+.story-rule-cards svg {
+  max-width: 18rem;
+}
+
+.story-rule-trace {
+  display: flex;
+  flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+  gap: .1rem;
+  list-style-position: inside;
+}
+
 .story-scene details,
 .story-all-sources details {
   margin-top: 1rem;
