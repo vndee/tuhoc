@@ -292,6 +292,44 @@
   height: 6rem;
 }
 
+.story-lab-frame {
+  background: var(--story-paper);
+  border: 1px solid color-mix(in srgb, var(--story-ink) 25%, transparent);
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.story-lab-frame-header h3,
+.story-lab-frame-header p,
+.story-lab-result {
+  margin: 0;
+}
+
+.story-lab-frame-body {
+  min-width: 0;
+}
+
+.story-lab-result {
+  color: var(--story-muted-ink);
+  min-height: 1.5rem;
+}
+
+.story-lab-frame-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.story-lab-frame-controls button {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  min-height: var(--story-target-size, 44px);
+  min-width: var(--story-target-size, 44px);
+  padding: .5rem .75rem;
+}
+
 .story-scene details,
 .story-all-sources details {
   margin-top: 1rem;
