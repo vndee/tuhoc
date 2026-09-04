@@ -25,6 +25,11 @@ func TestStripKeepsInlineTextTogether(t *testing.T) {
 		{"hai đoạn cách nhau một dòng trống", "<p>Xin chào</p><p>tạm biệt</p>", "Xin chào\n\ntạm biệt"},
 		{"br là ranh giới", "một<br>hai", "một\nhai"},
 		{"mục danh sách tách dòng", "<ul><li>một</li><li>hai</li></ul>", "một\n\nhai"},
+		// Ô trong CÙNG một hàng cũng phải tách. Thiếu luật này, một bảng hai
+		// cột strip ra "Câu hỏiĐáp số" — đo được trên nội dung thật, và nó
+		// đi thẳng vào đoạn trích mà người dùng đọc.
+		{"ô trong cùng hàng tách nhau", "<table><tr><th>Câu hỏi</th><th>Đáp số</th></tr></table>", "Câu hỏi\n\nĐáp số"},
+		{"ô dữ liệu cũng vậy", "<table><tr><td>Khỏi</td><td>Nguồn</td></tr></table>", "Khỏi\n\nNguồn"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
