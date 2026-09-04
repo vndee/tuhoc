@@ -357,15 +357,16 @@ Danh sách không đánh số. Mỗi mục là một liên kết khối `padding
 ### Trạng thái rỗng / đang tải / lỗi
 Một đoạn văn, không phải thẻ: `.home-note`/`.prog-note`/`.courses-note` serif nghiêng 16px `--ink-3`; `.home-empty` tiêu đề serif 26px + lede 16.5px, `max-width: 56ch`; lỗi là `<p role="alert">` serif 16px `--ink-2` tại chỗ, không toast.
 
-### Landing — bốn cảnh (`.bd-*`)
+### Landing — năm cảnh (`.bd-*`)
 Landing tự mang ngôn ngữ hình của mình; không tái dụng `.doc-*` hay `.ld-*` của thế hệ trước.
 
 - **Cảnh 1 — Đọc và chạm.** `.bd-stage` ghép một câu headline ba dòng nối bằng dấu phẩy với `.bd-lab`. Lab là một vùng có tên trợ năng, gồm SVG năm cột xác suất, đường nối vàng, slider và câu kết luận `role="status"`. Kéo từ phân bố tập trung sang phân bố đều phải thay cả hình lẫn câu quan sát; nếu chỉ animate mà nghĩa không đổi thì không còn là visualization. Một SVG bút chì nhỏ chỉ vào đầu “trải đều”, biến slider thành một vật đang được dùng.
 - **Cảnh 2 — Chiều sâu.** `.bd-depth` đặt hai đoạn copy cạnh một `.bd-plate` chứa `lesson-depth.webp`. Tranh là trang sách kỹ thuật mở trên bàn, nét graphite–watercolor với bàn tay đang truy ý; caption nói vai trò của hình, không lặp heading. File provenance đặt cạnh raster. Ở dark mode tờ giấy vẫn sáng có chủ đích như vật thật đặt trên bảng tối.
 - **Cảnh 3 — Hỏi để đào sâu.** `.bd-demo-proof` diễn một chuỗi duy nhất: câu được bôi vàng → ghi chú ví dụ → AI cầm đúng ghi chú ấy → giải thích tiếp. Bookmark đất nung nhô khỏi mép proof để đánh dấu chỗ người học muốn quay lại. Không bubble chat, avatar hay UI giả. Nhãn “Ví dụ” nằm ngay trong proof; lời AI chỉ hứa đọc bài và ghi chú, không hứa đo hiểu biết hay cá nhân hoá khoá.
 - **Cảnh 4 — Danh mục thật.** `.bd-courses` lấy dữ liệu từ `GET /courses`; CTA đầu trang dùng khoá đầu tiên nếu có, nếu không về `/courses`. Trạng thái đang tải/rỗng/lỗi là câu tại chỗ, lỗi có nút thử lại.
+- **Cảnh 5 — Đặc san.** `LandingStoryFeature` đứng sau catalog và trước footer, lấy metadata/thumbnail cover từ registry và mở `/stories/:slug` công khai. `/stories` là kiến trúc collection tái dùng: số mới chỉ thêm metadata, content, theme, assets và config; không fork `StoryRenderer`.
 - **Đoạn kết.** `<footer class="bd-tray">` đặt “Còn một điều chưa hiểu? Bắt đầu từ đó.” đối diện CTA danh mục; tạo tài khoản và đăng nhập lùi thành hai link phụ. Máng và mẩu phấn là đường kết vật lý, không phải divider CSS.
-- **Sợi vàng.** Vàng không tô card hay nút. `.bd-story-thread` là một SVG liên tục nằm sau nội dung, đi trong gutter và chỉ băng ngang ở khoảng trắng giữa các cảnh; dưới 980px nó ẩn để không cắt bố cục một cột. Cùng màu ấy tái xuất ở polyline của lab, chi tiết trong tranh, highlight câu hỏi và gạch catalog. Đất nung chỉ là bookmark/dấu sửa.
+- **Accent vàng.** Vàng không tô card hay nút, và không tạo một thread/connector lặp lại giữa các cảnh. Nó chỉ đánh dấu từng chi tiết tại chỗ: điểm nhấn của lab, chi tiết trong tranh, highlight câu hỏi hoặc gạch catalog. Đất nung chỉ là bookmark/dấu sửa.
 
 ### Named Rules
 **Quy tắc Tên chương là nút.** Hành động chính của một trang trong khung là một liên kết serif cỡ lớn mang tên thứ sẽ mở, không phải một nút màu. Nút màu không tồn tại trong khung `.doc`.

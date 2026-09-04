@@ -123,6 +123,9 @@ trang đăng nhập nói đúng câu ấy. Ghi chú và tiến độ cần tài 
   `web_search` nếu có key), cấu hình agent theo người dùng ở `/settings`.
 - Khoá học: gói v2, catalog công khai `GET /courses`, registry cộng đồng trên
   GitHub, đánh giá sao, thảo luận.
+- Đặc san: `/stories` và `/stories/a-history-of-ai` là bằng chứng công khai
+  hiện tại cho bài kể song ngữ có nguồn, minh hoạ được gắn nhãn và lab cục bộ;
+  không lưu tiến độ, không hứa cá nhân hoá.
 - Ghi lạc quan có lùi: **một lỗi ghi phải được nói ra** (`role="alert"`),
   không nuốt.
 
@@ -166,6 +169,9 @@ i18n, README, và các bản bàn giao — chưa được chủ dự án gọi t
   chứng về độ dày nội dung tương lai, không phải nội dung đang dùng được.
 - Fixture `so-dau-phay-dong`: cũng v1, cũng không publish được.
 - Bộ e2e 7 bài chạy trên stack thật; 1118 test đơn vị web.
+- Đặc san công khai đầu tiên: **Một lịch sử của trí tuệ nhân tạo** / **A
+  History of Artificial Intelligence** — 4 hồi, 12 cảnh và 12 lab xác định;
+  đây là proof surface hiện tại, không phải một lời hứa về personalization.
 - **Không có:** người dùng thật ngoài chủ dự án, lời chứng thực, số liệu sử dụng,
   báo chí, giá, logo chính thức. **Không được bịa** bất kỳ thứ nào trong số này.
 

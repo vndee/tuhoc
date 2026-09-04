@@ -21,12 +21,14 @@ the harness.
 > Execution reports are not part of this repository; anything a reader of a
 > tracked doc needs must live in a tracked file.
 
-**Three spec files actually run**, and they are gates for different things:
+**Four spec files actually run**, and they are gates for different things:
 `p1.spec.ts` (the reader — including the course table of contents, inherited
 from the deleted `s1.spec.ts`), `widget.spec.ts` (the phase-1 security
 gate: a course widget runs inside `sandbox="allow-scripts"`, its origin is
 opaque, and `document.cookie` throws rather than returning the session), and
-`s2.spec.ts` (Pha 2's AI/credit gate — see below).
+`s2.spec.ts` (Pha 2's AI/credit gate — see below), and `stories.spec.ts`
+(public special-edition routes, bundle/network laziness, responsive and
+motion behavior, fallbacks, visual baselines, and performance budgets).
 
 One more sits in the directory but is **quarantined** in
 `apps/web/playwright.config.ts`'s `testIgnore`, with its reason recorded at
@@ -182,6 +184,14 @@ before, if you skip this.
 
 ```bash
 make test-e2e
+```
+
+Focused special-edition checks, including the production manifest graph and
+controlled screenshots, run from `apps/web`:
+
+```bash
+bun run check:stories-bundle
+bunx playwright test e2e/stories.spec.ts
 ```
 
 The web step builds before it serves, so the first run in a clean

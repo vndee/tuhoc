@@ -143,6 +143,10 @@ export function StoryStage({
     }, duration);
   };
 
+  const rejectActive = (key: string) => {
+    setActive((current) => current.key === key && !current.failed ? { ...current, failed: true } : current);
+  };
+
   const plateForLayer = (layer: 0 | 1): VisiblePlate | null => {
     if (active.layer === layer) return { ...active, failed: active.failed || failedSceneIds.has(active.scene.id) };
     if (retiring?.layer === layer) return retiring;
@@ -174,7 +178,9 @@ export function StoryStage({
           failed={plate.failed}
           requestKey={plate.key}
           onLoad={pending?.key === plate.key ? () => acceptPending(plate.key, false) : undefined}
-          onError={pending?.key === plate.key ? () => acceptPending(plate.key, true) : undefined}
+          onError={pending?.key === plate.key
+            ? () => acceptPending(plate.key, true)
+            : active.key === plate.key ? () => rejectActive(plate.key) : undefined}
         /> : null}
       </div>;
     })}
