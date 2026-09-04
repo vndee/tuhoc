@@ -1,43 +1,11 @@
-/* ══════════════════════════════════════════════════════════════════════════
- * LANDING — `/` cho khách chưa đăng nhập (`pages/Landing.tsx`)
- *
- * THẾ GIỚI RIÊNG, không phải khung `.doc` của vỏ app. Hợp đồng hướng:
- * `.impeccable/surfaces/apps-web-src-pages-landing-tsx.md`, seed 7f29cad4.
- *
- * MỘT BÀN TAY, HAI MẶT VIẾT. Chủ dự án chọn nền kem ("nền màu vàng vàng như
- * trong demo", 03/09/2026), và nền kem không đi được với chữ phấn trắng —
- * `#eef1ea` trên `#f4f1e8` là vô hình. Nên thế giới không đổi bảng lấy giấy;
- * nó ĐẢO CỰC theo thời gian trong ngày:
- *   - sáng: bút chì trên giấy kem;
- *   - tối:  phấn trên bảng đá.
- * Chữ viết tay (Shantell Sans), mọi nét vẽ tay qua bộ lọc nhiễu, và vàng nhấn
- * giữ nguyên ở cả hai. Công tắc sáng/tối vì thế vẫn có việc thật để làm.
- *
- * Token đặt tên theo VAI, không theo màu: `--ground`, `--ink`, `--hl`. Một
- * token tên `--chalk` sẽ nói dối ở nửa số thời gian.
- *
- * KHÔNG CÒN TỜ GIẤY GHIM và không còn trích đoạn của một khoá cụ thể (yêu cầu
- * chủ dự án 03/09/2026). Mặt viết tự diễn cơ chế bằng chữ trung tính; danh mục
- * thật ở dưới mới là chỗ nói có gì để đọc.
- *
- * QUY TẮC HAI ID: `app-screens.css` nạp SAU tệp này và đặt
- * `#app:not(.reading) #content h1/h2/h3`, `#content select`, `#content-wrap`
- * padding — hai id một class. Mọi luật ở đây đụng tới cùng phần tử phải mang
- * cùng số id cộng một class, nếu không nó thua im lặng.
- * ══════════════════════════════════════════════════════════════════════════ */
-
-/* ── MẶT VIẾT ─────────────────────────────────────────────────────────────── */
+/*
+ * LANDING — một mặt viết tay kể ba nhịp: đọc cho kỹ, chạm để thấy, hỏi đến
+ * khi hiểu. Palette và chữ giữ nguyên; bố cục đổi từ danh sách khả năng sang
+ * một câu chuyện có hai bằng chứng: visualization thật và một lượt hỏi thật.
+ */
 
 .board-room {
-  /* CHỮ PHẤN SỐNG Ở ĐÂY, VÀ CHỈ Ở ĐÂY. Trước đó landing không đặt
-     `font-family` nào cả — nó thừa kế `--font-sans`, và `--font-sans` là chữ
-     viết tay, nên landing đúng chữ một cách tình cờ. Khi `--font-sans` quay
-     về khớp nội dung chương (xem `tokens.css`), sự tình cờ ấy sẽ lấy mất chữ
-     phấn của landing mà không báo gì. Dòng dưới là thứ biến nó thành có chủ
-     đích: thế giới bảng phấn tự khai giọng của mình, không mượn của app. */
   font-family: var(--font-hand);
-
-  /* SÁNG: bút chì trên giấy kem. */
   --ground: #f4f1e8;
   --ink: #23211c;
   --ink-2: #4a473f;
@@ -45,25 +13,18 @@
   --hl: #e8c547;
   --mark: #c4603a;
   --room: #e6e0d2;
-
-  /* MỘT CỘT NỘI DUNG CHO CẢ TRANG.
-     Trước đó mỗi khối tự đặt khổ riêng — 74ch ở mục, 68ch ở danh mục, 42ch ở
-     câu chú, còn mặt giấy thì rộng 1298px. Kết quả: chữ ngắt ở 829px và thừa
-     470px bên phải, và chữ ngắt ở ba chỗ khác nhau nên trông như ngắt bừa.
-     Không chữa được bằng cách cho chữ dài ra: ở 17.5px thì 829px đã là ~95 ký
-     tự một dòng, quá dài để đọc. Nên thu CỘT lại cho khớp chữ, và mặt giấy
-     giữ nguyên bề rộng — đó chính là lề của một trang viết. */
-  --bd-col: 1140px;
+  --wash: #ebe4d5;
+  --bd-col: 1180px;
 
   min-height: 100dvh;
-  background: var(--room);
   padding: 22px;
   box-sizing: border-box;
+  color: var(--ink);
+  background: var(--room);
   scrollbar-color: var(--ink-3) var(--ground);
 }
 
 html[data-theme='dark'] .board-room {
-  /* TỐI: phấn trên bảng đá. Cùng bàn tay, cùng nét, đảo cực. */
   --ground: #26312e;
   --ink: #eef1ea;
   --ink-2: #bcc9c0;
@@ -71,13 +32,12 @@ html[data-theme='dark'] .board-room {
   --hl: #e8c547;
   --mark: #dd9165;
   --room: #0e100f;
+  --wash: #303d39;
 }
 
-/* Thoát khỏi khung của vỏ app. Cùng khuôn với `.auth-page` trong
-   `settings-auth.css`: hai id cộng một class để thắng `app-screens.css`. */
 #app:not(.reading) #content-wrap:has(.board-room) {
-  padding: 0;
   display: block;
+  padding: 0;
 }
 
 #app:not(.reading) #content:has(.board-room) {
@@ -90,22 +50,47 @@ html[data-theme='dark'] .board-room {
   position: relative;
   min-height: calc(100dvh - 44px);
   box-sizing: border-box;
-  padding: clamp(20px, 3.2vw, 44px) clamp(16px, 2.4vw, 34px) 0;
-  background-color: var(--ground);
-  /* HẠT CỦA MẶT VIẾT. Giấy có thớ, đá bảng có vân; không có nó thì đây chỉ là
-     một hình chữ nhật màu. Ở 0.05 nó dưới ngưỡng nhận ra, trên ngưỡng cảm. */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
-  color: var(--ink);
-  /* KHÔNG có `font-family` ở đây nữa. Dòng cũ viết cứng
-     `'Shantell Sans Variable', 'Shantell Sans', var(--font-sans), system-ui,
-     sans-serif` — vô hại lúc nó được viết, vì `--font-sans` KHI ẤY cũng là
-     Shantell, nên cả chuỗi chỉ nói một điều hai lần. Khi `--font-sans` quay
-     về khớp nội dung chương, cùng dòng ấy bung ra thành Shantell, Shantell,
-     IBM Plex…, sans-serif, rồi system-ui, sans-serif lần nữa: vẫn dựng đúng
-     chữ, nhưng là một bản sao thứ hai của token đã ngừng nói thật.
-     `.board-room` khai `--font-hand` một lần, và `.board` thừa kế. */
-  box-shadow: 0 16px 44px -14px rgb(0 0 0 / 30%);
   overflow: hidden;
+  padding: clamp(20px, 3.2vw, 46px) clamp(16px, 3vw, 46px) 0;
+  color: var(--ink);
+  background-color: var(--ground);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  box-shadow: 0 16px 44px -14px rgb(0 0 0 / 30%);
+}
+
+.board > :not(.bd-story-thread) {
+  position: relative;
+  z-index: 1;
+}
+
+.bd-story-thread {
+  position: absolute;
+  z-index: 0;
+  top: 150px;
+  left: 50%;
+  width: min(calc(100% - 54px), 1360px);
+  height: calc(100% - 300px);
+  overflow: visible;
+  color: var(--hl);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.bd-story-thread path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-dasharray: 2600;
+  stroke-dashoffset: 2600;
+  opacity: 0.3;
+  animation: bd-draw-thread 2.4s 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes bd-draw-thread {
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 html[data-theme='dark'] .board {
@@ -119,48 +104,42 @@ html[data-theme='dark'] .board {
   overflow: hidden;
 }
 
-/* `reader.css` cho MỌI `<a>` một `border-bottom` mờ màu nhấn — đúng cho một
-   liên kết giữa đoạn văn của giáo trình, sai cho mọi thứ ở đây, và
-   `text-decoration: none` KHÔNG gỡ được nó vì đây là `border`. `#topbar` đã
-   phải tự gỡ đúng luật này (`app-screens.css`); mặt viết cũng vậy. */
-#app:not(.reading) #content .board-room a,
-#app:not(.reading) #content .board-room a:hover {
-  border-bottom: none;
-}
-
-/* ── ĐẦU TRANG ────────────────────────────────────────────────────────────── */
-
 .bd-chrome,
 .bd-stage,
 .bd-scene,
 .bd-tray {
+  width: 100%;
   max-width: var(--bd-col);
   margin-inline: auto;
 }
 
+#app:not(.reading) #content .board-room a,
+#app:not(.reading) #content .board-room a:hover {
+  border-bottom: 0;
+}
+
+/* Header chrome stays deliberately quiet; the visualization owns the view. */
 .bd-chrome {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: clamp(26px, 5vh, 54px);
+  margin-bottom: clamp(42px, 7vh, 76px);
 }
 
 .bd-wordmark {
+  color: var(--ink);
   font-size: 19px;
   font-weight: 600;
   letter-spacing: 0.01em;
-  color: var(--ink);
 }
 
 .bd-chrome-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 9px;
 }
 
-/* Điều khiển ở đây là CHỮ VÀ NÉT, không phải nút có nền. */
 #app:not(.reading) #content .board-room .bd-chrome-btn {
   display: inline-flex;
   align-items: center;
@@ -170,9 +149,9 @@ html[data-theme='dark'] .board {
   padding: 0;
   border: 0;
   border-radius: 0;
+  color: var(--ink-2);
   background: transparent;
   box-shadow: none;
-  color: var(--ink-2);
   cursor: pointer;
   transition: color 150ms ease-out;
 }
@@ -181,127 +160,209 @@ html[data-theme='dark'] .board {
   color: var(--ink);
 }
 
-#app:not(.reading) #content .board-room #lang-select {
-  /* `.tb-btn` (reader.css) mang theo cả kiểu lẫn thứ tự của một nút thanh
-     trên: bỏ `appearance` thì trình duyệt vẽ chevron RIÊNG chồng lên chevron
-     của ta, và `order` của nó đẩy bộ chọn ra sau lối đăng nhập. */
-  appearance: none;
-  -webkit-appearance: none;
-  order: 0;
+.bd-language {
+  position: relative;
+  display: inline-grid;
+  width: 38px;
+  height: 36px;
+  place-items: stretch;
+}
+
+#app:not(.reading) #content .board-room .bd-language-trigger {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
   margin: 0;
-  height: 32px;
-  padding: 0 22px 0 8px;
+  padding: 0;
   border: 0;
   border-radius: 0;
+  color: var(--ink);
   background: transparent;
   box-shadow: none;
-  color: var(--ink-2);
   font-family: inherit;
-  font-size: 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1;
   cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' stroke='%234a473f' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 6px center;
 }
 
-html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' stroke='%23bcc9c0' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+#app:not(.reading) #content .board-room .bd-language-trigger:hover,
+#app:not(.reading) #content .board-room .bd-language.is-open .bd-language-trigger {
+  color: var(--mark);
 }
 
-#app:not(.reading) #content .board-room #lang-select:hover {
+.bd-language-menu {
+  position: absolute;
+  z-index: 12;
+  top: calc(100% + 8px);
+  right: -6px;
+  display: grid;
+  width: 188px;
+  min-height: 94px;
+  box-sizing: border-box;
+  padding: 7px 8px;
   color: var(--ink);
+  background:
+    linear-gradient(112deg, color-mix(in srgb, var(--ground) 92%, var(--hl)), var(--ground) 64%),
+    var(--ground);
+  box-shadow: 0 14px 28px -18px rgb(26 22 13 / 55%);
+  isolation: isolate;
+  animation: bd-language-open 140ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-#app:not(.reading) #content .board-room #lang-select option {
+@keyframes bd-language-open {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) rotate(-0.4deg);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(0);
+  }
+}
+
+.bd-language-menu-frame {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.bd-language-menu-frame path {
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.bd-language-menu-frame path:first-child {
+  filter: url(#bd-chalk-2);
+}
+
+#app:not(.reading) #content .board-room .bd-language-option {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 20px;
+  align-items: center;
+  width: 100%;
+  min-height: 39px;
+  margin: 0;
+  padding: 2px 7px;
+  border: 0;
+  border-radius: 0;
+  color: var(--ink-2);
+  background: transparent;
+  box-shadow: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+#app:not(.reading) #content .board-room .bd-language-option:hover,
+#app:not(.reading) #content .board-room .bd-language-option:focus-visible {
   color: var(--ink);
-  background: var(--ground);
+  background: color-mix(in srgb, var(--hl) 14%, transparent);
+  outline: 0;
+}
+
+.bd-language-code {
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+}
+
+.bd-language-name {
+  font-size: 14px;
+  font-weight: 450;
+  letter-spacing: 0.005em;
+}
+
+.bd-language-check {
+  display: grid;
+  width: 20px;
+  height: 18px;
+  color: var(--hl);
+  place-items: center;
+}
+
+.bd-language-check svg {
+  width: 20px;
+  height: 17px;
+  overflow: visible;
+}
+
+.bd-language-check path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 #app:not(.reading) #content .board-room .bd-chrome-link {
+  padding: 0 2px;
   color: var(--ink-2);
   font-size: 15px;
   text-decoration: none;
-  padding: 0 2px;
   transition: color 150ms ease-out;
 }
 
 #app:not(.reading) #content .board-room .bd-chrome-link:hover {
   color: var(--ink);
   text-decoration: underline;
-  text-underline-offset: 0.22em;
   text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
 }
 
-/* ── MÀN ĐẦU: TRÁI NÓI, PHẢI DIỄN CƠ CHẾ ─────────────────────────────────── */
-
+/* Hero: one editorial composition, not a heading followed by feature cards. */
 .bd-stage {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: clamp(26px, 4vw, 64px);
-  align-items: start;
+  grid-template-columns: minmax(0, 0.98fr) minmax(420px, 1.02fr);
+  gap: clamp(44px, 5vw, 72px);
+  align-items: center;
+  min-height: min(700px, calc(100dvh - 190px));
+  padding-bottom: clamp(58px, 8vw, 100px);
+}
+
+.bd-say {
+  padding-bottom: clamp(8px, 2vw, 24px);
 }
 
 #app:not(.reading) #content .board-room .bd-q {
-  margin: 0 0 14px;
-  font-family: inherit;
-  font-size: clamp(29px, 4vw, 53px);
-  line-height: 1.1;
-  font-weight: 600;
-  letter-spacing: -0.005em;
+  max-width: none;
+  margin: 0 0 22px;
   color: var(--ink);
+  font-family: inherit;
+  font-size: clamp(42px, 4.85vw, 64px);
+  font-weight: 600;
+  letter-spacing: -0.018em;
+  line-height: 1.02;
   text-wrap: balance;
 }
 
+.bd-q > span {
+  display: block;
+  white-space: nowrap;
+}
+
 .bd-lede {
-  margin: 0 0 clamp(22px, 3.4vh, 34px);
-  font-size: clamp(16px, 1.25vw, 18.5px);
-  line-height: 1.5;
+  max-width: 39ch;
+  margin: 0 0 clamp(28px, 4vh, 40px);
   color: var(--ink-2);
+  font-size: clamp(17px, 1.35vw, 20px);
+  line-height: 1.58;
 }
-
-/* ── CÁI GẠCH XOÁ ────────────────────────────────────────────────────────
-   Một lối đã thử và bỏ, nằm giữa câu dẫn và hành động: nó là lý do câu hỏi ở
-   nhan đề là câu hỏi thật. Nét gạch là SVG vẽ tay phủ lên chữ, còn `<s>` giữ
-   nghĩa cho trình đọc màn hình — `text-decoration` của trình duyệt bị tắt vì
-   một đường kẻ thẳng băng không thuộc về mặt viết này. */
-
-.bd-working {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  margin: 0 0 clamp(20px, 3vh, 30px);
-  font-size: clamp(15px, 1.2vw, 17px);
-  line-height: 1.45;
-}
-
-.bd-strike {
-  position: relative;
-  display: inline-block;
-  color: var(--ink-3);
-}
-
-.bd-strike s {
-  text-decoration: none;
-}
-
-.bd-strike-mark {
-  position: absolute;
-  left: -3px;
-  top: 46%;
-  width: calc(100% + 6px);
-  height: 10px;
-  color: var(--mark);
-  pointer-events: none;
-}
-
-.bd-verdict {
-  color: var(--ink);
-}
-
-/* ── HÀNH ĐỘNG CHÍNH: MỘT Ô ĐÓNG KHUNG BẰNG TAY ──────────────────────────
-   Trên một mặt viết, thứ được khoanh khung là KẾT QUẢ. Đó là ngữ pháp sẵn có
-   của thế giới này, nên hành động chính mượn đúng nó — không nút tô nền. */
 
 .bd-act {
   margin: 0 0 12px;
@@ -313,10 +374,10 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 12px;
+  max-width: 100%;
   padding: 15px 26px 17px;
   color: var(--ink);
   text-decoration: none;
-  max-width: 100%;
 }
 
 .bd-box {
@@ -325,8 +386,8 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
   width: 100%;
   height: 100%;
   color: var(--ink-2);
-  transition: color 160ms ease-out;
   pointer-events: none;
+  transition: color 160ms ease-out;
 }
 
 #app:not(.reading) #content .board-room .bd-cta:hover .bd-box,
@@ -334,13 +395,10 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
   color: var(--mark);
 }
 
-/* Trên mặt viết người ta viết chữ thường: không một nhãn HOA giãn chữ nào
-   trên trang này. Vòng soát đầu bắt sáu cái, và chúng chính là ngữ pháp
-   dashboard mà chủ dự án đã từ chối. */
 .bd-cta-verb {
+  color: var(--ink-3);
   font-size: 15px;
   font-weight: 400;
-  color: var(--ink-3);
 }
 
 .bd-cta-title {
@@ -351,22 +409,22 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
 
 .bd-act-meta {
   margin: 0;
-  font-size: 14.5px;
   color: var(--ink-3);
+  font-size: 14.5px;
 }
 
 #app:not(.reading) #content .board-room .bd-link {
+  padding: 0;
+  border: 0;
   color: var(--ink-2);
+  background: none;
+  font: inherit;
   text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--ink-2) 45%, transparent);
   text-decoration-thickness: 1px;
   text-underline-offset: 0.22em;
-  text-decoration-color: color-mix(in srgb, var(--ink-2) 45%, transparent);
-  transition: color 150ms ease-out, text-decoration-color 150ms ease-out;
-  background: none;
-  border: 0;
-  padding: 0;
-  font: inherit;
   cursor: pointer;
+  transition: color 150ms ease-out, text-decoration-color 150ms ease-out;
 }
 
 #app:not(.reading) #content .board-room .bd-link:hover {
@@ -374,54 +432,342 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
   text-decoration-color: var(--mark);
 }
 
-
-/* Trên đá, vết lau ăn ánh sáng nên hiện rõ hơn trên giấy — cùng một vết, hai
-   độ mờ, để nó luôn ở dưới ngưỡng "một hình vẽ" và trên ngưỡng "đã có gì ở
-   đây". */
-/* ── CƠ CHẾ, VIẾT TAY BA BƯỚC ────────────────────────────────────────────
-   Câu được gạch → ghi chú của bạn → gia sư cầm chính ghi chú ấy. Không tờ
-   giấy, không trích đoạn của một khoá: chữ trung tính, ai đọc cũng hiểu. */
-
-.bd-demo {
-  display: grid;
-  justify-items: start;
-  padding-top: 6px;
+/* The hero's live figure is the one deliberately bold object on the page. */
+.bd-lab {
+  position: relative;
+  isolation: isolate;
+  padding: clamp(22px, 3vw, 34px) clamp(20px, 3vw, 36px) 22px;
+  background: color-mix(in srgb, var(--wash) 72%, var(--ground));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink-3) 28%, transparent);
 }
 
-#app:not(.reading) #content .board-room .bd-demo-h {
-  margin: 0 0 18px;
+.bd-lab::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.62' numOctaves='3'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.055'/%3E%3C/svg%3E");
+  content: '';
+  pointer-events: none;
+}
+
+.bd-lab-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 24px;
+  align-items: baseline;
+}
+
+#app:not(.reading) #content .board-room .bd-lab-head h2 {
+  margin: 0;
+  color: var(--ink);
   font-family: inherit;
-  font-size: 15px;
-  font-weight: 400;
-  letter-spacing: 0;
+  font-size: clamp(22px, 2vw, 29px);
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.bd-lab-head p {
+  max-width: 31ch;
+  margin: 0;
   color: var(--ink-3);
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+
+.bd-lab-chart {
+  display: block;
+  width: 100%;
+  max-height: 330px;
+  margin: 8px 0 -2px;
+  overflow: visible;
+}
+
+.bd-lab-ground {
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 1.5;
+  opacity: 0.65;
+}
+
+.bd-lab-bar {
+  fill: color-mix(in srgb, var(--hl) 34%, var(--ground));
+  stroke: var(--ink-3);
+  stroke-width: 1.2;
+  transition: y 320ms cubic-bezier(0.16, 1, 0.3, 1), height 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bd-lab-bar-2,
+.bd-lab-bar-4 {
+  fill: color-mix(in srgb, var(--mark) 20%, var(--ground));
+}
+
+.bd-lab-thread {
+  fill: none;
+  stroke: var(--hl);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.bd-lab-point {
+  fill: var(--ground);
+  stroke: var(--hl);
+  stroke-width: 2.5;
+}
+
+.bd-lab-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 16px;
+}
+
+.bd-lab-control-name {
+  color: var(--ink-2);
+  font-size: 14.5px;
+}
+
+.bd-lab-value {
+  color: var(--ink);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-lab-control input[type='range'] {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  color: var(--ink);
+  background: transparent;
+  cursor: ew-resize;
+}
+
+.bd-lab-control input[type='range']::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--ink-3);
+}
+
+.bd-lab-control input[type='range']::-webkit-slider-thumb {
+  width: 17px;
+  height: 17px;
+  margin-top: -7.5px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--hl);
+  box-shadow: none;
+}
+
+.bd-lab-control input[type='range']::-moz-range-track {
+  height: 2px;
+  background: var(--ink-3);
+}
+
+.bd-lab-control input[type='range']::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--hl);
+  box-shadow: none;
+}
+
+.bd-lab-axis {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  margin-top: -4px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+.bd-lab-observation {
+  min-height: 1.5em;
+  margin: 16px 0 0;
+  color: var(--ink-2);
+  font-size: 15.5px;
+  line-height: 1.5;
+}
+
+.bd-pencil {
+  position: absolute;
+  right: -22px;
+  bottom: 58px;
+  width: 88px;
+  height: auto;
+  overflow: visible;
+  pointer-events: none;
+  transform: rotate(-7deg);
+  transform-origin: 50% 50%;
+}
+
+.bd-pencil-body {
+  fill: color-mix(in srgb, var(--hl) 28%, var(--ground));
+  stroke: var(--ink-3);
+  stroke-width: 1.25;
+}
+
+.bd-pencil-tip {
+  fill: var(--ground);
+  stroke: var(--ink-3);
+  stroke-width: 1.25;
+}
+
+.bd-pencil-lead {
+  stroke: var(--ink);
+  stroke-width: 1.7;
+}
+
+.bd-pencil-band {
+  stroke: var(--mark);
+  stroke-width: 2;
+}
+
+/* Long-form story sections alternate words and artifacts. */
+.bd-scene {
+  margin-top: clamp(92px, 11vw, 154px);
+}
+
+.bd-depth,
+.bd-demo {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.72fr) minmax(0, 1.28fr);
+  gap: clamp(42px, 7vw, 96px);
+  align-items: center;
+}
+
+.bd-story-copy {
+  max-width: 35ch;
+}
+
+#app:not(.reading) #content .board-room .bd-story-h {
+  margin: 0 0 24px;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: clamp(31px, 3.6vw, 48px);
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+.bd-story-copy p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: clamp(16.5px, 1.35vw, 19px);
+  line-height: 1.62;
+}
+
+.bd-story-copy p + p {
+  margin-top: 1em;
+}
+
+.bd-plate {
+  margin: 0;
+  padding: 8px 8px 0;
+  overflow: hidden;
+  color: #4a473f;
+  background: #f5f0e3;
+  box-shadow: 0 14px 34px -24px rgb(35 33 28 / 55%), inset 0 0 0 1px rgb(74 71 63 / 18%);
+}
+
+.bd-figure {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1672 / 941;
+  object-fit: cover;
+}
+
+.bd-plate figcaption {
+  margin: 0;
+  padding: 13px 13px 15px;
+  color: #6e6a5f;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* The AI proof deliberately reverses the composition after the illustration. */
+.bd-demo {
+  grid-template-columns: minmax(0, 1.2fr) minmax(250px, 0.8fr);
+}
+
+.bd-demo-copy {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.bd-demo-proof {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  padding: clamp(28px, 4vw, 48px);
+  background: color-mix(in srgb, var(--wash) 68%, var(--ground));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink-3) 24%, transparent);
+}
+
+.bd-bookmark {
+  position: absolute;
+  top: -13px;
+  right: clamp(24px, 6vw, 70px);
+  width: 40px;
+  height: auto;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.bd-bookmark path:first-child {
+  fill: color-mix(in srgb, var(--mark) 76%, var(--ground));
+  stroke: var(--ink-3);
+  stroke-width: 1.2;
+}
+
+.bd-bookmark path:last-child {
+  stroke: var(--ink-2);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+
+.bd-demo-example,
+.bd-demo-label {
+  margin: 0 0 7px;
+  color: var(--ink-3);
+  font-size: 14px;
 }
 
 .bd-demo-sentence {
+  max-width: 34ch;
   margin: 0;
-  font-size: clamp(17px, 1.6vw, 21px);
-  line-height: 1.45;
   color: var(--ink);
+  font-size: clamp(19px, 2vw, 25px);
+  line-height: 1.48;
 }
 
-/* Câu được bôi đen. Cùng vàng với ghi chú và với mũi tên — màu là thứ nối ba
-   chỗ ấy lại, chính xác hơn bất kỳ mũi tên nào. */
 .bd-hl {
-  background: color-mix(in srgb, var(--hl) 42%, transparent);
-  color: inherit;
   padding: 0 3px;
+  color: inherit;
+  background: color-mix(in srgb, var(--hl) 42%, transparent);
   transition: background-color 160ms ease-out;
 }
 
 .bd-demo:has(.bd-demo-note:hover) .bd-hl,
-.bd-demo:has(.bd-demo-sentence:hover) .bd-hl {
-  background: color-mix(in srgb, var(--hl) 82%, transparent);
+.bd-demo:has(.bd-demo-sentence:hover) .bd-hl,
+.bd-demo:has(.bd-demo-note:focus-within) .bd-hl {
+  background: color-mix(in srgb, var(--hl) 80%, transparent);
 }
 
 .bd-arrow {
-  width: min(160px, 55%);
+  display: block;
+  width: min(150px, 44%);
   height: auto;
-  margin: 2px 0 0 clamp(6px, 6%, 44px);
+  margin: 4px 0 0 clamp(12px, 8%, 58px);
   overflow: visible;
 }
 
@@ -441,40 +787,26 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
 }
 
 .bd-demo:has(.bd-demo-note:hover) .bd-arrow-live,
-.bd-demo:has(.bd-demo-sentence:hover) .bd-arrow-live {
+.bd-demo:has(.bd-demo-sentence:hover) .bd-arrow-live,
+.bd-demo:has(.bd-demo-note:focus-within) .bd-arrow-live {
   stroke-dashoffset: 0;
 }
 
 .bd-demo-note {
-  margin-top: 4px;
-}
-
-.bd-demo-label {
-  margin: 0 0 4px;
-  font-size: 14.5px;
-  color: var(--ink-3);
+  margin-top: 2px;
 }
 
 .bd-note-quote {
   margin: 0;
-  font-size: clamp(16px, 1.4vw, 19px);
-  line-height: 1.45;
   color: var(--ink);
+  font-size: clamp(17px, 1.55vw, 20px);
+  line-height: 1.48;
 }
 
 .bd-demo-turn {
-  margin-top: clamp(18px, 2.6vh, 26px);
+  margin-top: clamp(28px, 4vh, 42px);
 }
 
-.bd-demo-tutor {
-  margin: 0 0 10px;
-  font-size: 16px;
-  line-height: 1.5;
-  color: var(--ink-2);
-}
-
-/* Câu gia sư TRÍCH LẠI từ ghi chú, và bàn tay ÔM lấy nó bằng một dấu ngoặc.
-   Mối nối phải được VẼ, không chỉ cùng màu. */
 .bd-held {
   position: relative;
   padding-left: 26px;
@@ -482,8 +814,8 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
 
 .bd-held .bd-bracket {
   position: absolute;
-  left: 0;
   top: 0;
+  left: 0;
   width: 13px;
   height: 100%;
   color: var(--hl);
@@ -492,44 +824,47 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
 .bd-quote {
   margin: 0;
   padding: 0;
-  font-size: 16.5px;
+  color: var(--ink-2);
+  font-size: 15px;
+  font-style: italic;
   line-height: 1.5;
+}
+
+.bd-demo-tutor {
+  max-width: 42ch;
+  margin: 12px 0 0;
   color: var(--ink);
+  font-size: 16.5px;
+  line-height: 1.56;
 }
 
 .bd-note-how {
-  margin: clamp(16px, 2.2vh, 24px) 0 0;
-  font-size: 14.5px;
-  line-height: 1.5;
+  margin: clamp(24px, 3vh, 34px) 0 0;
   color: var(--ink-3);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
-/* ── DANH MỤC THẬT ───────────────────────────────────────────────────────── */
-
-/* Khổ chữ chung cho mọi mục dưới nếp gấp — và GẠCH PHẤN ĐI THEO NÓ.
-   Đo trước khi sửa: gạch kéo hết 1298px trong khi dòng chữ dài nhất chỉ tới
-   quá nửa. Một đường kẻ dài gấp đôi thứ nó gạch dưới chính là cái làm trang
-   đọc ra trống, chứ không phải khoảng cách giữa các mục. */
-.bd-scene {
-  margin-top: clamp(34px, 4.6vh, 56px);
-}
-
+/* The live catalog ends the story with a real way in. */
 .bd-scene-last {
-  margin-bottom: clamp(30px, 5vh, 52px);
+  display: grid;
+  grid-template-columns: minmax(250px, 0.72fr) minmax(0, 1.28fr);
+  gap: clamp(42px, 7vw, 96px);
+  align-items: start;
+  margin-bottom: clamp(52px, 8vw, 96px);
 }
 
 #app:not(.reading) #content .board-room .bd-h {
   margin: 0;
-  font-family: inherit;
-  font-size: clamp(20px, 2vw, 26px);
-  line-height: 1.2;
-  font-weight: 600;
-  letter-spacing: 0;
   color: var(--ink);
+  font-family: inherit;
+  font-size: clamp(31px, 3.6vw, 48px);
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  line-height: 1.08;
+  text-wrap: balance;
 }
 
-/* Gạch dưới rộng đúng bằng đầu mục nó gạch, nhờ khối `.bd-h-line`
-   `inline-block` bọc cả hai — chứ không kéo hết cột. */
 .bd-h-line {
   display: inline-block;
   max-width: 100%;
@@ -539,103 +874,158 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
   display: block;
   width: 100%;
   height: 8px;
-  margin: 7px 0 18px;
-  color: var(--ink-3);
-  opacity: 0.75;
+  margin: 12px 0 18px;
+  color: var(--hl);
+  opacity: 0.9;
 }
 
 .bd-cat {
-  max-width: none;
+  min-width: 0;
 }
 
 .bd-state {
   margin: 0;
-  font-size: 16px;
   color: var(--ink-2);
+  font-size: 16px;
 }
 
 .bd-courses {
-  list-style: none;
   margin: 0;
   padding: 0;
+  list-style: none;
+}
+
+.bd-courses li {
+  border-top: 1px solid color-mix(in srgb, var(--ink-3) 28%, transparent);
+}
+
+.bd-courses li:last-child {
+  border-bottom: 1px solid color-mix(in srgb, var(--ink-3) 28%, transparent);
 }
 
 #app:not(.reading) #content .board-room .bd-course {
-  display: block;
-  padding: 16px 0;
+  display: grid;
+  grid-template-columns: minmax(12ch, 0.72fr) minmax(0, 1.28fr);
+  gap: 20px;
+  align-items: baseline;
+  padding: 18px 0 20px;
   color: var(--ink);
   text-decoration: none;
 }
 
 .bd-course-title {
-  display: block;
-  font-size: 19px;
+  font-size: clamp(18px, 1.55vw, 21px);
   font-weight: 600;
   line-height: 1.3;
 }
 
 .bd-course-desc {
-  display: block;
-  margin-top: 3px;
-  font-size: 15px;
-  line-height: 1.5;
   color: var(--ink-3);
+  font-size: 14.5px;
+  line-height: 1.52;
 }
 
 #app:not(.reading) #content .board-room .bd-course:hover .bd-course-title {
   color: var(--mark);
   text-decoration: underline;
-  text-underline-offset: 0.22em;
   text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
 }
 
-/* ── MÁNG PHẤN: CÁI KẾT THẬT ─────────────────────────────────────────────
-   Cả gờ máng lẫn mẩu phấn nằm trên nó đều được VẼ. Ở vòng soát đầu chúng là
-   hai khối CSS giả làm vật, và reviewer đọc ra mẩu phấn như một ảnh hỏng. */
-
 .bd-tray {
-  margin-top: clamp(30px, 5vh, 52px);
-  padding-bottom: clamp(26px, 4vh, 40px);
+  padding-bottom: clamp(32px, 5vh, 58px);
 }
 
 .bd-ledge {
   display: block;
   width: 100%;
-  height: 26px;
+  height: 30px;
   color: var(--ink-3);
 }
 
 .bd-ledge-stub {
-  fill: var(--ink-2);
+  fill: var(--hl);
   stroke: none;
+}
+
+.bd-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: clamp(38px, 8vw, 120px);
+  align-items: end;
+  padding: clamp(28px, 4vw, 48px) 0 0;
+}
+
+.bd-footer-copy {
+  max-width: 28ch;
+}
+
+#app:not(.reading) #content .board-room .bd-footer-copy h2 {
+  margin: 0;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: clamp(30px, 3.4vw, 46px);
+  font-weight: 600;
+  letter-spacing: -0.014em;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+.bd-footer-copy p {
+  margin: 12px 0 0;
+  color: var(--mark);
+  font-size: clamp(19px, 1.8vw, 24px);
+  line-height: 1.3;
+}
+
+.bd-footer-actions {
+  display: grid;
+  justify-items: end;
+  min-width: min(100%, 270px);
+}
+
+#app:not(.reading) #content .board-room .bd-footer-primary {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 230px;
+  padding: 15px 24px 17px;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-decoration: none;
+}
+
+#app:not(.reading) #content .board-room .bd-footer-primary:hover .bd-box,
+#app:not(.reading) #content .board-room .bd-footer-primary:focus-visible .bd-box {
+  color: var(--mark);
 }
 
 .bd-tray-links {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 24px;
-  margin: 14px 0 0;
-  font-size: 15px;
+  justify-content: flex-end;
+  gap: 7px 22px;
+  margin: 16px 0 0;
+  font-size: 14.5px;
 }
 
-/* ── BỀ MẶT CỦA TRÌNH DUYỆT ──────────────────────────────────────────────
-   Những phần không do ta vẽ vẫn phải thuộc về thế giới này. */
-
 .board-room ::selection {
-  background: var(--hl);
   color: #23211c;
+  background: var(--hl);
 }
 
 #app:not(.reading) #content .board-room a:focus-visible,
 #app:not(.reading) #content .board-room button:focus-visible,
-#app:not(.reading) #content .board-room select:focus-visible {
+#app:not(.reading) #content .board-room select:focus-visible,
+#app:not(.reading) #content .board-room input:focus-visible {
   outline: 2px solid var(--mark);
-  outline-offset: 3px;
+  outline-offset: 4px;
   border-radius: 0;
   box-shadow: none;
 }
-
-/* ── CO GIÃN ─────────────────────────────────────────────────────────────── */
 
 @media (hover: none) {
   .bd-hover-only {
@@ -643,12 +1033,66 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
   }
 }
 
-@media (max-width: 1080px) {
-  .bd-stage {
-    grid-template-columns: minmax(0, 1fr);
-    gap: clamp(30px, 5vh, 46px);
+@media (max-width: 980px) {
+  .bd-story-thread {
+    display: none;
   }
 
+  .bd-stage {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  #app:not(.reading) #content .board-room .bd-q {
+    max-width: 12ch;
+  }
+
+  .bd-lede {
+    max-width: 54ch;
+  }
+
+  .bd-lab {
+    width: min(680px, 100%);
+    box-sizing: border-box;
+  }
+
+  .bd-depth,
+  .bd-demo,
+  .bd-scene-last {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 34px;
+  }
+
+  .bd-story-copy {
+    max-width: 48ch;
+  }
+
+  .bd-demo-copy,
+  .bd-demo-proof {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .bd-demo-copy {
+    order: 1;
+  }
+
+  .bd-demo-proof {
+    order: 2;
+  }
+
+  .bd-footer {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .bd-footer-actions {
+    justify-items: start;
+  }
+
+  .bd-tray-links {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 640px) {
@@ -662,119 +1106,102 @@ html[data-theme='dark'] #app:not(.reading) #content .board-room #lang-select {
     box-shadow: none;
   }
 
+  .bd-chrome {
+    margin-bottom: 48px;
+  }
+
+  .bd-chrome-right {
+    gap: 5px;
+  }
+
+  .bd-language {
+    width: 38px;
+  }
+
+  #app:not(.reading) #content .board-room .bd-q {
+    max-width: none;
+    font-size: 40px;
+  }
+
+  .bd-stage {
+    gap: 48px;
+    padding-bottom: 30px;
+  }
+
+  .bd-lab {
+    padding: 22px 16px 18px;
+  }
+
+  .bd-pencil {
+    right: -8px;
+    bottom: 62px;
+    width: 72px;
+  }
+
+  .bd-lab-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bd-lab-chart {
+    margin-top: 14px;
+  }
+
+  .bd-scene {
+    margin-top: 88px;
+  }
+
+  .bd-depth,
+  .bd-demo,
+  .bd-scene-last {
+    gap: 28px;
+  }
+
+  .bd-plate {
+    margin-inline: -8px;
+    padding: 5px 5px 0;
+  }
+
+  .bd-plate figcaption {
+    padding: 11px 9px 13px;
+  }
+
+  .bd-demo-proof {
+    padding: 26px 20px 30px;
+  }
+
   .bd-arrow {
-    width: 120px;
-    margin-left: 10px;
+    width: 116px;
+    margin-left: 12px;
+  }
+
+  #app:not(.reading) #content .board-room .bd-course {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .bd-footer {
+    gap: 30px;
+  }
+
+  #app:not(.reading) #content .board-room .bd-footer-primary {
+    min-width: 0;
+    max-width: 100%;
   }
 }
 
-/* Ai tắt chuyển động thì nét vàng có sẵn, không vẽ ra. Nội dung y hệt. */
 @media (prefers-reduced-motion: reduce) {
+  .bd-story-thread path {
+    stroke-dashoffset: 0;
+    animation: none;
+  }
+
   .bd-arrow-live {
     stroke-dashoffset: 0;
     transition: none;
   }
 
+  .bd-lab-bar,
   #app:not(.reading) #content .board-room * {
     transition-duration: 1ms !important;
-  }
-}
-
-/* ── BẠN LÀM ĐƯỢC GÌ Ở ĐÂY ────────────────────────────────────────────────
-   Bốn dòng CHỮ, không phải bốn ô tính năng: hộp tính năng có biểu tượng đúng
-   là thứ luận đề của trang từ chối, và sàn craft cấm thẳng. Mỗi dòng mở đầu
-   bằng một động từ rồi gạch ngang — cùng ngữ pháp với nhãn run-in ở khối hành
-   động, nên mắt đọc ra "đây là bốn việc" mà không cần một cái khung nào. */
-.bd-can-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 11px;
-}
-
-.bd-can-list li {
-  font-size: clamp(15.5px, 1.25vw, 17.5px);
-  line-height: 1.5;
-  color: var(--ink-2);
-}
-
-/* ── HƯỚNG ĐI: HÌNH VẼ VÀ CÂU TUYÊN BỐ ────────────────────────────────────
-   Đứng ở cột phải của màn đầu, nơi khối cơ chế từng đứng. Cơ chế là BẰNG
-   CHỨNG nên nó xuống sau lời tuyên bố; chỗ này là điều sản phẩm TIN.
-
-   Nhãn "Hướng đi" là một `<h2>` thật chứ không phải một dòng chữ nhỏ trang
-   trí: nó phải ở trong dàn ý cho người dùng trình đọc màn hình, vì nó là thứ
-   duy nhất phân biệt "chúng tôi tin" với "sản phẩm làm được". */
-/* Sau khi nhãn và câu tầm nhìn đi, cột phải chỉ còn HÌNH. Nó phải được căn
-   lại: `align-items: start` của `.bd-stage` dính nó lên đỉnh, để thừa 258px
-   dưới chân trong khi cột trái cao 501px. Nay hình căn giữa theo chiều dọc so
-   với cột chữ, và rộng ra cho hai cột cân nhau. */
-.bd-vision {
-  display: grid;
-  justify-items: center;
-  align-self: center;
-}
-
-
-.bd-figure {
-  width: min(460px, 100%);
-  height: auto;
-}
-
-/* Người và bàn đậm nhất — đó là nhân vật. Những thứ đang học nhạt hơn một
-   bậc: chúng ở trong đầu người ấy, không đứng ngang hàng với người. */
-.bd-fig-book {
-  stroke: var(--ink);
-}
-
-.bd-fig-lines,
-.bd-fig-rise {
-  stroke: var(--ink-3);
-}
-
-.bd-fig-net,
-.bd-fig-node,
-.bd-fig-sky {
-  stroke: var(--ink-3);
-}
-
-.bd-fig-node {
-  fill: var(--ground);
-}
-
-.bd-fig-math {
-  fill: var(--ink-3);
-  font-family: inherit;
-}
-
-
-/* Khối cơ chế nay là một mục riêng, không còn là cột phải của màn đầu. */
-.bd-demo.bd-scene {
-  padding-top: 0;
-}
-
-/* Mục cơ chế nay đứng riêng, nên nó lấy lại lưới hai cột của trang: ba bước
-   bên trái, câu giải thích ở lề phải — nếu không, nửa phải bỏ trống nguyên
-   một màn, đúng khuyết điểm vòng soát đầu đã gọi tên. */
-.bd-demo.bd-scene {
-  display: grid;
-  justify-items: start;
-}
-
-.bd-demo-steps {
-  display: grid;
-  justify-items: start;
-}
-
-@media (max-width: 1080px) {
-  .bd-demo.bd-scene {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .bd-demo.bd-scene > .bd-note-how {
-    grid-column: 1;
-    grid-row: auto;
-    margin-top: clamp(18px, 2.6vh, 26px);
   }
 }
