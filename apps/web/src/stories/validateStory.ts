@@ -5,7 +5,7 @@ export interface StoryValidationIssue {
   code: 'missing-locale' | 'duplicate-id' | 'missing-source' | 'unknown-lab-kind' |
     'scene-count' | 'lab-count' | 'missing-image-metadata' | 'missing-provenance' |
     'missing-fallback' | 'featured-unpublished' | 'act-scene-mismatch' | 'source-count' |
-    'invalid-source';
+    'invalid-source' | 'invalid-lab-config';
   path: string;
   message: string;
 }
@@ -161,6 +161,11 @@ export function validateStory(
           text(definition.note, `${path}.lab.config.definitions.${definitionIndex}.note`);
           text(definition.sourceLabel, `${path}.lab.config.definitions.${definitionIndex}.sourceLabel`);
           if (!scene.sourceIds.includes(definition.sourceId)) add('missing-source', `${path}.lab.config.definitions.${definitionIndex}.sourceId`, `definition source ${definition.sourceId} is not mapped to this scene`);
+          for (const axis of ['generality', 'capability', 'autonomy'] as const) {
+            if (!Number.isFinite(definition[axis]) || definition[axis] < 0 || definition[axis] > 5) {
+              add('invalid-lab-config', `${path}.lab.config.definitions.${definitionIndex}.${axis}`, 'AGI definition coordinates must be finite values from 0 to 5');
+            }
+          }
         });
         break;
       default:

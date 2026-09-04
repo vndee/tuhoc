@@ -3,7 +3,7 @@ import { historyOfAiIllustrations } from './assets';
 
 export const blocks = (vi: string, en: string): Localized<RichTextBlock[]> => ({
   vi: [{ kind: 'paragraph', text: vi }],
-  en: [{ kind: 'paragraph', text: `${en} This remains a partial account.` }],
+  en: [{ kind: 'paragraph', text: en }],
 });
 
 export const technicalBlocks = (vi: string, en: string): Localized<RichTextBlock[]> => blocks(

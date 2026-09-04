@@ -45,4 +45,7 @@ function assertFinite(definition: AgiDefinition, axis: keyof AgiPosition) {
   if (!Number.isFinite(definition[axis])) {
     throw new Error(`Definition "${definition.label}" has a non-finite ${axis} coordinate.`);
   }
+  if (definition[axis] < 0 || definition[axis] > 5) {
+    throw new Error(`Definition "${definition.label}" has an out-of-range ${axis} coordinate.`);
+  }
 }

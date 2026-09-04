@@ -140,6 +140,7 @@ function StoryRendererContent({
             sizes={story.meta.cover.sizes}
             onError={() => setCoverFailed(true)}
           />}
+          {!coverFailed ? <figcaption className="story-cover-caption">{story.meta.cover.caption[lang]}</figcaption> : null}
         </figure>
       </section>
       <div id="story-cover-sentinel" aria-hidden="true" />

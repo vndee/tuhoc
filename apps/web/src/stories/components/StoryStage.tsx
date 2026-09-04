@@ -164,7 +164,7 @@ export function StoryStage({
   >
     {([0, 1] as const).map((layer) => {
       const plate = plateForLayer(layer);
-      return <div
+      return <figure
         className={`story-plate-layer${layer === active.layer ? ' is-active' : ''}`}
         aria-hidden={layer === active.layer ? undefined : true}
         data-layer={layer}
@@ -182,7 +182,8 @@ export function StoryStage({
             ? () => acceptPending(plate.key, true)
             : active.key === plate.key ? () => rejectActive(plate.key) : undefined}
         /> : null}
-      </div>;
+        {plate && !plate.failed ? <figcaption className="story-plate-caption">{plate.scene.illustration.caption[lang]}</figcaption> : null}
+      </figure>;
     })}
     <div className="story-stage-lab" id={labSceneId ? `story-lab-${labSceneId}` : undefined}>{lab}</div>
   </aside>;

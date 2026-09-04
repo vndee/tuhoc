@@ -158,6 +158,7 @@ export const en: Messages = {
   'stories.lab.convolutionMoveRight': 'Move kernel right',
   'stories.lab.convolutionDotProduct': (value: number) => `Dot product: ${value}`,
   'stories.lab.convolutionOrigin': (row: number, column: number) => `Kernel origin: row ${row}, column ${column}`,
+  'stories.lab.convolutionCell': (row: number, column: number, value: number) => `row ${row}, column ${column}: ${value}`,
   'stories.lab.convolutionFeatureMap': 'Feature map',
   'stories.lab.convolutionParallel': 'Parallel order intuition',
   'stories.lab.convolutionSequential': 'Sequential highlights',
