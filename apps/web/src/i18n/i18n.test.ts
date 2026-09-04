@@ -266,8 +266,9 @@ function filesUnder(dir: string, extensions: readonly string[]): string[] {
 const SCAN_ROOTS: readonly { readonly name: string; readonly files: () => string[]; readonly why: string }[] = [
   {
     name: 'apps/web/src',
-    files: () => filesUnder(join(REPO_ROOT, 'apps', 'web', 'src'), ['.ts', '.tsx']),
-    why: 'ứng dụng React — phần lớn giao diện',
+    files: () => filesUnder(join(REPO_ROOT, 'apps', 'web', 'src'), ['.ts', '.tsx'])
+      .filter((file) => !isStoryContentDataModule(file)),
+    why: 'ứng dụng React — phần lớn giao diện; module dữ liệu story .ts có contract song ngữ riêng, component .tsx vẫn được quét',
   },
   {
     name: 'packages/course-kit (*.js, trừ vendor/)',
@@ -287,6 +288,12 @@ const SCAN_ROOTS: readonly { readonly name: string; readonly files: () => string
 
 function scannedFiles(): string[] {
   return SCAN_ROOTS.flatMap((root) => root.files()).sort();
+}
+
+const STORY_CONTENT_ROOT = join(REPO_ROOT, 'apps', 'web', 'src', 'stories', 'content') + sep;
+
+function isStoryContentDataModule(file: string): boolean {
+  return file.startsWith(STORY_CONTENT_ROOT) && file.endsWith('.ts') && !file.endsWith('.tsx');
 }
 
 function i18nSourceFiles(): string[] {
@@ -390,6 +397,12 @@ const NOT_YET_EXTRACTED: readonly string[] = [
 ];
 
 describe('cổng chặn chuỗi cứng', () => {
+  it('chỉ tách module dữ liệu .ts của story, không miễn component .tsx hay mã ngoài content', () => {
+    expect(isStoryContentDataModule(join(STORY_CONTENT_ROOT, 'a-history-of-ai', 'cover.ts'))).toBe(true);
+    expect(isStoryContentDataModule(join(STORY_CONTENT_ROOT, 'a-history-of-ai', 'StoryChrome.tsx'))).toBe(false);
+    expect(isStoryContentDataModule(join(REPO_ROOT, 'apps', 'web', 'src', 'pages', 'Landing.ts'))).toBe(false);
+  });
+
   /**
    * Bài đọc-đồng-hồ. Không có nó, mọi con số dưới đây có thể đang đo sai thứ:
    * một bộ dò tính cả chú thích sẽ báo gần như MỌI tệp trong repo là vi phạm
