@@ -153,7 +153,7 @@ func TestCourseToolStripsStyleBodyToo(t *testing.T) {
 // văn `<payload>` (kèm dấu "<"/">" thật) ra đầu ra.
 //
 // Mỗi thẻ được thử CẢ HAI dạng, vì re-review vòng 2 đo được rằng chúng đi
-// qua hai nhánh khác nhau hoàn toàn của stripTags:
+// qua hai nhánh khác nhau hoàn toàn của htmltext.Strip:
 //
 //   - "/pair" (cặp mở/đóng đủ, "<TAG>...</TAG>"): tokenizer BẬT chế độ
 //     raw-text thật — toàn thân tới thẻ đóng là MỘT TextToken duy nhất.
@@ -171,7 +171,7 @@ func TestCourseToolStripsStyleBodyToo(t *testing.T) {
 //     toàn bộ phần chương CÒN LẠI sau "<TAG/>" biến mất, im lặng, không
 //     phải chỉ thân thẻ (mà thẻ tự đóng vốn không có). Sửa đúng bằng cách
 //     gọi z.NextIsNotRawText() trong case html.SelfClosingTagToken của
-//     stripTags — xem chú thích tại đó để biết vì sao đây là một lựa chọn
+//     htmltext.Strip — xem chú thích tại đó để biết vì sao đây là một lựa chọn
 //     CỐ Ý khác hành vi trình duyệt thật, không phải một hệ quả tự nhiên
 //     của việc tách case. Ca "/self-closing" khẳng định thêm một điều ca
 //     "/pair" không có: văn bản SAU thẻ (kể cả xuyên qua một thẻ lồng <b>)
@@ -345,8 +345,8 @@ func TestCourseToolWarnsOnEmptyChapter(t *testing.T) {
 // TestCourseToolWarnsOnChapterThatStripsToEmpty: một biến thể khác của
 // "thành công nhưng rỗng" — ChapterHTML trả HTML KHÔNG rỗng (nên nhánh trên
 // không bắt được), nhưng toàn bộ nội dung đó nằm trong các thẻ
-// stripRawTextTags nên stripTags xoá sạch, để lại chuỗi rỗng sau khi lọc.
-// Guard phải kiểm SAU stripTags, không chỉ kiểm ChapterHTML trả về có rỗng
+// stripRawTextTags nên htmltext.Strip xoá sạch, để lại chuỗi rỗng sau khi lọc.
+// Guard phải kiểm SAU htmltext.Strip, không chỉ kiểm ChapterHTML trả về có rỗng
 // hay không.
 func TestCourseToolWarnsOnChapterThatStripsToEmpty(t *testing.T) {
 	out := runTool(t, `{"slug":"c","chapter_id":"c1"}`, withChapter(`<script>x()</script>`))

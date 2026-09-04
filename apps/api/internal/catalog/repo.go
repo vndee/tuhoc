@@ -23,6 +23,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/vndee/tuhoc-api/internal/htmltext"
+
 	"github.com/vndee/tuhoc-api/internal/pkgcheck"
 )
 
@@ -264,10 +266,15 @@ func (r *PostgresRepo) Publish(ctx context.Context, who *uuid.UUID, in PublishIn
 		if widgetNames == nil {
 			widgetNames = []string{}
 		}
+		// plain_text dựng NGAY ĐÂY, cùng lý do widget_names được trích ở
+		// đúng chỗ này (xem chú thích của nó trong 0005): thứ mỗi lượt đọc
+		// cần thì tính một lần lúc ghi, không tính lại mỗi lượt đọc. Đây là
+		// đường ghi DUY NHẤT vào published_chapters, nên không có chỗ thứ hai
+		// nào có thể để trống cột này.
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO published_chapters (slug, chapter_id, file, html, widget_names)
-			 VALUES ($1, $2, $3, $4, $5)`,
-			in.Slug, ch.ID, ch.File, ch.HTML, widgetNames,
+			`INSERT INTO published_chapters (slug, chapter_id, file, html, widget_names, plain_text)
+			 VALUES ($1, $2, $3, $4, $5, $6)`,
+			in.Slug, ch.ID, ch.File, ch.HTML, widgetNames, htmltext.Strip(ch.HTML),
 		); err != nil {
 			return 0, fmt.Errorf("catalog: insert published_chapters (slug=%s chapter=%s): %w", in.Slug, ch.ID, err)
 		}
@@ -561,4 +568,57 @@ func (r *PostgresRepo) GetPublishedAsset(ctx context.Context, slug, assetPath st
 		return nil, 0, fmt.Errorf("catalog: get published asset (slug=%s path=%s): %w", slug, assetPath, err)
 	}
 	return data, version, nil
+}
+
+// BackfillPlainText dẫn xuất published_chapters.plain_text cho mọi hàng còn
+// NULL, tức mọi chương publish TRƯỚC migration 0012.
+//
+// Ở trong Go chứ không trong migration, và đó là một ràng buộc chứ không phải
+// một sở thích: gỡ thẻ đúng nghĩa cần tokenizer HTML5 (bảng mười thẻ raw-text
+// của internal/htmltext), và một bản dựng bằng regexp_replace trong SQL sẽ là
+// ĐỊNH NGHĨA THỨ HAI cho "văn bản của một chương" — đúng thứ mà việc tách
+// internal/htmltext ra khỏi internal/ai tồn tại để tránh. Migration 0012 ghi
+// lại lập luận này ở chính chỗ nó không backfill.
+//
+// CHẠY LẠI ĐƯỢC: `WHERE plain_text IS NULL` khiến lần thứ hai không đụng hàng
+// nào. Nó cũng không bao giờ GHI ĐÈ một giá trị đã có — một chương vừa
+// publish lại mang bản dẫn xuất mới nhất, và hàm này không được phép lùi nó.
+//
+// Trả về số hàng đã điền, để chỗ gọi nói ra một con số thay vì "xong".
+func (r *PostgresRepo) BackfillPlainText(ctx context.Context) (int, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT slug, chapter_id, html FROM published_chapters WHERE plain_text IS NULL`)
+	if err != nil {
+		return 0, fmt.Errorf("catalog: select chapters needing plain_text: %w", err)
+	}
+
+	type pending struct{ slug, chapterID, text string }
+	todo := []pending{}
+	for rows.Next() {
+		var slug, chapterID, html string
+		if err := rows.Scan(&slug, &chapterID, &html); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("catalog: scan chapter for plain_text: %w", err)
+		}
+		todo = append(todo, pending{slug, chapterID, htmltext.Strip(html)})
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("catalog: select chapters needing plain_text: %w", err)
+	}
+
+	// Gỡ thẻ SAU khi đã đóng rows, không phải trong lúc duyệt: một UPDATE
+	// gửi đi giữa chừng trên cùng một kết nối sẽ đụng con trỏ đang mở.
+	n := 0
+	for _, p := range todo {
+		tag, err := r.pool.Exec(ctx,
+			`UPDATE published_chapters SET plain_text = $3
+			  WHERE slug = $1 AND chapter_id = $2 AND plain_text IS NULL`,
+			p.slug, p.chapterID, p.text)
+		if err != nil {
+			return n, fmt.Errorf("catalog: backfill plain_text (slug=%s chapter=%s): %w", p.slug, p.chapterID, err)
+		}
+		n += int(tag.RowsAffected())
+	}
+	return n, nil
 }

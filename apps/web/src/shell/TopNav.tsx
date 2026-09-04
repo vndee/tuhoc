@@ -1,8 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, NavLink, useLocation } from 'react-router-dom';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import {
+  chapterHref,
+  courseHref,
+  fetchSearch,
+  isQueryLongEnough,
+  isQueryTooLong,
+  searchPageHref,
+  searchQueryKey,
+  type ChapterHit,
+  type SearchResults,
+} from '../api/search';
 import { useMe, accountInitials } from '../api/useMe';
 import { useLogout } from '../auth/useLogout';
 import { useLanguage } from '../i18n/LanguageProvider';
+import type { Translate } from '../i18n';
 import { Logo } from './Logo';
 
 /**
@@ -109,41 +122,165 @@ export function TopNav() {
 }
 
 /**
- * Ô TÌM KIẾM — MỘT BIỂU TƯỢNG BUNG RA, không phải một hộp luôn mở.
+ * Ô TÌM KIẾM — MỘT BIỂU TƯỢNG BUNG RA, và từ 04/09/2026 nó tìm được thật.
  *
  * Bản dựng đặt ở đây một nút tròn mang kính lúp; bấm vào thì nó dài ra thành
  * một ô nhập. Bản trước dựng thẳng cái hộp 224px và để nó mở suốt — chiếm một
  * phần tư nhóm phải của thanh trên cho một thứ chưa làm được việc gì.
  *
- * ── NÓ VẪN CHƯA TÌM ĐƯỢC GÌ, VÀ ĐIỀU ĐÓ ĐƯỢC NÓI RA ─────────────────────
- * Sản phẩm này chưa có chỉ mục tìm kiếm. Một ô nhập trông dùng được nhưng nuốt
- * chữ là đúng cái bẫy repo đã dính một lần (ô "Tìm chương…" ở thanh bên nằm
- * `disabled` suốt nhiều vòng), nên ô ở đây `disabled` thật, có `title` nói ra
- * lý do, và dòng "sắp có" hiện ngay dưới khi nó mở.
+ * ── LỜI HỨA ĐÃ ĐƯỢC THU ──────────────────────────────────────────────────
+ * Ô này từng `disabled` thật, với `title` nói "Tìm kiếm chưa nối dây — sắp
+ * có." Đó là lựa chọn ĐÚNG khi chưa có chỉ mục: một ô nhập trông dùng được
+ * nhưng nuốt chữ là đúng cái bẫy repo đã dính một lần (ô "Tìm chương…" ở
+ * thanh bên nằm `disabled` suốt nhiều vòng). Nay có `GET /search`
+ * (`apps/api/internal/search`), nên `disabled` đi, và chuỗi "sắp có" bị xoá
+ * khỏi cả hai bảng ngôn ngữ chứ không để lại làm hoá thạch.
  *
- * Cái BUNG RA thì thật: chiều rộng chạy bằng `transition`, `aria-expanded` nói
- * đúng trạng thái, Escape đóng lại. Khi có chỉ mục thật, chỗ duy nhất phải sửa
- * là bỏ `disabled` và nối `onChange`.
+ * Gợi ý `⌘K` in cạnh ô cũng vậy: nó nằm đó từ lâu mà không có handler nào
+ * đứng sau. Một phím tắt được QUẢNG CÁO mà không tồn tại thì tệ hơn không
+ * quảng cáo gì.
+ *
+ * ── VÌ SAO KHÔNG TỰ TÔ SÁNG CHỖ KHỚP ─────────────────────────────────────
+ * Máy chủ trả đoạn trích đã cắt sẵn ba mảnh (`before`/`match`/`after`) và nơi
+ * này chỉ việc bọc mảnh giữa. Cách kia — tìm lại chuỗi truy vấn trong đoạn
+ * trích rồi tô — sai ở hai chỗ cùng lúc: chỗ khớp thật nằm trong văn bản ĐÃ
+ * GỠ THẺ mà client không có, và phép so khớp không phân biệt hoa thường theo
+ * Unicode ở JavaScript không nhất thiết trùng với phép của Go.
  */
 export function TopSearch() {
   const meQuery = useMe();
   const location = useLocation();
+  const navigate = useNavigate();
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
+  const [term, setTerm] = useState('');
+  const [active, setActive] = useState(-1);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  // Truy vấn HOÃN LẠI, tách khỏi `term`. Ô nhập phải phản hồi từng phím —
+  // đó là `term`; còn thứ đi ra mạng chỉ đổi khi người dùng ngừng gõ. Gộp
+  // hai thứ vào một state nghĩa là mỗi phím một request.
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebounced(term), 200);
+    return () => window.clearTimeout(id);
+  }, [term]);
+
+  // MỘT biểu thức, dùng cho cả "có gọi mạng không" và "có vẽ bảng không".
+  // Hai hằng số giống hệt nhau thì chỉ chờ ngày một cái được sửa mà cái kia
+  // không.
+  //
+  // `tooLong` chặn TRƯỚC khi ra mạng: máy chủ trả 400 cho chuỗi quá 128 byte,
+  // và một 400 vĩnh viễn vẽ ra bằng câu "Thử lại sau một lát" là một lời
+  // khuyên sai — chờ không đổi được gì, chỉ rút ngắn mới đổi.
+  const tooLong = isQueryTooLong(debounced);
+  const panelOpen = open && (tooLong || isQueryLongEnough(debounced));
+  const results = useQuery({
+    queryKey: searchQueryKey(debounced, PANEL_LIMIT),
+    queryFn: () => fetchSearch(debounced, PANEL_LIMIT),
+    enabled: panelOpen && !tooLong,
+    // `retry: false` khớp `pages/SearchResults.tsx`. Mặc định của TanStack là
+    // ba lần thử với backoff, và bảng này là bề mặt gọi lại sau MỖI nhịp gõ —
+    // nó ít cần thử lại nhất, mà lại là nơi ba lần thử kéo dài trạng thái
+    // "Đang tìm…" lâu nhất trước khi nói ra lỗi.
+    retry: false,
+    // Kết quả chỉ đổi khi có khoá được publish. `staleTime` mặc định là 0, nên
+    // alt-tab đi rồi về là chạy lại nguyên một lượt quét — thứ đắt nhất trong
+    // toàn ứng dụng (xem `internal/search/repo.go`).
+    staleTime: SEARCH_STALE_MS,
+  });
 
   // Mở ra thì con trỏ phải nhảy vào ô — nếu không, người dùng bấm xong vẫn
-  // phải bấm lần nữa. `disabled` không nhận focus, nên đây là chỗ DUY NHẤT
-  // trong tệp sẽ phải đổi khi ô được nối dây thật.
+  // phải bấm lần nữa.
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
 
+  // ⌘K / Ctrl+K: mở ô và đưa con trỏ vào. Gắn ở `document` chứ không ở một
+  // phần tử nào, vì phím tắt phải chạy dù con trỏ đang ở đâu — đó là toàn bộ
+  // ý nghĩa của một phím tắt toàn cục.
+  //
+  // `preventDefault` để không rơi vào hộp thoại tìm-trong-trang của trình
+  // duyệt (Firefox nối ⌘K vào thanh địa chỉ).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setOpen(true);
+        inputRef.current?.focus();
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Bấm ra ngoài thì đóng. Nghe ở `pointerdown` chứ không `click`: một cú bấm
+  // vào một liên kết trong bảng sẽ điều hướng đi, và `click` tới sau
+  // `pointerdown` đủ muộn để bảng đã kịp biến mất giữa chừng.
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: PointerEvent) {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [open]);
+
+  // MỘT nguồn cho thứ tự, và chỉ số phẳng được đóng sẵn vào từng dòng.
+  //
+  // Bản đầu dựng danh sách phẳng ở đây RỒI để `SearchPanelBody` đi lại hai
+  // nhóm với một biến đếm riêng, tra ngược `items[index]?.to ?? seeAll`. Hai
+  // phép đếm ấy không thể lệch nhau trong cùng một lần vẽ — nhưng nếu lệch,
+  // cái `?? seeAll` biến nó thành một liên kết SAI ÂM THẦM (một dòng khoá dẫn
+  // về trang tìm kiếm) thay vì một lỗi nhìn thấy được. Ở đây chỉ còn một phép
+  // đếm, và không còn gì để dự phòng.
+  const groups = buildGroups(results.data, t);
+  const items = groups.flatMap((g) => g.rows);
+
+  // Kết quả đổi thì lựa chọn cũ vô nghĩa — giữ lại nó sẽ khiến Enter mở một
+  // thứ người dùng không còn nhìn thấy.
+  useEffect(() => setActive(-1), [debounced]);
+
+  function go(to: string) {
+    setOpen(false);
+    setTerm('');
+    navigate(to);
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Escape') {
+      // Escape MỘT lần xoá chữ (bảng biến mất theo, vì bảng chỉ hiện khi có
+      // đủ chữ), lần nữa mới đóng ô. Đóng thẳng cả hai thì một cú Escape để
+      // bỏ bảng cũng cuốn theo thứ vừa gõ, và người dùng phải gõ lại từ đầu.
+      if (term !== '') setTerm('');
+      else setOpen(false);
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (items.length === 0) return;
+      e.preventDefault();
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      // Một vòng tròn qua `items.length + 1` chỗ: chỗ thứ nhất là "chưa chọn
+      // gì" (-1), rồi tới từng hit. Nhờ nó ↓ từ hit cuối quay về "chưa chọn
+      // gì" — chứ không kẹt ở đáy — và ↑ từ đó nhảy thẳng xuống hit cuối,
+      // đúng thói quen của một danh sách bung ra từ trên xuống.
+      setActive((i) => ((i + 1 + step + items.length + 1) % (items.length + 1)) - 1);
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (active >= 0 && items[active]) go(items[active].to);
+      else if (isQueryLongEnough(term)) go(searchPageHref(term));
+    }
+  }
+
   if (!meQuery.data) return null;
   if (CHAPTER_ROUTE.test(location.pathname)) return null;
 
+
   return (
-    <div className={open ? 'tn-search-wrap is-open' : 'tn-search-wrap'}>
+    <div className={open ? 'tn-search-wrap is-open' : 'tn-search-wrap'} ref={wrapRef}>
       <button
         type="button"
         className="tb-btn tn-search-btn"
@@ -170,19 +307,209 @@ export function TopSearch() {
           type="search"
           className="tn-search-input"
           placeholder={t('topbar.searchPlaceholder')}
-          title={t('topbar.searchSoon')}
           aria-label={t('topbar.searchPlaceholder')}
-          disabled
+          value={term}
+          onChange={(e) => setTerm(e.target.value)}
           tabIndex={open ? 0 : -1}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setOpen(false);
-          }}
+          role="combobox"
+          aria-expanded={panelOpen}
+          aria-controls="topbar-search-results"
+          aria-activedescendant={active >= 0 && items[active] ? `tn-hit-${active}` : undefined}
+          autoComplete="off"
+          onKeyDown={onKeyDown}
         />
         <span className="tn-search-kbd" aria-hidden="true">
           ⌘K
         </span>
       </div>
+
+      {panelOpen && (
+        <div className="tn-search-panel">
+          <SearchPanelBody
+            results={results}
+            tooLong={tooLong}
+            term={debounced}
+            groups={groups}
+            active={active}
+            onPick={go}
+          />
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * Bao lâu thì một kết quả tìm kiếm được coi là cũ.
+ *
+ * Mặc định của TanStack là 0, nghĩa là mọi lần gắn lại và mọi lần cửa sổ lấy
+ * lại tiêu điểm đều chạy lại nguyên một lượt — mà lượt ấy là thứ đắt nhất
+ * trong toàn ứng dụng: một seq scan qua nguyên văn HTML của mọi chương
+ * (`apps/api/internal/search/repo.go`). Ba mươi giây là khoảng một khoá học
+ * mới được publish rồi trở nên tìm thấy được, và đủ để gõ lui một ký tự rồi
+ * gõ lại không tốn thêm một lượt quét nào.
+ */
+const SEARCH_STALE_MS = 30_000;
+
+/** Số hit mỗi loại trong BẢNG THẢ XUỐNG. Trang `/search` xin nhiều hơn — xem
+ *  `pages/SearchResults.tsx`. Đủ để thấy có gì, không đủ để phải cuộn trong
+ *  một bảng nổi. */
+const PANEL_LIMIT = 8;
+
+/** Một dòng bấm được trong bảng, đã mang sẵn chỉ số phẳng của nó. */
+interface SearchRowData {
+  index: number;
+  to: string;
+  title: string;
+  subtitle?: string;
+  snippet?: ChapterHit;
+}
+
+interface SearchGroup {
+  key: string;
+  label: string;
+  labelId: string;
+  rows: SearchRowData[];
+}
+
+/**
+ * Kết quả từ máy chủ → các nhóm để vẽ, với chỉ số phẳng đóng sẵn vào từng
+ * dòng.
+ *
+ * Đây là nơi DUY NHẤT quyết định thứ tự, nên `items[i].index === i` đúng theo
+ * cách dựng chứ không theo một lời hứa. `TopSearch` lấy danh sách phẳng bằng
+ * `groups.flatMap`, và bảng chỉ việc `map` — không biến đếm thứ hai, không
+ * phép tra ngược, không giá trị dự phòng che một chỗ lệch.
+ */
+function buildGroups(data: SearchResults | undefined, t: Translate): SearchGroup[] {
+  if (!data) return [];
+  const out: SearchGroup[] = [];
+  let n = 0;
+
+  if (data.courses.length > 0) {
+    out.push({
+      key: 'courses',
+      label: t('search.groupCourses'),
+      labelId: 'tn-group-courses',
+      rows: data.courses.map((c) => ({ index: n++, to: courseHref(c.slug), title: c.title })),
+    });
+  }
+  if (data.chapters.length > 0) {
+    out.push({
+      key: 'chapters',
+      label: t('search.groupChapters'),
+      labelId: 'tn-group-chapters',
+      rows: data.chapters.map((c) => ({
+        index: n++,
+        to: chapterHref(c.slug, c.chapterId),
+        title: c.chapterTitle,
+        subtitle: t('search.inCourse', c.courseTitle),
+        snippet: c,
+      })),
+    });
+  }
+  return out;
+}
+
+interface PanelProps {
+  results: UseQueryResult<SearchResults>;
+  tooLong: boolean;
+  term: string;
+  groups: SearchGroup[];
+  active: number;
+  onPick: (to: string) => void;
+}
+
+/**
+ * Thân bảng thả xuống. Tách khỏi `TopSearch` vì nó có bốn trạng thái thật
+ * (đang tải / lỗi / rỗng / có kết quả) và nhét cả bốn vào giữa JSX của ô nhập
+ * sẽ làm mất dấu cái quan trọng nhất: LỖI PHẢI HIỆN RA. Một lượt tìm hỏng mà
+ * vẽ như "không có kết quả" là nói với người dùng rằng thứ họ tìm không tồn
+ * tại — một câu trả lời sai, không phải một câu trả lời thiếu.
+ */
+function SearchPanelBody({ results, tooLong, term, groups, active, onPick }: PanelProps) {
+  const { t } = useLanguage();
+
+  if (tooLong) {
+    return <p className="tn-search-note">{t('search.tooLong')}</p>;
+  }
+  if (results.isError) {
+    return (
+      <p className="tn-search-note" role="alert">
+        {t('search.error')}
+      </p>
+    );
+  }
+  if (!results.data) {
+    return <p className="tn-search-note">{t('search.loading')}</p>;
+  }
+  if (groups.length === 0) {
+    return <p className="tn-search-note">{t('search.empty', term)}</p>;
+  }
+
+  const seeAll = searchPageHref(term);
+
+  return (
+    <>
+      {/*
+        `role="listbox"` chỉ bọc ĐÚNG những phần tử là `option`, không bọc gì
+        khác. Bản đầu của tệp này để cả dòng ghi chú và liên kết "Xem tất cả"
+        nằm trong nó: một listbox có con không phải option là một cây a11y
+        nói dối — trình đọc màn hình đếm số lựa chọn theo cấu trúc ấy, và nó
+        sẽ đọc ra một con số không khớp thứ ↑/↓ đi qua.
+        Nhóm thì được: `role="group"` là con hợp lệ của listbox.
+      */}
+      <div id="topbar-search-results" role="listbox" aria-label={t('topbar.searchResultsAria')}>
+        {groups.map((g) => (
+          <div key={g.key} className="tn-search-group" role="group" aria-labelledby={g.labelId}>
+            <p className="tn-search-group-label" id={g.labelId}>
+              {g.label}
+            </p>
+            {g.rows.map((row) => (
+              <SearchRow key={row.to} row={row} active={active === row.index} onPick={onPick} />
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {results.data.truncated && (
+        <Link className="tn-search-all" to={seeAll} onClick={() => onPick(seeAll)}>
+          {t('topbar.searchSeeAll')}
+        </Link>
+      )}
+    </>
+  );
+}
+
+interface RowProps {
+  row: SearchRowData;
+  active: boolean;
+  onPick: (to: string) => void;
+}
+
+function SearchRow({ row, active, onPick }: RowProps) {
+  return (
+    <Link
+      id={`tn-hit-${row.index}`}
+      role="option"
+      aria-selected={active}
+      className={active ? 'tn-search-hit is-active' : 'tn-search-hit'}
+      to={row.to}
+      onClick={(e) => {
+        e.preventDefault();
+        onPick(row.to);
+      }}
+    >
+      <span className="tn-search-hit-title">{row.title}</span>
+      {row.subtitle && <span className="tn-search-hit-sub">{row.subtitle}</span>}
+      {row.snippet && (
+        <span className="tn-search-hit-snippet">
+          {row.snippet.before}
+          <mark>{row.snippet.match}</mark>
+          {row.snippet.after}
+        </span>
+      )}
+    </Link>
   );
 }
 
