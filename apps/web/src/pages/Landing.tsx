@@ -5,6 +5,7 @@ import { catalogQueryKey, fetchCatalog } from '../api/catalog';
 import lessonDepthUrl from '../assets/landing/lesson-depth.webp';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { PaperLanguageSwitcher } from '../i18n/PaperLanguageSwitcher';
+import { LandingStoryFeature } from '../stories/components/LandingStoryFeature';
 import { useThemeContext } from '../theme/ThemeContext';
 
 /** `/` cho khách chưa đăng nhập — một câu chuyện ba nhịp: đọc, chạm, hỏi. */
@@ -136,7 +137,7 @@ export function Landing() {
             không viết cứng môn nào. Rỗng thì nói rỗng; hỏng thì nói hỏng và
             cho một đường thử lại — `retry: false` nghĩa là không có lần thử
             nào tự đến. */}
-        <section className="bd-scene bd-scene-last" aria-labelledby="bd-cat-h">
+        <section className="bd-scene" aria-labelledby="bd-cat-h">
           <span className="bd-h-line">
             <h2 id="bd-cat-h" className="bd-h">
               {t('landing.catalog.h')}
@@ -173,6 +174,8 @@ export function Landing() {
             )}
           </div>
         </section>
+
+        <LandingStoryFeature />
 
         {/* Máng phấn trở thành đoạn kết của câu chuyện: một lời mời bắt đầu,
             một hành động chính, rồi mới tới hai lối tài khoản. */}

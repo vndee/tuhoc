@@ -4,11 +4,15 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { MemoryRouter } from 'react-router-dom';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { t } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageProvider';
 import { ThemeProvider } from '../theme/ThemeContext';
 import { Landing } from './Landing';
+
+vi.mock('../stories/components/LandingStoryFeature', () => ({
+  LandingStoryFeature: () => <section aria-label="Đặc san thử" data-testid="landing-story-feature" />,
+}));
 
 const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
@@ -117,6 +121,20 @@ describe('Landing — mặt viết tay', () => {
   it('hành động chính đi theo dữ liệu: có khoá thì trỏ tới khoá đầu tiên cùng tên thật của nó', async () => {
     withCatalog([A_COURSE]);
     const read = screen.getByTestId('landing-read');
+    await waitFor(() => expect(read).toHaveAttribute('href', `/c/${A_COURSE.slug}`));
+    expect(read).toHaveTextContent(A_COURSE.title);
+  });
+
+  it('đặt Đặc san sau danh mục và trước máng phấn, không đổi CTA khoá chính', async () => {
+    withCatalog([A_COURSE]);
+    const catalog = screen.getByRole('heading', { name: t('vi', 'landing.catalog.h') }).closest('section');
+    const stories = screen.getByTestId('landing-story-feature');
+    const footer = screen.getByRole('contentinfo');
+    const read = screen.getByTestId('landing-read');
+
+    expect(catalog).not.toHaveClass('bd-scene-last');
+    expect(catalog?.compareDocumentPosition(stories) ?? 0).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(stories.compareDocumentPosition(footer)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     await waitFor(() => expect(read).toHaveAttribute('href', `/c/${A_COURSE.slug}`));
     expect(read).toHaveTextContent(A_COURSE.title);
   });
