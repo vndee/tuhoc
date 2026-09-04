@@ -335,7 +335,10 @@
 .story-rules-lab,
 .story-machine-lab,
 .story-judgment-lab,
-.story-separator-lab {
+.story-separator-lab,
+.story-knowledge-lab,
+.story-gradient-lab,
+.story-convolution-lab {
   display: grid;
   gap: .85rem;
 }
@@ -451,6 +454,111 @@
   display: flex;
   flex-wrap: wrap;
   gap: .45rem;
+}
+
+.story-knowledge-lab > label,
+.story-gradient-controls label {
+  display: grid;
+  gap: .35rem;
+  max-width: 18rem;
+}
+
+.story-knowledge-tree,
+.story-gradient-landscape {
+  max-width: 100%;
+  overflow: visible;
+}
+
+.story-knowledge-tree line,
+.story-gradient-landscape path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.story-knowledge-tree circle,
+.story-gradient-landscape circle {
+  fill: var(--story-paper);
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.story-knowledge-tree .is-changed circle,
+.story-gradient-landscape circle {
+  fill: var(--story-accent, var(--accent));
+}
+
+.story-knowledge-tree .is-affected circle {
+  fill: color-mix(in srgb, var(--story-accent, var(--accent)) 35%, var(--story-paper));
+}
+
+.story-knowledge-tree text {
+  fill: currentColor;
+  font-family: var(--font-sans);
+  font-size: 10px;
+}
+
+.story-gradient-controls,
+.story-gradient-timeline {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.story-gradient-controls button,
+.story-gradient-timeline button {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  min-height: var(--story-target-size, 44px);
+  padding: .5rem .75rem;
+}
+
+.story-gradient-timeline button[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--story-accent, var(--accent)) 28%, transparent);
+}
+
+.story-convolution-grid {
+  display: grid;
+  gap: .2rem;
+  max-width: 22rem;
+  outline-offset: .3rem;
+}
+
+.story-convolution-grid-row {
+  display: grid;
+  gap: .2rem;
+  grid-template-columns: repeat(auto-fit, minmax(2.35rem, 1fr));
+}
+
+.story-convolution-grid [role='gridcell'] {
+  align-items: center;
+  border: 1px solid currentColor;
+  display: flex;
+  font-variant-numeric: tabular-nums;
+  justify-content: center;
+  min-height: 2.35rem;
+}
+
+.story-convolution-grid [role='gridcell'].is-kernel {
+  background: color-mix(in srgb, var(--story-accent, var(--accent)) 30%, transparent);
+}
+
+.story-convolution-grid [role='gridcell'].is-grouped {
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--story-accent, var(--accent)) 38%, transparent) 0 .35rem, transparent .35rem .7rem);
+}
+
+.story-convolution-lab table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.story-convolution-lab td {
+  border: 1px solid currentColor;
+  min-width: 2.4rem;
+  padding: .3rem .5rem;
+  text-align: center;
 }
 
 .story-separator-controls input[type='range'] {
