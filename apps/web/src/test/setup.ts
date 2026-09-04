@@ -111,7 +111,10 @@ class MemoryStorage implements Storage {
   }
 }
 
-for (const target of [globalThis, window] as const) {
+const storageTargets: Array<typeof globalThis | Window> =
+  typeof window === 'undefined' ? [globalThis] : [globalThis, window];
+
+for (const target of storageTargets) {
   Object.defineProperty(target, 'localStorage', {
     value: new MemoryStorage(),
     writable: true,

@@ -25,7 +25,7 @@ hứa về tính năng đang có.
 | CTA | **Mở đặc san** / **Open the edition** |
 | Vị trí trên landing | Sau danh mục khoá học, trước footer |
 | Bố cục bài | Scrollytelling: sân khấu hình ảnh cố định ở desktop, chữ cuộn theo cảnh |
-| Chuyển cảnh | Mỗi cảnh là một illustration riêng; hai plate hoà tan nhẹ; sợi vàng xuyên suốt |
+| Chuyển cảnh | Mỗi cảnh là một illustration riêng; hai plate hoà tan nhẹ; continuity đến từ chất liệu, bảng màu và nhịp bố cục |
 | Mobile | Tranh và lab xếp thẳng trong dòng đọc; không giả lập sticky desktop |
 | Cấu trúc số đầu | 4 hồi × 3 cảnh = **12 cảnh** |
 | Độ sâu | Mỗi cảnh có câu chuyện con người, bản lề kỹ thuật, minh hoạ, nguồn và câu hỏi mở |
@@ -197,9 +197,10 @@ Tự học.
   sáng” hay robot hình người chung chung.
 - Sơ đồ kỹ thuật được vẽ như lớp chú giải trong sổ tay: chính xác về quan hệ,
   nhưng vẫn có độ rung tay.
-- Một **sợi vàng** đi qua mọi plate. Nó không tượng trưng cho “tiến bộ tất
-  yếu”; nó là đường truyền của câu hỏi: con người đang giao phần nào của tư
-  duy cho vật chất?
+- Không dùng một **sợi chỉ** hay vật thể biểu tượng lặp lại xuyên qua mọi
+  plate. Mạch nối đến từ cùng chất liệu, bảng màu, nhịp bố cục và quan hệ lặp
+  lại giữa con người, công cụ, hạ tầng; màu hổ phách chỉ là điểm nhấn cục bộ
+  khi cảnh thực sự cần.
 - Bốn hồi đổi khí quyển: đất/đất sét → xanh xám cơ khí → than và hổ phách dữ
   liệu → xanh sâu với khoảng trắng chưa xác định ở AGI.
 - Hình không chứa chữ nội dung quan trọng. Nhãn kỹ thuật thật là HTML/SVG để
@@ -208,8 +209,9 @@ Tự học.
 ### 5.2 Chuyển cảnh
 
 Sân khấu dùng đúng hai layer ảnh. Khi scene active đổi, layer mới tải xong rồi
-crossfade 280–420 ms; layer cũ mới được giải phóng sau transition. Sợi vàng và
-UI lab nằm trên hai layer nên không nháy theo ảnh.
+crossfade 280–420 ms; layer cũ mới được giải phóng sau transition. UI lab nằm
+trên hai layer nên không nháy theo ảnh; không thêm một nét nối trang trí xuyên
+qua các cảnh.
 
 Không parallax liên tục, không pan vô hạn, không video nền. Với
 `prefers-reduced-motion: reduce`, đổi ảnh tức thì và tắt mọi nét tự vẽ. Mobile
@@ -276,9 +278,9 @@ cũng có thể trở thành quy trình?*
 | 11 | **RLHF, dữ liệu, lao động và agent.** Model bước vào thiết chế qua người đánh giá, tool, quyền dữ liệu và điểm phê duyệt; tự động hoá vẫn có con người ở nhiều lớp. | Mở trace `model → tool → dữ liệu → đề xuất → người duyệt`. Bật/tắt quyền ở từng lớp để thấy hành động nào bị chặn; không cho lab gọi mạng hay thực thi tool thật. |
 | 12 | **AGI: định nghĩa, quyền lực và chân trời.** Không có định nghĩa được chấp nhận phổ quát và không trình bày AGI như một mốc đã đạt; câu hỏi kết là ai được quyền đặt vạch đích và hệ quả của nó. | Đặt các định nghĩa lên ba trục **tính phổ quát / năng lực / quyền tự chủ**, so sánh điểm giống-khác. Không rút thành một con số, đồng hồ đếm ngược hay dự đoán ngày AGI. |
 
-**Coda:** sợi vàng không đi vào một cánh cửa có chữ AGI. Nó quay lại bàn tay
-người đọc và câu hỏi: *ta muốn giao điều gì cho máy, giữ điều gì như một trách
-nhiệm của con người, và ai được tham gia quyết định?*
+**Coda:** lịch sử quay lại bàn tay người đọc và câu hỏi: *ta muốn giao điều gì
+cho máy, giữ điều gì như một trách nhiệm của con người, và ai được tham gia
+quyết định?* Không có cánh cửa mang chữ AGI hay một vạch đích tất yếu.
 
 ---
 
