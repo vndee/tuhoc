@@ -1,3 +1,21 @@
+.story-shell-theme-scope {
+  color-scheme: light;
+  --story-paper: var(--story-light-paper);
+  --story-ink: var(--story-light-ink);
+  --story-muted-ink: var(--story-light-muted-ink);
+  --story-accent: var(--story-light-accent);
+  --story-stage: var(--story-light-stage);
+}
+
+html[data-theme='dark'] .story-shell-theme-scope {
+  color-scheme: dark;
+  --story-paper: #19221f;
+  --story-ink: #eef1e7;
+  --story-muted-ink: #b3c0b6;
+  --story-accent: #dec079;
+  --story-stage: #26332d;
+}
+
 .story-shell {
   --story-target-size: 44px;
   --story-header-gap: .55rem;
@@ -213,6 +231,8 @@
   left: 1rem;
   position: absolute;
   right: 1rem;
+  max-height: calc(100% - 2rem);
+  overflow-y: auto;
   z-index: 2;
 }
 
@@ -307,6 +327,7 @@
 
 .story-lab-frame {
   background: repeating-linear-gradient(0deg, transparent 0 1.7rem, color-mix(in srgb, var(--story-ink) 10%, transparent) 1.72rem 1.76rem);
+  background-color: var(--story-paper);
   border-inline-start: 2px solid var(--story-accent);
   display: grid;
   gap: 1rem;
@@ -728,6 +749,15 @@
 .story-theme-history-ai .story-act[data-act='act-2'] { --story-accent: #596b71; }
 .story-theme-history-ai .story-act[data-act='act-3'] { --story-accent: #9a6c34; }
 .story-theme-history-ai .story-act[data-act='act-4'] { --story-accent: #5e7a67; }
+
+html[data-theme='dark'] .story-theme-history-ai .story-stage[data-act='act-1'] { background-color: #332a24; }
+html[data-theme='dark'] .story-theme-history-ai .story-stage[data-act='act-2'] { background-color: #242f34; }
+html[data-theme='dark'] .story-theme-history-ai .story-stage[data-act='act-3'] { background-color: #332d22; }
+html[data-theme='dark'] .story-theme-history-ai .story-stage[data-act='act-4'] { background-color: #25362d; }
+html[data-theme='dark'] .story-theme-history-ai .story-act[data-act='act-1'] { --story-accent: #d6a07c; }
+html[data-theme='dark'] .story-theme-history-ai .story-act[data-act='act-2'] { --story-accent: #9fb7c1; }
+html[data-theme='dark'] .story-theme-history-ai .story-act[data-act='act-3'] { --story-accent: #d5ae6e; }
+html[data-theme='dark'] .story-theme-history-ai .story-act[data-act='act-4'] { --story-accent: #a4c3ad; }
 
 .story-theme-history-ai .story-source-list,
 .story-theme-history-ai .story-provenance-list {

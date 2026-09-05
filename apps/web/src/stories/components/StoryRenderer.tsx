@@ -101,11 +101,11 @@ function StoryRendererContent({
   };
 
   const shellStyle = {
-    '--story-paper': story.theme.paper,
-    '--story-ink': story.theme.ink,
-    '--story-muted-ink': story.theme.mutedInk,
-    '--story-accent': story.theme.accent,
-    '--story-stage': story.theme.stage,
+    '--story-light-paper': story.theme.paper,
+    '--story-light-ink': story.theme.ink,
+    '--story-light-muted-ink': story.theme.mutedInk,
+    '--story-light-accent': story.theme.accent,
+    '--story-light-stage': story.theme.stage,
   } as CSSProperties;
 
   return <div className={`story-shell-theme-scope ${story.theme.className}`} ref={ownerRoot} style={shellStyle}>
