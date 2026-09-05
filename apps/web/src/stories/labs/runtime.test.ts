@@ -17,6 +17,7 @@ const definitions: LabDefinition[] = [
   { kind: 'attention', title: localized('Chú ý', 'Attention'), instruction: localized('Thử', 'Try'), config: { examples: [{ id: 'example-1', tokens: localized(['a'], ['a']), weights: localized([[1]], [[1]]), gloss: localized('A', 'A') }] } },
   { kind: 'agent-trace', title: localized('Tác tử', 'Agent'), instruction: localized('Thử', 'Try'), config: { steps: [{ id: 'read', kind: 'data', label: localized('Đọc', 'Read'), permission: 'read' }] } },
   { kind: 'agi-definitions', title: localized('AGI', 'AGI'), instruction: localized('Thử', 'Try'), config: { definitions: [{ id: 'd-1', label: localized('D1', 'D1'), sourceId: 'test', sourceLabel: localized('Nguồn thử', 'Test source'), note: localized('Một', 'One'), generality: 1, capability: 1, autonomy: 1 }, { id: 'd-2', label: localized('D2', 'D2'), sourceId: 'test', sourceLabel: localized('Nguồn thử', 'Test source'), note: localized('Hai', 'Two'), generality: 2, capability: 2, autonomy: 2 }, { id: 'd-3', label: localized('D3', 'D3'), sourceId: 'test', sourceLabel: localized('Nguồn thử', 'Test source'), note: localized('Ba', 'Three'), generality: 3, capability: 3, autonomy: 3 }] } },
+  { kind: 'message-budget', title: localized('Giữ lời', 'Keep the meaning'), instruction: localized('Rút gọn', 'Shorten'), config: { defaultBudget: 30 } },
 ];
 
 const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
@@ -32,6 +33,7 @@ const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
   'attention': { exampleId: 'example-1', tokenIndex: 0 },
   'agent-trace': { granted: [] },
   'agi-definitions': { selectedIds: ['d-1', 'd-2'] },
+  'message-budget': { budget: 30 },
 };
 
 const emptyLearningRates: Extract<LabDefinition, { kind: 'gradient-descent' }> = {

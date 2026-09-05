@@ -192,6 +192,11 @@ export function validateStory(
           }
         });
         break;
+      case 'message-budget':
+        if (![15, 30, 60].includes(scene.lab.config.defaultBudget)) {
+          add('invalid-lab-config', `${path}.lab.config.defaultBudget`, 'message budget must be 15, 30, or 60');
+        }
+        break;
       default:
         break;
     }

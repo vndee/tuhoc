@@ -88,6 +88,7 @@ export const ALL_LAB_KINDS = [
   'computation-limits', 'judgment-criteria', 'linear-separator',
   'knowledge-bottleneck', 'gradient-descent', 'convolution',
   'attention', 'agent-trace', 'agi-definitions',
+  'message-budget',
 ] as const;
 export type LabKind = (typeof ALL_LAB_KINDS)[number];
 
@@ -110,7 +111,8 @@ export type LabDefinition =
   | LabBase<'convolution', { pixels: number[][]; kernel: number[][]; row: number; column: number }>
   | LabBase<'attention', { examples: Array<{ id: string; tokens: Localized<string[]>; weights: Localized<number[][]>; gloss: Localized }> }>
   | LabBase<'agent-trace', { steps: Array<{ id: string; kind: 'model' | 'tool' | 'data' | 'proposal' | 'approval'; label: Localized; permission: string | null }> }>
-  | LabBase<'agi-definitions', { definitions: Array<{ id: string; label: Localized; note: Localized; sourceId: string; sourceLabel: Localized; generality: number; capability: number; autonomy: number }> }>;
+  | LabBase<'agi-definitions', { definitions: Array<{ id: string; label: Localized; note: Localized; sourceId: string; sourceLabel: Localized; generality: number; capability: number; autonomy: number }> }>
+  | LabBase<'message-budget', { defaultBudget: 15 | 30 | 60 }>;
 
 export interface LabFallback {
   diagramLabel: Localized;
