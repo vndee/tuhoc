@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { StoryRegistryEntry } from '../types';
-import { getFeaturedStory, getPublishedStories, getStoryBySlug, storyRegistry } from './registry';
+import { noiseMeta } from './across-the-noise/meta';
+import { getFeaturedStory, getPublishedStories, getStoryBySlug, resolveStoryEntry, storyRegistry } from './registry';
 
 function makeRegistryEntry(overrides: Partial<StoryRegistryEntry> = {}): StoryRegistryEntry {
   return {
@@ -62,12 +63,25 @@ describe('story registry selectors', () => {
   });
 
   it('publishes one featured metadata record while keeping its story module cold', () => {
-    expect(storyRegistry).toHaveLength(1);
+    expect(storyRegistry).toHaveLength(2);
     expect(storyRegistry[0]).toMatchObject({ slug: 'a-history-of-ai', published: true, featured: true, sceneCount: 12, labCount: 12 });
-    const load = vi.spyOn(storyRegistry[0], 'load');
+    expect(storyRegistry[1]).toMatchObject({ slug: 'across-the-noise', published: false, featured: false, sceneCount: 12, labCount: 12 });
+    const publicLoad = vi.spyOn(storyRegistry[0], 'load');
+    const draftLoad = vi.spyOn(storyRegistry[1], 'load');
     expect(getPublishedStories()).toEqual([storyRegistry[0]]);
     expect(getFeaturedStory()).toBe(storyRegistry[0]);
-    expect(load).not.toHaveBeenCalled();
-    load.mockRestore();
+    expect(getStoryBySlug('across-the-noise')).toBeUndefined();
+    expect(resolveStoryEntry('across-the-noise', false)).toBeUndefined();
+    expect(resolveStoryEntry('across-the-noise', true)?.slug).toBe('across-the-noise');
+    expect(publicLoad).not.toHaveBeenCalled();
+    expect(draftLoad).not.toHaveBeenCalled();
+    publicLoad.mockRestore();
+    draftLoad.mockRestore();
+  });
+
+  it('keeps the approved communication metadata unpublished and unfeatured', () => {
+    expect(noiseMeta.published).toBe(false);
+    expect(noiseMeta.featured).toBe(false);
+    expect(getPublishedStories().some((entry) => entry.slug === noiseMeta.slug)).toBe(false);
   });
 });
