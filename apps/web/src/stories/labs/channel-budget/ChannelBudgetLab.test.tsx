@@ -1,6 +1,6 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLanguage } from '../../../i18n/LanguageProvider';
 import { useRequiredMessageJourney } from '../../session/StoryIssueSessionProvider';
 import { renderJourneyLab } from '../../testing/renderJourneyLab';
@@ -24,13 +24,15 @@ function JourneyControls(props: LabRuntimeProps) {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   return <>
     <button type="button" onClick={() => journey.dispatch({ type: 'commit', text: 'B' })}>Edit committed message</button>
+    <button type="button" onClick={() => journey.dispatch({ type: 'reset-session', example: 'A' })}>Reset session directly</button>
     <button type="button" onClick={() => setOpen((value) => !value)}>{open ? 'Close lab' : 'Reopen lab'}</button>
     <button type="button" onClick={() => setLang('vi')}>Switch to Vietnamese</button>
     <button type="button" onClick={() => setTheme((value) => value === 'light' ? 'dark' : 'light')}>Toggle theme</button>
     <div aria-label="active theme">{theme}</div>
     <div aria-label="session message">{journey.state.messageText}</div>
     <div aria-label="session receipt">{journey.state.deliveryReceipt?.outcome ?? 'none'}</div>
-    {open ? <ChannelBudgetLab {...props} /> : null}
+    <div aria-label="stored scene state">{JSON.stringify(journey.state.experimentStateByScene['scene-11'] ?? null)}</div>
+    {open ? <ChannelBudgetLab {...props} onBack={() => setOpen(false)} /> : null}
   </>;
 }
 
@@ -177,5 +179,161 @@ describe('ChannelBudgetLab', () => {
     expect(screen.getByLabelText('session receipt')).toHaveTextContent('none');
     expect(screen.getByRole('combobox', { name: 'Channel code' })).toHaveValue('raw');
     expect(screen.queryByLabelText('Captured source bytes')).not.toBeInTheDocument();
+  });
+});
+
+describe('channel comparisons', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const setup = (example = 'A') => renderJourneyLab(JourneyControls, definition, { lang: 'en', example, sceneId: 'scene-11' });
+  const compare = () => fireEvent.click(screen.getByRole('button', { name: 'Compare 200 trials' }));
+  const finish = async () => { await act(async () => { await vi.runAllTimersAsync(); }); };
+
+  it('starts only on Compare, reports chunk progress, and cancel preserves the single receipt', async () => {
+    vi.useFakeTimers();
+    setup();
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Configured flip probability p' }), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Run transmission' }));
+    const receipt = screen.getByRole('region', { name: 'Captured transmission receipt' }).textContent;
+    fireEvent.scroll(window);
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle theme' }));
+    await finish();
+    expect(screen.queryByRole('status', { name: 'Comparison progress' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: 'Completed 200-trial comparison' })).not.toBeInTheDocument();
+    compare();
+    expect(screen.getByRole('status', { name: 'Comparison progress' })).toHaveTextContent('5 / 600');
+    expect(screen.getByRole('button', { name: 'Compare 200 trials' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel comparison' }));
+    await finish();
+    expect(screen.getByRole('status', { name: 'Comparison progress' })).toHaveTextContent('Incomplete');
+    expect(screen.getByRole('status', { name: 'Comparison progress' })).toHaveTextContent('5 / 600');
+    expect(screen.getByRole('region', { name: 'Captured transmission receipt' }).textContent).toBe(receipt);
+    expect(screen.queryByRole('table', { name: 'Completed 200-trial comparison' })).not.toBeInTheDocument();
+  });
+
+  it('saves completed scene-owned results with captured settings, marks staleness, and preserves them on reopen', async () => {
+    vi.useFakeTimers();
+    setup();
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Configured flip probability p' }), { target: { value: '0' } });
+    compare();
+    await finish();
+    const table = screen.getByRole('table', { name: 'Completed 200-trial comparison' });
+    expect(within(table).getByRole('row', { name: /Raw 200 0 0 0 \/ 1600/ })).toBeVisible();
+    expect(screen.getByLabelText('session receipt')).toHaveTextContent('none');
+    expect(screen.getByText('Captured comparison: revision 0, budget 4096, p=0.00, seed 20260905.')).toBeVisible();
+    const captured = JSON.parse(screen.getByLabelText('stored scene state').textContent!).batch;
+    expect(captured.messageRevision).toBe(0);
+    expect(captured.source).toEqual([65]);
+    expect(captured.config).toEqual({ p: 0, seed: 20260905, budget: 4096 });
+    expect(captured.result.rows).toHaveLength(3);
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Configured flip probability p' }), { target: { value: '0.1' } });
+    expect(screen.getByText('Comparison for the previous settings')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit committed message' }));
+    expect(screen.getByText('Comparison for the previous message')).toBeVisible();
+    compare();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel comparison' }));
+    await finish();
+    expect(JSON.parse(screen.getByLabelText('stored scene state').textContent!).batch).toEqual(captured);
+    fireEvent.click(screen.getByRole('button', { name: 'Close lab' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen lab' }));
+    expect(screen.getByRole('table', { name: 'Completed 200-trial comparison' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to Vietnamese' }));
+    expect(screen.getByRole('table', { name: 'So sánh 200 lượt đã hoàn tất' })).toBeVisible();
+    expect(screen.getByText('So sánh của câu trước')).toBeVisible();
+  });
+
+  it.each(['draft', 'revision', 'config', 'reset', 'session-reset', 'back', 'unmount'] as const)(
+    'invalidates a yielding run on %s and never publishes late progress or completion', async (action) => {
+      vi.useFakeTimers();
+      const view = setup();
+      compare();
+      if (action === 'draft') fireEvent.change(screen.getByRole('textbox'), { target: { value: 'draft' } });
+      if (action === 'revision') fireEvent.click(screen.getByRole('button', { name: 'Edit committed message' }));
+      if (action === 'config') fireEvent.change(screen.getByRole('spinbutton', { name: 'Noise seed' }), { target: { value: '1' } });
+      if (action === 'reset') fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+      if (action === 'session-reset') fireEvent.click(screen.getByRole('button', { name: 'Reset session directly' }));
+      if (action === 'back') fireEvent.click(screen.getByRole('button', { name: 'Back to illustration' }));
+      if (action === 'unmount') view.unmount();
+      await finish();
+      if (action === 'back') fireEvent.click(screen.getByRole('button', { name: 'Reopen lab' }));
+      expect(screen.queryByRole('table', { name: 'Completed 200-trial comparison' })).not.toBeInTheDocument();
+      if (action !== 'unmount') {
+        expect(screen.getByLabelText('stored scene state')).not.toHaveTextContent('"rows"');
+        const progress = screen.queryByRole('status', { name: 'Comparison progress' });
+        if (progress) expect(progress).toHaveTextContent('Incomplete: 5 / 600');
+      }
+    },
+  );
+
+  it('does not let an older cancelled promise overwrite a new comparison', async () => {
+    vi.useFakeTimers();
+    setup();
+    compare();
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Noise seed' }), { target: { value: '123' } });
+    compare();
+    await finish();
+    expect(screen.getByText('Captured comparison: revision 0, budget 4096, p=0.05, seed 123.')).toBeVisible();
+    expect(JSON.parse(screen.getByLabelText('stored scene state').textContent!).batch.config.seed).toBe(123);
+  });
+
+  it('shows budget-excluded codes and does not describe an empty comparison as 600 completed trials', async () => {
+    vi.useFakeTimers();
+    setup('A'.repeat(65));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Transmission budget in channel uses' }), { target: { value: '512' } });
+    compare();
+    await finish();
+    expect(screen.getByText(/Excluded by budget: Raw, Repeat three times, SECDED/)).toBeVisible();
+    expect(screen.getByText('No code fits the whole message within this budget.')).toBeVisible();
+    expect(screen.queryByText(/600 \/ 600/)).not.toBeInTheDocument();
+  });
+
+  it.each(['Reset', 'Reset session directly'])('clears a completed batch and its completion announcement on %s', async (reset) => {
+    vi.useFakeTimers();
+    setup();
+    compare();
+    await finish();
+    expect(screen.getByRole('table', { name: 'Completed 200-trial comparison' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: reset }));
+    expect(screen.queryByRole('table', { name: 'Completed 200-trial comparison' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Comparison complete.')).not.toBeInTheDocument();
+  });
+
+  it('keeps completed comparisons separate from an existing receipt and labels undefined BER when all outputs are rejected', async () => {
+    vi.useFakeTimers();
+    setup('A'.repeat(65));
+    fireEvent.click(screen.getByRole('button', { name: 'Run transmission' }));
+    const receipt = screen.getByRole('region', { name: 'Captured transmission receipt' }).textContent;
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Configured flip probability p' }), { target: { value: '0.5' } });
+    compare();
+    await finish();
+    expect(screen.getByRole('region', { name: 'Captured transmission receipt' }).textContent).toBe(receipt);
+    const table = screen.getByRole('table', { name: 'Completed 200-trial comparison' });
+    expect(within(table).getByRole('row', { name: /SECDED \(4,8\) 0 200 0 No decoded payload; BER is undefined/ })).toBeVisible();
+  });
+
+  it('yields real timers for typing, cancel, and navigation at the valid 1024-byte maximum', async () => {
+    const maximum = 'é' + '\u0301'.repeat(511);
+    setup(maximum);
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Transmission budget in channel uses' }), { target: { value: '32768' } });
+    compare();
+    await act(async () => { await new Promise<void>((resolve) => setTimeout(() => {
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'typing' } });
+      resolve();
+    }, 0)); });
+    expect(screen.getByRole('textbox')).toHaveValue('typing');
+    await waitFor(() => expect(screen.getByRole('status', { name: 'Comparison progress' })).toHaveTextContent('Incomplete'));
+    compare();
+    await act(async () => { await new Promise<void>((resolve) => setTimeout(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel comparison' }));
+      resolve();
+    }, 0)); });
+    expect(screen.getByRole('status', { name: 'Comparison progress' })).toHaveTextContent('Incomplete');
+    compare();
+    await act(async () => { await new Promise<void>((resolve) => setTimeout(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Back to illustration' }));
+      resolve();
+    }, 0)); });
+    expect(screen.getByRole('button', { name: 'Reopen lab' })).toBeVisible();
+    expect(screen.getByLabelText('stored scene state')).not.toHaveTextContent('"rows"');
   });
 });
