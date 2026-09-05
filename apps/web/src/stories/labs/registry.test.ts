@@ -16,6 +16,10 @@ void registryApiAssertions;
 afterEach(() => vi.restoreAllMocks());
 
 describe('labRegistry', () => {
+  it('has an explicit lazy loader for pulse-channel', () => {
+    expect((labRegistry as Record<string, unknown>)['pulse-channel']).toEqual(expect.any(Function));
+  });
+
   it('has an explicit lazy loader for cable-route', () => {
     expect((labRegistry as Record<string, unknown>)['cable-route']).toEqual(expect.any(Function));
   });

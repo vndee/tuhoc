@@ -21,6 +21,7 @@ const definitions: LabDefinition[] = [
   { kind: 'ambiguous-code', title: localized('Mã nhập nhằng', 'Ambiguous code'), instruction: localized('Giải mã', 'Decode'), config: { initialBook: { A: '0', B: '01', C: '1', D: '11' }, initialSymbols: 'B' } },
   { kind: 'morse-spacing', title: localized('Khoảng nghỉ Morse', 'Morse spacing'), instruction: localized('Đọc', 'Read'), config: { example: 'ET' } },
   { kind: 'cable-route', title: localized('Chọn tuyến', 'Choose route'), instruction: localized('So sánh', 'Compare'), config: { defaultBudget: 28 } },
+  { kind: 'pulse-channel', title: localized('Kênh xung', 'Pulse channel'), instruction: localized('Quan sát', 'Observe'), config: { defaultDuration: 1 } },
 ];
 
 const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
@@ -40,6 +41,7 @@ const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
   'ambiguous-code': { book: { A: '0', B: '01', C: '1', D: '11' }, symbols: 'B', result: null },
   'morse-spacing': { example: 'ET', letterGap: 3, wordGap: 7, result: null },
   'cable-route': { route: 'south', budget: 28, step: 0 },
+  'pulse-channel': { duration: 1, tau: 1, sampleFraction: 0.5, source: 'alternating', page: 0, snapshot: null },
 };
 
 const emptyLearningRates: Extract<LabDefinition, { kind: 'gradient-descent' }> = {
@@ -52,6 +54,17 @@ const emptyExamples: Extract<LabDefinition, { kind: 'attention' }> = {
 };
 
 describe('makeInitialLabState', () => {
+  it('initializes pulse-channel from its configured duration without coupling tau to it', () => {
+    const definition = {
+      kind: 'pulse-channel', title: localized('Kênh xung', 'Pulse channel'), instruction: localized('Quan sát', 'Observe'),
+      config: { defaultDuration: 4 },
+    } as unknown as LabDefinition;
+
+    expect(makeInitialLabState(definition)).toEqual({
+      duration: 4, tau: 1, sampleFraction: 0.5, source: 'alternating', page: 0, snapshot: null,
+    });
+  });
+
   it('initializes cable-route from its configured budget', () => {
     const definition = {
       kind: 'cable-route', title: localized('Chọn tuyến', 'Choose route'), instruction: localized('So sánh', 'Compare'),
