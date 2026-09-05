@@ -33,7 +33,48 @@ describe('CableRouteLab', () => {
     expect(screen.getByRole('status')).toHaveTextContent('exactly enough');
 
     fireEvent.change(budget, { target: { value: '20' } });
-    expect(screen.getByRole('status')).toHaveTextContent('1 unit short');
+    expect(screen.getByRole('status')).toHaveTextContent('1 simulation unit short');
+  });
+
+  it.each([
+    {
+      lang: 'en' as const,
+      stages: ['Predict', 'Try', 'Observe', 'Explain and limits'],
+      prompt: /which route do you expect will need the fewest simulation units/,
+      step: 'Reveal next component',
+      length: 'Length',
+      table: 'Route cost components',
+      value: 'Value (simulation units)',
+      short: '1 simulation unit short',
+    },
+    {
+      lang: 'vi' as const,
+      stages: ['Dự đoán', 'Thử', 'Quan sát', 'Giải thích và giới hạn'],
+      prompt: /bạn đoán tuyến nào sẽ cần ít đơn vị mô phỏng nhất/,
+      step: 'Xem thành phần tiếp theo',
+      length: 'Chiều dài',
+      table: 'Các thành phần chi phí tuyến',
+      value: 'Giá trị (đơn vị mô phỏng)',
+      short: 'Thiếu 1 đơn vị mô phỏng',
+    },
+  ])('shows Predict → Try → Observe → Explain in $lang and does not gate stepping on an answer', async ({
+    lang, stages, prompt, step, length, table, value, short,
+  }) => {
+    const user = userEvent.setup();
+    renderJourneyLab(CableRouteLab, definition, { lang, sceneId: 'scene-04' });
+
+    expect(screen.getAllByRole('heading', { level: 4 }).map((heading) => heading.textContent)).toEqual(stages);
+    const prediction = screen.getByRole('region', { name: stages[0] });
+    expect(within(prediction).getByText(prompt)).toBeVisible();
+    expect(prediction.querySelector('input, button, select, textarea')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: step }));
+    const costTable = screen.getByRole('table', { name: table });
+    expect(within(costTable).getByRole('rowheader', { name: length })).toBeVisible();
+    expect(within(costTable).getByRole('columnheader', { name: value })).toBeVisible();
+
+    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '20' } });
+    expect(screen.getByRole('status')).toHaveTextContent(short);
   });
 
   it('reveals length, difficult-segment, and depth components in order', async () => {

@@ -35,6 +35,7 @@ export default function CableRouteLab({ definition, lang, value, onChange, onRes
     lang={lang}
     title={definition.title[lang]}
     instruction={definition.instruction[lang]}
+    prediction={<p>{copy.prediction}</p>}
     observation={<RouteObservation route={state.route} budget={state.budget} step={state.step} labels={copy} />}
     explanation={<div>
       <p>{copy.feedback}</p>
