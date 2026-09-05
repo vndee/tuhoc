@@ -266,6 +266,21 @@ export function validateStory(
           add('invalid-lab-config', `${path}.lab.config.data`, 'SECDED data must contain exactly four binary characters');
         }
         break;
+      case 'channel-budget': {
+        const { defaultBudget, defaultP, seed } = scene.lab.config;
+        if (!Number.isInteger(defaultBudget) || defaultBudget < 512 || defaultBudget > 32768 || defaultBudget % 512 !== 0) {
+          add('invalid-lab-config', `${path}.lab.config.defaultBudget`, 'channel budget must be 512–32768 in steps of 512');
+        }
+        const hundredths = defaultP * 100;
+        if (!Number.isFinite(defaultP) || defaultP < 0 || defaultP > 0.5 ||
+          Math.abs(hundredths - Math.round(hundredths)) >= 1e-9) {
+          add('invalid-lab-config', `${path}.lab.config.defaultP`, 'channel probability must be 0–0.5 in steps of 0.01');
+        }
+        if (!Number.isInteger(seed) || seed < 0 || seed > 0xffff_ffff) {
+          add('invalid-lab-config', `${path}.lab.config.seed`, 'channel seed must be a uint32');
+        }
+        break;
+      }
       default:
         break;
     }

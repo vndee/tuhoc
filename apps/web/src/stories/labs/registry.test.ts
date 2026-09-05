@@ -16,6 +16,10 @@ void registryApiAssertions;
 afterEach(() => vi.restoreAllMocks());
 
 describe('labRegistry', () => {
+  it('has an explicit lazy loader for channel-budget', () => {
+    expect((labRegistry as Record<string, unknown>)['channel-budget']).toEqual(expect.any(Function));
+  });
+
   it('has an explicit lazy loader for secded-inspector', () => {
     expect((labRegistry as Record<string, unknown>)['secded-inspector']).toEqual(expect.any(Function));
   });
