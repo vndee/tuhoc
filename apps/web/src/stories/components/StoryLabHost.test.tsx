@@ -41,8 +41,40 @@ describe('StoryLabHost', () => {
     render(<StoryLabHost scene={{ ...scene, id: 'scene-error', lab: { ...scene.lab, kind: 'agent-trace' } as typeof scene.lab }} lang="en" value={undefined} onChange={vi.fn()} onReset={vi.fn()} onBack={vi.fn()} />);
 
     await act(async () => module.reject(new Error('chunk unavailable')));
-    expect(screen.getByText(/interactive lab could not load/i)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeVisible();
     expect(screen.getByText('Symbols preserve more information.')).toBeVisible();
+  });
+
+  it('retries a one-time failed importer in place and does not duplicate fallback content', async () => {
+    const first = deferred<LabModule>();
+    const loader = vi.spyOn(labRegistry, 'external-memory')
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce({ default: () => <p>Recovered after retry</p> });
+    const back = vi.fn();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const retryScene = {
+      ...scene,
+      labFallback: {
+        ...scene.labFallback,
+        table: {
+          vi: { headers: ['Gửi', 'Nhận'], rows: [['00', '01']] },
+          en: { headers: ['Sent', 'Received'], rows: [['00', '01']] },
+        },
+      },
+    };
+    render(<StoryLabHost scene={retryScene} lang="en" value={undefined} onChange={vi.fn()} onReset={vi.fn()} onBack={back} />);
+
+    await act(async () => first.reject(new Error('temporary chunk outage')));
+    expect(screen.getByRole('table', { name: 'Retention diagram' })).toBeVisible();
+    expect(screen.getAllByText('Retention diagram')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Back to illustration' }));
+    expect(back).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    await act(async () => { await Promise.resolve(); });
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('Recovered after retry')).toBeVisible();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
   it('lets a second host retry a rejected chunk for the same scene and kind', async () => {
@@ -56,7 +88,7 @@ describe('StoryLabHost', () => {
     const firstHost = render(<StoryLabHost {...props} />);
 
     await act(async () => first.reject(new Error('temporary chunk outage')));
-    expect(screen.getByText(/interactive lab could not load/i)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeVisible();
     firstHost.unmount();
 
     render(<StoryLabHost {...props} />);

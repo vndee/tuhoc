@@ -4,6 +4,7 @@ import type { LabFallback } from '../types';
 
 export interface StoryLabBoundaryProps {
   fallback: LabFallback;
+  fallbackContent?: ReactNode;
   lang: Lang;
   resetKey?: string;
   children: ReactNode;
@@ -33,6 +34,8 @@ export class StoryLabBoundary extends Component<StoryLabBoundaryProps, StoryLabB
 
   render(): ReactNode {
     if (!this.state.failed) return this.props.children;
+
+    if (this.props.fallbackContent !== undefined) return this.props.fallbackContent;
 
     const { fallback, lang } = this.props;
     return <section className="story-lab-fallback" aria-label={fallback.diagramLabel[lang]}>
