@@ -229,6 +229,34 @@ describe('validateStory', () => {
       .not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid-lab-config' })]));
   });
 
+  it.each([0, 3, 5, 1.5, Number.NaN])('rejects an unsupported pulse-channel duration at its exact field: %s', (defaultDuration) => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'pulse-channel',
+      title: { vi: 'Xung qua kênh', en: 'Pulses through a channel' },
+      instruction: { vi: 'Quan sát xung', en: 'Observe the pulses' },
+      config: { defaultDuration },
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'pulse-channel'] as never[])))
+      .toContainEqual(expect.objectContaining({
+        code: 'invalid-lab-config', path: 'scenes.0.lab.config.defaultDuration',
+      }));
+  });
+
+  it.each([1, 2, 4])('accepts a supported pulse-channel duration: %s', (defaultDuration) => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'pulse-channel',
+      title: { vi: 'Xung qua kênh', en: 'Pulses through a channel' },
+      instruction: { vi: 'Quan sát xung', en: 'Observe the pulses' },
+      config: { defaultDuration },
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'pulse-channel'] as never[])))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid-lab-config' })]));
+  });
+
   it('reports each invalid image, source, provenance, and source reference at its exact path', () => {
     const story = makeStoryFixture();
     story.scenes[0].illustration.src = '';

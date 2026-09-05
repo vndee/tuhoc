@@ -218,6 +218,11 @@ export function validateStory(
           add('invalid-lab-config', `${path}.lab.config.defaultBudget`, 'cable route budget must be an integer from 15 to 40');
         }
         break;
+      case 'pulse-channel':
+        if (![1, 2, 4].includes(scene.lab.config.defaultDuration)) {
+          add('invalid-lab-config', `${path}.lab.config.defaultDuration`, 'pulse duration must be 1, 2, or 4');
+        }
+        break;
       default:
         break;
     }
