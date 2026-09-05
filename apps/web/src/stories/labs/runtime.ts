@@ -62,5 +62,14 @@ export function makeInitialLabState(definition: LabDefinition): unknown {
       page: 0,
     };
     case 'secded-inspector': return { data: definition.config.data, flips: [], advanced: false };
+    case 'channel-budget': return {
+      config: {
+        code: 'raw',
+        budget: definition.config.defaultBudget,
+        p: definition.config.defaultP,
+        seed: definition.config.seed,
+      },
+      batch: null,
+    };
   }
 }

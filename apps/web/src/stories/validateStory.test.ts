@@ -293,6 +293,41 @@ describe('validateStory', () => {
     },
   );
 
+  it.each([
+    { config: { defaultBudget: 511, defaultP: 0.05, seed: 20260905 }, path: 'defaultBudget' },
+    { config: { defaultBudget: 513, defaultP: 0.05, seed: 20260905 }, path: 'defaultBudget' },
+    { config: { defaultBudget: 33280, defaultP: 0.05, seed: 20260905 }, path: 'defaultBudget' },
+    { config: { defaultBudget: 4096, defaultP: 0.051, seed: 20260905 }, path: 'defaultP' },
+    { config: { defaultBudget: 4096, defaultP: -0.01, seed: 20260905 }, path: 'defaultP' },
+    { config: { defaultBudget: 4096, defaultP: 0.05, seed: 0x1_0000_0000 }, path: 'seed' },
+  ])('rejects invalid channel-budget config at its exact $path field', ({ config, path }) => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'channel-budget', title: { vi: 'Ngân sách', en: 'Budget' },
+      instruction: { vi: 'Truyền', en: 'Transmit' }, config,
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'channel-budget'] as never[])))
+      .toContainEqual(expect.objectContaining({
+        code: 'invalid-lab-config', path: `scenes.0.lab.config.${path}`,
+      }));
+  });
+
+  it('accepts exact channel-budget limits and hundredth-step probabilities', () => {
+    for (const config of [
+      { defaultBudget: 512, defaultP: 0, seed: 0 },
+      { defaultBudget: 32768, defaultP: 0.5, seed: 0xffff_ffff },
+    ]) {
+      const story = makeStoryFixture();
+      story.scenes[0]!.lab = {
+        kind: 'channel-budget', title: { vi: 'Ngân sách', en: 'Budget' },
+        instruction: { vi: 'Truyền', en: 'Transmit' }, config,
+      } as unknown as typeof story.scenes[0]['lab'];
+      expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'channel-budget'] as never[])))
+        .not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid-lab-config' })]));
+    }
+  });
+
   it.each(['', '101', '10110', '10a1', ' 1011', 1011, ['1011']])('rejects invalid secded-inspector data at its exact field: %j', (data) => {
     const story = makeStoryFixture();
     story.scenes[0]!.lab = {

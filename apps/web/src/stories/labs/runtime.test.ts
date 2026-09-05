@@ -27,6 +27,7 @@ const definitions: LabDefinition[] = [
   { kind: 'huffman-message', title: localized('Nén', 'Compress'), instruction: localized('Tính cả gói', 'Count the whole packet'), config: { maxVisibleNodes: 24 } } as unknown as LabDefinition,
   { kind: 'repetition-channel', title: localized('Gửi ba lần', 'Three copies'), instruction: localized('So sánh', 'Compare'), config: { defaultP: 0.05, seed: 20260905 } } as unknown as LabDefinition,
   { kind: 'secded-inspector', title: localized('SECDED', 'SECDED'), instruction: localized('Thử', 'Try'), config: { data: '1011' } },
+  { kind: 'channel-budget', title: localized('Ngân sách', 'Budget'), instruction: localized('Truyền', 'Transmit'), config: { defaultBudget: 4096, defaultP: 0.05, seed: 20260905 } } as unknown as LabDefinition,
 ];
 
 const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
@@ -57,6 +58,7 @@ const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
   'huffman-message': { step: 0, page: 0, snapshot: null },
   'repetition-channel': { config: { p: 0.05, seed: 20260905, mode: 'bsc', start: 0, length: 1 }, snapshot: null, page: 0 },
   'secded-inspector': { data: '1011', flips: [], advanced: false },
+  'channel-budget': { config: { code: 'raw', budget: 4096, p: 0.05, seed: 20260905 }, batch: null },
 };
 
 const sourceEntropyDefinition: Extract<LabDefinition, { kind: 'source-entropy' }> = {
@@ -93,6 +95,14 @@ describe('makeInitialLabState', () => {
     expect(first.flips).not.toBe(second.flips);
     first.flips.push(3);
     expect(second.flips).toEqual([]);
+  });
+
+  it('initializes channel-budget with the approved single-run controls and no batch', () => {
+    const definition = definitions.find((item) => item.kind === ('channel-budget' as never))!;
+    expect(makeInitialLabState(definition)).toEqual({
+      config: { code: 'raw', budget: 4096, p: 0.05, seed: 20260905 },
+      batch: null,
+    });
   });
 
   it('initializes repetition-channel with the approved channel defaults and no run', () => {
