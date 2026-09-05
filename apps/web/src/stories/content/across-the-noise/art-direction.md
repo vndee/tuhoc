@@ -39,4 +39,34 @@ Two actual exporter runs produced identical hashes for all six files. The tests 
 
 All six local WebPs were viewed individually. An owned HTML contact sheet presents real exports in both approved light/dark surroundings; it does not synthesize new art. Review layouts at 320/390/1024/1440px loaded every image and had no horizontal overflow. At 320px (288px image width), the blank page, ship, diptych and return-room anchors remain legible. Small derivatives have the expected softer fine grain, with no visible destructive block artifacts at reading size. Individual desktop review plates also use a 58vw stage with quiet borders.
 
-This is an art acceptance review. Final reader integration, bilingual caption placement and production-layout/contrast checks remain the later integration tasks. The pilot stays at three plates; remaining scenes require the pilot checkpoint first. Full local inspection evidence is in the ignored Task 20 report and contact sheet.
+This was the three-plate art acceptance checkpoint. Final reader integration, bilingual caption placement and production-layout/contrast checks remain the later integration tasks. Full pilot inspection evidence is in the ignored Task 20 report and contact sheet. The accepted pilot records and six exports remain unchanged.
+
+## Completed thirteen-plate suite
+
+After the pilot checkpoint, ten distinct compositions completed the approved map: 02 shared codebook/cards/roll; 03 hand, key and paper intervals; 04 collective cable-deck work and open sea; 05 shore instrument and material cable sample; 06 parallel comparison desks; 07 overhead card sorting; 08 oblique translucent-paper grouping; 09 three paper copies on one table; 10 lamplit overlapping checks; 11 three equipment options and an unmarked resource ledger. They remain fictional material illustrations, not exact historical reconstructions or technical diagrams. The card piles do not claim a numerical correspondence to the lab. Physical tabs represent checking gestures; precise symbols and algorithms remain in accessible HTML/SVG.
+
+The inspected scene01 original provided style continuity for all ten new compositions. Three targeted built-in edits corrected concrete issues: 04 removed a buoy-supported surface line and made the cable descend over the ship's side; 10 cleared an unwanted landscape from the underlying card; 11 removed a wall map and numeral-like dial marks. Original and edited paths, verbatim prompts, tool output hints and clock observations are preserved in `provenance.json`. Original pilot evidence stays in `art-pilot.json` without changes. All thirteen final source PNGs have byte-identical ignored recovery copies; sourceOutput always names the actual tool-returned path, separately from archivedSourceOutput.
+
+The built-in tool returned image_url and output_hint, with no model, generation timestamp, license or provider reuse terms. No model or terms have been inferred. createdAt is explicitly a UTC clock observation immediately following initial generation, and editRecords carry their own clock observations. `license: 'project-generated'` is the internal project category, not a third-party license or exclusivity claim. Pilot license notes are retained separately in the complete provenance.
+
+Every source measured 1536×1024. The existing source-preserving exporter produced 1536×1024 and 768×512 derivatives. Large02/06 required the authorized q80 fallback; all others and every small derivative fit at q85. No source PNG enters the runtime inventory or git. To regenerate the suite with restored originals available at their recorded paths, use the existing exporter with `--manifest src/stories/content/across-the-noise/provenance.json` and the same output directory shown above.
+
+| Plate | Large bytes | Large quality | Small bytes | Small quality |
+|---|---:|---:|---:|---:|
+| cover | 223680 | 85 | 61540 | 85 |
+| scene-01 | 301448 | 85 | 73500 | 85 |
+| scene-02 | 263924 | 80 | 93494 | 85 |
+| scene-03 | 258196 | 85 | 69878 | 85 |
+| scene-04 | 231138 | 85 | 70108 | 85 |
+| scene-05 | 317970 | 85 | 92610 | 85 |
+| scene-06 | 249460 | 80 | 89656 | 85 |
+| scene-07 | 244110 | 85 | 63500 | 85 |
+| scene-08 | 259870 | 85 | 74106 | 85 |
+| scene-09 | 204304 | 85 | 54766 | 85 |
+| scene-10 | 217032 | 85 | 57634 | 85 |
+| scene-11 | 310642 | 85 | 90954 | 85 |
+| scene-12 | 249000 | 85 | 63058 | 85 |
+
+The full light/dark contact sheet and individual mobile captures retain distinct narrative subjects, paper surfaces, hands and instruments. Review layouts at 320/390/1024/1440px loaded all images with no horizontal overflow. The thirteen plates were each inspected at source and mobile sizes; q80 exports were additionally inspected directly. No duplicated crop or remaining text/diagram artifact was found. These captures are an art review on approved surrounds, not the later integrated reader QA.
+
+Scene dominantColor values are measured from the most populous 32-level RGB bin of a 96×64 canvas sample of each large WebP, using the average RGB within that bin, then checked visually against the real plates. Dark values in02/06/07/10 reflect substantial clothing/wood/shadow regions; this is a loading color, not a contrast-certified control or text color. `cover.ts` carries only two explicit cover imports, small literal bilingual text and measured dimensions/bytes. `assets.ts` explicitly imports both variants for each scene and uses the approved image text.
