@@ -22,6 +22,19 @@ describe('validateStory', () => {
     }));
   });
 
+  it.each([
+    ['overlong', 'a'.repeat(121)],
+    ['ill-formed', '\ud800'],
+  ])('reports an %s message example at its exact field', (_name, example) => {
+    const story = Object.assign(makeStoryFixture(), {
+      interaction: { kind: 'message-journey' as const, examples: { vi: example, en: 'Hello' } },
+    });
+
+    expect(validateStory(story, REGISTERED_LAB_KINDS)).toContainEqual(expect.objectContaining({
+      code: 'invalid-story-interaction', path: 'interaction.examples.vi',
+    }));
+  });
+
   it('reports a blank intro block at its exact field', () => {
     const story = Object.assign(makeStoryFixture(), {
       intro: {
