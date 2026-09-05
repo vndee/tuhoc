@@ -27,6 +27,12 @@ describe('encodeHuffman', () => {
         codes: [{ byte: 65, count: 4, code: '0' }],
       },
     });
+    if (result.ok) {
+      expect(decodeHuffman(JSON.parse(JSON.stringify(result.value.container)))).toEqual({
+        ok: true,
+        value: [65, 65, 65, 65],
+      });
+    }
   });
 
   it('uses the stable count, minimum-byte and creation-id ordering for equal frequencies', () => {
