@@ -166,7 +166,8 @@ export function StoryStage({
       const plate = plateForLayer(layer);
       return <figure
         className={`story-plate-layer${layer === active.layer ? ' is-active' : ''}`}
-        aria-hidden={layer === active.layer ? undefined : true}
+        hidden={Boolean(labSceneId)}
+        aria-hidden={labSceneId || layer !== active.layer ? true : undefined}
         data-layer={layer}
         data-scene={plate?.scene.id}
         key={layer}
@@ -185,6 +186,11 @@ export function StoryStage({
         {plate && !plate.failed ? <figcaption className="story-plate-caption">{plate.scene.illustration.caption[lang]}</figcaption> : null}
       </figure>;
     })}
-    <div className="story-stage-lab" id={labSceneId ? `story-lab-${labSceneId}` : undefined}>{lab}</div>
+    <div
+      key={labSceneId}
+      className="story-stage-lab"
+      hidden={!labSceneId}
+      id={labSceneId ? `story-lab-${labSceneId}` : undefined}
+    >{lab}</div>
   </aside>;
 }
