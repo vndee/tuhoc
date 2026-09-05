@@ -129,9 +129,7 @@ function HuffmanObservation({ snapshot, step, page, maxVisibleNodes, stale, deco
     <p>{labels.mergeProgress(merges.length, packet.merges.length)}</p>
     <HuffmanTree nodes={visibleNodes} labels={labels} />
     <p>{labels.treeWindow(visibleNodes.length, packet.nodes.length)}</p>
-    <ul aria-label={labels.visibleNodes}>{visibleNodes.map((node) => <li key={node.id}>
-      {nodeLabel(node, labels)}
-    </li>)}</ul>
+    <AccessibleTreeWindow nodes={visibleNodes} packet={packet} labels={labels} />
     <section aria-label={labels.mergeHistory}>
       <h5>{labels.mergeHistory}</h5>
       {merges.length === 0 ? <p>{labels.noMerges}</p> : <ol>{merges.slice(-8).map((merge) => <li key={merge.parent}>
@@ -162,6 +160,29 @@ function HuffmanObservation({ snapshot, step, page, maxVisibleNodes, stale, deco
     </table>
     {!decoderOk ? <p role="alert">{labels.decoderRejected}</p> : <p>{exact ? labels.exact : labels.mismatch}</p>}
   </div>;
+}
+
+function AccessibleTreeWindow({ nodes, packet, labels }: {
+  nodes: readonly HuffmanNode[];
+  packet: HuffmanPacket;
+  labels: typeof huffmanMessageCopy.en;
+}) {
+  const visibleIds = new Set(nodes.map((node) => node.id));
+  return <ul aria-label={labels.visibleNodes}>{nodes.map((node) => <li key={node.id}>
+    {nodeLabel(node, labels)}.{node.byte !== null ? <>{' '}{labels.leafBoundary}</> : <>
+      {' '}{edgeLabel(0, packet.nodes[node.left!]!, visibleIds, labels)}
+      {' '}{edgeLabel(1, packet.nodes[node.right!]!, visibleIds, labels)}
+    </>}
+  </li>)}</ul>;
+}
+
+function edgeLabel(
+  bit: 0 | 1,
+  child: HuffmanNode,
+  visibleIds: ReadonlySet<number>,
+  labels: typeof huffmanMessageCopy.en,
+): string {
+  return labels.edge(bit, nodeShortLabel(child, labels), child.count, !visibleIds.has(child.id));
 }
 
 function HuffmanTree({ nodes, labels }: { nodes: readonly HuffmanNode[]; labels: typeof huffmanMessageCopy.en }) {
