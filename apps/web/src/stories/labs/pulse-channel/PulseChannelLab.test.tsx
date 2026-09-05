@@ -1,10 +1,12 @@
 import { fireEvent, screen, within } from '@testing-library/react';
-import { useState } from 'react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Component, useState, type ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useRequiredMessageJourney } from '../../session/StoryIssueSessionProvider';
 import { renderJourneyLab } from '../../testing/renderJourneyLab';
+import type { RunSnapshot } from '../communication/types';
 import type { LabRuntimeProps } from '../runtime';
 import PulseChannelLab from './PulseChannelLab';
+import type { PulseExperimentConfig, PulseResult } from './model';
 
 const definition = {
   kind: 'pulse-channel',
@@ -34,8 +36,44 @@ function ReopenableLab(props: LabRuntimeProps) {
   </> : <button type="button" onClick={() => setOpen(true)}>Open pulse lab</button>;
 }
 
+class ErrorCodeBoundary extends Component<{ children: ReactNode }, { code: string | null }> {
+  state = { code: null as string | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { code: error.message };
+  }
+
+  render() {
+    return this.state.code === null
+      ? this.props.children
+      : <output aria-label="message source error">{this.state.code}</output>;
+  }
+}
+
+function InvalidMessageSourceLab(props: LabRuntimeProps) {
+  return <ErrorCodeBoundary>
+    <PulseChannelLab {...props} value={{
+      duration: 1, tau: 1, sampleFraction: 0.5, source: 'message', page: 0, snapshot: null,
+    }} />
+  </ErrorCodeBoundary>;
+}
+
+function SnapshotSourceProbeLab(props: LabRuntimeProps) {
+  const journey = useRequiredMessageJourney();
+  const value = journey.state.experimentStateByScene['scene-05'] as {
+    snapshot?: RunSnapshot<PulseExperimentConfig, PulseResult>;
+  } | undefined;
+  return <>
+    <PulseChannelLab {...props} />
+    <output aria-label="captured source bytes">{JSON.stringify(value?.snapshot?.source ?? [])}</output>
+  </>;
+}
+
 beforeEach(() => localStorage.clear());
-afterEach(() => localStorage.clear());
+afterEach(() => {
+  localStorage.clear();
+  vi.restoreAllMocks();
+});
 
 describe('PulseChannelLab', () => {
   it.each([
@@ -128,6 +166,26 @@ describe('PulseChannelLab', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('previous message');
     expect(screen.getByRole('table', { name: 'Receiver sample points' }).textContent).toBe(tableBefore);
+  });
+
+  it('captures the exact decomposed UTF-8 message bytes without normalization', () => {
+    renderJourneyLab(SnapshotSourceProbeLab, definition, {
+      lang: 'en', sceneId: 'scene-05', example: 'a\u0306\u0301',
+    });
+    fireEvent.click(screen.getByRole('radio', { name: 'Original message bytes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Run experiment' }));
+
+    expect(screen.getByLabelText('captured source bytes')).toHaveTextContent('[97,204,134,204,129]');
+  });
+
+  it('fails with a fixed content-free code instead of replacing an ill-formed message source', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    renderJourneyLab(InvalidMessageSourceLab, definition, {
+      lang: 'en', sceneId: 'scene-05', example: '\ud800',
+    });
+
+    expect(screen.getByLabelText('message source error')).toHaveTextContent('invalid-message-source');
   });
 
   it('preserves independent controls and the plotted run across a close and reopen in the scene-05 session', () => {

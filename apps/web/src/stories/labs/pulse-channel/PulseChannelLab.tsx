@@ -3,6 +3,7 @@ import { BitWindow } from '../communication/BitWindow';
 import { toBits } from '../communication/bits';
 import { CommunicationLabFrame } from '../communication/CommunicationLabFrame';
 import type { Bytes, RunSnapshot } from '../communication/types';
+import { inspectUnicode } from '../communication/unicode';
 import type { LabRuntimeProps } from '../runtime';
 import { pulseChannelCopy } from './copy';
 import {
@@ -32,7 +33,9 @@ export default function PulseChannelLab({ definition, lang, value, onChange, onR
   const journey = useRequiredMessageJourney();
   const copy = pulseChannelCopy[lang];
   const state = readState(value, definition.config.defaultDuration);
-  const messageBytes = Array.from(new TextEncoder().encode(journey.state.messageText));
+  const messageInspection = inspectUnicode(journey.state.messageText);
+  if (!messageInspection.ok) throw new Error('invalid-message-source');
+  const messageBytes = messageInspection.value.bytes;
   const sourceBytes = state.source === 'alternating' ? ALTERNATING_BYTES : messageBytes;
   const sourceBits = toBits(sourceBytes);
   const pageCount = Math.max(1, Math.ceil(sourceBits.length / BITS_PER_PAGE));
