@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId } from 'react';
 import { useRequiredMessageJourney } from '../../session/StoryIssueSessionProvider';
 import { BitWindow } from '../communication/BitWindow';
 import { toBits } from '../communication/bits';
@@ -15,7 +15,10 @@ import {
   type NoiseResult,
 } from './model';
 
-type BinaryNoiseState = LabState<BinaryNoiseConfig, NoiseResult> & { page: number };
+type BinaryNoiseState = LabState<BinaryNoiseConfig, NoiseResult> & {
+  page: number;
+  probabilityDraft: string;
+};
 
 export default function BinaryNoiseLab({ definition, lang, value, onChange, onReset, onBack }: LabRuntimeProps) {
   if (definition.kind !== 'binary-noise') {
@@ -28,12 +31,12 @@ export default function BinaryNoiseLab({ definition, lang, value, onChange, onRe
   if (!inspection.ok || inspection.value.bytes.length === 0) throw new Error('invalid-message-source');
   const source = inspection.value.bytes;
   const state = readState(value, definition.config.defaultP, definition.config.seed, source.length * 8);
-  const [probabilityDraft, setProbabilityDraft] = useState(String(state.config.p));
   const probabilityErrorId = useId();
-  const parsedProbability = parseProbability(probabilityDraft);
+  const parsedProbability = parseProbability(state.probabilityDraft);
   const invalidProbability = state.config.mode === 'bsc' && parsedProbability === null;
   const revisionStale = state.snapshot !== null && state.snapshot.messageRevision !== journey.state.messageRevision;
-  const settingsStale = state.snapshot !== null && !sameConfig(state.snapshot.config, state.config);
+  const settingsStale = state.snapshot !== null &&
+    (invalidProbability || !sameConfig(state.snapshot.config, state.config));
   const updateConfig = (next: Partial<BinaryNoiseConfig>) => onChange({
     ...state,
     config: { ...state.config, ...next },
@@ -54,6 +57,14 @@ export default function BinaryNoiseLab({ definition, lang, value, onChange, onRe
     if (selected.has(index)) selected.delete(index);
     else selected.add(index);
     updateConfig({ manual: [...selected].sort((left, right) => left - right) });
+  };
+  const updateProbabilityDraft = (draft: string) => {
+    const probability = parseProbability(draft);
+    onChange({
+      ...state,
+      probabilityDraft: draft,
+      config: probability === null ? state.config : { ...state.config, p: probability },
+    });
   };
   const status = state.snapshot === null
     ? ''
@@ -85,10 +96,7 @@ export default function BinaryNoiseLab({ definition, lang, value, onChange, onRe
       <p>{copy.modelLimit}</p>
     </div>}
     result={status}
-    onReset={() => {
-      setProbabilityDraft(String(definition.config.defaultP));
-      onReset();
-    }}
+    onReset={onReset}
     onBack={onBack}
   >
     <MessageEditor lang={lang} />
@@ -121,14 +129,12 @@ export default function BinaryNoiseLab({ definition, lang, value, onChange, onRe
           min="0"
           max="0.5"
           step="0.01"
-          value={probabilityDraft}
+          value={state.probabilityDraft}
           aria-invalid={invalidProbability ? true : undefined}
           aria-describedby={invalidProbability ? probabilityErrorId : undefined}
           onChange={(event) => {
             const draft = event.currentTarget.value;
-            setProbabilityDraft(draft);
-            const p = parseProbability(draft);
-            if (p !== null) updateConfig({ p });
+            updateProbabilityDraft(draft);
           }}
         />
       </label>
@@ -242,22 +248,31 @@ function readState(value: unknown, defaultP: number, defaultSeed: number, bitCou
     ? [...new Set(config.manual.filter((index) => Number.isSafeInteger(index) && index >= 0 && index < bitCount))]
       .sort((left, right) => left - right)
     : [];
+  const p = typeof config.p === 'number' && Number.isFinite(config.p) && config.p >= 0 && config.p <= 0.5
+    ? config.p
+    : defaultP;
   return {
     config: {
-      p: typeof config.p === 'number' && Number.isFinite(config.p) && config.p >= 0 && config.p <= 0.5 ? config.p : defaultP,
+      p,
       seed: typeof config.seed === 'number' && Number.isInteger(config.seed) && config.seed >= 0 && config.seed <= 0xffff_ffff
         ? config.seed
         : defaultSeed,
       mode: config.mode === 'manual' ? 'manual' : 'bsc',
       manual,
     },
+    probabilityDraft: typeof candidate.probabilityDraft === 'string' ? candidate.probabilityDraft : String(p),
     snapshot: isSnapshot(candidate.snapshot) ? candidate.snapshot : null,
     page: typeof candidate.page === 'number' && Number.isSafeInteger(candidate.page) && candidate.page >= 0 ? candidate.page : 0,
   };
 }
 
 function initialState(defaultP: number, seed: number): BinaryNoiseState {
-  return { config: { p: defaultP, seed, mode: 'bsc', manual: [] }, snapshot: null, page: 0 };
+  return {
+    config: { p: defaultP, seed, mode: 'bsc', manual: [] },
+    probabilityDraft: String(defaultP),
+    snapshot: null,
+    page: 0,
+  };
 }
 
 function sameConfig(left: BinaryNoiseConfig, right: BinaryNoiseConfig): boolean {

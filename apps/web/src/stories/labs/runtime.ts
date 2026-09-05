@@ -44,6 +44,7 @@ export function makeInitialLabState(definition: LabDefinition): unknown {
     };
     case 'binary-noise': return {
       config: { p: definition.config.defaultP, seed: definition.config.seed, mode: 'bsc', manual: [] },
+      probabilityDraft: String(definition.config.defaultP),
       snapshot: null,
       page: 0,
     };
