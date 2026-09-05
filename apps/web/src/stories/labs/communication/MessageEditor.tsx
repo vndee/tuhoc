@@ -21,6 +21,8 @@ export function MessageEditor({ lang }: { lang: Lang }) {
   const [confirmingReset, setConfirmingReset] = useState(false);
   const resetButton = useRef<HTMLButtonElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
+  const resetDialog = useRef<HTMLDialogElement>(null);
+  const restoreResetFocus = useRef(false);
   const editorId = useId();
   const privacyId = useId();
   const metricsId = useId();
@@ -28,12 +30,62 @@ export function MessageEditor({ lang }: { lang: Lang }) {
   const metrics = counts(state.draftText);
 
   useEffect(() => {
-    if (confirmingReset) cancelButton.current?.focus();
+    if (!confirmingReset) {
+      if (restoreResetFocus.current) {
+        restoreResetFocus.current = false;
+        resetButton.current?.focus();
+      }
+      return;
+    }
+    const dialog = resetDialog.current;
+    if (!dialog) return;
+
+    dialog.showModal();
+    cancelButton.current?.focus();
+
+    const suppressOutsideClick = (event: MouseEvent) => {
+      if (event.target instanceof Node && !dialog.contains(event.target)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+    const containFocus = (event: FocusEvent) => {
+      if (event.target instanceof Node && !dialog.contains(event.target)) cancelButton.current?.focus();
+    };
+    document.addEventListener('click', suppressOutsideClick, true);
+    document.addEventListener('focusin', containFocus, true);
+
+    return () => {
+      document.removeEventListener('click', suppressOutsideClick, true);
+      document.removeEventListener('focusin', containFocus, true);
+      if (dialog.open) dialog.close();
+    };
   }, [confirmingReset]);
 
   const cancelReset = () => {
+    if (resetDialog.current?.open) resetDialog.current.close();
+    restoreResetFocus.current = true;
     setConfirmingReset(false);
-    resetButton.current?.focus();
+  };
+  const keepFocusInDialog = (event: React.KeyboardEvent<HTMLDialogElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelReset();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const dialog = resetDialog.current;
+    if (!dialog) return;
+    const controls = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled])'));
+    const first = controls[0];
+    const last = controls.at(-1);
+    if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+      event.preventDefault();
+      last?.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first?.focus();
+    }
   };
   const useExample = () => {
     const example = examples[lang];
@@ -80,21 +132,23 @@ export function MessageEditor({ lang }: { lang: Lang }) {
       </section>
     </div>
     <button ref={resetButton} type="button" onClick={() => setConfirmingReset(true)}>{copy.resetSession}</button>
-    {confirmingReset ? <section
-      role="dialog"
+    {confirmingReset ? <dialog
+      ref={resetDialog}
       aria-modal="true"
       aria-labelledby={`${editorId}-reset-title`}
       aria-describedby={`${editorId}-reset-description`}
-      onKeyDown={(event) => { if (event.key === 'Escape') cancelReset(); }}
+      onCancel={(event) => { event.preventDefault(); cancelReset(); }}
+      onKeyDown={keepFocusInDialog}
     >
       <h4 id={`${editorId}-reset-title`}>{copy.resetTitle}</h4>
       <p id={`${editorId}-reset-description`}>{copy.resetDescription}</p>
       <button ref={cancelButton} type="button" onClick={cancelReset}>{copy.cancel}</button>
       <button type="button" onClick={() => {
         dispatch({ type: 'reset-session', example: examples[lang] });
+        if (resetDialog.current?.open) resetDialog.current.close();
+        restoreResetFocus.current = true;
         setConfirmingReset(false);
-        resetButton.current?.focus();
       }}>{copy.confirmReset}</button>
-    </section> : null}
+    </dialog> : null}
   </section>;
 }

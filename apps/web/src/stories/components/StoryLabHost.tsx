@@ -23,6 +23,8 @@ export function StoryLabHost({ scene, lang, value, onChange, onReset, onBack }: 
   const [attempt, setAttempt] = useState(0);
   const [resetVersion, setResetVersion] = useState(0);
   const kind = scene.lab.kind;
+  // `attempt` deliberately invalidates React.lazy's cached rejected promise.
+  // oxlint-disable-next-line react-hooks/exhaustive-deps
   const LazyLab = useMemo(() => lazy(() => loadLab(kind)), [attempt, kind]);
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
   const reset = useCallback(() => {

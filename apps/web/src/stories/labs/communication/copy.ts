@@ -8,6 +8,7 @@ export const messageExamples = {
 export const communicationCopy: Record<Lang, {
   predict: string;
   try: string;
+  observe: string;
   explain: string;
   bits: string;
   previousBits: string;
@@ -33,6 +34,7 @@ export const communicationCopy: Record<Lang, {
   vi: {
     predict: 'Dự đoán',
     try: 'Thử',
+    observe: 'Quan sát',
     explain: 'Giải thích và giới hạn',
     bits: 'Bit',
     previousBits: 'Bit trước',
@@ -63,6 +65,7 @@ export const communicationCopy: Record<Lang, {
   en: {
     predict: 'Predict',
     try: 'Try',
+    observe: 'Observe',
     explain: 'Explain and limits',
     bits: 'Bits',
     previousBits: 'Previous bits',
