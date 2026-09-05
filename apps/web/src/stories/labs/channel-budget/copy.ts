@@ -1,5 +1,6 @@
 import type { Lang } from '../../../i18n';
 import type { ChannelCode, TransmissionConfig } from '../communication/types';
+import type { BatchConfig } from './batch';
 
 interface ChannelBudgetCopy {
   prediction: string;
@@ -42,6 +43,24 @@ interface ChannelBudgetCopy {
   theoryLimit: string;
   modelLimit: string;
   feedback: string;
+  compare: string;
+  cancelComparison: string;
+  batchProgress: string;
+  progress: (done: number, total: number) => string;
+  incomplete: (done: number, total: number) => string;
+  complete: string;
+  batchTable: string;
+  batchExact: string;
+  batchRejected: string;
+  batchSilent: string;
+  batchBer: string;
+  noDecodedBits: string;
+  batchLimit: string;
+  batchStaleMessage: string;
+  batchStaleSettings: string;
+  capturedBatch: (revision: number, config: BatchConfig) => string;
+  excluded: (codes: string) => string;
+  noEligible: string;
 }
 
 export const channelBudgetCopy = {
@@ -69,6 +88,16 @@ export const channelBudgetCopy = {
     theoryLimit: 'Đây là giới hạn tiệm cận dưới giả định BSC, không phải bảo đảm cho một lượt hữu hạn. R<C không bảo đảm mã ngắn raw, repetition hoặc SECDED này truyền tin cậy; R≥C không có nghĩa mọi thông điệp đơn lẻ đều thất bại.',
     modelLimit: 'Mô hình gửi UTF-8 chưa nén qua các lần lật bit độc lập. Nó không mô phỏng ACK, lỗi header, chèn/xóa bit hoặc truyền lại.',
     feedback: 'Ngân sách cho biết toàn thông điệp có thể đi qua hay không; biên nhận cho biết chính lượt đã chụp kết thúc thế nào.',
+    compare: 'So sánh 200 lượt', cancelComparison: 'Hủy so sánh', batchProgress: 'Tiến độ so sánh',
+    progress: (done, total) => `Đang so sánh: ${done} / ${total} lượt truyền.`,
+    incomplete: (done, total) => `Chưa hoàn tất: ${done} / ${total} lượt truyền.`,
+    complete: 'So sánh đã hoàn tất.', batchTable: 'So sánh 200 lượt đã hoàn tất',
+    batchExact: 'Đúng toàn thông điệp / 200', batchRejected: 'Bị từ chối / 200', batchSilent: 'Hỏng âm thầm / 200',
+    batchBer: 'Lỗi bit / bit dữ liệu được giải mã (BER)', noDecodedBits: 'Không có dữ liệu được giải mã; BER không xác định.',
+    batchLimit: 'Mỗi mã đủ ngân sách dùng cùng 200 seed liên tiếp. Thành công là khớp toàn thông điệp. BER chỉ tính các lượt có dữ liệu đầu ra; số lượt bị từ chối được ghi riêng. Đây là so sánh thực nghiệm, không phải bảo đảm.',
+    batchStaleMessage: 'So sánh của câu trước', batchStaleSettings: 'So sánh của thông số trước',
+    capturedBatch: (revision, config) => `So sánh đã chụp: phiên bản ${revision}, ngân sách ${config.budget}, p=${config.p.toFixed(2)}, seed ${config.seed}.`,
+    excluded: (codes) => `Không đủ ngân sách: ${codes}.`, noEligible: 'Không mã nào gửi được toàn thông điệp trong ngân sách này.',
   },
   en: {
     prediction: 'Which code do you expect to carry the whole message within this budget? The prediction is optional and is not scored.',
@@ -94,5 +123,15 @@ export const channelBudgetCopy = {
     theoryLimit: 'This asymptotic BSC limit is not a finite-run guarantee. R<C does not guarantee reliable transmission by this short raw, repetition, or SECDED code; R≥C does not mean every individual message fails.',
     modelLimit: 'The model sends uncompressed UTF-8 through independent bit flips. It does not simulate acknowledgements, header errors, insertions/deletions, or retransmission.',
     feedback: 'The budget says whether the whole message can be sent; the receipt says how that captured run ended.',
+    compare: 'Compare 200 trials', cancelComparison: 'Cancel comparison', batchProgress: 'Comparison progress',
+    progress: (done, total) => `Comparing: ${done} / ${total} transmissions.`,
+    incomplete: (done, total) => `Incomplete: ${done} / ${total} transmissions.`,
+    complete: 'Comparison complete.', batchTable: 'Completed 200-trial comparison',
+    batchExact: 'Whole-message exact / 200', batchRejected: 'Rejected / 200', batchSilent: 'Silent corruption / 200',
+    batchBer: 'Bit errors / decoded payload bits (BER)', noDecodedBits: 'No decoded payload; BER is undefined.',
+    batchLimit: 'Every eligible code uses the same 200 consecutive seeds. Success means the entire message matches. BER includes only output-bearing trials; rejected trials are counted separately. This is an empirical comparison, not a guarantee.',
+    batchStaleMessage: 'Comparison for the previous message', batchStaleSettings: 'Comparison for the previous settings',
+    capturedBatch: (revision, config) => `Captured comparison: revision ${revision}, budget ${config.budget}, p=${config.p.toFixed(2)}, seed ${config.seed}.`,
+    excluded: (codes) => `Excluded by budget: ${codes}.`, noEligible: 'No code fits the whole message within this budget.',
   },
 } satisfies Record<Lang, ChannelBudgetCopy>;

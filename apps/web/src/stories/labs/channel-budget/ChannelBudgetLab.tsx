@@ -1,11 +1,16 @@
+import { useLayoutEffect, useRef, useState } from 'react';
 import { useRequiredMessageJourney } from '../../session/StoryIssueSessionProvider';
 import { CommunicationLabFrame } from '../communication/CommunicationLabFrame';
 import { MessageEditor } from '../communication/MessageEditor';
-import type { Bytes, ChannelCode, DeliveryReceipt, TransmissionConfig } from '../communication/types';
+import type { Bytes, ChannelCode, DeliveryReceipt, RunSnapshot, TransmissionConfig } from '../communication/types';
 import { decodeUtf8, inspectUnicode } from '../communication/unicode';
 import type { LabRuntimeProps } from '../runtime';
 import { channelBudgetCopy } from './copy';
 import { channelCapacity, channelRequirement, runTransmission } from './model';
+import { compareCodes, type BatchConfig, type BatchResult } from './batch';
+
+type BatchSnapshot = RunSnapshot<BatchConfig, BatchResult>;
+type BatchProgress = { done: number; total: number; status: 'running' | 'incomplete' | 'complete' };
 
 type BudgetFailure = {
   messageRevision: number;
@@ -16,7 +21,7 @@ type BudgetFailure = {
 
 type ChannelBudgetState = {
   config: TransmissionConfig;
-  batch: unknown | null;
+  batch: BatchSnapshot | null;
   budgetFailure?: BudgetFailure;
   previousReceipt?: DeliveryReceipt;
 };
@@ -32,6 +37,75 @@ export default function ChannelBudgetLab({ definition, lang, value, onChange, on
   if (!inspection.ok || inspection.value.bytes.length === 0) throw new Error('invalid-message-source');
   const source = inspection.value.bytes;
   const state = readState(value, definition.config);
+  const [progressState, setProgress] = useState<BatchProgress | null>(null);
+  const [progressContext, setProgressContext] = useState<{
+    revision: number; draft: string; value: unknown; scenes: unknown;
+  } | null>(null);
+  const runToken = useRef(0);
+  const activeRun = useRef<{ controller: AbortController; revision: number } | null>(null);
+  const messageRevision = journey.state.messageRevision;
+  const draftText = journey.state.draftText;
+  const sceneStates = journey.state.experimentStateByScene;
+  const contextChanged = progressContext !== null && (progressContext.revision !== messageRevision ||
+    progressContext.draft !== draftText || progressContext.value !== value || progressContext.scenes !== sceneStates);
+  const progress = progressState?.status === 'complete' && state.batch === null ? null
+    : progressState?.status === 'running' && contextChanged
+      ? { ...progressState, status: 'incomplete' as const } : progressState;
+
+  // Cleanup runs during the commit, before a pending timer can publish. The value
+  // and scene-map identities also cover resets to the same initial values.
+  useLayoutEffect(() => {
+    return () => {
+      activeRun.current?.controller.abort();
+      activeRun.current = null;
+      runToken.current += 1;
+    };
+  }, [messageRevision, draftText, value, sceneStates]);
+
+  const cancelComparison = () => {
+    activeRun.current?.controller.abort();
+    activeRun.current = null;
+    runToken.current += 1;
+    setProgress((previous) => previous?.status === 'running' ? { ...previous, status: 'incomplete' } : previous);
+  };
+
+  const compare = async () => {
+    cancelComparison();
+    const token = runToken.current;
+    const controller = new AbortController();
+    const revision = messageRevision;
+    activeRun.current = { controller, revision };
+    const capturedSource = [...source];
+    const config: BatchConfig = { p: state.config.p, seed: state.config.seed, budget: state.config.budget };
+    const total = (['raw', 'repeat3', 'secded'] as const)
+      .filter((code) => channelRequirement(capturedSource.length * 8, code).required <= config.budget).length * 200;
+    const isCurrent = () => !controller.signal.aborted && runToken.current === token && activeRun.current?.revision === revision;
+    setProgressContext({ revision, draft: draftText, value, scenes: sceneStates });
+    setProgress({ done: 0, total, status: 'running' });
+    const result = await compareCodes(capturedSource, config, {
+      signal: controller.signal,
+      onProgress: (done, count) => {
+        if (isCurrent()) setProgress({ done, total: count, status: 'running' });
+      },
+    });
+    if (!isCurrent()) return;
+    activeRun.current = null;
+    if (!result.ok) {
+      setProgress((previous) => previous === null ? null : { ...previous, status: 'incomplete' });
+      return;
+    }
+    const batch: BatchSnapshot = Object.freeze({
+      messageRevision: revision,
+      source: Object.freeze(capturedSource),
+      config: Object.freeze(config),
+      result: Object.freeze({
+        rows: Object.freeze(result.value.rows.map((row) => Object.freeze({ ...row }))),
+        excluded: Object.freeze([...result.value.excluded]),
+      }),
+    });
+    setProgress({ done: total, total, status: 'complete' });
+    onChange({ ...state, batch });
+  };
   const requirement = channelRequirement(source.length * 8, state.config.code);
   const capacity = Math.floor(state.config.budget / requirement.n) * requirement.k;
   const currentReceipt = journey.state.deliveryReceipt;
@@ -41,10 +115,10 @@ export default function ChannelBudgetLab({ definition, lang, value, onChange, on
     state.budgetFailure.messageRevision === journey.state.messageRevision &&
     sameConfig(state.budgetFailure.config, state.config);
 
-  const updateConfig = (next: Partial<TransmissionConfig>) => onChange({
-    ...state,
-    config: { ...state.config, ...next },
-  });
+  const updateConfig = (next: Partial<TransmissionConfig>) => {
+    cancelComparison();
+    onChange({ ...state, config: { ...state.config, ...next } });
+  };
 
   const run = () => {
     // Capture every value before calculation so later edits cannot rewrite this attempt.
@@ -108,6 +182,12 @@ export default function ChannelBudgetLab({ definition, lang, value, onChange, on
         : state.previousReceipt !== undefined
           ? <ReceiptView receipt={state.previousReceipt} labels={labels} title={labels.previousReceipt} previous />
           : <p>{labels.awaiting}</p>}
+      {progress === null ? null : <p role="status" aria-label={labels.batchProgress} aria-live="polite" aria-atomic="true">
+        {progress.status === 'running' ? labels.progress(progress.done, progress.total)
+          : progress.status === 'incomplete' ? labels.incomplete(progress.done, progress.total) : labels.complete}
+      </p>}
+      {state.batch === null ? null : <BatchView snapshot={state.batch} labels={labels}
+        messageRevision={messageRevision} config={state.config} />}
     </>}
     explanation={<div>
       <section aria-label={labels.theory}>
@@ -119,8 +199,8 @@ export default function ChannelBudgetLab({ definition, lang, value, onChange, on
       <p>{labels.modelLimit}</p>
     </div>}
     result={status}
-    onReset={onReset}
-    onBack={onBack}
+    onReset={() => { cancelComparison(); setProgress(null); onReset(); }}
+    onBack={() => { cancelComparison(); onBack(); }}
   >
     <MessageEditor lang={lang} />
     <label>{labels.code}<select
@@ -158,7 +238,36 @@ export default function ChannelBudgetLab({ definition, lang, value, onChange, on
     /></label>
     <button type="button" onClick={() => updateConfig({ seed: (state.config.seed + 1) >>> 0 })}>{labels.newSeed}</button>
     <button type="button" onClick={run}>{labels.run}</button>
+    <button type="button" onClick={() => { void compare(); }} disabled={progress?.status === 'running'}>{labels.compare}</button>
+    {progress?.status === 'running' ? <button type="button" onClick={cancelComparison}>{labels.cancelComparison}</button> : null}
   </CommunicationLabFrame>;
+}
+
+function BatchView({ snapshot, labels, messageRevision, config }: {
+  snapshot: BatchSnapshot;
+  labels: typeof channelBudgetCopy.en;
+  messageRevision: number;
+  config: BatchConfig;
+}) {
+  const previousMessage = snapshot.messageRevision !== messageRevision;
+  const previousSettings = snapshot.config.p !== config.p || snapshot.config.seed !== config.seed || snapshot.config.budget !== config.budget;
+  return <section aria-label={labels.batchTable}>
+    <h5>{labels.batchTable}</h5>
+    {previousMessage ? <p><span aria-hidden="true">↺</span> {labels.batchStaleMessage}</p> : null}
+    {previousSettings ? <p><span aria-hidden="true">↺</span> {labels.batchStaleSettings}</p> : null}
+    <p>{labels.capturedBatch(snapshot.messageRevision, snapshot.config)}</p>
+    <table aria-label={labels.batchTable}>
+      <thead><tr><th>{labels.code}</th><th>{labels.batchExact}</th><th>{labels.batchRejected}</th><th>{labels.batchSilent}</th><th>{labels.batchBer}</th></tr></thead>
+      <tbody>{snapshot.result.rows.map((row) => <tr key={row.code}>
+        <th scope="row">{labels.codeLabels[row.code]}</th><td>{row.exact}</td><td>{row.rejected}</td><td>{row.silent}</td>
+        <td>{row.decodedPayloadBits === 0 ? labels.noDecodedBits
+          : `${row.payloadErrors} / ${row.decodedPayloadBits} (${(row.payloadErrors / row.decodedPayloadBits).toFixed(6)})`}</td>
+      </tr>)}</tbody>
+    </table>
+    {snapshot.result.excluded.length === 0 ? null : <p>{labels.excluded(snapshot.result.excluded.map((code) => labels.codeLabels[code]).join(', '))}</p>}
+    {snapshot.result.rows.length === 0 ? <p>{labels.noEligible}</p> : null}
+    <p>{labels.batchLimit}</p>
+  </section>;
 }
 
 function BudgetBreakdown({ labels, bitCount, budget, required, capacity, rate }: {
@@ -218,10 +327,22 @@ function readState(value: unknown, defaults: { defaultBudget: number; defaultP: 
   if (!validConfig(candidate.config)) return initial;
   return {
     config: { ...candidate.config },
-    batch: candidate.batch ?? null,
+    batch: isBatchSnapshot(candidate.batch) ? candidate.batch : null,
     ...(isBudgetFailure(candidate.budgetFailure) ? { budgetFailure: candidate.budgetFailure } : {}),
     ...(isReceipt(candidate.previousReceipt) ? { previousReceipt: candidate.previousReceipt } : {}),
   };
+}
+
+function isBatchSnapshot(value: unknown): value is BatchSnapshot {
+  if (typeof value !== 'object' || value === null) return false;
+  const snapshot = value as Partial<BatchSnapshot>;
+  return Number.isSafeInteger(snapshot.messageRevision) && Array.isArray(snapshot.source) &&
+    validConfig({ ...snapshot.config, code: 'raw' }) &&
+    Array.isArray(snapshot.result?.rows) && Array.isArray(snapshot.result?.excluded) &&
+    snapshot.result.rows.every((row) => (row.code === 'raw' || row.code === 'repeat3' || row.code === 'secded') &&
+      row.trials === 200 && [row.exact, row.rejected, row.silent, row.payloadErrors, row.decodedPayloadBits]
+        .every((count) => Number.isSafeInteger(count) && count >= 0) && row.exact + row.rejected + row.silent === 200) &&
+    snapshot.result.excluded.every((code) => code === 'raw' || code === 'repeat3' || code === 'secded');
 }
 
 function validConfig(value: unknown): value is TransmissionConfig {
