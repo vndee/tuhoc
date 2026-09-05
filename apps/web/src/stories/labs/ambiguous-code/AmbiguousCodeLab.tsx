@@ -79,7 +79,7 @@ export default function AmbiguousCodeLab({ definition, lang, value, onChange, on
         />
       </label>)}
     </fieldset>
-    <p>{prefixFree ? copy.prefixFree : copy.prefixCollision}</p>
+    {validBook ? <p>{prefixFree ? copy.prefixFree : copy.prefixCollision}</p> : null}
     <div className="ambiguous-code-symbol-picker" aria-label={copy.addSymbol}>
       {SYMBOL_IDS.map((symbol) => <button
         key={symbol}

@@ -57,6 +57,16 @@ describe('AmbiguousCodeLab', () => {
     expect(screen.getByRole('status')).toHaveTextContent('valid readings');
   });
 
+  it('does not classify an invalid draft as prefix-free or prefix-colliding', () => {
+    renderJourneyLab(AmbiguousCodeLab, definition, { lang: 'en', sceneId: 'scene-02' });
+    fireEvent.click(screen.getByRole('button', { name: 'Use prefix-free preset' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Code for A' }), { target: { value: '' } });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Use 1 to 6 binary digits for every code.');
+    expect(screen.queryByText(/This codebook is prefix-free/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/This codebook has a prefix collision/)).not.toBeInTheDocument();
+  });
+
   it('applies the prefix-free preset, then reports one reading only after Send', () => {
     renderJourneyLab(AmbiguousCodeLab, definition, { lang: 'en', sceneId: 'scene-02' });
     fireEvent.click(screen.getByRole('button', { name: 'Use prefix-free preset' }));
