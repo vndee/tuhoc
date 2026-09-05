@@ -201,6 +201,34 @@ describe('validateStory', () => {
     }));
   });
 
+  it.each([14, 41, 20.5, Number.NaN])('rejects an invalid cable-route budget at its exact field: %s', (defaultBudget) => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'cable-route',
+      title: { vi: 'Chọn tuyến', en: 'Choose a route' },
+      instruction: { vi: 'So sánh', en: 'Compare' },
+      config: { defaultBudget },
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'cable-route'] as never[])))
+      .toContainEqual(expect.objectContaining({
+        code: 'invalid-lab-config', path: 'scenes.0.lab.config.defaultBudget',
+      }));
+  });
+
+  it.each([15, 28, 40])('accepts an integer cable-route budget within 15–40: %s', (defaultBudget) => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'cable-route',
+      title: { vi: 'Chọn tuyến', en: 'Choose a route' },
+      instruction: { vi: 'So sánh', en: 'Compare' },
+      config: { defaultBudget },
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'cable-route'] as never[])))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid-lab-config' })]));
+  });
+
   it('reports each invalid image, source, provenance, and source reference at its exact path', () => {
     const story = makeStoryFixture();
     story.scenes[0].illustration.src = '';

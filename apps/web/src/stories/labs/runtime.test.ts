@@ -20,6 +20,7 @@ const definitions: LabDefinition[] = [
   { kind: 'message-budget', title: localized('Giữ lời', 'Keep the meaning'), instruction: localized('Rút gọn', 'Shorten'), config: { defaultBudget: 30 } },
   { kind: 'ambiguous-code', title: localized('Mã nhập nhằng', 'Ambiguous code'), instruction: localized('Giải mã', 'Decode'), config: { initialBook: { A: '0', B: '01', C: '1', D: '11' }, initialSymbols: 'B' } },
   { kind: 'morse-spacing', title: localized('Khoảng nghỉ Morse', 'Morse spacing'), instruction: localized('Đọc', 'Read'), config: { example: 'ET' } },
+  { kind: 'cable-route', title: localized('Chọn tuyến', 'Choose route'), instruction: localized('So sánh', 'Compare'), config: { defaultBudget: 28 } },
 ];
 
 const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
@@ -38,6 +39,7 @@ const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
   'message-budget': { budget: 30 },
   'ambiguous-code': { book: { A: '0', B: '01', C: '1', D: '11' }, symbols: 'B', result: null },
   'morse-spacing': { example: 'ET', letterGap: 3, wordGap: 7, result: null },
+  'cable-route': { route: 'south', budget: 28, step: 0 },
 };
 
 const emptyLearningRates: Extract<LabDefinition, { kind: 'gradient-descent' }> = {
@@ -50,6 +52,15 @@ const emptyExamples: Extract<LabDefinition, { kind: 'attention' }> = {
 };
 
 describe('makeInitialLabState', () => {
+  it('initializes cable-route from its configured budget', () => {
+    const definition = {
+      kind: 'cable-route', title: localized('Chọn tuyến', 'Choose route'), instruction: localized('So sánh', 'Compare'),
+      config: { defaultBudget: 24 },
+    } as unknown as LabDefinition;
+
+    expect(makeInitialLabState(definition)).toEqual({ route: 'south', budget: 24, step: 0 });
+  });
+
   it('returns the exact initial-state table for every lab kind', () => {
     expect(definitions.map((definition) => definition.kind)).toEqual(ALL_LAB_KINDS);
 

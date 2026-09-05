@@ -356,6 +356,7 @@ const MESSAGE_HOMES: readonly string[] = [
   'apps/web/src/stories/labs/message-budget/copy.ts',
   'apps/web/src/stories/labs/ambiguous-code/copy.ts',
   'apps/web/src/stories/labs/morse-spacing/copy.ts',
+  'apps/web/src/stories/labs/cable-route/copy.ts',
 ];
 
 /**

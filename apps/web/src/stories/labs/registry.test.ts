@@ -16,6 +16,10 @@ void registryApiAssertions;
 afterEach(() => vi.restoreAllMocks());
 
 describe('labRegistry', () => {
+  it('has an explicit lazy loader for cable-route', () => {
+    expect((labRegistry as Record<string, unknown>)['cable-route']).toEqual(expect.any(Function));
+  });
+
   it('registers every lab kind explicitly', () => {
     expect(Object.keys(labRegistry).sort()).toEqual([...ALL_LAB_KINDS].sort());
     expect(REGISTERED_LAB_KINDS).toEqual(new Set(ALL_LAB_KINDS));

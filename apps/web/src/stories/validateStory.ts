@@ -212,6 +212,12 @@ export function validateStory(
           add('invalid-lab-config', `${path}.lab.config.example`, 'Morse example must be ET, AET, BEAM, or BEAM ET');
         }
         break;
+      case 'cable-route':
+        if (!Number.isInteger(scene.lab.config.defaultBudget) ||
+          scene.lab.config.defaultBudget < 15 || scene.lab.config.defaultBudget > 40) {
+          add('invalid-lab-config', `${path}.lab.config.defaultBudget`, 'cable route budget must be an integer from 15 to 40');
+        }
+        break;
       default:
         break;
     }
