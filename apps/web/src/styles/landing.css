@@ -839,6 +839,10 @@ html[data-theme='dark'] .board {
   transform: scale(1.025);
 }
 
+.bd-story-feature-copy {
+  min-width: 0;
+}
+
 .bd-story-feature-meta,
 .story-index-meta {
   display: flex;
@@ -854,10 +858,12 @@ html[data-theme='dark'] .board {
   margin: 10px 0 0;
   color: var(--ink);
   font-family: inherit;
-  font-size: clamp(26px, 3vw, 38px);
+  font-size: clamp(22px, 1.8vw, 28px);
   font-weight: 600;
-  letter-spacing: -0.014em;
-  line-height: 1.08;
+  letter-spacing: -0.008em;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
 #app:not(.reading) #content .board-room .bd-story-feature-copy h3 a {
@@ -1276,10 +1282,6 @@ html[data-theme='dark'] .story-index-deck {
   #app:not(.reading) #content .board-room .bd-course {
     grid-template-columns: minmax(0, 1fr);
     gap: 5px;
-  }
-
-  #app:not(.reading) #content .board-room .bd-story-feature-copy h3 {
-    font-size: 29px;
   }
 
   .story-index {
