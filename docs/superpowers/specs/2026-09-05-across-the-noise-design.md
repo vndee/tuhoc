@@ -1,6 +1,6 @@
 # Đặc san 02 — Một lời nói đi qua đại dương
 
-**Across the Noise — bản thiết kế để duyệt, 05/09/2026.**
+**Across the Noise — bản thiết kế đã được chủ sản phẩm duyệt, 05/09/2026.**
 
 Storyboard 4 hồi, 12 cảnh, 12 lab đã được chủ sản phẩm duyệt. Tài liệu này cụ thể hoá nội dung song ngữ, art direction, mô hình tương tác và điều kiện nghiệm thu. Chưa cho phép phát hành hay thay đổi production. Số 03 “Thế giới không có người chỉ huy” nằm ngoài phạm vi đợt này.
 
@@ -207,7 +207,7 @@ Các nguồn dưới đây được kiểm tra ngày 05/09/2026. Tư liệu ph�
 
 ## 8. Chốt vòng thiết kế
 
-Sau khi người dùng duyệt ba tài liệu: chuyển sang skill writing-plans, chia implementation thành module có test và điểm review tranh/copy. Chưa mở PR phát hành, chưa merge và chưa deploy. Mọi đổi lớn khỏi storyboard đã duyệt phải được nêu ra trước khi thực hiện.
+Người dùng đã duyệt ba tài liệu. Bước tiếp theo là [kế hoạch triển khai](../plans/2026-09-05-across-the-noise.md), chia implementation thành module có test và điểm review tranh/copy. Chưa mở PR phát hành, chưa merge và chưa deploy. Mọi đổi lớn khỏi storyboard đã duyệt phải được nêu ra trước khi thực hiện.
 
 ## 9. Tự kiểm tra bản thiết kế — 05/09/2026
 
