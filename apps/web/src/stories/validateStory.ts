@@ -197,6 +197,16 @@ export function validateStory(
           add('invalid-lab-config', `${path}.lab.config.defaultBudget`, 'message budget must be 15, 30, or 60');
         }
         break;
+      case 'ambiguous-code':
+        for (const symbol of ['A', 'B', 'C', 'D'] as const) {
+          if (!/^[01]{1,6}$/.test(scene.lab.config.initialBook[symbol])) {
+            add('invalid-lab-config', `${path}.lab.config.initialBook.${symbol}`, 'codewords must contain 1–6 binary digits');
+          }
+        }
+        if (!/^[ABCD]{1,6}$/.test(scene.lab.config.initialSymbols)) {
+          add('invalid-lab-config', `${path}.lab.config.initialSymbols`, 'initial symbols must contain 1–6 A/B/C/D symbols');
+        }
+        break;
       default:
         break;
     }

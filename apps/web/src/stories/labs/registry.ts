@@ -19,6 +19,7 @@ export const labRegistry: Readonly<Record<LabKind, () => Promise<LabModule>>> = 
   'agent-trace': () => import('./agent-trace/AgentTraceLab'),
   'agi-definitions': () => import('./agi-definitions/AgiDefinitionsLab'),
   'message-budget': () => import('./message-budget/MessageBudgetLab'),
+  'ambiguous-code': () => import('./ambiguous-code/AmbiguousCodeLab'),
 };
 
 export const REGISTERED_LAB_KINDS: ReadonlySet<LabKind> = new Set(Object.keys(labRegistry) as LabKind[]);

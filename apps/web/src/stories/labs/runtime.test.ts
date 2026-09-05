@@ -18,6 +18,7 @@ const definitions: LabDefinition[] = [
   { kind: 'agent-trace', title: localized('Tác tử', 'Agent'), instruction: localized('Thử', 'Try'), config: { steps: [{ id: 'read', kind: 'data', label: localized('Đọc', 'Read'), permission: 'read' }] } },
   { kind: 'agi-definitions', title: localized('AGI', 'AGI'), instruction: localized('Thử', 'Try'), config: { definitions: [{ id: 'd-1', label: localized('D1', 'D1'), sourceId: 'test', sourceLabel: localized('Nguồn thử', 'Test source'), note: localized('Một', 'One'), generality: 1, capability: 1, autonomy: 1 }, { id: 'd-2', label: localized('D2', 'D2'), sourceId: 'test', sourceLabel: localized('Nguồn thử', 'Test source'), note: localized('Hai', 'Two'), generality: 2, capability: 2, autonomy: 2 }, { id: 'd-3', label: localized('D3', 'D3'), sourceId: 'test', sourceLabel: localized('Nguồn thử', 'Test source'), note: localized('Ba', 'Three'), generality: 3, capability: 3, autonomy: 3 }] } },
   { kind: 'message-budget', title: localized('Giữ lời', 'Keep the meaning'), instruction: localized('Rút gọn', 'Shorten'), config: { defaultBudget: 30 } },
+  { kind: 'ambiguous-code', title: localized('Mã nhập nhằng', 'Ambiguous code'), instruction: localized('Giải mã', 'Decode'), config: { initialBook: { A: '0', B: '01', C: '1', D: '11' }, initialSymbols: 'B' } },
 ];
 
 const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
@@ -34,6 +35,7 @@ const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
   'agent-trace': { granted: [] },
   'agi-definitions': { selectedIds: ['d-1', 'd-2'] },
   'message-budget': { budget: 30 },
+  'ambiguous-code': { book: { A: '0', B: '01', C: '1', D: '11' }, symbols: 'B', result: null },
 };
 
 const emptyLearningRates: Extract<LabDefinition, { kind: 'gradient-descent' }> = {
@@ -92,6 +94,18 @@ describe('makeInitialLabState', () => {
     first.selectedIds.push('local-only');
     expect(agi.config.definitions.slice(0, 2).map((item) => item.id)).toEqual(['from-source', 'd-2']);
     expect(second.selectedIds).toEqual(['d-1', 'd-2']);
+  });
+
+  it('copies the ambiguous-code codebook for every initial state', () => {
+    const definition = definitions.find((item) => item.kind === 'ambiguous-code')! as Extract<LabDefinition, { kind: 'ambiguous-code' }>;
+    const first = makeInitialLabState(definition) as { book: Record<string, string> };
+    const second = makeInitialLabState(definition) as { book: Record<string, string> };
+
+    expect(first.book).not.toBe(second.book);
+    expect(first.book).not.toBe(definition.config.initialBook);
+    first.book.A = '111';
+    expect(second.book.A).toBe('0');
+    expect(definition.config.initialBook.A).toBe('0');
   });
 
   it('returns equal but independent reset state for every lab kind', () => {

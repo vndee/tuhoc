@@ -31,5 +31,6 @@ export function makeInitialLabState(definition: LabDefinition): unknown {
     case 'agent-trace': return { granted: [] };
     case 'agi-definitions': return { selectedIds: definition.config.definitions.slice(0, 2).map((item) => item.id) };
     case 'message-budget': return { budget: definition.config.defaultBudget };
+    case 'ambiguous-code': return { book: { ...definition.config.initialBook }, symbols: definition.config.initialSymbols, result: null };
   }
 }
