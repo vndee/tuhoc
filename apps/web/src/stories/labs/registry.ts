@@ -21,6 +21,7 @@ export const labRegistry: Readonly<Record<LabKind, () => Promise<LabModule>>> = 
   'message-budget': () => import('./message-budget/MessageBudgetLab'),
   'ambiguous-code': () => import('./ambiguous-code/AmbiguousCodeLab'),
   'morse-spacing': () => import('./morse-spacing/MorseSpacingLab'),
+  'cable-route': () => import('./cable-route/CableRouteLab'),
 };
 
 export const REGISTERED_LAB_KINDS: ReadonlySet<LabKind> = new Set(Object.keys(labRegistry) as LabKind[]);

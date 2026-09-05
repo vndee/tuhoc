@@ -92,6 +92,7 @@ export const ALL_LAB_KINDS = [
   'message-budget',
   'ambiguous-code',
   'morse-spacing',
+  'cable-route',
 ] as const;
 export type LabKind = (typeof ALL_LAB_KINDS)[number];
 
@@ -117,7 +118,8 @@ export type LabDefinition =
   | LabBase<'agi-definitions', { definitions: Array<{ id: string; label: Localized; note: Localized; sourceId: string; sourceLabel: Localized; generality: number; capability: number; autonomy: number }> }>
   | LabBase<'message-budget', { defaultBudget: 15 | 30 | 60 }>
   | LabBase<'ambiguous-code', { initialBook: Codebook; initialSymbols: string }>
-  | LabBase<'morse-spacing', { example: 'ET' | 'AET' | 'BEAM' | 'BEAM ET' }>;
+  | LabBase<'morse-spacing', { example: 'ET' | 'AET' | 'BEAM' | 'BEAM ET' }>
+  | LabBase<'cable-route', { defaultBudget: number }>;
 
 export interface LabFallback {
   diagramLabel: Localized;

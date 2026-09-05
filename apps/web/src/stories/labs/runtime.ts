@@ -33,5 +33,6 @@ export function makeInitialLabState(definition: LabDefinition): unknown {
     case 'message-budget': return { budget: definition.config.defaultBudget };
     case 'ambiguous-code': return { book: { ...definition.config.initialBook }, symbols: definition.config.initialSymbols, result: null };
     case 'morse-spacing': return { example: definition.config.example, letterGap: 3, wordGap: 7, result: null };
+    case 'cable-route': return { route: 'south', budget: definition.config.defaultBudget, step: 0 };
   }
 }
