@@ -61,7 +61,7 @@ describe('ChannelBudgetLab', () => {
     expect(screen.queryByText(/delivered exactly/i)).not.toBeInTheDocument();
   });
 
-  it('retains an old success only as an explicitly previous attempt after a budget rejection', () => {
+  it('retains an old receipt only as an explicitly previous attempt after a budget rejection', () => {
     renderJourneyLab(JourneyControls, definition, { lang: 'en', example: 'A'.repeat(65), sceneId: 'scene-11' });
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Configured flip probability p' }), { target: { value: '0' } });
     fireEvent.click(screen.getByRole('button', { name: 'Run transmission' }));
@@ -71,9 +71,41 @@ describe('ChannelBudgetLab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run transmission' }));
 
     expect(screen.getByLabelText('session receipt')).toHaveTextContent('none');
-    const previous = screen.getByRole('region', { name: 'Previous successful attempt' });
+    const previous = screen.getByRole('region', { name: 'Previous transmission attempt' });
     expect(previous).toHaveTextContent('This receipt is from the earlier run, not the budget-rejected attempt.');
     expect(previous).toHaveTextContent('Exact delivery');
+  });
+
+  it.each([
+    {
+      outcome: 'rejected',
+      configure: () => {
+        fireEvent.change(screen.getByRole('combobox', { name: 'Channel code' }), { target: { value: 'secded' } });
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Noise seed' }), { target: { value: '6' } });
+      },
+      receiptText: 'Rejected: SECDED detected an uncorrectable error pattern.',
+    },
+    {
+      outcome: 'silent-corruption',
+      configure: () => {
+        fireEvent.change(screen.getByRole('spinbutton', { name: 'Noise seed' }), { target: { value: '1' } });
+      },
+      receiptText: 'Silent corruption: accepted bytes differ from the source.',
+    },
+  ])('keeps a prior $outcome outcome honest after a later budget rejection', ({ outcome, configure, receiptText }) => {
+    renderJourneyLab(JourneyControls, definition, { lang: 'en', example: 'A'.repeat(65), sceneId: 'scene-11' });
+    configure();
+    fireEvent.click(screen.getByRole('button', { name: 'Run transmission' }));
+    expect(screen.getByLabelText('session receipt')).toHaveTextContent(outcome);
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Transmission budget in channel uses' }), { target: { value: '512' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Run transmission' }));
+
+    expect(screen.getByLabelText('session receipt')).toHaveTextContent('none');
+    const previous = screen.getByRole('region', { name: 'Previous transmission attempt' });
+    expect(previous).toHaveTextContent(receiptText);
+    expect(previous).toHaveTextContent('This receipt is from the earlier run, not the budget-rejected attempt.');
+    expect(previous).not.toHaveTextContent(/successful attempt/i);
   });
 
   it('labels SECDED rejection and raw corruption without presenting either as exact success', () => {
@@ -81,7 +113,9 @@ describe('ChannelBudgetLab', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Channel code' }), { target: { value: 'secded' } });
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Noise seed' }), { target: { value: '6' } });
     fireEvent.click(screen.getByRole('button', { name: 'Run transmission' }));
-    expect(screen.getByRole('status')).toHaveTextContent('Rejected: a SECDED word detected two errors.');
+    const rejectedStatus = screen.getByRole('status');
+    expect(rejectedStatus).toHaveTextContent('Rejected: SECDED detected an uncorrectable error pattern.');
+    expect(rejectedStatus).not.toHaveTextContent(/two errors|exactly two/i);
     expect(screen.getByLabelText('session receipt')).toHaveTextContent('rejected');
     expect(screen.getByText('No payload was accepted.')).toBeVisible();
 
