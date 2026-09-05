@@ -56,5 +56,10 @@ export function makeInitialLabState(definition: LabDefinition): unknown {
       prediction: null,
     };
     case 'huffman-message': return { step: 0, page: 0, snapshot: null };
+    case 'repetition-channel': return {
+      config: { p: definition.config.defaultP, seed: definition.config.seed, mode: 'bsc', start: 0, length: 1 },
+      snapshot: null,
+      page: 0,
+    };
   }
 }

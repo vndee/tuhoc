@@ -25,6 +25,7 @@ const definitions: LabDefinition[] = [
   { kind: 'binary-noise', title: localized('Kênh nhiễu', 'Noisy channel'), instruction: localized('Truyền', 'Transmit'), config: { defaultP: 0.05, seed: 20260905 } },
   { kind: 'source-entropy', title: localized('Entropy nguồn', 'Source entropy'), instruction: localized('Rút', 'Draw'), config: { weights: [25, 25, 25, 25], seed: 20260905 } },
   { kind: 'huffman-message', title: localized('Nén', 'Compress'), instruction: localized('Tính cả gói', 'Count the whole packet'), config: { maxVisibleNodes: 24 } } as unknown as LabDefinition,
+  { kind: 'repetition-channel', title: localized('Gửi ba lần', 'Three copies'), instruction: localized('So sánh', 'Compare'), config: { defaultP: 0.05, seed: 20260905 } } as unknown as LabDefinition,
 ];
 
 const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
@@ -53,6 +54,7 @@ const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
   },
   'source-entropy': { weights: [25, 25, 25, 25], seed: 20260905, counter: 0, lastDraw: null, prediction: null },
   'huffman-message': { step: 0, page: 0, snapshot: null },
+  'repetition-channel': { config: { p: 0.05, seed: 20260905, mode: 'bsc', start: 0, length: 1 }, snapshot: null, page: 0 },
 };
 
 const sourceEntropyDefinition: Extract<LabDefinition, { kind: 'source-entropy' }> = {
@@ -75,6 +77,16 @@ const emptyExamples: Extract<LabDefinition, { kind: 'attention' }> = {
 };
 
 describe('makeInitialLabState', () => {
+  it('initializes repetition-channel with the approved channel defaults and no run', () => {
+    const repetition = definitions.find((definition) => definition.kind === ('repetition-channel' as never))!;
+
+    expect(makeInitialLabState(repetition)).toEqual({
+      config: { p: 0.05, seed: 20260905, mode: 'bsc', start: 0, length: 1 },
+      snapshot: null,
+      page: 0,
+    });
+  });
+
   it('initializes huffman-message with a fresh empty construction view', () => {
     const huffman = definitions.find((definition) => definition.kind === 'huffman-message')!;
 

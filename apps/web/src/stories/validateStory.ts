@@ -60,6 +60,14 @@ export function validateStory(
       });
     }
   };
+  const noiseDefaults = (defaultP: number, seed: number, path: string, label: string) => {
+    if (!Number.isFinite(defaultP) || defaultP < 0 || defaultP > 0.5) {
+      add('invalid-lab-config', `${path}.defaultP`, `${label} probability must be from 0 to 0.5`);
+    }
+    if (!Number.isInteger(seed) || seed < 0 || seed > 0xffff_ffff) {
+      add('invalid-lab-config', `${path}.seed`, `${label} seed must be a uint32`);
+    }
+  };
 
   text(story.meta.title, 'meta.title');
   text(story.meta.deck, 'meta.deck');
@@ -224,14 +232,7 @@ export function validateStory(
         }
         break;
       case 'binary-noise':
-        if (!Number.isFinite(scene.lab.config.defaultP) ||
-          scene.lab.config.defaultP < 0 || scene.lab.config.defaultP > 0.5) {
-          add('invalid-lab-config', `${path}.lab.config.defaultP`, 'binary noise probability must be from 0 to 0.5');
-        }
-        if (!Number.isInteger(scene.lab.config.seed) ||
-          scene.lab.config.seed < 0 || scene.lab.config.seed > 0xffff_ffff) {
-          add('invalid-lab-config', `${path}.lab.config.seed`, 'binary noise seed must be a uint32');
-        }
+        noiseDefaults(scene.lab.config.defaultP, scene.lab.config.seed, `${path}.lab.config`, 'binary noise');
         break;
       case 'source-entropy': {
         const weights: unknown = scene.lab.config.weights;
@@ -256,6 +257,9 @@ export function validateStory(
             'Huffman visible nodes must be an integer from 1 to 32',
           );
         }
+        break;
+      case 'repetition-channel':
+        noiseDefaults(scene.lab.config.defaultP, scene.lab.config.seed, `${path}.lab.config`, 'repetition');
         break;
       default:
         break;
