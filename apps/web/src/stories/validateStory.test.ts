@@ -153,6 +153,40 @@ describe('validateStory', () => {
     ]));
   });
 
+  it.each([
+    [{ A: '', B: '01', C: '1', D: '11' }, 'B', 'scenes.0.lab.config.initialBook.A'],
+    [{ A: '0', B: '012', C: '1', D: '11' }, 'B', 'scenes.0.lab.config.initialBook.B'],
+    [{ A: '0', B: '01', C: '1', D: '1111111' }, 'B', 'scenes.0.lab.config.initialBook.D'],
+    [{ A: '0', B: '01', C: '1', D: '11' }, '', 'scenes.0.lab.config.initialSymbols'],
+    [{ A: '0', B: '01', C: '1', D: '11' }, 'ABX', 'scenes.0.lab.config.initialSymbols'],
+    [{ A: '0', B: '01', C: '1', D: '11' }, 'AAAAAAA', 'scenes.0.lab.config.initialSymbols'],
+  ])('rejects invalid ambiguous-code config at its exact field', (initialBook, initialSymbols, path) => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'ambiguous-code',
+      title: { vi: 'Mã nhập nhằng', en: 'Ambiguous code' },
+      instruction: { vi: 'Giải mã', en: 'Decode' },
+      config: { initialBook, initialSymbols },
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, REGISTERED_LAB_KINDS)).toContainEqual(expect.objectContaining({
+      code: 'invalid-lab-config', path,
+    }));
+  });
+
+  it('accepts duplicate codewords in ambiguous-code config', () => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'ambiguous-code',
+      title: { vi: 'Mã nhập nhằng', en: 'Ambiguous code' },
+      instruction: { vi: 'Giải mã', en: 'Decode' },
+      config: { initialBook: { A: '0', B: '0', C: '0', D: '0' }, initialSymbols: 'AB' },
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'ambiguous-code'] as never[])))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid-lab-config' })]));
+  });
+
   it('reports each invalid image, source, provenance, and source reference at its exact path', () => {
     const story = makeStoryFixture();
     story.scenes[0].illustration.src = '';
