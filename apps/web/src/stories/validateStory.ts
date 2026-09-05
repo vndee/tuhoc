@@ -257,11 +257,11 @@ export function validateStory(
         break;
       case 'ambiguous-code':
         for (const symbol of ['A', 'B', 'C', 'D'] as const) {
-          if (!/^[01]{1,6}$/.test(scene.lab.config.initialBook[symbol])) {
+          if (typeof scene.lab.config.initialBook[symbol] !== 'string' || !/^[01]{1,6}$/.test(scene.lab.config.initialBook[symbol])) {
             add('invalid-lab-config', `${path}.lab.config.initialBook.${symbol}`, 'codewords must contain 1–6 binary digits');
           }
         }
-        if (!/^[ABCD]{1,6}$/.test(scene.lab.config.initialSymbols)) {
+        if (typeof scene.lab.config.initialSymbols !== 'string' || !/^[ABCD]{1,6}$/.test(scene.lab.config.initialSymbols)) {
           add('invalid-lab-config', `${path}.lab.config.initialSymbols`, 'initial symbols must contain 1–6 A/B/C/D symbols');
         }
         break;
@@ -338,11 +338,12 @@ export function validateStory(
           break;
         }
         const seen = new Set<string>();
-        contexts.forEach((value, contextIndex) => {
+        for (let contextIndex = 0; contextIndex < contexts.length; contextIndex++) {
+          const value = contexts[contextIndex];
           const contextPath = `${path}.lab.config.contexts.${contextIndex}`;
           if (typeof value !== 'object' || value === null) {
             add('invalid-lab-config', contextPath, 'message meaning context must be an object');
-            return;
+            continue;
           }
           const context = value as { id?: unknown; label?: unknown };
           if (context.id !== 'meeting' && context.id !== 'disagreement' && context.id !== 'missing-previous') {
@@ -359,7 +360,7 @@ export function validateStory(
           } else {
             add('missing-locale', `${contextPath}.label`, 'context label must include both locales');
           }
-        });
+        }
         break;
       }
       default:

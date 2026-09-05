@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test": "vitest run",
+    "test:story-plates-native": "node scripts/export-story-plates.mjs --check-tools && vitest run --config vitest.native.config.ts",
     "test:watch": "vitest"
   },
   "dependencies": {

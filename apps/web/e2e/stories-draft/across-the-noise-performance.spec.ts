@@ -40,9 +40,11 @@ for (const width of [320, 390, 1024, 1440]) test(`draft loads nearby decoded art
   const initialScenes = [...new Set(images.filter(url => /\/scene-\d\d/.test(url)))];
   expect(initialScenes.length).toBeLessThanOrEqual(3);
   expect(initialScenes.some(url => /scene-(?:0[4-9]|1[0-2])/.test(url))).toBe(false);
-  await page.screenshot({ path: info.outputPath('cover-light.png') });
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.locator('.story-cover-plate').screenshot({ path: info.outputPath('cover-light.png') });
   await page.locator('.story-theme-toggle').click();
-  await page.screenshot({ path: info.outputPath('cover-dark.png') });
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.locator('.story-cover-plate').screenshot({ path: info.outputPath('cover-dark.png') });
   await enterNoiseLab(page, 6);
   expect(scripts.some(url => /BinaryNoiseLab-/.test(url))).toBe(true);
   expect(scripts.some(url => /HuffmanMessageLab-|SecdedInspectorLab-/.test(url))).toBe(false);

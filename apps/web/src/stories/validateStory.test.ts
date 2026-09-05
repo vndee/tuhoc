@@ -199,6 +199,9 @@ describe('validateStory', () => {
 
   it.each([
     [{ A: '', B: '01', C: '1', D: '11' }, 'B', 'scenes.0.lab.config.initialBook.A'],
+    [{ A: 0, B: '01', C: '1', D: '11' }, 'B', 'scenes.0.lab.config.initialBook.A'],
+    [{ A: ['0'], B: '01', C: '1', D: '11' }, 'B', 'scenes.0.lab.config.initialBook.A'],
+    [{ A: '0', B: '01', C: '1', D: '11' }, ['AB'], 'scenes.0.lab.config.initialSymbols'],
     [{ A: '0', B: '012', C: '1', D: '11' }, 'B', 'scenes.0.lab.config.initialBook.B'],
     [{ A: '0', B: '01', C: '1', D: '1111111' }, 'B', 'scenes.0.lab.config.initialBook.D'],
     [{ A: '0', B: '01', C: '1', D: '11' }, '', 'scenes.0.lab.config.initialSymbols'],
@@ -431,6 +434,18 @@ describe('validateStory', () => {
 
     expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'message-meaning'] as never[])))
       .toContainEqual(expect.objectContaining({ code, path }));
+  });
+
+  it('rejects every missing index in a sparse message-meaning context list', () => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'message-meaning', title: { vi: 'Ý nghĩa', en: 'Meaning' },
+      instruction: { vi: 'Suy ngẫm', en: 'Reflect' }, config: { contexts: Array(3) },
+    } as unknown as typeof story.scenes[0]['lab'];
+    const issues = validateStory(story, REGISTERED_LAB_KINDS);
+    for (const index of [0, 1, 2]) expect(issues).toContainEqual(expect.objectContaining({
+      code: 'invalid-lab-config', path: `scenes.0.lab.config.contexts.${index}`,
+    }));
   });
 
   it.each(['', '101', '10110', '10a1', ' 1011', 1011, ['1011']])('rejects invalid secded-inspector data at its exact field: %j', (data) => {

@@ -132,7 +132,7 @@ function HuffmanObservation({ snapshot, step, page, maxVisibleNodes, stale, deco
     <AccessibleTreeWindow nodes={visibleNodes} packet={packet} labels={labels} />
     <section aria-label={labels.mergeHistory}>
       <h5>{labels.mergeHistory}</h5>
-      {merges.length === 0 ? <p>{labels.noMerges}</p> : <ol>{merges.slice(-8).map((merge) => <li key={merge.parent}>
+      {merges.length === 0 ? <p>{packet.merges.length === 0 ? labels.noMerges : labels.noMergesRevealed}</p> : <ol>{merges.slice(-8).map((merge) => <li key={merge.parent}>
         {labels.merge(
           nodeShortLabel(packet.nodes[merge.left]!, labels),
           nodeShortLabel(packet.nodes[merge.right]!, labels),

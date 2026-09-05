@@ -1,13 +1,21 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
-import { lstat, stat, realpath, readFile, mkdir, mkdtemp, rename, rm } from 'node:fs/promises';
+import { access, lstat, stat, realpath, readFile, mkdir, mkdtemp, rename, rm } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const defaultRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outputRelative = 'src/stories/content/across-the-noise/assets';
 const execute = promisify(execFile);
+
+export async function checkNativeTools(checkAccess = access) {
+  for (const file of ['/usr/bin/sips', '/opt/homebrew/bin/cwebp']) {
+    try { await checkAccess(file, constants.X_OK); }
+    catch { throw new Error(`Required native artwork tool is unavailable or not executable: ${file}. See docs/testing.md; native conversion coverage has not run.`); }
+  }
+}
 
 async function optionalLstat(file) {
   try { return await lstat(file); }
@@ -136,9 +144,15 @@ export async function exportStoryPlates({ manifestPath, outDir, appRoot = defaul
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
+    if (args.length === 1 && args[0] === '--check-tools') {
+      await checkNativeTools();
+      process.stdout.write('Native artwork prerequisites available; conversion tests must still run.\n');
+      process.exit(0);
+    }
     if (args.length !== 4 || args[0] !== '--manifest' || args[2] !== '--out') {
       throw new Error('Usage: node scripts/export-story-plates.mjs --manifest <manifest.json> --out src/stories/content/across-the-noise/assets');
     }
+    await checkNativeTools();
     const results = await exportStoryPlates({ manifestPath: args[1], outDir: args[3] });
     process.stdout.write(`${JSON.stringify(results, null, 2)}\n`);
   } catch (error) {

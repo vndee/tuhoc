@@ -81,12 +81,16 @@ function ReceiptDetails({ receipt, copy }: { receipt: DeliveryReceipt; copy: Mes
   return <>
     <p>{copy.capturedSettings(receipt.config)}</p>
     <section aria-label={copy.originalBytes}><h6>{copy.originalBytes}</h6><code>{toHex(receipt.source)}</code></section>
-    <p>{original.ok ? copy.originalText(original.value) : copy.invalidOriginal}</p>
+    {original.ok
+      ? <p><span>{copy.originalText}</span>{' '}<span data-literal-text style={{ whiteSpace: 'pre-wrap' }}>{original.value}</span></p>
+      : <p>{copy.invalidOriginal}</p>}
     {receipt.outcome === 'rejected' || receipt.received === null
       ? <p>{copy.rejectedSentence}</p>
       : <>
         <section aria-label={copy.receivedBytes}><h6>{copy.receivedBytes}</h6><code>{toHex(receipt.received)}</code></section>
-        <p>{received?.ok ? copy.receivedText(received.value) : copy.invalidReceived}</p>
+        {received?.ok
+          ? <p><span>{copy.receivedText}</span>{' '}<span data-literal-text style={{ whiteSpace: 'pre-wrap' }}>{received.value}</span></p>
+          : <p>{copy.invalidReceived}</p>}
       </>}
   </>;
 }

@@ -57,7 +57,7 @@ export function simulatePulses(bits: Bits, config: PulseConfig): Result<PulseRes
   );
   const symbolBySampleTick = new Map(sampleTickBySymbol.map((tick, symbol) => [tick, symbol]));
   const alpha = config.tau === 0 ? 1 : 1 - Math.exp(-(1 / TICKS_PER_UNIT) / config.tau);
-  const points: PulsePoint[] = [{ time: 0, input: amplitude(bits[0]!), output: 0 }];
+  const points: PulsePoint[] = [{ time: 0, input: amplitude(bits[0]!), output: config.tau === 0 ? amplitude(bits[0]!) : 0 }];
   const samples: PulseSample[] = [];
   let output = 0;
   let errors = 0;
@@ -70,6 +70,13 @@ export function simulatePulses(bits: Bits, config: PulseConfig): Result<PulseRes
       : (1 - alpha) * output + alpha * amplitude(sent);
     const nextTick = tick + 1;
     const pointSymbol = Math.min(Math.floor(nextTick / ticksPerSymbol), bits.length - 1);
+    if (config.tau === 0) {
+      const nextInput = amplitude(bits[pointSymbol]!);
+      // Two points at the same time describe an instantaneous NRZ edge.
+      // Keep the positive-tau integration and its initial condition unchanged.
+      if (nextInput !== output) points.push({ time: nextTick / TICKS_PER_UNIT, input: output, output });
+      output = nextInput;
+    }
     points.push({
       time: nextTick / TICKS_PER_UNIT,
       input: amplitude(bits[pointSymbol]!),
