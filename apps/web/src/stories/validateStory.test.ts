@@ -32,6 +32,26 @@ describe('validateStory', () => {
     expect(validateStory(makeStoryFixture(), REGISTERED_LAB_KINDS)).toEqual([]);
   });
 
+  it('accepts truthful empty provenance edits for an unchanged generated original', () => {
+    const story = makeStoryFixture();
+    story.provenance[0].edits = [];
+
+    expect(validateStory(story, REGISTERED_LAB_KINDS)).toEqual([]);
+  });
+
+  it.each([
+    ['a non-array value', null, 'provenance.0.edits'],
+    ['a non-string member', [1], 'provenance.0.edits.0'],
+    ['a whitespace-only member', ['  '], 'provenance.0.edits.0'],
+  ])('rejects provenance edits containing %s', (_label, edits, path) => {
+    const story = makeStoryFixture();
+    Object.assign(story.provenance[0], { edits });
+
+    expect(validateStory(story, REGISTERED_LAB_KINDS)).toContainEqual(expect.objectContaining({
+      code: 'missing-provenance', path,
+    }));
+  });
+
   it('uses the production lab registry when no test registry is injected', () => {
     expect(validateStory(makeStoryFixture())).toEqual([]);
   });

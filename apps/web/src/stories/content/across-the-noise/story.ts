@@ -21,9 +21,6 @@ const scene = (id: SceneId, actId: StoryAct['id']): StoryScene => ({
 const provenance: IllustrationProvenance[] = noiseProvenanceRecords.map((record) => ({
   ...record,
   sceneId: record.sceneId as IllustrationProvenance['sceneId'],
-  edits: record.edits.length > 0
-    ? record.edits
-    : ['No post-generation edits.'],
 }));
 
 export const noiseStory: StoryDefinition = {

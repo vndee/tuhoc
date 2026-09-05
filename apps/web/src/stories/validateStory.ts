@@ -179,7 +179,16 @@ export function validateStory(
     if (!record.tool) add('missing-provenance', `${path}.tool`, 'provenance tool is empty');
     if (!record.model) add('missing-provenance', `${path}.model`, 'provenance model is empty');
     if (!record.prompt) add('missing-provenance', `${path}.prompt`, 'provenance prompt is empty');
-    if (record.edits.length === 0) add('missing-provenance', `${path}.edits`, 'provenance edits are empty');
+    const edits: unknown = record.edits;
+    if (!Array.isArray(edits)) {
+      add('missing-provenance', `${path}.edits`, 'provenance edits must be an array');
+    } else {
+      edits.forEach((edit, editIndex) => {
+        if (typeof edit !== 'string' || edit.trim() === '') {
+          add('missing-provenance', `${path}.edits.${editIndex}`, 'provenance edits must be nonblank strings');
+        }
+      });
+    }
     if (record.width <= 0) add('missing-provenance', `${path}.width`, 'provenance width must be positive');
     if (record.height <= 0) add('missing-provenance', `${path}.height`, 'provenance height must be positive');
     if (record.bytes <= 0) add('missing-provenance', `${path}.bytes`, 'provenance byte count must be positive');
