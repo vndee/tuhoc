@@ -360,6 +360,7 @@ const MESSAGE_HOMES: readonly string[] = [
   'apps/web/src/stories/labs/pulse-channel/copy.ts',
   'apps/web/src/stories/labs/binary-noise/copy.ts',
   'apps/web/src/stories/labs/source-entropy/copy.ts',
+  'apps/web/src/stories/labs/huffman-message/copy.ts',
 ];
 
 /**

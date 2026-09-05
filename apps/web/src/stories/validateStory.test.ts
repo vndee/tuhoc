@@ -380,6 +380,37 @@ describe('validateStory', () => {
       .not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid-lab-config' })]));
   });
 
+  it.each([0, 1.5, 33, Number.NaN])(
+    'rejects invalid huffman-message maxVisibleNodes at its exact field: %s',
+    (maxVisibleNodes) => {
+      const story = makeStoryFixture();
+      story.scenes[0]!.lab = {
+        kind: 'huffman-message',
+        title: { vi: 'Nén', en: 'Compress' },
+        instruction: { vi: 'Tính cả gói', en: 'Count the whole packet' },
+        config: { maxVisibleNodes },
+      } as unknown as typeof story.scenes[0]['lab'];
+
+      expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'huffman-message'] as never[])))
+        .toContainEqual(expect.objectContaining({
+          code: 'invalid-lab-config', path: 'scenes.0.lab.config.maxVisibleNodes',
+        }));
+    },
+  );
+
+  it.each([1, 24, 32])('accepts huffman-message maxVisibleNodes %s', (maxVisibleNodes) => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'huffman-message',
+      title: { vi: 'Nén', en: 'Compress' },
+      instruction: { vi: 'Tính cả gói', en: 'Count the whole packet' },
+      config: { maxVisibleNodes },
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'huffman-message'] as never[])))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid-lab-config' })]));
+  });
+
   it('reports each invalid image, source, provenance, and source reference at its exact path', () => {
     const story = makeStoryFixture();
     story.scenes[0].illustration.src = '';

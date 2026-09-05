@@ -24,6 +24,7 @@ const definitions: LabDefinition[] = [
   { kind: 'pulse-channel', title: localized('Kênh xung', 'Pulse channel'), instruction: localized('Quan sát', 'Observe'), config: { defaultDuration: 1 } },
   { kind: 'binary-noise', title: localized('Kênh nhiễu', 'Noisy channel'), instruction: localized('Truyền', 'Transmit'), config: { defaultP: 0.05, seed: 20260905 } },
   { kind: 'source-entropy', title: localized('Entropy nguồn', 'Source entropy'), instruction: localized('Rút', 'Draw'), config: { weights: [25, 25, 25, 25], seed: 20260905 } },
+  { kind: 'huffman-message', title: localized('Nén', 'Compress'), instruction: localized('Tính cả gói', 'Count the whole packet'), config: { maxVisibleNodes: 24 } } as unknown as LabDefinition,
 ];
 
 const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
@@ -51,6 +52,7 @@ const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
     page: 0,
   },
   'source-entropy': { weights: [25, 25, 25, 25], seed: 20260905, counter: 0, lastDraw: null, prediction: null },
+  'huffman-message': { step: 0, page: 0, snapshot: null },
 };
 
 const sourceEntropyDefinition: Extract<LabDefinition, { kind: 'source-entropy' }> = {
@@ -73,6 +75,13 @@ const emptyExamples: Extract<LabDefinition, { kind: 'attention' }> = {
 };
 
 describe('makeInitialLabState', () => {
+  it('initializes huffman-message with a fresh empty construction view', () => {
+    const huffman = definitions.find((definition) => definition.kind === 'huffman-message')!;
+
+    expect(makeInitialLabState(huffman)).toEqual({ step: 0, page: 0, snapshot: null });
+    expect(makeInitialLabState(huffman)).not.toBe(makeInitialLabState(huffman));
+  });
+
   it('initializes source-entropy with copied weights and a fresh draw counter', () => {
     const first = makeInitialLabState(sourceEntropyDefinition) as { weights: number[] };
     const second = makeInitialLabState(sourceEntropyDefinition) as { weights: number[] };

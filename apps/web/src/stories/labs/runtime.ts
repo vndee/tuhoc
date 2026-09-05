@@ -55,5 +55,6 @@ export function makeInitialLabState(definition: LabDefinition): unknown {
       lastDraw: null,
       prediction: null,
     };
+    case 'huffman-message': return { step: 0, page: 0, snapshot: null };
   }
 }

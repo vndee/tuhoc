@@ -247,6 +247,16 @@ export function validateStory(
         }
         break;
       }
+      case 'huffman-message':
+        if (!Number.isInteger(scene.lab.config.maxVisibleNodes) ||
+          scene.lab.config.maxVisibleNodes < 1 || scene.lab.config.maxVisibleNodes > 32) {
+          add(
+            'invalid-lab-config',
+            `${path}.lab.config.maxVisibleNodes`,
+            'Huffman visible nodes must be an integer from 1 to 32',
+          );
+        }
+        break;
       default:
         break;
     }
