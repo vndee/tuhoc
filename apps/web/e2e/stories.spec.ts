@@ -90,7 +90,9 @@ for (const width of [1440, 390]) {
       for (const theme of ['light', 'dark']) {
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
         await expect(title).toHaveCSS('font-family', handFont);
-        expect(await title.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(26);
+        const titleSize = await title.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+        expect(titleSize).toBeGreaterThanOrEqual(22);
+        expect(titleSize).toBeLessThanOrEqual(28);
         await title.scrollIntoViewIfNeeded();
         expect(await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth)).toBe(true);
         await page.locator('.bd-chrome-btn').click();
@@ -120,6 +122,44 @@ for (const width of [1440, 390]) {
     await page.getByRole('button', { name: 'Chuyển sang giao diện sáng' }).click();
     await expect(renderer).toHaveCSS('background-color', lightPaper);
     await expect(renderer).toHaveCSS('color', lightInk);
+  });
+}
+
+for (const width of [320, 768, 1024, 1440]) {
+  test(`long featured edition titles wrap without clipping at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto('/');
+    const title = page.locator('.bd-story-feature-copy h3');
+    // Stress the real landing layout with future editorial titles, without
+    // changing the published story's content or replacing its components.
+    for (const text of [
+      'Một lịch sử của trí tuệ nhân tạo: từ những công cụ ghi nhớ đầu tiên đến các cỗ máy biết học và một tương lai chưa được định nghĩa',
+      'A history of artificial intelligence: the people, ideas, and machines that changed how we learn, reason, and imagine the future',
+      'MachineLearningAndArtificialIntelligenceAcrossGenerationsWithoutASingleSharedDefinition',
+    ]) {
+      await title.locator('a').evaluate((el, value) => { el.textContent = value; }, text);
+      await title.scrollIntoViewIfNeeded();
+      const layout = await title.evaluate((el) => {
+        const style = getComputedStyle(el);
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const bounds = el.getBoundingClientRect();
+        return {
+          size: parseFloat(style.fontSize),
+          leading: parseFloat(style.lineHeight) / parseFloat(style.fontSize),
+          fits: Array.from(range.getClientRects()).every((rect) => rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1 && rect.bottom <= bounds.bottom + 1),
+          clipped: el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight + 1,
+        };
+      });
+      expect(layout.size).toBeLessThanOrEqual(28);
+      expect(layout.leading).toBeGreaterThanOrEqual(1.2);
+      expect(layout.fits).toBe(true);
+      expect(layout.clipped).toBe(false);
+      const titleBounds = await title.boundingBox();
+      const deckBounds = await page.locator('.bd-story-feature-deck').boundingBox();
+      expect(deckBounds!.y).toBeGreaterThanOrEqual(titleBounds!.y + titleBounds!.height);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth)).toBe(true);
+    }
   });
 }
 
