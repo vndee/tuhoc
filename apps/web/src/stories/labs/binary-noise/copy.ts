@@ -7,6 +7,7 @@ interface BinaryNoiseCopy {
   manual: string;
   manualLimit: string;
   probability: string;
+  invalidProbability: string;
   seed: string;
   newSeed: string;
   run: string;
@@ -36,6 +37,7 @@ export const binaryNoiseCopy = {
     manual: 'Tự lật bit',
     manualLimit: 'Chế độ tự lật chỉ áp dụng đúng tập bit bạn chọn; nó không đưa ra giả định các bit được lật ngẫu nhiên độc lập.',
     probability: 'Xác suất lật bit cấu hình p',
+    invalidProbability: 'Nhập xác suất từ 0 đến 0,5 theo bước 0,01.',
     seed: 'Seed nhiễu',
     newSeed: 'Đổi mẫu nhiễu',
     run: 'Chạy thử',
@@ -63,6 +65,7 @@ export const binaryNoiseCopy = {
     manual: 'Manual bit flips',
     manualLimit: 'Manual mode applies exactly the bit set you choose; it does not make an independent random-flip claim.',
     probability: 'Configured flip probability p',
+    invalidProbability: 'Enter a probability from 0 to 0.5 in steps of 0.01.',
     seed: 'Noise seed',
     newSeed: 'New noise sample',
     run: 'Run experiment',
