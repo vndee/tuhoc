@@ -125,6 +125,27 @@ for (const width of [1440, 390]) {
   });
 }
 
+test('featured title fills the available line before wrapping', async ({ page }) => {
+  await page.goto('/');
+  const title = page.locator('.bd-story-feature-copy h3');
+  await title.scrollIntoViewIfNeeded();
+  await page.evaluate(() => document.fonts.ready);
+  const lines = await title.locator('a').evaluate((el) => {
+    const text = el.firstChild!;
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, 3);
+    const firstWordTop = range.getBoundingClientRect().top;
+    const nextWord = text.textContent!.indexOf('trí');
+    range.setStart(text, nextWord);
+    range.setEnd(text, nextWord + 3);
+    return { firstWordTop, nextWordTop: range.getBoundingClientRect().top };
+  });
+  // At this desktop width, “trí” still fits after “Một lịch sử của”.
+  // Balanced wrapping used to move it down despite the remaining space.
+  expect(lines.nextWordTop).toBeCloseTo(lines.firstWordTop, 0);
+});
+
 for (const width of [320, 768, 1024, 1440]) {
   test(`long featured edition titles wrap without clipping at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
