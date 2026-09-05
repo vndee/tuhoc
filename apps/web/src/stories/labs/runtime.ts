@@ -61,5 +61,6 @@ export function makeInitialLabState(definition: LabDefinition): unknown {
       snapshot: null,
       page: 0,
     };
+    case 'secded-inspector': return { data: definition.config.data, flips: [], advanced: false };
   }
 }

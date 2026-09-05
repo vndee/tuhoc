@@ -27,6 +27,7 @@ export const labRegistry: Readonly<Record<LabKind, () => Promise<LabModule>>> = 
   'source-entropy': () => import('./source-entropy/SourceEntropyLab'),
   'huffman-message': () => import('./huffman-message/HuffmanMessageLab'),
   'repetition-channel': () => import('./repetition-channel/RepetitionChannelLab'),
+  'secded-inspector': () => import('./secded-inspector/SecdedInspectorLab'),
 };
 
 export const REGISTERED_LAB_KINDS: ReadonlySet<LabKind> = new Set(Object.keys(labRegistry) as LabKind[]);
