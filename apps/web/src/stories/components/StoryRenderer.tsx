@@ -3,6 +3,7 @@ import { useLanguage } from '../../i18n/LanguageProvider';
 import { StoryIssueSessionProvider, useMessageJourney } from '../session/StoryIssueSessionProvider';
 import type { ResponsiveStoryImage, StoryDefinition, StoryScene as StorySceneModel } from '../types';
 import { RichText } from './RichText';
+import { StoryCourseLink } from './StoryCourseLink';
 import { StoryScene } from './StoryScene';
 import { StoryShell } from './StoryShell';
 import { StorySources } from './StorySources';
@@ -128,6 +129,7 @@ function StoryRendererContent({
         activeSceneId={activeSceneId as StorySceneModel['id']}
       >
     <div className="story-renderer">
+      {story.intro ? <section className="story-intro"><RichText blocks={story.intro[lang]} /></section> : null}
       <section className="story-cover" data-testid="story-cover" aria-labelledby="story-title">
         <p>{t('stories.issueLabel', story.meta.issueNumber)}</p>
         <p className="story-cover-counts"><span>{t('stories.sceneCount', story.meta.sceneCount)}</span><span>{t('stories.labCount', story.meta.labCount)}</span></p>
@@ -187,7 +189,11 @@ function StoryRendererContent({
               />;
             })}
           </section>)}
-          <section className="story-coda"><h2>{t('stories.coda')}</h2><RichText blocks={story.coda[lang]} /></section>
+          <section className="story-coda">
+            <h2>{t('stories.coda')}</h2>
+            <RichText blocks={story.coda[lang]} />
+            {story.courseAction ? <StoryCourseLink action={story.courseAction} /> : null}
+          </section>
           <StorySources sceneSourceIds={[]} sources={story.sources} provenance={story.provenance} lang={lang} all />
         </div>
       </div>

@@ -66,4 +66,15 @@ describe('LandingStoryFeature', () => {
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
     expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
   });
+
+  it('features issue two after future publication without changing today’s registry flags', () => {
+    const issueOne = makeEntry({ slug: 'a-history-of-ai', issueNumber: 1, featured: false });
+    const issueTwo = makeEntry({ slug: 'across-the-noise', issueNumber: 2, featured: true, title: { vi: 'Số hai', en: 'Issue two' } });
+
+    renderFeature([issueOne, issueTwo]);
+
+    expect(screen.getByRole('link', { name: 'Số hai' })).toHaveAttribute('href', '/stories/across-the-noise');
+    expect(screen.queryByText('Số một')).not.toBeInTheDocument();
+    expect(screen.getByText('Số 02 · Bài kể tương tác')).toBeInTheDocument();
+  });
 });

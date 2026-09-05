@@ -1,10 +1,12 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { StrictMode, type ComponentProps, type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
+import { catalogQueryKey } from '../../api/catalog';
 import { ThemeProvider } from '../../theme/ThemeContext';
 import { installIntersectionObserver, type ObserverHarness } from '../../test/intersectionObserver';
 import { makeStoryFixture } from '../testing/storyFixture';
@@ -56,6 +58,20 @@ function renderStory(
     <MemoryRouter><LanguageProvider><ThemeProvider>
       <div id="scroller"><StoryRenderer story={story} renderLab={renderLab} /></div>
     </ThemeProvider></LanguageProvider></MemoryRouter>,
+  );
+}
+
+function renderStoryWithCatalog(story: StoryDefinition) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  client.setQueryData(catalogQueryKey(), [{
+    slug: 'ly-thuyet-thong-tin', title: 'Lý thuyết Thông tin', lang: 'vi', description: 'Course', version: 1,
+  }]);
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter><LanguageProvider><ThemeProvider>
+        <div id="scroller"><StoryRenderer story={story} /></div>
+      </ThemeProvider></LanguageProvider></MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -635,6 +651,43 @@ describe('StoryRenderer', () => {
     expect(screen.getByText('Coda')).toBeVisible();
     expect(screen.getAllByText('Technical hinge')[0]).toBeVisible();
     expect(screen.getAllByText('Open question')[0]).toBeVisible();
+  });
+
+  it('renders an optional localized intro before the cover', () => {
+    const story = makeStoryFixture({ sceneCount: 12 });
+    story.intro = {
+      vi: [{ kind: 'paragraph', text: 'Lời mở đầu cho hành trình.' }],
+      en: [{ kind: 'paragraph', text: 'An introduction to the journey.' }],
+    };
+    renderStory(story);
+
+    const intro = screen.getByText('Lời mở đầu cho hành trình.').closest('section')!;
+    const cover = screen.getByTestId('story-cover');
+    expect(intro.compareDocumentPosition(cover) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('renders the optional catalog-backed course action in the coda', () => {
+    const story = makeStoryFixture({ sceneCount: 12 });
+    story.courseAction = {
+      slug: 'ly-thuyet-thong-tin',
+      label: { vi: 'Học tiếp Lý thuyết Thông tin', en: 'Continue with Information Theory' },
+      fallbackLabel: { vi: 'Khám phá các khoá học', en: 'Explore the courses' },
+    };
+    renderStoryWithCatalog(story);
+
+    const coda = screen.getByRole('heading', { name: 'Vĩ thanh' }).closest('section')!;
+    expect(within(coda).getByRole('link', { name: 'Học tiếp Lý thuyết Thông tin' })).toHaveAttribute(
+      'href', '/c/ly-thuyet-thong-tin',
+    );
+  });
+
+  it('keeps the existing edition fixture independent from a query client when no course action is declared', () => {
+    const story = makeStoryFixture({ sceneCount: 12 });
+    expect(story.courseAction).toBeUndefined();
+
+    expect(() => renderStory(story)).not.toThrow();
+    expect(screen.getByText('Kết thúc bằng tiếng Việt.')).toBeVisible();
+    expect(screen.queryByRole('link', { name: /Lý thuyết Thông tin/i })).not.toBeInTheDocument();
   });
 
   it('uses replace-only shell scene links without moving focus', () => {
