@@ -119,6 +119,7 @@ async function checkSurface(page: Page, surface: Locator, width: number) {
     }
   }
   const targets = await surface.locator('button, select, textarea, input:not([type="radio"]):not([type="checkbox"])').evaluateAll(elements => elements.filter(el => (el as HTMLElement).offsetParent !== null).map(el => ({ tag: el.tagName, width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height })));
+  targets.push(...await surface.locator('label:has(input[type="radio"]), label:has(input[type="checkbox"])').evaluateAll(elements => elements.map(el => ({ tag: 'label', width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height }))));
   for (const target of targets) {
     expect(target.width, `${target.tag} target width`).toBeGreaterThanOrEqual(44);
     expect(target.height, `${target.tag} target height`).toBeGreaterThanOrEqual(44);
@@ -205,6 +206,7 @@ for (const width of [320, 390, 1024, 1440]) for (const lang of ['vi', 'en']) for
       await checkSurface(page, surface, width);
       await surface.getByRole('button', { name: /^(Thử lại|Try again)$/ }).click();
       await expect(surface.locator('.story-lab-fallback')).toBeVisible();
+      await expect.poll(() => releases.length).toBeGreaterThan(0);
       releases.splice(0).forEach(release => release());
       await expect(surface.locator('.story-lab-fallback')).toHaveAttribute('aria-busy', 'false');
       if ([4, 5].includes(n) && lang === 'en' && motion === 'reduce') {

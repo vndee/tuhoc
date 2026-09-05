@@ -9,7 +9,7 @@ const wordCount = (blocks: RichTextBlock[]) => blocks
   .join(' ').trim().split(/\s+/u).filter(Boolean).length;
 
 describe('A History of Artificial Intelligence', () => {
-  it('publishes four acts, twelve ordered scenes, and every registered lab', () => {
+  it('publishes four acts, twelve ordered scenes, and the twelve AI issue labs', () => {
     const expected = new Set([
       'external-memory', 'embodied-calculation', 'executable-rules',
       'computation-limits', 'judgment-criteria', 'linear-separator',

@@ -1,6 +1,7 @@
 import type { Lang } from '../../../i18n';
 
 interface AmbiguousCodeCopy {
+  prediction: string;
   codeFor: (symbol: string) => string;
   currentBook: string;
   sourceSymbols: string;
@@ -30,6 +31,7 @@ interface AmbiguousCodeCopy {
 
 export const ambiguousCodeCopy = {
   vi: {
+    prediction: 'Bạn dự đoán tín hiệu này có bao nhiêu cách đọc? Dự đoán là tùy chọn và không được chấm điểm.',
     codeFor: (symbol) => `Mã cho ${symbol}`,
     currentBook: 'Bộ mã đang thử',
     sourceSymbols: 'Chuỗi ký hiệu nguồn',
@@ -61,6 +63,7 @@ export const ambiguousCodeCopy = {
     explanation: 'Mô hình thử mọi ranh giới mã hợp lệ thay vì chọn tham lam. Va chạm tiền tố tạo khả năng nhập nhằng, nhưng không làm cho mọi tín hiệu đều nhập nhằng.',
   },
   en: {
+    prediction: 'How many readings do you predict this signal will allow? Prediction is optional and is not scored.',
     codeFor: (symbol) => `Code for ${symbol}`,
     currentBook: 'Codebook being tried',
     sourceSymbols: 'Source symbols',

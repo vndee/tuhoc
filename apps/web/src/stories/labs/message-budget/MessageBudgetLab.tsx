@@ -46,6 +46,7 @@ export default function MessageBudgetLab({
     lang={lang}
     title={definition.title[lang]}
     instruction={definition.instruction[lang]}
+    prediction={<p>{copy.prediction}</p>}
     observation={observation}
     explanation={<p>{copy.explanation}</p>}
     result={result}

@@ -1,6 +1,7 @@
 import type { Lang } from '../../../i18n';
 
 interface MessageBudgetCopy {
+  prediction: string;
   budget: string;
   budgetOption: (budget: number) => string;
   shortenedDraft: string;
@@ -15,6 +16,7 @@ interface MessageBudgetCopy {
 
 export const messageBudgetCopy = {
   vi: {
+    prediction: 'Bạn dự đoán bớt những chữ nào sẽ giữ được điều muốn nói? Dự đoán là tùy chọn và không được chấm điểm.',
     budget: 'Giới hạn cụm ký tự',
     budgetOption: (budget) => `${budget} cụm ký tự`,
     shortenedDraft: 'Bản rút lời',
@@ -27,6 +29,7 @@ export const messageBudgetCopy = {
     explanation: 'Bộ đếm chỉ kiểm tra độ dài. Biên tập bằng cách bớt chữ có thể đổi nghĩa; mô hình này không chấm điểm điều người nhận sẽ hiểu.',
   },
   en: {
+    prediction: 'Which words could you remove while preserving what you want to say? Prediction is optional and is not scored.',
     budget: 'Grapheme budget',
     budgetOption: (budget) => `${budget} grapheme clusters`,
     shortenedDraft: 'Shortened draft',

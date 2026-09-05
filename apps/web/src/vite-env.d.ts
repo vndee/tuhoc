@@ -1,5 +1,10 @@
 /// <reference types="vite/client" />
 
+declare module 'virtual:story-lab-retry' {
+  export const buildId: string;
+  export const mapPath: string;
+}
+
 interface ImportMetaEnv {
   /**
    * Origin the api client (src/api/client.ts) prefixes onto every request

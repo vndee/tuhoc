@@ -16,6 +16,19 @@ void registryApiAssertions;
 afterEach(() => vi.restoreAllMocks());
 
 describe('labRegistry', () => {
+  it('keeps failed import and malformed retry metadata errors content-free without leaking private data', async () => {
+    const privateText = 'PRIVATE-NOISE-20260905-ắ-👨‍👩‍👧‍👦';
+    vi.spyOn(labRegistry, 'binary-noise').mockRejectedValue(new Error(privateText));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ buildId: 'wrong-build', entries: { 'binary-noise': privateText } })));
+    const consoleSpies = ['log', 'info', 'warn', 'error', 'debug'].map(method => vi.spyOn(console, method as 'log'));
+    await expect(loadLab('binary-noise')).rejects.toThrow('lab-load-unavailable');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    await expect(loadLab('binary-noise', 1)).rejects.toThrow('lab-retry-unavailable');
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(String(fetchSpy.mock.calls[0]![0])).not.toContain(privateText);
+    expect(fetchSpy.mock.calls[0]![1]).toEqual({ credentials: 'omit', cache: 'no-store' });
+    for (const spy of consoleSpies) expect(spy).not.toHaveBeenCalled();
+  });
   it('has an explicit lazy loader for message-meaning', () => {
     expect((labRegistry as Record<string, unknown>)['message-meaning']).toEqual(expect.any(Function));
   });

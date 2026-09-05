@@ -27,6 +27,13 @@ beforeEach(() => localStorage.clear());
 afterEach(() => localStorage.clear());
 
 describe('AmbiguousCodeLab', () => {
+  it.each(['en', 'vi'] as const)('offers a reflective Predict stage without requiring an answer in %s', (lang) => {
+    renderJourneyLab(AmbiguousCodeLab, definition, { lang, sceneId: 'scene-02' });
+    const prediction = screen.getByRole('region', { name: lang === 'en' ? 'Predict' : 'Dự đoán' });
+    expect(prediction.textContent!.length).toBeGreaterThan(30);
+    expect(prediction.querySelector('input, button, select, textarea')).toBeNull();
+    expect(screen.getByRole('region', { name: lang === 'en' ? 'Try' : 'Thử' })).toBeVisible();
+  });
   it('starts with B selected and computes only after an explicit Send', () => {
     renderJourneyLab(AmbiguousCodeLab, definition, { lang: 'en', sceneId: 'scene-02' });
 

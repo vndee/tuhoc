@@ -1,6 +1,7 @@
 import type { Lang } from '../../../i18n';
 
 interface MorseSpacingCopy {
+  prediction: string;
   example: string;
   letterGap: string;
   wordGap: string;
@@ -29,6 +30,7 @@ interface MorseSpacingCopy {
 
 export const morseSpacingCopy = {
   vi: {
+    prediction: 'Bạn dự đoán khoảng nghỉ sẽ đổi cách đọc các dấu ra sao? Dự đoán là tùy chọn và không được chấm điểm.',
     example: 'Ví dụ',
     letterGap: 'Khoảng nghỉ giữa các chữ',
     wordGap: 'Khoảng nghỉ giữa các từ',
@@ -55,6 +57,7 @@ export const morseSpacingCopy = {
     wordThreshold: 'gap ≥ 5: bắt đầu một từ mới',
   },
   en: {
+    prediction: 'How will the pauses change the reading of the marks? Prediction is optional and is not scored.',
     example: 'Example',
     letterGap: 'Gap between letters',
     wordGap: 'Gap between words',

@@ -46,6 +46,9 @@ function JourneyControlsWithTheme(props: LabRuntimeProps) {
   return <>
     <button type="button" onClick={() => journey.dispatch({ type: 'receipt', receipt: exactReceipt })}>Install exact receipt</button>
     <button type="button" onClick={() => journey.dispatch({ type: 'receipt', receipt: rejectedReceipt })}>Install rejected receipt</button>
+    <button type="button" onClick={() => journey.dispatch({ type: 'receipt', receipt: {
+      ...exactReceipt, received: [255], outcome: 'silent-corruption', flippedBits: 6, payloadErrors: 6,
+    } })}>Install malformed UTF8 receipt</button>
     <button type="button" onClick={() => journey.dispatch({ type: 'commit', text: 'B' })}>Commit another message</button>
     <button type="button" onClick={() => setLang('vi')}>Switch to Vietnamese</button>
     <button type="button" onClick={toggle}>Toggle theme</button>
@@ -67,6 +70,18 @@ afterEach(() => {
 });
 
 describe('MessageMeaningLab', () => {
+  it.each(['en', 'vi'] as const)('retains invalid received bytes with localized decode failure and no invented sentence in %s', (lang) => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const consoleSpies = ['log', 'info', 'warn', 'error', 'debug'].map(method => vi.spyOn(console, method as 'log'));
+    renderJourneyLab(JourneyControls, definition, { lang, example: 'A', sceneId: 'scene-12' });
+    fireEvent.click(screen.getByRole('button', { name: 'Install malformed UTF8 receipt' }));
+    expect(screen.getByLabelText(lang === 'en' ? 'Received bytes' : 'Byte nhận')).toHaveTextContent('FF');
+    expect(screen.getByText(lang === 'en' ? 'Received bytes are not valid UTF-8.' : 'Byte nhận không phải UTF-8 hợp lệ.')).toBeVisible();
+    expect(document.body.textContent).not.toContain('\ufffd');
+    expect(screen.queryByText(lang === 'en' ? /^Received text:/ : /^Văn bản nhận:/)).not.toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    for (const spy of consoleSpies) expect(spy).not.toHaveBeenCalled();
+  });
   it.each([
     { lang: 'en' as const, stages: ['Predict', 'Try', 'Observe', 'Explain and limits'], prompt: /could the same delivered words be read differently/i },
     { lang: 'vi' as const, stages: ['Dự đoán', 'Thử', 'Quan sát', 'Giải thích và giới hạn'], prompt: /cùng một câu được truyền đến có thể được hiểu khác đi/i },
