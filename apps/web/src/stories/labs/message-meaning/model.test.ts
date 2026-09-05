@@ -20,11 +20,11 @@ describe('receiptView', () => {
     expect(receiptView(null, 2)).toEqual({ status: 'not-run', receipt: null });
   });
 
-  it('gives a revision mismatch precedence over the captured outcome', () => {
-    const captured = receipt();
+  it.each(['exact', 'rejected', 'silent-corruption'] as const)('gives revision mismatch precedence over captured %s', (outcome) => {
+    const captured = receipt({ outcome, received: outcome === 'rejected' ? null : [65] });
 
     expect(receiptView(captured, 2)).toEqual({ status: 'stale', receipt: captured });
-    expect(receiptView(captured, 1)).toEqual({ status: 'exact', receipt: captured });
+    expect(receiptView(captured, 1)).toEqual({ status: outcome, receipt: captured });
   });
 
   it.each(['exact', 'silent-corruption', 'rejected'] as const)(

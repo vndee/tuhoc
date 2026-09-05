@@ -56,6 +56,7 @@ export default function AmbiguousCodeLab({ definition, lang, value, onChange, on
     lang={lang}
     title={definition.title[lang]}
     instruction={definition.instruction[lang]}
+    prediction={<p>{copy.prediction}</p>}
     observation={state.result
       ? <DecodeObservation run={state.result} labels={copy} />
       : <p>{copy.awaitingSend}</p>}

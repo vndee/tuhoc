@@ -19,6 +19,18 @@ beforeEach(() => localStorage.clear());
 afterEach(() => localStorage.clear());
 
 describe('SecdedInspectorLab', () => {
+  it('reports a four-flip advanced rejection without inferring exactly two physical errors', async () => {
+    const user = userEvent.setup();
+    renderJourneyLab(SecdedInspectorLab, definition, { lang: 'en', sceneId: 'scene-10' });
+    for (const index of [1, 3, 4]) await user.click(screen.getByRole('button', { name: `Data bit ${index}, value 1` }));
+    await user.click(screen.getByRole('checkbox', { name: 'Advanced: allow three or more flips' }));
+    for (const position of [1, 2, 3, 4]) await user.click(screen.getByRole('button', { name: new RegExp(`Position ${position}, .*not flipped`) }));
+    expect(screen.getByText('Received word: 11110000')).toBeVisible();
+    expect(screen.getByText('Syndrome: 4 = 4.')).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent(/uncorrectable error pattern/i);
+    expect(screen.getByRole('status')).not.toHaveTextContent(/two errors/i);
+    expect(screen.getByText('Ground-truth comparison: no recovered data to compare.')).toBeVisible();
+  });
   it.each([
     { lang: 'en' as const, stages: ['Predict', 'Try', 'Observe', 'Explain and limits'], prompt: /which parity check pattern will locate a flipped bit/i, data: /Data bit [1-4], value [01]/, encoded: 'Encoded word: 01100110' },
     { lang: 'vi' as const, stages: ['Dự đoán', 'Thử', 'Quan sát', 'Giải thích và giới hạn'], prompt: /mẫu kiểm tra chẵn lẻ nào sẽ chỉ ra bit bị lật/i, data: /Bit dữ liệu [1-4], giá trị [01]/, encoded: 'Từ mã hóa: 01100110' },
@@ -62,7 +74,7 @@ describe('SecdedInspectorLab', () => {
     expect(screen.getByText('Overall parity across positions 1–8: 0.')).toBeVisible();
     const decisions = screen.getByRole('table', { name: 'SECDED decision table' });
     expect(within(decisions).getByRole('row', { name: /0 0 No error signaled Current decoder state/i })).toBeVisible();
-    expect(within(decisions).getByRole('row', { name: /nonzero 0 Reject as two detected errors/i })).toBeVisible();
+    expect(within(decisions).getByRole('row', { name: /nonzero 0 Reject.*uncorrectable/i })).toBeVisible();
     expect(document.body.textContent).not.toContain('Definitely error-free');
     expect(document.querySelectorAll('[data-bit-cell]').length).toBeLessThanOrEqual(64);
   });

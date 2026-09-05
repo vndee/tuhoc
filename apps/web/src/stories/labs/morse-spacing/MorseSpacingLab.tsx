@@ -54,6 +54,7 @@ export default function MorseSpacingLab({ definition, lang, value, onChange, onR
     lang={lang}
     title={definition.title[lang]}
     instruction={definition.instruction[lang]}
+    prediction={<p>{copy.prediction}</p>}
     observation={state.result
       ? <MorseObservation run={state.result} labels={copy} />
       : <p>{copy.awaitingRead}</p>}

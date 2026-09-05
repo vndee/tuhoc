@@ -51,6 +51,16 @@ beforeEach(() => localStorage.clear());
 afterEach(() => localStorage.clear());
 
 describe('BinaryNoiseLab', () => {
+  it('ignores an incomplete route-memory snapshot without throwing or logging the message', () => {
+    function MalformedSnapshot(props: LabRuntimeProps) {
+      return <BinaryNoiseLab {...props} value={{ config: { mode: 'bsc', p: 0, seed: 1, manual: [] }, snapshot: {
+        messageRevision: 0, source: [65], config: {}, result: {},
+      } }} />;
+    }
+    renderJourneyLab(MalformedSnapshot, definition, { lang: 'en', sceneId: 'scene-06' });
+    expect(screen.getByRole('button', { name: 'Run experiment' })).toBeEnabled();
+    expect(screen.queryByLabelText('Received bytes in hexadecimal')).not.toBeInTheDocument();
+  });
   it.each([
     {
       lang: 'en' as const,

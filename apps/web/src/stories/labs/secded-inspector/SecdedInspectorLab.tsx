@@ -49,7 +49,7 @@ export default function SecdedInspectorLab({ definition, lang, value, onChange, 
     : inspection.value.decoded.decision === 'no-alarm'
       ? copy.noAlarmStatus
       : inspection.value.decoded.decision === 'rejected'
-        ? copy.rejectedStatus
+        ? state.advanced ? copy.uncorrectableStatus : copy.rejectedStatus
         : copy.correctedStatus(inspection.value.decoded.correctedPosition!);
 
   return <CommunicationLabFrame

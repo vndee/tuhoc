@@ -339,7 +339,8 @@ function isBatchSnapshot(value: unknown): value is BatchSnapshot {
   return Number.isSafeInteger(snapshot.messageRevision) && Array.isArray(snapshot.source) &&
     validConfig({ ...snapshot.config, code: 'raw' }) &&
     Array.isArray(snapshot.result?.rows) && Array.isArray(snapshot.result?.excluded) &&
-    snapshot.result.rows.every((row) => (row.code === 'raw' || row.code === 'repeat3' || row.code === 'secded') &&
+    snapshot.result.rows.every((row) => typeof row === 'object' && row !== null &&
+      (row.code === 'raw' || row.code === 'repeat3' || row.code === 'secded') &&
       row.trials === 200 && [row.exact, row.rejected, row.silent, row.payloadErrors, row.decodedPayloadBits]
         .every((count) => Number.isSafeInteger(count) && count >= 0) && row.exact + row.rejected + row.silent === 200) &&
     snapshot.result.excluded.every((code) => code === 'raw' || code === 'repeat3' || code === 'secded');

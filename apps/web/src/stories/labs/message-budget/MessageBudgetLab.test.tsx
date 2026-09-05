@@ -27,6 +27,13 @@ beforeEach(() => localStorage.clear());
 afterEach(() => localStorage.clear());
 
 describe('MessageBudgetLab', () => {
+  it.each(['en', 'vi'] as const)('offers a reflective Predict stage without requiring an answer in %s', (lang) => {
+    renderJourneyLab(MessageBudgetLab, definition, { lang, sceneId: 'scene-01' });
+    const prediction = screen.getByRole('region', { name: lang === 'en' ? 'Predict' : 'Dự đoán' });
+    expect(prediction.textContent!.length).toBeGreaterThan(30);
+    expect(prediction.querySelector('input, button, select, textarea')).toBeNull();
+    expect(screen.getByRole('region', { name: lang === 'en' ? 'Try' : 'Thử' })).toBeVisible();
+  });
   it('keeps the shortened draft independent and reset preserves a newly committed original', () => {
     renderJourneyLab(MessageBudgetLab, definition, { lang: 'en', example: 'Original' });
 

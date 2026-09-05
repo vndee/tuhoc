@@ -23,9 +23,12 @@ export function StoryLabHost({ scene, lang, value, onChange, onReset, onBack }: 
   const [attempt, setAttempt] = useState(0);
   const [resetVersion, setResetVersion] = useState(0);
   const kind = scene.lab.kind;
-  // `attempt` deliberately invalidates React.lazy's cached rejected promise.
-  // oxlint-disable-next-line react-hooks/exhaustive-deps
-  const LazyLab = useMemo(() => lazy(() => loadLab(kind)), [attempt, kind]);
+  // Invalidate both React.lazy's rejected promise and, on explicit Retry, the
+  // browser's failed requested-entry module URL.
+  const LazyLab = useMemo(() => lazy(() => loadLab(kind, attempt)), [attempt, kind]);
+  const focusRecovered = useCallback((element: HTMLDivElement | null) => {
+    if (element && attempt > 0) element.focus();
+  }, [attempt]);
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
   const reset = useCallback(() => {
     setResetVersion((version) => version + 1);
@@ -44,7 +47,7 @@ export function StoryLabHost({ scene, lang, value, onChange, onReset, onBack }: 
 
   return <StoryLabBoundary fallback={scene.labFallback} fallbackContent={fallbackContent} lang={lang} resetKey={`${scene.id}:${attempt}`}>
     <Suspense fallback={<StaticLabFallback {...fallbackProps} pending />}>
-      {createElement(LazyLab, {
+      <div ref={focusRecovered} tabIndex={-1} role="group" aria-label={scene.lab.title[lang]}>{createElement(LazyLab, {
         key: `${scene.id}:${attempt}:${resetVersion}`,
         definition: scene.lab,
         lang,
@@ -52,7 +55,7 @@ export function StoryLabHost({ scene, lang, value, onChange, onReset, onBack }: 
         onChange,
         onReset: reset,
         onBack,
-      })}
+      })}</div>
     </Suspense>
   </StoryLabBoundary>;
 }

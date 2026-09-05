@@ -285,5 +285,14 @@ function isSnapshot(value: unknown): value is RunSnapshot<BinaryNoiseConfig, Noi
   const snapshot = value as Partial<RunSnapshot<BinaryNoiseConfig, NoiseResult>>;
   return Number.isSafeInteger(snapshot.messageRevision) && Array.isArray(snapshot.source) &&
     typeof snapshot.config === 'object' && snapshot.config !== null &&
-    typeof snapshot.result === 'object' && snapshot.result !== null;
+    Array.isArray(snapshot.config.manual) && (snapshot.config.mode === 'bsc' || snapshot.config.mode === 'manual') &&
+    Number.isFinite(snapshot.config.p) && Number.isSafeInteger(snapshot.config.seed) &&
+    typeof snapshot.result === 'object' && snapshot.result !== null &&
+    Array.isArray(snapshot.result.received) && Array.isArray(snapshot.result.flipped) &&
+    snapshot.result.received.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 255) &&
+    Number.isSafeInteger(snapshot.result.errors) && Number.isFinite(snapshot.result.ber) &&
+    typeof snapshot.result.exact === 'boolean' && typeof snapshot.result.decoded === 'object' &&
+    snapshot.result.decoded !== null && (snapshot.result.decoded.ok === true
+      ? typeof snapshot.result.decoded.value === 'string'
+      : snapshot.result.decoded.ok === false && typeof snapshot.result.decoded.error === 'string');
 }

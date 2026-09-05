@@ -56,6 +56,7 @@ export interface SecdedInspectorCopy {
   noAlarmStatus: string;
   correctedStatus: (position: number) => string;
   rejectedStatus: string;
+  uncorrectableStatus: string;
   misleadingStatus: (decision: string) => string;
   guarantee: string;
   counterexamples: string;
@@ -64,6 +65,7 @@ export interface SecdedInspectorCopy {
 
 export const secdedInspectorCopy = {
   vi: {
+    uncorrectableStatus: 'Phát hiện mẫu lỗi không thể sửa; khối này không được chấp nhận.',
     prediction: 'Bạn dự đoán mẫu kiểm tra chẵn lẻ nào sẽ chỉ ra bit bị lật? Dự đoán là tùy chọn và không được chấm điểm.',
     dataLegend: 'Bốn bit dữ liệu',
     dataBit: (position, value) => `Bit dữ liệu ${position}, giá trị ${value}`,
@@ -96,7 +98,7 @@ export const secdedInspectorCopy = {
     groundTruthWrong: 'So sánh với dữ liệu gốc: dữ liệu được chấp nhận là sai.',
     groundTruthRejected: 'So sánh với dữ liệu gốc: không có dữ liệu khôi phục để so sánh.',
     decisionTable: 'Bảng quyết định SECDED', syndromeColumn: 'Syndrome', overallColumn: 'Parity tổng', decoderAction: 'Hành động bộ giải mã', current: 'Trạng thái hiện tại',
-    zero: '0', nonzero: 'khác 0', correctSyndrome: 'Sửa vị trí do syndrome chỉ ra', correctOverall: 'Sửa parity tổng ở vị trí 8', rejectDouble: 'Từ chối vì phát hiện hai lỗi',
+    zero: '0', nonzero: 'khác 0', correctSyndrome: 'Sửa vị trí do syndrome chỉ ra', correctOverall: 'Sửa parity tổng ở vị trí 8', rejectDouble: 'Từ chối vì phát hiện mẫu lỗi không thể sửa',
     noAlarmStatus: 'Không có tín hiệu lỗi.', correctedStatus: (position) => `Đã sửa vị trí ${position}.`, rejectedStatus: 'Đã phát hiện hai lỗi; khối này không được chấp nhận.',
     misleadingStatus: (decision) => `${decision}; so sánh của trình mô phỏng cho thấy dữ liệu được chấp nhận là sai.`,
     guarantee: 'Bảo đảm trong mô hình này: với tối đa hai bit bị lật trong một từ tám bit, SECDED sửa đúng một lỗi và phát hiện hai lỗi.',
@@ -104,6 +106,7 @@ export const secdedInspectorCopy = {
     modelLimit: 'Bộ mã ngắn này không bảo vệ header, lỗi chèn hoặc xóa bit, hay toàn bộ packet. Bộ giải mã chỉ đọc từ nhận; so sánh dữ liệu gốc là bằng chứng riêng của trình mô phỏng.',
   },
   en: {
+    uncorrectableStatus: 'Uncorrectable error pattern detected; this block is not accepted.',
     prediction: 'Which parity check pattern will locate a flipped bit? The prediction is optional and is not scored.',
     dataLegend: 'Four data bits',
     dataBit: (position, value) => `Data bit ${position}, value ${value}`,
@@ -136,7 +139,7 @@ export const secdedInspectorCopy = {
     groundTruthWrong: 'Ground-truth comparison: accepted data is wrong.',
     groundTruthRejected: 'Ground-truth comparison: no recovered data to compare.',
     decisionTable: 'SECDED decision table', syndromeColumn: 'Syndrome', overallColumn: 'Overall parity', decoderAction: 'Decoder action', current: 'Current decoder state',
-    zero: '0', nonzero: 'Nonzero', correctSyndrome: 'Correct the position indicated by the syndrome', correctOverall: 'Correct overall parity at position 8', rejectDouble: 'Reject as two detected errors',
+    zero: '0', nonzero: 'Nonzero', correctSyndrome: 'Correct the position indicated by the syndrome', correctOverall: 'Correct overall parity at position 8', rejectDouble: 'Reject as a detected uncorrectable error pattern',
     noAlarmStatus: 'No error signaled.', correctedStatus: (position) => `Corrected position ${position}.`, rejectedStatus: 'Two errors detected; this block is not accepted.',
     misleadingStatus: (decision) => `${decision}; the simulator comparison says the accepted data is wrong.`,
     guarantee: 'Guarantee in this model: with at most two flipped bits in one eight-bit word, SECDED corrects one error and detects two errors.',

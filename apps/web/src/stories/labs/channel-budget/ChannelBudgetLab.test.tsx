@@ -40,6 +40,16 @@ beforeEach(() => localStorage.clear());
 afterEach(() => localStorage.clear());
 
 describe('ChannelBudgetLab', () => {
+  it('discards a malformed batch with a null row without losing usable transmission controls', () => {
+    function MalformedBatch(props: LabRuntimeProps) {
+      return <ChannelBudgetLab {...props} value={{ config: { code: 'raw', budget: 4096, p: 0, seed: 1 }, batch: {
+        messageRevision: 0, source: [65], config: { budget: 4096, p: 0, seed: 1 }, result: { rows: [null], excluded: [] },
+      } }} />;
+    }
+    renderJourneyLab(MalformedBatch, definition, { lang: 'en', sceneId: 'scene-11' });
+    expect(screen.getByRole('button', { name: 'Run transmission' })).toBeEnabled();
+    expect(screen.queryByRole('table', { name: 'Completed 200-trial comparison' })).not.toBeInTheDocument();
+  });
   it.each([
     { lang: 'en' as const, stages: ['Predict', 'Try', 'Observe', 'Explain and limits'], prompt: /which code do you expect/i, run: 'Run transmission' },
     { lang: 'vi' as const, stages: ['Dự đoán', 'Thử', 'Quan sát', 'Giải thích và giới hạn'], prompt: /bạn dự đoán mã nào/i, run: 'Truyền một lần' },

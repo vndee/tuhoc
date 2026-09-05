@@ -1,5 +1,7 @@
 import type { LabKind } from '../types';
 import type { LabModule } from './runtime';
+import { buildId, mapPath } from 'virtual:story-lab-retry';
+import { resolveLabRetryUrl } from './retry';
 
 /**
  * Each lab remains a separate chunk. Keep these imports explicit so adding a
@@ -35,4 +37,23 @@ export const labRegistry: Readonly<Record<LabKind, () => Promise<LabModule>>> = 
 export const REGISTERED_LAB_KINDS: ReadonlySet<LabKind> = new Set(Object.keys(labRegistry) as LabKind[]);
 
 /** Calls exactly one loader, and only when a reader opens that scene's lab. */
-export const loadLab = (kind: LabKind): Promise<LabModule> => labRegistry[kind]();
+const recoveredModules = new Map<LabKind, LabModule>();
+
+export async function loadLab(kind: LabKind, attempt = 0): Promise<LabModule> {
+  const recovered = recoveredModules.get(kind);
+  if (recovered) return recovered;
+  try { return await labRegistry[kind](); }
+  catch {
+    if (attempt === 0) throw new Error('lab-load-unavailable');
+  }
+  try {
+    const mapUrl = new URL(mapPath, window.location.href);
+    if (mapUrl.origin !== window.location.origin) throw new Error('lab-retry-unavailable');
+    const response = await fetch(mapUrl, { credentials: 'omit', cache: 'no-store' });
+    if (!response.ok) throw new Error('lab-retry-unavailable');
+    const url = resolveLabRetryUrl(await response.json(), kind, buildId, mapUrl.href, attempt);
+    const module = await import(/* @vite-ignore */ url) as LabModule;
+    recoveredModules.set(kind, module);
+    return module;
+  } catch { throw new Error('lab-retry-unavailable'); }
+}
