@@ -139,6 +139,20 @@ describe('validateStory', () => {
     ]));
   });
 
+  it.each([0, 29, 31, 61, Number.NaN])('rejects an unsupported message budget at its exact field: %s', (defaultBudget) => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'message-budget',
+      title: { vi: 'Giữ lời', en: 'Keep the meaning' },
+      instruction: { vi: 'Rút gọn', en: 'Shorten' },
+      config: { defaultBudget },
+    } as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, REGISTERED_LAB_KINDS)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'invalid-lab-config', path: 'scenes.0.lab.config.defaultBudget' }),
+    ]));
+  });
+
   it('reports each invalid image, source, provenance, and source reference at its exact path', () => {
     const story = makeStoryFixture();
     story.scenes[0].illustration.src = '';
