@@ -52,8 +52,8 @@ describe('RepetitionChannelLab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run experiment' }));
 
     const table = screen.getByRole('table', { name: 'Observed channel comparison' });
-    expect(within(table).getByRole('row', { name: /One copy 8 0 0 1\.000 1/ })).toBeVisible();
-    expect(within(table).getByRole('row', { name: /Three copies 24 0 0 0\.333 0\.333/ })).toBeVisible();
+    expect(within(table).getByRole('row', { name: /One copy 8 0 0 0\.000 1\.000 1/ })).toBeVisible();
+    expect(within(table).getByRole('row', { name: /Three copies 24 0 0 0\.000 0\.333 0\.333/ })).toBeVisible();
     expect(screen.getByRole('region', { name: 'Independent-channel theory' })).toHaveTextContent('0.000');
     expect(screen.getByLabelText('Original bytes in hexadecimal')).toHaveTextContent('41');
     const status = screen.getByRole('status');
@@ -77,6 +77,33 @@ describe('RepetitionChannelLab', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Result for the previous settings');
     fireEvent.click(screen.getByRole('button', { name: 'Run experiment' }));
     expect(screen.getByRole('row', { name: /Source bit 1.*repeat received 011.*vote 1.*Majority failure/i })).toBeVisible();
+    const comparison = screen.getByRole('table', { name: 'Observed channel comparison' });
+    expect(within(comparison).getByRole('row', { name: /One copy 8 2 2 0\.250 0\.750 1/ })).toBeVisible();
+    expect(within(comparison).getByRole('row', { name: /Three copies 24 2 1 0\.125 0\.292 0\.333/ })).toBeVisible();
+  });
+
+  it('keeps captured BSC theory visible and labeled when live controls switch to burst', () => {
+    const zeroNoise = { ...definition, config: { defaultP: 0, seed: 20260905 } } as LabRuntimeProps['definition'];
+    renderJourneyLab(RepetitionChannelLab, zeroNoise, { lang: 'en', example: 'A', sceneId: 'scene-09' });
+    fireEvent.click(screen.getByRole('button', { name: 'Run experiment' }));
+
+    fireEvent.click(screen.getByRole('radio', { name: 'One shared burst interval' }));
+
+    expect(screen.getByRole('status')).toHaveTextContent('Result for the previous settings');
+    const theory = screen.getByRole('region', { name: 'Independent-channel theory' });
+    expect(theory).toHaveTextContent('Theory for the captured BSC run.');
+    expect(theory).toHaveTextContent('3p²−2p³ = 0.000');
+  });
+
+  it('never attaches BSC theory to a captured burst run after switching live controls to BSC', () => {
+    renderJourneyLab(RepetitionChannelLab, definition, { lang: 'en', example: 'A', sceneId: 'scene-09' });
+    fireEvent.click(screen.getByRole('radio', { name: 'One shared burst interval' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Run experiment' }));
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Independent bit flips (BSC)' }));
+
+    expect(screen.getByRole('status')).toHaveTextContent('Result for the previous settings');
+    expect(screen.queryByRole('region', { name: 'Independent-channel theory' })).not.toBeInTheDocument();
   });
 
   it('keeps immutable old settings and message snapshots across close and reopen', () => {
