@@ -94,6 +94,7 @@ export const ALL_LAB_KINDS = [
   'morse-spacing',
   'cable-route',
   'pulse-channel',
+  'binary-noise',
 ] as const;
 export type LabKind = (typeof ALL_LAB_KINDS)[number];
 
@@ -121,7 +122,8 @@ export type LabDefinition =
   | LabBase<'ambiguous-code', { initialBook: Codebook; initialSymbols: string }>
   | LabBase<'morse-spacing', { example: 'ET' | 'AET' | 'BEAM' | 'BEAM ET' }>
   | LabBase<'cable-route', { defaultBudget: number }>
-  | LabBase<'pulse-channel', { defaultDuration: 1 | 2 | 4 }>;
+  | LabBase<'pulse-channel', { defaultDuration: 1 | 2 | 4 }>
+  | LabBase<'binary-noise', { defaultP: number; seed: number }>;
 
 export interface LabFallback {
   diagramLabel: Localized;

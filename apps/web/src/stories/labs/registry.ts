@@ -23,6 +23,7 @@ export const labRegistry: Readonly<Record<LabKind, () => Promise<LabModule>>> = 
   'morse-spacing': () => import('./morse-spacing/MorseSpacingLab'),
   'cable-route': () => import('./cable-route/CableRouteLab'),
   'pulse-channel': () => import('./pulse-channel/PulseChannelLab'),
+  'binary-noise': () => import('./binary-noise/BinaryNoiseLab'),
 };
 
 export const REGISTERED_LAB_KINDS: ReadonlySet<LabKind> = new Set(Object.keys(labRegistry) as LabKind[]);

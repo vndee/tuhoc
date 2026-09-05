@@ -223,6 +223,16 @@ export function validateStory(
           add('invalid-lab-config', `${path}.lab.config.defaultDuration`, 'pulse duration must be 1, 2, or 4');
         }
         break;
+      case 'binary-noise':
+        if (!Number.isFinite(scene.lab.config.defaultP) ||
+          scene.lab.config.defaultP < 0 || scene.lab.config.defaultP > 0.5) {
+          add('invalid-lab-config', `${path}.lab.config.defaultP`, 'binary noise probability must be from 0 to 0.5');
+        }
+        if (!Number.isInteger(scene.lab.config.seed) ||
+          scene.lab.config.seed < 0 || scene.lab.config.seed > 0xffff_ffff) {
+          add('invalid-lab-config', `${path}.lab.config.seed`, 'binary noise seed must be a uint32');
+        }
+        break;
       default:
         break;
     }

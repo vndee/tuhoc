@@ -22,6 +22,7 @@ const definitions: LabDefinition[] = [
   { kind: 'morse-spacing', title: localized('Khoảng nghỉ Morse', 'Morse spacing'), instruction: localized('Đọc', 'Read'), config: { example: 'ET' } },
   { kind: 'cable-route', title: localized('Chọn tuyến', 'Choose route'), instruction: localized('So sánh', 'Compare'), config: { defaultBudget: 28 } },
   { kind: 'pulse-channel', title: localized('Kênh xung', 'Pulse channel'), instruction: localized('Quan sát', 'Observe'), config: { defaultDuration: 1 } },
+  { kind: 'binary-noise', title: localized('Kênh nhiễu', 'Noisy channel'), instruction: localized('Truyền', 'Transmit'), config: { defaultP: 0.05, seed: 20260905 } },
 ];
 
 const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
@@ -42,6 +43,12 @@ const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
   'morse-spacing': { example: 'ET', letterGap: 3, wordGap: 7, result: null },
   'cable-route': { route: 'south', budget: 28, step: 0 },
   'pulse-channel': { duration: 1, tau: 1, sampleFraction: 0.5, source: 'alternating', page: 0, snapshot: null },
+  'binary-noise': { config: { p: 0.05, seed: 20260905, mode: 'bsc', manual: [] }, snapshot: null, page: 0 },
+};
+
+const binaryNoiseDefinition: Extract<LabDefinition, { kind: 'binary-noise' }> = {
+  kind: 'binary-noise', title: localized('Kênh nhiễu', 'Noisy channel'), instruction: localized('Truyền', 'Transmit'),
+  config: { defaultP: 0.2, seed: 4_294_967_295 },
 };
 
 const emptyLearningRates: Extract<LabDefinition, { kind: 'gradient-descent' }> = {
@@ -54,6 +61,16 @@ const emptyExamples: Extract<LabDefinition, { kind: 'attention' }> = {
 };
 
 describe('makeInitialLabState', () => {
+  it('initializes binary-noise with copied defaults, BSC mode, and an empty manual set', () => {
+    const first = makeInitialLabState(binaryNoiseDefinition) as { config: { manual: number[] } };
+    const second = makeInitialLabState(binaryNoiseDefinition) as { config: { manual: number[] } };
+
+    expect(first).toEqual({
+      config: { p: 0.2, seed: 4_294_967_295, mode: 'bsc', manual: [] }, snapshot: null, page: 0,
+    });
+    expect(first.config.manual).not.toBe(second.config.manual);
+  });
+
   it('initializes pulse-channel from its configured duration without coupling tau to it', () => {
     const definition = {
       kind: 'pulse-channel', title: localized('Kênh xung', 'Pulse channel'), instruction: localized('Quan sát', 'Observe'),
