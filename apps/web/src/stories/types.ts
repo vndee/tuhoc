@@ -97,6 +97,7 @@ export const ALL_LAB_KINDS = [
   'binary-noise',
   'source-entropy',
   'huffman-message',
+  'repetition-channel',
 ] as const;
 export type LabKind = (typeof ALL_LAB_KINDS)[number];
 
@@ -127,7 +128,8 @@ export type LabDefinition =
   | LabBase<'pulse-channel', { defaultDuration: 1 | 2 | 4 }>
   | LabBase<'binary-noise', { defaultP: number; seed: number }>
   | LabBase<'source-entropy', { weights: Weights; seed: number }>
-  | LabBase<'huffman-message', { maxVisibleNodes: number }>;
+  | LabBase<'huffman-message', { maxVisibleNodes: number }>
+  | LabBase<'repetition-channel', { defaultP: number; seed: number }>;
 
 export interface LabFallback {
   diagramLabel: Localized;

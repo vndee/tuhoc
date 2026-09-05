@@ -411,6 +411,42 @@ describe('validateStory', () => {
       .not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid-lab-config' })]));
   });
 
+  it.each([-0.01, 0.51, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects an invalid repetition-channel probability at its exact field: %s',
+    (defaultP) => {
+      const story = makeStoryFixture();
+      story.scenes[0]!.lab = {
+        kind: 'repetition-channel',
+        title: { vi: 'Gửi ba lần', en: 'Three copies' },
+        instruction: { vi: 'So sánh', en: 'Compare' },
+        config: { defaultP, seed: 20260905 },
+      } as unknown as typeof story.scenes[0]['lab'];
+
+      expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'repetition-channel'] as never[])))
+        .toContainEqual(expect.objectContaining({
+          code: 'invalid-lab-config', path: 'scenes.0.lab.config.defaultP',
+        }));
+    },
+  );
+
+  it.each([-1, 0.5, 0x1_0000_0000, Number.NaN])(
+    'rejects an invalid repetition-channel seed at its exact field: %s',
+    (seed) => {
+      const story = makeStoryFixture();
+      story.scenes[0]!.lab = {
+        kind: 'repetition-channel',
+        title: { vi: 'Gửi ba lần', en: 'Three copies' },
+        instruction: { vi: 'So sánh', en: 'Compare' },
+        config: { defaultP: 0.05, seed },
+      } as unknown as typeof story.scenes[0]['lab'];
+
+      expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'repetition-channel'] as never[])))
+        .toContainEqual(expect.objectContaining({
+          code: 'invalid-lab-config', path: 'scenes.0.lab.config.seed',
+        }));
+    },
+  );
+
   it('reports each invalid image, source, provenance, and source reference at its exact path', () => {
     const story = makeStoryFixture();
     story.scenes[0].illustration.src = '';
