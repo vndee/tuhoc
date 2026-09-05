@@ -12,6 +12,72 @@ describe('validateStory', () => {
     expect(validateStory(makeStoryFixture())).toEqual([]);
   });
 
+  it('reports a blank English message example at its exact field', () => {
+    const story = Object.assign(makeStoryFixture(), {
+      interaction: { kind: 'message-journey' as const, examples: { vi: 'Xin chào', en: '' } },
+    });
+
+    expect(validateStory(story, REGISTERED_LAB_KINDS)).toContainEqual(expect.objectContaining({
+      code: 'missing-locale', path: 'interaction.examples.en',
+    }));
+  });
+
+  it('reports a blank intro block at its exact field', () => {
+    const story = Object.assign(makeStoryFixture(), {
+      intro: {
+        vi: [{ kind: 'paragraph' as const, text: 'Lời mở đầu.' }],
+        en: [{ kind: 'paragraph' as const, text: ' ' }],
+      },
+    });
+
+    expect(validateStory(story, REGISTERED_LAB_KINDS)).toContainEqual(expect.objectContaining({
+      code: 'missing-locale', path: 'intro.en.0.text',
+    }));
+  });
+
+  it('reports an empty course action slug at its exact field', () => {
+    const story = Object.assign(makeStoryFixture(), {
+      courseAction: {
+        slug: '',
+        label: { vi: 'Tiếp tục học', en: 'Keep learning' },
+        fallbackLabel: { vi: 'Xem khóa học', en: 'View course' },
+      },
+    });
+
+    expect(validateStory(story, REGISTERED_LAB_KINDS)).toContainEqual(expect.objectContaining({
+      code: 'missing-locale', path: 'courseAction.slug',
+    }));
+  });
+
+  it('reports fallback table row-width mismatches and blank English cells at exact fields', () => {
+    const story = makeStoryFixture();
+    Object.assign(story.scenes[0]!.labFallback, {
+      table: {
+        vi: { headers: ['Cột một', 'Cột hai'], rows: [['Chỉ một ô']] },
+        en: { headers: ['Column one', 'Column two'], rows: [['Value', '']] },
+      },
+    });
+
+    expect(validateStory(story, REGISTERED_LAB_KINDS)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'invalid-fallback-table', path: 'scenes.0.labFallback.table.vi.rows.0',
+      }),
+      expect.objectContaining({
+        code: 'missing-locale', path: 'scenes.0.labFallback.table.en.rows.0.1',
+      }),
+    ]));
+  });
+
+  it('reports an unsupported interaction structure at its discriminant', () => {
+    const story = Object.assign(makeStoryFixture(), {
+      interaction: { kind: 'unsupported', examples: { vi: 'Xin chào', en: 'Hello' } },
+    });
+
+    expect(validateStory(story as Parameters<typeof validateStory>[0], REGISTERED_LAB_KINDS)).toContainEqual(expect.objectContaining({
+      code: 'invalid-story-interaction', path: 'interaction.kind',
+    }));
+  });
+
   it.each([
     ['duplicate scene id', (story: ReturnType<typeof makeStoryFixture>) => story.scenes.push(story.scenes[0])],
     ['missing source', (story: ReturnType<typeof makeStoryFixture>) => story.scenes[0].sourceIds.push('missing')],

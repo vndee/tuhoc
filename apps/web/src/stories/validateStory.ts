@@ -5,7 +5,8 @@ export interface StoryValidationIssue {
   code: 'missing-locale' | 'duplicate-id' | 'missing-source' | 'unknown-lab-kind' |
     'scene-count' | 'lab-count' | 'missing-image-metadata' | 'missing-provenance' |
     'missing-fallback' | 'featured-unpublished' | 'act-scene-mismatch' | 'source-count' |
-    'invalid-source' | 'invalid-lab-config';
+    'invalid-source' | 'invalid-lab-config' | 'invalid-fallback-table' |
+    'invalid-story-interaction';
   path: string;
   message: string;
 }
@@ -62,6 +63,18 @@ export function validateStory(
   text(story.meta.title, 'meta.title');
   text(story.meta.deck, 'meta.deck');
   image(story.meta.cover, 'meta.cover');
+  if (story.interaction) {
+    if (story.interaction.kind !== 'message-journey') {
+      add('invalid-story-interaction', 'interaction.kind', 'story interaction kind is unsupported');
+    }
+    text(story.interaction.examples, 'interaction.examples');
+  }
+  if (story.intro) blocks(story.intro, 'intro');
+  if (story.courseAction) {
+    if (story.courseAction.slug.trim() === '') add('missing-locale', 'courseAction.slug', 'course action slug is empty');
+    text(story.courseAction.label, 'courseAction.label');
+    text(story.courseAction.fallbackLabel, 'courseAction.fallbackLabel');
+  }
   if (story.meta.featured && !story.meta.published) add('featured-unpublished', 'meta.featured', 'a featured story must be published');
   if (story.meta.sceneCount !== story.scenes.length) add('scene-count', 'meta.sceneCount', 'metadata does not match scenes');
   if (story.meta.labCount !== story.scenes.length) add('lab-count', 'meta.labCount', 'metadata does not match labs');
@@ -173,6 +186,23 @@ export function validateStory(
     }
     text(scene.labFallback.diagramLabel, `${path}.labFallback.diagramLabel`);
     text(scene.labFallback.explanation, `${path}.labFallback.explanation`);
+    if (scene.labFallback.table) {
+      for (const lang of ['vi', 'en'] as const) {
+        const tablePath = `${path}.labFallback.table.${lang}`;
+        const table = scene.labFallback.table[lang];
+        table.headers.forEach((header, headerIndex) => {
+          if (header.trim() === '') add('missing-locale', `${tablePath}.headers.${headerIndex}`, 'table header is empty');
+        });
+        table.rows.forEach((row, rowIndex) => {
+          if (row.length !== table.headers.length) {
+            add('invalid-fallback-table', `${tablePath}.rows.${rowIndex}`, 'table row width must match its headers');
+          }
+          row.forEach((cell, cellIndex) => {
+            if (cell.trim() === '') add('missing-locale', `${tablePath}.rows.${rowIndex}.${cellIndex}`, 'table cell is empty');
+          });
+        });
+      }
+    }
     image(scene.illustration, `${path}.illustration`);
     if (!registeredKinds.has(scene.lab.kind)) add('unknown-lab-kind', `${path}.lab.kind`, `unregistered lab ${scene.lab.kind}`);
     if (!unique(scene.sourceIds)) add('duplicate-id', `${path}.sourceIds`, 'scene source ids must be unique');
