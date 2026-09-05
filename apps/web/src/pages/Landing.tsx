@@ -1,47 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { catalogQueryKey, fetchCatalog } from '../api/catalog';
+import lessonDepthUrl from '../assets/landing/lesson-depth.webp';
 import { useLanguage } from '../i18n/LanguageProvider';
-import { LanguageSwitcher } from '../i18n/LanguageSwitcher';
+import { PaperLanguageSwitcher } from '../i18n/PaperLanguageSwitcher';
+import { LandingStoryFeature } from '../stories/components/LandingStoryFeature';
 import { useThemeContext } from '../theme/ThemeContext';
 
-/**
- * `/` cho khách chưa đăng nhập — **landing**, chế độ Persuade.
- *
- * Hợp đồng hướng: `.impeccable/surfaces/apps-web-src-pages-landing-tsx.md`
- * (seed 7f29cad4). Thế giới RIÊNG, không dùng lại khung `.doc` của vỏ app:
- * **một mặt viết tay** — giấy kem ban ngày, bảng đá ban đêm, cùng một bàn tay.
- *
- * Vì sao đổi hẳn thế giới (03/09/2026): bản trước tái dụng nguyên `.doc`,
- * `.toc-*`, `.cont-*`, `.courses-*`, `.mnote-*` của trang Học tiếp cộng thanh
- * trên của vỏ app, và chủ dự án đọc ra đúng cái đó — "nhìn giống trang đã
- * đăng nhập hơn là landing page".
- *
- * KHÔNG CÒN MỘT KHOÁ CỤ THỂ NÀO trên trang (yêu cầu chủ dự án, 03/09/2026:
- * *"không nên để một khoá học cụ thể như vậy, khoá này không phải ai cũng
- * quan tâm và không phải ai cũng hiểu nó là gì"*). Bản trước dựng cả màn đầu
- * trên chương 1.1 của `bat-bien-vong-lap`: trích đoạn, câu bôi đen, ghi chú,
- * biên bản, mục lục, và cả câu hỏi ở nhan đề. Một người không làm phần mềm
- * mở trang ra chỉ thấy một hàm Python có lỗi.
- *
- * Nay trang chứng minh CƠ CHẾ, không chứng minh một môn học:
- *  1. câu hỏi ai đọc một mình cũng từng hỏi, và một lối vào đã thử mà hỏng;
- *  2. ba bước viết tay: câu được gạch → ghi chú của bạn → gia sư cầm chính
- *     ghi chú ấy trả lời. Toàn bộ là chữ trung tính, gắn nhãn "ví dụ";
- *  3. danh mục THẬT từ `GET /courses` — nó mới là chỗ nói "có gì để đọc",
- *     và nó tự đổi theo máy chủ chứ không viết cứng môn nào.
- *
- * Hành động chính đi theo dữ liệu, không theo một slug viết cứng: có khoá
- * trong danh mục thì trỏ tới khoá ĐẦU TIÊN cùng tên thật của nó; danh mục
- * rỗng hoặc hỏng thì trỏ về `/courses` và không hứa một trang nào.
- *
- * Mọi dấu trên mặt viết là nét vẽ tay qua bộ lọc nhiễu, không phải `border`
- * CSS và không phải khối màu CSS giả làm vật.
- *
- * Sự thật trang này được phép nói (PRODUCT.md): đọc miễn phí không cần tài
- * khoản; tài khoản giữ ghi chú, tiến độ, gia sư AI. Không giá, không lời
- * chứng thực, không logo đối tác, không hình stock.
- */
+/** `/` cho khách chưa đăng nhập — một câu chuyện ba nhịp: đọc, chạm, hỏi. */
 export function Landing() {
   const { t } = useLanguage();
   const { theme, toggle: toggleTheme } = useThemeContext();
@@ -55,6 +22,7 @@ export function Landing() {
       <ChalkDefs />
 
       <div className="board">
+        <StoryThread />
         {/* Nhãn hiệu viết tay, không phải ô màu của vỏ app. "Tự học" là tên
             giữ chỗ (PRODUCT.md) — trang này không được bịa một tên khác. Hai
             điều khiển thiết bị và lối đăng nhập ở đây vì route này KHÔNG có
@@ -71,32 +39,21 @@ export function Landing() {
             >
               {theme === 'dark' ? <SunMark /> : <MoonMark />}
             </button>
-            <LanguageSwitcher />
+            <PaperLanguageSwitcher className="bd-language" />
             <Link to="/login" className="bd-chrome-link">
               {t('landing.login.cta')}
             </Link>
           </div>
         </div>
 
-        <div className="bd-stage">
+        <header className="bd-stage">
           <section className="bd-say" aria-labelledby="bd-q">
-            <h1 id="bd-q" className="bd-q">
-              {t('landing.question')}
+            <h1 id="bd-q" className="bd-q" aria-label={t('landing.question')}>
+              <span aria-hidden="true">{t('landing.question.read')}</span>
+              <span aria-hidden="true">{t('landing.question.touch')}</span>
+              <span aria-hidden="true">{t('landing.question.ask')}</span>
             </h1>
             <p className="bd-lede">{t('landing.lede')}</p>
-
-            {/* CÁI GẠCH XOÁ: một lối đã thử và không đi tới đâu. Đây là kinh
-                nghiệm của bất kỳ ai tự học, không phải của một môn nào — đó
-                là lý do câu hỏi ở nhan đề là câu hỏi thật. Nét gạch được VẼ,
-                không phải `line-through` của trình duyệt. */}
-            <p className="bd-working">
-              <span className="bd-strike">
-                <s>{t('landing.working.tried')}</s>
-                <ChalkStrike />
-              </span>
-              <span className="bd-verdict">{t('landing.working.verdict')}</span>
-            </p>
-
             <p className="bd-act">
               <Link to={readHref} className="bd-cta" data-testid="landing-read">
                 <ChalkBox />
@@ -112,81 +69,67 @@ export function Landing() {
               </Link>
             </p>
           </section>
+          <LearningLab />
+        </header>
 
-          {/* Hình đứng một mình ở cột phải. Nhãn "Hướng đi" và câu tầm nhìn
-              đã gỡ theo yêu cầu chủ dự án (03/09/2026) — tầm nhìn vẫn được ghi
-              ở PRODUCT.md, chỉ là trang chủ thôi in nó ra. Hình KHÔNG thành
-              trang trí vì thế: nó vẫn `role="img"` có tên trợ năng, vì nó vẫn
-              nói ra điều trang này tin. */}
-          <div className="bd-vision">
-            <StudyScene label={t('landing.vision.figure')} />
-          </div>
-        </div>
-
-        {/* ── BẠN LÀM ĐƯỢC GÌ Ở ĐÂY ───────────────────────────────────────
-            Chủ dự án nhìn bản trước và nói: "không hiểu đây là platform gì,
-            không hiểu nó làm được gì". Đúng — trang DIỄN cơ chế mà không bao
-            giờ NÓI mình là cái gì. Bốn dòng này trả lời câu ấy bằng chữ, và
-            chúng là bốn dòng CHỮ chứ không phải bốn ô tính năng có biểu tượng:
-            hộp tính năng đúng là thứ luận đề của trang từ chối.
-
-            Mỗi dòng chỉ nói điều mã đã làm được. Không giá, không "ai cũng
-            xuất bản được" (PRODUCT.md ghi đó còn là khoảng trống), và gia sư
-            đọc GHI CHÚ chứ không đọc tiến độ. */}
-        <section className="bd-scene bd-can" aria-labelledby="bd-can-h">
-          {/* Đầu mục và gạch dưới đi cùng một khối inline-block: người
-              viết tay gạch dưới CHỮ MÌNH VỪA VIẾT, không gạch hết trang.
-              Một gạch kéo hết cột trong khi câu chỉ dài quá nửa là đúng
-              khuyết điểm chủ dự án bắt được ở vòng trước. */}
-          <span className="bd-h-line">
-            <h2 id="bd-can-h" className="bd-h">
-              {t('landing.can.h')}
+        <section className="bd-scene bd-depth" aria-labelledby="bd-depth-h">
+          <div className="bd-story-copy">
+            <h2 id="bd-depth-h" className="bd-story-h">
+              {t('landing.depth.h')}
             </h2>
-            <ChalkRule variant={1} />
-          </span>
-          <ul className="bd-can-list">
-            {(['landing.can.read', 'landing.can.note', 'landing.can.ask', 'landing.can.return'] as const).map((key) => (
-              <li key={key}>{t(key)}</li>
-            ))}
-          </ul>
+            <p>{t('landing.depth.p1')}</p>
+            <p>{t('landing.depth.p2')}</p>
+          </div>
+          <figure className="bd-plate">
+            <img
+              className="bd-figure"
+              src={lessonDepthUrl}
+              width="1672"
+              height="941"
+              loading="lazy"
+              decoding="async"
+              role="img"
+              alt={t('landing.vision.figure')}
+            />
+            <figcaption>{t('landing.depth.caption')}</figcaption>
+          </figure>
         </section>
 
-      {/* ── CƠ CHẾ, VIẾT TAY BA BƯỚC ────────────────────────────────
-            Không còn tờ giấy ghim và không còn trích đoạn của một khoá:
-            chính mặt viết diễn ba bước, bằng chữ trung tính ai đọc cũng
-            hiểu. Mối nối giữa ghi chú và câu trả lời được VẼ — mũi tên
-            xuống ghi chú, dấu ngoặc ôm câu gia sư trích lại. */}
         <section className="bd-scene bd-demo" aria-labelledby="bd-demo-h">
-          <h2 id="bd-demo-h" className="bd-demo-h">
-            {t('landing.demo.h')}
-          </h2>
+          <div className="bd-story-copy bd-demo-copy">
+            <h2 id="bd-demo-h" className="bd-story-h">
+              {t('landing.demo.h')}
+            </h2>
+            <p>{t('landing.demo.intro')}</p>
+          </div>
 
-          <div className="bd-demo-steps">
+          <div className="bd-demo-proof">
+            <BookmarkMark />
+            <p className="bd-demo-example">{t('landing.demo.example')}</p>
             <p className="bd-demo-sentence">
-            <span className="bd-hl">{t('landing.demo.sentence')}</span>
-          </p>
+              <span className="bd-hl">{t('landing.demo.sentence')}</span>
+            </p>
 
-          <ChalkArrow />
+            <ChalkArrow />
 
-          <div className="bd-demo-note">
-            <p className="bd-demo-label">{t('landing.demo.noteLabel')}</p>
-            <p className="bd-note-quote">{t('landing.demo.note')}</p>
-          </div>
-
-          <div className="bd-demo-turn">
-            <p className="bd-demo-label">{t('landing.demo.tutorLabel')}</p>
-            <p className="bd-demo-tutor">{t('landing.demo.tutor')}</p>
-            <div className="bd-held">
-              <ChalkBracket />
-              <blockquote className="bd-quote">{t('landing.demo.note')}</blockquote>
+            <div className="bd-demo-note">
+              <p className="bd-demo-label">{t('landing.demo.noteLabel')}</p>
+              <p className="bd-note-quote">{t('landing.demo.note')}</p>
             </div>
-          </div>
 
-          </div>
+            <div className="bd-demo-turn">
+              <p className="bd-demo-label">{t('landing.demo.tutorLabel')}</p>
+              <div className="bd-held">
+                <ChalkBracket />
+                <blockquote className="bd-quote">{t('landing.demo.note')}</blockquote>
+              </div>
+              <p className="bd-demo-tutor">{t('landing.demo.tutor')}</p>
+            </div>
 
-          <p className="bd-note-how">
-            {t('landing.note.how')} <span className="bd-hover-only">{t('landing.note.hover')}</span>
-          </p>
+            <p className="bd-note-how">
+              {t('landing.note.how')} <span className="bd-hover-only">{t('landing.note.hover')}</span>
+            </p>
+          </div>
         </section>
 
         {/* ── DANH MỤC THẬT ───────────────────────────────────────────────
@@ -194,11 +137,7 @@ export function Landing() {
             không viết cứng môn nào. Rỗng thì nói rỗng; hỏng thì nói hỏng và
             cho một đường thử lại — `retry: false` nghĩa là không có lần thử
             nào tự đến. */}
-        <section className="bd-scene bd-scene-last" aria-labelledby="bd-cat-h">
-          {/* Đầu mục và gạch dưới đi cùng một khối inline-block: người
-              viết tay gạch dưới CHỮ MÌNH VỪA VIẾT, không gạch hết trang.
-              Một gạch kéo hết cột trong khi câu chỉ dài quá nửa là đúng
-              khuyết điểm chủ dự án bắt được ở vòng trước. */}
+        <section className="bd-scene" aria-labelledby="bd-cat-h">
           <span className="bd-h-line">
             <h2 id="bd-cat-h" className="bd-h">
               {t('landing.catalog.h')}
@@ -236,132 +175,157 @@ export function Landing() {
           </div>
         </section>
 
-        {/* Máng phấn: cái kết thật của một mặt viết, và chỗ đặt ba lối ra.
-            Cả gờ máng lẫn mẩu phấn đều được VẼ. */}
-        <div className="bd-tray">
+        <LandingStoryFeature />
+
+        {/* Máng phấn trở thành đoạn kết của câu chuyện: một lời mời bắt đầu,
+            một hành động chính, rồi mới tới hai lối tài khoản. */}
+        <footer className="bd-tray">
           <ChalkLedge />
-          <p className="bd-tray-links">
-            <Link to="/courses" className="bd-link">
-              {t('landing.catalog.all')}
-            </Link>
-            <Link to="/login" state={{ intent: 'register' }} className="bd-link">
-              {t('landing.account.cta')}
-            </Link>
-            <Link to="/login" className="bd-link">
-              {t('landing.login.cta')}
-            </Link>
-          </p>
-        </div>
+          <div className="bd-footer">
+            <div className="bd-footer-copy">
+              <h2>{t('landing.footer.h')}</h2>
+              <p>{t('landing.footer.start')}</p>
+            </div>
+            <div className="bd-footer-actions">
+              <Link to="/courses" className="bd-footer-primary">
+                <ChalkBox />
+                <span>{t('landing.catalog.all')}</span>
+              </Link>
+              <p className="bd-tray-links">
+                <Link to="/login" state={{ intent: 'register' }} className="bd-link">
+                  {t('landing.account.cta')}
+                </Link>
+                <Link to="/login" className="bd-link">
+                  {t('landing.login.cta')}
+                </Link>
+              </p>
+            </div>
+          </div>
+        </footer>
       </div>
     </div>
   );
 }
 
 /**
- * CUỐN SÁCH MỞ, VÀ NHỮNG THỨ BAY LÊN TỪ NÓ.
- *
- * Ba bản trước lần lượt là: một gáy sách có vạch chia (đọc thành cái trục đo),
- * ba khung lồng nhau (đọc thành cửa sổ phần mềm), và một người ngồi học. Chủ
- * dự án bỏ nốt hình người: cuốn sách mở ra công thức và mô hình là đủ, và một
- * dáng người vẽ bằng vài nét thì luôn là chỗ yếu nhất của hình.
- *
- * Còn lại là một cảnh gọn: cuốn sách mở ở dưới, và từ nó bay lên đúng những
- * thứ nó dạy — mạng nơ-ron, ký hiệu toán, hành tinh có vành, mấy ngôi sao. Ba
- * nét ngắn bốc lên từ gáy sách là thứ nối hai nửa lại; không có chúng thì cụm
- * trên chỉ là mấy hình trôi nổi cạnh một cuốn sách.
- *
- * Ký hiệu toán vẽ bằng `<text>`: `∫`, `Σ`, `π` là notation chứ không phải chữ
- * giao diện, nên chúng không vào catalog i18n và không đổi theo ngôn ngữ.
+ * Một minh hoạ chỉ được gọi là tương tác khi thao tác làm thay đổi điều người
+ * học đang quan sát. Phân bố năm khả năng là ví dụ đủ phổ quát để hiểu bằng
+ * mắt, nhưng vẫn là một ý niệm thật của giáo trình chứ không phải sóng trang
+ * trí. Nét vàng đi từ các cột sang đường cong và tiếp tục ở ghi chú phía dưới.
  */
-function StudyScene({ label }: { label: string }) {
-  const stars = [
-    { x: 236, y: 34, r: 8 },
-    { x: 340, y: 130, r: 6 },
-    { x: 150, y: 40, r: 5 },
-  ];
-  const nodes = ['40,88', '40,130', '88,66', '88,108', '132,86'];
+function LearningLab() {
+  const { t } = useLanguage();
+  const [spread, setSpread] = useState(18);
+  const mix = spread / 100;
+  const focused = [0.68, 0.14, 0.09, 0.06, 0.03];
+  const probabilities = focused.map((value) => value * (1 - mix) + 0.2 * mix);
+  const bars = probabilities.map((value, index) => {
+    const height = 18 + value * 220;
+    return { x: 42 + index * 68, y: 194 - height, height };
+  });
+  const line = bars.map((bar) => `${bar.x + 13},${bar.y}`).join(' ');
+  const observation =
+    spread < 34 ? t('landing.lab.focused') : spread < 72 ? t('landing.lab.mixed') : t('landing.lab.even');
+
   return (
-    <svg className="bd-figure" viewBox="0 0 380 300" role="img" aria-label={label} focusable="false">
-      <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-        {/* ── CUỐN SÁCH MỞ ──────────────────────────────────────────────
-            Hai TỨ GIÁC khép kín, không phải hai đường cong. Bản trước vẽ hai
-            nét cong vồng lên ở mép ngoài và mắt đọc ra ngay là ĐÔI CÁNH: một
-            cuốn sách mở thì mép ngoài THẤP hơn gáy, và nó có bề dày. */}
-        <path
-          className="bd-fig-book"
-          d="M92 254 C 128 244, 164 242, 188 250 L188 278 C 162 270, 126 272, 96 282 Z"
-          strokeWidth="3"
-          filter="url(#bd-chalk)"
-        />
-        <path
-          className="bd-fig-book"
-          d="M288 254 C 252 244, 216 242, 192 250 L192 278 C 218 270, 254 272, 284 282 Z"
-          strokeWidth="3"
-          filter="url(#bd-chalk-1)"
-        />
-        {/* Bề dày của tập giấy dưới mỗi trang. */}
-        <path
-          className="bd-fig-lines"
-          d="M96 282 C 126 272, 162 270, 188 278 M284 282 C 254 272, 218 270, 192 278"
-          strokeWidth="1.6"
-          filter="url(#bd-chalk-2)"
-        />
-        {/* Vài dòng chữ trên trang, gợi ý thôi. */}
-        <path
-          className="bd-fig-lines"
-          d="M114 258 C 134 252, 156 251, 174 255 M114 266 C 134 260, 156 259, 174 263 M206 255 C 224 251, 246 252, 266 258 M206 263 C 224 259, 246 260, 266 266"
-          strokeWidth="1.4"
-          filter="url(#bd-chalk-2)"
-        />
-        {/* Ba nét bốc lên từ gáy, xoè ra — thứ nối cuốn sách với những gì nó
-            dạy. Bản trước chụm quá sát nên chúng đọc thành một dấu ngoặc. */}
-        <path
-          className="bd-fig-rise"
-          d="M172 236 C 160 222, 154 208, 152 194 M190 234 C 190 218, 190 206, 190 192 M208 236 C 220 222, 226 208, 228 194"
-          strokeWidth="1.8"
-          filter="url(#bd-chalk-1)"
-        />
+    <section className="bd-lab" aria-labelledby="bd-lab-h">
+      <div className="bd-lab-head">
+        <h2 id="bd-lab-h">{t('landing.lab.h')}</h2>
+        <p>{t('landing.lab.copy')}</p>
+      </div>
 
-        {/* ── MẠNG NƠ-RON ───────────────────────────────────────────────── */}
-        <path
-          className="bd-fig-net"
-          d="M40 88 L88 66 M40 88 L88 108 M40 130 L88 66 M40 130 L88 108 M88 66 L132 86 M88 108 L132 86"
-          strokeWidth="1.8"
-          filter="url(#bd-chalk-2)"
-        />
-        {nodes.map((pt) => {
-          const [cx, cy] = pt.split(',');
-          return <circle key={pt} className="bd-fig-node" cx={cx} cy={cy} r="6" strokeWidth="2.2" filter="url(#bd-chalk)" />;
-        })}
-
-        {/* ── HÀNH TINH: vành là HAI cung, một khuất sau và một vắt trước ── */}
-        <circle className="bd-fig-sky" cx="302" cy="76" r="27" strokeWidth="2.6" filter="url(#bd-chalk-1)" />
-        <path className="bd-fig-sky" d="M268 66 C 284 56, 322 56, 338 68" strokeWidth="1.8" filter="url(#bd-chalk-2)" />
-        <path className="bd-fig-sky" d="M266 68 C 276 88, 328 88, 340 66" strokeWidth="2.4" filter="url(#bd-chalk)" />
-
-        {/* ── SAO TÁM TIA ───────────────────────────────────────────────── */}
-        {stars.map((st) => (
-          <path
-            key={`${st.x}-${st.y}`}
-            className="bd-fig-sky"
-            d={
-              `M${st.x} ${st.y - st.r} L${st.x} ${st.y + st.r} M${st.x - st.r} ${st.y} L${st.x + st.r} ${st.y}` +
-              ` M${st.x - st.r * 0.5} ${st.y - st.r * 0.5} L${st.x + st.r * 0.5} ${st.y + st.r * 0.5}` +
-              ` M${st.x + st.r * 0.5} ${st.y - st.r * 0.5} L${st.x - st.r * 0.5} ${st.y + st.r * 0.5}`
-            }
-            strokeWidth="1.8"
-            filter="url(#bd-chalk)"
+      <svg
+        className="bd-lab-chart"
+        viewBox="0 0 360 220"
+        role="img"
+        aria-label={t('landing.lab.figure')}
+        focusable="false"
+      >
+        <path className="bd-lab-ground" d="M24 195 C 116 192, 238 198, 338 194" filter="url(#bd-chalk-2)" />
+        {bars.map((bar, index) => (
+          <rect
+            key={bar.x}
+            className={`bd-lab-bar bd-lab-bar-${index + 1}`}
+            x={bar.x}
+            y={bar.y}
+            width="26"
+            height={bar.height}
+            filter={`url(#bd-chalk${index % 3 === 0 ? '' : `-${(index % 2) + 1}`})`}
           />
         ))}
-      </g>
+        <polyline className="bd-lab-thread" points={line} filter="url(#bd-chalk)" />
+        {bars.map((bar) => (
+          <circle key={`point-${bar.x}`} className="bd-lab-point" cx={bar.x + 13} cy={bar.y} r="4.5" />
+        ))}
+      </svg>
 
-      {/* ── KÝ HIỆU TOÁN, giữa sách và bầu trời ─────────────────────────── */}
-      <g className="bd-fig-math">
-        <text x="176" y="80" fontSize="30">∫</text>
-        <text x="210" y="118" fontSize="24">Σ</text>
-        <text x="256" y="164" fontSize="22">π</text>
-        <text x="140" y="170" fontSize="21">x²</text>
+      <label className="bd-lab-control">
+        <span className="bd-lab-control-name">{t('landing.lab.slider')}</span>
+        <span className="bd-lab-value" aria-hidden="true">
+          {spread}%
+        </span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={spread}
+          aria-valuetext={observation}
+          onChange={(event) => setSpread(Number(event.currentTarget.value))}
+        />
+        <span className="bd-lab-axis" aria-hidden="true">
+          <span>{t('landing.lab.axisFocused')}</span>
+          <span>{t('landing.lab.axisSpread')}</span>
+        </span>
+      </label>
+
+      <p className="bd-lab-observation" role="status" aria-live="polite" aria-label={t('landing.lab.observation')}>
+        {observation}
+      </p>
+      <PencilMark />
+    </section>
+  );
+}
+
+/** Một dòng suy nghĩ đi qua cả trang; mờ, nằm sau nội dung và không bắt sự kiện. */
+function StoryThread() {
+  return (
+    <svg
+      className="bd-story-thread"
+      viewBox="0 0 1000 1000"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M790 84 C900 120 974 186 974 270 L974 494 C974 520 950 535 914 535 C680 535 286 535 68 535 C36 535 22 550 22 578 L22 786 C22 812 40 825 72 825 C310 825 720 825 950 825 C976 825 982 842 982 868 L982 926 C982 950 930 972 850 982"
+        pathLength="1"
+        vectorEffect="non-scaling-stroke"
+        filter="url(#bd-chalk-2)"
+      />
+    </svg>
+  );
+}
+
+/** Một cây bút chì nhỏ đang chỉ vào vùng điều khiển, không phải icon trang trí. */
+function PencilMark() {
+  return (
+    <svg className="bd-pencil" viewBox="0 0 92 24" aria-hidden="true" focusable="false">
+      <g fill="none" strokeLinecap="round" strokeLinejoin="round" filter="url(#bd-chalk-1)">
+        <path className="bd-pencil-body" d="M8 15 L72 5 L84 10 L20 20 Z" />
+        <path className="bd-pencil-tip" d="M8 15 L2 21 L20 20" />
+        <path className="bd-pencil-lead" d="M2 21 L8 19" />
+        <path className="bd-pencil-band" d="M70 6 L76 14" />
       </g>
+    </svg>
+  );
+}
+
+/** Mẩu bookmark đánh dấu nơi câu hỏi của người học được giữ lại. */
+function BookmarkMark() {
+  return (
+    <svg className="bd-bookmark" viewBox="0 0 42 74" aria-hidden="true" focusable="false">
+      <path d="M5 3 C14 1, 29 2, 37 4 L36 69 L21 58 L6 70 Z" filter="url(#bd-chalk-2)" />
+      <path d="M8 7 C17 5, 27 5, 34 7" fill="none" filter="url(#bd-chalk)" />
     </svg>
   );
 }
@@ -443,22 +407,6 @@ function ChalkArrow() {
         <path className="bd-arrow-live" d="M24 4 C 24 40, 40 56, 62 70 L 96 88" pathLength={1} />
         <path className="bd-arrow-live bd-arrow-head" d="M96 88 L 74 86 M96 88 L 84 70" pathLength={1} />
       </g>
-    </svg>
-  );
-}
-
-/** Nét gạch xoá, vẽ tay ngang qua dòng đã thử và bỏ. */
-function ChalkStrike() {
-  return (
-    <svg className="bd-strike-mark" viewBox="0 0 300 10" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-      <path
-        d="M2 7 C 78 3, 156 8, 298 3"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        filter="url(#bd-chalk-1)"
-      />
     </svg>
   );
 }

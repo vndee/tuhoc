@@ -62,6 +62,12 @@ chữ. Tầm nhìn sống ở đây, không ở trang chủ. Nếu một lượt
 nó về, nó phải mang lại nhãn phân biệt — `pages/Landing.test.tsx` canh rằng
 trang không lặng lẽ hứa những thứ ở mục "CHƯA chạy" bên trên.
 
+**Quyết định 04/09/2026:** landing tạm thời không nói về personalization.
+Các khoá hiện có được soạn riêng cho chủ dự án, nhưng đó chưa phải năng lực
+sản phẩm công khai. Personalization vẫn là hướng phát triển tương lai; chỉ được
+đưa lên landing khi có cơ chế chạy cho mọi người học và câu chữ phân biệt rõ
+hiện tại với định hướng.
+
 ## Positioning
 
 Chủ dự án chọn ba lời hứa phải giữ bằng mọi giá khi thiết kế lại:
@@ -117,6 +123,9 @@ trang đăng nhập nói đúng câu ấy. Ghi chú và tiến độ cần tài 
   `web_search` nếu có key), cấu hình agent theo người dùng ở `/settings`.
 - Khoá học: gói v2, catalog công khai `GET /courses`, registry cộng đồng trên
   GitHub, đánh giá sao, thảo luận.
+- Đặc san: `/stories` và `/stories/a-history-of-ai` là bằng chứng công khai
+  hiện tại cho bài kể song ngữ có nguồn, minh hoạ được gắn nhãn và lab cục bộ;
+  không lưu tiến độ, không hứa cá nhân hoá.
 - Ghi lạc quan có lùi: **một lỗi ghi phải được nói ra** (`role="alert"`),
   không nuốt.
 
@@ -160,6 +169,9 @@ i18n, README, và các bản bàn giao — chưa được chủ dự án gọi t
   chứng về độ dày nội dung tương lai, không phải nội dung đang dùng được.
 - Fixture `so-dau-phay-dong`: cũng v1, cũng không publish được.
 - Bộ e2e 7 bài chạy trên stack thật; 1118 test đơn vị web.
+- Đặc san công khai đầu tiên: **Một lịch sử của trí tuệ nhân tạo** / **A
+  History of Artificial Intelligence** — 4 hồi, 12 cảnh và 12 lab xác định;
+  đây là proof surface hiện tại, không phải một lời hứa về personalization.
 - **Không có:** người dùng thật ngoài chủ dự án, lời chứng thực, số liệu sử dụng,
   báo chí, giá, logo chính thức. **Không được bịa** bất kỳ thứ nào trong số này.
 

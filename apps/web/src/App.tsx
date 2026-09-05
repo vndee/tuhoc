@@ -61,6 +61,7 @@ const COURSE_ROUTE = /^\/c\/[^/]+/;
 // `/login` — và, từ 03/09/2026, `/` khi chưa có phiên. Hai màn hình
 // TRƯỚC-TÀI-KHOẢN, cả hai đều không có thanh trên. Xem `ShellProps.authScreen`.
 const AUTH_ROUTE = /^\/login/;
+const EDITORIAL_ROUTE = /^\/stories(?:\/|$)/;
 
 function AppShell() {
   const { theme, toggle: toggleTheme } = useThemeContext();
@@ -84,6 +85,7 @@ function AppShell() {
    * cùng đọc — hỏi thêm ở đây không tốn một request nào.
    */
   const authScreen = AUTH_ROUTE.test(location.pathname) || (location.pathname === '/' && !me.data);
+  const editorialScreen = EDITORIAL_ROUTE.test(location.pathname);
 
   useSyncLifecycle();
   useLegacyDrain();
@@ -97,9 +99,10 @@ function AppShell() {
       reading={CHAPTER_ROUTE.test(location.pathname)}
       inCourse={COURSE_ROUTE.test(location.pathname)}
       authScreen={authScreen}
+      editorialScreen={editorialScreen}
       sidebar={<Sidebar />}
       topbar={
-        authScreen ? null : (
+        authScreen || editorialScreen ? null : (
         <>
           {/* NÚT NGĂN KÉO CỦA MÀN HẸP, đứng trước nhãn hiệu — chỗ mọi người
               tìm nó trên điện thoại. `reader.css` giữ nó ẩn từ 981px trở lên,

@@ -10,7 +10,8 @@ Brings up the real API + Postgres, serves the real **production build**
 of the web app, and drives both with a real browser (Playwright) to prove
 the whole stack works together. For what each spec actually checks and why,
 read the spec files themselves — `apps/web/e2e/p1.spec.ts`,
-`apps/web/e2e/widget.spec.ts`, `apps/web/e2e/s2.spec.ts` (below) — and
+`apps/web/e2e/widget.spec.ts`, `apps/web/e2e/s2.spec.ts`,
+`apps/web/e2e/p2.spec.ts`, and `apps/web/e2e/stories.spec.ts` — and
 `scripts/test-e2e.sh`, whose comments carry the reasoning for every step of
 the harness.
 
@@ -21,17 +22,15 @@ the harness.
 > Execution reports are not part of this repository; anything a reader of a
 > tracked doc needs must live in a tracked file.
 
-**Three spec files actually run**, and they are gates for different things:
+**Five spec files actually run**, and they are gates for different things:
 `p1.spec.ts` (the reader — including the course table of contents, inherited
 from the deleted `s1.spec.ts`), `widget.spec.ts` (the phase-1 security
 gate: a course widget runs inside `sandbox="allow-scripts"`, its origin is
 opaque, and `document.cookie` throws rather than returning the session), and
-`s2.spec.ts` (Pha 2's AI/credit gate — see below).
-
-One more sits in the directory but is **quarantined** in
-`apps/web/playwright.config.ts`'s `testIgnore`, with its reason recorded at
-the top of the file itself: `p2.spec.ts` (annotations — its fixture
-expectations predate the server-side pivot).
+`s2.spec.ts` (Pha 2's AI/credit gate — see below), `p2.spec.ts` (annotations
+against the shared seeded course), and `stories.spec.ts`
+(public special-edition routes, bundle/network laziness, responsive and
+motion behavior, fallbacks, visual baselines, and performance budgets).
 
 Gone with the features they covered: `import.spec.ts` and `s1.spec.ts` (the
 Import screen and the version-pinning update dialog, removed in `e58ef41`;
@@ -182,6 +181,14 @@ before, if you skip this.
 
 ```bash
 make test-e2e
+```
+
+Focused special-edition checks, including the production manifest graph and
+controlled screenshots, run from `apps/web`:
+
+```bash
+bun run check:stories-bundle
+bunx playwright test e2e/stories.spec.ts
 ```
 
 The web step builds before it serves, so the first run in a clean

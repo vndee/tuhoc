@@ -4,17 +4,19 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 import { courseAssets } from './vite-plugins/courseAssets.ts';
+import { storyStaticGraphEvidencePlugin } from './scripts/story-static-graph.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 // https://vite.dev/config/
 export default defineConfig({
+  build: { manifest: true },
   // `tailwindcss()` là plugin RIÊNG của Tailwind v4, không phải qua PostCSS —
   // v4 bỏ `tailwind.config.js`, token khai bằng `@theme` ngay trong CSS (xem
   // `src/styles/tokens.css`). Nó phải có mặt ở đây thì `@import "tailwindcss"`
   // mới được biên dịch; thiếu nó thì dòng import ấy lọt xuống trình duyệt
   // nguyên văn và im lặng không làm gì.
-  plugins: [tailwindcss(), react(), courseAssets()],
+  plugins: [tailwindcss(), react(), courseAssets(), storyStaticGraphEvidencePlugin()],
   // `strictPort` xuất hiện ở đây vì hệ thống con 2 (Pha 1) làm cổng 5173 CÓ
   // TẢI TRỌNG: kho khoá ở origin thứ hai chỉ tin đúng một origin, và ở dev đó
   // là `http://localhost:5173`. Mặc định của Vite là lặng lẽ nhảy sang cổng kế

@@ -55,6 +55,22 @@ describe('<LanguageProvider>', () => {
     expect(document.documentElement.lang).toBe('en');
   });
 
+  it('cấp nhãn giao diện đặc san dùng chung với dạng số của từng ngôn ngữ', () => {
+    const { result } = renderHook(() => useLanguage(), { wrapper });
+
+    expect(result.current.t('stories.collectionTitle')).toBe('Các số đặc san');
+    expect(result.current.t('stories.issueLabel', 3)).toBe('Số 03 · Bài kể tương tác');
+    expect(result.current.t('stories.sceneCount', 2)).toBe('2 cảnh');
+
+    act(() => {
+      result.current.setLang('en');
+    });
+
+    expect(result.current.t('stories.collectionTitle')).toBe('All special editions');
+    expect(result.current.t('stories.issueLabel', 3)).toBe('Issue 03 · Interactive essay');
+    expect(result.current.t('stories.sceneCount', 2)).toBe('2 scenes');
+  });
+
   it('lựa chọn sống sót qua một lần tải lại trang', () => {
     const first = renderHook(() => useLanguage(), { wrapper });
     act(() => {
@@ -128,15 +144,16 @@ describe('CỬA: đổi được ngôn ngữ trong ứng dụng thật', () => {
      * MÀN HÌNH ĐẦU TIÊN một người lạ nhìn thấy, không phải trên trang đăng
      * nhập họ chưa chắc tới: `/` không còn đẩy khách sang `/login`.
      */
-    const selector = await screen.findByLabelText('Ngôn ngữ giao diện');
+    const selector = await screen.findByRole('button', { name: 'Ngôn ngữ giao diện' });
     expect(document.documentElement.lang).toBe('vi');
 
-    await user.selectOptions(selector, 'en');
+    await user.click(selector);
+    await user.click(screen.getByRole('menuitemradio', { name: 'EN — English' }));
 
     // Cùng một điều khiển, nhãn của nó bây giờ là tiếng Anh — tức catalog thật
     // sự được tra cứu lại, chứ không phải chỉ một biến state đổi giá trị.
-    expect(screen.getByLabelText('Interface language')).toBe(selector);
-    expect(screen.queryByLabelText('Ngôn ngữ giao diện')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Interface language' })).toBe(selector);
+    expect(screen.queryByRole('button', { name: 'Ngôn ngữ giao diện' })).toBeNull();
     expect(document.documentElement.lang).toBe('en');
     expect(window.localStorage.getItem(LANG_STORAGE_KEY)).toBe('en');
   });
