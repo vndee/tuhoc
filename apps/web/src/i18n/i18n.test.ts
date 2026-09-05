@@ -345,8 +345,15 @@ function filesWithVietnameseLiterals(): string[] {
     .map(repoRelative);
 }
 
-/** Nơi chữ tiếng Việt ĐƯỢC PHÉP sống mãi mãi: chính hai quyển từ điển. */
-const MESSAGE_HOMES: readonly string[] = ['packages/i18n/src/messages/en.ts', 'packages/i18n/src/messages/vi.ts'];
+/**
+ * Nơi chữ tiếng Việt ĐƯỢC PHÉP sống mãi mãi: hai quyển từ điển nền tảng và
+ * hằng số song ngữ mà contract của đặc san giao tiếp cố ý đặt cạnh lab dùng nó.
+ */
+const MESSAGE_HOMES: readonly string[] = [
+  'packages/i18n/src/messages/en.ts',
+  'packages/i18n/src/messages/vi.ts',
+  'apps/web/src/stories/labs/communication/copy.ts',
+];
 
 /**
  * Chữ tiếng Việt KHÔNG BAO GIỜ tới mắt người học — nó nói với lập trình viên
