@@ -33,15 +33,25 @@ function hasOnlyBytes(bytes: Bytes): boolean {
 
 export function inspectMessage(text: string): Result<{ graphemes: number; bytes: Bytes }> {
   if (text.trim().length === 0) return { ok: false, error: 'empty' };
+  const inspection = inspectUnicode(text);
+  if (!inspection.ok) return inspection;
+
+  if (inspection.value.graphemes > MAX_GRAPHEMES) return { ok: false, error: 'grapheme-limit' };
+  if (inspection.value.bytes.length > MAX_UTF8_BYTES) return { ok: false, error: 'byte-limit' };
+
+  return inspection;
+}
+
+export function inspectUnicode(text: string): Result<{ graphemes: number; bytes: Bytes }> {
   if (!isWellFormedUtf16(text)) return { ok: false, error: 'ill-formed' };
 
-  const graphemes = Array.from(graphemeSegmenter.segment(text)).length;
-  if (graphemes > MAX_GRAPHEMES) return { ok: false, error: 'grapheme-limit' };
-
-  const bytes = Array.from(utf8Encoder.encode(text));
-  if (bytes.length > MAX_UTF8_BYTES) return { ok: false, error: 'byte-limit' };
-
-  return { ok: true, value: { graphemes, bytes } };
+  return {
+    ok: true,
+    value: {
+      graphemes: Array.from(graphemeSegmenter.segment(text)).length,
+      bytes: Array.from(utf8Encoder.encode(text)),
+    },
+  };
 }
 
 export function decodeUtf8(bytes: Bytes): Result<string> {

@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { decodeUtf8, inspectMessage } from './unicode';
+import { decodeUtf8, inspectMessage, inspectUnicode } from './unicode';
+
+describe('inspectUnicode', () => {
+  it('counts well-formed empty, whitespace, and over-message-limit text without applying message policy', () => {
+    expect(inspectUnicode('')).toEqual({ ok: true, value: { graphemes: 0, bytes: [] } });
+    expect(inspectUnicode(' \n')).toEqual({ ok: true, value: { graphemes: 2, bytes: [32, 10] } });
+
+    const overLimit = 'a'.repeat(121);
+    const result = inspectUnicode(overLimit);
+    expect(result).toMatchObject({ ok: true, value: { graphemes: 121 } });
+    expect(result.ok && result.value.bytes).toHaveLength(121);
+  });
+
+  it('rejects ill-formed UTF-16 with the shared fixed code', () => {
+    expect(inspectUnicode('\ud800')).toEqual({ ok: false, error: 'ill-formed' });
+  });
+});
 
 describe('inspectMessage', () => {
   it.each([
