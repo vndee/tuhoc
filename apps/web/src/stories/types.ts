@@ -115,6 +115,7 @@ export type LabDefinition =
 export interface LabFallback {
   diagramLabel: Localized;
   explanation: Localized;
+  table?: Localized<{ headers: string[]; rows: string[][] }>;
 }
 
 export interface StoryIllustration extends ResponsiveStoryImage {
@@ -138,9 +139,12 @@ export interface StoryScene {
 export interface StoryDefinition {
   meta: StoryMeta;
   theme: StoryTheme;
+  interaction?: { kind: 'message-journey'; examples: Localized };
+  intro?: Localized<RichTextBlock[]>;
   acts: StoryAct[];
   scenes: StoryScene[];
   sources: SourceEntry[];
   provenance: IllustrationProvenance[];
   coda: Localized<RichTextBlock[]>;
+  courseAction?: { slug: string; label: Localized; fallbackLabel: Localized };
 }

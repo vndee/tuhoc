@@ -10,9 +10,17 @@ const wordCount = (blocks: RichTextBlock[]) => blocks
 
 describe('A History of Artificial Intelligence', () => {
   it('publishes four acts, twelve ordered scenes, and every registered lab', () => {
+    const expected = new Set([
+      'external-memory', 'embodied-calculation', 'executable-rules',
+      'computation-limits', 'judgment-criteria', 'linear-separator',
+      'knowledge-bottleneck', 'gradient-descent', 'convolution',
+      'attention', 'agent-trace', 'agi-definitions',
+    ]);
+
     expect(story.acts).toHaveLength(4);
     expect(story.scenes.map((scene) => scene.id)).toEqual(Array.from({ length: 12 }, (_, index) => `scene-${String(index + 1).padStart(2, '0')}`));
-    expect(new Set(story.scenes.map((scene) => scene.lab.kind))).toEqual(REGISTERED_LAB_KINDS);
+    expect(new Set(story.scenes.map((scene) => scene.lab.kind))).toEqual(expected);
+    for (const scene of story.scenes) expect(REGISTERED_LAB_KINDS.has(scene.lab.kind)).toBe(true);
     expect(story.meta.sceneCount).toBe(12);
     expect(story.meta.labCount).toBe(12);
     expect(validateStory(story, REGISTERED_LAB_KINDS)).toEqual([]);
