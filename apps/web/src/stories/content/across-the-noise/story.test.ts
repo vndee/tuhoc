@@ -58,6 +58,13 @@ describe('Across the Noise assembled edition', () => {
     expect(noiseMeta.deck).toEqual(issueCopy.deck);
   });
 
+  it('preserves the approved provenance edit history without synthetic edits', () => {
+    expect(story.provenance).toHaveLength(13);
+    expect(story.provenance.filter((record) => record.edits.length === 0)).toHaveLength(9);
+    expect(story.provenance.filter((record) => record.edits.length > 0).map((record) => record.sceneId))
+      .toEqual(['scene-04', 'scene-10', 'scene-11', 'scene-12']);
+  });
+
   it('preserves the full audited word counts and source relationships in both locales', () => {
     story.scenes.forEach((scene, index) => {
       expect([
