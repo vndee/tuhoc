@@ -26,6 +26,7 @@ describe('StoryLabHost', () => {
     render(<StoryLabHost scene={{ ...scene, lab: { ...scene.lab, kind: 'embodied-calculation' } as typeof scene.lab }} lang="en" value={undefined} onChange={vi.fn()} onReset={vi.fn()} onBack={vi.fn()} />);
 
     expect(screen.getByText('External memory')).toBeVisible();
+    expect(screen.getByRole('region', { name: 'External memory' })).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByText('Compare the generations.')).toBeVisible();
     expect(screen.getByText('Retention diagram')).toBeVisible();
     expect(screen.getByText('Symbols preserve more information.')).toBeVisible();
@@ -40,7 +41,9 @@ describe('StoryLabHost', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     render(<StoryLabHost scene={{ ...scene, id: 'scene-error', lab: { ...scene.lab, kind: 'agent-trace' } as typeof scene.lab }} lang="en" value={undefined} onChange={vi.fn()} onReset={vi.fn()} onBack={vi.fn()} />);
 
+    expect(screen.getByRole('region', { name: 'External memory' })).toHaveAttribute('aria-busy', 'true');
     await act(async () => module.reject(new Error('chunk unavailable')));
+    expect(screen.getByRole('region', { name: 'External memory' })).toHaveAttribute('aria-busy', 'false');
     expect(screen.getByRole('button', { name: 'Try again' })).toBeVisible();
     expect(screen.getByText('Symbols preserve more information.')).toBeVisible();
   });

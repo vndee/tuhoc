@@ -9,19 +9,21 @@ export interface StaticLabFallbackProps {
   instruction: string;
   onRetry: () => void;
   onBack: () => void;
+  pending?: boolean;
 }
 
-export function StaticLabFallback({ fallback, lang, title, instruction, onRetry, onBack }: StaticLabFallbackProps) {
+export function StaticLabFallback({ fallback, lang, title, instruction, onRetry, onBack, pending = false }: StaticLabFallbackProps) {
   const table = fallback.table?.[lang];
   const diagram = fallback.diagram;
   const diagramId = useId();
 
-  return <section className="story-lab-fallback" aria-label={title}>
+  return <section className="story-lab-fallback" aria-label={title} aria-busy={pending}>
     <h3>{title}</h3>
     <p>{instruction}</p>
-    {diagram && <svg className="story-lab-fallback-diagram" role="img"
+    {diagram && <div className="communication-diagram-viewport" role="region" tabIndex={0} aria-label={diagram.title[lang]}>
+      <svg className="story-lab-fallback-diagram" role="img"
       aria-labelledby={`${diagramId}-title`} aria-describedby={`${diagramId}-description`}
-      viewBox={`0 0 ${diagram.width} ${diagram.height}`} width="100%">
+      viewBox={`0 0 ${diagram.width} ${diagram.height}`} width={diagram.width}>
       <title id={`${diagramId}-title`}>{diagram.title[lang]}</title>
       <desc id={`${diagramId}-description`}>{diagram.description[lang]}</desc>
       {diagram.lines.map((line, index) => <polyline key={index}
@@ -32,7 +34,7 @@ export function StaticLabFallback({ fallback, lang, title, instruction, onRetry,
       </polyline>)}
       {diagram.labels.map((label, index) => <text key={index} x={label.x} y={label.y}
         fill="currentColor" fontSize={12}>{label.text[lang]}</text>)}
-    </svg>}
+    </svg></div>}
     {table ? <table>
       <caption>{fallback.diagramLabel[lang]}</caption>
       <thead><tr>{table.headers.map((header, index) => <th scope="col" key={`${index}:${header}`}>{header}</th>)}</tr></thead>

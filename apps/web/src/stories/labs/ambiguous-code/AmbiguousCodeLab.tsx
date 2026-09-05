@@ -178,7 +178,8 @@ function DecodeGraph({ bits, book, label }: { bits: string; book: Codebook; labe
   const baseline = 150;
   const x = (offset: number) => 32 + (bits.length === 0 ? 0 : offset / bits.length) * 656;
 
-  return <svg role="img" aria-label={label} viewBox={`0 0 ${graphWidth} 190`} className="ambiguous-code-tree">
+  return <div className="communication-diagram-viewport" tabIndex={0} role="region" aria-label={label}>
+    <svg role="img" aria-label={label} viewBox={`0 0 ${graphWidth} 190`} width={graphWidth} className="ambiguous-code-tree">
     {edges.map((edge) => {
       const rise = 24 + ((edge.lane % 5) * 18);
       const middle = (x(edge.from) + x(edge.to)) / 2;
@@ -191,5 +192,5 @@ function DecodeGraph({ bits, book, label }: { bits: string; book: Codebook; labe
       <circle cx={x(offset)} cy={baseline} r="6" fill="currentColor" />
       <text x={x(offset)} y={baseline + 22} textAnchor="middle">{offset}</text>
     </g>)}
-  </svg>;
+  </svg></div>;
 }

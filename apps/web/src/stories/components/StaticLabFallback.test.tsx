@@ -22,7 +22,12 @@ describe('StaticLabFallback', () => {
       ...{ diagram },
     }} onRetry={() => undefined} onBack={() => undefined} />);
     const svg = screen.getByRole('img', { name: diagram.title[lang] });
+    const viewport = screen.getByRole('region', { name: diagram.title[lang] });
+    expect(viewport).toHaveAttribute('tabindex', '0');
+    expect(viewport).toContainElement(svg);
+    expect(screen.getByRole('region', { name: 'Example' })).toHaveAttribute('aria-busy', 'false');
     expect(svg).toHaveAccessibleDescription(diagram.description[lang]);
+    expect(svg).toHaveAttribute('width', '300');
     expect(svg).toHaveAttribute('viewBox', '0 0 300 160');
     expect(svg.querySelectorAll('polyline')).toHaveLength(2);
     expect(svg.querySelectorAll('polyline')[0]).toHaveAttribute('points', '10,80 100,40 200,80');

@@ -210,6 +210,17 @@ function deferred<T = void>() {
 }
 
 describe('StoryRenderer', () => {
+  it('returns keyboard focus to the opening control after Back closes a mobile lab', async () => {
+    setMatchMedia('(max-width: 900px)', true);
+    renderStory();
+    const open = screen.getAllByRole('button', { name: 'Tự tay thử' })[0]!;
+    fireEvent.click(open);
+    const back = await screen.findByRole('button', { name: 'Trở lại tranh' });
+    back.focus();
+    fireEvent.click(back);
+    expect(open).toHaveFocus();
+    expect(screen.queryByRole('button', { name: 'Trở lại tranh' })).not.toBeInTheDocument();
+  });
   it('keeps renderer coordination out of the public active-scene hook module exports', () => {
     expect(Object.keys(activeSceneModule)).toEqual(['useActiveStoryScene']);
   });
