@@ -67,4 +67,8 @@ describe('decodeUtf8', () => {
   it.each([-1, 256, 1.5, Number.NaN])('rejects values outside the byte domain: %s', (byte) => {
     expect(decodeUtf8([byte])).toEqual({ ok: false, error: 'invalid-byte' });
   });
+
+  it('rejects sparse byte arrays instead of decoding holes as NUL bytes', () => {
+    expect(decodeUtf8(Array<number>(1))).toEqual({ ok: false, error: 'invalid-byte' });
+  });
 });

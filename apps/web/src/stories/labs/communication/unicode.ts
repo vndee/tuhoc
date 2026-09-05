@@ -24,6 +24,13 @@ function isByte(value: number): boolean {
   return Number.isInteger(value) && value >= 0 && value <= 0xff;
 }
 
+function hasOnlyBytes(bytes: Bytes): boolean {
+  for (const byte of bytes) {
+    if (!isByte(byte)) return false;
+  }
+  return true;
+}
+
 export function inspectMessage(text: string): Result<{ graphemes: number; bytes: Bytes }> {
   if (text.trim().length === 0) return { ok: false, error: 'empty' };
   if (!isWellFormedUtf16(text)) return { ok: false, error: 'ill-formed' };
@@ -38,7 +45,7 @@ export function inspectMessage(text: string): Result<{ graphemes: number; bytes:
 }
 
 export function decodeUtf8(bytes: Bytes): Result<string> {
-  if (!bytes.every(isByte)) return { ok: false, error: 'invalid-byte' };
+  if (!hasOnlyBytes(bytes)) return { ok: false, error: 'invalid-byte' };
 
   try {
     return { ok: true, value: utf8Decoder.decode(Uint8Array.from(bytes)) };
