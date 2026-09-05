@@ -187,31 +187,40 @@ function edgeLabel(
 
 function HuffmanTree({ nodes, labels }: { nodes: readonly HuffmanNode[]; labels: typeof huffmanMessageCopy.en }) {
   const nodeIds = new Set(nodes.map((node) => node.id));
-  const columns = Math.max(1, Math.ceil(Math.sqrt(nodes.length)));
-  const rows = Math.max(1, Math.ceil(nodes.length / columns));
-  const width = 720;
-  const height = Math.max(180, rows * 90);
-  const positions = new Map(nodes.map((node, index) => [node.id, {
-    x: ((index % columns) + 0.5) * (width / columns),
-    y: (Math.floor(index / columns) + 0.5) * (height / rows),
-  }]));
+  const byId = new Map(nodes.map(node => [node.id, node]));
+  const childIds = new Set(nodes.flatMap(node => [node.left, node.right]));
+  const positions = new Map<number, { x: number; y: number }>();
+  let leaves = 0;
+  let maxDepth = 0;
+  const place = (node: HuffmanNode, depth: number): number => {
+    maxDepth = Math.max(maxDepth, depth);
+    const children = [node.left, node.right].filter((id): id is number => id !== null && nodeIds.has(id));
+    const xs = children.map(id => place(byId.get(id)!, depth + 1));
+    const x = xs.length === 0 ? (++leaves - .5) * 90 : (xs[0]! + xs.at(-1)!) / 2;
+    positions.set(node.id, { x, y: 40 + depth * 100 });
+    return x;
+  };
+  nodes.filter(node => !childIds.has(node.id)).forEach(node => place(node, 0));
+  const width = Math.max(90, leaves * 90);
+  const height = 80 + maxDepth * 100;
 
-  return <svg role="img" aria-label={labels.tree} viewBox={`0 0 ${width} ${height}`}>
+  return <div className="communication-diagram-viewport" tabIndex={0} role="region" aria-label={labels.tree}>
+    <svg role="img" aria-label={labels.tree} viewBox={`0 0 ${width} ${height}`} width={width}>
     {nodes.flatMap((node) => [node.left, node.right].flatMap((child) => {
       if (child === null || !nodeIds.has(child)) return [];
       const from = positions.get(node.id)!;
       const to = positions.get(child)!;
-      return [<line key={`${node.id}-${child}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="currentColor" opacity="0.4" />];
+      return [<line key={`${node.id}-${child}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="currentColor" />];
     }))}
     {nodes.map((node) => {
       const position = positions.get(node.id)!;
       return <g key={node.id} data-huffman-node={node.id} transform={`translate(${position.x} ${position.y})`}>
-        <circle r="28" fill="none" stroke="currentColor" />
+        <circle r="28" fill="var(--story-paper)" stroke="currentColor" />
         <text textAnchor="middle" y="-2">{node.byte === null ? `#${node.id}` : byteHex(node.byte)}</text>
         <text textAnchor="middle" y="16">×{node.count}</text>
       </g>;
     })}
-  </svg>;
+  </svg></div>;
 }
 
 function selectedTreeWindow(packet: HuffmanPacket, step: number, limit: number): HuffmanNode[] {

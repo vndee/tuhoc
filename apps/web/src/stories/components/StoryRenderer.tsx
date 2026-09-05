@@ -88,7 +88,10 @@ function StoryRendererContent({
     };
     return renderLab
       ? renderLab(scene, value, onChange, onReset)
-      : <StoryLabHost scene={scene} lang={lang} value={value} onChange={onChange} onReset={onReset} onBack={() => setLabSceneId(null)} />;
+      : <StoryLabHost scene={scene} lang={lang} value={value} onChange={onChange} onReset={onReset} onBack={() => {
+        setLabSceneId(null);
+        findOwnedElement(ownerRoot.current, scene.id)?.querySelector<HTMLButtonElement>('.story-lab-entry > button')?.focus();
+      }} />;
   };
 
   const activateScene = useCallback((id: StorySceneModel['id']) => {

@@ -65,3 +65,4 @@ export const noiseStory: StoryDefinition = {
 assertValidStory(noiseStory, REGISTERED_LAB_KINDS);
 
 export default noiseStory;
+import '../../../styles/across-the-noise.css';

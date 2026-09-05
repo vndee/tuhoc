@@ -32,17 +32,18 @@ export function StoryLabHost({ scene, lang, value, onChange, onReset, onBack }: 
     onReset();
   }, [onReset]);
   const initialValue = value === undefined ? makeInitialLabState(scene.lab) : value;
-  const fallbackContent = <StaticLabFallback
-    fallback={scene.labFallback}
-    lang={lang}
-    title={scene.lab.title[lang]}
-    instruction={scene.lab.instruction[lang]}
-    onRetry={retry}
-    onBack={onBack}
-  />;
+  const fallbackProps = {
+    fallback: scene.labFallback,
+    lang,
+    title: scene.lab.title[lang],
+    instruction: scene.lab.instruction[lang],
+    onRetry: retry,
+    onBack,
+  };
+  const fallbackContent = <StaticLabFallback {...fallbackProps} />;
 
   return <StoryLabBoundary fallback={scene.labFallback} fallbackContent={fallbackContent} lang={lang} resetKey={`${scene.id}:${attempt}`}>
-    <Suspense fallback={fallbackContent}>
+    <Suspense fallback={<StaticLabFallback {...fallbackProps} pending />}>
       {createElement(LazyLab, {
         key: `${scene.id}:${attempt}:${resetVersion}`,
         definition: scene.lab,
