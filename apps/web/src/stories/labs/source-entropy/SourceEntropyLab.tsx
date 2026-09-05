@@ -9,7 +9,15 @@ interface SourceEntropyState {
   weights: Weights;
   seed: number;
   counter: number;
-  lastDraw: SymbolDraw | null;
+  lastDraw: DrawSnapshot | null;
+  prediction: SymbolId | null;
+}
+
+interface DrawSnapshot {
+  weights: Weights;
+  seed: number;
+  index: number;
+  result: SymbolDraw;
   prediction: SymbolId | null;
 }
 
@@ -28,20 +36,34 @@ export default function SourceEntropyLab({ definition, lang, value, onChange, on
     if (!Number.isInteger(weight) || weight < 0 || weight > 100) return;
     const weights = [...state.weights] as [number, number, number, number];
     weights[index] = weight;
-    onChange({ ...state, weights, lastDraw: null });
+    onChange({ ...state, weights });
   };
   const updateSeed = (seed: number) => {
     if (!Number.isInteger(seed) || seed < 0 || seed > 0xffff_ffff) return;
-    onChange({ ...state, seed, counter: 0, lastDraw: null });
+    onChange({ ...state, seed, counter: 0 });
   };
   const draw = () => {
     const result = drawSymbol(state.weights, state.seed, state.counter);
     if (!result.ok) return;
-    onChange({ ...state, counter: state.counter + 1, lastDraw: result.value });
+    const lastDraw: DrawSnapshot = Object.freeze({
+      weights: Object.freeze([...state.weights]) as Weights,
+      seed: state.seed,
+      index: state.counter,
+      result: Object.freeze({ ...result.value }),
+      prediction: state.prediction,
+    });
+    onChange({ ...state, counter: state.counter + 1, lastDraw });
   };
+  const staleDraw = state.lastDraw !== null &&
+    (state.lastDraw.seed !== state.seed || !sameWeights(state.lastDraw.weights, state.weights));
   const status = state.lastDraw === null
     ? ''
-    : copy.drawResult(state.counter, state.lastDraw.symbol, state.lastDraw.surprise);
+    : <>
+      <span aria-hidden="true">{staleDraw ? '↺' : '◆'}</span>{' '}
+      {staleDraw
+        ? copy.staleDrawResult(state.lastDraw.index + 1, state.lastDraw.result.symbol, state.lastDraw.result.surprise)
+        : copy.drawResult(state.lastDraw.index + 1, state.lastDraw.result.symbol, state.lastDraw.result.surprise)}
+    </>;
 
   return <CommunicationLabFrame
     lang={lang}
@@ -63,14 +85,13 @@ export default function SourceEntropyLab({ definition, lang, value, onChange, on
       </fieldset>
       {state.prediction === null ? null : <p>{copy.predictionRecorded(state.prediction)}</p>}
     </div>}
-    observation={distribution.ok
-      ? <EntropyObservation
-        weights={state.weights}
-        distribution={distribution.value}
-        lastDraw={state.lastDraw}
-        labels={copy}
-      />
-      : <p>{copy.awaiting}</p>}
+    observation={<EntropyObservation
+      weights={state.weights}
+      distribution={distribution.ok ? distribution.value : null}
+      lastDraw={state.lastDraw}
+      staleDraw={staleDraw}
+      labels={copy}
+    />}
     explanation={<div>
       <p>{copy.feedback}</p>
       <p>{copy.unitLimit}</p>
@@ -111,51 +132,59 @@ export default function SourceEntropyLab({ definition, lang, value, onChange, on
   </CommunicationLabFrame>;
 }
 
-function EntropyObservation({ weights, distribution, lastDraw, labels }: {
+function EntropyObservation({ weights, distribution, lastDraw, staleDraw, labels }: {
   weights: Weights;
-  distribution: SourceEntropyResult;
-  lastDraw: SymbolDraw | null;
+  distribution: SourceEntropyResult | null;
+  lastDraw: DrawSnapshot | null;
+  staleDraw: boolean;
   labels: typeof sourceEntropyCopy.en;
 }) {
   return <div className="source-entropy-observation">
-    <p>{labels.entropy(distribution.entropy)}</p>
-    <div className="source-entropy-bars">
-      {SYMBOLS.map((symbol, index) => <div key={symbol}>
-        <label>
-          {labels.probabilityBar(symbol, distribution.probabilities[index]!)}
-          <meter
-            min="0"
-            max="1"
-            value={distribution.probabilities[index]}
-            aria-label={labels.probabilityBar(symbol, distribution.probabilities[index]!)}
-          />
-        </label>
-        <label>
-          {labels.contributionBar(symbol, distribution.contributions[index]!)}
-          <meter
-            min="0"
-            max="1"
-            value={distribution.contributions[index]}
-            aria-label={labels.contributionBar(symbol, distribution.contributions[index]!)}
-          />
-        </label>
-      </div>)}
-    </div>
-    <table aria-label={labels.distributionTable}>
-      <thead><tr>
-        <th>{labels.symbol}</th>
-        <th>{labels.weightHeader}</th>
-        <th>{labels.probabilityHeader}</th>
-        <th>{labels.contributionHeader}</th>
-      </tr></thead>
-      <tbody>{SYMBOLS.map((symbol, index) => <tr key={symbol}>
-        <th scope="row">{symbol}</th>
-        <td>{weights[index]}</td>
-        <td>{(distribution.probabilities[index]! * 100).toFixed(2)}%</td>
-        <td>{distribution.contributions[index]!.toFixed(3)}</td>
-      </tr>)}</tbody>
-    </table>
-    {lastDraw === null ? null : <p>{labels.lastDraw(lastDraw.symbol, lastDraw.surprise)}</p>}
+    {distribution === null ? <p>{labels.awaiting}</p> : <>
+      <p>{labels.entropy(distribution.entropy)}</p>
+      <div className="source-entropy-bars">
+        {SYMBOLS.map((symbol, index) => <div key={symbol}>
+          <label>
+            {labels.probabilityBar(symbol, distribution.probabilities[index]!)}
+            <meter
+              min="0"
+              max="1"
+              value={distribution.probabilities[index]}
+              aria-label={labels.probabilityBar(symbol, distribution.probabilities[index]!)}
+            />
+          </label>
+          <label>
+            {labels.contributionBar(symbol, distribution.contributions[index]!)}
+            <meter
+              min="0"
+              max="1"
+              value={distribution.contributions[index]}
+              aria-label={labels.contributionBar(symbol, distribution.contributions[index]!)}
+            />
+          </label>
+        </div>)}
+      </div>
+      <table aria-label={labels.distributionTable}>
+        <thead><tr>
+          <th>{labels.symbol}</th>
+          <th>{labels.weightHeader}</th>
+          <th>{labels.probabilityHeader}</th>
+          <th>{labels.contributionHeader}</th>
+        </tr></thead>
+        <tbody>{SYMBOLS.map((symbol, index) => <tr key={symbol}>
+          <th scope="row">{symbol}</th>
+          <td>{weights[index]}</td>
+          <td>{(distribution.probabilities[index]! * 100).toFixed(2)}%</td>
+          <td>{distribution.contributions[index]!.toFixed(3)}</td>
+        </tr>)}</tbody>
+      </table>
+    </>}
+    {lastDraw === null ? null : <section className="source-entropy-last-draw">
+      {staleDraw ? <p>{labels.staleDraw}</p> : null}
+      <p>{labels.lastDraw(lastDraw.result.symbol, lastDraw.result.surprise)}</p>
+      <p>{labels.drawConditions(lastDraw.weights, lastDraw.seed, lastDraw.index)}</p>
+      <p>{labels.predictionAtDraw(lastDraw.prediction)}</p>
+    </section>}
   </div>;
 }
 
@@ -169,7 +198,11 @@ function readState(value: unknown, defaultWeights: Weights, defaultSeed: number)
     counter: typeof candidate.counter === 'number' && Number.isSafeInteger(candidate.counter) && candidate.counter >= 0
       ? candidate.counter
       : 0,
-    lastDraw: isDraw(candidate.lastDraw) ? { ...candidate.lastDraw } : null,
+    lastDraw: isDrawSnapshot(candidate.lastDraw) ? {
+      ...candidate.lastDraw,
+      weights: [...candidate.lastDraw.weights] as [number, number, number, number],
+      result: { ...candidate.lastDraw.result },
+    } : null,
     prediction: isSymbol(candidate.prediction) ? candidate.prediction : null,
   };
 }
@@ -198,4 +231,16 @@ function isDraw(value: unknown): value is SymbolDraw {
   const draw = value as Partial<SymbolDraw>;
   return isSymbol(draw.symbol) && typeof draw.surprise === 'number' &&
     Number.isFinite(draw.surprise) && draw.surprise >= 0;
+}
+
+function isDrawSnapshot(value: unknown): value is DrawSnapshot {
+  if (typeof value !== 'object' || value === null) return false;
+  const snapshot = value as Partial<DrawSnapshot>;
+  return isWeights(snapshot.weights) && sourceEntropy(snapshot.weights).ok && isUint32(snapshot.seed) &&
+    typeof snapshot.index === 'number' && Number.isSafeInteger(snapshot.index) && snapshot.index >= 0 &&
+    isDraw(snapshot.result) && (snapshot.prediction === null || isSymbol(snapshot.prediction));
+}
+
+function sameWeights(left: Weights, right: Weights): boolean {
+  return left.every((weight, index) => weight === right[index]);
 }

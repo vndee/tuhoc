@@ -1,5 +1,5 @@
 import type { Lang } from '../../../i18n';
-import type { SymbolId } from '../communication/types';
+import type { SymbolId, Weights } from '../communication/types';
 
 interface SourceEntropyCopy {
   prediction: string;
@@ -21,7 +21,11 @@ interface SourceEntropyCopy {
   probabilityHeader: string;
   contributionHeader: string;
   lastDraw: (symbol: SymbolId, surprise: number) => string;
+  staleDraw: string;
+  drawConditions: (weights: Weights, seed: number, index: number) => string;
+  predictionAtDraw: (symbol: SymbolId | null) => string;
   drawResult: (draw: number, symbol: SymbolId, surprise: number) => string;
+  staleDrawResult: (draw: number, symbol: SymbolId, surprise: number) => string;
   feedback: string;
   unitLimit: string;
   modelLimit: string;
@@ -48,7 +52,13 @@ export const sourceEntropyCopy = {
     probabilityHeader: 'Xác suất',
     contributionHeader: 'Đóng góp (bit/ký hiệu nguồn)',
     lastDraw: (symbol, surprise) => `Lượt rút gần nhất: ${symbol} · độ bất ngờ ${surprise.toFixed(3)} bit`,
+    staleDraw: 'Lượt rút này thuộc về thông số nguồn trước đó.',
+    drawConditions: (weights, seed, index) => `Điều kiện lượt rút: A=${weights[0]}, B=${weights[1]}, C=${weights[2]}, D=${weights[3]} · seed ${seed} · chỉ số ${index}.`,
+    predictionAtDraw: (symbol) => symbol === null
+      ? 'Không có dự đoán nào được ghi lại cho lượt rút này.'
+      : `Dự đoán được ghi lại cho lượt rút này: ${symbol}.`,
     drawResult: (draw, symbol, surprise) => `Lượt rút ${draw} cho ra ${symbol}; độ bất ngờ ${surprise.toFixed(3)} bit.`,
+    staleDrawResult: (draw, symbol, surprise) => `Kết quả của thông số trước: lượt rút ${draw} cho ra ${symbol}; độ bất ngờ ${surprise.toFixed(3)} bit.`,
     feedback: 'Độ bất định thay đổi; giá trị của điều được nói chưa được đo.',
     unitLimit: 'Entropy này đo độ bất định theo bit trên mỗi ký hiệu nguồn, không đo ý nghĩa.',
     modelLimit: 'Mô hình giả định mỗi lượt rút độc lập từ phân phối bốn ký hiệu đã chọn.',
@@ -73,7 +83,13 @@ export const sourceEntropyCopy = {
     probabilityHeader: 'Probability',
     contributionHeader: 'Contribution (bits/source-symbol)',
     lastDraw: (symbol, surprise) => `Last draw: ${symbol} · surprise ${surprise.toFixed(3)} bits`,
+    staleDraw: 'This draw belongs to the previous source settings.',
+    drawConditions: (weights, seed, index) => `Draw conditions: A=${weights[0]}, B=${weights[1]}, C=${weights[2]}, D=${weights[3]} · seed ${seed} · index ${index}.`,
+    predictionAtDraw: (symbol) => symbol === null
+      ? 'No prediction was recorded for this draw.'
+      : `Prediction recorded for this draw: ${symbol}.`,
     drawResult: (draw, symbol, surprise) => `Draw ${draw} produced ${symbol}; surprise ${surprise.toFixed(3)} bits.`,
+    staleDrawResult: (draw, symbol, surprise) => `Result for previous settings: draw ${draw} produced ${symbol}; surprise ${surprise.toFixed(3)} bits.`,
     feedback: 'The uncertainty changed; the value of what was said was not measured.',
     unitLimit: 'This entropy measures uncertainty in bits per source symbol, not meaning.',
     modelLimit: 'The model assumes independent draws from the selected four-symbol distribution.',
