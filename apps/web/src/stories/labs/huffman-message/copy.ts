@@ -17,6 +17,8 @@ interface HuffmanMessageCopy {
   leafNode: (byte: string, count: number) => string;
   branchNode: (id: number, count: number) => string;
   shortNode: (id: number) => string;
+  edge: (bit: 0 | 1, child: string, count: number, outside: boolean) => string;
+  leafBoundary: string;
   byteSummary: (bytes: number, alphabet: number) => string;
   codesTable: string;
   byte: string;
@@ -65,6 +67,8 @@ export const huffmanMessageCopy = {
     leafNode: (byte, count) => `${byte}, tần số ${count}`,
     branchNode: (id, count) => `Nút ${id}, tần số ${count}`,
     shortNode: (id) => `nút ${id}`,
+    edge: (bit, child, count, outside) => `${bit} → ${child}, tần số ${count}${outside ? ' (ngoài cửa sổ này)' : ''}.`,
+    leafBoundary: 'Nút lá; không có cạnh con.',
     byteSummary: (bytes, alphabet) => `${bytes} byte UTF-8 · ${alphabet} giá trị byte`,
     codesTable: 'Các mã Huffman',
     byte: 'Byte',
@@ -111,6 +115,8 @@ export const huffmanMessageCopy = {
     leafNode: (byte, count) => `${byte}, frequency ${count}`,
     branchNode: (id, count) => `Node ${id}, frequency ${count}`,
     shortNode: (id) => `node ${id}`,
+    edge: (bit, child, count, outside) => `${bit} → ${child}, frequency ${count}${outside ? ' (outside this window)' : ''}.`,
+    leafBoundary: 'Leaf node; no child edges.',
     byteSummary: (bytes, alphabet) => `${bytes} UTF-8 bytes · ${alphabet} byte values`,
     codesTable: 'Huffman codes',
     byte: 'Byte',

@@ -157,7 +157,20 @@ describe('HuffmanMessageLab', () => {
     const tree = screen.getByRole('img', { name: 'Huffman construction tree window' });
     expect(tree.querySelectorAll('[data-huffman-node]')).toHaveLength(4);
     expect(screen.getByText('Showing 4 of 79 construction nodes around the selected subtree.')).toBeVisible();
-    expect(within(screen.getByRole('list', { name: 'Visible tree nodes' })).getAllByRole('listitem')).toHaveLength(4);
+    const nodeItems = within(screen.getByRole('list', { name: 'Visible tree nodes' })).getAllByRole('listitem');
+    expect(nodeItems).toHaveLength(4);
+    expect(nodeItems[0]).toHaveTextContent(
+      'Node 78, frequency 40. 0 → node 76, frequency 16. 1 → node 77, frequency 24.',
+    );
+    expect(nodeItems[1]).toHaveTextContent(
+      'Node 76, frequency 16. 0 → node 72, frequency 8. 1 → node 73, frequency 8 (outside this window).',
+    );
+    expect(nodeItems[2]).toHaveTextContent(
+      'Node 77, frequency 24. 0 → node 74, frequency 8 (outside this window). 1 → node 75, frequency 16 (outside this window).',
+    );
+    expect(nodeItems[3]).toHaveTextContent(
+      'Node 72, frequency 8. 0 → node 64, frequency 4 (outside this window). 1 → node 65, frequency 4 (outside this window).',
+    );
 
     const codeTable = screen.getByRole('table', { name: 'Huffman codes' });
     expect(within(codeTable).getAllByRole('row')).toHaveLength(17);
