@@ -8,8 +8,22 @@ function isBit(value: number): value is Bit {
   return value === 0 || value === 1;
 }
 
+function hasOnlyBytes(bytes: Bytes): boolean {
+  for (const byte of bytes) {
+    if (!isByte(byte)) return false;
+  }
+  return true;
+}
+
+function hasOnlyBits(bits: Bits): boolean {
+  for (const bit of bits) {
+    if (!isBit(bit)) return false;
+  }
+  return true;
+}
+
 export function toBits(bytes: Bytes): Bit[] {
-  if (!bytes.every(isByte)) throw new RangeError('invalid-byte');
+  if (!hasOnlyBytes(bytes)) throw new RangeError('invalid-byte');
 
   const bits: Bit[] = [];
   for (const byte of bytes) {
@@ -21,7 +35,7 @@ export function toBits(bytes: Bytes): Bit[] {
 }
 
 export function toBytes(bits: Bits): Result<Bytes> {
-  if (!bits.every(isBit)) return { ok: false, error: 'invalid-bit' };
+  if (!hasOnlyBits(bits)) return { ok: false, error: 'invalid-bit' };
   if (bits.length % 8 !== 0) return { ok: false, error: 'unaligned' };
 
   const bytes: number[] = [];

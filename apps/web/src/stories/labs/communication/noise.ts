@@ -9,12 +9,19 @@ function isUint32(value: number): boolean {
   return Number.isInteger(value) && value >= 0 && value <= 0xffff_ffff;
 }
 
+function hasOnlyBits(bits: Bits): boolean {
+  for (const bit of bits) {
+    if (!isBit(bit)) return false;
+  }
+  return true;
+}
+
 export function bsc(bits: Bits, config: NoiseConfig): { bits: Bits; flipped: number[] } {
   if (!Number.isFinite(config.p) || config.p < 0 || config.p > 0.5) {
     throw new RangeError('invalid-probability');
   }
   if (!isUint32(config.seed)) throw new RangeError('invalid-seed');
-  if (!bits.every(isBit)) throw new RangeError('invalid-bit');
+  if (!hasOnlyBits(bits)) throw new RangeError('invalid-bit');
 
   const draws = uniforms(config.seed, bits.length);
   const output: Bit[] = [];

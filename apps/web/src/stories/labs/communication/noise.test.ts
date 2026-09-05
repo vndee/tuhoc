@@ -47,4 +47,8 @@ describe('bsc', () => {
     expect(() => bsc([0, 7, 1] as unknown as readonly Bit[], { p: 0, seed: 0 }))
       .toThrow(new RangeError('invalid-bit'));
   });
+
+  it('rejects sparse bit arrays instead of dropping holes from the channel output', () => {
+    expect(() => bsc(Array<Bit>(8), { p: 0, seed: 0 })).toThrow(new RangeError('invalid-bit'));
+  });
 });
