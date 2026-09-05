@@ -24,6 +24,7 @@ export const labRegistry: Readonly<Record<LabKind, () => Promise<LabModule>>> = 
   'cable-route': () => import('./cable-route/CableRouteLab'),
   'pulse-channel': () => import('./pulse-channel/PulseChannelLab'),
   'binary-noise': () => import('./binary-noise/BinaryNoiseLab'),
+  'source-entropy': () => import('./source-entropy/SourceEntropyLab'),
 };
 
 export const REGISTERED_LAB_KINDS: ReadonlySet<LabKind> = new Set(Object.keys(labRegistry) as LabKind[]);

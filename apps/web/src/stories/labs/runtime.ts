@@ -48,5 +48,12 @@ export function makeInitialLabState(definition: LabDefinition): unknown {
       snapshot: null,
       page: 0,
     };
+    case 'source-entropy': return {
+      weights: [...definition.config.weights],
+      seed: definition.config.seed,
+      counter: 0,
+      lastDraw: null,
+      prediction: null,
+    };
   }
 }
