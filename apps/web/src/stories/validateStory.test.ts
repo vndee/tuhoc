@@ -328,6 +328,67 @@ describe('validateStory', () => {
     }
   });
 
+  it('accepts exactly the three localized message-meaning contexts', () => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'message-meaning', title: { vi: 'Ý nghĩa', en: 'Meaning' },
+      instruction: { vi: 'Suy ngẫm', en: 'Reflect' },
+      config: { contexts: [
+        { id: 'meeting', label: { vi: 'Cuộc gặp', en: 'Meeting' } },
+        { id: 'disagreement', label: { vi: 'Bất đồng', en: 'Disagreement' } },
+        { id: 'missing-previous', label: { vi: 'Thiếu tin trước', en: 'Missing previous' } },
+      ] },
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'message-meaning'] as never[])))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid-lab-config' })]));
+    expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'message-meaning'] as never[])))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'missing-locale' })]));
+  });
+
+  it.each([
+    {
+      contexts: [
+        { id: 'meeting', label: { vi: 'Cuộc gặp', en: 'Meeting' } },
+        { id: 'disagreement', label: { vi: 'Bất đồng', en: 'Disagreement' } },
+      ],
+      code: 'invalid-lab-config', path: 'scenes.0.lab.config.contexts',
+    },
+    {
+      contexts: [
+        { id: 'meeting', label: { vi: 'Cuộc gặp', en: 'Meeting' } },
+        { id: 'meeting', label: { vi: 'Cuộc gặp lại', en: 'Meeting again' } },
+        { id: 'missing-previous', label: { vi: 'Thiếu tin trước', en: 'Missing previous' } },
+      ],
+      code: 'duplicate-id', path: 'scenes.0.lab.config.contexts.1.id',
+    },
+    {
+      contexts: [
+        { id: 'unexpected', label: { vi: 'Lạ', en: 'Unexpected' } },
+        { id: 'disagreement', label: { vi: 'Bất đồng', en: 'Disagreement' } },
+        { id: 'missing-previous', label: { vi: 'Thiếu tin trước', en: 'Missing previous' } },
+      ],
+      code: 'invalid-lab-config', path: 'scenes.0.lab.config.contexts.0.id',
+    },
+    {
+      contexts: [
+        { id: 'meeting', label: { vi: 'Cuộc gặp', en: 'Meeting' } },
+        { id: 'disagreement', label: { vi: 'Bất đồng', en: '' } },
+        { id: 'missing-previous', label: { vi: 'Thiếu tin trước', en: 'Missing previous' } },
+      ],
+      code: 'missing-locale', path: 'scenes.0.lab.config.contexts.1.label.en',
+    },
+  ])('rejects an invalid message-meaning context contract at $path', ({ contexts, code, path }) => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'message-meaning', title: { vi: 'Ý nghĩa', en: 'Meaning' },
+      instruction: { vi: 'Suy ngẫm', en: 'Reflect' }, config: { contexts },
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'message-meaning'] as never[])))
+      .toContainEqual(expect.objectContaining({ code, path }));
+  });
+
   it.each(['', '101', '10110', '10a1', ' 1011', 1011, ['1011']])('rejects invalid secded-inspector data at its exact field: %j', (data) => {
     const story = makeStoryFixture();
     story.scenes[0]!.lab = {

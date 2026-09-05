@@ -100,6 +100,7 @@ export const ALL_LAB_KINDS = [
   'repetition-channel',
   'secded-inspector',
   'channel-budget',
+  'message-meaning',
 ] as const;
 export type LabKind = (typeof ALL_LAB_KINDS)[number];
 
@@ -133,7 +134,11 @@ export type LabDefinition =
   | LabBase<'huffman-message', { maxVisibleNodes: number }>
   | LabBase<'repetition-channel', { defaultP: number; seed: number }>
   | LabBase<'secded-inspector', { data: string }>
-  | LabBase<'channel-budget', { defaultBudget: number; defaultP: number; seed: number }>;
+  | LabBase<'channel-budget', { defaultBudget: number; defaultP: number; seed: number }>
+  | LabBase<'message-meaning', { contexts: readonly {
+    id: 'meeting' | 'disagreement' | 'missing-previous';
+    label: Localized;
+  }[] }>;
 
 export interface LabFallback {
   diagramLabel: Localized;

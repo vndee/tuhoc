@@ -28,6 +28,11 @@ const definitions: LabDefinition[] = [
   { kind: 'repetition-channel', title: localized('Gửi ba lần', 'Three copies'), instruction: localized('So sánh', 'Compare'), config: { defaultP: 0.05, seed: 20260905 } } as unknown as LabDefinition,
   { kind: 'secded-inspector', title: localized('SECDED', 'SECDED'), instruction: localized('Thử', 'Try'), config: { data: '1011' } },
   { kind: 'channel-budget', title: localized('Ngân sách', 'Budget'), instruction: localized('Truyền', 'Transmit'), config: { defaultBudget: 4096, defaultP: 0.05, seed: 20260905 } } as unknown as LabDefinition,
+  { kind: 'message-meaning', title: localized('Ý nghĩa', 'Meaning'), instruction: localized('Suy ngẫm', 'Reflect'), config: { contexts: [
+    { id: 'meeting', label: localized('Cuộc gặp', 'Meeting') },
+    { id: 'disagreement', label: localized('Bất đồng', 'Disagreement') },
+    { id: 'missing-previous', label: localized('Thiếu tin trước', 'Missing previous') },
+  ] } } as unknown as LabDefinition,
 ];
 
 const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
@@ -59,6 +64,7 @@ const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
   'repetition-channel': { config: { p: 0.05, seed: 20260905, mode: 'bsc', start: 0, length: 1 }, snapshot: null, page: 0 },
   'secded-inspector': { data: '1011', flips: [], advanced: false },
   'channel-budget': { config: { code: 'raw', budget: 4096, p: 0.05, seed: 20260905 }, batch: null },
+  'message-meaning': { contextId: 'meeting', interpretation: null },
 };
 
 const sourceEntropyDefinition: Extract<LabDefinition, { kind: 'source-entropy' }> = {
@@ -81,6 +87,11 @@ const emptyExamples: Extract<LabDefinition, { kind: 'attention' }> = {
 };
 
 describe('makeInitialLabState', () => {
+  it('initializes message-meaning with the meeting context and no interpretation', () => {
+    const definition = definitions.find((item) => item.kind === ('message-meaning' as never))!;
+    expect(makeInitialLabState(definition)).toEqual({ contextId: 'meeting', interpretation: null });
+  });
+
   it('initializes secded-inspector with the approved data and a fresh flip array', () => {
     const definition = {
       kind: 'secded-inspector',
