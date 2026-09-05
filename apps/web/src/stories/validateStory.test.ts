@@ -293,6 +293,34 @@ describe('validateStory', () => {
     },
   );
 
+  it.each(['', '101', '10110', '10a1', ' 1011'])('rejects invalid secded-inspector data at its exact field: %j', (data) => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'secded-inspector',
+      title: { vi: 'Tìm vị trí cần sửa', en: 'Locating the Bit to Repair' },
+      instruction: { vi: 'Đọc phép kiểm tra', en: 'Read the parity checks' },
+      config: { data },
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'secded-inspector'] as never[])))
+      .toContainEqual(expect.objectContaining({
+        code: 'invalid-lab-config', path: 'scenes.0.lab.config.data',
+      }));
+  });
+
+  it('accepts exactly four binary characters for secded-inspector', () => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'secded-inspector',
+      title: { vi: 'Tìm vị trí cần sửa', en: 'Locating the Bit to Repair' },
+      instruction: { vi: 'Đọc phép kiểm tra', en: 'Read the parity checks' },
+      config: { data: '1011' },
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'secded-inspector'] as never[])))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid-lab-config' })]));
+  });
+
   it.each([
     { defaultP: 0, seed: 0 },
     { defaultP: 0.05, seed: 20260905 },

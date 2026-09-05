@@ -261,6 +261,11 @@ export function validateStory(
       case 'repetition-channel':
         noiseDefaults(scene.lab.config.defaultP, scene.lab.config.seed, `${path}.lab.config`, 'repetition');
         break;
+      case 'secded-inspector':
+        if (!/^[01]{4}$/.test(scene.lab.config.data)) {
+          add('invalid-lab-config', `${path}.lab.config.data`, 'SECDED data must contain exactly four binary characters');
+        }
+        break;
       default:
         break;
     }

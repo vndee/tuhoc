@@ -26,6 +26,7 @@ const definitions: LabDefinition[] = [
   { kind: 'source-entropy', title: localized('Entropy nguồn', 'Source entropy'), instruction: localized('Rút', 'Draw'), config: { weights: [25, 25, 25, 25], seed: 20260905 } },
   { kind: 'huffman-message', title: localized('Nén', 'Compress'), instruction: localized('Tính cả gói', 'Count the whole packet'), config: { maxVisibleNodes: 24 } } as unknown as LabDefinition,
   { kind: 'repetition-channel', title: localized('Gửi ba lần', 'Three copies'), instruction: localized('So sánh', 'Compare'), config: { defaultP: 0.05, seed: 20260905 } } as unknown as LabDefinition,
+  { kind: 'secded-inspector', title: localized('SECDED', 'SECDED'), instruction: localized('Thử', 'Try'), config: { data: '1011' } },
 ];
 
 const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
@@ -55,6 +56,7 @@ const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
   'source-entropy': { weights: [25, 25, 25, 25], seed: 20260905, counter: 0, lastDraw: null, prediction: null },
   'huffman-message': { step: 0, page: 0, snapshot: null },
   'repetition-channel': { config: { p: 0.05, seed: 20260905, mode: 'bsc', start: 0, length: 1 }, snapshot: null, page: 0 },
+  'secded-inspector': { data: '1011', flips: [], advanced: false },
 };
 
 const sourceEntropyDefinition: Extract<LabDefinition, { kind: 'source-entropy' }> = {
@@ -77,6 +79,22 @@ const emptyExamples: Extract<LabDefinition, { kind: 'attention' }> = {
 };
 
 describe('makeInitialLabState', () => {
+  it('initializes secded-inspector with the approved data and a fresh flip array', () => {
+    const definition = {
+      kind: 'secded-inspector',
+      title: localized('SECDED', 'SECDED'),
+      instruction: localized('Thử', 'Try'),
+      config: { data: '1011' },
+    } as unknown as LabDefinition;
+    const first = makeInitialLabState(definition) as { data: string; flips: number[]; advanced: boolean };
+    const second = makeInitialLabState(definition) as { data: string; flips: number[]; advanced: boolean };
+
+    expect(first).toEqual({ data: '1011', flips: [], advanced: false });
+    expect(first.flips).not.toBe(second.flips);
+    first.flips.push(3);
+    expect(second.flips).toEqual([]);
+  });
+
   it('initializes repetition-channel with the approved channel defaults and no run', () => {
     const repetition = definitions.find((definition) => definition.kind === ('repetition-channel' as never))!;
 
