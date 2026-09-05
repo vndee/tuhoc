@@ -20,6 +20,7 @@ export const labRegistry: Readonly<Record<LabKind, () => Promise<LabModule>>> = 
   'agi-definitions': () => import('./agi-definitions/AgiDefinitionsLab'),
   'message-budget': () => import('./message-budget/MessageBudgetLab'),
   'ambiguous-code': () => import('./ambiguous-code/AmbiguousCodeLab'),
+  'morse-spacing': () => import('./morse-spacing/MorseSpacingLab'),
 };
 
 export const REGISTERED_LAB_KINDS: ReadonlySet<LabKind> = new Set(Object.keys(labRegistry) as LabKind[]);

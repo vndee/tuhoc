@@ -187,6 +187,20 @@ describe('validateStory', () => {
       .not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid-lab-config' })]));
   });
 
+  it.each(['', 'SOS', 'beam', 'ET '])('rejects an unsupported morse-spacing example at its exact field: %j', (example) => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'morse-spacing',
+      title: { vi: 'Đọc cả khoảng lặng', en: 'Reading the Gaps' },
+      instruction: { vi: 'Đổi khoảng nghỉ', en: 'Change the pauses' },
+      config: { example },
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, REGISTERED_LAB_KINDS)).toContainEqual(expect.objectContaining({
+      code: 'invalid-lab-config', path: 'scenes.0.lab.config.example',
+    }));
+  });
+
   it('reports each invalid image, source, provenance, and source reference at its exact path', () => {
     const story = makeStoryFixture();
     story.scenes[0].illustration.src = '';

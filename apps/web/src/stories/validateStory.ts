@@ -207,6 +207,11 @@ export function validateStory(
           add('invalid-lab-config', `${path}.lab.config.initialSymbols`, 'initial symbols must contain 1–6 A/B/C/D symbols');
         }
         break;
+      case 'morse-spacing':
+        if (!['ET', 'AET', 'BEAM', 'BEAM ET'].includes(scene.lab.config.example)) {
+          add('invalid-lab-config', `${path}.lab.config.example`, 'Morse example must be ET, AET, BEAM, or BEAM ET');
+        }
+        break;
       default:
         break;
     }
