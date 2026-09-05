@@ -22,8 +22,8 @@ export interface MessageMeaningCopy {
   capturedSettings: (config: TransmissionConfig) => string;
   originalBytes: string;
   receivedBytes: string;
-  originalText: (text: string) => string;
-  receivedText: (text: string) => string;
+  originalText: string;
+  receivedText: string;
   invalidOriginal: string;
   invalidReceived: string;
   rejectedSentence: string;
@@ -48,7 +48,7 @@ export const messageMeaningCopy = {
     scene11Link: 'Thử truyền ở cảnh 11',
     capturedSettings: (config) => `Thông số đã chụp: ${config.code}, ngân sách ${config.budget}, p=${config.p.toFixed(2)}, seed ${config.seed}.`,
     originalBytes: 'Byte gốc', receivedBytes: 'Byte nhận',
-    originalText: (text) => `Văn bản gốc: ${text}`, receivedText: (text) => `Văn bản nhận: ${text}`,
+    originalText: 'Văn bản gốc:', receivedText: 'Văn bản nhận:',
     invalidOriginal: 'Byte gốc không phải UTF-8 hợp lệ.', invalidReceived: 'Byte nhận không phải UTF-8 hợp lệ.',
     rejectedSentence: 'Không câu nhận nào được chấp nhận.', illustrativeExample: 'Chỉ là ví dụ minh họa',
     illustrativeText: 'Ví dụ này chỉ minh họa rằng bối cảnh có thể đổi cách đọc; nó không phải biên nhận của câu hiện tại.',
@@ -69,7 +69,7 @@ export const messageMeaningCopy = {
     scene11Link: 'Try a transmission in scene 11',
     capturedSettings: (config) => `Captured settings: ${config.code}, budget ${config.budget}, p=${config.p.toFixed(2)}, seed ${config.seed}.`,
     originalBytes: 'Original bytes', receivedBytes: 'Received bytes',
-    originalText: (text) => `Original text: ${text}`, receivedText: (text) => `Received text: ${text}`,
+    originalText: 'Original text:', receivedText: 'Received text:',
     invalidOriginal: 'Original bytes are not valid UTF-8.', invalidReceived: 'Received bytes are not valid UTF-8.',
     rejectedSentence: 'No received sentence was accepted.', illustrativeExample: 'Illustrative example only',
     illustrativeText: 'This example only shows that context can change a reading; it is not a receipt for the current message.',

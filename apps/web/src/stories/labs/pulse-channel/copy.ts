@@ -21,6 +21,8 @@ interface PulseChannelCopy {
   waveform: string;
   inputTrace: string;
   outputTrace: string;
+  bypassTrace: string;
+  bypassFeedback: string;
   samples: string;
   symbol: string;
   time: string;
@@ -55,6 +57,8 @@ export const pulseChannelCopy = {
     waveform: 'Dạng sóng đầu vào và đầu ra của kênh',
     inputTrace: 'Đầu vào NRZ (nét liền)',
     outputTrace: 'Đầu ra có bộ nhớ (nét đứt)',
+    bypassTrace: 'Đầu ra không có bộ nhớ (nét đứt)',
+    bypassFeedback: 'Trong lần chạy này, đầu ra theo đúng đầu vào tức thời vì kênh không có bộ nhớ.',
     samples: 'Các điểm lấy mẫu của bộ nhận',
     symbol: 'Ký hiệu',
     time: 'Thời gian (đơn vị mô phỏng)',
@@ -87,6 +91,8 @@ export const pulseChannelCopy = {
     waveform: 'Input and channel-output waveform',
     inputTrace: 'NRZ input (solid line)',
     outputTrace: 'Channel output with memory (dashed line)',
+    bypassTrace: 'Channel output without memory (dashed line)',
+    bypassFeedback: 'In this run, the output follows the input instantly because the channel has no memory.',
     samples: 'Receiver sample points',
     symbol: 'Symbol',
     time: 'Time (simulation units)',

@@ -110,6 +110,6 @@ export default defineConfig({
     // `e2e` rather than left to vitest's own default `exclude` —
     // specifying this option replaces that default rather than
     // extending it.
-    exclude: ['**/node_modules/**', '**/dist/**', './e2e/**'],
+    exclude: ['**/node_modules/**', '**/dist/**', './e2e/**', '**/*.native.test.ts'],
   },
 });

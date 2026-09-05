@@ -76,10 +76,10 @@ export default function PulseChannelLab({ definition, lang, value, onChange, onR
     instruction={definition.instruction[lang]}
     prediction={<p>{copy.prediction}</p>}
     observation={state.snapshot
-      ? <PulseObservation result={state.snapshot.result} labels={copy} stale={stale} />
+      ? <PulseObservation result={state.snapshot.result} labels={copy} stale={stale} bypass={state.snapshot.config.tau === 0} />
       : <p>{copy.awaiting}</p>}
     explanation={<div>
-      <p>{copy.feedback}</p>
+      {state.snapshot ? <p>{state.snapshot.config.tau === 0 ? copy.bypassFeedback : copy.feedback}</p> : null}
       <p>{copy.modelLimit}</p>
       <p>{copy.patternLimit}</p>
       <p>{copy.noNoise}</p>
@@ -150,17 +150,18 @@ export default function PulseChannelLab({ definition, lang, value, onChange, onR
   </CommunicationLabFrame>;
 }
 
-function PulseObservation({ result, labels, stale }: {
+function PulseObservation({ result, labels, stale, bypass }: {
   result: PulseResult;
   labels: typeof pulseChannelCopy.en;
   stale: boolean;
+  bypass: boolean;
 }) {
   return <div className="pulse-channel-observation">
     {stale ? <p>{labels.stalePlot}</p> : null}
     <PulseWaveform result={result} labels={labels} />
     <ul aria-label={labels.waveform}>
       <li>{labels.inputTrace}</li>
-      <li>{labels.outputTrace}</li>
+      <li>{bypass ? labels.bypassTrace : labels.outputTrace}</li>
     </ul>
     <table aria-label={labels.samples}>
       <thead><tr>

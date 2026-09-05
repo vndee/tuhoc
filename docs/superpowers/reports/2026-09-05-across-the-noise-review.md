@@ -146,3 +146,47 @@ Preserved user services: web5179, root-checkout API8099 and existing DockerDB554
 The Retry contract covers a failed requested entry becoming available again. A separately failed transitive module, removed deployment files or unavailable/mismatched pinned metadata can still leave the authored fallback and Back; no recursive dependency URL rewrite or universal offline/upgrade guarantee was added (R21). Successful cached module identity contains no session data.
 
 Self-review found and corrected real failed-import reopen identity and the R22 choice-control layout; fresh final gates above were run after those corrections. `git diff --check` and exact staged-path inspection passed before implementation commit:36 scoped files, no artwork or publication metadata. The committed report is `docs/superpowers/reports/2026-09-05-across-the-noise-review.md`; the full local execution copy and all logs/source archives remain in ignored `.superpowers/sdd/2026-09-05-across-the-noise/`. No ignored evidence was force-added. Root owns independent final review and any subsequent rulings. No publication, push, PR, merge or deployment was performed.
+
+## Final six-finding fix addendum — 06 September 2026
+
+This addendum records a new bounded fix wave based on d6cc386. It supersedes the earlier native-test deferral and build-map identity where stated; the earlier100-case draft matrix and22-case old-story gate remain prior evidence, not newly rerun tests.
+
+- Tau0 now starts at the input amplitude and represents every NRZ edge with both values at the same instant. Existing positive-tau integration and samples are unchanged. Bilingual legends/explanations follow the captured tau, including when current controls differ.
+- Original and received receipt labels are separate from literal pre-wrap text. Actual browser innerText and textContent retain repeated spaces, newline and leading/trailing spaces; strict decode, rejected/stale receipt and privacy behavior remain intact.
+- Huffman distinguishes an initial unrevealed merge history from a true one-symbol packet in both languages.
+- Authoring validation rejects non-string codewords/source symbols before regex coercion, and visits every context index so sparse arrays fail at exact paths.
+- Portable safety tests are separate from the explicitly required `bun run test:story-plates-native` gate. This native command checks executable /usr/bin/sips and /opt/homebrew/bin/cwebp and fails clearly if absent; all original real codec/source/path/quality/budget assertions are retained. See [testing prerequisites](../../testing.md). No conversion is silently skipped or counted as portable coverage.
+- Four-width cover evidence now captures .story-cover-plate directly with actual theme assertions. Initial lazy-network counts are recorded before screenshot scrolling.
+
+Fresh tests and gates from apps/web, using /Users/vndee/.bun/bin/bun:
+
+| Gate | Result | Local evidence under .superpowers/sdd/2026-09-05-across-the-noise/ |
+|---|---|---|
+| Focused model/UI/validator RED |11 expected failures/153 passes|final-fix-unit-red.log|
+| Focused model/UI/validator plus receipt GREEN |179 passed/6 files|final-fix-unit-green.log|
+| Missing native prerequisite RED |2 failures, missing check function|final-fix-native-red.log|
+| Portable safety/prerequisite GREEN |12 passed/2 files|final-fix-portable-green.log|
+| Actual Chrome RED |2 expected visible failures: collapsed receipt and startup pulse ramp|final-fix-browser-red.log|
+| Fresh affected actual Chrome GREEN |18 passed,53.2s|final-fix-browser-green.log|
+| typecheck / exact scoped lint |both exit0; no scoped lint diagnostics|final-fix-typecheck.log / final-fix-scoped-lint.log|
+| Full ordinary suite, run once |2064 passed/179 files,48.39s|final-fix-full-unit.log|
+| Explicit real native codec gate |12 passed/1 file,2.30s|final-fix-native-green.log|
+| Final normal production build and exclusion, after draft |exit0;1 Chrome case passed,20.8s|final-fix-production-exclusion.log|
+| Final normal graph check |exit0|final-fix-normal-bundle.log|
+| Paired map and artwork hash audit |24 entry files,13 source/26 derivative hashes|final-fix-artifact-audit.json|
+
+Actual installed browser: Chrome152.0.7977.66. The18 fresh draft checks comprise8 exact-whitespace cases (320/1440 × light/dark × VI/EN),2 captured pulse cases (VI/EN),4 loading/cover cases (320/390/1024/1440), and4 retained real privacy/lifecycle/Retry/independent-art-failure cases. Existing strict UTF8, independent decoder, positive-tau and receipt regressions also pass in the full unit suite. Full suite still emits61 existing reader scrollTo notices; the prior41 unrelated full-lint warnings were not reaudited or suppressed. Existing large-entry build warning remains.
+
+The final normal artifact's map is `story-labs-f1c6849b-f17a-4df4-bb04-c86c95c5c73f.json`, paired with buildId `f1c6849b-f17a-4df4-bb04-c86c95c5c73f`. This replaces the earlier report's map identity. The production-exclusion script performed the last normal tsc/vite build after all draft builds; the actual graph and artifact/hash audit ran afterward. All source and derivative art hashes remain unchanged.
+
+The same canonical real-API commands/configs documented above were used with DB55434/API8089 and test project tuhoc-e2e-dac-san-1f41f569, sequentially. For the new draft run, arguments were:
+```sh
+--config playwright.stories-draft.config.ts across-the-noise-final-fixes.spec.ts across-the-noise-performance.spec.ts across-the-noise-privacy.spec.ts --grep 'receipt preserves|captured run|draft loads|privacy|receipt survives|Retry' --output ../../.superpowers/sdd/2026-09-05-across-the-noise/final-fix-browser-green
+```
+TUHOC_E2E_WEB_PORT was5184. The final normal run used5183 and the same R19 wrapper with `e2e/stories-draft-exclusion.spec.ts`, outputting to final-fix-production-exclusion. Each canonical invocation rebuilt the realAPI, applied12 migrations and seeded real mau-hop-le; the internal deterministic AI remains a test stand-in. Full exact commands and scoped paths are recorded in final-fix-report.md.
+
+Fresh screenshots are under final-fix-browser-green/. Four loading directories retain the same width-specific names listed earlier, but their cover-light.png/cover-dark.png now directly show the decoded figure. Literal-text directories are named across-the-noise-final-fix-*whitespace-* and each contains original-text.png, received-text.png and literal-receipt.json; pulse directories contain captured-bypass.png and bypass-path.json. Self-review directly viewed320 light/1440 dark covers,320 dark VI received text and EN bypass. Fresh CLS320/390=.001161,1024=.002456774711608887,1440=.0028148148148148147, with initial nearby-image counts1/1/2/2. The accepted caption overlap is unchanged.
+
+The worker's post-gate read-only check found the old reviewweb5174 listener absent while reviewAPI8098/DB55435 remained healthy; old session91180 was independently reported Unknownprocess by the controller, with cause not established. The controller restarted only its owned dev server at127.0.0.1:5174 with unchanged VITE_API_URL=http://localhost:8098: new PID84615/session46180. Controller-attributed fresh live smoke, controller-final-live-smoke.mjs, completed exit0: real catalog200, decoded cover, exactly1 dev import failure followed by Retry success, Back/reopen, prior receipt retained, literalWhitespacePreserved=true, synthetic session discarded by reload. The controller retained final-fix-live-cover.png and directly viewed fresh320VI original/320EN dark received text, EN coincident bypass steps and320dark cover captures. This is controller evidence, not another code-worker run. The code worker made no review-service changes. User web5179/API8099/DB55433 were preserved.
+
+Self-review found no additional correctness issue in this scoped wave. No artwork/publication flags, unrelated reader warnings, accepted layout or root checkout changed. Existing source-access limits and requested-entry-only Retry recovery limits remain. Evidence/art archives stay ignored, with no force-add, push, PR, merge or deploy.

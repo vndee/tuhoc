@@ -3,6 +3,27 @@ import type { Bit, Bits } from '../communication/types';
 import { simulatePulses } from './model';
 
 describe('pulse-channel model', () => {
+  it.each([1, 2, 4] as const)('depicts tau=0 as exact NRZ steps from time zero at T=%s', duration => {
+    const result = simulatePulses([0, 1, 0], { duration, tau: 0, sampleFraction: 0.5 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const points = result.value.points;
+    expect(points[0]).toEqual({ time: 0, input: -1, output: -1 });
+    expect(points.filter(point => point.time === duration)).toEqual([
+      { time: duration, input: -1, output: -1 },
+      { time: duration, input: 1, output: 1 },
+    ]);
+    expect(points.filter(point => point.time === duration * 2)).toEqual([
+      { time: duration * 2, input: 1, output: 1 },
+      { time: duration * 2, input: -1, output: -1 },
+    ]);
+    for (const [index, point] of points.entries()) {
+      expect(point.output).toBe(point.input);
+      if (index && points[index - 1]!.output !== point.output) expect(point.time).toBe(points[index - 1]!.time);
+    }
+    expect(points.at(-1)).toEqual({ time: duration * 3, input: -1, output: -1 });
+  });
+
   it('uses the exact tau=0 bypass and samples every symbol at its selected integer tick', () => {
     const result = simulatePulses([0, 1, 0, 1], { duration: 1, tau: 0, sampleFraction: 0.5 });
 

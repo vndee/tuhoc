@@ -61,6 +61,20 @@ beforeEach(() => localStorage.clear());
 afterEach(() => localStorage.clear());
 
 describe('HuffmanMessageLab', () => {
+  it.each(['en', 'vi'] as const)('distinguishes unrevealed merges from a single-symbol packet in %s', lang => {
+    const runName = lang === 'en' ? 'Run experiment' : 'Chạy thử';
+    const historyName = lang === 'en' ? 'Visible merge history' : 'Các lần ghép đang hiện';
+    const view = renderJourneyLab(HuffmanMessageLab, definition, { lang, example: 'AB', sceneId: 'scene-08' });
+    fireEvent.click(screen.getByRole('button', { name: runName }));
+    const history = screen.getByRole('region', { name: historyName });
+    expect(history).toHaveTextContent(lang === 'en' ? 'No merges revealed yet.' : 'Chưa hiện lần ghép nào.');
+    expect(history).not.toHaveTextContent(lang === 'en' ? /one byte value/i : /một giá trị byte/i);
+    view.unmount();
+    renderJourneyLab(HuffmanMessageLab, definition, { lang, example: 'AAAA', sceneId: 'scene-08' });
+    fireEvent.click(screen.getByRole('button', { name: runName }));
+    expect(screen.getByRole('region', { name: historyName })).toHaveTextContent(lang === 'en' ? /one byte value.*code is still 0/i : /một giá trị byte.*mã vẫn là 0/i);
+  });
+
   it.each([
     {
       lang: 'en' as const,

@@ -76,6 +76,35 @@ afterEach(() => {
 });
 
 describe('PulseChannelLab', () => {
+  it.each(['en', 'vi'] as const)('renders instantaneous bypass and keeps explanation with the captured tau in %s', lang => {
+    renderJourneyLab(PulseChannelLab, definition, { lang, sceneId: 'scene-05' });
+    const tau = screen.getByRole('combobox', { name: lang === 'en' ? 'Channel memory tau' : 'Bộ nhớ kênh tau' });
+    const run = screen.getByRole('button', { name: lang === 'en' ? 'Run experiment' : 'Chạy thử' });
+    const bypass = lang === 'en' ? /output without memory/i : /đầu ra không có bộ nhớ/i;
+    const memory = lang === 'en' ? /output with memory/i : /đầu ra có bộ nhớ/i;
+    const previous = lang === 'en' ? /still carries a trace of the previous pulse/i : /còn giữ dấu vết của xung trước/i;
+    fireEvent.change(tau, { target: { value: '0' } });
+    fireEvent.click(run);
+    const path = document.querySelector('[data-trace="output"]')!.getAttribute('d')!;
+    const coordinates = [...path.matchAll(/[ML] ([\d.]+) ([\d.]+)/g)].map(match => [Number(match[1]), Number(match[2])]);
+    expect(coordinates[0]).toEqual([48, 202]);
+    for (let i = 1; i < coordinates.length; i++) {
+      if (coordinates[i]![1] !== coordinates[i - 1]![1]) expect(coordinates[i]![0]).toBe(coordinates[i - 1]![0]);
+    }
+    expect(screen.getByText(bypass)).toBeVisible();
+    expect(screen.queryByText(previous)).not.toBeInTheDocument();
+    fireEvent.change(tau, { target: { value: '1' } });
+    expect(document.querySelector('[data-trace="output"]')).toHaveAttribute('d', path);
+    expect(screen.getByText(bypass)).toBeVisible();
+    expect(screen.queryByText(previous)).not.toBeInTheDocument();
+    fireEvent.click(run);
+    expect(screen.getByText(memory)).toBeVisible();
+    expect(screen.getByText(previous)).toBeVisible();
+    fireEvent.change(tau, { target: { value: '0' } });
+    expect(screen.getByText(memory)).toBeVisible();
+    expect(screen.getByText(previous)).toBeVisible();
+  });
+
   it.each([
     {
       lang: 'en' as const,

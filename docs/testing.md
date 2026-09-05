@@ -1,5 +1,22 @@
 # Testing tuhoc
 
+## Story artwork validation and required native conversion gate
+
+From `apps/web`, `bun run test` runs portable tests, including manifest,
+source and destination safety validations with an inspection-only PNG fixture
+adapter. It does not claim real codec coverage. The separate required gate is
+`bun run test:story-plates-native`: this performs real WebP conversion, dimension,
+hash, source-preservation, shell/path-safety, quality-step and byte-budget checks
+against temporary non-art fixtures. It never regenerates edition artwork.
+
+The native gate requires macOS `/usr/bin/sips` and executable
+`/opt/homebrew/bin/cwebp` (the Apple Silicon Homebrew `webp` package).
+`node scripts/export-story-plates.mjs --check-tools` checks these prerequisites;
+the gate fails clearly when either is absent and never silently skips conversion.
+On other toolchains, report the native gate as unavailable and run it on the
+supported installed toolchain before accepting artwork/exporter changes.
+No encoder discovery or cross-platform substitution is provided.
+
 Unit/integration tests: `make test-api` (Go, spins up real Postgres via
 testcontainers per-package) and `make test-web` (vitest, jsdom). This
 doc is only about the one that's different in kind:

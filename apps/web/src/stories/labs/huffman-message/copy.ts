@@ -10,6 +10,7 @@ interface HuffmanMessageCopy {
   mergeProgress: (step: number, total: number) => string;
   mergeHistory: string;
   noMerges: string;
+  noMergesRevealed: string;
   merge: (left: string, right: string, parent: number) => string;
   tree: string;
   visibleNodes: string;
@@ -59,7 +60,8 @@ export const huffmanMessageCopy = {
     staleBanner: 'Cây và phép tính này thuộc về câu trước.',
     mergeProgress: (step, total) => `Lần ghép ${step} trên ${total}`,
     mergeHistory: 'Các lần ghép đang hiện',
-    noMerges: 'Chưa có lần ghép nào. Với một giá trị byte duy nhất, mã vẫn là 0.',
+    noMerges: 'Không cần ghép. Với một giá trị byte duy nhất, mã vẫn là 0.',
+    noMergesRevealed: 'Chưa hiện lần ghép nào.',
     merge: (left, right, parent) => `${left} + ${right} → nút ${parent}`,
     tree: 'Cửa sổ cây dựng Huffman',
     visibleNodes: 'Các nút cây đang hiện',
@@ -108,6 +110,7 @@ export const huffmanMessageCopy = {
     mergeProgress: (step, total) => `Merge ${step} of ${total}`,
     mergeHistory: 'Visible merge history',
     noMerges: 'No merge is needed. With one byte value, the code is still 0.',
+    noMergesRevealed: 'No merges revealed yet.',
     merge: (left, right, parent) => `${left} + ${right} → node ${parent}`,
     tree: 'Huffman construction tree window',
     visibleNodes: 'Visible tree nodes',
