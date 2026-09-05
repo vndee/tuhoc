@@ -90,6 +90,58 @@ describe('BinaryNoiseLab', () => {
     expect(screen.getByLabelText('Received bytes in hexadecimal')).toHaveTextContent(receivedBefore ?? '');
   });
 
+  it('preserves a typed half-step probability, explains why it is invalid, and blocks Run', () => {
+    renderJourneyLab(BinaryNoiseLab, definition, { lang: 'en', sceneId: 'scene-06', example: 'AA' });
+    const probability = screen.getByRole('spinbutton', { name: 'Configured flip probability p' });
+
+    fireEvent.change(probability, { target: { value: '0.005' } });
+
+    expect(probability).toHaveValue(0.005);
+    expect(probability).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter a probability from 0 to 0.5 in steps of 0.01.');
+    expect(screen.getByRole('button', { name: 'Run experiment' })).toBeDisabled();
+    expect(screen.getByRole('region', { name: 'Observe' })).toHaveTextContent('Choose a mode and settings');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    expect(probability).toHaveValue(0.3);
+    expect(probability).not.toHaveAttribute('aria-invalid');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run experiment' })).toBeEnabled();
+  });
+
+  it.each(['0', '0.01', '0.5'])('accepts the valid hundredth-step probability %s', (value) => {
+    renderJourneyLab(BinaryNoiseLab, definition, { lang: 'en', sceneId: 'scene-06', example: 'AA' });
+    const probability = screen.getByRole('spinbutton', { name: 'Configured flip probability p' });
+
+    fireEvent.change(probability, { target: { value } });
+
+    expect(probability).toHaveValue(Number(value));
+    expect(probability).not.toHaveAttribute('aria-invalid');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run experiment' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Run experiment' }));
+    expect(screen.getByRole('status')).toHaveTextContent('This run changed');
+  });
+
+  it.each([
+    {
+      lang: 'en' as const,
+      probability: 'Configured flip probability p',
+      error: 'Enter a probability from 0 to 0.5 in steps of 0.01.',
+    },
+    {
+      lang: 'vi' as const,
+      probability: 'Xác suất lật bit cấu hình p',
+      error: 'Nhập xác suất từ 0 đến 0,5 theo bước 0,01.',
+    },
+  ])('localizes invalid probability feedback in $lang', ({ lang, probability, error }) => {
+    renderJourneyLab(BinaryNoiseLab, definition, { lang, sceneId: 'scene-06', example: 'AA' });
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: probability }), { target: { value: '0.005' } });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(error);
+  });
+
   it('supports a manual flip set, reports strict invalid UTF-8, and toggling the bit twice restores exact bytes', () => {
     renderJourneyLab(BinaryNoiseLab, definition, { lang: 'en', sceneId: 'scene-06', example: 'A' });
     fireEvent.click(screen.getByRole('radio', { name: 'Manual bit flips' }));
@@ -126,6 +178,29 @@ describe('BinaryNoiseLab', () => {
     fireEvent.click(within(observation).getByRole('button', { name: 'Next bits' }));
     expect(within(observation).getByText('Bits 65–72 of 72')).toBeVisible();
     expect(within(observation).getAllByRole('button', { name: /Bit \d+:/ })).toHaveLength(8);
+  });
+
+  it('uses one bounded editable bit window after a 72-bit manual run and restores a toggled bit', () => {
+    renderJourneyLab(BinaryNoiseLab, definition, { lang: 'en', sceneId: 'scene-06', example: 'AAAAAAAAA' });
+    fireEvent.click(screen.getByRole('radio', { name: 'Manual bit flips' }));
+
+    const firstBit = screen.getByRole('button', { name: 'Bit 1: 0' });
+    fireEvent.click(firstBit);
+    fireEvent.click(screen.getByRole('button', { name: 'Run experiment' }));
+    expect(screen.getAllByRole('button', { name: /Bit \d+:/ })).toHaveLength(64);
+    expect(screen.getByRole('status')).toHaveTextContent('This run changed 1/72 bits');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next bits' }));
+    expect(screen.getByText('Bits 65–72 of 72')).toBeVisible();
+    expect(screen.getAllByRole('button', { name: /Bit \d+:/ })).toHaveLength(8);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous bits' }));
+    const selectedBit = screen.getByRole('button', { name: 'Bit 1: 0, flipped' });
+    fireEvent.click(selectedBit);
+    expect(screen.getByRole('button', { name: 'Bit 1: 0' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByRole('button', { name: 'Run experiment' }));
+    expect(screen.getAllByRole('button', { name: /Bit \d+:/ })).toHaveLength(64);
+    expect(screen.getByText('Received bytes exactly match the source bytes.')).toBeVisible();
   });
 
   it('keeps an immutable old result and marks both edited settings and message revisions stale', () => {

@@ -1,3 +1,4 @@
+import { useId, useState } from 'react';
 import { useRequiredMessageJourney } from '../../session/StoryIssueSessionProvider';
 import { BitWindow } from '../communication/BitWindow';
 import { toBits } from '../communication/bits';
@@ -27,6 +28,10 @@ export default function BinaryNoiseLab({ definition, lang, value, onChange, onRe
   if (!inspection.ok || inspection.value.bytes.length === 0) throw new Error('invalid-message-source');
   const source = inspection.value.bytes;
   const state = readState(value, definition.config.defaultP, definition.config.seed, source.length * 8);
+  const [probabilityDraft, setProbabilityDraft] = useState(String(state.config.p));
+  const probabilityErrorId = useId();
+  const parsedProbability = parseProbability(probabilityDraft);
+  const invalidProbability = state.config.mode === 'bsc' && parsedProbability === null;
   const revisionStale = state.snapshot !== null && state.snapshot.messageRevision !== journey.state.messageRevision;
   const settingsStale = state.snapshot !== null && !sameConfig(state.snapshot.config, state.config);
   const updateConfig = (next: Partial<BinaryNoiseConfig>) => onChange({
@@ -34,6 +39,7 @@ export default function BinaryNoiseLab({ definition, lang, value, onChange, onRe
     config: { ...state.config, ...next },
   });
   const run = () => {
+    if (invalidProbability) return;
     const result = state.config.mode === 'bsc'
       ? transmitNoisy(source, state.config)
       : manualNoise(source, state.config.manual);
@@ -70,6 +76,7 @@ export default function BinaryNoiseLab({ definition, lang, value, onChange, onRe
         labels={copy}
         stale={revisionStale ? 'message' : settingsStale ? 'settings' : null}
         lang={lang}
+        showBits={state.config.mode === 'bsc'}
       />
       : <p>{copy.awaiting}</p>}
     explanation={<div>
@@ -78,7 +85,10 @@ export default function BinaryNoiseLab({ definition, lang, value, onChange, onRe
       <p>{copy.modelLimit}</p>
     </div>}
     result={status}
-    onReset={onReset}
+    onReset={() => {
+      setProbabilityDraft(String(definition.config.defaultP));
+      onReset();
+    }}
     onBack={onBack}
   >
     <MessageEditor lang={lang} />
@@ -111,13 +121,18 @@ export default function BinaryNoiseLab({ definition, lang, value, onChange, onRe
           min="0"
           max="0.5"
           step="0.01"
-          value={state.config.p}
+          value={probabilityDraft}
+          aria-invalid={invalidProbability ? true : undefined}
+          aria-describedby={invalidProbability ? probabilityErrorId : undefined}
           onChange={(event) => {
-            const p = event.currentTarget.valueAsNumber;
-            if (Number.isFinite(p) && p >= 0 && p <= 0.5) updateConfig({ p });
+            const draft = event.currentTarget.value;
+            setProbabilityDraft(draft);
+            const p = parseProbability(draft);
+            if (p !== null) updateConfig({ p });
           }}
         />
       </label>
+      {invalidProbability ? <p id={probabilityErrorId} role="alert">{copy.invalidProbability}</p> : null}
       <label>
         {copy.seed}
         <input
@@ -146,28 +161,29 @@ export default function BinaryNoiseLab({ definition, lang, value, onChange, onRe
         onFlip={toggleManual}
       />
     </>}
-    <button type="button" onClick={run}>{copy.run}</button>
+    <button type="button" onClick={run} disabled={invalidProbability}>{copy.run}</button>
   </CommunicationLabFrame>;
 }
 
-function NoiseObservation({ snapshot, page, onPage, labels, stale, lang }: {
+function NoiseObservation({ snapshot, page, onPage, labels, stale, lang, showBits }: {
   snapshot: RunSnapshot<BinaryNoiseConfig, NoiseResult>;
   page: number;
   onPage: (page: number) => void;
   labels: typeof binaryNoiseCopy.en;
   stale: 'message' | 'settings' | null;
   lang: LabRuntimeProps['lang'];
+  showBits: boolean;
 }) {
   return <div className="binary-noise-observation">
     {stale === 'message' ? <p>{labels.staleMessageBanner}</p> : null}
     {stale === 'settings' ? <p>{labels.staleSettingsBanner}</p> : null}
-    <BitWindow
-      bits={toBits(snapshot.result.received)}
-      lang={lang}
-      page={page}
-      onPage={onPage}
-      flipped={snapshot.result.flipped}
-    />
+    {showBits ? <BitWindow
+        bits={toBits(snapshot.result.received)}
+        lang={lang}
+        page={page}
+        onPage={onPage}
+        flipped={snapshot.result.flipped}
+      /> : null}
     <section aria-label={labels.sourceHex}>
       <h5>{labels.sourceHex}</h5>
       <code>{toHex(snapshot.source)}</code>
@@ -186,6 +202,14 @@ function NoiseObservation({ snapshot, page, onPage, labels, stale, lang }: {
 
 function toHex(bytes: Bytes): string {
   return bytes.map((byte) => byte.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+}
+
+function parseProbability(value: string): number | null {
+  if (value.trim() === '') return null;
+  const probability = Number(value);
+  if (!Number.isFinite(probability) || probability < 0 || probability > 0.5) return null;
+  const hundredths = probability * 100;
+  return Math.abs(hundredths - Math.round(hundredths)) < 1e-9 ? probability : null;
 }
 
 function makeSnapshot(
