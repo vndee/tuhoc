@@ -53,6 +53,55 @@ test('deep link, language, hash, state, and keyboard interaction survive togethe
 });
 
 for (const width of [1440, 390]) {
+  test(`editorial theme control follows the header palette at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    for (const path of ['/stories', ISSUE_PATH]) {
+      await page.goto(path);
+      await expect(page.locator(path === ISSUE_PATH ? '.story-renderer' : '.story-index')).toBeVisible();
+      const toggle = page.locator('.story-theme-toggle');
+      const language = page.getByRole('button', { name: 'Ngôn ngữ giao diện' });
+      for (const theme of ['light', 'dark']) {
+        await page.mouse.move(0, 0);
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+        const ink = await page.locator('.story-shell-header').evaluate((el) => getComputedStyle(el).color);
+        await expect(toggle).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        await expect(toggle).toHaveCSS('border-top-width', '0px');
+        await expect(toggle).toHaveCSS('color', ink);
+        await expect(language).toHaveCSS('color', ink);
+        await expect(toggle.locator('svg')).toHaveCount(1);
+        await expect(toggle).toHaveAttribute('aria-pressed', String(theme === 'dark'));
+        await language.hover();
+        const hoverInk = await language.evaluate((el) => getComputedStyle(el).color);
+        await toggle.hover();
+        await expect(toggle).toHaveCSS('color', hoverInk);
+        await toggle.focus();
+        await expect(toggle).toHaveCSS('outline-style', 'solid');
+        await toggle.press('Enter');
+      }
+    }
+  });
+
+  test(`featured edition keeps landing typography in both languages at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto('/');
+    const title = page.locator('.bd-story-feature-copy h3');
+    const handFont = await page.locator('#bd-stories-heading').evaluate((el) => getComputedStyle(el).fontFamily);
+    for (const language of ['vi', 'en']) {
+      for (const theme of ['light', 'dark']) {
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+        await expect(title).toHaveCSS('font-family', handFont);
+        expect(await title.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(26);
+        await title.scrollIntoViewIfNeeded();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth)).toBe(true);
+        await page.locator('.bd-chrome-btn').click();
+      }
+      if (language === 'vi') {
+        await page.getByRole('button', { name: 'Ngôn ngữ giao diện' }).click();
+        await page.getByRole('menuitemradio', { name: /English/i }).click();
+      }
+    }
+  });
+
   test(`theme toggle changes the actual reading and lab surfaces at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
     await page.goto(ISSUE_PATH);
