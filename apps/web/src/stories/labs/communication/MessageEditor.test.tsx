@@ -1,5 +1,5 @@
 import { fireEvent, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LabRuntimeProps } from '../runtime';
 import { renderJourneyLab } from '../../testing/renderJourneyLab';
 import { makeStoryFixture } from '../../testing/storyFixture';
@@ -13,6 +13,30 @@ function EditorLab({ lang }: LabRuntimeProps) {
 
 beforeEach(() => localStorage.clear());
 afterEach(() => localStorage.clear());
+
+const originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'showModal');
+const originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'close');
+
+// jsdom has no dialog top layer. This adapter only lets the tests exercise
+// component-owned focus cycling and outside-action suppression; Task 23 E2E
+// remains responsible for proving the browser's native modal behavior.
+beforeAll(() => {
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+    configurable: true,
+    value(this: HTMLDialogElement) { this.setAttribute('open', ''); },
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+    configurable: true,
+    value(this: HTMLDialogElement) { this.removeAttribute('open'); },
+  });
+});
+
+afterAll(() => {
+  if (originalShowModal) Object.defineProperty(HTMLDialogElement.prototype, 'showModal', originalShowModal);
+  else delete (HTMLDialogElement.prototype as Partial<HTMLDialogElement>).showModal;
+  if (originalClose) Object.defineProperty(HTMLDialogElement.prototype, 'close', originalClose);
+  else delete (HTMLDialogElement.prototype as Partial<HTMLDialogElement>).close;
+});
 
 describe('MessageEditor', () => {
   it('keeps an invalid draft entered during IME composition instead of truncating it', () => {
@@ -77,12 +101,49 @@ describe('MessageEditor', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Your message' }), { target: { value: 'Changed' } });
     fireEvent.click(screen.getByRole('button', { name: 'Use this message' }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Start a new experiment' }));
+    const reset = screen.getByRole('button', { name: 'Start a new experiment' });
+    fireEvent.click(reset);
     expect(screen.getByLabelText('Message in use')).toHaveTextContent('Changed');
     fireEvent.click(screen.getByRole('button', { name: 'Start again' }));
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Message in use')).toHaveTextContent('Original');
     expect(screen.getByRole('textbox', { name: 'Your message' })).toHaveValue('Original');
+    expect(reset).toHaveFocus();
+  });
+
+  it('contains keyboard focus within the native modal dialog', () => {
+    renderJourneyLab(EditorLab, definition, { lang: 'en', example: 'Original' });
+    fireEvent.click(screen.getByRole('button', { name: 'Start a new experiment' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Start a new experiment?' });
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    const confirm = screen.getByRole('button', { name: 'Start again' });
+    expect(dialog.tagName).toBe('DIALOG');
+    expect(cancel).toHaveFocus();
+
+    fireEvent.keyDown(cancel, { key: 'Tab', shiftKey: true });
+    expect(confirm).toHaveFocus();
+    fireEvent.keyDown(confirm, { key: 'Tab' });
+    expect(cancel).toHaveFocus();
+  });
+
+  it('suppresses background actions while reset confirmation is modal', () => {
+    const backgroundAction = vi.fn();
+    function ModalEditorLab({ lang }: LabRuntimeProps) {
+      return <><button type="button" onClick={backgroundAction}>Background action</button><MessageEditor lang={lang} /></>;
+    }
+    renderJourneyLab(ModalEditorLab, definition, { lang: 'en', example: 'Original' });
+    const background = screen.getByRole('button', { name: 'Background action' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start a new experiment' }));
+    fireEvent.click(background);
+    expect(backgroundAction).not.toHaveBeenCalled();
+    background.focus();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(background);
+    expect(backgroundAction).toHaveBeenCalledOnce();
   });
 });
