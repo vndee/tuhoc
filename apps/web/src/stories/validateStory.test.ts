@@ -293,7 +293,7 @@ describe('validateStory', () => {
     },
   );
 
-  it.each(['', '101', '10110', '10a1', ' 1011'])('rejects invalid secded-inspector data at its exact field: %j', (data) => {
+  it.each(['', '101', '10110', '10a1', ' 1011', 1011, ['1011']])('rejects invalid secded-inspector data at its exact field: %j', (data) => {
     const story = makeStoryFixture();
     story.scenes[0]!.lab = {
       kind: 'secded-inspector',
