@@ -52,6 +52,28 @@ test('deep link, language, hash, state, and keyboard interaction survive togethe
   await expect(page.getByRole('heading', { name: /Dartmouth, symbolic AI/i })).toBeVisible();
 });
 
+for (const width of [1440, 390]) {
+  test(`theme toggle changes the actual reading and lab surfaces at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto(ISSUE_PATH);
+    const renderer = page.locator('.story-renderer');
+    const lightPaper = await renderer.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const lightInk = await renderer.evaluate((el) => getComputedStyle(el).color);
+    await page.getByRole('button', { name: 'Chuyển sang giao diện tối' }).click();
+    await expect(renderer).not.toHaveCSS('background-color', lightPaper);
+    await expect(renderer).not.toHaveCSS('color', lightInk);
+    await expect(page.locator('.story-shell-theme-scope')).toHaveCSS('color-scheme', 'dark');
+    const darkPaper = await renderer.evaluate((el) => getComputedStyle(el).backgroundColor);
+    await page.reload();
+    await expect(renderer).toHaveCSS('background-color', darkPaper);
+    await page.getByRole('button', { name: 'Tự tay thử' }).first().click();
+    await expect(page.locator('.story-lab-frame')).toHaveCSS('background-color', darkPaper);
+    await page.getByRole('button', { name: 'Chuyển sang giao diện sáng' }).click();
+    await expect(renderer).toHaveCSS('background-color', lightPaper);
+    await expect(renderer).toHaveCSS('color', lightInk);
+  });
+}
+
 test('cover and desktop plate captions stay visible and localized as the active scene changes', async ({ page }) => {
   await page.goto(`${ISSUE_PATH}#scene-01`);
   const cover = page.getByTestId('story-cover');
