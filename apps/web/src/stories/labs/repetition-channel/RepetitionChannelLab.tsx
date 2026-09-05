@@ -73,7 +73,6 @@ export default function RepetitionChannelLab({ definition, lang, value, onChange
         page={state.page}
         lang={lang}
         stale={revisionStale ? 'message' : settingsStale ? 'settings' : null}
-        showTheory={state.config.mode === 'bsc'}
         onPage={(page) => onChange({ ...state, page })}
       />}
     explanation={<div><p>{copy.feedback}</p><p>{copy.modelLimit}</p></div>}
@@ -139,12 +138,11 @@ export default function RepetitionChannelLab({ definition, lang, value, onChange
   </CommunicationLabFrame>;
 }
 
-function RepetitionObservation({ snapshot, page, lang, stale, showTheory, onPage }: {
+function RepetitionObservation({ snapshot, page, lang, stale, onPage }: {
   snapshot: RunSnapshot<RepetitionConfig, RepetitionComparison>;
   page: number;
   lang: LabRuntimeProps['lang'];
   stale: 'message' | 'settings' | null;
-  showTheory: boolean;
   onPage: (page: number) => void;
 }) {
   const labels = repetitionChannelCopy[lang];
@@ -154,9 +152,9 @@ function RepetitionObservation({ snapshot, page, lang, stale, showTheory, onPage
   const observed = snapshot.result;
   const rows = [
     [labels.oneCopy, observed.raw.uses, observed.raw.flips, observed.raw.errors,
-      (bits - observed.raw.errors) / observed.raw.uses, 1],
+      observed.raw.errors / bits, (bits - observed.raw.errors) / observed.raw.uses, 1],
     [labels.threeCopies, observed.repeat.uses, observed.repeat.flips, observed.repeat.errors,
-      (bits - observed.repeat.errors) / observed.repeat.uses, 1 / 3],
+      observed.repeat.errors / bits, (bits - observed.repeat.errors) / observed.repeat.uses, 1 / 3],
   ] as const;
 
   return <div className="repetition-channel-observation">
@@ -166,15 +164,16 @@ function RepetitionObservation({ snapshot, page, lang, stale, showTheory, onPage
     <table aria-label={labels.observedTable}>
       <thead><tr>
         <th>{labels.path}</th><th>{labels.uses}</th><th>{labels.flips}</th><th>{labels.errors}</th>
-        <th>{labels.correctPerUse}</th><th>{labels.rate}</th>
+        <th>{labels.payloadBer}</th><th>{labels.correctPerUse}</th><th>{labels.rate}</th>
       </tr></thead>
-      <tbody>{rows.map(([path, uses, flips, errors, correct, rate]) => <tr key={path}>
+      <tbody>{rows.map(([path, uses, flips, errors, ber, correct, rate]) => <tr key={path}>
         <th scope="row">{path}</th><td>{uses}</td><td>{flips}</td><td>{errors}</td>
-        <td>{correct.toFixed(3)}</td><td>{rate === 1 ? '1' : rate.toFixed(3)}</td>
+        <td>{ber.toFixed(3)}</td><td>{correct.toFixed(3)}</td><td>{rate === 1 ? '1' : rate.toFixed(3)}</td>
       </tr>)}</tbody>
     </table>
-    {showTheory && observed.theoretical !== null ? <section aria-label={labels.theory}>
-      <h5>{labels.theory}</h5><p>{labels.theoryValue(snapshot.config.p, observed.theoretical)}</p>
+    {snapshot.config.mode === 'bsc' && observed.theoretical !== null ? <section aria-label={labels.theory}>
+      <h5>{labels.theory}</h5><p>{labels.capturedBscTheory}</p>
+      <p>{labels.theoryValue(snapshot.config.p, observed.theoretical)}</p>
     </section> : null}
     <p>{labels.consecutive}</p>
     <TripleWindow trace={trace.value} page={page} labels={labels} onPage={onPage} />

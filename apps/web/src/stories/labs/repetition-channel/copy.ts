@@ -25,9 +25,11 @@ interface RepetitionChannelCopy {
   uses: string;
   flips: string;
   errors: string;
+  payloadBer: string;
   correctPerUse: string;
   rate: string;
   theory: string;
+  capturedBscTheory: string;
   theoryValue: (p: number, probability: number) => string;
   originalHex: string;
   consecutive: string;
@@ -68,9 +70,9 @@ export const repetitionChannelCopy = {
     staleMessageBanner: 'Bảng và các nhóm ba bit này thuộc về câu trước.',
     staleSettingsBanner: 'Bảng và các nhóm ba bit này thuộc về thông số trước.',
     observedTable: 'So sánh kênh quan sát được', path: 'Đường gửi', oneCopy: 'Một bản', threeCopies: 'Ba bản',
-    uses: 'Lần dùng kênh', flips: 'Bit bị lật trong kênh', errors: 'Lỗi dữ liệu',
+    uses: 'Lần dùng kênh', flips: 'Bit bị lật trong kênh', errors: 'Lỗi dữ liệu', payloadBer: 'BER dữ liệu',
     correctPerUse: 'Bit dữ liệu đúng/lần dùng', rate: 'Tốc độ mã',
-    theory: 'Lý thuyết kênh độc lập',
+    theory: 'Lý thuyết kênh độc lập', capturedBscTheory: 'Lý thuyết cho lượt BSC đã được chụp lại.',
     theoryValue: (p, probability) => `Với p=${p.toFixed(2)}, 3p²−2p³ = ${probability.toFixed(3)} lỗi sau biểu quyết cho mỗi bit dữ liệu.`,
     originalHex: 'Byte gốc ở hệ thập lục phân',
     consecutive: 'Ba bit đi liên tiếp qua cùng mô hình kênh.',
@@ -99,9 +101,9 @@ export const repetitionChannelCopy = {
     staleMessageBanner: 'This table and these three-bit groups belong to the previous message.',
     staleSettingsBanner: 'This table and these three-bit groups belong to the previous settings.',
     observedTable: 'Observed channel comparison', path: 'Path', oneCopy: 'One copy', threeCopies: 'Three copies',
-    uses: 'Channel uses', flips: 'Channel flips', errors: 'Payload errors',
+    uses: 'Channel uses', flips: 'Channel flips', errors: 'Payload errors', payloadBer: 'Payload BER',
     correctPerUse: 'Correct payload bits/use', rate: 'Code rate',
-    theory: 'Independent-channel theory',
+    theory: 'Independent-channel theory', capturedBscTheory: 'Theory for the captured BSC run.',
     theoryValue: (p, probability) => `At p=${p.toFixed(2)}, 3p²−2p³ = ${probability.toFixed(3)} decoded errors per payload bit.`,
     originalHex: 'Original bytes in hexadecimal',
     consecutive: 'Three bits travel consecutively through the same channel model.',
