@@ -1,5 +1,5 @@
 import type { Lang } from '@tuhoc/i18n';
-import type { Codebook } from './labs/communication/types';
+import type { Codebook, Weights } from './labs/communication/types';
 
 export type Localized<T = string> = Record<Lang, T>;
 
@@ -95,6 +95,7 @@ export const ALL_LAB_KINDS = [
   'cable-route',
   'pulse-channel',
   'binary-noise',
+  'source-entropy',
 ] as const;
 export type LabKind = (typeof ALL_LAB_KINDS)[number];
 
@@ -123,7 +124,8 @@ export type LabDefinition =
   | LabBase<'morse-spacing', { example: 'ET' | 'AET' | 'BEAM' | 'BEAM ET' }>
   | LabBase<'cable-route', { defaultBudget: number }>
   | LabBase<'pulse-channel', { defaultDuration: 1 | 2 | 4 }>
-  | LabBase<'binary-noise', { defaultP: number; seed: number }>;
+  | LabBase<'binary-noise', { defaultP: number; seed: number }>
+  | LabBase<'source-entropy', { weights: Weights; seed: number }>;
 
 export interface LabFallback {
   diagramLabel: Localized;

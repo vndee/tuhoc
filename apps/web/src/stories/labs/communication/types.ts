@@ -3,6 +3,7 @@ export type Bits = readonly Bit[];
 export type Bytes = readonly number[];
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 export type SymbolId = 'A' | 'B' | 'C' | 'D';
+export type Weights = readonly [number, number, number, number];
 export type Codebook = Record<SymbolId, string>;
 export type ChannelCode = 'raw' | 'repeat3' | 'secded';
 export type NoiseConfig = { p: number; seed: number };

@@ -23,6 +23,7 @@ const definitions: LabDefinition[] = [
   { kind: 'cable-route', title: localized('Chọn tuyến', 'Choose route'), instruction: localized('So sánh', 'Compare'), config: { defaultBudget: 28 } },
   { kind: 'pulse-channel', title: localized('Kênh xung', 'Pulse channel'), instruction: localized('Quan sát', 'Observe'), config: { defaultDuration: 1 } },
   { kind: 'binary-noise', title: localized('Kênh nhiễu', 'Noisy channel'), instruction: localized('Truyền', 'Transmit'), config: { defaultP: 0.05, seed: 20260905 } },
+  { kind: 'source-entropy', title: localized('Entropy nguồn', 'Source entropy'), instruction: localized('Rút', 'Draw'), config: { weights: [25, 25, 25, 25], seed: 20260905 } },
 ];
 
 const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
@@ -49,6 +50,12 @@ const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
     snapshot: null,
     page: 0,
   },
+  'source-entropy': { weights: [25, 25, 25, 25], seed: 20260905, counter: 0, lastDraw: null, prediction: null },
+};
+
+const sourceEntropyDefinition: Extract<LabDefinition, { kind: 'source-entropy' }> = {
+  kind: 'source-entropy', title: localized('Entropy nguồn', 'Source entropy'), instruction: localized('Rút', 'Draw'),
+  config: { weights: [1, 2, 3, 4], seed: 4_294_967_295 },
 };
 
 const binaryNoiseDefinition: Extract<LabDefinition, { kind: 'binary-noise' }> = {
@@ -66,6 +73,15 @@ const emptyExamples: Extract<LabDefinition, { kind: 'attention' }> = {
 };
 
 describe('makeInitialLabState', () => {
+  it('initializes source-entropy with copied weights and a fresh draw counter', () => {
+    const first = makeInitialLabState(sourceEntropyDefinition) as { weights: number[] };
+    const second = makeInitialLabState(sourceEntropyDefinition) as { weights: number[] };
+
+    expect(first).toEqual({ weights: [1, 2, 3, 4], seed: 4_294_967_295, counter: 0, lastDraw: null, prediction: null });
+    expect(first.weights).not.toBe(second.weights);
+    expect(first.weights).not.toBe(sourceEntropyDefinition.config.weights);
+  });
+
   it('initializes binary-noise with copied defaults, BSC mode, and an empty manual set', () => {
     const first = makeInitialLabState(binaryNoiseDefinition) as { config: { manual: number[] } };
     const second = makeInitialLabState(binaryNoiseDefinition) as { config: { manual: number[] } };

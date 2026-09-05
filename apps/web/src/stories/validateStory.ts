@@ -233,6 +233,20 @@ export function validateStory(
           add('invalid-lab-config', `${path}.lab.config.seed`, 'binary noise seed must be a uint32');
         }
         break;
+      case 'source-entropy': {
+        const weights: unknown = scene.lab.config.weights;
+        if (!Array.isArray(weights) || weights.length !== 4 ||
+          [0, 1, 2, 3].some((index) => !Object.hasOwn(weights, index) ||
+            !Number.isInteger(weights[index]) || weights[index] < 0 || weights[index] > 100) ||
+          weights.every((weight) => weight === 0)) {
+          add('invalid-lab-config', `${path}.lab.config.weights`, 'source weights must be four integers from 0 to 100');
+        }
+        if (!Number.isInteger(scene.lab.config.seed) ||
+          scene.lab.config.seed < 0 || scene.lab.config.seed > 0xffff_ffff) {
+          add('invalid-lab-config', `${path}.lab.config.seed`, 'source entropy seed must be a uint32');
+        }
+        break;
+      }
       default:
         break;
     }

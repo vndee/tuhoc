@@ -310,6 +310,76 @@ describe('validateStory', () => {
       .not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid-lab-config' })]));
   });
 
+  it.each([
+    { weights: [25, 25, 25] },
+    { weights: [25, 25, 25, 25, 25] },
+    { weights: [25, -1, 25, 25] },
+    { weights: [25, 0.5, 25, 25] },
+    { weights: [25, 101, 25, 25] },
+    { weights: [0, 0, 0, 0] },
+  ])('rejects an invalid source-entropy weight tuple: $weights', ({ weights }) => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'source-entropy',
+      title: { vi: 'Entropy nguồn', en: 'Source entropy' },
+      instruction: { vi: 'Rút ký hiệu', en: 'Draw a symbol' },
+      config: { weights, seed: 20260905 },
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'source-entropy'] as never[])))
+      .toContainEqual(expect.objectContaining({
+        code: 'invalid-lab-config', path: 'scenes.0.lab.config.weights',
+      }));
+  });
+
+  it('rejects a sparse source-entropy weight tuple', () => {
+    const story = makeStoryFixture();
+    const weights = [25, 25, 25, 25];
+    delete weights[2];
+    story.scenes[0]!.lab = {
+      kind: 'source-entropy',
+      title: { vi: 'Entropy nguồn', en: 'Source entropy' },
+      instruction: { vi: 'Rút ký hiệu', en: 'Draw a symbol' },
+      config: { weights, seed: 20260905 },
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'source-entropy'] as never[])))
+      .toContainEqual(expect.objectContaining({
+        code: 'invalid-lab-config', path: 'scenes.0.lab.config.weights',
+      }));
+  });
+
+  it.each([-1, 0.5, 0x1_0000_0000, Number.NaN])(
+    'rejects an invalid source-entropy seed at its exact field: %s',
+    (seed) => {
+      const story = makeStoryFixture();
+      story.scenes[0]!.lab = {
+        kind: 'source-entropy',
+        title: { vi: 'Entropy nguồn', en: 'Source entropy' },
+        instruction: { vi: 'Rút ký hiệu', en: 'Draw a symbol' },
+        config: { weights: [25, 25, 25, 25], seed },
+      } as unknown as typeof story.scenes[0]['lab'];
+
+      expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'source-entropy'] as never[])))
+        .toContainEqual(expect.objectContaining({
+          code: 'invalid-lab-config', path: 'scenes.0.lab.config.seed',
+        }));
+    },
+  );
+
+  it('accepts source-entropy integer weights and a uint32 seed', () => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'source-entropy',
+      title: { vi: 'Entropy nguồn', en: 'Source entropy' },
+      instruction: { vi: 'Rút ký hiệu', en: 'Draw a symbol' },
+      config: { weights: [0, 100, 2, 3], seed: 0xffff_ffff },
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'source-entropy'] as never[])))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid-lab-config' })]));
+  });
+
   it('reports each invalid image, source, provenance, and source reference at its exact path', () => {
     const story = makeStoryFixture();
     story.scenes[0].illustration.src = '';
