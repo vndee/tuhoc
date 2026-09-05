@@ -4,6 +4,30 @@ import { makeStoryFixture } from './testing/storyFixture';
 import { validateStory } from './validateStory';
 
 describe('validateStory', () => {
+  it.each([
+    ['dimensions', { width: Infinity }, 'width'],
+    ['dimensions over the bound', { height: 1001 }, 'height'],
+    ['empty geometry', { lines: [] }, 'lines'],
+    ['too many lines', { lines: Array.from({ length: 65 }, () => ({ points: [[0, 0], [1, 1]], style: 'solid', label: { vi: 'V', en: 'E' } })) }, 'lines'],
+    ['outside coordinates', { lines: [{ points: [[0, 0], [301, 5]], style: 'solid', label: { vi: 'V', en: 'E' } }] }, 'lines.0.points.1'],
+    ['nonfinite coordinates', { labels: [{ x: NaN, y: 1, text: { vi: 'V', en: 'E' } }] }, 'labels.0'],
+    ['unbounded point counts', { lines: [{ points: Array.from({ length: 258 }, () => [0, 0]), style: 'solid', label: { vi: 'V', en: 'E' } }] }, 'lines.0.points'],
+    ['unknown styles', { lines: [{ points: [[0, 0], [1, 1]], style: 'url(unsafe)', label: { vi: 'V', en: 'E' } }] }, 'lines.0.style'],
+    ['missing localization', { title: { vi: 'V' } }, 'title.en'],
+    ['blank description', { description: { vi: 'V', en: '' } }, 'description.en'],
+    ['oversized labels', { labels: [{ x: 0, y: 0, text: { vi: 'V', en: 'x'.repeat(301) } }] }, 'labels.0.text.en'],
+  ])('rejects fallback diagram %s at the exact path', (_name, patch, suffix) => {
+    const story = makeStoryFixture();
+    Object.assign(story.scenes[0].labFallback, { diagram: {
+      width: 300, height: 160, title: { vi: 'V', en: 'E' }, description: { vi: 'V', en: 'E' },
+      lines: [{ points: [[0, 0], [100, 100]], style: 'solid', label: { vi: 'V', en: 'E' } }],
+      labels: [], ...patch,
+    } });
+    expect(validateStory(story)).toContainEqual(expect.objectContaining({
+      code: 'invalid-fallback-diagram', path: `scenes.0.labFallback.diagram.${suffix}`,
+    }));
+  });
+
   it('accepts a complete bilingual story', () => {
     expect(validateStory(makeStoryFixture(), REGISTERED_LAB_KINDS)).toEqual([]);
   });

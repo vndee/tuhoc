@@ -7,7 +7,7 @@ export interface StoryValidationIssue {
     'scene-count' | 'lab-count' | 'missing-image-metadata' | 'missing-provenance' |
     'missing-fallback' | 'featured-unpublished' | 'act-scene-mismatch' | 'source-count' |
     'invalid-source' | 'invalid-lab-config' | 'invalid-fallback-table' |
-    'invalid-story-interaction';
+    'invalid-story-interaction' | 'invalid-fallback-diagram';
   path: string;
   message: string;
 }
@@ -66,6 +66,47 @@ export function validateStory(
     }
     if (!Number.isInteger(seed) || seed < 0 || seed > 0xffff_ffff) {
       add('invalid-lab-config', `${path}.seed`, `${label} seed must be a uint32`);
+    }
+  };
+  const diagram = (value: unknown, path: string) => {
+    const invalid = (suffix: string) => add('invalid-fallback-diagram', `${path}${suffix}`, 'diagram must contain bounded localized geometry');
+    const record = (entry: unknown): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null && !Array.isArray(entry);
+    if (!record(value)) { invalid(''); return; }
+    const localized = (entry: unknown, suffix: string) => {
+      for (const lang of ['vi', 'en']) {
+        const content = record(entry) ? entry[lang] : undefined;
+        if (typeof content !== 'string' || content.trim() === '' || content.length > 300) invalid(`${suffix}.${lang}`);
+      }
+    };
+    for (const dimension of ['width', 'height']) {
+      const size = value[dimension];
+      if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0 || size > 1000) invalid(`.${dimension}`);
+    }
+    const coordinate = (x: unknown, y: unknown) => typeof x === 'number' && typeof y === 'number' &&
+      Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 &&
+      typeof value.width === 'number' && x <= value.width && typeof value.height === 'number' && y <= value.height;
+    localized(value.title, '.title');
+    localized(value.description, '.description');
+    if (!Array.isArray(value.lines) || value.lines.length < 1 || value.lines.length > 64) invalid('.lines');
+    else for (let index = 0; index < value.lines.length; index++) {
+      const line: unknown = value.lines[index];
+      const prefix = `.lines.${index}`;
+      if (!record(line)) { invalid(prefix); continue; }
+      localized(line.label, `${prefix}.label`);
+      if (line.style !== 'solid' && line.style !== 'dashed') invalid(`${prefix}.style`);
+      if (!Array.isArray(line.points) || line.points.length < 2 || line.points.length > 257) invalid(`${prefix}.points`);
+      else for (let pointIndex = 0; pointIndex < line.points.length; pointIndex++) {
+        const point: unknown = line.points[pointIndex];
+        if (!Array.isArray(point) || point.length !== 2 || !coordinate(point[0], point[1])) invalid(`${prefix}.points.${pointIndex}`);
+      }
+    }
+    if (!Array.isArray(value.labels) || value.labels.length > 128) invalid('.labels');
+    else for (let index = 0; index < value.labels.length; index++) {
+      const label: unknown = value.labels[index];
+      const prefix = `.labels.${index}`;
+      if (!record(label)) { invalid(prefix); continue; }
+      if (!coordinate(label.x, label.y)) invalid(prefix);
+      localized(label.text, `${prefix}.text`);
     }
   };
 
@@ -317,6 +358,7 @@ export function validateStory(
     }
     text(scene.labFallback.diagramLabel, `${path}.labFallback.diagramLabel`);
     text(scene.labFallback.explanation, `${path}.labFallback.explanation`);
+    if (scene.labFallback.diagram !== undefined) diagram(scene.labFallback.diagram, `${path}.labFallback.diagram`);
     if (scene.labFallback.table) {
       for (const lang of ['vi', 'en'] as const) {
         const tablePath = `${path}.labFallback.table.${lang}`;
