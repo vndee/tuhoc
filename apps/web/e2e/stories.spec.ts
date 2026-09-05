@@ -91,6 +91,53 @@ test('cover and desktop plate captions stay visible and localized as the active 
   await expect(stage.getByText('Illustration: numerical state passes through both operator and calculating mechanism.')).toBeVisible();
 });
 
+for (const theme of ['light', 'dark']) {
+  test(`desktop labs replace the illustration and restore it on return in ${theme} mode`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${ISSUE_PATH}#scene-03`);
+    if (theme === 'dark') await page.getByRole('button', { name: 'Chuyển sang giao diện tối' }).click();
+    const stage = page.getByTestId('story-stage');
+    const plate = stage.locator('.story-plate-layer.is-active');
+    const lab = stage.locator('.story-stage-lab');
+    await expect(stage).toHaveAttribute('data-active-scene', 'scene-03');
+    await expect(plate).toBeVisible();
+    await page.getByRole('button', { name: 'Tự tay thử' }).nth(2).click();
+    await expect(lab.getByRole('heading', { name: 'Máy giấy và thẻ lệnh' })).toBeInViewport();
+    await expect(plate).toBeHidden();
+    await expect(plate).toHaveAttribute('aria-hidden', 'true');
+    await expect(stage.locator('.story-plate-caption:visible')).toHaveCount(0);
+    await expect(lab).toHaveCSS('background-color', await page.locator('.story-renderer').evaluate((el) => getComputedStyle(el).backgroundColor));
+    const bounds = await stage.boundingBox();
+    const labBounds = await lab.boundingBox();
+    expect(labBounds).toEqual(bounds);
+
+    await lab.getByRole('button', { name: 'Đưa Thẻ quy tắc 1 xuống' }).click();
+    await expect(lab.getByRole('status')).toContainText('14');
+    await lab.getByRole('button', { name: 'Trở lại tranh' }).click();
+    await expect(plate).toBeVisible();
+    await expect(plate.locator('figcaption')).toBeVisible();
+    await page.getByRole('button', { name: 'Tự tay thử' }).nth(2).click();
+    await expect(lab.getByRole('status')).toContainText('14');
+
+    // A longer lab must remain scrollable without moving to another scene.
+    await page.getByRole('link', { name: /Cảnh 12:/ }).click();
+    await expect(stage).not.toHaveAttribute('data-lab-scene');
+    await expect(plate).toBeVisible();
+    await page.getByRole('button', { name: 'Tự tay thử' }).nth(11).click();
+    await expect(lab.locator('.story-lab-frame')).toBeVisible();
+    await expect(lab.locator('h3')).toBeInViewport();
+    await expect(plate).toBeHidden();
+    expect(await lab.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    const back = lab.getByRole('button', { name: 'Trở lại tranh' });
+    await back.scrollIntoViewIfNeeded();
+    await expect(back).toBeInViewport();
+    await expect(stage).toHaveAttribute('data-lab-scene', 'scene-12');
+    await back.click();
+    await expect(plate).toBeVisible();
+    await expect(plate.locator('figcaption')).toBeVisible();
+  });
+}
+
 test('public recovery, collection, sources, and a local image failure keep the narrative readable', async ({ page }) => {
   await page.goto('/stories/does-not-exist');
   await expect(page.getByRole('heading', { name: 'Không tìm thấy số đặc san' })).toBeVisible();
@@ -98,9 +145,13 @@ test('public recovery, collection, sources, and a local image failure keep the n
   await expect(page.getByRole('heading', { name: 'Các số đặc san' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Mở đặc san' })).toBeVisible();
 
-  await page.route(/scene-01-clay-memory.*\.webp/, (route) => route.abort());
-  await page.goto(ISSUE_PATH);
+  await page.route(/scene-01-clay-memory.*\.webp/, (route) => route.request().resourceType() === 'image' ? route.abort() : route.continue());
+  await page.goto(`${ISSUE_PATH}#scene-01`);
+  await expect(page.getByText('Minh hoạ không tải được')).toBeVisible();
   await page.getByRole('button', { name: 'Tự tay thử' }).first().click();
+  await expect(page.getByText('Minh hoạ không tải được')).toBeHidden();
+  await expect(page.getByRole('heading', { name: 'Trí nhớ ngoài cơ thể' })).toBeVisible();
+  await page.getByRole('button', { name: 'Trở lại tranh' }).click();
   await expect(page.getByText('Minh hoạ không tải được')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Dấu vết và trí nhớ chung' })).toBeVisible();
   await page.getByText('Nguồn cho cảnh này').first().click();

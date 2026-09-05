@@ -209,9 +209,11 @@ Tự học.
 ### 5.2 Chuyển cảnh
 
 Sân khấu dùng đúng hai layer ảnh. Khi scene active đổi, layer mới tải xong rồi
-crossfade 280–420 ms; layer cũ mới được giải phóng sau transition. UI lab nằm
-trên hai layer nên không nháy theo ảnh; không thêm một nét nối trang trí xuyên
-qua các cảnh.
+crossfade 280–420 ms; layer cũ mới được giải phóng sau transition. Khi mở lab,
+ẩn cả hai layer và caption; lab thay thế tranh trong toàn bộ sân khấu trái,
+có nền giấy riêng và cuộn độc lập nếu nội dung dài. Trở lại tranh khôi phục
+illustration và caption, giữ nguyên state lab. Không thêm một nét nối trang
+trí xuyên qua các cảnh.
 
 Không parallax liên tục, không pan vô hạn, không video nền. Với
 `prefers-reduced-motion: reduce`, đổi ảnh tức thì và tắt mọi nét tự vẽ. Mobile
