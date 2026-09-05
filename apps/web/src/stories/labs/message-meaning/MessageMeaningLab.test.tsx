@@ -1,7 +1,7 @@
 import { fireEvent, screen, within } from '@testing-library/react';
-import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLanguage } from '../../../i18n/LanguageProvider';
+import { ThemeProvider, useThemeContext } from '../../../theme/ThemeContext';
 import { useRequiredMessageJourney } from '../../session/StoryIssueSessionProvider';
 import { renderJourneyLab } from '../../testing/renderJourneyLab';
 import type { DeliveryReceipt } from '../communication/types';
@@ -36,15 +36,19 @@ const rejectedReceipt: DeliveryReceipt = {
 };
 
 function JourneyControls(props: LabRuntimeProps) {
+  return <ThemeProvider><JourneyControlsWithTheme {...props} /></ThemeProvider>;
+}
+
+function JourneyControlsWithTheme(props: LabRuntimeProps) {
   const journey = useRequiredMessageJourney();
   const { setLang } = useLanguage();
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const { theme, toggle } = useThemeContext();
   return <>
     <button type="button" onClick={() => journey.dispatch({ type: 'receipt', receipt: exactReceipt })}>Install exact receipt</button>
     <button type="button" onClick={() => journey.dispatch({ type: 'receipt', receipt: rejectedReceipt })}>Install rejected receipt</button>
     <button type="button" onClick={() => journey.dispatch({ type: 'commit', text: 'B' })}>Commit another message</button>
     <button type="button" onClick={() => setLang('vi')}>Switch to Vietnamese</button>
-    <button type="button" onClick={() => setTheme((current) => current === 'light' ? 'dark' : 'light')}>Toggle theme</button>
+    <button type="button" onClick={toggle}>Toggle theme</button>
     <div aria-label="active theme">{theme}</div>
     <div aria-label="session receipt">{JSON.stringify(journey.state.deliveryReceipt)}</div>
     <div aria-label="stored scene state">{JSON.stringify(journey.state.experimentStateByScene['scene-12'] ?? null)}</div>
@@ -52,9 +56,13 @@ function JourneyControls(props: LabRuntimeProps) {
   </>;
 }
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  document.documentElement.removeAttribute('data-theme');
+});
 afterEach(() => {
   localStorage.clear();
+  document.documentElement.removeAttribute('data-theme');
   vi.restoreAllMocks();
 });
 
@@ -99,7 +107,7 @@ describe('MessageMeaningLab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Switch to Vietnamese' }));
     expect(screen.getByRole('status')).toHaveTextContent('Giao nhận chính xác');
     fireEvent.click(screen.getByRole('button', { name: 'Toggle theme' }));
-    expect(screen.getByLabelText('active theme')).toHaveTextContent('dark');
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
     expect(screen.getByLabelText('session receipt').textContent).toBe(before);
     expect(screen.getByLabelText('Byte gốc')).toHaveTextContent('41');
     expect(fetchSpy).not.toHaveBeenCalled();
