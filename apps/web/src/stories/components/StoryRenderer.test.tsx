@@ -9,6 +9,7 @@ import { ThemeProvider } from '../../theme/ThemeContext';
 import { installIntersectionObserver, type ObserverHarness } from '../../test/intersectionObserver';
 import { makeStoryFixture } from '../testing/storyFixture';
 import { labRegistry } from '../labs/registry';
+import { useRequiredMessageJourney } from '../session/StoryIssueSessionProvider';
 import type { StoryDefinition, StoryScene as StorySceneModel } from '../types';
 import { RichText } from './RichText';
 import { StoryRenderer } from './StoryRenderer';
@@ -115,6 +116,22 @@ function storyVariant(slug: string, label: string): StoryDefinition {
       } as typeof scene.lab,
     })),
   };
+}
+
+function JourneyLabProbe({
+  onChange,
+  value,
+}: {
+  onChange: (next: unknown) => void;
+  value: unknown;
+}) {
+  const journey = useRequiredMessageJourney();
+  return <section>
+    <output aria-label="journey message">{journey.state.messageText}</output>
+    <output aria-label="journey lab value">{String(value ?? 'fresh')}</output>
+    <button type="button" onClick={() => journey.dispatch({ type: 'commit', text: 'Route payload' })}>Commit route payload</button>
+    <button type="button" onClick={() => onChange('route saved')}>Save route lab</button>
+  </section>;
 }
 
 function setRootGeometry(top: number, height: number): void {
@@ -773,6 +790,44 @@ describe('StoryRenderer', () => {
     fireEvent.click(screen.getByRole('menuitemradio', { name: /EN/i }));
     expect(screen.getByText('scene-2:scene-2-saved')).toBeVisible();
     expect(location.hash).toBe('#scene-2');
+  });
+
+  it('routes opted-in lab state through a route-scoped journey and resets it after leaving', () => {
+    const story = {
+      ...makeStoryFixture({ sceneCount: 12 }),
+      interaction: {
+        kind: 'message-journey' as const,
+        examples: { vi: 'Tin nhắn VI', en: 'EN message' },
+      },
+    };
+    const renderLab = (_scene: StorySceneModel, value: unknown, onChange: (next: unknown) => void) => (
+      <JourneyLabProbe value={value} onChange={onChange} />
+    );
+    const view = renderStory(story, renderLab);
+    fireEvent.click(screen.getAllByRole('button', { name: /tự tay thử/i })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Commit route payload' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save route lab' }));
+    expect(screen.getByLabelText('journey message')).toHaveTextContent('Route payload');
+    expect(screen.getByLabelText('journey lab value')).toHaveTextContent('route saved');
+
+    history.replaceState(null, '', '/stories/fixture-story#scene-01');
+    view.rerender(
+      <MemoryRouter><LanguageProvider><ThemeProvider>
+        <div id="scroller"><StoryRenderer story={story} renderLab={renderLab} /></div>
+      </ThemeProvider></LanguageProvider></MemoryRouter>,
+    );
+    expect(screen.getByLabelText('journey message')).toHaveTextContent('Route payload');
+    expect(screen.getByLabelText('journey lab value')).toHaveTextContent('route saved');
+
+    history.replaceState(null, '', '/stories/another-story');
+    view.rerender(
+      <MemoryRouter><LanguageProvider><ThemeProvider>
+        <div id="scroller"><StoryRenderer story={story} renderLab={renderLab} /></div>
+      </ThemeProvider></LanguageProvider></MemoryRouter>,
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: /tự tay thử/i })[0]!);
+    expect(screen.getByLabelText('journey message')).toHaveTextContent('Tin nhắn VI');
+    expect(screen.getByLabelText('journey lab value')).toHaveTextContent('fresh');
   });
 
   it('renders semantic scene headings and source disclosures', () => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { useLanguage } from '../../i18n/LanguageProvider';
+import { StoryIssueSessionProvider, useMessageJourney } from '../session/StoryIssueSessionProvider';
 import type { ResponsiveStoryImage, StoryDefinition, StoryScene as StorySceneModel } from '../types';
 import { RichText } from './RichText';
 import { StoryScene } from './StoryScene';
@@ -40,6 +41,7 @@ function StoryRendererContent({
   story,
 }: StoryRendererProps & { failedSceneIds: ReadonlySet<string>; ownerRoot: RefObject<HTMLDivElement | null> }) {
   const { lang, t } = useLanguage();
+  const journey = useMessageJourney();
   const { mobile, reducedMotion } = useStoryLayout();
   const { activeSceneId, activeIndex, coverPassed, setActiveSceneId } = useActiveStoryScene(story.scenes);
   const [labStateByScene, setLabStateByScene] = useState<Record<string, unknown>>({});
@@ -68,13 +70,21 @@ function StoryRendererContent({
     accessibleLabel: `${t('stories.sceneLabel', index + 1)}: ${scene.title[lang]}`,
   })), [lang, story.scenes, t]);
   const labFor = (scene: StorySceneModel) => {
-    const value = labStateByScene[scene.id];
-    const onChange = (next: unknown) => setLabStateByScene((current) => ({ ...current, [scene.id]: next }));
-    const onReset = () => setLabStateByScene((current) => {
-      const next = { ...current };
-      delete next[scene.id];
-      return next;
-    });
+    const value = journey ? journey.state.experimentStateByScene[scene.id] : labStateByScene[scene.id];
+    const onChange = (next: unknown) => journey
+      ? journey.dispatch({ type: 'lab', sceneId: scene.id, value: next })
+      : setLabStateByScene((current) => ({ ...current, [scene.id]: next }));
+    const onReset = () => {
+      if (journey) {
+        journey.dispatch({ type: 'reset-lab', sceneId: scene.id });
+        return;
+      }
+      setLabStateByScene((current) => {
+        const next = { ...current };
+        delete next[scene.id];
+        return next;
+      });
+    };
     return renderLab
       ? renderLab(scene, value, onChange, onReset)
       : <StoryLabHost scene={scene} lang={lang} value={value} onChange={onChange} onReset={onReset} onBack={() => setLabSceneId(null)} />;
@@ -196,9 +206,11 @@ function StoryRendererForRoute({ story, renderLab }: StoryRendererProps) {
     ownerRoot: () => ownerRoot.current,
   }), [story]);
 
-  return <activeStoryScenePrivateContext.Provider value={activeSceneConfig}>
-    <StoryRendererContent story={story} renderLab={renderLab} failedSceneIds={failedSceneIds} ownerRoot={ownerRoot} />
-  </activeStoryScenePrivateContext.Provider>;
+  return <StoryIssueSessionProvider story={story}>
+    <activeStoryScenePrivateContext.Provider value={activeSceneConfig}>
+      <StoryRendererContent story={story} renderLab={renderLab} failedSceneIds={failedSceneIds} ownerRoot={ownerRoot} />
+    </activeStoryScenePrivateContext.Provider>
+  </StoryIssueSessionProvider>;
 }
 
 export function StoryRenderer({ story, renderLab }: StoryRendererProps) {
