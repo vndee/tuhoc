@@ -863,7 +863,7 @@ html[data-theme='dark'] .board {
   letter-spacing: -0.008em;
   line-height: 1.25;
   overflow-wrap: anywhere;
-  text-wrap: balance;
+  text-wrap: wrap;
 }
 
 #app:not(.reading) #content .board-room .bd-story-feature-copy h3 a {
