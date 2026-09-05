@@ -1,0 +1,40 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ALL_LAB_KINDS } from '../types';
+import type { LabModule } from './runtime';
+import { labRegistry, loadLab, REGISTERED_LAB_KINDS } from './registry';
+
+type Equal<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends
+  (<T>() => T extends B ? 1 : 2) ? true : false;
+type Assert<T extends true> = T;
+const registryApiAssertions = [
+  true as Assert<Equal<typeof labRegistry, Readonly<Record<(typeof ALL_LAB_KINDS)[number], () => Promise<LabModule>>>>>,
+  true as Assert<Equal<typeof REGISTERED_LAB_KINDS, ReadonlySet<(typeof ALL_LAB_KINDS)[number]>>>,
+];
+void registryApiAssertions;
+
+afterEach(() => vi.restoreAllMocks());
+
+describe('labRegistry', () => {
+  it('registers every lab kind explicitly', () => {
+    expect(Object.keys(labRegistry).sort()).toEqual([...ALL_LAB_KINDS].sort());
+    expect(REGISTERED_LAB_KINDS).toEqual(new Set(ALL_LAB_KINDS));
+  });
+
+  it('loads only the requested lab chunk', async () => {
+    const FakeAttentionLab = () => null;
+    const loaders = Object.fromEntries(ALL_LAB_KINDS.map((kind) => [
+      kind,
+      vi.spyOn(labRegistry, kind),
+    ])) as Record<(typeof ALL_LAB_KINDS)[number], ReturnType<typeof vi.spyOn>>;
+    loaders.attention.mockResolvedValue({ default: FakeAttentionLab });
+
+    expect(loaders.attention).not.toHaveBeenCalled();
+    await loadLab('attention');
+
+    expect(loaders.attention).toHaveBeenCalledOnce();
+    for (const kind of ALL_LAB_KINDS.filter((kind) => kind !== 'attention')) {
+      expect(loaders[kind]).not.toHaveBeenCalled();
+    }
+  });
+});

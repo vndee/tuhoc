@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AdminCourses } from './admin/AdminCourses';
 import { AdminCredits } from './admin/AdminCredits';
@@ -12,6 +13,15 @@ import { Progress } from './pages/Progress';
 import { SearchResults } from './pages/SearchResults';
 import { Reader } from './pages/Reader';
 import { Settings } from './pages/Settings';
+import { useLanguage } from './i18n/LanguageProvider';
+
+const StoryIndex = lazy(() => import('./stories/components/StoryIndex'));
+const StoryPage = lazy(() => import('./stories/components/StoryPage'));
+
+function StoryRouteLoading() {
+  const { t } = useLanguage();
+  return <p className="story-route-status" role="status">{t('stories.loading')}</p>;
+}
 
 /**
  * Route skeleton for P1. `/c/:courseId` renders the real course loader +
@@ -60,6 +70,8 @@ export function AppRoutes() {
           phiên khác vẫn qua `<RequireAuth>` như cũ. */}
       <Route path="/" element={<HomeGate />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/stories" element={<Suspense fallback={<StoryRouteLoading />}><StoryIndex /></Suspense>} />
+      <Route path="/stories/:slug" element={<Suspense fallback={<StoryRouteLoading />}><StoryPage /></Suspense>} />
 
       {/*
         `/courses` — MỘT danh mục công khai. Trước Task 13 nó gộp ba màn cũ:

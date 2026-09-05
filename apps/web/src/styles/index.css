@@ -35,6 +35,8 @@
 @import '@course-kit/reader.css';
 @import './courses.css';
 @import './home.css';
+@import './paper-language.css';
+@import './stories.css';
 @import './landing.css';
 @import './settings-auth.css';
 @import './reader-layout.css';
