@@ -1,8 +1,35 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { StaticLabFallback } from './StaticLabFallback';
+import type { LabFallbackDiagram } from '../types';
 
 describe('StaticLabFallback', () => {
+  it.each(['vi', 'en'] as const)('renders safe accessible authored geometry in %s with distinct line styles', (lang) => {
+    const label = { vi: 'Đầu vào', en: 'Input' };
+    const diagram: LabFallbackDiagram = {
+      width: 300, height: 160,
+      title: { vi: 'Hai vệt xung', en: 'Two pulse traces' },
+      description: { vi: 'Nét liền và nét đứt.', en: 'Solid and dashed traces.' },
+      lines: [
+        { points: [[10, 80], [100, 40], [200, 80]], style: 'solid', label },
+        { points: [[10, 80], [100, 60], [200, 70]], style: 'dashed', label: { vi: 'Đầu ra', en: 'Output' } },
+      ],
+      labels: [{ x: 10, y: 20, text: label }],
+    };
+    render(<StaticLabFallback lang={lang} title="Example" instruction="Compare" fallback={{
+      diagramLabel: { vi: 'Ví dụ tĩnh', en: 'Static example' },
+      explanation: { vi: 'Giải thích', en: 'Explanation' },
+      ...{ diagram },
+    }} onRetry={() => undefined} onBack={() => undefined} />);
+    const svg = screen.getByRole('img', { name: diagram.title[lang] });
+    expect(svg).toHaveAccessibleDescription(diagram.description[lang]);
+    expect(svg).toHaveAttribute('viewBox', '0 0 300 160');
+    expect(svg.querySelectorAll('polyline')).toHaveLength(2);
+    expect(svg.querySelectorAll('polyline')[0]).toHaveAttribute('points', '10,80 100,40 200,80');
+    expect(svg.querySelectorAll('polyline')[1]).toHaveAttribute('stroke-dasharray', '6 4');
+    expect(svg.querySelector('text')).toHaveTextContent(label[lang]);
+  });
+
   it('renders the authored table and working retry and back actions', () => {
     const retry = vi.fn();
     const back = vi.fn();
@@ -45,5 +72,6 @@ describe('StaticLabFallback', () => {
 
     expect(screen.getByText('Sơ đồ lưu giữ')).toBeVisible();
     expect(screen.getByText('Ký hiệu giữ thông tin.')).toBeVisible();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 });

@@ -140,10 +140,25 @@ export type LabDefinition =
     label: Localized;
   }[] }>;
 
+/** Bounded authored geometry only: no markup, paths, scripts or live model dependency. */
+export interface LabFallbackDiagram {
+  width: number;
+  height: number;
+  title: Localized;
+  description: Localized;
+  lines: Array<{
+    points: Array<[number, number]>;
+    style: 'solid' | 'dashed';
+    label: Localized;
+  }>;
+  labels: Array<{ x: number; y: number; text: Localized }>;
+}
+
 export interface LabFallback {
   diagramLabel: Localized;
   explanation: Localized;
   table?: Localized<{ headers: string[]; rows: string[][] }>;
+  diagram?: LabFallbackDiagram;
 }
 
 export interface StoryIllustration extends ResponsiveStoryImage {
