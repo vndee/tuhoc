@@ -53,7 +53,9 @@ describe('SourceEntropyLab', () => {
     expect(screen.getByText(prompt)).toBeVisible();
     expect(screen.getByRole('button', { name: draw })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: draw }));
-    expect(screen.getByRole('status')).toHaveTextContent(lang === 'en' ? /Draw 1 produced D/ : /Lượt rút 1 cho ra D/);
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent(lang === 'en' ? /Draw 1 produced D/ : /Lượt rút 1 cho ra D/);
+    expect(within(status).getByText('◆')).toHaveAttribute('aria-hidden', 'true');
   });
 
   it('renders real normalized probability and contribution bars plus an accessible data table', () => {
@@ -98,9 +100,54 @@ describe('SourceEntropyLab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Draw symbol' }));
 
     expect(screen.getByText('Your optional prediction: A.')).toBeVisible();
+    expect(screen.getByText('Prediction recorded for this draw: A.')).toBeVisible();
     expect(screen.getByRole('status')).toHaveTextContent('Draw 1 produced D');
     expect(document.body.textContent).not.toMatch(/correct|incorrect/i);
     expect(screen.queryByText(/^Score/i)).not.toBeInTheDocument();
+  });
+
+  it('retains an immutable draw and marks it stale when valid weights change without advancing the counter', () => {
+    renderJourneyLab(SourceEntropyLab, definition, { lang: 'en', sceneId: 'scene-07' });
+    fireEvent.click(screen.getByRole('button', { name: 'Draw symbol' }));
+    expect(screen.getByText('Draw conditions: A=25, B=25, C=25, D=25 · seed 20260905 · index 0.')).toBeVisible();
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Weight for A' }), { target: { value: '50' } });
+
+    expect(screen.getByText('Last draw: D · surprise 2.000 bits')).toBeVisible();
+    expect(screen.getByText('Draw conditions: A=25, B=25, C=25, D=25 · seed 20260905 · index 0.')).toBeVisible();
+    expect(screen.getByText('This draw belongs to the previous source settings.')).toBeVisible();
+    expect(screen.getByText('Next draw index: 1')).toBeVisible();
+    expect(screen.getByText('Entropy: 1.922 bits/source-symbol')).toBeVisible();
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent('Result for previous settings: draw 1 produced D');
+    expect(within(status).getByText('↺')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('retains a stale draw through all-zero settings and Back/reopen, then replaces it on the next valid Draw', () => {
+    renderJourneyLab(JourneyControls, definition, { lang: 'en', sceneId: 'scene-07' });
+    fireEvent.click(screen.getByRole('button', { name: 'Draw symbol' }));
+    for (const symbol of ['A', 'B', 'C', 'D']) {
+      fireEvent.change(screen.getByRole('spinbutton', { name: `Weight for ${symbol}` }), { target: { value: '0' } });
+    }
+
+    expect(screen.getByRole('button', { name: 'Draw symbol' })).toBeDisabled();
+    expect(screen.getByText('Last draw: D · surprise 2.000 bits')).toBeVisible();
+    expect(screen.getByText('This draw belongs to the previous source settings.')).toBeVisible();
+    expect(screen.getByText('Next draw index: 1')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to illustration' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen entropy lab' }));
+    expect(screen.getByText('Last draw: D · surprise 2.000 bits')).toBeVisible();
+    expect(screen.getByText('Draw conditions: A=25, B=25, C=25, D=25 · seed 20260905 · index 0.')).toBeVisible();
+    expect(screen.getByText('Next draw index: 1')).toBeVisible();
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Weight for C' }), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Draw symbol' }));
+
+    expect(screen.getByRole('status')).toHaveTextContent('Draw 2 produced C');
+    expect(screen.getByText('Last draw: C · surprise 0.000 bits')).toBeVisible();
+    expect(screen.getByText('Draw conditions: A=0, B=0, C=1, D=0 · seed 20260905 · index 1.')).toBeVisible();
+    expect(screen.queryByText('This draw belongs to the previous source settings.')).not.toBeInTheDocument();
+    expect(screen.getByText('Next draw index: 2')).toBeVisible();
   });
 
   it('draws only on explicit valid actions and replays the seed/counter sequence', () => {
