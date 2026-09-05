@@ -16,6 +16,10 @@ void registryApiAssertions;
 afterEach(() => vi.restoreAllMocks());
 
 describe('labRegistry', () => {
+  it('has an explicit lazy loader for huffman-message', () => {
+    expect((labRegistry as Record<string, unknown>)['huffman-message']).toEqual(expect.any(Function));
+  });
+
   it('has an explicit lazy loader for source-entropy', () => {
     expect((labRegistry as Record<string, unknown>)['source-entropy']).toEqual(expect.any(Function));
   });
