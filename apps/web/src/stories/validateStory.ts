@@ -1,5 +1,6 @@
 import type { LabKind, Localized, ResponsiveStoryImage, RichTextBlock, StoryDefinition } from './types';
 import { REGISTERED_LAB_KINDS } from './labs/registry';
+import { inspectMessage } from './labs/communication/unicode';
 
 export interface StoryValidationIssue {
   code: 'missing-locale' | 'duplicate-id' | 'missing-source' | 'unknown-lab-kind' |
@@ -68,6 +69,16 @@ export function validateStory(
       add('invalid-story-interaction', 'interaction.kind', 'story interaction kind is unsupported');
     }
     text(story.interaction.examples, 'interaction.examples');
+    for (const lang of ['vi', 'en'] as const) {
+      const result = inspectMessage(story.interaction.examples[lang]);
+      if (!result.ok) {
+        add(
+          'invalid-story-interaction',
+          `interaction.examples.${lang}`,
+          `message example failed validation: ${result.error}`,
+        );
+      }
+    }
   }
   if (story.intro) blocks(story.intro, 'intro');
   if (story.courseAction) {
