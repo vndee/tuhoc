@@ -42,5 +42,10 @@ export function makeInitialLabState(definition: LabDefinition): unknown {
       page: 0,
       snapshot: null,
     };
+    case 'binary-noise': return {
+      config: { p: definition.config.defaultP, seed: definition.config.seed, mode: 'bsc', manual: [] },
+      snapshot: null,
+      page: 0,
+    };
   }
 }

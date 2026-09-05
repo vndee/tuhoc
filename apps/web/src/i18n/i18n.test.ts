@@ -358,6 +358,7 @@ const MESSAGE_HOMES: readonly string[] = [
   'apps/web/src/stories/labs/morse-spacing/copy.ts',
   'apps/web/src/stories/labs/cable-route/copy.ts',
   'apps/web/src/stories/labs/pulse-channel/copy.ts',
+  'apps/web/src/stories/labs/binary-noise/copy.ts',
 ];
 
 /**

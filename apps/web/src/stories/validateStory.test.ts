@@ -257,6 +257,59 @@ describe('validateStory', () => {
       .not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid-lab-config' })]));
   });
 
+  it.each([-0.01, 0.51, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects an invalid binary-noise probability at its exact field: %s',
+    (defaultP) => {
+      const story = makeStoryFixture();
+      story.scenes[0]!.lab = {
+        kind: 'binary-noise',
+        title: { vi: 'Kênh nhiễu', en: 'Noisy channel' },
+        instruction: { vi: 'Truyền', en: 'Transmit' },
+        config: { defaultP, seed: 20260905 },
+      } as unknown as typeof story.scenes[0]['lab'];
+
+      expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'binary-noise'] as never[])))
+        .toContainEqual(expect.objectContaining({
+          code: 'invalid-lab-config', path: 'scenes.0.lab.config.defaultP',
+        }));
+    },
+  );
+
+  it.each([-1, 0.5, 0x1_0000_0000, Number.NaN])(
+    'rejects an invalid binary-noise seed at its exact field: %s',
+    (seed) => {
+      const story = makeStoryFixture();
+      story.scenes[0]!.lab = {
+        kind: 'binary-noise',
+        title: { vi: 'Kênh nhiễu', en: 'Noisy channel' },
+        instruction: { vi: 'Truyền', en: 'Transmit' },
+        config: { defaultP: 0.05, seed },
+      } as unknown as typeof story.scenes[0]['lab'];
+
+      expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'binary-noise'] as never[])))
+        .toContainEqual(expect.objectContaining({
+          code: 'invalid-lab-config', path: 'scenes.0.lab.config.seed',
+        }));
+    },
+  );
+
+  it.each([
+    { defaultP: 0, seed: 0 },
+    { defaultP: 0.05, seed: 20260905 },
+    { defaultP: 0.5, seed: 0xffff_ffff },
+  ])('accepts binary-noise config $defaultP/$seed', (config) => {
+    const story = makeStoryFixture();
+    story.scenes[0]!.lab = {
+      kind: 'binary-noise',
+      title: { vi: 'Kênh nhiễu', en: 'Noisy channel' },
+      instruction: { vi: 'Truyền', en: 'Transmit' },
+      config,
+    } as unknown as typeof story.scenes[0]['lab'];
+
+    expect(validateStory(story, new Set([...REGISTERED_LAB_KINDS, 'binary-noise'] as never[])))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'invalid-lab-config' })]));
+  });
+
   it('reports each invalid image, source, provenance, and source reference at its exact path', () => {
     const story = makeStoryFixture();
     story.scenes[0].illustration.src = '';
