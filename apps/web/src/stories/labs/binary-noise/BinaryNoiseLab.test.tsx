@@ -1,4 +1,5 @@
 import { fireEvent, screen, within } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useRequiredMessageJourney } from '../../session/StoryIssueSessionProvider';
 import { renderJourneyLab } from '../../testing/renderJourneyLab';
@@ -36,6 +37,14 @@ function SnapshotProbeLab(props: LabRuntimeProps) {
     <BinaryNoiseLab {...props} />
     <output aria-label="captured source bytes">{JSON.stringify(value?.snapshot?.source ?? [])}</output>
   </>;
+}
+
+function ReopenableLab(props: LabRuntimeProps) {
+  const [open, setOpen] = useState(true);
+  return open ? <>
+    <button type="button" onClick={() => setOpen(false)}>Close noise lab</button>
+    <BinaryNoiseLab {...props} />
+  </> : <button type="button" onClick={() => setOpen(true)}>Open noise lab</button>;
 }
 
 beforeEach(() => localStorage.clear());
@@ -93,6 +102,8 @@ describe('BinaryNoiseLab', () => {
   it('preserves a typed half-step probability, explains why it is invalid, and blocks Run', () => {
     renderJourneyLab(BinaryNoiseLab, definition, { lang: 'en', sceneId: 'scene-06', example: 'AA' });
     const probability = screen.getByRole('spinbutton', { name: 'Configured flip probability p' });
+    fireEvent.click(screen.getByRole('button', { name: 'Run experiment' }));
+    const oldHex = screen.getByLabelText('Received bytes in hexadecimal').textContent;
 
     fireEvent.change(probability, { target: { value: '0.005' } });
 
@@ -100,13 +111,46 @@ describe('BinaryNoiseLab', () => {
     expect(probability).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByRole('alert')).toHaveTextContent('Enter a probability from 0 to 0.5 in steps of 0.01.');
     expect(screen.getByRole('button', { name: 'Run experiment' })).toBeDisabled();
-    expect(screen.getByRole('region', { name: 'Observe' })).toHaveTextContent('Choose a mode and settings');
+    expect(screen.getByRole('status')).toHaveTextContent('Result for the previous settings');
+    expect(screen.getByText('The bytes and decoding below belong to the run with the previous settings.')).toBeVisible();
+    expect(screen.getByLabelText('Received bytes in hexadecimal')).toHaveTextContent(oldHex ?? '');
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
     expect(probability).toHaveValue(0.3);
     expect(probability).not.toHaveAttribute('aria-invalid');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Run experiment' })).toBeEnabled();
+  });
+
+  it('preserves an invalid literal draft and immutable old result across a real scene-06 close and reopen', () => {
+    renderJourneyLab(ReopenableLab, definition, { lang: 'en', sceneId: 'scene-06', example: 'AA' });
+    fireEvent.click(screen.getByRole('button', { name: 'Run experiment' }));
+    const oldHex = screen.getByLabelText('Received bytes in hexadecimal').textContent;
+    const oldBits = screen.getAllByRole('button', { name: /Bit \d+:/ }).map((bit) => bit.textContent);
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Configured flip probability p' }), {
+      target: { value: '0.005' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close noise lab' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open noise lab' }));
+
+    const reopenedProbability = screen.getByRole('spinbutton', { name: 'Configured flip probability p' });
+    expect(reopenedProbability).toHaveValue(0.005);
+    expect(reopenedProbability).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: 'Run experiment' })).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Result for the previous settings');
+    expect(screen.getByLabelText('Received bytes in hexadecimal')).toHaveTextContent(oldHex ?? '');
+    expect(screen.getAllByRole('button', { name: /Bit \d+:/ }).map((bit) => bit.textContent)).toEqual(oldBits);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    expect(reopenedProbability).toHaveValue(0.3);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run experiment' })).toBeEnabled();
+
+    fireEvent.change(reopenedProbability, { target: { value: '0.01' } });
+    expect(reopenedProbability).toHaveValue(0.01);
+    fireEvent.click(screen.getByRole('button', { name: 'Run experiment' }));
+    expect(screen.getByRole('status')).toHaveTextContent('This run changed');
   });
 
   it.each(['0', '0.01', '0.5'])('accepts the valid hundredth-step probability %s', (value) => {

@@ -43,7 +43,12 @@ const expectedStateByKind: Record<LabDefinition['kind'], unknown> = {
   'morse-spacing': { example: 'ET', letterGap: 3, wordGap: 7, result: null },
   'cable-route': { route: 'south', budget: 28, step: 0 },
   'pulse-channel': { duration: 1, tau: 1, sampleFraction: 0.5, source: 'alternating', page: 0, snapshot: null },
-  'binary-noise': { config: { p: 0.05, seed: 20260905, mode: 'bsc', manual: [] }, snapshot: null, page: 0 },
+  'binary-noise': {
+    config: { p: 0.05, seed: 20260905, mode: 'bsc', manual: [] },
+    probabilityDraft: '0.05',
+    snapshot: null,
+    page: 0,
+  },
 };
 
 const binaryNoiseDefinition: Extract<LabDefinition, { kind: 'binary-noise' }> = {
@@ -66,7 +71,10 @@ describe('makeInitialLabState', () => {
     const second = makeInitialLabState(binaryNoiseDefinition) as { config: { manual: number[] } };
 
     expect(first).toEqual({
-      config: { p: 0.2, seed: 4_294_967_295, mode: 'bsc', manual: [] }, snapshot: null, page: 0,
+      config: { p: 0.2, seed: 4_294_967_295, mode: 'bsc', manual: [] },
+      probabilityDraft: '0.2',
+      snapshot: null,
+      page: 0,
     });
     expect(first.config.manual).not.toBe(second.config.manual);
   });
