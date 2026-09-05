@@ -29,6 +29,7 @@ export const labRegistry: Readonly<Record<LabKind, () => Promise<LabModule>>> = 
   'repetition-channel': () => import('./repetition-channel/RepetitionChannelLab'),
   'secded-inspector': () => import('./secded-inspector/SecdedInspectorLab'),
   'channel-budget': () => import('./channel-budget/ChannelBudgetLab'),
+  'message-meaning': () => import('./message-meaning/MessageMeaningLab'),
 };
 
 export const REGISTERED_LAB_KINDS: ReadonlySet<LabKind> = new Set(Object.keys(labRegistry) as LabKind[]);

@@ -364,6 +364,7 @@ const MESSAGE_HOMES: readonly string[] = [
   'apps/web/src/stories/labs/repetition-channel/copy.ts',
   'apps/web/src/stories/labs/secded-inspector/copy.ts',
   'apps/web/src/stories/labs/channel-budget/copy.ts',
+  'apps/web/src/stories/labs/message-meaning/copy.ts',
 ];
 
 /**

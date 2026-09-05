@@ -71,5 +71,6 @@ export function makeInitialLabState(definition: LabDefinition): unknown {
       },
       batch: null,
     };
+    case 'message-meaning': return { contextId: 'meeting', interpretation: null };
   }
 }

@@ -281,6 +281,37 @@ export function validateStory(
         }
         break;
       }
+      case 'message-meaning': {
+        const contexts: unknown = scene.lab.config.contexts;
+        if (!Array.isArray(contexts) || contexts.length !== 3) {
+          add('invalid-lab-config', `${path}.lab.config.contexts`, 'message meaning needs exactly three contexts');
+          break;
+        }
+        const seen = new Set<string>();
+        contexts.forEach((value, contextIndex) => {
+          const contextPath = `${path}.lab.config.contexts.${contextIndex}`;
+          if (typeof value !== 'object' || value === null) {
+            add('invalid-lab-config', contextPath, 'message meaning context must be an object');
+            return;
+          }
+          const context = value as { id?: unknown; label?: unknown };
+          if (context.id !== 'meeting' && context.id !== 'disagreement' && context.id !== 'missing-previous') {
+            add('invalid-lab-config', `${contextPath}.id`, 'message meaning context id is unsupported');
+          } else if (seen.has(context.id)) {
+            add('duplicate-id', `${contextPath}.id`, 'id must be unique');
+          } else {
+            seen.add(context.id);
+          }
+          if (typeof context.label === 'object' && context.label !== null &&
+            typeof (context.label as Partial<Localized>).vi === 'string' &&
+            typeof (context.label as Partial<Localized>).en === 'string') {
+            text(context.label as Localized, `${contextPath}.label`);
+          } else {
+            add('missing-locale', `${contextPath}.label`, 'context label must include both locales');
+          }
+        });
+        break;
+      }
       default:
         break;
     }
