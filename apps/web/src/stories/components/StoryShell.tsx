@@ -78,7 +78,20 @@ export function StoryShell({
       {variant === 'issue' ? <Link to="/stories" className="story-shell-back">{t('stories.backToCollection')}</Link> : null}
       <div className="story-shell-tools">
         <PaperLanguageSwitcher />
-        <button type="button" className="story-theme-toggle" onClick={toggle} aria-label={t(theme === 'dark' ? 'topbar.themeToLight' : 'topbar.themeToDark')}>{theme === 'dark' ? '☀' : '◐'}</button>
+        <button
+          type="button"
+          className="story-theme-toggle"
+          onClick={toggle}
+          aria-label={t(theme === 'dark' ? 'topbar.themeToLight' : 'topbar.themeToDark')}
+          aria-pressed={theme === 'dark'}
+        >
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true" focusable="false">
+            {theme === 'dark' ? <>
+              <circle cx="10" cy="10" r="3.6" />
+              <path d="M10 2.4v1.9M10 15.7v1.9M17.6 10h-1.9M4.3 10H2.4M15.4 4.6l-1.3 1.3M6 14l-1.4 1.4M15.4 15.4l-1.3-1.3M6 6L4.6 4.6" strokeLinecap="round" />
+            </> : <path d="M16.5 12.4A6.8 6.8 0 017.6 3.5a6.9 6.9 0 108.9 8.9z" strokeLinejoin="round" />}
+          </svg>
+        </button>
         {progress ? <span className="story-progress" aria-live="polite">{t('stories.progress', progress.current, progress.total)}</span> : null}
         {scenes.length > 0 ? <button
           ref={contentsTrigger}

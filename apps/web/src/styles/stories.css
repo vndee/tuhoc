@@ -97,6 +97,32 @@ html[data-theme='dark'] .story-shell-theme-scope {
   white-space: nowrap;
 }
 
+.story-theme-toggle {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: inherit;
+  cursor: pointer;
+  display: inline-grid;
+  font: inherit;
+  height: var(--story-target-size);
+  padding: 0;
+  place-items: center;
+  width: var(--story-target-size);
+}
+
+#app:not(.reading) #content .story-shell .paper-language-trigger {
+  color: inherit;
+}
+
+.story-theme-toggle:hover,
+#app:not(.reading) #content .story-shell .paper-language-trigger:hover,
+#app:not(.reading) #content .story-shell .paper-language.is-open .paper-language-trigger {
+  color: var(--story-accent, var(--accent));
+}
+
 .story-scene-nav {
   display: flex;
   gap: .3rem;

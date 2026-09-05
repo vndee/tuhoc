@@ -63,6 +63,10 @@ html[data-theme='dark'] .board-room {
   z-index: 1;
 }
 
+.board > .bd-chrome {
+  z-index: 2;
+}
+
 .bd-story-thread {
   position: absolute;
   z-index: 0;
@@ -846,8 +850,10 @@ html[data-theme='dark'] .board {
   line-height: 1.4;
 }
 
-.bd-story-feature-copy h3 {
+#app:not(.reading) #content .board-room .bd-story-feature-copy h3 {
   margin: 10px 0 0;
+  color: var(--ink);
+  font-family: inherit;
   font-size: clamp(26px, 3vw, 38px);
   font-weight: 600;
   letter-spacing: -0.014em;
@@ -1272,7 +1278,7 @@ html[data-theme='dark'] .story-index-deck {
     gap: 5px;
   }
 
-  .bd-story-feature-copy h3 {
+  #app:not(.reading) #content .board-room .bd-story-feature-copy h3 {
     font-size: 29px;
   }
 
