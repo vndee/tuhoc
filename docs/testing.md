@@ -10,8 +10,9 @@ build is required for issue 02.
 
 For the issue-02-only production gate on the installed Chrome browser, use
 `TUHOC_E2E_WEB_PORT=5184 bash scripts/test-e2e.sh --config playwright.stories.config.ts`
-from the repository root. Select unused API/database ports with the documented
-`TUHOC_E2E_API_PORT` and `TUHOC_E2E_DB_PORT` variables when other local stacks run.
+from the repository root. Select unused API/database ports with
+`TUHOC_E2E_API_PORT` (default 8089) and `TUHOC_E2E_DB_PORT` (default 55433)
+when other local stacks run; `scripts/test-e2e.sh` passes these to the owned stack.
 The dedicated config uses the same production build and seeded API as the full
 suite; it does not enable unpublished issues. Generic draft isolation remains
 covered by `StoryPage.test.tsx` and registry tests for future editions.
@@ -50,7 +51,8 @@ of the web app, and drives both with a real browser (Playwright) to prove
 the whole stack works together. For what each spec actually checks and why,
 read the spec files themselves — `apps/web/e2e/p1.spec.ts`,
 `apps/web/e2e/widget.spec.ts`, `apps/web/e2e/s2.spec.ts`,
-`apps/web/e2e/p2.spec.ts`, and `apps/web/e2e/stories.spec.ts` — and
+`apps/web/e2e/p2.spec.ts`, `apps/web/e2e/stories.spec.ts`,
+`apps/web/e2e/stories-publication.spec.ts`, and `apps/web/e2e/across-the-noise/` — and
 `scripts/test-e2e.sh`, whose comments carry the reasoning for every step of
 the harness.
 
@@ -61,7 +63,7 @@ the harness.
 > Execution reports are not part of this repository; anything a reader of a
 > tracked doc needs must live in a tracked file.
 
-**Five spec files actually run**, and they are gates for different things:
+**Twelve spec files run in the full production suite**, and they are gates for different things:
 `p1.spec.ts` (the reader — including the course table of contents, inherited
 from the deleted `s1.spec.ts`), `widget.spec.ts` (the phase-1 security
 gate: a course widget runs inside `sandbox="allow-scripts"`, its origin is
@@ -69,7 +71,10 @@ opaque, and `document.cookie` throws rather than returning the session), and
 `s2.spec.ts` (Pha 2's AI/credit gate — see below), `p2.spec.ts` (annotations
 against the shared seeded course), and `stories.spec.ts`
 (public special-edition routes, bundle/network laziness, responsive and
-motion behavior, fallbacks, visual baselines, and performance budgets).
+motion behavior, fallbacks, visual baselines, and performance budgets),
+`stories-publication.spec.ts` (the public issue-02 entry and retained issue 01),
+plus six specs under `across-the-noise/` (the lab/layout matrix, choice controls,
+privacy/lifecycle, loading/cancellation, final-fix regressions and draft-input limits).
 
 Gone with the features they covered: `import.spec.ts` and `s1.spec.ts` (the
 Import screen and the version-pinning update dialog, removed in `e58ef41`;

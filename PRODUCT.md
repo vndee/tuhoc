@@ -123,8 +123,9 @@ trang đăng nhập nói đúng câu ấy. Ghi chú và tiến độ cần tài 
   `web_search` nếu có key), cấu hình agent theo người dùng ở `/settings`.
 - Khoá học: gói v2, catalog công khai `GET /courses`, registry cộng đồng trên
   GitHub, đánh giá sao, thảo luận.
-- Đặc san: `/stories` và `/stories/a-history-of-ai` là bằng chứng công khai
-  hiện tại cho bài kể song ngữ có nguồn, minh hoạ được gắn nhãn và lab cục bộ;
+- Đặc san: `/stories` gồm `/stories/a-history-of-ai` và
+  `/stories/across-the-noise`, mỗi số có 12 lab cùng bài kể song ngữ có nguồn,
+  minh hoạ được gắn nhãn và tương tác cục bộ; số 02 được giới thiệu trên landing;
   không lưu tiến độ, không hứa cá nhân hoá.
 - Ghi lạc quan có lùi: **một lỗi ghi phải được nói ra** (`role="alert"`),
   không nuốt.
@@ -172,6 +173,9 @@ i18n, README, và các bản bàn giao — chưa được chủ dự án gọi t
 - Đặc san công khai đầu tiên: **Một lịch sử của trí tuệ nhân tạo** / **A
   History of Artificial Intelligence** — 4 hồi, 12 cảnh và 12 lab xác định;
   đây là proof surface hiện tại, không phải một lời hứa về personalization.
+- Đặc san số 02: **Một lời nói đi qua đại dương** / **Across the Noise** —
+  4 hồi, 12 cảnh, 12 lab truyền thông và 13 minh hoạ gốc. Phạm vi kiểm chứng
+  và giới hạn mô hình nằm trong [báo cáo phát hành](docs/superpowers/reports/2026-09-05-across-the-noise-review.md).
 - **Không có:** người dùng thật ngoài chủ dự án, lời chứng thực, số liệu sử dụng,
   báo chí, giá, logo chính thức. **Không được bịa** bất kỳ thứ nào trong số này.
 
