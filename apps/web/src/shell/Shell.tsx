@@ -1,3 +1,4 @@
+import { Footer } from './Footer';
 import type { ReactNode } from 'react';
 
 export interface ShellProps {
@@ -128,6 +129,18 @@ export function Shell({
             <main id="content">{children}</main>
             <aside id="rail">{rail}</aside>
           </div>
+          {/*
+            TRONG `#scroller`, SAU `#content-wrap` — không phải trong `<main>`.
+
+            Trong `<main>` thì nó nằm cạnh `#rail` và bị bó vào cột nội dung;
+            ngoài `#scroller` thì nó dính đáy khung nhìn như một thanh cố định.
+            Ở đây nó cuộn cùng nội dung và trải hết bề ngang, đúng hình dạng
+            người ta chờ đợi ở một chân trang.
+
+            `authScreen` tắt nó: Landing và Login tự mang lối vào hai trang
+            pháp lý trong bố cục riêng của chúng — xem `Footer.tsx`.
+          */}
+          {!authScreen && <Footer />}
         </div>
       </div>
     </div>

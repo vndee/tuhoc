@@ -192,7 +192,7 @@ describe('/settings là CÀI ĐẶT, không phải trang Trợ lý AI', () => {
    * xoá một mục khác trong cùng một commit. Danh sách này là hợp đồng thứ bậc
    * của đặc tả IA, nên nó phải đọc được như một hợp đồng.
    */
-  it('trang có đủ bốn khối, đúng tên và đúng thứ tự', () => {
+  it('trang có đủ năm khối, đúng tên và đúng thứ tự', () => {
     const { container } = renderSettings();
 
     // Thứ tự đọc được từ DOM, không từ một danh sách hằng: đây là hợp đồng thứ
@@ -204,6 +204,7 @@ describe('/settings là CÀI ĐẶT, không phải trang Trợ lý AI', () => {
       t('vi', 'settings.section.appearance'),
       t('vi', 'settings.ai.title'),
       t('vi', 'settings.section.localData'),
+      t('vi', 'settings.legal.title'),
     ]);
   });
 
