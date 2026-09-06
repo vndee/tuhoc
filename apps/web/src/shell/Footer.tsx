@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageProvider';
 
 /**
- * Chân trang chung — hai liên kết pháp lý và một câu khai.
+ * Chân trang chung — hai liên kết pháp lý.
  *
  * ## Vì sao nó tồn tại
  *
@@ -11,11 +11,12 @@ import { useLanguage } from '../i18n/LanguageProvider';
  * nên với họ hai trang kia coi như không tồn tại. Đó là chỗ hở component này
  * lấp: một lối vào có mặt trên mọi màn hình.
  *
- * ## Câu khai không phải chữ đệm cho đủ chỗ
+ * ## Chỉ liên kết, không câu khai
  *
- * "Dự án cộng đồng. Phần lớn nội dung do AI tạo ra" là thứ người đọc cần biết
- * TRONG LÚC đọc, không phải sau khi đã tin — nên nó ở đây, dưới mỗi chương,
- * chứ không chỉ nằm trong Điều khoản mà ai cũng bỏ qua.
+ * Bản đầu có thêm một câu "dự án cộng đồng, nội dung do AI tạo ra". Chủ dự án
+ * gỡ nó khỏi cả khay phấn trang chủ lẫn đây. Lời khai ấy nay sống ở hai chỗ
+ * người đọc TỚI để tìm nó — hai mục đầu của Điều khoản sử dụng, và lede mục
+ * "Về dự án" trong Settings — chứ không lặp trên mỗi màn hình.
  *
  * ## Nó KHÔNG hiện trên hai màn hình trước-tài-khoản
  *
@@ -28,7 +29,6 @@ export function Footer() {
 
   return (
     <footer id="site-footer">
-      <p className="site-footer-note">{t('footer.blurb')}</p>
       <nav className="site-footer-links" aria-label={t('footer.nav')}>
         <Link to="/terms">{t('login.legal.terms')}</Link>
         <Link to="/privacy">{t('login.legal.privacy')}</Link>
