@@ -8,6 +8,7 @@ import { RequireAuth } from './auth/RequireAuth';
 import { CourseHome } from './pages/CourseHome';
 import { Courses } from './pages/Courses';
 import { HomeGate } from './pages/HomeGate';
+import { Legal } from './pages/Legal';
 import { Login } from './pages/Login';
 import { Progress } from './pages/Progress';
 import { SearchResults } from './pages/SearchResults';
@@ -70,6 +71,17 @@ export function AppRoutes() {
           phiên khác vẫn qua `<RequireAuth>` như cũ. */}
       <Route path="/" element={<HomeGate />} />
       <Route path="/login" element={<Login />} />
+
+      {/*
+        HAI TRANG PHÁP LÝ, VÀ CHÚNG KHÔNG BỌC `<RequireAuth>`.
+
+        Đây không phải sơ suất. Người ta đọc chính sách quyền riêng tư ĐỂ QUYẾT
+        ĐỊNH có tạo tài khoản hay không; đặt nó sau cổng đăng nhập là bắt người
+        ta đồng ý trước rồi mới cho đọc thứ mình vừa đồng ý. Điều khoản sử dụng
+        cũng vậy.
+      */}
+      <Route path="/privacy" element={<Legal doc="privacy" />} />
+      <Route path="/terms" element={<Legal doc="terms" />} />
       <Route path="/stories" element={<Suspense fallback={<StoryRouteLoading />}><StoryIndex /></Suspense>} />
       <Route path="/stories/:slug" element={<Suspense fallback={<StoryRouteLoading />}><StoryPage /></Suspense>} />
 
