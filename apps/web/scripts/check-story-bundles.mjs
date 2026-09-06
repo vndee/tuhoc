@@ -2,8 +2,16 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const forbidden = [
-  /src\/stories\/content\/a-history-of-ai\/(?:act-[1-4]|story|sources|assets)\.ts$/,
-  /src\/stories\/labs\/(?:external-memory|embodied-calculation|executable-rules|computation-limits|judgment-criteria|linear-separator|knowledge-bottleneck|gradient-descent|convolution|attention|agent-trace|agi-definitions)\//,
+  /src\/stories\/content\/[^/]+\//,
+  /src\/stories\/labs\//,
+  /src\/stories\/session\//,
+];
+
+const allowed = [
+  /src\/stories\/content\/[^/]+\/(?:meta|cover)\.ts$/,
+  /src\/stories\/content\/[^/]+\/assets\/cover(?:-768)?\.webp$/,
+  /src\/stories\/labs\/registry\.ts$/,
+  /src\/stories\/(?:labs\/communication|session)\/types\.ts$/,
 ];
 
 /** Return forbidden source modules recorded in the entry's static chunk graph. */
@@ -11,7 +19,7 @@ export function findStoryStaticLeaks(evidence) {
   const leaks = new Set();
   for (const chunk of evidence.staticChunks ?? []) {
     for (const moduleId of chunk.modules ?? []) {
-      if (forbidden.some((pattern) => pattern.test(moduleId))) leaks.add(moduleId);
+      if (forbidden.some((pattern) => pattern.test(moduleId)) && !allowed.some((pattern) => pattern.test(moduleId))) leaks.add(moduleId);
     }
   }
   return [...leaks].sort();

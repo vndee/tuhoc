@@ -37,8 +37,8 @@ test('landing discovers the published edition after courses and opens it publicl
   });
   expect(followsCatalog).toBe(true);
   await page.getByRole('link', { name: 'Mở đặc san' }).click();
-  await expect(page).toHaveURL(/\/stories\/a-history-of-ai$/);
-  await expect(page.getByRole('heading', { name: 'Một lịch sử của trí tuệ nhân tạo' })).toBeVisible();
+  await expect(page).toHaveURL(/\/stories\/across-the-noise$/);
+  await expect(page.getByRole('heading', { name: 'Một lời nói đi qua đại dương' })).toBeVisible();
 });
 
 test('deep link, language, hash, state, and keyboard interaction survive together', async ({ page }) => {
@@ -130,6 +130,8 @@ test('featured title fills the available line before wrapping', async ({ page })
   const title = page.locator('.bd-story-feature-copy h3');
   await title.scrollIntoViewIfNeeded();
   await page.evaluate(() => document.fonts.ready);
+  // Keep the original wrapping regression fixture independent of the featured issue.
+  await title.locator('a').evaluate(el => { el.textContent = 'Một lịch sử của trí tuệ nhân tạo'; });
   const lines = await title.locator('a').evaluate((el) => {
     const text = el.firstChild!;
     const range = document.createRange();
@@ -253,7 +255,13 @@ test('public recovery, collection, sources, and a local image failure keep the n
   await expect(page.getByRole('heading', { name: 'Không tìm thấy số đặc san' })).toBeVisible();
   await page.goto('/stories');
   await expect(page.getByRole('heading', { name: 'Các số đặc san' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Mở đặc san' })).toBeVisible();
+  const aiEdition = page.getByRole('article').filter({
+    has: page.getByRole('link', { name: 'Một lịch sử của trí tuệ nhân tạo', exact: true }),
+  });
+  await expect(aiEdition).toHaveCount(1);
+  const openAiEdition = aiEdition.getByRole('link', { name: 'Mở đặc san', exact: true });
+  await expect(openAiEdition).toBeVisible();
+  await expect(openAiEdition).toHaveAttribute('href', ISSUE_PATH);
 
   await page.route(/scene-01-clay-memory.*\.webp/, (route) => route.request().resourceType() === 'image' ? route.abort() : route.continue());
   await page.goto(`${ISSUE_PATH}#scene-01`);

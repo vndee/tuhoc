@@ -53,4 +53,19 @@ describe('StoryLabBoundary', () => {
     expect(screen.getByText(updatedFallback.diagramLabel.en)).toBeVisible();
     expect(screen.getByText(updatedFallback.explanation.en)).toBeVisible();
   });
+
+  it('uses supplied host fallback content after a failure', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    render(<StoryLabBoundary
+      fallback={fallback}
+      fallbackContent={<section aria-label="Useful fallback"><table><tbody><tr><td>01</td></tr></tbody></table></section>}
+      lang="en"
+    >
+      <BrokenLab />
+    </StoryLabBoundary>);
+
+    expect(screen.getByRole('region', { name: 'Useful fallback' })).toBeVisible();
+    expect(screen.getByRole('table')).toHaveTextContent('01');
+    expect(screen.queryByText(/interactive lab could not load/i)).not.toBeInTheDocument();
+  });
 });

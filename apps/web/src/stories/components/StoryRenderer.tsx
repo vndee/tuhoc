@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { useLanguage } from '../../i18n/LanguageProvider';
+import { StoryIssueSessionProvider, useMessageJourney } from '../session/StoryIssueSessionProvider';
 import type { ResponsiveStoryImage, StoryDefinition, StoryScene as StorySceneModel } from '../types';
 import { RichText } from './RichText';
+import { StoryCourseLink } from './StoryCourseLink';
 import { StoryScene } from './StoryScene';
 import { StoryShell } from './StoryShell';
 import { StorySources } from './StorySources';
@@ -40,6 +42,7 @@ function StoryRendererContent({
   story,
 }: StoryRendererProps & { failedSceneIds: ReadonlySet<string>; ownerRoot: RefObject<HTMLDivElement | null> }) {
   const { lang, t } = useLanguage();
+  const journey = useMessageJourney();
   const { mobile, reducedMotion } = useStoryLayout();
   const { activeSceneId, activeIndex, coverPassed, setActiveSceneId } = useActiveStoryScene(story.scenes);
   const [labStateByScene, setLabStateByScene] = useState<Record<string, unknown>>({});
@@ -68,16 +71,27 @@ function StoryRendererContent({
     accessibleLabel: `${t('stories.sceneLabel', index + 1)}: ${scene.title[lang]}`,
   })), [lang, story.scenes, t]);
   const labFor = (scene: StorySceneModel) => {
-    const value = labStateByScene[scene.id];
-    const onChange = (next: unknown) => setLabStateByScene((current) => ({ ...current, [scene.id]: next }));
-    const onReset = () => setLabStateByScene((current) => {
-      const next = { ...current };
-      delete next[scene.id];
-      return next;
-    });
+    const value = journey ? journey.state.experimentStateByScene[scene.id] : labStateByScene[scene.id];
+    const onChange = (next: unknown) => journey
+      ? journey.dispatch({ type: 'lab', sceneId: scene.id, value: next })
+      : setLabStateByScene((current) => ({ ...current, [scene.id]: next }));
+    const onReset = () => {
+      if (journey) {
+        journey.dispatch({ type: 'reset-lab', sceneId: scene.id });
+        return;
+      }
+      setLabStateByScene((current) => {
+        const next = { ...current };
+        delete next[scene.id];
+        return next;
+      });
+    };
     return renderLab
       ? renderLab(scene, value, onChange, onReset)
-      : <StoryLabHost scene={scene} lang={lang} value={value} onChange={onChange} onReset={onReset} onBack={() => setLabSceneId(null)} />;
+      : <StoryLabHost scene={scene} lang={lang} value={value} onChange={onChange} onReset={onReset} onBack={() => {
+        setLabSceneId(null);
+        findOwnedElement(ownerRoot.current, scene.id)?.querySelector<HTMLButtonElement>('.story-lab-entry > button')?.focus();
+      }} />;
   };
 
   const activateScene = useCallback((id: StorySceneModel['id']) => {
@@ -118,6 +132,7 @@ function StoryRendererContent({
         activeSceneId={activeSceneId as StorySceneModel['id']}
       >
     <div className="story-renderer">
+      {story.intro ? <section className="story-intro"><RichText blocks={story.intro[lang]} /></section> : null}
       <section className="story-cover" data-testid="story-cover" aria-labelledby="story-title">
         <p>{t('stories.issueLabel', story.meta.issueNumber)}</p>
         <p className="story-cover-counts"><span>{t('stories.sceneCount', story.meta.sceneCount)}</span><span>{t('stories.labCount', story.meta.labCount)}</span></p>
@@ -177,7 +192,11 @@ function StoryRendererContent({
               />;
             })}
           </section>)}
-          <section className="story-coda"><h2>{t('stories.coda')}</h2><RichText blocks={story.coda[lang]} /></section>
+          <section className="story-coda">
+            <h2>{t('stories.coda')}</h2>
+            <RichText blocks={story.coda[lang]} />
+            {story.courseAction ? <StoryCourseLink action={story.courseAction} /> : null}
+          </section>
           <StorySources sceneSourceIds={[]} sources={story.sources} provenance={story.provenance} lang={lang} all />
         </div>
       </div>
@@ -196,9 +215,11 @@ function StoryRendererForRoute({ story, renderLab }: StoryRendererProps) {
     ownerRoot: () => ownerRoot.current,
   }), [story]);
 
-  return <activeStoryScenePrivateContext.Provider value={activeSceneConfig}>
-    <StoryRendererContent story={story} renderLab={renderLab} failedSceneIds={failedSceneIds} ownerRoot={ownerRoot} />
-  </activeStoryScenePrivateContext.Provider>;
+  return <StoryIssueSessionProvider story={story}>
+    <activeStoryScenePrivateContext.Provider value={activeSceneConfig}>
+      <StoryRendererContent story={story} renderLab={renderLab} failedSceneIds={failedSceneIds} ownerRoot={ownerRoot} />
+    </activeStoryScenePrivateContext.Provider>
+  </StoryIssueSessionProvider>;
 }
 
 export function StoryRenderer({ story, renderLab }: StoryRendererProps) {

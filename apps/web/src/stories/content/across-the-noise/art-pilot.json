@@ -1,0 +1,55 @@
+[
+  {
+    "sceneId": "cover",
+    "sourceOutput": "/Users/vndee/.codex/generated_images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-eedd7c77-c5b2-479a-a8a0-f48695256735.png",
+    "createdAt": "2026-09-05T19:27:12Z",
+    "tool": "image_gen.imagegen (built-in)",
+    "model": "not reported by tool",
+    "prompt": "Use case: illustration-story\nAsset type: original cover plate for a bilingual editorial essay about communication.\nScene/backdrop: a quiet writing desk beside a window overlooking a harbor; a small ship recedes in mist beyond the window.\nSubject: an unmarked sheet of paper on the desk, with a modest believable writing tool. No person is needed in this cover.\nStyle/medium: Original editorial illustration. Maritime atlas meets an operator's notebook: diluted watercolor on warm paper, graphite observation, delicate engraved texture, tracing-paper translucency. Material weight, believable tools, restrained sea blue, mineral gray and copper-brown.\nComposition/framing: horizontal 3:2, 1536 by 1024 pixels. Desk and harbor are a single coherent scene, quiet open composition with generous breathing room and a clearly visible blank paper. Preserve quiet areas without turning the image into a UI.\nLighting/mood: soft coastal daylight and sea mist, thoughtful and restrained.\nConstraints: original composition; no copied painting, borrowed museum artwork or historical portrait. No letters, labels, numbers, diagrams, algorithmic shapes, luminous bits, generic robots, glowing brains, watermark, or decorative thread. No schematic of the entire transmission system. All paper remains visibly unmarked.",
+    "edits": [],
+    "license": "Project-generated; license not reported by tool. Internal provenance category, not an exclusivity guarantee.",
+    "createdAtBasis": "UTC observation immediately after tool completion via clock.curr_time; generation timestamp not reported by tool.",
+    "archivedSourceOutput": "/Users/vndee/Documents/claude/tuhoc/.worktrees/dac-san/.superpowers/sdd/2026-09-05-across-the-noise/art-originals/cover.png",
+    "sourceSha256": "cd303cb54ce5ff28599df21b44e4fee838f32bd90758de96e82bd7b1e74f90b6"
+  },
+  {
+    "sceneId": "scene-01",
+    "sourceOutput": "/Users/vndee/.codex/generated_images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-b2a60668-bd1e-4429-8064-15f0b01946ae.png",
+    "createdAt": "2026-09-05T19:28:28Z",
+    "tool": "image_gen.imagegen (built-in)",
+    "model": "not reported by tool",
+    "prompt": "Use case: illustration-story\nAsset type: opening scene 01, original editorial plate for a bilingual essay about communication.\nScene/backdrop: two distinct fictional coastal rooms on opposite shores, presented as a true diptych with a quiet slim paper gutter. Each half is its own coherent room, not one room split in half.\nSubject: in the left room a modest seated adult leans over an unmarked sheet with a writing tool, one believable hand at work and the other resting. In the right room another modest adult waits calmly beside an empty wooden table, with no paper yet on that table. They are fictional people, not historical portraits. Keep expressions restrained without assigning a happy or sad conclusion.\nRoom continuity: the receiving room on the right has a rectangular wooden table below a tall four-pane sea-facing window, a simple ladder-back chair for the waiting person, and a small copper-brown lamp near the far end of the table. Make this arrangement legible for a later return from the receiver's side.\nStyle/medium: Original editorial illustration. Maritime atlas meets an operator's notebook: diluted watercolor on warm paper, graphite observation, delicate engraved texture, tracing-paper translucency. Material weight, modest human figures, believable tools, restrained sea blue, mineral gray and copper-brown.\nComposition/framing: horizontal 3:2, 1536 by 1024 pixels, two equal vertical picture panels, generous quiet wall/window areas; readable furniture and bodies rather than closeup portraits. No inserted diagram or UI.\nLighting/mood: cool soft coastal daylight in both rooms, patient atmosphere.\nConstraints: original composition; no copied museum painting or borrowed portrait. No letters, labels, numbers, diagrams, luminous bits, generic robots, glowing brains, watermark, or decorative thread. All visible paper remains unmarked. Natural hands and consistent perspective.",
+    "edits": [],
+    "license": "Project-generated; license not reported by tool. Internal provenance category, not an exclusivity guarantee.",
+    "createdAtBasis": "UTC observation immediately after tool completion via clock.curr_time; generation timestamp not reported by tool.",
+    "archivedSourceOutput": "/Users/vndee/Documents/claude/tuhoc/.worktrees/dac-san/.superpowers/sdd/2026-09-05-across-the-noise/art-originals/scene-01.png",
+    "sourceSha256": "227de56d5a1564ca44dffc3fea596c4a941f15217819911c410ee6d7c6035eea"
+  },
+  {
+    "sceneId": "scene-12",
+    "sourceOutput": "/Users/vndee/.codex/generated_images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-41ebe731-8eb8-458c-9e67-6f011981d0ff.png",
+    "createdAt": "2026-09-05T19:29:41Z",
+    "tool": "image_gen.imagegen (built-in)",
+    "model": "not reported by tool",
+    "prompt": "Use case: illustration-story\nAsset type: ending scene 12, a genuinely new original editorial plate for a bilingual essay about communication.\nInput images: Image 1 is a continuity reference only. Use the RIGHT-HAND receiving room and its waiting person from the supplied original scene01 diptych. This is a new composition and viewpoint, not a crop, recoloring, or an edit of the diptych.\nScene/backdrop: return to that same fictional receiving room, now viewed from the receiver's side of the table, looking obliquely across the table toward its tall four-pane sea-facing window. The viewpoint has moved to near and slightly behind the receiver's shoulder; show enough of the room and window to recognize the space.\nSubject: a single visibly unmarked cream sheet now rests on the formerly empty wooden table. The same fictional adult in muted blue, dark hair pinned in a loose bun, sits in the same simple ladder-back chair. A restrained partial shoulder/back view may place the receiver at a modest edge of the composition. The copper-brown small lamp remains near the window end of the table, the coastal rocky view and weathered floorboards remain consistent. The blank paper is the visual focus, not a facial reaction.\nStyle/medium: Original editorial illustration. Maritime atlas meets an operator's notebook: diluted watercolor on warm paper, graphite observation, delicate engraved texture, tracing-paper translucency. Material weight, modest human scale, believable furniture, restrained sea blue, mineral gray and copper-brown.\nComposition/framing: one unified horizontal 3:2 scene, 1536 by 1024 pixels, no diptych gutter. Generous quiet tabletop/window areas and materially coherent perspective.\nLighting/mood: warmer gentle daylight than the reference opening, without melodrama. Do not assign triumph, sadness, relief or any specific interpretation to the receiver or the message.\nConstraints: original composition, no copied museum painting or historical portrait. No letters, numbers, labels, raster diagrams, algorithms, luminous bits, generic robots, glowing brains, watermark, or ornamental thread. Paper visibly unmarked. Keep the room and person recognizable while creating a truly new receiver-side viewpoint.",
+    "edits": [
+      "Use case: precise-object-edit\nInput image: Image 1 is the edit target, original scene12 receiving-room illustration.\nChange only the left-wall props: remove the hanging coat, wall shelf and its objects, and remove the floor chest and the lantern on top of it. Restore plain softly textured warm plaster wall and simple floorboards in those areas, keeping the same watercolor/graphite/engraved paper texture and illumination. These props belonged to the sender's room and should not be present in this receiver's room.\nPreserve all other elements exactly: new receiver-side viewpoint, same blue-clad adult seen mostly from behind with pinned bun, ladder-back chair, four-pane coastal window, rocky sea view, wooden table, small copper lamp on tabletop by window, blank cream paper and their positions. Keep the gentle warm light, 3:2 horizontal composition at1536x1024, quiet expression and material weight. No text, numbers, labels, diagrams, watermark or decorative thread. This is a targeted continuity correction, not a new composition."
+    ],
+    "license": "Project-generated; license not reported by tool. Internal provenance category, not an exclusivity guarantee.",
+    "createdAtBasis": "UTC observation immediately after initial generation via clock.curr_time; generation timestamp not reported by tool.",
+    "referenceSourceOutput": "/Users/vndee/.codex/generated_images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-b2a60668-bd1e-4429-8064-15f0b01946ae.png",
+    "editRecords": [
+      {
+        "observedAt": "2026-09-05T19:30:41Z",
+        "observationBasis": "clock.curr_time immediately after edit completion; tool did not report an edit timestamp.",
+        "tool": "image_gen.imagegen (built-in)",
+        "model": "not reported by tool",
+        "input": "/Users/vndee/.codex/generated_images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-61742827-8259-4e0e-93b3-a23dc74fb272.png",
+        "output": "/Users/vndee/.codex/generated_images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-41ebe731-8eb8-458c-9e67-6f011981d0ff.png",
+        "prompt": "Use case: precise-object-edit\nInput image: Image 1 is the edit target, original scene12 receiving-room illustration.\nChange only the left-wall props: remove the hanging coat, wall shelf and its objects, and remove the floor chest and the lantern on top of it. Restore plain softly textured warm plaster wall and simple floorboards in those areas, keeping the same watercolor/graphite/engraved paper texture and illumination. These props belonged to the sender's room and should not be present in this receiver's room.\nPreserve all other elements exactly: new receiver-side viewpoint, same blue-clad adult seen mostly from behind with pinned bun, ladder-back chair, four-pane coastal window, rocky sea view, wooden table, small copper lamp on tabletop by window, blank cream paper and their positions. Keep the gentle warm light, 3:2 horizontal composition at1536x1024, quiet expression and material weight. No text, numbers, labels, diagrams, watermark or decorative thread. This is a targeted continuity correction, not a new composition."
+      }
+    ],
+    "archivedSourceOutput": "/Users/vndee/Documents/claude/tuhoc/.worktrees/dac-san/.superpowers/sdd/2026-09-05-across-the-noise/art-originals/scene-12.png",
+    "sourceSha256": "3f94dc5e36e56e723bd8ae90c3d62c60ceb66f6a387f48d5ac2dfa3bb94e2c3a"
+  }
+]

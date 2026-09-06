@@ -345,8 +345,27 @@ function filesWithVietnameseLiterals(): string[] {
     .map(repoRelative);
 }
 
-/** Nơi chữ tiếng Việt ĐƯỢC PHÉP sống mãi mãi: chính hai quyển từ điển. */
-const MESSAGE_HOMES: readonly string[] = ['packages/i18n/src/messages/en.ts', 'packages/i18n/src/messages/vi.ts'];
+/**
+ * Nơi chữ tiếng Việt ĐƯỢC PHÉP sống mãi mãi: hai quyển từ điển nền tảng và
+ * hằng số song ngữ mà contract của đặc san giao tiếp cố ý đặt cạnh lab dùng nó.
+ */
+const MESSAGE_HOMES: readonly string[] = [
+  'packages/i18n/src/messages/en.ts',
+  'packages/i18n/src/messages/vi.ts',
+  'apps/web/src/stories/labs/communication/copy.ts',
+  'apps/web/src/stories/labs/message-budget/copy.ts',
+  'apps/web/src/stories/labs/ambiguous-code/copy.ts',
+  'apps/web/src/stories/labs/morse-spacing/copy.ts',
+  'apps/web/src/stories/labs/cable-route/copy.ts',
+  'apps/web/src/stories/labs/pulse-channel/copy.ts',
+  'apps/web/src/stories/labs/binary-noise/copy.ts',
+  'apps/web/src/stories/labs/source-entropy/copy.ts',
+  'apps/web/src/stories/labs/huffman-message/copy.ts',
+  'apps/web/src/stories/labs/repetition-channel/copy.ts',
+  'apps/web/src/stories/labs/secded-inspector/copy.ts',
+  'apps/web/src/stories/labs/channel-budget/copy.ts',
+  'apps/web/src/stories/labs/message-meaning/copy.ts',
+];
 
 /**
  * Chữ tiếng Việt KHÔNG BAO GIỜ tới mắt người học — nó nói với lập trình viên

@@ -1,4 +1,5 @@
 import type { Lang } from '@tuhoc/i18n';
+import type { Codebook, Weights } from './labs/communication/types';
 
 export type Localized<T = string> = Record<Lang, T>;
 
@@ -88,6 +89,18 @@ export const ALL_LAB_KINDS = [
   'computation-limits', 'judgment-criteria', 'linear-separator',
   'knowledge-bottleneck', 'gradient-descent', 'convolution',
   'attention', 'agent-trace', 'agi-definitions',
+  'message-budget',
+  'ambiguous-code',
+  'morse-spacing',
+  'cable-route',
+  'pulse-channel',
+  'binary-noise',
+  'source-entropy',
+  'huffman-message',
+  'repetition-channel',
+  'secded-inspector',
+  'channel-budget',
+  'message-meaning',
 ] as const;
 export type LabKind = (typeof ALL_LAB_KINDS)[number];
 
@@ -110,11 +123,42 @@ export type LabDefinition =
   | LabBase<'convolution', { pixels: number[][]; kernel: number[][]; row: number; column: number }>
   | LabBase<'attention', { examples: Array<{ id: string; tokens: Localized<string[]>; weights: Localized<number[][]>; gloss: Localized }> }>
   | LabBase<'agent-trace', { steps: Array<{ id: string; kind: 'model' | 'tool' | 'data' | 'proposal' | 'approval'; label: Localized; permission: string | null }> }>
-  | LabBase<'agi-definitions', { definitions: Array<{ id: string; label: Localized; note: Localized; sourceId: string; sourceLabel: Localized; generality: number; capability: number; autonomy: number }> }>;
+  | LabBase<'agi-definitions', { definitions: Array<{ id: string; label: Localized; note: Localized; sourceId: string; sourceLabel: Localized; generality: number; capability: number; autonomy: number }> }>
+  | LabBase<'message-budget', { defaultBudget: 15 | 30 | 60 }>
+  | LabBase<'ambiguous-code', { initialBook: Codebook; initialSymbols: string }>
+  | LabBase<'morse-spacing', { example: 'ET' | 'AET' | 'BEAM' | 'BEAM ET' }>
+  | LabBase<'cable-route', { defaultBudget: number }>
+  | LabBase<'pulse-channel', { defaultDuration: 1 | 2 | 4 }>
+  | LabBase<'binary-noise', { defaultP: number; seed: number }>
+  | LabBase<'source-entropy', { weights: Weights; seed: number }>
+  | LabBase<'huffman-message', { maxVisibleNodes: number }>
+  | LabBase<'repetition-channel', { defaultP: number; seed: number }>
+  | LabBase<'secded-inspector', { data: string }>
+  | LabBase<'channel-budget', { defaultBudget: number; defaultP: number; seed: number }>
+  | LabBase<'message-meaning', { contexts: readonly {
+    id: 'meeting' | 'disagreement' | 'missing-previous';
+    label: Localized;
+  }[] }>;
+
+/** Bounded authored geometry only: no markup, paths, scripts or live model dependency. */
+export interface LabFallbackDiagram {
+  width: number;
+  height: number;
+  title: Localized;
+  description: Localized;
+  lines: Array<{
+    points: Array<[number, number]>;
+    style: 'solid' | 'dashed';
+    label: Localized;
+  }>;
+  labels: Array<{ x: number; y: number; text: Localized }>;
+}
 
 export interface LabFallback {
   diagramLabel: Localized;
   explanation: Localized;
+  table?: Localized<{ headers: string[]; rows: string[][] }>;
+  diagram?: LabFallbackDiagram;
 }
 
 export interface StoryIllustration extends ResponsiveStoryImage {
@@ -138,9 +182,12 @@ export interface StoryScene {
 export interface StoryDefinition {
   meta: StoryMeta;
   theme: StoryTheme;
+  interaction?: { kind: 'message-journey'; examples: Localized };
+  intro?: Localized<RichTextBlock[]>;
   acts: StoryAct[];
   scenes: StoryScene[];
   sources: SourceEntry[];
   provenance: IllustrationProvenance[];
   coda: Localized<RichTextBlock[]>;
+  courseAction?: { slug: string; label: Localized; fallbackLabel: Localized };
 }

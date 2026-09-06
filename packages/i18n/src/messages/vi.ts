@@ -72,6 +72,7 @@ export const vi = {
   'stories.labUnavailable': 'Lab tương tác không tải được. Bạn vẫn có thể đọc phần giải thích dưới đây.',
   'stories.loading': 'Đang mở đặc san…',
   'stories.loadError': 'Không thể mở số đặc san này.',
+  'stories.draftPreview': 'Bản nháp để duyệt, chưa xuất bản.',
   'stories.back': 'Quay lại',
   'stories.illustrationPrefix': 'Minh hoạ',
   'stories.sourceAccessed': (date: string) => `Truy cập ${date}`,

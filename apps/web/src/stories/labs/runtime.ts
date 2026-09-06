@@ -30,5 +30,47 @@ export function makeInitialLabState(definition: LabDefinition): unknown {
     case 'attention': return { exampleId: definition.config.examples[0]?.id ?? '', tokenIndex: 0 };
     case 'agent-trace': return { granted: [] };
     case 'agi-definitions': return { selectedIds: definition.config.definitions.slice(0, 2).map((item) => item.id) };
+    case 'message-budget': return { budget: definition.config.defaultBudget };
+    case 'ambiguous-code': return { book: { ...definition.config.initialBook }, symbols: definition.config.initialSymbols, result: null };
+    case 'morse-spacing': return { example: definition.config.example, letterGap: 3, wordGap: 7, result: null };
+    case 'cable-route': return { route: 'south', budget: definition.config.defaultBudget, step: 0 };
+    case 'pulse-channel': return {
+      duration: definition.config.defaultDuration,
+      tau: 1,
+      sampleFraction: 0.5,
+      source: 'alternating',
+      page: 0,
+      snapshot: null,
+    };
+    case 'binary-noise': return {
+      config: { p: definition.config.defaultP, seed: definition.config.seed, mode: 'bsc', manual: [] },
+      probabilityDraft: String(definition.config.defaultP),
+      snapshot: null,
+      page: 0,
+    };
+    case 'source-entropy': return {
+      weights: [...definition.config.weights],
+      seed: definition.config.seed,
+      counter: 0,
+      lastDraw: null,
+      prediction: null,
+    };
+    case 'huffman-message': return { step: 0, page: 0, snapshot: null };
+    case 'repetition-channel': return {
+      config: { p: definition.config.defaultP, seed: definition.config.seed, mode: 'bsc', start: 0, length: 1 },
+      snapshot: null,
+      page: 0,
+    };
+    case 'secded-inspector': return { data: definition.config.data, flips: [], advanced: false };
+    case 'channel-budget': return {
+      config: {
+        code: 'raw',
+        budget: definition.config.defaultBudget,
+        p: definition.config.defaultP,
+        seed: definition.config.seed,
+      },
+      batch: null,
+    };
+    case 'message-meaning': return { contextId: 'meeting', interpretation: null };
   }
 }

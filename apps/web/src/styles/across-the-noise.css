@@ -1,0 +1,186 @@
+/* Issue 02: paper, copper and the operator's notebook. Loaded with the issue. */
+html[data-theme='dark'] .story-shell-theme-scope.story-theme-across-noise {
+  --story-paper: #15252c;
+  --story-ink: #ece7db;
+  --story-muted-ink: #b1c2c4;
+  --story-accent: #d6ab75;
+  --story-stage: #1d343b;
+}
+
+/* Match the app-screen rules' two ids; every descendant stays issue-scoped. */
+#app:not(.reading) #content .story-theme-across-noise .story-intro {
+  margin: 0 auto;
+  max-width: 72rem;
+  padding: 2rem clamp(1rem, 5vw, 4rem) 0;
+}
+#app:not(.reading) #content .story-theme-across-noise .story-intro p { max-width: 65ch; }
+#app:not(.reading) #content .story-theme-across-noise .story-contents-trigger {
+  background: var(--story-paper);
+  color: var(--story-ink);
+  border: 1px solid var(--story-muted-ink);
+  padding: .5rem .75rem;
+  font: inherit;
+}
+#app:not(.reading) #content .story-theme-across-noise :is(.story-cover h1, .story-act > header h2, .story-scene > h2, .story-coda h2) {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  line-height: 1.12;
+  text-wrap: wrap;
+}
+#app:not(.reading) #content .story-theme-across-noise .story-cover h1 { max-width: 20ch; font-size: clamp(2.7rem, 7vw, 6rem); color: var(--story-ink); }
+#app:not(.reading) #content .story-theme-across-noise #story-title { text-wrap: balance; }
+#app:not(.reading) #content .story-theme-across-noise :is(.story-act > header h2, .story-scene > h2, .story-coda h2) { font-size: clamp(1.8rem, 4vw, 3rem); color: var(--story-ink); }
+#app:not(.reading) #content .story-theme-across-noise .story-shell-header { background: var(--story-paper); }
+#app:not(.reading) #content .story-theme-across-noise .story-scene:not(.is-active) { opacity: 1; }
+#app:not(.reading) #content .story-theme-across-noise :is(.story-human, .story-hinge, .story-coda) { line-height: 1.75; }
+#app:not(.reading) #content .story-theme-across-noise .story-scene h3 { letter-spacing: 0; text-transform: none; color: var(--story-ink); }
+#app:not(.reading) #content .story-theme-across-noise :is(.story-cover-caption, .story-plate-caption) { background: var(--story-paper); }
+#app:not(.reading) #content .story-theme-across-noise .story-lab-frame,
+#app:not(.reading) #content .story-theme-across-noise .story-lab-fallback {
+  background: var(--story-paper);
+  color: var(--story-ink);
+  min-width: 0;
+  padding: clamp(.65rem, 1.8vw, 1.5rem);
+  border-inline-start: 2px solid var(--story-accent);
+  overflow-wrap: anywhere;
+  font-size: 1rem;
+  line-height: 1.55;
+}
+#app:not(.reading) #content .story-theme-across-noise .story-lab-frame-header {
+  padding-bottom: 1rem;
+  border-bottom: 2px solid var(--story-ink);
+}
+#app:not(.reading) #content .story-theme-across-noise .story-lab-frame-header h3 { font-size: 1.5rem; line-height: 1.3; }
+#app:not(.reading) #content .story-theme-across-noise .story-lab-frame-body > section {
+  border-block-end: 1px solid var(--story-muted-ink);
+  padding-block: 1rem 1.5rem;
+}
+#app:not(.reading) #content .story-theme-across-noise .story-lab-frame h4 { font-size: 1.125rem; margin: .5rem 0 1rem; }
+#app:not(.reading) #content .story-theme-across-noise .story-lab-frame h5 { font: inherit; font-weight: 700; margin: .75rem 0 .35rem; }
+#app:not(.reading) #content .story-theme-across-noise :is(.story-lab-frame, .story-lab-fallback) pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--story-paper);
+  color: var(--story-ink);
+  border-radius: 0;
+  padding: .5rem 0;
+  font: inherit;
+  margin-block: .5rem;
+}
+#app:not(.reading) #content .story-theme-across-noise :is(.story-lab-frame, .story-lab-fallback) svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  color: var(--story-ink);
+}
+#app:not(.reading) #content .story-theme-across-noise :is(.story-lab-frame, .story-lab-fallback) table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  overflow-wrap: anywhere;
+  margin-block: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+#app:not(.reading) #content .story-theme-across-noise :is(.story-lab-frame, .story-lab-fallback) :is(td, th) {
+  border-bottom: 1px solid var(--story-muted-ink);
+  padding: .65rem .35rem;
+  text-align: start;
+  vertical-align: top;
+}
+#app:not(.reading) #content .story-theme-across-noise :is(.story-lab-frame, .story-lab-fallback) caption {
+  text-align: start;
+  margin-bottom: .5rem;
+  color: var(--story-muted-ink);
+}
+#app:not(.reading) #content .story-theme-across-noise :is(.story-lab-frame, .story-lab-fallback) :is(button, input, select, textarea) {
+  box-sizing: border-box;
+  min-height: 44px;
+  min-width: 44px;
+  max-width: 100%;
+  background: var(--story-paper);
+  color: var(--story-ink);
+  border: 1px solid var(--story-muted-ink);
+  border-radius: 3px;
+  font: inherit;
+  padding: .5rem .65rem;
+  accent-color: var(--story-accent);
+}
+#app:not(.reading) #content .story-theme-across-noise :is(.story-lab-frame, .story-lab-fallback) button { cursor: pointer; }
+#app:not(.reading) #content .story-theme-across-noise :is(.story-lab-frame, .story-lab-fallback) button:hover { border-color: var(--story-ink); }
+#app:not(.reading) #content .story-theme-across-noise :is(.story-lab-frame, .story-lab-fallback) button:disabled {
+  opacity: 1;
+  color: var(--story-muted-ink);
+  border-style: dashed;
+  cursor: default;
+}
+#app:not(.reading) #content .story-theme-across-noise :focus-visible { outline: 2px solid var(--story-accent); outline-offset: 3px; }
+#app:not(.reading) #content .story-theme-across-noise :is(input, select):focus { outline: 2px solid var(--story-accent); outline-offset: 3px; box-shadow: none; }
+#app:not(.reading) #content .story-theme-across-noise .story-lab-frame label { display: grid; gap: .4rem; margin-block: .75rem; min-width: 0; }
+#app:not(.reading) #content .story-theme-across-noise .story-lab-frame fieldset { min-width: 0; margin: 1rem 0; padding: .75rem; border: 1px solid var(--story-muted-ink); }
+#app:not(.reading) #content .story-theme-across-noise .story-lab-frame label:has(input:is([type='radio'], [type='checkbox'])) {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  min-height: 44px;
+  min-width: 44px;
+  cursor: pointer;
+}
+#app:not(.reading) #content .story-theme-across-noise .story-lab-frame input:is([type='radio'], [type='checkbox']) {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  margin: 0;
+  padding: 0;
+}
+#app:not(.reading) #content .story-theme-across-noise .story-lab-frame textarea { display: block; width: 100%; min-height: 7rem; resize: vertical; }
+#app:not(.reading) #content .story-theme-across-noise :is(.communication-message-counts, .communication-message-actions, .story-lab-fallback-actions, .morse-spacing-actions, .ambiguous-code-actions, .huffman-message-step-controls, .huffman-message-code-pages) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-block: .75rem;
+}
+#app:not(.reading) #content .story-theme-across-noise .communication-message-comparison { border-block: 1px solid var(--story-muted-ink); margin-block: 1rem; }
+#app:not(.reading) #content .story-theme-across-noise .communication-bit-cells { display: flex; flex-wrap: wrap; gap: .35rem; margin-block: .75rem; }
+#app:not(.reading) #content .story-theme-across-noise .communication-bit-cells > span { min-width: 2rem; text-align: center; border-bottom: 1px solid var(--story-muted-ink); }
+#app:not(.reading) #content .story-theme-across-noise .source-entropy-bars { display: grid; gap: .75rem; }
+#app:not(.reading) #content .story-theme-across-noise meter { display: block; width: 100%; height: 1.2rem; accent-color: var(--story-accent); }
+#app:not(.reading) #content .story-theme-across-noise meter::-webkit-meter-bar { background: var(--story-stage); border: 1px solid var(--story-muted-ink); }
+#app:not(.reading) #content .story-theme-across-noise meter::-webkit-meter-optimum-value { background: var(--story-accent); }
+#app:not(.reading) #content .story-theme-across-noise [data-trace='output'] { stroke: var(--story-accent); }
+#app:not(.reading) #content .story-theme-across-noise .communication-diagram-viewport {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  margin-block: 1rem;
+  padding-block: .5rem;
+  border-block: 1px solid var(--story-muted-ink);
+}
+#app:not(.reading) #content .story-theme-across-noise .communication-diagram-viewport svg { max-width: none; }
+#app:not(.reading) #content .story-theme-across-noise .communication-diagram-viewport text { font-family: var(--font-sans); }
+#app:not(.reading) #content .story-theme-across-noise .story-lab-frame svg text { fill: currentColor; }
+#app:not(.reading) #content .story-theme-across-noise .message-budget-changed { border-bottom: 2px dotted var(--story-accent); }
+#app:not(.reading) #content .story-theme-across-noise dialog {
+  box-sizing: border-box;
+  width: min(32rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  background: var(--story-paper);
+  color: var(--story-ink);
+  border: 2px solid var(--story-muted-ink);
+  padding: 1.5rem;
+}
+#app:not(.reading) #content .story-theme-across-noise dialog::backdrop { background: rgb(8 20 25 / .75); }
+#app:not(.reading) #content .story-theme-across-noise dialog button + button { margin: .5rem 0 0 .5rem; }
+@media (max-width: 900px) {
+  #app:not(.reading) #content .story-theme-across-noise .story-lab-frame { padding-inline: .65rem; }
+  #app:not(.reading) #content .story-theme-across-noise .story-inline-lab { margin-inline: -.25rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #app:not(.reading) #content .story-theme-across-noise *, .story-theme-across-noise *::before, .story-theme-across-noise *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
