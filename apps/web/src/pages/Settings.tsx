@@ -155,7 +155,7 @@ function LegalSection() {
     <section className="set-block">
       <div className="set-side">
         <h2 className="set-h">{t('settings.legal.title')}</h2>
-        <p className="set-lede">{t('footer.blurb')}</p>
+        <p className="set-lede">{t('settings.legal.blurb')}</p>
       </div>
 
       <div className="set-block-main">
