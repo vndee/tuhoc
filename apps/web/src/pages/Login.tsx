@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useId, useState } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { api, describeAuthError } from '../api/client';
 import { meQueryKey, useMe, type Me } from '../api/useMe';
 import { clearSession } from '../auth/session';
@@ -341,6 +341,21 @@ export function Login() {
             >
               {t(tab === 'login' ? 'login.switch.toRegister' : 'login.switch.toLogin')}
             </button>
+          </p>
+
+          {/*
+            HAI LIÊN KẾT PHÁP LÝ ĐẶT Ở ĐÂY, không ở một chân trang chung.
+
+            Đây là chỗ DUY NHẤT trong ứng dụng mà người ta sắp tạo tài khoản, và
+            đó đúng là lúc hai văn bản ấy đáng đọc: chính sách quyền riêng tư
+            tồn tại để giúp quyết định CÓ nên tạo tài khoản hay không. Cả hai
+            route đều công khai (`routes.tsx`), nên bấm vào không bị đá về đây.
+          */}
+          <p className="auth-legal">
+            {t('login.legal.lead')}{' '}
+            <Link to="/terms">{t('login.legal.terms')}</Link>{' '}
+            {t('login.legal.and')}{' '}
+            <Link to="/privacy">{t('login.legal.privacy')}</Link>.
           </p>
         </div>
       </section>

@@ -352,6 +352,7 @@ function filesWithVietnameseLiterals(): string[] {
 const MESSAGE_HOMES: readonly string[] = [
   'packages/i18n/src/messages/en.ts',
   'packages/i18n/src/messages/vi.ts',
+  'apps/web/src/pages/legal/content.ts',
   'apps/web/src/stories/labs/communication/copy.ts',
   'apps/web/src/stories/labs/message-budget/copy.ts',
   'apps/web/src/stories/labs/ambiguous-code/copy.ts',
