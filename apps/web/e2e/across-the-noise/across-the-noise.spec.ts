@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Locator } from '@playwright/test';
 
-const ISSUE = '/stories/across-the-noise?preview=1';
+const ISSUE = '/stories/across-the-noise';
 test.use({ actionTimeout: 15_000 });
 test('Huffman branches descend without crossing a row of unrelated nodes', async ({ page }, info) => {
   await prepare(page, 1440, 'en', 'light', 'reduce');
@@ -23,7 +23,7 @@ const CHUNKS = /\/(?:MessageBudget|AmbiguousCode|MorseSpacing|CableRoute|PulseCh
 const backName = /^(Trở lại tranh|Back to illustration)$/;
 const runName = /^(Gửi|Send|Đọc tín hiệu|Read signal|Chạy thử|Run experiment|Rút ký hiệu|Draw symbol|Truyền một lần|Run transmission)$/;
 
-test('draft reader consumes the real seeded catalog and offers the honest course collection', async ({ page }) => {
+test('published reader consumes the real seeded catalog and offers the honest course collection', async ({ page }) => {
   const catalog = page.waitForResponse(response => response.url() === `${process.env.VITE_API_URL ?? 'http://localhost:8089'}/courses`);
   await page.goto(ISSUE);
   await expect(page.locator('.story-cover h1')).toBeVisible();
@@ -36,8 +36,8 @@ test('draft reader consumes the real seeded catalog and offers the honest course
   expect(response.status()).toBe(200);
   expect(await response.json()).toEqual(expect.arrayContaining([expect.objectContaining({ slug: 'mau-hop-le' })]));
   await expect(page.locator('.story-coda a')).toHaveAttribute('href', '/courses');
-  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
-  await expect(page.getByText('Bản nháp để duyệt, chưa xuất bản.')).toBeVisible();
+  await expect(page.locator('meta[name="robots"][content*="noindex"]')).toHaveCount(0);
+  await expect(page.getByText('Bản nháp để duyệt, chưa xuất bản.')).toHaveCount(0);
 });
 
 test('lab resets preserve the original and clear only their owned receipt or interpretation', async ({ page }) => {

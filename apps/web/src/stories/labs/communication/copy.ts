@@ -22,6 +22,7 @@ export const communicationCopy: Record<Lang, {
   commitMessage: string;
   useExample: string;
   privacy: string;
+  draftTooLong: string;
   graphemeCount: (count: number) => string;
   byteCount: (count: number) => string;
   errors: Record<'empty' | 'ill-formed' | 'grapheme-limit' | 'byte-limit', string>;
@@ -48,6 +49,7 @@ export const communicationCopy: Record<Lang, {
     commitMessage: 'Dùng câu này',
     useExample: 'Dùng câu mẫu',
     privacy: 'Câu này chỉ được xử lý trong trình duyệt. Tải lại trang hoặc rời đặc san sẽ đặt lại lượt thử.',
+    draftTooLong: 'Nội dung vừa nhập quá dài để xử lý an toàn. Bản nháp trước đó vẫn được giữ nguyên. Hãy nhập đoạn ngắn hơn.',
     graphemeCount: (count) => `${count.toLocaleString('vi-VN')} / 120 cụm ký tự`,
     byteCount: (count) => `${count.toLocaleString('vi-VN')} / 1.024 byte UTF-8`,
     errors: {
@@ -79,6 +81,7 @@ export const communicationCopy: Record<Lang, {
     commitMessage: 'Use this message',
     useExample: 'Use example message',
     privacy: 'This message is processed only in your browser. Reloading or leaving the edition resets this experiment.',
+    draftTooLong: 'That edit is too large to process safely. The previous draft is unchanged. Please enter a shorter passage.',
     graphemeCount: (count) => `${count.toLocaleString('en-US')} / 120 grapheme clusters`,
     byteCount: (count) => `${count.toLocaleString('en-US')} / 1,024 UTF-8 bytes`,
     errors: {

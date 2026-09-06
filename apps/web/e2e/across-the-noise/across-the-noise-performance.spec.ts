@@ -13,7 +13,7 @@ test('landing and collection keep narrative and lab code lazy', async ({ page },
   await saveNoiseEvidence(info, 'landing-collection-scripts', scripts);
 });
 
-for (const width of [320, 390, 1024, 1440]) test(`draft loads nearby decoded artwork at ${width}, Huffman only on request, and CLS stays within .1`, async ({ page }, info) => {
+for (const width of [320, 390, 1024, 1440]) test(`published edition loads nearby decoded artwork at ${width}, Huffman only on request, and CLS stays within .1`, async ({ page }, info) => {
   const scripts: string[] = [], images: string[] = [];
   page.on('request', request => {
     if (request.resourceType() === 'script') scripts.push(request.url());

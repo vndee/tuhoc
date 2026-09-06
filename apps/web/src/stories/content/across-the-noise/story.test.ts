@@ -33,9 +33,9 @@ const expectedSources = [
 ] as const;
 
 describe('Across the Noise assembled edition', () => {
-  it('assembles a valid unpublished four-act story with all twelve communication labs', () => {
+  it('assembles a valid published four-act story with all twelve communication labs', () => {
     expect(noiseMeta).toMatchObject({
-      slug: 'across-the-noise', issueNumber: 2, published: false, featured: false,
+      slug: 'across-the-noise', issueNumber: 2, published: true, featured: true,
       sceneCount: 12, labCount: 12,
     });
     expect(story.meta).toBe(noiseMeta);

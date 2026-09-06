@@ -1,7 +1,7 @@
 import { expect, type Page, type TestInfo } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 
-export const ISSUE = '/stories/across-the-noise?preview=1';
+export const ISSUE = '/stories/across-the-noise';
 export const LAB_CHUNK = /\/(?:MessageBudget|AmbiguousCode|MorseSpacing|CableRoute|PulseChannel|BinaryNoise|SourceEntropy|HuffmanMessage|RepetitionChannel|SecdedInspector|ChannelBudget|MessageMeaning)Lab-[^/]+\.js(?:\?|$)/;
 
 export async function prepareNoise(page: Page, width = 1440) {

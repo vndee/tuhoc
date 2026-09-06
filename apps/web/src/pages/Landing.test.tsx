@@ -133,8 +133,8 @@ describe('Landing — mặt viết tay', () => {
     expect(stories.compareDocumentPosition(footer)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     await waitFor(() => expect(read).toHaveAttribute('href', `/c/${A_COURSE.slug}`));
     expect(read).toHaveTextContent(A_COURSE.title);
-    expect(within(stories).getByRole('link', { name: 'Một lịch sử của trí tuệ nhân tạo' }))
-      .toHaveAttribute('href', '/stories/a-history-of-ai');
+    expect(within(stories).getByRole('link', { name: 'Một lời nói đi qua đại dương' }))
+      .toHaveAttribute('href', '/stories/across-the-noise');
   });
 
   it('danh mục rỗng: hành động chính về /courses và KHÔNG hứa một khoá nào', async () => {

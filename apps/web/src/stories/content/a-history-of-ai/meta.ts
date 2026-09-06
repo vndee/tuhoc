@@ -5,7 +5,7 @@ export const historyOfAiMeta: StoryMeta = {
   slug: 'a-history-of-ai',
   issueNumber: 1,
   published: true,
-  featured: true,
+  featured: false,
   title: { vi: 'Một lịch sử của trí tuệ nhân tạo', en: 'A History of Artificial Intelligence' },
   deck: {
     vi: 'Từ khi ý nghĩ rời khỏi cơ thể, đến những cỗ máy học từ dữ liệu — và một chân trời chưa có tên chung.',

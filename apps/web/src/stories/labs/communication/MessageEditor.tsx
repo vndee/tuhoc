@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { Lang } from '../../../i18n';
 import { useRequiredMessageJourney } from '../../session/StoryIssueSessionProvider';
+import { MAX_DRAFT_CODE_UNITS } from '../../session/model';
 import { inspectMessage } from './unicode';
 import { communicationCopy } from './copy';
 
@@ -18,6 +19,7 @@ export function MessageEditor({ lang }: { lang: Lang }) {
   const { state, dispatch, examples } = useRequiredMessageJourney();
   const copy = communicationCopy[lang];
   const [composing, setComposing] = useState(false);
+  const [rejectedEdit, setRejectedEdit] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const resetButton = useRef<HTMLButtonElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
@@ -88,6 +90,7 @@ export function MessageEditor({ lang }: { lang: Lang }) {
     }
   };
   const useExample = () => {
+    setRejectedEdit(false);
     const example = examples[lang];
     dispatch({ type: 'draft', text: example });
     dispatch({ type: 'commit', text: example });
@@ -95,9 +98,8 @@ export function MessageEditor({ lang }: { lang: Lang }) {
   const commit = () => {
     if (validation.ok) dispatch({ type: 'commit', text: state.draftText });
   };
-  const error = !composing && !validation.ok
-    ? copy.errors[validation.error as keyof typeof copy.errors]
-    : null;
+  const error = composing ? null : rejectedEdit ? copy.draftTooLong
+    : !validation.ok ? copy.errors[validation.error as keyof typeof copy.errors] : null;
 
   return <section className="communication-message-editor" aria-labelledby={editorId}>
     <h4 id={editorId}>{copy.messageLabel}</h4>
@@ -105,20 +107,34 @@ export function MessageEditor({ lang }: { lang: Lang }) {
     <textarea
       id={`${editorId}-input`}
       value={state.draftText}
-      aria-describedby={`${metricsId} ${privacyId}`}
+      aria-describedby={`${metricsId} ${privacyId}${error === null ? '' : ` ${editorId}-error`}`}
       aria-invalid={error === null ? undefined : true}
       onCompositionStart={() => setComposing(true)}
       onCompositionEnd={() => setComposing(false)}
-      onChange={(event) => dispatch({ type: 'draft', text: event.currentTarget.value })}
+      onPaste={(event) => {
+        const input = event.currentTarget;
+        const nextLength = input.value.length - (input.selectionEnd - input.selectionStart)
+          + event.clipboardData.getData('text/plain').length;
+        if (nextLength > MAX_DRAFT_CODE_UNITS) {
+          event.preventDefault();
+          setRejectedEdit(true);
+        }
+      }}
+      onChange={(event) => {
+        const text = event.currentTarget.value;
+        const rejected = text.length > MAX_DRAFT_CODE_UNITS;
+        setRejectedEdit(rejected);
+        if (!rejected) dispatch({ type: 'draft', text });
+      }}
     />
     <div id={metricsId} className="communication-message-counts">
       <span>{copy.graphemeCount(metrics.graphemes)}</span>
       <span>{copy.byteCount(metrics.bytes)}</span>
     </div>
-    {error === null ? null : <p role="alert">{error}</p>}
+    {error === null ? null : <p id={`${editorId}-error`} role="alert">{error}</p>}
     <p id={privacyId}>{copy.privacy}</p>
     <div className="communication-message-actions">
-      <button type="button" onClick={commit} disabled={!validation.ok || composing}>{copy.commitMessage}</button>
+      <button type="button" onClick={commit} disabled={!validation.ok || composing || rejectedEdit}>{copy.commitMessage}</button>
       <button type="button" onClick={useExample}>{copy.useExample}</button>
     </div>
     <div className="communication-message-comparison">
@@ -144,6 +160,7 @@ export function MessageEditor({ lang }: { lang: Lang }) {
       <p id={`${editorId}-reset-description`}>{copy.resetDescription}</p>
       <button ref={cancelButton} type="button" onClick={cancelReset}>{copy.cancel}</button>
       <button type="button" onClick={() => {
+        setRejectedEdit(false);
         dispatch({ type: 'reset-session', example: examples[lang] });
         if (resetDialog.current?.open) resetDialog.current.close();
         restoreResetFocus.current = true;

@@ -39,6 +39,42 @@ afterAll(() => {
 });
 
 describe('MessageEditor', () => {
+  it.each(['en', 'vi'] as const)('rejects oversized input visibly without replacing the previous draft in %s', (lang) => {
+    renderJourneyLab(EditorLab, definition, { lang, example: 'Original' });
+    const editor = screen.getByRole('textbox');
+    fireEvent.change(editor, { target: { value: 'x'.repeat(4097) } });
+    expect(editor).toHaveValue('Original');
+    expect(screen.getByRole('alert')).toHaveTextContent(lang === 'en' ? 'previous draft is unchanged' : 'Bản nháp trước đó vẫn được giữ nguyên');
+    expect(screen.getByRole('button', { name: lang === 'en' ? 'Use this message' : 'Dùng câu này' })).toBeDisabled();
+    fireEvent.change(editor, { target: { value: 'Repaired' } });
+    expect(editor).toHaveValue('Repaired');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('blocks an oversized paste before insertion but allows replacing the selection within the boundary', () => {
+    renderJourneyLab(EditorLab, definition, { lang: 'en', example: 'Original' });
+    const editor = screen.getByRole('textbox') as HTMLTextAreaElement;
+    editor.setSelectionRange(0, 0);
+    expect(fireEvent.paste(editor, { clipboardData: { getData: () => 'x'.repeat(4096) } })).toBe(false);
+    expect(editor).toHaveValue('Original');
+    editor.setSelectionRange(0, editor.value.length);
+    expect(fireEvent.paste(editor, { clipboardData: { getData: () => 'x'.repeat(4096) } })).toBe(true);
+  });
+
+  it('preserves and commits the maximum valid Unicode message after IME composition', () => {
+    renderJourneyLab(EditorLab, definition, { lang: 'en', example: 'Original' });
+    const editor = screen.getByRole('textbox');
+    const text = `😀${'\u0301'.repeat(510)}`;
+    fireEvent.compositionStart(editor);
+    fireEvent.change(editor, { target: { value: text } });
+    expect(editor).toHaveValue(text);
+    expect(screen.getByRole('button', { name: 'Use this message' })).toBeDisabled();
+    fireEvent.compositionEnd(editor);
+    fireEvent.click(screen.getByRole('button', { name: 'Use this message' }));
+    expect(screen.getByLabelText('Message in use').querySelector('pre')?.textContent).toBe(text);
+    expect(screen.getByText('1,024 / 1,024 UTF-8 bytes')).toBeVisible();
+  });
+
   it('keeps an invalid draft entered during IME composition instead of truncating it', () => {
     renderJourneyLab(EditorLab, definition, { lang: 'en', example: 'Original' });
     const editor = screen.getByRole('textbox', { name: 'Your message' });

@@ -27,6 +27,26 @@ beforeEach(() => localStorage.clear());
 afterEach(() => localStorage.clear());
 
 describe('MessageBudgetLab', () => {
+  it.each(['en', 'vi'] as const)('rejects an oversized shortened draft without rendering it in %s', (lang) => {
+    renderJourneyLab(MessageBudgetLab, definition, { lang, example: 'Original' });
+    const editor = screen.getByRole('textbox', { name: lang === 'en' ? 'Shortened draft' : 'Bản rút lời' });
+    fireEvent.change(editor, { target: { value: 'x'.repeat(4097) } });
+    expect(editor).toHaveValue('Original');
+    expect(screen.getByRole('alert')).toHaveTextContent(lang === 'en' ? 'previous draft is unchanged' : 'Bản nháp trước đó vẫn được giữ nguyên');
+    expect(document.querySelectorAll('[data-edit]').length).toBeLessThan(100);
+    fireEvent.change(editor, { target: { value: 'Short' } });
+    expect(editor).toHaveValue('Short');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('blocks an oversized paste into the shortened draft before insertion', () => {
+    renderJourneyLab(MessageBudgetLab, definition, { lang: 'en', example: 'Original' });
+    const editor = screen.getByRole('textbox', { name: 'Shortened draft' });
+    expect(fireEvent.paste(editor, { clipboardData: { getData: () => 'x'.repeat(4097) } })).toBe(false);
+    expect(editor).toHaveValue('Original');
+    expect(screen.getByRole('alert')).toBeVisible();
+  });
+
   it.each(['en', 'vi'] as const)('offers a reflective Predict stage without requiring an answer in %s', (lang) => {
     renderJourneyLab(MessageBudgetLab, definition, { lang, sceneId: 'scene-01' });
     const prediction = screen.getByRole('region', { name: lang === 'en' ? 'Predict' : 'Dự đoán' });
