@@ -1319,13 +1319,3 @@ html[data-theme='dark'] .story-index-deck {
   }
 }
 
-/* Câu khai "dự án cộng đồng, nội dung do AI tạo ra" ở chân bảng phấn. Mờ hơn
-   hai dòng liên kết trên nó, nhưng vẫn đọc được — nó là lời khai, không phải
-   chú thích pháp lý cần giấu. */
-.bd-tray-note {
-  margin: 10px 0 0;
-  max-width: 46ch;
-  font-size: 12px;
-  line-height: 1.5;
-  opacity: 0.72;
-}
