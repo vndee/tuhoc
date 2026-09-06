@@ -1,5 +1,5 @@
 import { useEffect, useId } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { AgentConfigPanel } from '../ai/AgentConfigPanel';
 import { CreditPanel } from '../ai/CreditPanel';
 import { useMe, accountInitials } from '../api/useMe';
@@ -133,6 +133,36 @@ export function Settings() {
         <AppearanceSection />
         <AiSection anchor={SECTION_ANCHOR.ai} />
         <LocalDataSection anchor={SECTION_ANCHOR.localData} />
+        <LegalSection />
+      </div>
+    </section>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ *
+ * VỀ DỰ ÁN — lối vào hai trang pháp lý cho người ĐÃ đăng nhập
+ *
+ * Chân trang chung (`shell/Footer.tsx`) đã có hai liên kết này trên mọi màn
+ * hình, nên mục ở đây KHÔNG phải để lấp một chỗ hở điều hướng. Nó có mặt vì
+ * Settings là nơi người ta tới khi đi TÌM những thứ này — "tài khoản của tôi,
+ * dữ liệu của tôi, điều khoản" là một cụm câu hỏi, và mục `LocalDataSection`
+ * ngay trên đã trả lời một nửa cụm ấy.
+ * ══════════════════════════════════════════════════════════════════════════ */
+function LegalSection() {
+  const { t } = useLanguage();
+
+  return (
+    <section className="set-block">
+      <div className="set-side">
+        <h2 className="set-h">{t('settings.legal.title')}</h2>
+        <p className="set-lede">{t('footer.blurb')}</p>
+      </div>
+
+      <div className="set-block-main">
+        <p className="set-legal-links">
+          <Link to="/terms">{t('login.legal.terms')}</Link>
+          <Link to="/privacy">{t('login.legal.privacy')}</Link>
+        </p>
       </div>
     </section>
   );
