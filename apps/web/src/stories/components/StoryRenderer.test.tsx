@@ -1,14 +1,17 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { StrictMode, type ComponentProps, type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
+import { catalogQueryKey } from '../../api/catalog';
 import { ThemeProvider } from '../../theme/ThemeContext';
 import { installIntersectionObserver, type ObserverHarness } from '../../test/intersectionObserver';
 import { makeStoryFixture } from '../testing/storyFixture';
 import { labRegistry } from '../labs/registry';
+import { useRequiredMessageJourney } from '../session/StoryIssueSessionProvider';
 import type { StoryDefinition, StoryScene as StorySceneModel } from '../types';
 import { RichText } from './RichText';
 import { StoryRenderer } from './StoryRenderer';
@@ -55,6 +58,20 @@ function renderStory(
     <MemoryRouter><LanguageProvider><ThemeProvider>
       <div id="scroller"><StoryRenderer story={story} renderLab={renderLab} /></div>
     </ThemeProvider></LanguageProvider></MemoryRouter>,
+  );
+}
+
+function renderStoryWithCatalog(story: StoryDefinition) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  client.setQueryData(catalogQueryKey(), [{
+    slug: 'ly-thuyet-thong-tin', title: 'Lý thuyết Thông tin', lang: 'vi', description: 'Course', version: 1,
+  }]);
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter><LanguageProvider><ThemeProvider>
+        <div id="scroller"><StoryRenderer story={story} /></div>
+      </ThemeProvider></LanguageProvider></MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -117,6 +134,22 @@ function storyVariant(slug: string, label: string): StoryDefinition {
   };
 }
 
+function JourneyLabProbe({
+  onChange,
+  value,
+}: {
+  onChange: (next: unknown) => void;
+  value: unknown;
+}) {
+  const journey = useRequiredMessageJourney();
+  return <section>
+    <output aria-label="journey message">{journey.state.messageText}</output>
+    <output aria-label="journey lab value">{String(value ?? 'fresh')}</output>
+    <button type="button" onClick={() => journey.dispatch({ type: 'commit', text: 'Route payload' })}>Commit route payload</button>
+    <button type="button" onClick={() => onChange('route saved')}>Save route lab</button>
+  </section>;
+}
+
 function setRootGeometry(top: number, height: number): void {
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: height });
   const scroller = document.getElementById('scroller')!;
@@ -177,6 +210,17 @@ function deferred<T = void>() {
 }
 
 describe('StoryRenderer', () => {
+  it('returns keyboard focus to the opening control after Back closes a mobile lab', async () => {
+    setMatchMedia('(max-width: 900px)', true);
+    renderStory();
+    const open = screen.getAllByRole('button', { name: 'Tự tay thử' })[0]!;
+    fireEvent.click(open);
+    const back = await screen.findByRole('button', { name: 'Trở lại tranh' });
+    back.focus();
+    fireEvent.click(back);
+    expect(open).toHaveFocus();
+    expect(screen.queryByRole('button', { name: 'Trở lại tranh' })).not.toBeInTheDocument();
+  });
   it('keeps renderer coordination out of the public active-scene hook module exports', () => {
     expect(Object.keys(activeSceneModule)).toEqual(['useActiveStoryScene']);
   });
@@ -620,6 +664,43 @@ describe('StoryRenderer', () => {
     expect(screen.getAllByText('Open question')[0]).toBeVisible();
   });
 
+  it('renders an optional localized intro before the cover', () => {
+    const story = makeStoryFixture({ sceneCount: 12 });
+    story.intro = {
+      vi: [{ kind: 'paragraph', text: 'Lời mở đầu cho hành trình.' }],
+      en: [{ kind: 'paragraph', text: 'An introduction to the journey.' }],
+    };
+    renderStory(story);
+
+    const intro = screen.getByText('Lời mở đầu cho hành trình.').closest('section')!;
+    const cover = screen.getByTestId('story-cover');
+    expect(intro.compareDocumentPosition(cover) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('renders the optional catalog-backed course action in the coda', () => {
+    const story = makeStoryFixture({ sceneCount: 12 });
+    story.courseAction = {
+      slug: 'ly-thuyet-thong-tin',
+      label: { vi: 'Học tiếp Lý thuyết Thông tin', en: 'Continue with Information Theory' },
+      fallbackLabel: { vi: 'Khám phá các khoá học', en: 'Explore the courses' },
+    };
+    renderStoryWithCatalog(story);
+
+    const coda = screen.getByRole('heading', { name: 'Vĩ thanh' }).closest('section')!;
+    expect(within(coda).getByRole('link', { name: 'Học tiếp Lý thuyết Thông tin' })).toHaveAttribute(
+      'href', '/c/ly-thuyet-thong-tin',
+    );
+  });
+
+  it('keeps the existing edition fixture independent from a query client when no course action is declared', () => {
+    const story = makeStoryFixture({ sceneCount: 12 });
+    expect(story.courseAction).toBeUndefined();
+
+    expect(() => renderStory(story)).not.toThrow();
+    expect(screen.getByText('Kết thúc bằng tiếng Việt.')).toBeVisible();
+    expect(screen.queryByRole('link', { name: /Lý thuyết Thông tin/i })).not.toBeInTheDocument();
+  });
+
   it('uses replace-only shell scene links without moving focus', () => {
     const replace = vi.spyOn(history, 'replaceState');
     const push = vi.spyOn(history, 'pushState');
@@ -773,6 +854,44 @@ describe('StoryRenderer', () => {
     fireEvent.click(screen.getByRole('menuitemradio', { name: /EN/i }));
     expect(screen.getByText('scene-2:scene-2-saved')).toBeVisible();
     expect(location.hash).toBe('#scene-2');
+  });
+
+  it('routes opted-in lab state through a route-scoped journey and resets it after leaving', () => {
+    const story = {
+      ...makeStoryFixture({ sceneCount: 12 }),
+      interaction: {
+        kind: 'message-journey' as const,
+        examples: { vi: 'Tin nhắn VI', en: 'EN message' },
+      },
+    };
+    const renderLab = (_scene: StorySceneModel, value: unknown, onChange: (next: unknown) => void) => (
+      <JourneyLabProbe value={value} onChange={onChange} />
+    );
+    const view = renderStory(story, renderLab);
+    fireEvent.click(screen.getAllByRole('button', { name: /tự tay thử/i })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Commit route payload' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save route lab' }));
+    expect(screen.getByLabelText('journey message')).toHaveTextContent('Route payload');
+    expect(screen.getByLabelText('journey lab value')).toHaveTextContent('route saved');
+
+    history.replaceState(null, '', '/stories/fixture-story#scene-01');
+    view.rerender(
+      <MemoryRouter><LanguageProvider><ThemeProvider>
+        <div id="scroller"><StoryRenderer story={story} renderLab={renderLab} /></div>
+      </ThemeProvider></LanguageProvider></MemoryRouter>,
+    );
+    expect(screen.getByLabelText('journey message')).toHaveTextContent('Route payload');
+    expect(screen.getByLabelText('journey lab value')).toHaveTextContent('route saved');
+
+    history.replaceState(null, '', '/stories/another-story');
+    view.rerender(
+      <MemoryRouter><LanguageProvider><ThemeProvider>
+        <div id="scroller"><StoryRenderer story={story} renderLab={renderLab} /></div>
+      </ThemeProvider></LanguageProvider></MemoryRouter>,
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: /tự tay thử/i })[0]!);
+    expect(screen.getByLabelText('journey message')).toHaveTextContent('Tin nhắn VI');
+    expect(screen.getByLabelText('journey lab value')).toHaveTextContent('fresh');
   });
 
   it('renders semantic scene headings and source disclosures', () => {

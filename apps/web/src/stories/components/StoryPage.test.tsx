@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useLayoutEffect } from 'react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { writeLocalStorage } from '../../db/localStorage';
+import { LANG_STORAGE_KEY } from '../../i18n';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
 import { ThemeProvider } from '../../theme/ThemeContext';
 import type { StoryDefinition, StoryRegistryEntry } from '../types';
@@ -12,7 +14,9 @@ const registry = vi.hoisted(() => ({
 }));
 
 vi.mock('../content/registry', () => ({
-  getStoryBySlug: (slug: string) => registry.entries.find((entry) => entry.published && entry.slug === slug),
+  resolveStoryEntry: (slug: string, allowDrafts: boolean) => registry.entries.find(
+    (entry) => entry.slug === slug && (entry.published || allowDrafts),
+  ),
 }));
 
 vi.mock('./StoryRenderer', () => ({
@@ -66,6 +70,7 @@ function StoryRouteControls() {
   return <>
     <button type="button" onClick={() => navigate('/stories/second')}>Open second</button>
     <button type="button" onClick={() => navigate('/stories/missing')}>Open missing</button>
+    <button type="button" onClick={() => navigate('/stories/draft')}>Drop draft preview</button>
   </>;
 }
 
@@ -81,6 +86,12 @@ function RouteCommitSnapshot() {
   }, [location.pathname]);
   return null;
 }
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  localStorage.clear();
+  document.head.querySelectorAll('meta[name="robots"]').forEach((node) => node.remove());
+});
 
 describe('StoryPage', () => {
   it('renders a published story after its module loads', async () => {
@@ -203,5 +214,73 @@ describe('StoryPage', () => {
 
     expect(consoleError).not.toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+
+  it('ignores a preview query in production mode and never invokes the draft loader', async () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('MODE', 'production');
+    const load = vi.fn();
+    registry.entries = [entry('draft', load, false)];
+
+    renderPage('/stories/draft?preview=1');
+
+    expect(await screen.findByRole('heading', { name: 'Không tìm thấy số đặc san' })).toBeInTheDocument();
+    expect(load).not.toHaveBeenCalled();
+    expect(document.head.querySelector('meta[name="robots"]')).toBeNull();
+  });
+
+  it.each([
+    ['local development', true, 'test'],
+    ['the explicit review build', false, 'story-review'],
+  ])('loads an explicit draft preview in %s only', async (_label, dev, mode) => {
+    vi.stubEnv('DEV', dev);
+    vi.stubEnv('MODE', mode);
+    const load = vi.fn().mockResolvedValue({ default: story('draft') });
+    registry.entries = [entry('draft', load, false)];
+
+    renderPage('/stories/draft?preview=1');
+
+    expect(await screen.findByText('Rendered draft')).toBeInTheDocument();
+    expect(screen.getByText('Bản nháp để duyệt, chưa xuất bản.')).toBeVisible();
+    expect(document.head.querySelector('meta[name="robots"]')).toHaveAttribute('content', 'noindex');
+    expect(document.head.querySelector('link[rel="canonical"]')).toHaveAttribute('href', `${location.origin}/stories/draft`);
+    expect(load).toHaveBeenCalledOnce();
+  });
+
+  it('localizes the visible draft notice in English', async () => {
+    vi.stubEnv('DEV', true);
+    writeLocalStorage(LANG_STORAGE_KEY, 'en');
+    registry.entries = [entry('draft', vi.fn().mockResolvedValue({ default: story('draft') }), false)];
+
+    renderPage('/stories/draft?preview=1');
+
+    expect(await screen.findByText('Review draft, not yet published.')).toBeVisible();
+  });
+
+  it('drops a ready draft immediately when preview is removed and restores an adopted robots directive', async () => {
+    vi.stubEnv('DEV', true);
+    const robots = document.createElement('meta');
+    robots.name = 'robots';
+    robots.content = 'index,follow';
+    robots.dataset.owner = 'existing-shell';
+    document.head.append(robots);
+    const load = vi.fn().mockResolvedValue({ default: story('draft') });
+    registry.entries = [entry('draft', load, false)];
+
+    render(
+      <ThemeProvider><LanguageProvider><MemoryRouter initialEntries={['/stories/draft?preview=1']}>
+        <Routes><Route path="/stories/:slug" element={<><StoryPage /><StoryRouteControls /></>} /></Routes>
+      </MemoryRouter></LanguageProvider></ThemeProvider>,
+    );
+    expect(await screen.findByText('Rendered draft')).toBeInTheDocument();
+    expect(robots).toHaveAttribute('content', 'noindex');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Drop draft preview' }));
+
+    expect(screen.queryByText('Rendered draft')).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Không tìm thấy số đặc san' })).toBeInTheDocument();
+    expect(robots).toHaveAttribute('content', 'index,follow');
+    expect(robots).toHaveAttribute('data-owner', 'existing-shell');
+    expect(load).toHaveBeenCalledOnce();
   });
 });

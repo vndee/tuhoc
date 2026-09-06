@@ -15,6 +15,7 @@ A multi-course self-study platform designed to aggregate, organize, and deliver 
 | `make test-cli` | Run packaging CLI tests (vitest + `tsc -b`) |
 | `make test-registry` | Run registry-tooling tests, plus `validate-pr.ts` against `fixtures/registry` |
 | `make test-e2e` | Bring up a real Postgres + API in Docker (plus a fake DeepSeek double — no run of this suite ever calls the real provider), build the production web bundle, and run the Playwright e2e suite against all of it. See `docs/testing.md`. |
+| `cd apps/web && bun run test:story-plates-native` | Run the required real-codec artwork gate; prerequisites and the separate portable test coverage are in [`docs/testing.md`](docs/testing.md). |
 | `make pack DIR=my-course` | Validate a course directory and write its `.zip` |
 | `make check-publish` | Refuse to proceed if any private course content is still reachable from the repo — the pre-publish gate |
 | `make courses` | Unpack the course packages held outside this repo into `courses/`, for local dev/test fixtures |
@@ -65,6 +66,8 @@ fixtures have passed while a real chapter failed. `docs/publishing.md` has the
 fuller story.
 
 ## Documentation
+
+[`docs/testing.md`](docs/testing.md) covers the production browser suites and artwork gates. The public special-edition collection at `/stories` includes issue 01, *A History of Artificial Intelligence*, and issue 02, *Across the Noise* (`/stories/across-the-noise`), with twelve bilingual labs each. Issue 02's [design and model contracts](docs/superpowers/specs/2026-09-05-across-the-noise-design.md) and [verification report](docs/superpowers/reports/2026-09-05-across-the-noise-review.md) describe its limits and release checks. Current product and design context live in [PRODUCT.md](PRODUCT.md) and [DESIGN.md](DESIGN.md).
 
 The current architecture is [`docs/superpowers/specs/2026-08-25-server-side-pivot.md`](docs/superpowers/specs/2026-08-25-server-side-pivot.md) — courses, progress/notes/annotations, and AI all live on the server now; the browser keeps no local-first store. `docs/carried-forward.md` tracks debts and rulings still in effect across phases; `docs/superpowers/plans/` holds each phase's executed plan and handover.
 

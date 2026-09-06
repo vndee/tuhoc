@@ -47,6 +47,7 @@ describe('StoryIndex', () => {
     const load = vi.spyOn(storyRegistry[0], 'load');
     renderIndex(storyRegistry);
     expect(screen.getByRole('link', { name: 'Một lịch sử của trí tuệ nhân tạo' })).toHaveAttribute('href', '/stories/a-history-of-ai');
+    expect(within(screen.getAllByRole('article')[0]).getByRole('link', { name: 'Một lời nói đi qua đại dương' })).toHaveAttribute('href', '/stories/across-the-noise');
     expect(load).not.toHaveBeenCalled();
     load.mockRestore();
   });
@@ -86,5 +87,17 @@ describe('StoryIndex', () => {
     ]);
 
     expect(screen.getByRole('main')).toHaveClass('story-index-many');
+  });
+
+  it('orders a future published issue two before issue one with exactly one featured edition', () => {
+    const issueOne = makeEntry({ slug: 'a-history-of-ai', issueNumber: 1, featured: false, title: { vi: 'Số một', en: 'Issue one' } });
+    const issueTwo = makeEntry({ slug: 'across-the-noise', issueNumber: 2, featured: true, title: { vi: 'Số hai', en: 'Issue two' } });
+
+    renderIndex([issueOne, issueTwo]);
+
+    const editions = screen.getAllByRole('article');
+    expect(within(editions[0]).getByRole('link', { name: 'Số hai' })).toHaveAttribute('href', '/stories/across-the-noise');
+    expect(within(editions[1]).getByRole('link', { name: 'Số một' })).toHaveAttribute('href', '/stories/a-history-of-ai');
+    expect([issueOne, issueTwo].filter((entry) => entry.featured)).toHaveLength(1);
   });
 });

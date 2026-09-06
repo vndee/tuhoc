@@ -1,11 +1,13 @@
 import type { LabKind, Localized, ResponsiveStoryImage, RichTextBlock, StoryDefinition } from './types';
 import { REGISTERED_LAB_KINDS } from './labs/registry';
+import { inspectMessage } from './labs/communication/unicode';
 
 export interface StoryValidationIssue {
   code: 'missing-locale' | 'duplicate-id' | 'missing-source' | 'unknown-lab-kind' |
     'scene-count' | 'lab-count' | 'missing-image-metadata' | 'missing-provenance' |
     'missing-fallback' | 'featured-unpublished' | 'act-scene-mismatch' | 'source-count' |
-    'invalid-source' | 'invalid-lab-config';
+    'invalid-source' | 'invalid-lab-config' | 'invalid-fallback-table' |
+    'invalid-story-interaction' | 'invalid-fallback-diagram';
   path: string;
   message: string;
 }
@@ -58,10 +60,81 @@ export function validateStory(
       });
     }
   };
+  const noiseDefaults = (defaultP: number, seed: number, path: string, label: string) => {
+    if (!Number.isFinite(defaultP) || defaultP < 0 || defaultP > 0.5) {
+      add('invalid-lab-config', `${path}.defaultP`, `${label} probability must be from 0 to 0.5`);
+    }
+    if (!Number.isInteger(seed) || seed < 0 || seed > 0xffff_ffff) {
+      add('invalid-lab-config', `${path}.seed`, `${label} seed must be a uint32`);
+    }
+  };
+  const diagram = (value: unknown, path: string) => {
+    const invalid = (suffix: string) => add('invalid-fallback-diagram', `${path}${suffix}`, 'diagram must contain bounded localized geometry');
+    const record = (entry: unknown): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null && !Array.isArray(entry);
+    if (!record(value)) { invalid(''); return; }
+    const localized = (entry: unknown, suffix: string) => {
+      for (const lang of ['vi', 'en']) {
+        const content = record(entry) ? entry[lang] : undefined;
+        if (typeof content !== 'string' || content.trim() === '' || content.length > 300) invalid(`${suffix}.${lang}`);
+      }
+    };
+    for (const dimension of ['width', 'height']) {
+      const size = value[dimension];
+      if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0 || size > 1000) invalid(`.${dimension}`);
+    }
+    const coordinate = (x: unknown, y: unknown) => typeof x === 'number' && typeof y === 'number' &&
+      Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 &&
+      typeof value.width === 'number' && x <= value.width && typeof value.height === 'number' && y <= value.height;
+    localized(value.title, '.title');
+    localized(value.description, '.description');
+    if (!Array.isArray(value.lines) || value.lines.length < 1 || value.lines.length > 64) invalid('.lines');
+    else for (let index = 0; index < value.lines.length; index++) {
+      const line: unknown = value.lines[index];
+      const prefix = `.lines.${index}`;
+      if (!record(line)) { invalid(prefix); continue; }
+      localized(line.label, `${prefix}.label`);
+      if (line.style !== 'solid' && line.style !== 'dashed') invalid(`${prefix}.style`);
+      if (!Array.isArray(line.points) || line.points.length < 2 || line.points.length > 257) invalid(`${prefix}.points`);
+      else for (let pointIndex = 0; pointIndex < line.points.length; pointIndex++) {
+        const point: unknown = line.points[pointIndex];
+        if (!Array.isArray(point) || point.length !== 2 || !coordinate(point[0], point[1])) invalid(`${prefix}.points.${pointIndex}`);
+      }
+    }
+    if (!Array.isArray(value.labels) || value.labels.length > 128) invalid('.labels');
+    else for (let index = 0; index < value.labels.length; index++) {
+      const label: unknown = value.labels[index];
+      const prefix = `.labels.${index}`;
+      if (!record(label)) { invalid(prefix); continue; }
+      if (!coordinate(label.x, label.y)) invalid(prefix);
+      localized(label.text, `${prefix}.text`);
+    }
+  };
 
   text(story.meta.title, 'meta.title');
   text(story.meta.deck, 'meta.deck');
   image(story.meta.cover, 'meta.cover');
+  if (story.interaction) {
+    if (story.interaction.kind !== 'message-journey') {
+      add('invalid-story-interaction', 'interaction.kind', 'story interaction kind is unsupported');
+    }
+    text(story.interaction.examples, 'interaction.examples');
+    for (const lang of ['vi', 'en'] as const) {
+      const result = inspectMessage(story.interaction.examples[lang]);
+      if (!result.ok) {
+        add(
+          'invalid-story-interaction',
+          `interaction.examples.${lang}`,
+          `message example failed validation: ${result.error}`,
+        );
+      }
+    }
+  }
+  if (story.intro) blocks(story.intro, 'intro');
+  if (story.courseAction) {
+    if (story.courseAction.slug.trim() === '') add('missing-locale', 'courseAction.slug', 'course action slug is empty');
+    text(story.courseAction.label, 'courseAction.label');
+    text(story.courseAction.fallbackLabel, 'courseAction.fallbackLabel');
+  }
   if (story.meta.featured && !story.meta.published) add('featured-unpublished', 'meta.featured', 'a featured story must be published');
   if (story.meta.sceneCount !== story.scenes.length) add('scene-count', 'meta.sceneCount', 'metadata does not match scenes');
   if (story.meta.labCount !== story.scenes.length) add('lab-count', 'meta.labCount', 'metadata does not match labs');
@@ -106,7 +179,16 @@ export function validateStory(
     if (!record.tool) add('missing-provenance', `${path}.tool`, 'provenance tool is empty');
     if (!record.model) add('missing-provenance', `${path}.model`, 'provenance model is empty');
     if (!record.prompt) add('missing-provenance', `${path}.prompt`, 'provenance prompt is empty');
-    if (record.edits.length === 0) add('missing-provenance', `${path}.edits`, 'provenance edits are empty');
+    const edits: unknown = record.edits;
+    if (!Array.isArray(edits)) {
+      add('missing-provenance', `${path}.edits`, 'provenance edits must be an array');
+    } else {
+      edits.forEach((edit, editIndex) => {
+        if (typeof edit !== 'string' || edit.trim() === '') {
+          add('missing-provenance', `${path}.edits.${editIndex}`, 'provenance edits must be nonblank strings');
+        }
+      });
+    }
     if (record.width <= 0) add('missing-provenance', `${path}.width`, 'provenance width must be positive');
     if (record.height <= 0) add('missing-provenance', `${path}.height`, 'provenance height must be positive');
     if (record.bytes <= 0) add('missing-provenance', `${path}.bytes`, 'provenance byte count must be positive');
@@ -168,11 +250,142 @@ export function validateStory(
           }
         });
         break;
+      case 'message-budget':
+        if (![15, 30, 60].includes(scene.lab.config.defaultBudget)) {
+          add('invalid-lab-config', `${path}.lab.config.defaultBudget`, 'message budget must be 15, 30, or 60');
+        }
+        break;
+      case 'ambiguous-code':
+        for (const symbol of ['A', 'B', 'C', 'D'] as const) {
+          if (typeof scene.lab.config.initialBook[symbol] !== 'string' || !/^[01]{1,6}$/.test(scene.lab.config.initialBook[symbol])) {
+            add('invalid-lab-config', `${path}.lab.config.initialBook.${symbol}`, 'codewords must contain 1–6 binary digits');
+          }
+        }
+        if (typeof scene.lab.config.initialSymbols !== 'string' || !/^[ABCD]{1,6}$/.test(scene.lab.config.initialSymbols)) {
+          add('invalid-lab-config', `${path}.lab.config.initialSymbols`, 'initial symbols must contain 1–6 A/B/C/D symbols');
+        }
+        break;
+      case 'morse-spacing':
+        if (!['ET', 'AET', 'BEAM', 'BEAM ET'].includes(scene.lab.config.example)) {
+          add('invalid-lab-config', `${path}.lab.config.example`, 'Morse example must be ET, AET, BEAM, or BEAM ET');
+        }
+        break;
+      case 'cable-route':
+        if (!Number.isInteger(scene.lab.config.defaultBudget) ||
+          scene.lab.config.defaultBudget < 15 || scene.lab.config.defaultBudget > 40) {
+          add('invalid-lab-config', `${path}.lab.config.defaultBudget`, 'cable route budget must be an integer from 15 to 40');
+        }
+        break;
+      case 'pulse-channel':
+        if (![1, 2, 4].includes(scene.lab.config.defaultDuration)) {
+          add('invalid-lab-config', `${path}.lab.config.defaultDuration`, 'pulse duration must be 1, 2, or 4');
+        }
+        break;
+      case 'binary-noise':
+        noiseDefaults(scene.lab.config.defaultP, scene.lab.config.seed, `${path}.lab.config`, 'binary noise');
+        break;
+      case 'source-entropy': {
+        const weights: unknown = scene.lab.config.weights;
+        if (!Array.isArray(weights) || weights.length !== 4 ||
+          [0, 1, 2, 3].some((index) => !Object.hasOwn(weights, index) ||
+            !Number.isInteger(weights[index]) || weights[index] < 0 || weights[index] > 100) ||
+          weights.every((weight) => weight === 0)) {
+          add('invalid-lab-config', `${path}.lab.config.weights`, 'source weights must be four integers from 0 to 100');
+        }
+        if (!Number.isInteger(scene.lab.config.seed) ||
+          scene.lab.config.seed < 0 || scene.lab.config.seed > 0xffff_ffff) {
+          add('invalid-lab-config', `${path}.lab.config.seed`, 'source entropy seed must be a uint32');
+        }
+        break;
+      }
+      case 'huffman-message':
+        if (!Number.isInteger(scene.lab.config.maxVisibleNodes) ||
+          scene.lab.config.maxVisibleNodes < 1 || scene.lab.config.maxVisibleNodes > 32) {
+          add(
+            'invalid-lab-config',
+            `${path}.lab.config.maxVisibleNodes`,
+            'Huffman visible nodes must be an integer from 1 to 32',
+          );
+        }
+        break;
+      case 'repetition-channel':
+        noiseDefaults(scene.lab.config.defaultP, scene.lab.config.seed, `${path}.lab.config`, 'repetition');
+        break;
+      case 'secded-inspector':
+        if (typeof scene.lab.config.data !== 'string' || !/^[01]{4}$/.test(scene.lab.config.data)) {
+          add('invalid-lab-config', `${path}.lab.config.data`, 'SECDED data must contain exactly four binary characters');
+        }
+        break;
+      case 'channel-budget': {
+        const { defaultBudget, defaultP, seed } = scene.lab.config;
+        if (!Number.isInteger(defaultBudget) || defaultBudget < 512 || defaultBudget > 32768 || defaultBudget % 512 !== 0) {
+          add('invalid-lab-config', `${path}.lab.config.defaultBudget`, 'channel budget must be 512–32768 in steps of 512');
+        }
+        const hundredths = defaultP * 100;
+        if (!Number.isFinite(defaultP) || defaultP < 0 || defaultP > 0.5 ||
+          Math.abs(hundredths - Math.round(hundredths)) >= 1e-9) {
+          add('invalid-lab-config', `${path}.lab.config.defaultP`, 'channel probability must be 0–0.5 in steps of 0.01');
+        }
+        if (!Number.isInteger(seed) || seed < 0 || seed > 0xffff_ffff) {
+          add('invalid-lab-config', `${path}.lab.config.seed`, 'channel seed must be a uint32');
+        }
+        break;
+      }
+      case 'message-meaning': {
+        const contexts: unknown = scene.lab.config.contexts;
+        if (!Array.isArray(contexts) || contexts.length !== 3) {
+          add('invalid-lab-config', `${path}.lab.config.contexts`, 'message meaning needs exactly three contexts');
+          break;
+        }
+        const seen = new Set<string>();
+        for (let contextIndex = 0; contextIndex < contexts.length; contextIndex++) {
+          const value = contexts[contextIndex];
+          const contextPath = `${path}.lab.config.contexts.${contextIndex}`;
+          if (typeof value !== 'object' || value === null) {
+            add('invalid-lab-config', contextPath, 'message meaning context must be an object');
+            continue;
+          }
+          const context = value as { id?: unknown; label?: unknown };
+          if (context.id !== 'meeting' && context.id !== 'disagreement' && context.id !== 'missing-previous') {
+            add('invalid-lab-config', `${contextPath}.id`, 'message meaning context id is unsupported');
+          } else if (seen.has(context.id)) {
+            add('duplicate-id', `${contextPath}.id`, 'id must be unique');
+          } else {
+            seen.add(context.id);
+          }
+          if (typeof context.label === 'object' && context.label !== null &&
+            typeof (context.label as Partial<Localized>).vi === 'string' &&
+            typeof (context.label as Partial<Localized>).en === 'string') {
+            text(context.label as Localized, `${contextPath}.label`);
+          } else {
+            add('missing-locale', `${contextPath}.label`, 'context label must include both locales');
+          }
+        }
+        break;
+      }
       default:
         break;
     }
     text(scene.labFallback.diagramLabel, `${path}.labFallback.diagramLabel`);
     text(scene.labFallback.explanation, `${path}.labFallback.explanation`);
+    if (scene.labFallback.diagram !== undefined) diagram(scene.labFallback.diagram, `${path}.labFallback.diagram`);
+    if (scene.labFallback.table) {
+      for (const lang of ['vi', 'en'] as const) {
+        const tablePath = `${path}.labFallback.table.${lang}`;
+        const table = scene.labFallback.table[lang];
+        table.headers.forEach((header, headerIndex) => {
+          if (header.trim() === '') add('missing-locale', `${tablePath}.headers.${headerIndex}`, 'table header is empty');
+        });
+        table.rows.forEach((row, rowIndex) => {
+          if (row.length !== table.headers.length) {
+            add('invalid-fallback-table', `${tablePath}.rows.${rowIndex}`, 'table row width must match its headers');
+          }
+          row.forEach((cell, cellIndex) => {
+            if (cell.trim() === '') add('missing-locale', `${tablePath}.rows.${rowIndex}.${cellIndex}`, 'table cell is empty');
+          });
+        });
+      }
+    }
     image(scene.illustration, `${path}.illustration`);
     if (!registeredKinds.has(scene.lab.kind)) add('unknown-lab-kind', `${path}.lab.kind`, `unregistered lab ${scene.lab.kind}`);
     if (!unique(scene.sourceIds)) add('duplicate-id', `${path}.sourceIds`, 'scene source ids must be unique');

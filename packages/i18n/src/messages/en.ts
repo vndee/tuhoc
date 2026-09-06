@@ -71,6 +71,7 @@ export const en: Messages = {
   'stories.labUnavailable': 'The interactive lab could not load. You can still read its explanation below.',
   'stories.loading': 'Opening the special edition…',
   'stories.loadError': 'This special edition could not be opened.',
+  'stories.draftPreview': 'Review draft, not yet published.',
   'stories.back': 'Back',
   'stories.illustrationPrefix': 'Illustration',
   'stories.sourceAccessed': (date: string) => `Accessed ${date}`,

@@ -1,4 +1,6 @@
 import type { Plugin } from 'vite';
+import { randomUUID } from 'node:crypto';
+import { labEntryPaths } from './lab-entry-paths.ts';
 
 interface OutputChunkLike {
   type: 'chunk';
@@ -41,9 +43,39 @@ export function collectStaticEntryGraph(bundle: OutputBundleLike) {
 }
 
 export function storyStaticGraphEvidencePlugin(): Plugin {
+  const virtualId = 'virtual:story-lab-retry';
+  const resolvedId = `\0${virtualId}`;
+  let buildId = randomUUID() as string;
+  let base = '/';
+  let mapFile = '';
   return {
     name: 'story-static-graph-evidence',
+    configResolved(config) {
+      if (config.command === 'serve') buildId = `dev-${buildId}`;
+      base = config.base;
+      mapFile = `assets/story-labs-${buildId}.json`;
+    },
+    resolveId(id) { if (id === virtualId) return resolvedId; },
+    load(id) {
+      if (id === resolvedId) return `export const buildId=${JSON.stringify(buildId)}; export const mapPath=${JSON.stringify(base + mapFile)};`;
+    },
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        if (request.url?.split('?')[0] !== base + mapFile) return next();
+        response.setHeader('Content-Type', 'application/json');
+        response.setHeader('Cache-Control', 'no-store');
+        response.end(JSON.stringify({ buildId, entries: Object.fromEntries(Object.entries(labEntryPaths).map(([kind, path]) => [kind, `/src/stories/labs/${path}`])) }));
+      });
+    },
     generateBundle(_options, bundle) {
+      const entries: Record<string, string> = {};
+      for (const chunk of Object.values(bundle)) {
+        if (chunk.type !== 'chunk' || !chunk.facadeModuleId) continue;
+        for (const [kind, path] of Object.entries(labEntryPaths)) {
+          if (chunk.facadeModuleId.endsWith(`/src/stories/labs/${path}`)) entries[kind] = `./${chunk.fileName.slice('assets/'.length)}`;
+        }
+      }
+      this.emitFile({ type: 'asset', fileName: mapFile, source: JSON.stringify({ buildId, entries }) });
       this.emitFile({
         type: 'asset',
         fileName: '.vite/story-static-graph.json',

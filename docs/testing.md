@@ -1,5 +1,45 @@
 # Testing tuhoc
 
+## Published special editions
+
+The normal production browser suite includes `e2e/across-the-noise/`: all
+twelve labs, bilingual light/dark layouts, private route-owned state, cancellation,
+chunk Retry, artwork loading, and the original AI edition regressions. The public
+entry gate is `e2e/stories-publication.spec.ts`; no preview query or review-mode
+build is required for issue 02.
+
+For the issue-02-only production gate on the installed Chrome browser, use
+`TUHOC_E2E_WEB_PORT=5184 bash scripts/test-e2e.sh --config playwright.stories.config.ts`
+from the repository root. Select unused API/database ports with
+`TUHOC_E2E_API_PORT` (default 8089) and `TUHOC_E2E_DB_PORT` (default 55433)
+when other local stacks run; `scripts/test-e2e.sh` passes these to the owned stack.
+The dedicated config uses the same production build and seeded API as the full
+suite; it does not enable unpublished issues. Generic draft isolation remains
+covered by `StoryPage.test.tsx` and registry tests for future editions.
+
+The issue-02 input guard tests reject oversized paste/input without truncating
+the previous draft. Raw drafts are capped at 4,096 UTF-16 code units before
+segmentation/rendering; accepted messages still use the separate 120-grapheme /
+1,024-UTF-8-byte policy. The browser regression includes a 100,000-character edit,
+recovery and the maximum valid Unicode message, without using the real clipboard.
+
+## Story artwork validation and required native conversion gate
+
+From `apps/web`, `bun run test` runs portable tests, including manifest,
+source and destination safety validations with an inspection-only PNG fixture
+adapter. It does not claim real codec coverage. The separate required gate is
+`bun run test:story-plates-native`: this performs real WebP conversion, dimension,
+hash, source-preservation, shell/path-safety, quality-step and byte-budget checks
+against temporary non-art fixtures. It never regenerates edition artwork.
+
+The native gate requires macOS `/usr/bin/sips` and executable
+`/opt/homebrew/bin/cwebp` (the Apple Silicon Homebrew `webp` package).
+`node scripts/export-story-plates.mjs --check-tools` checks these prerequisites;
+the gate fails clearly when either is absent and never silently skips conversion.
+On other toolchains, report the native gate as unavailable and run it on the
+supported installed toolchain before accepting artwork/exporter changes.
+No encoder discovery or cross-platform substitution is provided.
+
 Unit/integration tests: `make test-api` (Go, spins up real Postgres via
 testcontainers per-package) and `make test-web` (vitest, jsdom). This
 doc is only about the one that's different in kind:
@@ -11,7 +51,8 @@ of the web app, and drives both with a real browser (Playwright) to prove
 the whole stack works together. For what each spec actually checks and why,
 read the spec files themselves — `apps/web/e2e/p1.spec.ts`,
 `apps/web/e2e/widget.spec.ts`, `apps/web/e2e/s2.spec.ts`,
-`apps/web/e2e/p2.spec.ts`, and `apps/web/e2e/stories.spec.ts` — and
+`apps/web/e2e/p2.spec.ts`, `apps/web/e2e/stories.spec.ts`,
+`apps/web/e2e/stories-publication.spec.ts`, and `apps/web/e2e/across-the-noise/` — and
 `scripts/test-e2e.sh`, whose comments carry the reasoning for every step of
 the harness.
 
@@ -22,7 +63,7 @@ the harness.
 > Execution reports are not part of this repository; anything a reader of a
 > tracked doc needs must live in a tracked file.
 
-**Five spec files actually run**, and they are gates for different things:
+**Twelve spec files run in the full production suite**, and they are gates for different things:
 `p1.spec.ts` (the reader — including the course table of contents, inherited
 from the deleted `s1.spec.ts`), `widget.spec.ts` (the phase-1 security
 gate: a course widget runs inside `sandbox="allow-scripts"`, its origin is
@@ -30,7 +71,10 @@ opaque, and `document.cookie` throws rather than returning the session), and
 `s2.spec.ts` (Pha 2's AI/credit gate — see below), `p2.spec.ts` (annotations
 against the shared seeded course), and `stories.spec.ts`
 (public special-edition routes, bundle/network laziness, responsive and
-motion behavior, fallbacks, visual baselines, and performance budgets).
+motion behavior, fallbacks, visual baselines, and performance budgets),
+`stories-publication.spec.ts` (the public issue-02 entry and retained issue 01),
+plus six specs under `across-the-noise/` (the lab/layout matrix, choice controls,
+privacy/lifecycle, loading/cancellation, final-fix regressions and draft-input limits).
 
 Gone with the features they covered: `import.spec.ts` and `s1.spec.ts` (the
 Import screen and the version-pinning update dialog, removed in `e58ef41`;

@@ -32,6 +32,7 @@ const API_URL = process.env.VITE_API_URL ?? `http://localhost:${process.env.TUHO
 
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: ['**/stories-draft/**'],
   // Final whole-branch review, Important 4 (Pha 2) found `make test-e2e` red
   // for a reason that predated that review and was never this phase's own
   // subsystem to fix: `p2.spec.ts` navigated to a chapter in course
