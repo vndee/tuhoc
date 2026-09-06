@@ -45,6 +45,10 @@ export type LegalId = 'privacy' | 'terms';
 
 const UPDATED = '2026-09-06';
 
+/** Một chỗ duy nhất. Địa chỉ này xuất hiện ở bốn mục trong hai văn bản; để nó
+ *  rải rác là bảo đảm bốn chỗ ấy lệch nhau sau lần đổi đầu tiên. */
+const CONTACT = 'tuhoc@duy.dev';
+
 const privacyVi: LegalDoc = {
   title: 'Quyền riêng tư',
   updated: UPDATED,
@@ -104,14 +108,21 @@ const privacyVi: LegalDoc = {
     {
       h: 'Xoá tài khoản',
       p: [
-        'Yêu cầu xoá tài khoản và chúng tôi xoá. Mọi bảng chứa dữ liệu của bạn đều liên kết tới tài khoản bằng ràng buộc xoá dây chuyền, nên xoá tài khoản là xoá tiến độ, ghi chú, sự kiện, lịch sử dùng AI, đánh giá và tín dụng cùng lúc.',
+        `Viết cho ${CONTACT} và chúng tôi xoá. Mọi bảng chứa dữ liệu của bạn đều liên kết tới tài khoản bằng ràng buộc xoá dây chuyền, nên xoá tài khoản là xoá tiến độ, ghi chú, sự kiện, lịch sử dùng AI, đánh giá và tín dụng cùng lúc.`,
         'Hai ngoại lệ, nói thẳng: bản sao lưu của nhà cung cấp cơ sở dữ liệu có vòng đời riêng và sẽ hết theo lịch của họ; và bình luận bạn viết trên GitHub Discussions phải xoá tại GitHub.',
       ],
     },
     {
       h: 'Trẻ em',
       p: [
-        'Dự án không nhắm tới trẻ em dưới 13 tuổi và không cố ý thu thập dữ liệu của các em. Nếu bạn là phụ huynh và cho rằng con mình đã tạo tài khoản, liên hệ để chúng tôi xoá.',
+        `Dự án không nhắm tới trẻ em dưới 13 tuổi và không cố ý thu thập dữ liệu của các em. Nếu bạn là phụ huynh và cho rằng con mình đã tạo tài khoản, viết cho ${CONTACT} để chúng tôi xoá.`,
+      ],
+    },
+    {
+      h: 'Liên hệ',
+      p: [
+        `Mọi câu hỏi về trang này, yêu cầu xoá dữ liệu, hay báo một lỗi bạn tìm thấy trong nội dung: ${CONTACT}.`,
+        'Dự án được duy trì bởi tình nguyện viên, nên trả lời có thể chậm. Nếu việc bạn báo là một lỗi trong bài học, nói rõ khoá nào, chương nào, và câu nào — nó sẽ được sửa nhanh hơn nhiều.',
       ],
     },
     {
@@ -185,6 +196,13 @@ const termsVi: LegalDoc = {
       ],
     },
     {
+      h: 'Liên hệ',
+      p: [
+        `Mọi câu hỏi về trang này, yêu cầu xoá dữ liệu, hay báo một lỗi bạn tìm thấy trong nội dung: ${CONTACT}.`,
+        'Dự án được duy trì bởi tình nguyện viên, nên trả lời có thể chậm. Nếu việc bạn báo là một lỗi trong bài học, nói rõ khoá nào, chương nào, và câu nào — nó sẽ được sửa nhanh hơn nhiều.',
+      ],
+    },
+    {
       h: 'Thay đổi',
       p: [
         'Điều khoản có thể đổi. Bản mới có hiệu lực khi được đăng lên trang này, và ngày ở đầu trang đổi theo. Tiếp tục dùng nền tảng sau khi đổi nghĩa là bạn chấp nhận bản mới.',
@@ -252,14 +270,21 @@ const privacyEn: LegalDoc = {
     {
       h: 'Deleting your account',
       p: [
-        'Ask and we delete it. Every table holding your data is linked to the account by a cascading delete, so removing the account removes progress, notes, events, AI usage history, ratings and credits at the same time.',
+        `Write to ${CONTACT} and we delete it. Every table holding your data is linked to the account by a cascading delete, so removing the account removes progress, notes, events, AI usage history, ratings and credits at the same time.`,
         'Two exceptions, stated plainly: the database provider’s backups have their own lifetime and expire on their schedule; and comments you posted on GitHub Discussions must be deleted at GitHub.',
       ],
     },
     {
       h: 'Children',
       p: [
-        'The project is not aimed at children under 13 and does not knowingly collect their data. If you are a parent and believe your child created an account, contact us and we will delete it.',
+        `The project is not aimed at children under 13 and does not knowingly collect their data. If you are a parent and believe your child created an account, write to ${CONTACT} and we will delete it.`,
+      ],
+    },
+    {
+      h: 'Contact',
+      p: [
+        `Any question about this page, any request to delete data, or any error you find in the material: ${CONTACT}.`,
+        'The project is maintained by volunteers, so replies may be slow. If you are reporting an error in the material, say which course, which chapter and which sentence — that gets fixed far faster.',
       ],
     },
     {
@@ -330,6 +355,13 @@ const termsEn: LegalDoc = {
       p: [
         'To the extent permitted by law, the project and its contributors are not liable for any damages arising from your use of the platform or your reliance on its content.',
         'That sentence is not a legal trick to dodge responsibility: it follows directly from the first two sections. A community project publishing machine-generated material cannot guarantee what it does not control, so it says so plainly instead of promising otherwise.',
+      ],
+    },
+    {
+      h: 'Contact',
+      p: [
+        `Any question about this page, any request to delete data, or any error you find in the material: ${CONTACT}.`,
+        'The project is maintained by volunteers, so replies may be slow. If you are reporting an error in the material, say which course, which chapter and which sentence — that gets fixed far faster.',
       ],
     },
     {

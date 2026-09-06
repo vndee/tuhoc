@@ -20,13 +20,36 @@ import { LEGAL, type LegalId, type Section } from './legal/content';
  * nó ĐỂ QUYẾT ĐỊNH có tạo tài khoản hay không. Xem bảng route ở `routes.tsx`.
  */
 
-/** `**đậm**` → `<strong>`. Cố ý chỉ hỗ trợ một dấu: nội dung là văn xuôi, không
- *  phải Markdown, và mỗi cú pháp thêm vào là một cú pháp phải kiểm. */
+/** Địa chỉ thư → `mailto:`. Hẹp có chủ ý: chỉ khớp dạng địa chỉ mà văn bản này
+ *  thật sự chứa, chứ không cố phủ RFC 5322 — một biểu thức phủ hết RFC là một
+ *  biểu thức không ai đọc lại được, cho một trang có đúng một địa chỉ. */
+const EMAIL = /([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+
+function linkifyEmail(text: string, keyBase: string): ReactNode[] {
+  return text.split(EMAIL).map((part, i) =>
+    // Chỉ số lẻ là nhóm bắt được, tức chính địa chỉ.
+    i % 2 === 1 ? (
+      <a key={`${keyBase}-${i}`} href={`mailto:${part}`}>
+        {part}
+      </a>
+    ) : (
+      <Fragment key={`${keyBase}-${i}`}>{part}</Fragment>
+    ),
+  );
+}
+
+/** `**đậm**` → `<strong>`, và địa chỉ thư → liên kết. Cố ý chỉ hai thứ ấy: nội
+ *  dung là văn xuôi, không phải Markdown, và mỗi cú pháp thêm vào là một cú
+ *  pháp phải kiểm. */
 function withBold(text: string): ReactNode {
   const parts = text.split(/\*\*(.+?)\*\*/g);
   return parts.map((part, i) =>
     // Các chỉ số lẻ là phần nằm GIỮA hai cặp dấu sao — đó là nhóm bắt được.
-    i % 2 === 1 ? <strong key={i}>{part}</strong> : <Fragment key={i}>{part}</Fragment>,
+    i % 2 === 1 ? (
+      <strong key={i}>{part}</strong>
+    ) : (
+      <Fragment key={i}>{linkifyEmail(part, String(i))}</Fragment>
+    ),
   );
 }
 

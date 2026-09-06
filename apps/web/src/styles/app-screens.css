@@ -2240,3 +2240,17 @@ html[data-theme='dark'] .ai-turn-q {
 .auth-legal a:hover {
   color: var(--accent);
 }
+
+/* Địa chỉ thư trong thân văn bản pháp lý. Gạch chân chứ không đổi màu: nó nằm
+   giữa câu, và một chấm màu giữa dòng chữ đọc như một lỗi chính tả. */
+.legal-p a,
+.legal-list a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.legal-p a:hover,
+.legal-list a:hover {
+  color: var(--accent);
+}
