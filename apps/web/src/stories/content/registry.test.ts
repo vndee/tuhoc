@@ -62,16 +62,16 @@ describe('story registry selectors', () => {
     expect(getStoryBySlug('anything', [])).toBeUndefined();
   });
 
-  it('publishes one featured metadata record while keeping its story module cold', () => {
+  it('publishes both editions, features issue two, and keeps story modules cold', () => {
     expect(storyRegistry).toHaveLength(2);
-    expect(storyRegistry[0]).toMatchObject({ slug: 'a-history-of-ai', published: true, featured: true, sceneCount: 12, labCount: 12 });
-    expect(storyRegistry[1]).toMatchObject({ slug: 'across-the-noise', published: false, featured: false, sceneCount: 12, labCount: 12 });
+    expect(storyRegistry[0]).toMatchObject({ slug: 'a-history-of-ai', published: true, featured: false, sceneCount: 12, labCount: 12 });
+    expect(storyRegistry[1]).toMatchObject({ slug: 'across-the-noise', published: true, featured: true, sceneCount: 12, labCount: 12 });
     const publicLoad = vi.spyOn(storyRegistry[0], 'load');
     const draftLoad = vi.spyOn(storyRegistry[1], 'load');
-    expect(getPublishedStories()).toEqual([storyRegistry[0]]);
-    expect(getFeaturedStory()).toBe(storyRegistry[0]);
-    expect(getStoryBySlug('across-the-noise')).toBeUndefined();
-    expect(resolveStoryEntry('across-the-noise', false)).toBeUndefined();
+    expect(getPublishedStories()).toEqual([storyRegistry[1], storyRegistry[0]]);
+    expect(getFeaturedStory()).toBe(storyRegistry[1]);
+    expect(getStoryBySlug('across-the-noise')).toBe(storyRegistry[1]);
+    expect(resolveStoryEntry('across-the-noise', false)).toBe(storyRegistry[1]);
     expect(resolveStoryEntry('across-the-noise', true)?.slug).toBe('across-the-noise');
     expect(publicLoad).not.toHaveBeenCalled();
     expect(draftLoad).not.toHaveBeenCalled();
@@ -79,9 +79,8 @@ describe('story registry selectors', () => {
     draftLoad.mockRestore();
   });
 
-  it('keeps the approved communication metadata unpublished and unfeatured', () => {
-    expect(noiseMeta.published).toBe(false);
-    expect(noiseMeta.featured).toBe(false);
-    expect(getPublishedStories().some((entry) => entry.slug === noiseMeta.slug)).toBe(false);
+  it('opens the approved communication edition without draft preview', () => {
+    expect(resolveStoryEntry(noiseMeta.slug, false)?.load).toEqual(expect.any(Function));
+    expect(getFeaturedStory()?.slug).toBe(noiseMeta.slug);
   });
 });

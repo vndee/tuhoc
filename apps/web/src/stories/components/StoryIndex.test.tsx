@@ -47,6 +47,7 @@ describe('StoryIndex', () => {
     const load = vi.spyOn(storyRegistry[0], 'load');
     renderIndex(storyRegistry);
     expect(screen.getByRole('link', { name: 'Một lịch sử của trí tuệ nhân tạo' })).toHaveAttribute('href', '/stories/a-history-of-ai');
+    expect(within(screen.getAllByRole('article')[0]).getByRole('link', { name: 'Một lời nói đi qua đại dương' })).toHaveAttribute('href', '/stories/across-the-noise');
     expect(load).not.toHaveBeenCalled();
     load.mockRestore();
   });

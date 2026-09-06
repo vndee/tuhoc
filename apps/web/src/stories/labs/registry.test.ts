@@ -16,6 +16,18 @@ void registryApiAssertions;
 afterEach(() => vi.restoreAllMocks());
 
 describe('labRegistry', () => {
+  it.each(['http', 'network', 'json'] as const)('keeps %s retry-map failures content-free', async (failure) => {
+    const privateText = 'PRIVATE-MAP-FAILURE-ắ';
+    vi.spyOn(labRegistry, 'binary-noise').mockRejectedValue(new Error(privateText));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    if (failure === 'network') fetchSpy.mockRejectedValue(new Error(privateText));
+    else fetchSpy.mockResolvedValue(new Response(privateText, { status: failure === 'http' ? 404 : 200 }));
+    const error = await loadLab('binary-noise', 1).catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe('lab-retry-unavailable');
+    expect(String(fetchSpy.mock.calls[0]![0])).not.toContain(privateText);
+    expect(fetchSpy.mock.calls[0]![1]).toEqual({ credentials: 'omit', cache: 'no-store' });
+  });
   it('keeps failed import and malformed retry metadata errors content-free without leaking private data', async () => {
     const privateText = 'PRIVATE-NOISE-20260905-ắ-👨‍👩‍👧‍👦';
     vi.spyOn(labRegistry, 'binary-noise').mockRejectedValue(new Error(privateText));

@@ -1,5 +1,27 @@
 # Testing tuhoc
 
+## Published special editions
+
+The normal production browser suite includes `e2e/across-the-noise/`: all
+twelve labs, bilingual light/dark layouts, private route-owned state, cancellation,
+chunk Retry, artwork loading, and the original AI edition regressions. The public
+entry gate is `e2e/stories-publication.spec.ts`; no preview query or review-mode
+build is required for issue 02.
+
+For the issue-02-only production gate on the installed Chrome browser, use
+`TUHOC_E2E_WEB_PORT=5184 bash scripts/test-e2e.sh --config playwright.stories.config.ts`
+from the repository root. Select unused API/database ports with the documented
+`TUHOC_E2E_API_PORT` and `TUHOC_E2E_DB_PORT` variables when other local stacks run.
+The dedicated config uses the same production build and seeded API as the full
+suite; it does not enable unpublished issues. Generic draft isolation remains
+covered by `StoryPage.test.tsx` and registry tests for future editions.
+
+The issue-02 input guard tests reject oversized paste/input without truncating
+the previous draft. Raw drafts are capped at 4,096 UTF-16 code units before
+segmentation/rendering; accepted messages still use the separate 120-grapheme /
+1,024-UTF-8-byte policy. The browser regression includes a 100,000-character edit,
+recovery and the maximum valid Unicode message, without using the real clipboard.
+
 ## Story artwork validation and required native conversion gate
 
 From `apps/web`, `bun run test` runs portable tests, including manifest,

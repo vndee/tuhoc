@@ -190,3 +190,104 @@ Fresh screenshots are under final-fix-browser-green/. Four loading directories r
 The worker's post-gate read-only check found the old reviewweb5174 listener absent while reviewAPI8098/DB55435 remained healthy; old session91180 was independently reported Unknownprocess by the controller, with cause not established. The controller restarted only its owned dev server at127.0.0.1:5174 with unchanged VITE_API_URL=http://localhost:8098: new PID84615/session46180. Controller-attributed fresh live smoke, controller-final-live-smoke.mjs, completed exit0: real catalog200, decoded cover, exactly1 dev import failure followed by Retry success, Back/reopen, prior receipt retained, literalWhitespacePreserved=true, synthetic session discarded by reload. The controller retained final-fix-live-cover.png and directly viewed fresh320VI original/320EN dark received text, EN coincident bypass steps and320dark cover captures. This is controller evidence, not another code-worker run. The code worker made no review-service changes. User web5179/API8099/DB55433 were preserved.
 
 Self-review found no additional correctness issue in this scoped wave. No artwork/publication flags, unrelated reader warnings, accepted layout or root checkout changed. Existing source-access limits and requested-entry-only Retry recovery limits remain. Evidence/art archives stay ignored, with no force-add, push, PR, merge or deploy.
+
+## Publication preparation — 06 September 2026
+
+The user approved publication after reviewing the local edition. This new section
+records release preparation, not a completed production deployment. The earlier
+draft-only statements above describe their historical gates.
+
+The feature branch now includes `origin/main` at `27b292f` through merge `f03589c`.
+The publication transition sets issue 02 to published/featured and keeps issue 01
+published. Public registry, landing and collection tests exercise the real metadata.
+All six issue-02 browser files move from the excluded draft directory into
+`e2e/across-the-noise/`. The dedicated `playwright.stories.config.ts` uses an ordinary
+production build, without a preview query or review-mode flag. Generic draft
+isolation tests remain for future issues. Three new unit cases cover HTTP, network
+and invalid-JSON failures of the content-free lab retry-map path.
+
+Fresh release verification:
+
+| Gate | Actual result |
+|---|---|
+| Full ordinary unit suite | 2,068 passed / 179 files, 49.28s; exit 0 |
+| Typecheck | exit 0 |
+| Required real native image conversion | 12 passed; exit 0 |
+| Full lint | exit 0; 41 existing warnings retained |
+| Initial normal-production Chrome matrix | 133 passed / 1 failed, 17.0m |
+| Corrected public-entry and original-edition Chrome suite | 24 passed, 46.9s; exit 0 |
+| Final build with production API origin | exit 0 |
+| Final static-entry graph and artifact audit | exit 0; 24 lab entries, 13 source and 26 derivative hashes |
+
+The single Chrome failure was an obsolete test selector: the collection now has
+two “Mở đặc san” links, but the original test expected one globally. The correction
+selects the original AI article by its title, then checks its visible CTA and exact
+destination. No application change or weakened assertion was used to clear it.
+The 110 issue-02 cases all passed in the first matrix; all 24 public-entry and AI
+regressions passed in the subsequent run. This is not a claim that one final
+134-case invocation passed. Both runs used the real seeded test API, installed
+Chrome, one worker and zero retries; only the owned test stack was torn down.
+
+Plan audit accounts for all 24 implementation tasks (12 DONE, 12 CHANGED under
+recorded amendments). Testing and maintainability review of the publication
+transition found no additional issues. A bounded red-team source review found no
+additional concrete privacy, injection, receipt or model finding; fixture payloads
+were reviewed as summaries rather than executed.
+
+One performance decision remains open: raw editor drafts are not bounded before
+Unicode segmentation and per-grapheme rendering. Pasting a very large string can
+stall the tab despite the accepted-message limit of 120 graphemes / 1,024 bytes.
+A proposed 4,096-UTF-16-code-unit raw-draft guard would preserve every valid message;
+the user has been asked whether to include it before release. That guard has not
+been implemented or counted as verified. The repository has no root VERSION or
+CHANGELOG; the choice between retaining commit/PR releases and introducing a version
+file is also awaiting the user. No PR, push, remote merge or deployment has occurred
+at this preparation gate.
+
+Production infrastructure was checked independently: GitHub's successful Pages
+check for main identifies project `tuhoc`; the existing web and API health endpoints
+respond successfully. The Pages GitHub integration handles deployment on merge.
+The local CLI's expired OAuth session is not evidence that automatic deployment is
+unavailable. No provider settings, credentials, production data or other user
+worktrees/services were changed.
+
+## Approved raw-draft guard and final release checks — 06 September 2026
+
+The user approved both pending preparation decisions: add the raw-draft guard and
+retain the repository's commit/PR release convention without introducing VERSION
+or CHANGELOG files. This supersedes the pending-decision status immediately above.
+
+Both original-message and shortened-draft editors now reject edits above 4,096
+UTF-16 code units before storing, segmenting or rendering them. Paste validation
+accounts for selected text; input/autofill is also checked. Rejection preserves the
+entire previous draft rather than truncating it, with localized visible feedback.
+The session reducer independently guards draft, shorten and direct commit actions.
+The accepted-message policy remains 120 graphemes / 1,024 UTF-8 bytes, so every
+valid message still fits. In-bound IME composition retains its prior behavior.
+
+Fresh verification after the production fix:
+
+| Gate | Actual result |
+|---|---|
+| Guard RED | 9 expected failures / 23 passes across 3 files |
+| Guard GREEN | 32 passed across the same 3 files |
+| Full ordinary suite | 2,080 passed / 179 files, 72.67s; exit 0 |
+| Typecheck and full lint | exit 0; 41 existing lint warnings retained |
+| Required real native conversion | 12 passed; exit 0 |
+| Affected normal-production Chrome suite | 40 passed, 2.2m; exit 0 |
+| Final production-origin build and static-entry graph | exit 0 |
+| Final paired map / artwork audit | 24 entries, 13 source and 26 derivative hashes; exit 0 |
+
+The 40 fresh browser checks include four 100,000-character input/paste rejection
+cases across mobile/desktop, VI/EN and light/dark, with recovery and an exact valid
+1,024-byte message; eight loading/performance cases; four privacy/lifecycle/Retry
+cases; and all 24 public-entry/original-AI regressions. These are fresh post-fix
+results. The earlier full 110-case issue-02 matrix remains prior evidence, not a
+second full matrix claimed after this fix. No test touches the user's real clipboard.
+
+A read-only independent review of the guard found no blockers and verified that
+it closes the reported unbounded segmentation/render path without excluding valid
+messages or changing in-bound IME semantics. The accepted artwork/layout, existing
+large-entry build warning and earlier source-access/recovery limitations remain.
+Production deployment is a separate subsequent gate, not established by these
+local checks.

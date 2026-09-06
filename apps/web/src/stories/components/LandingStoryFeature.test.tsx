@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { LanguageProvider } from '../../i18n/LanguageProvider';
 import type { StoryRegistryEntry } from '../types';
 import { LandingStoryFeature } from './LandingStoryFeature';
+import { storyRegistry } from '../content/registry';
 
 function makeEntry(overrides: Partial<StoryRegistryEntry> = {}): StoryRegistryEntry {
   return {
@@ -42,6 +43,11 @@ function renderFeature(entries: readonly StoryRegistryEntry[]) {
 }
 
 describe('LandingStoryFeature', () => {
+  it('opens the released communication edition from the real landing registry', () => {
+    renderFeature(storyRegistry);
+    expect(screen.getByRole('link', { name: 'Một lời nói đi qua đại dương' })).toHaveAttribute('href', '/stories/across-the-noise');
+    expect(screen.getByRole('link', { name: 'Mở đặc san' })).toHaveAttribute('href', '/stories/across-the-noise');
+  });
   it('shows exactly the featured published edition without loading its module', () => {
     const featured = makeEntry();
     const other = makeEntry({ slug: 'two', issueNumber: 2, featured: false, title: { vi: 'Số hai', en: 'Issue two' } });

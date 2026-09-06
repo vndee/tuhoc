@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { DeliveryReceipt } from '../labs/communication/types';
 import { createSession, reduceSession } from './model';
 
@@ -17,6 +17,25 @@ function makeReceipt(messageRevision = 0): DeliveryReceipt {
 }
 
 describe('message session model', () => {
+  it.each(['draft', 'shorten', 'commit'] as const)('rejects an oversized %s before segmentation and preserves the entire session', (type) => {
+    const initial = { ...createSession('Original'), deliveryReceipt: makeReceipt() };
+    const segmentation = vi.spyOn(Intl.Segmenter.prototype, 'segment');
+    try {
+      const result = reduceSession(initial, { type, text: 'x'.repeat(4097) });
+      expect(result).toBe(initial);
+      expect(segmentation).not.toHaveBeenCalled();
+    } finally {
+      segmentation.mockRestore();
+    }
+  });
+
+  it.each(['draft', 'shorten'] as const)('retains a %s at the raw safety boundary without truncation', (type) => {
+    const text = 'x'.repeat(4096);
+    const result = reduceSession(createSession('Original'), { type, text });
+    expect(result[type === 'draft' ? 'draftText' : 'shortenedDraft']).toBe(text);
+    expect(result.messageText).toBe('Original');
+  });
+
   it('creates a private journey from the exact example text', () => {
     expect(createSession('  Xin chào  ')).toEqual({
       messageText: '  Xin chào  ',

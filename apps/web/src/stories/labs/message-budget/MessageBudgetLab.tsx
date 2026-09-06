@@ -1,5 +1,7 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { useRequiredMessageJourney } from '../../session/StoryIssueSessionProvider';
+import { MAX_DRAFT_CODE_UNITS } from '../../session/model';
+import { communicationCopy } from '../communication/copy';
 import { CommunicationLabFrame } from '../communication/CommunicationLabFrame';
 import { MessageEditor } from '../communication/MessageEditor';
 import type { LabRuntimeProps } from '../runtime';
@@ -26,6 +28,9 @@ export default function MessageBudgetLab({
   const budget = readBudget(value, definition.config.defaultBudget);
   const comparison = compareDraft(state.messageText, state.shortenedDraft, budget);
   const [composing, setComposing] = useState(false);
+  const [rejectedEdit, setRejectedEdit] = useState(false);
+  const rejectionId = useId();
+  const rejection = !composing && rejectedEdit ? communicationCopy[lang].draftTooLong : null;
   const invalidShortened = !composing && !comparison.ok && comparison.error === 'ill-formed';
   const result = composing && !comparison.ok
     ? ''
@@ -49,8 +54,8 @@ export default function MessageBudgetLab({
     prediction={<p>{copy.prediction}</p>}
     observation={observation}
     explanation={<p>{copy.explanation}</p>}
-    result={result}
-    onReset={onReset}
+    result={rejection ?? result}
+    onReset={() => { setRejectedEdit(false); onReset(); }}
     onBack={onBack}
   >
     <MessageEditor lang={lang} />
@@ -65,12 +70,28 @@ export default function MessageBudgetLab({
     <label>{copy.shortenedDraft}
       <textarea
         value={state.shortenedDraft}
-        aria-invalid={invalidShortened ? true : undefined}
+        aria-invalid={invalidShortened || rejection !== null ? true : undefined}
+        aria-describedby={rejection === null ? undefined : rejectionId}
         onCompositionStart={() => setComposing(true)}
         onCompositionEnd={() => setComposing(false)}
-        onChange={(event) => dispatch({ type: 'shorten', text: event.currentTarget.value })}
+        onPaste={(event) => {
+          const input = event.currentTarget;
+          const nextLength = input.value.length - (input.selectionEnd - input.selectionStart)
+            + event.clipboardData.getData('text/plain').length;
+          if (nextLength > MAX_DRAFT_CODE_UNITS) {
+            event.preventDefault();
+            setRejectedEdit(true);
+          }
+        }}
+        onChange={(event) => {
+          const text = event.currentTarget.value;
+          const rejected = text.length > MAX_DRAFT_CODE_UNITS;
+          setRejectedEdit(rejected);
+          if (!rejected) dispatch({ type: 'shorten', text });
+        }}
       />
     </label>
+    {rejection === null ? null : <p id={rejectionId} role="alert">{rejection}</p>}
   </CommunicationLabFrame>;
 }
 

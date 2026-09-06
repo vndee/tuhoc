@@ -3,6 +3,10 @@ import type { DeliveryReceipt } from '../labs/communication/types';
 import type { SceneId } from '../types';
 import type { MessageSession, SessionAction } from './types';
 
+// A raw-edit safety ceiling, not the 120-grapheme / 1,024-byte message policy.
+// Every valid message fits; larger edits must not reach segmentation or rendering.
+export const MAX_DRAFT_CODE_UNITS = 4096;
+
 export function createSession(example: string): MessageSession {
   return {
     messageText: example,
@@ -36,8 +40,10 @@ function snapshotReceipt(receipt: DeliveryReceipt): DeliveryReceipt {
 export function reduceSession(state: MessageSession, action: SessionAction): MessageSession {
   switch (action.type) {
     case 'draft':
+      if (action.text.length > MAX_DRAFT_CODE_UNITS) return state;
       return { ...state, draftText: action.text };
     case 'commit': {
+      if (action.text.length > MAX_DRAFT_CODE_UNITS) return state;
       if (!inspectMessage(action.text).ok || action.text === state.messageText) return state;
       return {
         ...state,
@@ -47,6 +53,7 @@ export function reduceSession(state: MessageSession, action: SessionAction): Mes
       };
     }
     case 'shorten':
+      if (action.text.length > MAX_DRAFT_CODE_UNITS) return state;
       return { ...state, shortenedDraft: action.text };
     case 'lab':
       return {

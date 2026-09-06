@@ -4,8 +4,8 @@ import { noiseCover } from './cover';
 export const noiseMeta: StoryMeta = {
   slug: 'across-the-noise',
   issueNumber: 2,
-  published: false,
-  featured: false,
+  published: true,
+  featured: true,
   title: { vi: 'Một lời nói đi qua đại dương', en: 'Across the Noise' },
   deck: {
     vi: 'Có một người ở bên kia đại dương đang chờ câu trả lời của bạn. Từ dấu hiệu và dây cáp đến nén dữ liệu và sửa lỗi, điều gì giúp lời nói đến nơi — và điều gì vẫn nằm ngoài đường truyền?',
