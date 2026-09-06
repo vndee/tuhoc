@@ -205,14 +205,6 @@ export function Landing() {
                   {t('login.legal.privacy')}
                 </Link>
               </p>
-              {/*
-                CÂU KHAI DÙNG CHUNG `footer.blurb` VỚI CHÂN TRANG CHUNG, cố ý.
-
-                Landing không dựng `<Footer>` (nó là `authScreen`), nên nếu câu
-                này được viết riêng ở đây thì hai chỗ sẽ lệch nhau ngay lần đầu
-                ai đó sửa một trong hai. Một khoá, hai nơi dùng.
-              */}
-              <p className="bd-tray-note">{t('footer.blurb')}</p>
             </div>
           </div>
         </footer>

@@ -2273,7 +2273,11 @@ html[data-theme='dark'] .ai-turn-q {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  justify-content: space-between;
+  /* `flex-end`, không phải `space-between`: sau khi câu khai bị gỡ, chân trang
+     chỉ còn MỘT con, và `space-between` sẽ đẩy nó sang trái — tức hai liên kết
+     nhảy chỗ so với bản người dùng đang thấy, vì một lý do không liên quan gì
+     tới chúng. */
+  justify-content: flex-end;
   gap: 10px 24px;
   padding: 16px 30px 28px;
   border-top: 1px solid var(--rule);
@@ -2282,10 +2286,6 @@ html[data-theme='dark'] .ai-turn-q {
   color: var(--ink-3);
 }
 
-.site-footer-note {
-  margin: 0;
-  max-width: 58ch;
-}
 
 .site-footer-links {
   display: flex;

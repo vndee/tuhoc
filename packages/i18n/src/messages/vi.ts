@@ -644,7 +644,7 @@ export const vi = {
   'login.legal.privacy': 'Quyền riêng tư',
   'legal.updated': 'Cập nhật',
   'legal.browseCourses': 'Danh sách khoá học',
-  'footer.blurb': 'Dự án cộng đồng, phi lợi nhuận. Phần lớn nội dung do AI tạo ra — hãy tự kiểm chứng trước khi tin.',
+  'settings.legal.blurb': 'Dự án cộng đồng, phi lợi nhuận. Phần lớn nội dung do AI tạo ra — hãy tự kiểm chứng trước khi tin.',
   'footer.nav': 'Liên kết pháp lý',
   'settings.legal.title': 'Về dự án',
   'login.field.name': 'Tên',
