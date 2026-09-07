@@ -12,13 +12,13 @@ import { StoryCourseLink } from './StoryCourseLink';
 import { catalogQueryKey } from '../../api/catalog';
 
 const action: NonNullable<StoryDefinition['courseAction']> = {
-  slug: '***REMOVED***',
-  label: { vi: 'Học tiếp ***REMOVED***', en: 'Continue with Information Theory' },
+  slug: 'tri-tue-tap-the',
+  label: { vi: 'Học tiếp Trí tuệ tập thể', en: 'Continue with Collective Intelligence' },
   fallbackLabel: { vi: 'Khám phá các khoá học', en: 'Explore the courses' },
 };
 
 const course = {
-  slug: '***REMOVED***', title: '***REMOVED***', lang: 'vi', description: 'Khoá học thật', version: 1,
+  slug: 'tri-tue-tap-the', title: 'Trí tuệ tập thể', lang: 'vi', description: 'Khoá học thật', version: 1,
 };
 
 const server = setupServer();
@@ -47,7 +47,7 @@ describe('StoryCourseLink', () => {
 
     await waitFor(() => expect(client.getQueryState(catalogQueryKey())?.status).toBe('success'));
 
-    expect(await screen.findByRole('link', { name: action.label.vi })).toHaveAttribute('href', '/c/***REMOVED***');
+    expect(await screen.findByRole('link', { name: action.label.vi })).toHaveAttribute('href', '/c/tri-tue-tap-the');
   });
 
   it.each([
@@ -73,8 +73,8 @@ describe('StoryCourseLink', () => {
     server.use(http.get('/courses', () => HttpResponse.json([course])));
     renderLink('en');
 
-    const link = await screen.findByRole('link', { name: 'Continue with Information Theory' });
-    expect(link).toHaveAttribute('href', '/c/***REMOVED***');
+    const link = await screen.findByRole('link', { name: 'Continue with Collective Intelligence' });
+    expect(link).toHaveAttribute('href', '/c/tri-tue-tap-the');
     expect(link).not.toHaveTextContent(/English edition/i);
   });
 });

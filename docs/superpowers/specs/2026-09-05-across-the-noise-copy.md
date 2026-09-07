@@ -510,7 +510,7 @@ Bạn có thể quay lại bất kỳ bàn thử nào, thay một giả định 
 
 You can return to any experiment, change an assumption and see what follows. To explore probability, entropy and communication limits more deeply, continue into a structured course.
 
-**Course CTA VI:** Học tiếp ***REMOVED***
+**Course CTA VI:** *(đã gỡ)*
 
 **Course CTA EN:** Continue with Information Theory
 
@@ -522,7 +522,7 @@ You can return to any experiment, change an assumption and see what follows. To 
 
 **Collection CTA EN:** Back to all special editions
 
-CTA khoá chỉ hiện khi catalog thực có `***REMOVED***`. Không suy ra khoá đã có bản tiếng Anh từ việc giao diện CTA là tiếng Anh.
+CTA khoá chỉ hiện khi catalog thực có khoá được khai báo. *(CTA khoá đã được gỡ khỏi bản đặc biệt trước khi repo mở công khai — nó trỏ tới một khoá riêng tư, tức một liên kết chết với công chúng; xem `docs/publishing.md`.)* Không suy ra khoá đã có bản tiếng Anh từ việc giao diện CTA là tiếng Anh.
 
 ## Copy công khai về mô hình và dữ liệu
 

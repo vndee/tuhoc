@@ -14,8 +14,6 @@ describe('Across the Noise authored copy', () => {
       expect(issueCopy.deck[lang].trim()).not.toBe('');
       expect(issueCopy.intro[lang]).toHaveLength(2);
       expect(issueCopy.coda[lang]).toHaveLength(2);
-      expect(issueCopy.courseAction.label[lang].trim()).not.toBe('');
-      expect(issueCopy.courseAction.fallbackLabel[lang].trim()).not.toBe('');
       for (const act of issueCopy.acts) {
         expect(act.title[lang].trim()).not.toBe('');
         expect(act.question[lang].trim()).not.toBe('');
@@ -33,6 +31,5 @@ describe('Across the Noise authored copy', () => {
       }
     }
     expect(Object.keys(issueCopy.imageText)).toHaveLength(13);
-    expect(issueCopy.courseAction.slug).toBe('***REMOVED***');
   });
 });

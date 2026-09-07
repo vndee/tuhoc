@@ -77,7 +77,6 @@ describe('Across the Noise static content', () => {
     story.acts = issueCopy.acts;
     story.intro = issueCopy.intro;
     story.coda = issueCopy.coda;
-    story.courseAction = issueCopy.courseAction;
     story.scenes.forEach((scene, index) => {
       const id = issueCopy.acts.flatMap(act => act.sceneIds)[index];
       story.provenance.find(record => record.sceneId === scene.id)!.sceneId = id;
