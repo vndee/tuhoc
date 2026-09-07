@@ -28,7 +28,7 @@ liệu test mặc định: một bản clone mới có chúng, nên `make test-w
 `make test-format`, `make test-cli` và `make test-e2e` xanh trọn vẹn ngay lần
 chạy đầu tiên, không cần ai đưa cho thứ gì.
 
-**Nguồn 2 — kho NGOÀI cây git**, mặc định `~/Documents/claude/tuhoc-courses`,
+**Nguồn 2 — kho NGOÀI cây git**, mặc định `../tuhoc-courses` cạnh repo này,
 đổi được bằng `TUHOC_COURSE_STORE`. Đây là chỗ giáo trình riêng tư sống sau
 task 11. Không có kho thì **không phải lỗi**: người vừa clone repo không có gói
 riêng của ai cả, và đó là trạng thái đúng.
@@ -52,13 +52,39 @@ import json
 import os
 import pathlib
 import shutil
+import subprocess
 import sys
 import zipfile
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 COURSES_DIR = REPO_ROOT / "courses"
 FIXTURES_DIR = REPO_ROOT / "fixtures" / "courses"
-DEFAULT_STORE = "~/Documents/claude/tuhoc-courses"
+def default_store() -> str:
+    """`../tuhoc-courses` — cạnh **bản checkout chính**, không cạnh script.
+
+    Từng viết cứng một đường dẫn tuyệt đối trong thư mục nhà của tác giả — thứ
+    không được đi cùng một repo công khai.
+
+    Phép tính "thư mục cha của gốc repo" là phép đúng ở bản chính và SAI trong
+    worktree phụ: ở `.claude/worktrees/x/scripts/` nó trỏ tới
+    `.claude/worktrees/tuhoc-courses`, một chỗ không bao giờ có gì — và hậu quả
+    là im lặng, vì thiếu kho thì cả hai script chỉ bỏ qua gói riêng chứ không
+    báo lỗi. `--git-common-dir` trả về `.git` của bản chính từ MỌI worktree,
+    nên nó là mỏ neo đúng. Không có git thì lui về cách tính cũ.
+    """
+    here = pathlib.Path(__file__).resolve().parent
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=here, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        root = pathlib.Path(out).parent
+    except (OSError, subprocess.SubprocessError):
+        root = here.parent
+    return str(root.parent / "tuhoc-courses")
+
+
+DEFAULT_STORE = default_store()
 MANIFEST = "manifest.json"
 
 

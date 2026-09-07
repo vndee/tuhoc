@@ -64,7 +64,7 @@ function renderStory(
 function renderStoryWithCatalog(story: StoryDefinition) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   client.setQueryData(catalogQueryKey(), [{
-    slug: '***REMOVED***', title: '***REMOVED***', lang: 'vi', description: 'Course', version: 1,
+    slug: 'tri-tue-tap-the', title: 'Trí tuệ tập thể', lang: 'vi', description: 'Course', version: 1,
   }]);
   return render(
     <QueryClientProvider client={client}>
@@ -680,15 +680,15 @@ describe('StoryRenderer', () => {
   it('renders the optional catalog-backed course action in the coda', () => {
     const story = makeStoryFixture({ sceneCount: 12 });
     story.courseAction = {
-      slug: '***REMOVED***',
-      label: { vi: 'Học tiếp ***REMOVED***', en: 'Continue with Information Theory' },
+      slug: 'tri-tue-tap-the',
+      label: { vi: 'Học tiếp Trí tuệ tập thể', en: 'Continue with Collective Intelligence' },
       fallbackLabel: { vi: 'Khám phá các khoá học', en: 'Explore the courses' },
     };
     renderStoryWithCatalog(story);
 
     const coda = screen.getByRole('heading', { name: 'Vĩ thanh' }).closest('section')!;
-    expect(within(coda).getByRole('link', { name: 'Học tiếp ***REMOVED***' })).toHaveAttribute(
-      'href', '/c/***REMOVED***',
+    expect(within(coda).getByRole('link', { name: 'Học tiếp Trí tuệ tập thể' })).toHaveAttribute(
+      'href', '/c/tri-tue-tap-the',
     );
   });
 
@@ -698,7 +698,7 @@ describe('StoryRenderer', () => {
 
     expect(() => renderStory(story)).not.toThrow();
     expect(screen.getByText('Kết thúc bằng tiếng Việt.')).toBeVisible();
-    expect(screen.queryByRole('link', { name: /***REMOVED***/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Trí tuệ tập thể/i })).not.toBeInTheDocument();
   });
 
   it('uses replace-only shell scene links without moving focus', () => {

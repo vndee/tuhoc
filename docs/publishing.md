@@ -8,27 +8,39 @@ Tài liệu này là quy trình đó, và nay cũng là biên bản của lần 
 > **Trạng thái (28/08/2026): CẢ HAI PHẦN ĐÃ XONG.** Phần 1 xong ở task 11. Phần 2
 > chạy ngay trước khi repo có remote đầu tiên (`github.com/vndee/tuhoc`, private).
 > Đo sau khi chạy: object dưới `courses/` **61 → 0**, commit chạm `courses/`
-> **4 → 0**, commit chứa `***REMOVED***` **46 → 0**, chứa
-> `***REMOVED***` **25 → 0**, và bản clone `--mirror` câm cả ba phép đo.
+> **4 → 0**, commit chứa **id** khoá riêng **46 → 0**, chứa **tên hiển thị** của
+> nó **25 → 0**, và bản clone `--mirror` câm cả ba phép đo.
 > 342 commit giữ nguyên số lượng — không commit nào bị xoá, chỉ đổi mã.
 >
 > Tài liệu **không** bị hạ xuống thành ghi chép lịch sử: nếu có course riêng thứ
 > hai lọt vào, đây vẫn là quy trình phải chạy lại — và §2.2b, §2.7, §2.8 là
 > những chỗ đã làm hỏng công thức này ba lần.
 
+> **Quy ước tên trong tài liệu này.** Repo đã mở công khai, nên tài liệu không
+> nêu tên khoá riêng nào nữa — nêu ra ở đây thì chính tài liệu này trở thành thứ
+> mà bốn phép đo của `make check-publish` đang đi tìm. Trong mọi lệnh bên dưới,
+> `$RIENG` là **id** khoá riêng và `$RIENG_TEN` là **tên hiển thị**. Danh sách
+> thật nằm ngoài cây git, tại `$TUHOC_COURSE_STORE/private-markers.txt` — cùng
+> chỗ với chính gói riêng, và là đúng tệp mà phép 4 đọc. Đặt hai biến trước khi
+> chép bất kỳ khối lệnh nào:
+>
+> ```bash
+> export RIENG=<id-khoá-riêng> RIENG_TEN="<Tên hiển thị>"
+> ```
+
 ---
 
 ## 0. Cái gì riêng tư, và vì sao xoá sau không cứu được
 
-`courses/***REMOVED***/` — 46 tệp, 1,3 MB thô — là giáo trình **Lý thuyết
-Thông tin** của tác giả. Nó riêng tư. Nó không bao giờ được publish.
+`courses/$RIENG/` — 46 tệp, 1,3 MB thô — là một giáo trình riêng của tác giả.
+Nó riêng tư. Nó không bao giờ được publish.
 
 Nó đã được commit vào chính repo sắp publish (spec §2B.1). Xoá nó ở một commit
 mới **không giải quyết gì**: git giữ toàn bộ lịch sử, và ai clone repo công khai
 cũng lấy lại được đủ 46 tệp bằng một lệnh:
 
 ```bash
-git show fd49d89:courses/***REMOVED***/chapters/p1-5.html   # vẫn đọc được sau khi xoá
+git show fd49d89:courses/$RIENG/chapters/p1-5.html   # vẫn đọc được sau khi xoá
 ```
 
 Nên phần 2 tồn tại. `git rm` là điều kiện cần, không phải điều kiện đủ.
@@ -44,7 +56,7 @@ nó hỏng, nó hỏng ngay trên dữ liệu ta quan tâm nhất.
 
 ### 1.1 Kho gói
 
-Ngoài cây git. Mặc định `~/Documents/claude/tuhoc-courses/`, đổi bằng biến môi
+Ngoài cây git. Mặc định `../tuhoc-courses/`, đổi bằng biến môi
 trường `TUHOC_COURSE_STORE`. Trong đó là các tệp `.zip` do `tuhoc pack` ghi.
 
 **Kho này không được nằm trong bất kỳ repo nào sẽ publish.** Nó cũng không được
@@ -131,12 +143,12 @@ quả của phép 4 ở `make check-publish` — một hằng số trỏ vào gi
 đi cùng mã ra công khai.
 
 ```bash
-export TUHOC_V1_SOURCE=~/Documents/claude/Research/***REMOVED***.html
+export TUHOC_V1_SOURCE="$TUHOC_V1_SOURCE"
 python3 tools/extract.py --out . \
-  --id ***REMOVED*** \
-  --title "***REMOVED***" \
+  --id $RIENG \
+  --title "$RIENG_TEN" \
   --description "Từ tiên đề Shannon đến định lượng bất định trong LLM"
-#                                              → courses/***REMOVED***/
+#                                              → courses/$RIENG/
 ```
 
 Cùng biến môi trường ấy mở khoá `make test-extract`; không đặt nó thì cả tệp
@@ -165,8 +177,8 @@ một script bóc chữ không có tư cách đoán hộ. Điền tay rồi pack
 ```
 
 ```bash
-bun tools/tuhoc-cli/src/index.ts pack courses/***REMOVED*** \
-  -o ~/Documents/claude/tuhoc-courses/***REMOVED***-1.0.0.zip
+bun tools/tuhoc-cli/src/index.ts pack courses/$RIENG \
+  -o ../tuhoc-courses/$RIENG-1.0.0.zip
 ```
 
 `license` **không phải** một giấy phép mở. Trường này là chuỗi tự do
@@ -230,7 +242,7 @@ Bảy chỗ, tại thời điểm task 11:
 Hai điều về bảng này:
 
 - **Dòng cuối không cần sửa.** `f782323` và tag `v1-single-file` thuộc repo
-  `~/Documents/claude/Research`, không bị đụng tới. Đưa vào bảng vì grep bắt nó,
+  `<kho-nguồn-riêng>`, không bị đụng tới. Đưa vào bảng vì grep bắt nó,
   và vì "sửa nhầm một mã đúng" cũng là một cách hỏng.
 - **Sáu dòng còn lại là chú thích, không phải mã chạy.** Không có test nào đỏ nếu
   chúng sai. Đó chính là lý do phải lập danh sách trước: sai ở đây **im lặng**.
@@ -291,7 +303,7 @@ truy cập được, đúng thứ nguy hiểm ở đây).
 
 ```bash
 # 0) Bản sao dự phòng, TRƯỚC KHI làm gì — đây là thao tác khó đảo ngược.
-cp -a ~/Documents/claude/tuhoc ~/Documents/claude/tuhoc-backup-$(date +%Y%m%d-%H%M%S)
+cp -a <repo> ../tuhoc-backup-$(date +%Y%m%d-%H%M%S)
 
 # 1) Mọi worktree agent phải gỡ trước: filter-repo từ chối chạy khi có worktree
 #    phụ, và nếu ép chạy thì các nhánh worktree sẽ trỏ vào lịch sử cũ.
@@ -314,7 +326,7 @@ git gc --prune=now --aggressive
 ```bash
 git rev-list --objects --all -- courses/ | wc -l     # 59 lúc viết
 git log --all --oneline -- courses/ | wc -l          # 3
-git show fd49d89:courses/***REMOVED***/chapters/p1-5.html | head -1   # in ra HTML
+git show fd49d89:courses/$RIENG/chapters/p1-5.html | head -1   # in ra HTML
 ```
 
 **Sau** (cả ba phải câm):
@@ -322,7 +334,7 @@ git show fd49d89:courses/***REMOVED***/chapters/p1-5.html | head -1   # in ra HT
 ```bash
 git rev-list --objects --all -- courses/ | wc -l     # phải là 0
 git log --all --oneline -- courses/ | wc -l          # phải là 0
-git grep -I --all-match -l "***REMOVED***" $(git rev-list --all) -- courses/ ; echo "exit=$?"  # phải rỗng
+git grep -I --all-match -l "$RIENG" $(git rev-list --all) -- courses/ ; echo "exit=$?"  # phải rỗng
 git count-objects -vH                                 # size-pack phải giảm rõ
 ```
 
@@ -330,8 +342,8 @@ Và một phép đo cuối, thô nhưng đúng loại: clone repo đã viết l�
 trống rồi tìm bất kỳ chương nào.
 
 ```bash
-git clone --mirror ~/Documents/claude/tuhoc /tmp/tuhoc-check.git
-cd /tmp/tuhoc-check.git && git rev-list --objects --all | grep -c "***REMOVED***"   # phải là 0
+git clone --mirror <repo> /tmp/tuhoc-check.git
+cd /tmp/tuhoc-check.git && git rev-list --objects --all | grep -c "$RIENG"   # phải là 0
 ```
 
 Đây là phép đo đúng vì nó hỏi **đúng câu người ngoài sẽ hỏi**: một bản clone có
@@ -355,12 +367,10 @@ nằm trong pack.
 
 - **Bản sao đã phát tán.** Nếu repo đã từng được đẩy đi đâu, viết lại ở đây không
   chạm tới đó. Khi chạy thật (28/08/2026) repo **chưa có remote nào** — đó chính
-  là lý do thứ tự là viết-lại-trước-rồi-mới-`git remote add`. Từ nay điều kiện ấy
-  không còn đúng: một lần viết lại nữa sẽ phải force-push, và GitHub còn giữ
-  object mồ côi truy cập được bằng mã một thời gian sau đó.
+  là lý do thứ tự là viết-lại-trước-rồi-mới-`git remote add`.
 - **Bản dự phòng ở bước 0.** Nó có đầy đủ giáo trình. Đó là chủ đích — nhưng nó
   không được lẫn vào thứ gì sẽ publish.
-- **Cái ngoài git.** `~/Documents/claude/Research/***REMOVED***.html` (bản
+- **Cái ngoài git.** Bản nguồn v1 một-tệp mà `$TUHOC_V1_SOURCE` trỏ tới (bản
   v1 một-tệp) và kho `.zip` ở §1.1 vẫn còn, và phải còn.
 
 ### 2.7 `filter-repo --path courses/` KHÔNG đủ — bốn đường rò, ba sống sót
@@ -411,8 +421,8 @@ build lại. Đó là lý do nó vẫn không phải một no-op.
 
 **Đường 3 là đường khó nhất, vì nó không mang tên course.**
 `.claude/skills/course-authoring/SKILL.md` từng chép 714 ký tự văn xuôi kèm số
-chương. Không một phép quét theo tên nào bắt được: đoạn văn ấy không chứa
-`***REMOVED***` cũng không chứa tên course. Phép đo bắt được nó dùng
+chương. Không một phép quét theo tên nào bắt được: đoạn văn ấy không chứa id
+khoá riêng cũng không chứa tên course. Phép đo bắt được nó dùng
 **chính gói riêng làm máy đối chiếu**: bung gói ra, băm văn bản chương thành
 chuỗi 12 từ, rồi tìm trong mọi tệp được theo dõi. Nó chỉ chạy được trên máy CÓ
 gói riêng — nghĩa là trên máy tác giả, đúng chỗ và đúng người cần nó chạy.
@@ -435,13 +445,13 @@ mã, test và tài liệu (2026-08-22) — nhưng mỗi lần dọn là một co
 trước khi dọn vẫn nằm nguyên trong lịch sử**, ở ngoài `courses/`:
 
 ```bash
-git log -S "***REMOVED***" --oneline --all | wc -l   # phải là 0 sau khi viết lại
+git log -S "$RIENG" --oneline --all | wc -l   # phải là 0 sau khi viết lại
 ```
 
 `git filter-repo --invert-paths --path courses/` ở §2.3 **không chạm tới chúng**
 — cùng đúng cái lý do đã làm hỏng công thức ấy ba lần ở §2.7: bộ lọc theo đường
 dẫn chỉ thấy đường dẫn. `apps/web/src/test/Dashboard.test.tsx` không nằm dưới
-`courses/`, nên bản cũ của nó — có nguyên `id: '***REMOVED***'` — đi qua
+`courses/`, nên bản cũ của nó — có nguyên `id: '$RIENG'` — đi qua
 bộ lọc không suy suyển.
 
 Và phép kiểm "sau" ở §2.4 **không bắt được**: hai lệnh đầu giới hạn ở

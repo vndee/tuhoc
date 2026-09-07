@@ -156,7 +156,7 @@ Lưu ý test hiện tại của Số 01 so sánh lab của riêng số đó vớ
 
 Trong quá trình triển khai, metadata mới `published:false`, `featured:false`. Không hiện “sắp ra mắt” để lấp shelf. Khi được phép phát hành: Số 02 `published:true, featured:true`, Số 01 vẫn published nhưng `featured:false`; luôn đúng một featured. Không push hoặc deploy các cờ này trong bước thiết kế.
 
-Route collection tiếp tục sort số mới trước, giữ Số 01. Route/slug/hash không đổi theo ngôn ngữ. CTA cuối số tìm `***REMOVED***` từ catalog thực; có thì link `/c/***REMOVED***`, không có hoặc API lỗi thì dùng `/courses`, không hứa một khoá không tồn tại.
+Route collection tiếp tục sort số mới trước, giữ Số 01. Route/slug/hash không đổi theo ngôn ngữ. CTA cuối số tìm khoá được khai báo từ catalog thực; có thì link `/c/<slug>`, không có hoặc API lỗi thì dùng `/courses`, không hứa một khoá không tồn tại. *(CTA khoá đã được gỡ khỏi bản đặc biệt trước khi repo mở công khai — nó trỏ tới một khoá riêng tư, tức một liên kết chết với công chúng; xem `docs/publishing.md`.)*
 
 ## 6. Nguồn và phạm vi hỗ trợ
 

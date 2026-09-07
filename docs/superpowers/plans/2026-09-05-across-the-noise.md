@@ -36,9 +36,9 @@
 
 ## Working directory, execution and review boundaries
 
-Use `/Users/vndee/Documents/claude/tuhoc/.worktrees/dac-san`, branch `codex/across-the-noise-design`, based on production `1379d2d`, design commit `4ab8a88`. Preserve the root checkout and unrelated worktrees. Inspect current git status before editing; do not recreate or reset this worktree.
+Use `<repo>/.worktrees/dac-san`, branch `codex/across-the-noise-design`, based on production `1379d2d`, design commit `4ab8a88`. Preserve the root checkout and unrelated worktrees. Inspect current git status before editing; do not recreate or reset this worktree.
 
-All paths below are relative to that worktree. Shell commands for tests run from `apps/web`; git commands run from worktree root. Bun is `/Users/vndee/.bun/bin/bun`; use `./node_modules/.bin/playwright` for Playwright. Read repository instructions again at execution time; `AGENTS.md` references `RTK.md`, which was not present during planning. If it becomes available, read it before work.
+All paths below are relative to that worktree. Shell commands for tests run from `apps/web`; git commands run from worktree root. Bun is `bun`; use `./node_modules/.bin/playwright` for Playwright. Read repository instructions again at execution time; `AGENTS.md` references `RTK.md`, which was not present during planning. If it becomes available, read it before work.
 
 Use TDD and verification-before-completion skills during execution. Each numbered task is one reviewable deliverable; each checkbox is an action. Expand a longer algorithm into short edits following its numbered substeps, not a single unreviewed bulk rewrite. Commit only the explicit task paths after green checks. Do not mark planned tests as executed.
 
@@ -146,7 +146,7 @@ expect(validateStory(story)).toContainEqual(expect.objectContaining({
 }));
 ```
 
-- [ ] Run `/Users/vndee/.bun/bin/bun run test src/stories/validateStory.test.ts`; expect failure because optional fields are not validated yet.
+- [ ] Run `bun run test src/stories/validateStory.test.ts`; expect failure because optional fields are not validated yet.
 - [ ] Add the declarations and invoke existing localized text/block validators only when fields exist. Add `invalid-fallback-table` and `invalid-story-interaction` issue codes for structural failures; reject empty/invalid example input under Task02's validator when available, without validating via React.
 - [ ] Replace the AI story's global-registry equality assertion with exact set equality for its original twelve kinds AND membership in `REGISTERED_LAB_KINDS`. Keep scene counts, source coverage and word-count assertions.
 
@@ -714,7 +714,7 @@ const entry=resolveStoryEntry(slug,allowDrafts);
 ```
 
 - [ ] Test normal production mode ignores preview query and doesn't invoke draft loader. Preview is a local review convenience, not a secrecy/auth boundary: bundled draft assets are not private documents. Add visible VI/EN draft banner and `noindex` for draft pages with cleanup on route exit; public route/canonical slug stay stable.
-- [ ] Renderer outputs optional intro before cover and optional StoryCourseLink in coda, only when declared. Existing AI fixture without these fields must not need a QueryClient or change markup unexpectedly. CTA uses real catalog match `***REMOVED***`; loading/missing/error leads to `/courses`; present leads to `/c/***REMOVED***`. EN label never claims the course has an English edition.
+- [ ] Renderer outputs optional intro before cover and optional StoryCourseLink in coda, only when declared. Existing AI fixture without these fields must not need a QueryClient or change markup unexpectedly. CTA uses a real catalog match for the declared slug; loading/missing/error leads to `/courses`; present leads to `/c/<slug>`. *(CTA khoá đã được gỡ khỏi bản đặc biệt trước khi repo mở công khai — nó trỏ tới một khoá riêng tư, tức một liên kết chết với công chúng; xem `docs/publishing.md`.)* EN label never claims the course has an English edition.
 
 ```ts
 const catalog=useQuery({queryKey:catalogQueryKey(),queryFn:fetchCatalog,retry:false});
@@ -807,15 +807,15 @@ for(const token of [sentinel,encodeURIComponent(sentinel)]) {
 
 ```bash
 # From apps/web; existing configured API must be reachable for catalog/reader smoke.
-/Users/vndee/.bun/bin/bun run typecheck
-/Users/vndee/.bun/bin/bun run lint
-/Users/vndee/.bun/bin/bun run test
-/Users/vndee/.bun/bin/bun run build
-/Users/vndee/.bun/bin/bun run check:stories-bundle
+bun run typecheck
+bun run lint
+bun run test
+bun run build
+bun run check:stories-bundle
 ./node_modules/.bin/playwright test e2e/stories.spec.ts
 ./node_modules/.bin/playwright test --config playwright.stories-draft.config.ts
-/Users/vndee/.bun/bin/bun run build
-/Users/vndee/.bun/bin/bun run check:stories-bundle
+bun run build
+bun run check:stories-bundle
 ./node_modules/.bin/playwright test e2e/stories-draft-exclusion.spec.ts
 ```
 

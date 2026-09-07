@@ -1,0 +1,49 @@
+name: Bug report
+description: Something in the platform behaves incorrectly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The single most useful thing you can give us is **the input and the
+        wrong output**. Everything else is context.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead.
+      placeholder: |
+        I opened chapter 3 of course X and clicked "next".
+        Expected: chapter 4. Got: a blank page and a console error.
+    validations: {required: true}
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: Numbered steps, starting from a fresh page load if you can.
+    validations: {required: true}
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did you see it
+      options:
+        - tuhoc.duy.dev (the live site)
+        - A local checkout
+        - Both
+    validations: {required: true}
+  - type: input
+    id: version
+    attributes:
+      label: Commit or date
+      description: For a local checkout, `git rev-parse --short HEAD`. For the live site, roughly when you saw it.
+  - type: textarea
+    id: environment
+    attributes:
+      label: Browser and OS
+      placeholder: Firefox 128 on Ubuntu 24.04
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console or server output
+      description: Paste any errors. This is automatically formatted as code.
+      render: shell

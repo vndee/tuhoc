@@ -89,6 +89,5 @@ describe('Across the Noise assembled edition', () => {
     });
     expect(story.intro).toBe(issueCopy.intro);
     expect(story.coda).toBe(issueCopy.coda);
-    expect(story.courseAction).toBe(issueCopy.courseAction);
   });
 });

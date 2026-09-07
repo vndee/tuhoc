@@ -59,7 +59,6 @@ export const noiseStory: StoryDefinition = {
   sources: noiseSources,
   provenance,
   coda: issueCopy.coda,
-  courseAction: issueCopy.courseAction,
 };
 
 assertValidStory(noiseStory, REGISTERED_LAB_KINDS);

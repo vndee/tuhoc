@@ -24,6 +24,9 @@ it('provides three distinct original plates and six dimensioned exports with act
     expect(Array.isArray(entry.edits)).toBe(true);
     expect(entry.edits.every((edit: unknown) => typeof edit === 'string' && edit.trim().length > 0)).toBe(true);
     // Actual tool paths are provenance, not a dependency on this author's machine.
+    // The home-directory root was redacted to `/art-archive/…` when this repo went
+    // public; the generation ids and `sourceSha256` — the parts that actually
+    // identify and verify a plate — are untouched.
     expect(path.isAbsolute(entry.sourceOutput)).toBe(true);
     expect(entry.sourceSha256).toMatch(/^[a-f0-9]{64}$/);
     originals.push(entry.sourceSha256);

@@ -1,7 +1,7 @@
 [
   {
     "sceneId": "cover",
-    "sourceOutput": "/Users/vndee/.codex/generated_images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-eedd7c77-c5b2-479a-a8a0-f48695256735.png",
+    "sourceOutput": "/art-archive/codex/generated-images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-eedd7c77-c5b2-479a-a8a0-f48695256735.png",
     "createdAt": "2026-09-05T19:27:12Z",
     "tool": "image_gen.imagegen (built-in)",
     "model": "not reported by tool",
@@ -9,12 +9,12 @@
     "edits": [],
     "license": "Project-generated; license not reported by tool. Internal provenance category, not an exclusivity guarantee.",
     "createdAtBasis": "UTC observation immediately after tool completion via clock.curr_time; generation timestamp not reported by tool.",
-    "archivedSourceOutput": "/Users/vndee/Documents/claude/tuhoc/.worktrees/dac-san/.superpowers/sdd/2026-09-05-across-the-noise/art-originals/cover.png",
+    "archivedSourceOutput": "/art-archive/across-the-noise/art-originals/cover.png",
     "sourceSha256": "cd303cb54ce5ff28599df21b44e4fee838f32bd90758de96e82bd7b1e74f90b6"
   },
   {
     "sceneId": "scene-01",
-    "sourceOutput": "/Users/vndee/.codex/generated_images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-b2a60668-bd1e-4429-8064-15f0b01946ae.png",
+    "sourceOutput": "/art-archive/codex/generated-images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-b2a60668-bd1e-4429-8064-15f0b01946ae.png",
     "createdAt": "2026-09-05T19:28:28Z",
     "tool": "image_gen.imagegen (built-in)",
     "model": "not reported by tool",
@@ -22,12 +22,12 @@
     "edits": [],
     "license": "Project-generated; license not reported by tool. Internal provenance category, not an exclusivity guarantee.",
     "createdAtBasis": "UTC observation immediately after tool completion via clock.curr_time; generation timestamp not reported by tool.",
-    "archivedSourceOutput": "/Users/vndee/Documents/claude/tuhoc/.worktrees/dac-san/.superpowers/sdd/2026-09-05-across-the-noise/art-originals/scene-01.png",
+    "archivedSourceOutput": "/art-archive/across-the-noise/art-originals/scene-01.png",
     "sourceSha256": "227de56d5a1564ca44dffc3fea596c4a941f15217819911c410ee6d7c6035eea"
   },
   {
     "sceneId": "scene-12",
-    "sourceOutput": "/Users/vndee/.codex/generated_images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-41ebe731-8eb8-458c-9e67-6f011981d0ff.png",
+    "sourceOutput": "/art-archive/codex/generated-images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-41ebe731-8eb8-458c-9e67-6f011981d0ff.png",
     "createdAt": "2026-09-05T19:29:41Z",
     "tool": "image_gen.imagegen (built-in)",
     "model": "not reported by tool",
@@ -37,19 +37,19 @@
     ],
     "license": "Project-generated; license not reported by tool. Internal provenance category, not an exclusivity guarantee.",
     "createdAtBasis": "UTC observation immediately after initial generation via clock.curr_time; generation timestamp not reported by tool.",
-    "referenceSourceOutput": "/Users/vndee/.codex/generated_images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-b2a60668-bd1e-4429-8064-15f0b01946ae.png",
+    "referenceSourceOutput": "/art-archive/codex/generated-images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-b2a60668-bd1e-4429-8064-15f0b01946ae.png",
     "editRecords": [
       {
         "observedAt": "2026-09-05T19:30:41Z",
         "observationBasis": "clock.curr_time immediately after edit completion; tool did not report an edit timestamp.",
         "tool": "image_gen.imagegen (built-in)",
         "model": "not reported by tool",
-        "input": "/Users/vndee/.codex/generated_images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-61742827-8259-4e0e-93b3-a23dc74fb272.png",
-        "output": "/Users/vndee/.codex/generated_images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-41ebe731-8eb8-458c-9e67-6f011981d0ff.png",
+        "input": "/art-archive/codex/generated-images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-61742827-8259-4e0e-93b3-a23dc74fb272.png",
+        "output": "/art-archive/codex/generated-images/01a07307-d5a2-7250-a8e7-56c7fdfa9adc/exec-41ebe731-8eb8-458c-9e67-6f011981d0ff.png",
         "prompt": "Use case: precise-object-edit\nInput image: Image 1 is the edit target, original scene12 receiving-room illustration.\nChange only the left-wall props: remove the hanging coat, wall shelf and its objects, and remove the floor chest and the lantern on top of it. Restore plain softly textured warm plaster wall and simple floorboards in those areas, keeping the same watercolor/graphite/engraved paper texture and illumination. These props belonged to the sender's room and should not be present in this receiver's room.\nPreserve all other elements exactly: new receiver-side viewpoint, same blue-clad adult seen mostly from behind with pinned bun, ladder-back chair, four-pane coastal window, rocky sea view, wooden table, small copper lamp on tabletop by window, blank cream paper and their positions. Keep the gentle warm light, 3:2 horizontal composition at1536x1024, quiet expression and material weight. No text, numbers, labels, diagrams, watermark or decorative thread. This is a targeted continuity correction, not a new composition."
       }
     ],
-    "archivedSourceOutput": "/Users/vndee/Documents/claude/tuhoc/.worktrees/dac-san/.superpowers/sdd/2026-09-05-across-the-noise/art-originals/scene-12.png",
+    "archivedSourceOutput": "/art-archive/across-the-noise/art-originals/scene-12.png",
     "sourceSha256": "3f94dc5e36e56e723bd8ae90c3d62c60ceb66f6a387f48d5ac2dfa3bb94e2c3a"
   }
 ]

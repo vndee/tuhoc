@@ -1,0 +1,22 @@
+# Id các course được publish CÔNG KHAI — `public_course_ids()` hợp danh sách
+# này với id đọc được từ `fixtures/courses/*/manifest.json`.
+#
+# Vì sao cần khai báo tay thay vì suy ra: phép 5 phân loại "riêng tư" theo lối
+# loại trừ — gói nào không công khai thì đem ra đối chiếu văn xuôi. Trước khi
+# giáo trình ai-risk mở công khai, "công khai" = "là fixture" đúng, vì hai gói
+# mẫu là những gói công khai duy nhất repo này biết. Từ lúc năm gói ai-risk
+# được publish, phép suy ấy sai: chúng công khai mà không phải fixture, nên
+# phép 5 đối chiếu tài liệu kế hoạch với chính khoá mà tài liệu ấy sinh ra và
+# báo đỏ ba tệp, vĩnh viễn, không có cách sửa.
+#
+# Một id mỗi dòng; `#` là chú thích. Thêm dòng khi một course nữa mở công khai
+# — và CHỈ khi ấy. Thêm nhầm một id riêng tư vào đây là tự bịt mắt phép 5 đúng
+# chỗ nó đang canh.
+#
+# Kho: https://github.com/vndee/tuhoc-courses
+
+kiem-soat-an-toan-he-thong
+nen-toan-rui-ro-tap-the
+nhan-thuc-luan-rui-ro
+tac-nhan-va-dong-co
+tri-tue-tap-the

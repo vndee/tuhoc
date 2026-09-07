@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Course content — a wrong proof, a bad citation, a typo
+    url: https://github.com/vndee/tuhoc-courses/issues/new
+    about: Course text lives in its own repository. Report content problems there.
+  - name: Security vulnerability
+    url: https://github.com/vndee/tuhoc/blob/main/SECURITY.md
+    about: Please email tuhoc@duy.dev instead of opening a public issue.
