@@ -65,12 +65,17 @@
      - `--font-serif` — Charis SIL: hậu duệ Bitstream Charter, SIL OFL, có
        đủ dấu tiếng Việt (subset `vietnamese` được kiểm khi cài). Đây là chữ
        THÂN của khung app: câu dẫn, tên chương, mô tả khoá, ghi chú trích ở lề.
-       Nó cùng giọng với thân bài trong `course-kit/reader.css`, vốn đã xếp
-       Charter trước Georgia — nên đây không phải một họ chữ mới cho reader mà
-       là bản Charter chắc chắn có mặt trên mọi máy.
-     - `--font-sans` — Archivo Narrow: sans hẹp cho NHÃN, running head, đầu
-       cột, nút, số mục. Hẹp là cố ý: trong một trang typeset, sans chỉ đứng ở
-       lề và đầu trang, không bao giờ là thân.
+       Cùng chuỗi với `--serif` của `course-kit/reader.css`, và từ 07/09/2026
+       thì cùng cả mặt chữ ĐỨNG ĐẦU: reader.css từng mở đầu bằng "Iowan Old
+       Style" — một font hệ macOS — nên chữ trong chương dựng bằng font máy
+       người đọc, và dấu tiếng Việt hỏng ở đó. Xem `vietnameseFont.test.ts`,
+       cổng giữ hai tệp này không lệch nhau nữa.
+     - `--font-sans` — IBM Plex Sans, KHÔNG phải Archivo Narrow. Dùng cho
+       NHÃN, running head, đầu cột, nút, số mục — và cho tiêu đề chương, thứ
+       `reader.css` cố ý đặt sans. Luật vẫn giữ: trong một trang typeset, sans
+       không bao giờ là THÂN BÀI.
+       (Đoạn này từng ghi "Archivo Narrow" và mâu thuẫn với chính giá trị vài
+       dòng bên dưới; chú thích dài ở token ấy mới là bản đúng.)
 
      Inter/IBM Plex đã rời khỏi đây: cả hai nằm trong danh sách phông "mặc
      định mọi mô hình ship", và không lý do nào ngoài quán tính giữ chúng. */
@@ -87,10 +92,13 @@
 
      Nên `--font-sans` khớp ĐÚNG chuỗi `--sans` của
      `packages/course-kit/reader.css` (dòng 31), không phải một họ chữ "gần
-     giống": course-kit là thứ không được sửa, nên nó là bên đặt chuẩn và
-     token này là bên đi theo. Hai tệp sẽ lệch lặng lẽ nếu ai đó đổi một
-     bên — đó là cái giá đã biết của việc course-kit bất khả xâm phạm, và rẻ
-     hơn giá của việc mỗi trang một giọng.
+     giống": course-kit là bên đặt chuẩn và token này là bên đi theo.
+
+     "Hai tệp sẽ lệch lặng lẽ nếu ai đó đổi một bên" — đoạn này từng nhận đó
+     là cái giá đã biết của việc course-kit bất khả xâm phạm. Cả hai vế nay
+     đều không còn đúng: course-kit ĐÃ bị sửa (07/09/2026, để chữa dải serif),
+     và lệch không còn lặng lẽ — `apps/web/src/styles/vietnameseFont.test.ts`
+     đọc cả hai tệp và đỏ khi mặt chữ đứng đầu của chúng khác nhau.
 
      Archivo Narrow cũng KHÔNG quay lại: nó là sans hẹp của thế giới typeset
      cũ và cũng không phải thứ nội dung chương dùng. Import của nó ở
