@@ -4,7 +4,7 @@ Implementation status: complete for independent review. Implementation commit: `
 
 ## Scope and implementation
 
-Worktree: `/Users/vndee/Documents/claude/tuhoc/.worktrees/dac-san`, branch `codex/across-the-noise-design`; Task24 began at clean `daf7543`. No root checkout edits, artwork generation, publication/featured changes, push, PR, merge or deployment. RTK.md remains absent in both this worktree and root. TDD and verification-before-completion skills were used; no subagents were dispatched.
+Worktree: `<repo>/.worktrees/dac-san`, branch `codex/across-the-noise-design`; Task24 began at clean `daf7543`. No root checkout edits, artwork generation, publication/featured changes, push, PR, merge or deployment. RTK.md remains absent in both this worktree and root. TDD and verification-before-completion skills were used; no subagents were dispatched.
 
 - Broadened static-entry leak detection to every issue's full content (including provenance JSON and scene assets), all lab subdirectories and session runtime. Metadata/cover assets, explicit registry and type-only definitions remain allowed. A real Vite fixture verifies folded imports and dynamic exclusion.
 - R21: explicit initial imports are unchanged. A build-specific JSON map is paired by unique filename and validated buildId with the current runtime. Only explicit Retry attempts fetch that first-party map and import the requested entry with a bounded numeric query. Unavailable/malformed/unsafe/mismatched metadata fails with fixed content-free codes. Recovered module exports are cached by lab kind (no payload/session), so Back/reopen remains usable. Focus moves to the recovered group. No reload, error-text URL parsing, eval, service worker or runtime dependency.
@@ -41,7 +41,7 @@ R21 was raised to controller with concrete compiled-browser evidence before addi
 
 ## Fresh final verification
 
-All package commands run from `apps/web` with `/Users/vndee/.bun/bin/bun`.
+All package commands run from `apps/web` with `bun`.
 
 | Command | Exit / result | Evidence |
 |---|---|---|
@@ -62,9 +62,9 @@ All package commands run from `apps/web` with `/Users/vndee/.bun/bin/bun`.
 The canonical test infrastructure command prefix, from worktree root:
 
 ```sh
-PATH=/Users/vndee/.bun/bin:/Users/vndee/go/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=/private/tmp/tuhoc-noise-docker.WyKdkH DOCKER_HOST=unix:///Users/vndee/.docker/run/docker.sock TUHOC_E2E_DB_PORT=55434 TUHOC_E2E_WEB_PORT=5183 bash scripts/test-e2e.sh --config ../../.superpowers/sdd/2026-09-05-across-the-noise/task-23-production-chrome.config.ts e2e/stories.spec.ts --output ../../.superpowers/sdd/2026-09-05-across-the-noise/task-24-evidence/final-old-stories
-PATH=/Users/vndee/.bun/bin:/Users/vndee/go/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=/private/tmp/tuhoc-noise-docker.WyKdkH DOCKER_HOST=unix:///Users/vndee/.docker/run/docker.sock TUHOC_E2E_DB_PORT=55434 TUHOC_E2E_WEB_PORT=5184 bash scripts/test-e2e.sh --config playwright.stories-draft.config.ts --output ../../.superpowers/sdd/2026-09-05-across-the-noise/task-24-evidence/final-draft
-PATH=/Users/vndee/.bun/bin:/Users/vndee/go/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=/private/tmp/tuhoc-noise-docker.WyKdkH DOCKER_HOST=unix:///Users/vndee/.docker/run/docker.sock TUHOC_E2E_DB_PORT=55434 TUHOC_E2E_WEB_PORT=5183 bash scripts/test-e2e.sh --config ../../.superpowers/sdd/2026-09-05-across-the-noise/task-23-production-chrome.config.ts e2e/stories-draft-exclusion.spec.ts --output ../../.superpowers/sdd/2026-09-05-across-the-noise/task-24-evidence/final-production-exclusion
+PATH=$HOME/.bun/bin:$HOME/go/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=/private/tmp/tuhoc-noise-docker.WyKdkH DOCKER_HOST=unix://$HOME/.docker/run/docker.sock TUHOC_E2E_DB_PORT=55434 TUHOC_E2E_WEB_PORT=5183 bash scripts/test-e2e.sh --config ../../.superpowers/sdd/2026-09-05-across-the-noise/task-23-production-chrome.config.ts e2e/stories.spec.ts --output ../../.superpowers/sdd/2026-09-05-across-the-noise/task-24-evidence/final-old-stories
+PATH=$HOME/.bun/bin:$HOME/go/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=/private/tmp/tuhoc-noise-docker.WyKdkH DOCKER_HOST=unix://$HOME/.docker/run/docker.sock TUHOC_E2E_DB_PORT=55434 TUHOC_E2E_WEB_PORT=5184 bash scripts/test-e2e.sh --config playwright.stories-draft.config.ts --output ../../.superpowers/sdd/2026-09-05-across-the-noise/task-24-evidence/final-draft
+PATH=$HOME/.bun/bin:$HOME/go/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=/private/tmp/tuhoc-noise-docker.WyKdkH DOCKER_HOST=unix://$HOME/.docker/run/docker.sock TUHOC_E2E_DB_PORT=55434 TUHOC_E2E_WEB_PORT=5183 bash scripts/test-e2e.sh --config ../../.superpowers/sdd/2026-09-05-across-the-noise/task-23-production-chrome.config.ts e2e/stories-draft-exclusion.spec.ts --output ../../.superpowers/sdd/2026-09-05-across-the-noise/task-24-evidence/final-production-exclusion
 ```
 
 Each invocation redirects stdout/stderr to the corresponding named log. The ignored R19 Chrome wrapper imports the normal production config and changes only channel, absolute testDir and webServer.cwd. It preserves normal production build/server/API env, exclusions, workers1/retries0/timeouts. No successful mock is substituted for real integration. Each canonical script run freshly builds the real API with --build, applies12 migrations and seeds the real `mau-hop-le` course. That course is distinct from the desired subject-course slug; the coda honestly links `/courses`.
@@ -129,12 +129,12 @@ Live review URL: **http://localhost:5174/stories/across-the-noise?preview=1**. S
 Reproduction commands (worktree root except web command):
 
 ```sh
-DOCKER_CONFIG=/private/tmp/tuhoc-noise-docker.WyKdkH DOCKER_HOST=unix:///Users/vndee/.docker/run/docker.sock TUHOC_E2E_WEB_PORT=5174 docker compose -p tuhoc-noise-review-dac-san -f apps/api/compose.e2e.yml -f .superpowers/sdd/2026-09-05-across-the-noise/task-24-review-compose.yml up -d --build
-/Users/vndee/go/bin/migrate -path apps/api/migrations -database 'postgres://tuhoc:tuhoc@localhost:55435/tuhoc?sslmode=disable' up
+DOCKER_CONFIG=/private/tmp/tuhoc-noise-docker.WyKdkH DOCKER_HOST=unix://$HOME/.docker/run/docker.sock TUHOC_E2E_WEB_PORT=5174 docker compose -p tuhoc-noise-review-dac-san -f apps/api/compose.e2e.yml -f .superpowers/sdd/2026-09-05-across-the-noise/task-24-review-compose.yml up -d --build
+migrate -path apps/api/migrations -database 'postgres://tuhoc:tuhoc@localhost:55435/tuhoc?sslmode=disable' up
 # From apps/web:
-VITE_API_URL=http://localhost:8098 /Users/vndee/.bun/bin/bun run dev -- --host 127.0.0.1 --port 5174 --strictPort
+VITE_API_URL=http://localhost:8098 bun run dev -- --host 127.0.0.1 --port 5174 --strictPort
 # From worktree root:
-/Users/vndee/.bun/bin/bun .superpowers/sdd/2026-09-05-across-the-noise/task-24-review-smoke.mjs
+bun .superpowers/sdd/2026-09-05-across-the-noise/task-24-review-smoke.mjs
 ```
 
 The fixture was zipped from `fixtures/format-v2/valid-course` using `zip -rq -X` into `/private/tmp/tuhoc-noise-review-seed.86Kmr7/mau-hop-le.zip`, then PUT only to `http://localhost:8098/admin/courses/mau-hop-le` with the compose fixture admin token and `Content-Type: application/zip`. Startup, migration, seed, resolved config, running publications and browser smoke are retained as `local-review-*`/`review-compose-config.json` evidence. To stop only these review services later, stop PID78204/session91180 and run the same named compose command with `down` instead of `up -d --build`; do not target the user's compose project. No teardown is performed at handoff because the requested URL remains live.
@@ -158,7 +158,7 @@ This addendum records a new bounded fix wave based on d6cc386. It supersedes the
 - Portable safety tests are separate from the explicitly required `bun run test:story-plates-native` gate. This native command checks executable /usr/bin/sips and /opt/homebrew/bin/cwebp and fails clearly if absent; all original real codec/source/path/quality/budget assertions are retained. See [testing prerequisites](../../testing.md). No conversion is silently skipped or counted as portable coverage.
 - Four-width cover evidence now captures .story-cover-plate directly with actual theme assertions. Initial lazy-network counts are recorded before screenshot scrolling.
 
-Fresh tests and gates from apps/web, using /Users/vndee/.bun/bin/bun:
+Fresh tests and gates from apps/web, using bun:
 
 | Gate | Result | Local evidence under .superpowers/sdd/2026-09-05-across-the-noise/ |
 |---|---|---|

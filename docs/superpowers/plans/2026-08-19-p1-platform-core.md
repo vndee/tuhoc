@@ -25,7 +25,7 @@
 
 ## Global Constraints
 
-- Nguồn extraction: `/Users/vndee/Documents/claude/Research/«giáo-trình-riêng».html` tại tag `v1-single-file` (commit f782323). KHÔNG sửa repo Research.
+- Nguồn extraction: `<kho-nguồn-riêng>/«giáo-trình-riêng».html` tại tag `v1-single-file` (commit f782323). KHÔNG sửa repo Research.
 - Validate gates của extract (spec §3): đủ 44 chương; 59 `data-viz` khớp 59 `defineViz`; số ký tự `$` từng chương giữ nguyên; không chương nào chứa chuỗi `</script`.
 - Chapter id giữ nguyên `p0-1`…`p4-10`, `appx` (spec §3).
 - Course content không nằm trong DB (spec §2).
@@ -93,7 +93,7 @@ dev-web:  ; cd apps/web && bun run dev
 test-api: ; cd apps/api && go test ./...
 test-web: ; cd apps/web && bun run test
 test-extract: ; cd tools && python3 -m pytest test_extract.py -v
-extract:  ; python3 tools/extract.py --source ~/Documents/claude/Research/«giáo-trình-riêng».html --out .
+extract:  ; python3 tools/extract.py --source <kho-nguồn-riêng>/«giáo-trình-riêng».html --out .
 ```
 
 - [ ] **Step 3:** README.md: mô tả 1 đoạn + bảng lệnh trên + link spec.
@@ -144,7 +144,7 @@ def test_manifest_shape():
 #!/usr/bin/env python3
 import argparse, json, pathlib, re
 
-SRC_DEFAULT = "~/Documents/claude/Research/«giáo-trình-riêng».html"
+SRC_DEFAULT = "<kho-nguồn-riêng>/«giáo-trình-riêng».html"
 TPL_RE = re.compile(r'<script type="text/html" id="tpl-([\w-]+)">(.*?)</script>', re.S)
 CH_ROW = re.compile(r"\{id:'([\w-]+)',\s*part:'([^']*)',\s*num:'([^']*)',\s*title:'([^']*)',\s*short:'([^']*)'\}")
 

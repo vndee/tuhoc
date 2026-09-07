@@ -62,7 +62,32 @@ import subprocess
 import sys
 import zipfile
 
-DEFAULT_STORE = "~/Documents/claude/tuhoc-courses"
+def default_store() -> str:
+    """`../tuhoc-courses` — cạnh **bản checkout chính**, không cạnh script.
+
+    Từng viết cứng một đường dẫn tuyệt đối trong thư mục nhà của tác giả — thứ
+    không được đi cùng một repo công khai.
+
+    Phép tính "thư mục cha của gốc repo" là phép đúng ở bản chính và SAI trong
+    worktree phụ: ở `.claude/worktrees/x/scripts/` nó trỏ tới
+    `.claude/worktrees/tuhoc-courses`, một chỗ không bao giờ có gì — và hậu quả
+    là im lặng, vì thiếu kho thì cả hai script chỉ bỏ qua gói riêng chứ không
+    báo lỗi. `--git-common-dir` trả về `.git` của bản chính từ MỌI worktree,
+    nên nó là mỏ neo đúng. Không có git thì lui về cách tính cũ.
+    """
+    here = pathlib.Path(__file__).resolve().parent
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=here, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        root = pathlib.Path(out).parent
+    except (OSError, subprocess.SubprocessError):
+        root = here.parent
+    return str(root.parent / "tuhoc-courses")
+
+
+DEFAULT_STORE = default_store()
 SHINGLE_WORDS = 12
 MAX_LINES_SHOWN = 40
 
@@ -484,7 +509,7 @@ def main() -> int:
     parser.add_argument(
         "--store",
         default=DEFAULT_STORE,
-        help="Kho gói riêng ngoài cây git (mặc định: $TUHOC_COURSE_STORE hoặc ~/Documents/claude/tuhoc-courses).",
+        help="Kho gói riêng ngoài cây git (mặc định: $TUHOC_COURSE_STORE, hoặc ../tuhoc-courses cạnh repo).",
     )
     args = parser.parse_args()
 

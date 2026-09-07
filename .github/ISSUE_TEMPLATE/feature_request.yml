@@ -1,0 +1,33 @@
+name: Feature or change request
+description: Propose something the platform should do differently
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository carries a lot of recorded reasoning in `docs/`. A change
+        that looks obviously right sometimes contradicts a decision someone
+        measured. Describing the **problem** first — rather than the solution —
+        makes it much likelier we reach the right answer.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What is hard, slow, confusing, or impossible today? Who hits it?
+    validations: {required: true}
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: Optional. If you already have a design, describe it here.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you already considered and rejected
+      description: Optional, but it saves everyone a round trip.
+  - type: checkboxes
+    id: offer
+    attributes:
+      label: Would you like to implement it?
+      options:
+        - label: I am willing to open a pull request for this
