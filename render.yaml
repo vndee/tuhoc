@@ -56,6 +56,30 @@ services:
         value: https://tuhoc.duy.dev
       - key: COOKIE_SECURE
         value: "true"
+      # Apply pending migrations at startup, before the server accepts a
+      # single request.
+      #
+      # This is here because its absence took the site down. Migrations used
+      # to be a manual step that nothing enforced: a deploy shipped code
+      # reading a column its migration had not created, and `GET /courses` —
+      # the front page — answered 500 until someone ran `migrate` by hand.
+      #
+      # Safe with Render's rolling deploys: golang-migrate takes a Postgres
+      # advisory lock, so a second container waits rather than racing. A
+      # migration that fails stops the container with the reason in its logs,
+      # which is louder and easier to diagnose than a half-migrated server
+      # answering some requests and erroring on others.
+      - key: MIGRATE_ON_BOOT
+        value: "true"
+      # Migrations use Neon's DIRECT (unpooled) endpoint, not DATABASE_URL.
+      #
+      # golang-migrate guards concurrent runs with `pg_advisory_lock`, which is
+      # SESSION-scoped, and DATABASE_URL above is the POOLED string — PgBouncer
+      # in transaction mode, where consecutive statements can land on different
+      # server connections. A session lock taken on one and released on another
+      # is not a lock. Secret, like DATABASE_URL: `sync: false`.
+      - key: MIGRATE_DATABASE_URL
+        sync: false
       # DATABASE_URL is a secret: `sync: false` means Render prompts for
       # the value once (Blueprint creation, or Environment tab afterward)
       # and never reads it back from this file — it is never committed.
