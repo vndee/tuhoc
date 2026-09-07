@@ -39,8 +39,8 @@ tiên against real stack kể từ khi Pha 3 đổi toàn bộ tầng dữ liệ
 
 Reviewer của Task 13 tự kiểm cả hai chẩn đoán bằng mã nguồn thư viện vendor (fiber's `SendStatus`,
 fasthttp's `mustSkipBody`) trước khi tin — không suy luận từ triệu chứng. Cả hai sửa nằm trong
-commit `25f7d55`; một bài kiểm nhanh không cần Docker cho lỗ hổng Sidebar được thêm ở vòng sửa
-(`2f4141e`), vì e2e cần Docker không phải thứ một người sửa `Sidebar.tsx` chạy khi đang gõ.
+commit `e06fe92`; một bài kiểm nhanh không cần Docker cho lỗ hổng Sidebar được thêm ở vòng sửa
+(`de1bb7a`), vì e2e cần Docker không phải thứ một người sửa `Sidebar.tsx` chạy khi đang gõ.
 
 **Bài học không đổi từ Pha 2:** một hook đổi NGUỒN dữ liệu (local → mạng) biến một lời gọi vô điều
 kiện từng vô hại thành một request thật có thể hỏng theo cách không có ai đứng canh, vì mọi test
@@ -91,7 +91,7 @@ mock đúng cái biên mà lỗi sống ở đó.
    vì số học của brief chỉ cho phép `p2`×1 — một cách đọc HỢP LỆ của một brief mơ hồ, lỗi ở tôi.
    Logic orphan/rescue không bị Pha 3 đụng tới và vẫn có cover unit đầy đủ, nhưng mất cổng e2e —
    đúng subsystem mà bản `p2.spec.ts` TRƯỚC rewrite tự ghi trong header của nó là nơi unit test đã
-   bỏ sót lỗi thật **sáu vòng liên tiếp**. Đã sửa câu chữ plan (commit `7d278fd`); KHÔNG bắt Task 13
+   bỏ sót lỗi thật **sáu vòng liên tiếp**. Đã sửa câu chữ plan (commit `3536b4d`); KHÔNG bắt Task 13
    làm thêm ngoài phạm vi; ghi thành nợ có tên, có điều kiện, ở `docs/carried-forward.md`.
 3. **Tôi để một chú thích doc-comment biết trước là sai tồn tại từ Task 8 tới Task 14 mà không ai
    bị bắt phải sửa nó giữa chừng.** Task 8's implementer tự báo: `reader/ChapterView.tsx` (~dòng

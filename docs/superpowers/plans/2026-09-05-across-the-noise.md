@@ -36,7 +36,7 @@
 
 ## Working directory, execution and review boundaries
 
-Use `<repo>/.worktrees/dac-san`, branch `codex/across-the-noise-design`, based on production `1379d2d`, design commit `4ab8a88`. Preserve the root checkout and unrelated worktrees. Inspect current git status before editing; do not recreate or reset this worktree.
+Use `<repo>/.worktrees/dac-san`, branch `codex/across-the-noise-design`, based on production `62e55fd`, design commit `03abeef`. Preserve the root checkout and unrelated worktrees. Inspect current git status before editing; do not recreate or reset this worktree.
 
 All paths below are relative to that worktree. Shell commands for tests run from `apps/web`; git commands run from worktree root. Bun is `bun`; use `./node_modules/.bin/playwright` for Playwright. Read repository instructions again at execution time; `AGENTS.md` references `RTK.md`, which was not present during planning. If it becomes available, read it before work.
 

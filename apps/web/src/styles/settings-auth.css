@@ -399,12 +399,12 @@ html[data-theme='dark'] .auth-form input {
    ───────────────────────────────────────────────────────────────────────────
 
    DÒNG MỞ CHÚ THÍCH NGAY TRÊN LÀ MỘT BẢN VÁ, không phải trang trí. Từ commit
-   `ae60227` tới Task 16 vòng sửa 1 (`4c59fdc`), tiêu đề mục này có dấu ĐÓNG
+   `ae60227` tới Task 16 vòng sửa 1 (`eaa4342`), tiêu đề mục này có dấu ĐÓNG
    chú thích mà KHÔNG có dấu mở — một dấu đóng lạc giữa biểu định kiểu.
 
    (Một bản trước của đoạn này quy cho `c1aacde`. Sai, và đã bisect lại: quét
    mọi commit từng chạm tệp này, `c1aacde` — commit TẠO ra mục — sạch, dấu mở
-   có đủ; `ae60227` mới làm mất nó, và tệp hỏng liên tục từ đó tới `4c59fdc`.
+   có đủ; `ae60227` mới làm mất nó, và tệp hỏng liên tục từ đó tới `eaa4342`.
    Lệch một commit, nhưng nó đổi hẳn câu trả lời cho "ai làm hỏng".)
 
    Hậu quả ĐO ĐƯỢC trên `dist/`, không suy luận: bộ phân tích CSS coi phần rác

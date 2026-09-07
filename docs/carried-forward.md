@@ -502,7 +502,7 @@ nguồn **không có trong bản dựng**, và **`bun run build` XANH cả hai l
 | lần | nguyên nhân | thiệt hại đo trên `dist/` |
 |---|---|---|
 | `c1aacde` → 2026-08-29 | dấu ĐÓNG chú thích không có dấu mở, ở cấp cao nhất | `.page-settings { max-width: 54rem }` biến mất |
-| `4c59fdc` (một commit) | đoạn văn nháp còn sót thành CSS, mở một `{` không đóng | ~20 quy tắc từ đó tới cuối tệp: `.set-title`, `.set-select`, `.auth-pw`, `.auth-switch-link`, cả khối `@media (max-width: 47rem)` của `/login` |
+| `eaa4342` (một commit) | đoạn văn nháp còn sót thành CSS, mở một `{` không đóng | ~20 quy tắc từ đó tới cuối tệp: `.set-title`, `.set-select`, `.auth-pw`, `.auth-switch-link`, cả khối `@media (max-width: 47rem)` của `/login` |
 
 Nguyên nhân chung: **bộ phân tích CSS được viết để KHÔI PHỤC sau lỗi, không phải để dừng lại.** Nó bỏ
 thứ nó không hiểu rồi đi tiếp. Một quy tắc bị bỏ trong im lặng không phải lỗi cú pháp — nó là một quy
@@ -510,7 +510,7 @@ tắc không tồn tại. Và vitest không bao giờ nạp CSS, nên cả bộ 
 
 **Đã đóng một phần:** `apps/web/src/styles/cssStructure.test.ts` kiểm HÌNH DẠNG của nguồn — chú thích
 đóng/mở đúng cặp, ngoặc nhọn về 0 và không âm. Nó được chứng minh bằng cách **khôi phục nguyên văn cả
-hai tệp hỏng từ git** (`git show 390931e:…` và `git show 4c59fdc:…`) và xác nhận cổng ĐỎ ở cả hai.
+hai tệp hỏng từ git** (`git show 66ef36b:…` và `git show eaa4342:…`) và xác nhận cổng ĐỎ ở cả hai.
 
 **Cái còn hở:** cổng ấy đọc NGUỒN, không đọc `dist/`. Một quy tắc rơi khỏi bản dựng vì bất kỳ lý do
 nào khác (selector gõ sai, một `@layer`/`@import` xếp sai, một bước tối ưu hoá) vẫn im lặng như cũ.
@@ -554,7 +554,7 @@ exit=0
 
 ⇒ lỗ **có thật ở `apps/web` hôm nay**, không chỉ ở thư mục đã gỡ.
 
-⇒ Ai muốn đóng: chép `assert-tests-ran.mjs` từ `git show 390931e:apps/vault/scripts/assert-tests-ran.mjs`
+⇒ Ai muốn đóng: chép `assert-tests-ran.mjs` từ `git show 66ef36b:apps/vault/scripts/assert-tests-ran.mjs`
 và nối vào bốn target ấy. Đó không phải việc của Task 16 (brief chỉ nói gỡ), nên nó là một món nợ
 CÓ TÊN chứ không phải một việc bỏ sót.
 
@@ -938,7 +938,7 @@ thuộc về, `internal/ai`, không phải `internal/server`.
 Đo lại 2026-08-29 bằng script riêng (quét `apps/web/src` + `packages/i18n/src`, mọi `.ts`/`.tsx`
 không phải hai tệp catalog): **169 / 553** khoá không có chỗ gọi nào. Không có ``t(`…`)`` động thật
 nào trong mã (15 kết quả khớp đều là `it(`/`http.get(`/`mount(`), nên con số không có dương tính
-giả. Đo lại trên `f992927` (trước đợt 2) cho **cùng 169 khoá, danh sách y hệt** — đợt 2 không thêm
+giả. Đo lại trên `c9e3333` (trước đợt 2) cho **cùng 169 khoá, danh sách y hệt** — đợt 2 không thêm
 cũng không bớt khoá mồ côi nào.
 
 Phần lớn là tàn dư Pha 1 (`library.*`, `nav.import`, `courses.import.action`, …), **KHÔNG do Pha 2**.
@@ -1228,7 +1228,7 @@ công thức) — KHÔNG được port sang.
 
 **Vì sao:** plan's câu "7 bài: `p1`×4, `p2`×1, `s2`×1, `widget`×1" bị đọc như một TRẦN, không phải
 một hình dạng TỐI THIỂU — lỗi câu chữ ở plan, không phải ở người thi công (đã tự sửa ngay trong pha,
-commit `7d278fd`, "con số '7 bài' của Task 13 là hình dạng tối thiểu, không phải trần"). Logic
+commit `3536b4d`, "con số '7 bài' của Task 13 là hình dạng tối thiểu, không phải trần"). Logic
 orphan/rescue KHÔNG đổi trong Pha 3 (`useAnnotations.ts`'s doc: "orphans are data" — resolving là một
 phép ĐỌC, không có nhánh ghi nào bị chạm) và vẫn có cover unit đầy đủ (`OrphanPanel.test.tsx`,
 `useAnnotations.test.tsx`) — nhưng không còn cổng e2e nào canh nó ở mức trình duyệt thật.

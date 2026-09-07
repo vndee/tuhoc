@@ -137,7 +137,7 @@ function isBenignNoCreditConsoleError(msg: ConsoleMessage): boolean {
  * that buffered the whole SSE body and painted once at "done" would have
  * passed identically. This is the closest live equivalent to what the
  * now-deleted `instrument` helper's answer-box tracking used to prove (git
- * show 390931e:apps/web/e2e/s2.spec.ts) — not the same mechanism, but the
+ * show 66ef36b:apps/web/e2e/s2.spec.ts) — not the same mechanism, but the
  * same property, actually checked.
  */
 async function expectStreamedIncrementally(locator: Locator, full: string): Promise<void> {

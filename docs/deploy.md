@@ -321,7 +321,7 @@ Pick names before you start if you're following the custom-domain path from §0 
 cd apps/web && bun install && bun run build
 ```
 
-**Verified**: exit 0. Output, re-measured on the current `main` (`2587436`, after
+**Verified**: exit 0. Output, re-measured on the current `main` (`5f3b544`, after
 the design-world rollout — the numbers below replace the task-16-era
 `387.84 kB` CSS / `337.38 kB` JS, which an operator would otherwise read as
 "my build is wrong"):
@@ -379,7 +379,7 @@ The copy is gone now, so the outcome no longer depends on `courses/` at all.
        equivalent of this line.
 
      **Verified**, not reasoned: a clean `git clone --depth 1` of this repo at
-     `7b89c3d`, then exactly the command above, exits 0 and produces a `dist/`
+     `2add6ad`, then exactly the command above, exits 0 and produces a `dist/`
      holding `assets/`, `course-kit/`, `index.html`, `favicon.svg` and a
      `_redirects` that is byte-for-byte `/* /index.html 200`.
    - Build output directory: `apps/web/dist`

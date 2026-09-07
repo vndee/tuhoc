@@ -79,7 +79,7 @@ export interface Finding {
  * được lần 2**, tức chính cái lỗi nó sinh ra để bắt.
  *
  * Đo, không đoán: chạy cả hai biến thể trên đúng tệp hỏng
- * (`git show 4c59fdc:apps/web/src/styles/settings-auth.css`):
+ * (`git show eaa4342:apps/web/src/styles/settings-auth.css`):
  *
  *     có bỏ qua chuỗi    →  []                       ← MÙ
  *     không bỏ qua chuỗi →  [unbalanced, dòng 860]   ← bắt được
@@ -189,7 +189,7 @@ describe('cấu trúc biểu định kiểu', () => {
     expect(scanCss(lan1).map((f) => f.kind)).toEqual(['stray-close']);
 
     /*
-     * LẦN 2 — CHÉP NGUYÊN VĂN từ `git show 4c59fdc:apps/web/src/styles/
+     * LẦN 2 — CHÉP NGUYÊN VĂN từ `git show eaa4342:apps/web/src/styles/
      * settings-auth.css`, dòng 536-544, chứ không phải một bản diễn đạt lại.
      *
      * Lý do là một lần ĐỎ có thật: bản đầu của bài kiểm này dùng một bản rút

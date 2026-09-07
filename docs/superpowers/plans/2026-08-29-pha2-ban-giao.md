@@ -57,7 +57,7 @@ ngược ra `render.yaml` và `deploy.md`. Cùng đường ống đã để lọ
 ## 4. Bốn lần điều phối viên sai
 
 1. **Tôi tưởng `make check-publish` xanh.** Nó **đỏ** (`exit=1`), và đã đỏ trên
-   `main` từ trước — nguyên nhân là `08dbffe`, chính commit viết lại lịch sử, vì nó
+   `main` từ trước — nguyên nhân là `911ece0`, chính commit viết lại lịch sử, vì nó
    tạo `scripts/private-markers.txt` (tệp tự nêu tên khoá học riêng, có chủ ý).
    Cổng fail-closed đúng thiết kế. Không phải hồi quy Pha 2.
 2. **Sổ nợ tôi viết đánh giá bán kính sai.** Tôi biện minh điểm mù closure bằng

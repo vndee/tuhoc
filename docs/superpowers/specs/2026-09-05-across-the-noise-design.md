@@ -133,7 +133,7 @@ Chuyển cảnh theo scroll chỉ crossfade hiện có; không thêm parallax ho
 
 ## 5. Tích hợp hệ hiện tại
 
-Cơ sở đã kiểm tra: `origin/main` tại `1379d2d`, cùng tree với bản Đặc san đã phát hành. `StoryDefinition` hiện dùng lab union riêng, `labRegistry` lazy-load từng module, `StoryRendererContent` giữ state theo scene; chưa có shared message session.
+Cơ sở đã kiểm tra: `origin/main` tại `62e55fd`, cùng tree với bản Đặc san đã phát hành. `StoryDefinition` hiện dùng lab union riêng, `labRegistry` lazy-load từng module, `StoryRendererContent` giữ state theo scene; chưa có shared message session.
 
 ### 5.1 Phân chia trách nhiệm
 

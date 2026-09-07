@@ -81,7 +81,7 @@ STREAMING SHAPE, matched against stream.go's CompleteStream byte for byte:
   - The answer streams across a few `delta.content` fragments with a real
     inter-chunk delay (see DELTA_CHUNK_DELAY_S below) — the same property
     the now-deleted `serveProvider` helper had (git show
-    390931e:apps/web/e2e/s2.spec.ts). Unlike that old helper, THIS repo
+    66ef36b:apps/web/e2e/s2.spec.ts). Unlike that old helper, THIS repo
     still has a live assertion for it: `s2.spec.ts`'s scenario 2 polls the
     answer element mid-stream and requires it to be a non-empty, INCOMPLETE
     prefix of the full text at least once (round-1 self-review, "Minor 2" —

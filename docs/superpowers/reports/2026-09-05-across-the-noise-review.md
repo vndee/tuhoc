@@ -1,10 +1,10 @@
 # Across the Noise — Task24 local review gate
 
-Implementation status: complete for independent review. Implementation commit: `78dea4e` (`test: verify communication edition privacy accessibility and loading`). All required local gates passed on that implementation; final normal production artifacts are restored. This is execution evidence, not a release authorization.
+Implementation status: complete for independent review. Implementation commit: `f184fcd` (`test: verify communication edition privacy accessibility and loading`). All required local gates passed on that implementation; final normal production artifacts are restored. This is execution evidence, not a release authorization.
 
 ## Scope and implementation
 
-Worktree: `<repo>/.worktrees/dac-san`, branch `codex/across-the-noise-design`; Task24 began at clean `daf7543`. No root checkout edits, artwork generation, publication/featured changes, push, PR, merge or deployment. RTK.md remains absent in both this worktree and root. TDD and verification-before-completion skills were used; no subagents were dispatched.
+Worktree: `<repo>/.worktrees/dac-san`, branch `codex/across-the-noise-design`; Task24 began at clean `271638d`. No root checkout edits, artwork generation, publication/featured changes, push, PR, merge or deployment. RTK.md remains absent in both this worktree and root. TDD and verification-before-completion skills were used; no subagents were dispatched.
 
 - Broadened static-entry leak detection to every issue's full content (including provenance JSON and scene assets), all lab subdirectories and session runtime. Metadata/cover assets, explicit registry and type-only definitions remain allowed. A real Vite fixture verifies folded imports and dynamic exclusion.
 - R21: explicit initial imports are unchanged. A build-specific JSON map is paired by unique filename and validated buildId with the current runtime. Only explicit Retry attempts fetch that first-party map and import the requested entry with a bounded numeric query. Unavailable/malformed/unsafe/mismatched metadata fails with fixed content-free codes. Recovered module exports are cached by lab kind (no payload/session), so Back/reopen remains usable. Focus moves to the recovered group. No reload, error-text URL parsing, eval, service worker or runtime dependency.
@@ -149,7 +149,7 @@ Self-review found and corrected real failed-import reopen identity and the R22 c
 
 ## Final six-finding fix addendum — 06 September 2026
 
-This addendum records a new bounded fix wave based on d6cc386. It supersedes the earlier native-test deferral and build-map identity where stated; the earlier100-case draft matrix and22-case old-story gate remain prior evidence, not newly rerun tests.
+This addendum records a new bounded fix wave based on 19a6e95. It supersedes the earlier native-test deferral and build-map identity where stated; the earlier100-case draft matrix and22-case old-story gate remain prior evidence, not newly rerun tests.
 
 - Tau0 now starts at the input amplitude and represents every NRZ edge with both values at the same instant. Existing positive-tau integration and samples are unchanged. Bilingual legends/explanations follow the captured tau, including when current controls differ.
 - Original and received receipt labels are separate from literal pre-wrap text. Actual browser innerText and textContent retain repeated spaces, newline and leading/trailing spaces; strict decode, rejected/stale receipt and privacy behavior remain intact.
@@ -197,7 +197,7 @@ The user approved publication after reviewing the local edition. This new sectio
 records release preparation, not a completed production deployment. The earlier
 draft-only statements above describe their historical gates.
 
-The feature branch now includes `origin/main` at `27b292f` through merge `f03589c`.
+The feature branch now includes `origin/main` at `eabdb4a` through merge `6e3bda2`.
 The publication transition sets issue 02 to published/featured and keeps issue 01
 published. Public registry, landing and collection tests exercise the real metadata.
 All six issue-02 browser files move from the excluded draft directory into

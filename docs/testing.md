@@ -93,7 +93,7 @@ that app along with every test that drove it; **nothing in the current
 file is lifted from that one**, because a second origin holding a
 learner's own key is not a concept the credit architecture has any use
 for. The old version is still readable at `git show
-390931e:apps/web/e2e/s2.spec.ts` for anyone curious what a BYOK-era gate
+66ef36b:apps/web/e2e/s2.spec.ts` for anyone curious what a BYOK-era gate
 looked like, but it is history, not a starting point.
 
 **No real DeepSeek call, ever.** `scripts/test-e2e.sh` points

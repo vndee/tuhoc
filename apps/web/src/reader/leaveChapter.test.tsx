@@ -41,7 +41,7 @@
  * (Bốn phép đo ấy KHÔNG còn chạy: `e2e/s2.spec.ts` bị xoá ở Task 16 cùng kho
  * khoá. Chúng được giữ trong lập luận này vì chúng là BẰNG CHỨNG cho chẩn
  * đoán ở trên — bốn triệu chứng khớp một nguyên nhân — chứ không phải một cổng
- * đang canh. Đọc lại chúng: `git show 390931e:apps/web/e2e/s2.spec.ts`; xem
+ * đang canh. Đọc lại chúng: `git show 66ef36b:apps/web/e2e/s2.spec.ts`; xem
  * `docs/testing.md` mục "Reading `s2.spec.ts` back". Cổng THẬT còn canh hồi
  * quy này là chính tệp bạn đang đọc.)
  *
