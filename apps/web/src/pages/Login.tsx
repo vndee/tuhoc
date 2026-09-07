@@ -123,10 +123,20 @@ function redirectTarget(state: unknown, search: string): string {
 export function Login() {
   const { t } = useLanguage();
   const { theme, toggle: toggleTheme } = useThemeContext();
-  const [tab, setTab] = useState<Tab>('login');
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
+  // Landing's "Tạo tài khoản" link navigates here with
+  // `state={{ intent: 'register' }}`. Nothing read it, so the button that
+  // says "create an account" opened the SIGN IN form — reported by a reader,
+  // and invisible to every test because both tabs live on the same route and
+  // look nearly identical.
+  //
+  // `useState` initialiser, not an effect: the correct tab is known at first
+  // render, and an effect would paint the login form for one frame first.
+  const [tab, setTab] = useState<Tab>(
+    (location.state as { intent?: string } | null)?.intent === 'register' ? 'register' : 'login',
+  );
   const meQuery = useMe();
 
   async function handleAuthenticated(user: Me) {
@@ -514,6 +524,22 @@ function LoginForm({ onSuccess }: AuthFormProps) {
   );
 }
 
+/** A deliberately LOOSE client-side check: one `@`, something either side, and
+ *  an interior dot in the domain. It mirrors the server's `ValidEmail` closely
+ *  enough to catch the typo the reader hit, and stops well short of trying to
+ *  reimplement RFC 5322 in a regex — the server owns the real answer, and a
+ *  stricter client would refuse addresses the server accepts, which is the
+ *  worse failure of the two. */
+function isProbablyEmail(value: string): boolean {
+  const s = value.trim();
+  if (s !== value || /\s/.test(s)) return false;
+  const at = s.lastIndexOf('@');
+  if (at < 1 || at === s.length - 1) return false;
+  const domain = s.slice(at + 1);
+  const dot = domain.indexOf('.');
+  return dot > 0 && dot < domain.length - 1;
+}
+
 function RegisterForm({ onSuccess }: AuthFormProps) {
   const { t } = useLanguage();
   const [name, setName] = useState('');
@@ -528,6 +554,19 @@ function RegisterForm({ onSuccess }: AuthFormProps) {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+
+    // The form carries `noValidate` (this page renders its own errors rather
+    // than the browser's), which also switches OFF the `type="email"` check —
+    // so until this ran, "abc" registered successfully. Reported by a reader.
+    //
+    // The server validates too, and is the authority; this exists so the
+    // reader is told before a round trip, and told WHICH field is wrong
+    // rather than the generic 400 message.
+    if (!isProbablyEmail(email)) {
+      setError(t('auth.error.emailInvalid'));
+      return;
+    }
+
     setPending(true);
     try {
       const user = await api.post<Me>('/auth/register', { email, password, name });

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -22,6 +23,13 @@ const CookieName = "tuhoc_session"
 // package's own Me) must go through UID instead of hardcoding the key
 // itself, so the key can only ever be set and read from one place.
 const localsUIDKey = "uid"
+
+// localsIsAdminKey is the c.Locals key OptionalAdmin stores its verdict
+// under. Deliberately a DIFFERENT key from localsUIDKey: a route behind
+// OptionalAdmin may have no user at all, and storing uuid.Nil under "uid"
+// would make an anonymous request indistinguishable from an authenticated
+// one to UID(c) — which several handlers read to attribute writes.
+const localsIsAdminKey = "isAdmin"
 
 // Handler holds the HTTP-layer concerns for auth: parsing requests,
 // shaping responses, and setting/clearing the session cookie. It owns no
@@ -70,6 +78,41 @@ func toMeResponse(u User) meResponse {
 // Register handles POST /auth/register {email,password,name}. On success
 // it responds 200 with the new user and sets the session cookie (register
 // implies being logged in).
+// ValidEmail reports whether s is an address this platform will accept as a
+// login identifier. Registration accepted anything non-empty until now, so
+// "abc" was a valid account.
+//
+// Three deliberate limits, because over-strict email validation rejects real
+// people and is a well-worn way to lose users:
+//
+//   - `mail.ParseAddress` (RFC 5322) does the parsing. Hand-rolled regexes for
+//     this are famously wrong in both directions.
+//   - `addr.Address != s` rejects the display-name form: ParseAddress happily
+//     accepts `Duy <a@b.co>`, and storing that as the identifier would mean
+//     the account's email is not what the user typed.
+//   - The domain must contain an interior dot. `a@b` is legal RFC-wise
+//     (intranet hosts) but is a typo on a public site, not a mailbox. This is
+//     the one rule that trades a little correctness for a lot of typo
+//     catching, and it is the only one worth revisiting if someone is ever
+//     wrongly refused.
+//
+// Deliberately NOT checked: length caps, disposable-domain lists, MX lookups.
+// The first two refuse valid people; the third turns signup into a network
+// call that fails when someone else's DNS is unwell.
+func ValidEmail(s string) bool {
+	addr, err := mail.ParseAddress(s)
+	if err != nil || addr.Address != s {
+		return false
+	}
+	at := strings.LastIndex(s, "@")
+	if at < 1 {
+		return false
+	}
+	domain := s[at+1:]
+	dot := strings.Index(domain, ".")
+	return dot > 0 && dot < len(domain)-1
+}
+
 func (h *Handler) Register(c *fiber.Ctx) error {
 	var req registerRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -79,6 +122,9 @@ func (h *Handler) Register(c *fiber.Ctx) error {
 
 	if req.Email == "" || req.Password == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email and password are required"})
+	}
+	if !ValidEmail(req.Email) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email is not a valid address"})
 	}
 
 	user, session, err := h.uc.Register(c.Context(), req.Email, req.Password, req.Name)
@@ -299,4 +345,68 @@ func RequireAdminWithUsecase(uc *Usecase) fiber.Handler {
 		}
 		return c.Next()
 	}
+}
+
+// OptionalAdmin resolves the session cookie IF there is one and records
+// whether it belongs to an admin, then always calls Next. It is the gate for
+// routes that are public but show MORE to an admin — the published catalog,
+// where a private course is invisible to everyone else.
+//
+// It is not Require with the rejection removed. Three differences matter:
+//
+//  1. **No cookie is not an error.** Anonymous is the ordinary case on these
+//     routes; the whole point is that they answer without an account.
+//  2. **It fails CLOSED.** A malformed cookie, a dead session, or a database
+//     error while checking the role all land on "not an admin". The tempting
+//     alternative — surface the error as a 500 — turns a transient database
+//     hiccup into an outage of the public catalog, and the tempting other
+//     alternative, treating an error as "probably fine", would hand a private
+//     course to whoever triggered the error. Only a positive, checked answer
+//     opens the door.
+//  3. **It stores a bool, not a uid.** See localsIsAdminKey.
+//
+// Errors are logged rather than swallowed silently: a burst of them means the
+// database is unwell, and that should be visible even though no request
+// failed because of it.
+func OptionalAdmin(pool *pgxpool.Pool) fiber.Handler {
+	return OptionalAdminWithUsecase(NewUsecase(NewRepo(pool)))
+}
+
+// OptionalAdminWithUsecase is OptionalAdmin's implementation, parameterized
+// on an already-built Usecase — same reason RequireWithUsecase exists.
+func OptionalAdminWithUsecase(uc *Usecase) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		raw := c.Cookies(CookieName)
+		if raw == "" {
+			return c.Next()
+		}
+		sessionID, err := uuid.Parse(raw)
+		if err != nil {
+			return c.Next()
+		}
+		uid, err := uc.ValidateSession(c.Context(), sessionID)
+		if err != nil {
+			if !errors.Is(err, ErrNotFound) {
+				apilog.Internal(c, "auth.OptionalAdmin.session", err)
+			}
+			return c.Next()
+		}
+		isAdmin, err := uc.IsAdmin(c.Context(), uid)
+		if err != nil {
+			apilog.Internal(c, "auth.OptionalAdmin.role", err)
+			return c.Next()
+		}
+		c.Locals(localsUIDKey, uid)
+		c.Locals(localsIsAdminKey, isAdmin)
+		return c.Next()
+	}
+}
+
+// IsAdmin reports whether OptionalAdmin identified this request as an
+// admin's. False for every request that did not pass through OptionalAdmin,
+// which is the safe direction: a caller that forgets the middleware sees a
+// public-only catalog, not a leak.
+func IsAdmin(c *fiber.Ctx) bool {
+	ok, _ := c.Locals(localsIsAdminKey).(bool)
+	return ok
 }

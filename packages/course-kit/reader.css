@@ -29,7 +29,20 @@
   --shadow:0 1px 2px rgba(11,11,11,.05), 0 8px 24px rgba(11,11,11,.06);
 
   --sans: "IBM Plex Sans Variable", "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --serif: "Iowan Old Style", "Charter", "Georgia", "Times New Roman", serif;
+  /* CHARIS SIL ĐỨNG ĐẦU, và đó là một bản sửa lỗi, không phải chuyện thẩm mỹ.
+     Trước đây dải này mở đầu bằng "Iowan Old Style" — một font HỆ THỐNG của
+     macOS — và không hề nhắc Charis SIL, dù ứng dụng đã tải sẵn font ấy kèm
+     subset `vietnamese`. Hệ quả: chữ trong chương hiện bằng bất cứ font serif
+     nào máy người đọc có, và Iowan Old Style dựng dấu tiếng Việt hỏng — người
+     đọc báo lại "chương" hiện thành "chuóng", tức mất râu của ư/ơ.
+     Vì nó phụ thuộc font hệ máy, lỗi này KHÔNG tái hiện trên mọi máy, nên nó
+     sống sót qua mọi vòng đọc trước đó.
+     Charis SIL là font của SIL, thiết kế cho các ngôn ngữ nhiều dấu phụ; subset
+     vietnamese của nó phủ U+01A0-01A1, U+01AF-01B0 và cả khối U+1EA0-1EF9 —
+     đã kiểm từng điểm mã, không suy đoán.
+     Các font hệ thống ở sau vẫn giữ, vì tệp này còn phục vụ cả bản dựng không
+     có @font-face của ứng dụng; ở đó thà xấu còn hơn không có chữ. */
+  --serif: "Charis SIL", "Charter", "Iowan Old Style", "Georgia", "Times New Roman", serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 
   --sidebar-w: 306px;

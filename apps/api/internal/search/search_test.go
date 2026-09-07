@@ -508,7 +508,7 @@ func TestSearchNegativeLimitDoesNotPanic(t *testing.T) {
 	})
 
 	uc := search.NewUsecase(search.NewRepo(pool))
-	res, err := uc.Search(context.Background(), "entropy", -1)
+	res, err := uc.Search(context.Background(), "entropy", -1, false)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}

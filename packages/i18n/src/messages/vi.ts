@@ -1135,6 +1135,7 @@ export const vi = {
   'auth.error.badRequest': 'Yêu cầu không hợp lệ. Vui lòng kiểm tra lại thông tin đã nhập.',
   'auth.error.credentials': 'Email hoặc mật khẩu không đúng.',
   'auth.error.emailTaken': 'Email này đã được đăng ký. Vui lòng đăng nhập hoặc dùng email khác.',
+  'auth.error.emailInvalid': 'Địa chỉ email không hợp lệ. Kiểm tra lại phần sau dấu @.',
   'auth.error.tooManyAttempts': 'Bạn đã thử quá nhiều lần. Vui lòng đợi một chút rồi thử lại.',
   'auth.error.serverDown': 'Máy chủ đang gặp sự cố. Vui lòng thử lại sau.',
   'auth.error.unknown': 'Đã xảy ra lỗi không xác định. Vui lòng thử lại.',

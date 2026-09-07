@@ -437,10 +437,22 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// OLD private listing claimed that exact path — so PublicList's real
 	// wiring waits for the old route's removal right here, in the same
 	// commit.
-	app.Get("/courses", catalogHandler.PublicList)
-	app.Get("/courses/:slug", catalogHandler.PublicManifest)
-	app.Get("/courses/:slug/chapters/:chapterId", catalogHandler.PublicChapter)
-	app.Get("/courses/:slug/assets/*", catalogHandler.PublicAsset)
+	// `auth.OptionalAdmin` in front of all five public reads (four here plus
+	// /search below). These routes stay open to anonymous readers — that is
+	// the whole point of a public catalog — but an admin's session makes
+	// private courses visible to that admin and to nobody else.
+	//
+	// It goes on EVERY read path, not just the listing. A private course
+	// hidden from GET /courses but still served by GET /courses/:slug, its
+	// chapters, its assets, or /search would be hidden from the index and
+	// wide open to anyone who typed the slug, or who searched for a sentence
+	// inside it. Six read paths, one gate, mounted six times.
+	optionalAdmin := auth.OptionalAdminWithUsecase(authUsecase)
+
+	app.Get("/courses", optionalAdmin, catalogHandler.PublicList)
+	app.Get("/courses/:slug", optionalAdmin, catalogHandler.PublicManifest)
+	app.Get("/courses/:slug/chapters/:chapterId", optionalAdmin, catalogHandler.PublicChapter)
+	app.Get("/courses/:slug/assets/*", optionalAdmin, catalogHandler.PublicAsset)
 
 	// GET /search (04/09/2026): tìm trong chính danh mục bốn route trên phục
 	// vụ, nên nó ở ngay đây và cũng công khai — xem search.Handler.Search cho
@@ -451,7 +463,7 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// ký TRƯỚC, và đúng cái bẫy ấy từng giữ PublicList lại nguyên một commit
 	// (xem chú thích ngay trên).
 	searchHandler := search.NewHandler(search.NewUsecase(search.NewRepo(deps.Pool)))
-	app.Get("/search", searchHandler.Search)
+	app.Get("/search", optionalAdmin, searchHandler.Search)
 
 	// Admin catalog routes (Task 8): publish/unpublish/rollback/list for
 	// the public catalog Task 9 serves reads from. Every route is mounted
@@ -473,6 +485,12 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	mountAdmin(fiber.MethodGet, "/admin/courses", catalogHandler.List)
 	mountAdmin(fiber.MethodDelete, "/admin/courses/:slug", catalogHandler.Unpublish)
 	mountAdmin(fiber.MethodPost, "/admin/courses/:slug/rollback", catalogHandler.Rollback)
+	// PUT, not PATCH: the body carries the complete new value of a
+	// single-valued setting, and sending it twice must land where sending it
+	// once did. Publishing does NOT touch it — see catalog.Repo.Publish, which
+	// reads the current value back so a republish cannot silently un-hide a
+	// course.
+	mountAdmin(fiber.MethodPut, "/admin/courses/:slug/visibility", catalogHandler.SetVisibility)
 
 	// AI routes (Pha 2, Task 11): the server-side tutor. All three sit
 	// behind auth.Require like every other stateful route in this file, and
@@ -588,16 +606,25 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 // graph; giving it a second dependency on the whole catalog stack would put
 // a domain package in the middle of the wiring, which is this file's job.
 //
-// Both methods reach only PUBLISHED courses — the same rows any anonymous
-// reader can already fetch over GET /courses/:slug. The tool therefore adds
-// no read authority the learner did not already have; what it adds is the
-// model's ability to fetch them mid-answer.
+// Both methods reach only PUBLIC published courses — the same rows any
+// anonymous reader can already fetch over GET /courses/:slug. The tool
+// therefore adds no read authority the learner did not already have; what it
+// adds is the model's ability to fetch them mid-answer.
+//
+// `includePrivate` is hard-wired FALSE, and that is a security boundary, not
+// a default worth relaxing casually. This type has no request and no user —
+// it is built once at wiring time — so it cannot tell whose question it is
+// serving. Passing true here would hand every private course to whoever asks
+// the model about it, which is precisely the authority a private course
+// exists to withhold. An admin asking about their own private course gets
+// "not found" from the tool; that is the safe direction, and restoring it
+// properly means threading the asker's identity down here first.
 type courseQuerier struct {
 	uc *catalog.Usecase
 }
 
 func (q courseQuerier) Manifest(ctx context.Context, slug string) ([]byte, error) {
-	course, err := q.uc.GetPublished(ctx, slug)
+	course, err := q.uc.GetPublished(ctx, slug, false)
 	if err != nil {
 		return nil, err
 	}
@@ -608,7 +635,7 @@ func (q courseQuerier) ChapterHTML(ctx context.Context, slug, chapterID string) 
 	// Widgets and the version are dropped deliberately: a widget is an
 	// interactive HTML island for a browser to render, and the model reads
 	// prose. courseTool strips tags from what it gets back anyway.
-	html, _, _, err := q.uc.GetChapter(ctx, slug, chapterID)
+	html, _, _, err := q.uc.GetChapter(ctx, slug, chapterID, false)
 	return html, err
 }
 

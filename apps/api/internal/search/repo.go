@@ -115,14 +115,20 @@ func likePattern(q string) string {
 }
 
 // SearchCourses trả về các khoá có q trong tiêu đề hoặc mô tả.
-func (r *Repo) SearchCourses(ctx context.Context, q string, limit int) ([]CourseCandidate, error) {
+//
+// `includePrivate` không phải tuỳ chọn tiện tay: `/search` là route CÔNG KHAI
+// và nó đọc thẳng published_chapters, tức TOÀN VĂN chương. Lọc danh mục mà
+// quên chỗ này thì khoá riêng biến khỏi mục lục nhưng vẫn moi ra được bằng
+// cách gõ một câu trong chương vào ô tìm kiếm.
+func (r *Repo) SearchCourses(ctx context.Context, q string, limit int, includePrivate bool) ([]CourseCandidate, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT slug, title, description
 		   FROM published_courses
-		  WHERE title ILIKE $1 OR description ILIKE $1
+		  WHERE (title ILIKE $1 OR description ILIKE $1)
+		    AND ($3 OR visibility = 'public')
 		  ORDER BY title
 		  LIMIT $2`,
-		likePattern(q), limit)
+		likePattern(q), limit, includePrivate)
 	if err != nil {
 		return nil, fmt.Errorf("search: query published_courses: %w", err)
 	}
@@ -150,7 +156,7 @@ func (r *Repo) SearchCourses(ctx context.Context, q string, limit int) ([]Course
 // lại theo đó sau khi đã có manifest trong tay. Hai việc khác nhau: cái này
 // để cái trần maxCandidates cắt ở cùng một chỗ giữa hai lần chạy giống hệt
 // nhau, thay vì cắt ngẫu nhiên theo thứ tự Postgres tình cờ trả về.
-func (r *Repo) SearchChapters(ctx context.Context, q string) ([]ChapterCandidate, error) {
+func (r *Repo) SearchChapters(ctx context.Context, q string, includePrivate bool) ([]ChapterCandidate, error) {
 	// COALESCE(plain_text, html): quét văn bản thuần khi đã có, rơi về HTML
 	// thô khi chưa. Sau khi BackfillPlainText chạy, nhánh thứ hai không còn
 	// hàng nào — nhưng nó phải tồn tại, vì thiếu nó thì một chương chưa dẫn
@@ -166,9 +172,10 @@ func (r *Repo) SearchChapters(ctx context.Context, q string) ([]ChapterCandidate
 		   FROM published_chapters pch
 		   JOIN published_courses pc ON pc.slug = pch.slug
 		  WHERE COALESCE(pch.plain_text, pch.html) ILIKE $1
+		    AND ($3 OR pc.visibility = 'public')
 		  ORDER BY pch.slug, pch.chapter_id
 		  LIMIT $2`,
-		likePattern(q), maxCandidates)
+		likePattern(q), maxCandidates, includePrivate)
 	if err != nil {
 		return nil, fmt.Errorf("search: query published_chapters: %w", err)
 	}

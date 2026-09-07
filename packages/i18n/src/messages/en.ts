@@ -883,6 +883,7 @@ export const en: Messages = {
   'auth.error.badRequest': 'Invalid request. Please check what you entered.',
   'auth.error.credentials': 'Wrong email or password.',
   'auth.error.emailTaken': 'That email is already registered. Sign in, or use a different address.',
+  'auth.error.emailInvalid': 'That is not a valid email address. Check the part after the @.',
   'auth.error.tooManyAttempts': 'Too many attempts. Please wait a moment and try again.',
   'auth.error.serverDown': 'The server is having trouble. Please try again later.',
   'auth.error.unknown': 'An unknown error occurred. Please try again.',
