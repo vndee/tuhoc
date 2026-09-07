@@ -40,6 +40,12 @@ type Config struct {
 	CORSOrigin string
 	// CookieSecure controls the Secure attribute on session cookies.
 	CookieSecure bool
+	// MigrateOnBoot makes the server apply every pending migration before it
+	// serves anything. Default FALSE — see parseMigrateOnBoot.
+	MigrateOnBoot bool
+	// MigrateDatabaseURL is the connection string used for migrations only,
+	// falling back to DatabaseURL when unset. See MigrationDSN.
+	MigrateDatabaseURL string
 
 	// ── THE FIRST SECRET THIS SERVER EVER HELD ──────────────────────────
 	//
@@ -217,6 +223,8 @@ func Load() Config {
 		DatabaseURL:           os.Getenv("DATABASE_URL"),
 		CORSOrigin:            getEnv("CORS_ORIGIN", DefaultCORSOrigin),
 		CookieSecure:          parseCookieSecure(os.Getenv("COOKIE_SECURE")),
+		MigrateOnBoot:         parseMigrateOnBoot(os.Getenv("MIGRATE_ON_BOOT")),
+		MigrateDatabaseURL:    os.Getenv("MIGRATE_DATABASE_URL"),
 		GitHubToken:           os.Getenv("GITHUB_TOKEN"),
 		GitHubDiscussionsRepo: os.Getenv("GITHUB_DISCUSSIONS_REPO"),
 		AdminToken:            os.Getenv("ADMIN_TOKEN"),
@@ -245,6 +253,35 @@ func getEnv(key, fallback string) string {
 //   - set but unparseable: fail closed to true, and log a warning naming
 //     the variable and the bad value, so a typo in an ops config doesn't
 //     silently downgrade cookie security.
+//
+// parseMigrateOnBoot decides whether the server migrates its own database at
+// startup, from MIGRATE_ON_BOOT.
+//
+// This exists because its absence took production down. Migrations were a
+// manual step that nothing enforced: a deploy shipped code reading a column
+// its migration had not created, and `GET /courses` — the front page —
+// answered 500 until someone noticed and ran `migrate` by hand. Code and the
+// schema it requires ship in the same commit; they should arrive together.
+//
+//   - unset/empty: false. Local dev and the test suite manage their own
+//     schema, and a surprise migration on `go run` is not wanted.
+//   - set and parseable: that value. render.yaml sets it true.
+//   - set but unparseable: fail closed to FALSE, and say so. The opposite
+//     direction (defaulting a typo to "yes, migrate") would let a malformed
+//     ops value silently rewrite the schema, which is worse than not
+//     migrating — that failure at least announces itself on the next request.
+func parseMigrateOnBoot(raw string) bool {
+	if raw == "" {
+		return false
+	}
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		log.Printf("config: MIGRATE_ON_BOOT=%q is not a valid boolean; not migrating", raw)
+		return false
+	}
+	return v
+}
+
 func parseCookieSecure(raw string) bool {
 	if raw == "" {
 		return false
@@ -255,4 +292,25 @@ func parseCookieSecure(raw string) bool {
 		return true
 	}
 	return v
+}
+
+// MigrationDSN is the connection string migrations should use:
+// MIGRATE_DATABASE_URL when set, otherwise DatabaseURL.
+//
+// The two are separable because of one specific hazard. golang-migrate guards
+// concurrent runs with `pg_advisory_lock`, which is SESSION-scoped, and this
+// deployment's DATABASE_URL is documented as Neon's POOLED string — a
+// PgBouncer endpoint in transaction mode, where consecutive statements may
+// land on different server connections. A session lock taken on one and
+// released on another is not a lock; at best it errors, at worst it does
+// nothing while appearing to work.
+//
+// So: point MIGRATE_DATABASE_URL at Neon's DIRECT (unpooled) endpoint. The
+// fallback keeps local dev and the test suite working with one variable,
+// where the pool is a plain pgx pool and the hazard does not exist.
+func (c Config) MigrationDSN() string {
+	if c.MigrateDatabaseURL != "" {
+		return c.MigrateDatabaseURL
+	}
+	return c.DatabaseURL
 }

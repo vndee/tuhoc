@@ -53,10 +53,31 @@ func main() {
 	// dbConnectTimeout, that's a real misconfiguration, so we fail fast
 	// instead of serving a broken pool.
 	//
-	// Migrations are deliberately NOT run here on boot: store.MigrateUp is
-	// the entry point for that. Wiring it into the deploy flow (an
-	// explicit `migrate` step, or a MIGRATE_ON_BOOT flag) is Task 16's
-	// job, not this task's — see fix round 1, finding 3.
+	// Migrations run here when MIGRATE_ON_BOOT says so — the flag this
+	// comment used to describe as somebody else's job.
+	//
+	// It stopped being optional the day the gap cost an outage: a deploy
+	// shipped code that read a column its migration had not created, because
+	// nothing applied migrations, and `GET /courses` — the front page —
+	// answered 500 until the migration was run by hand. Code and the schema
+	// it needs travel in the same commit; they should land together.
+	//
+	// BEFORE store.Open, deliberately. Migrating after the pool is up would
+	// leave a window in which the server accepts requests against the old
+	// schema, which is the exact 500 this is here to prevent.
+	//
+	// log.Fatalf on failure, also deliberately: a server whose migration
+	// failed will answer some requests correctly and some with column
+	// errors, and that is harder to diagnose than a container that refuses
+	// to start and says why.
+	if cfg.MigrateOnBoot && cfg.DatabaseURL != "" {
+		log.Printf("store: MIGRATE_ON_BOOT is set — applying pending migrations")
+		if err := store.MigrateUp(cfg.MigrationDSN()); err != nil {
+			log.Fatalf("store: migrations failed: %v", err)
+		}
+		log.Printf("store: migrations up to date")
+	}
+
 	if cfg.DatabaseURL != "" {
 		connectCtx, cancel := context.WithTimeout(context.Background(), dbConnectTimeout)
 		p, err := store.Open(connectCtx, cfg.DatabaseURL)

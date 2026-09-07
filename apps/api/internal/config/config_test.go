@@ -19,7 +19,7 @@ import (
 func clearAPIEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
-		"PORT", "DATABASE_URL", "CORS_ORIGIN", "COOKIE_SECURE",
+		"PORT", "DATABASE_URL", "CORS_ORIGIN", "COOKIE_SECURE", "MIGRATE_ON_BOOT", "MIGRATE_DATABASE_URL",
 		"GITHUB_TOKEN", "GITHUB_DISCUSSIONS_REPO", "ADMIN_TOKEN",
 		"DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "BRAVE_API_KEY",
 	} {
@@ -227,5 +227,58 @@ func TestLoad_CookieSecureGarbageFailsClosedWithWarning(t *testing.T) {
 	}
 	if got := buf.String(); !strings.Contains(got, "COOKIE_SECURE") || !strings.Contains(got, "not-a-bool") {
 		t.Fatalf("want warning naming COOKIE_SECURE and the bad value, got log output: %q", got)
+	}
+}
+
+// TestLoad_MigrateOnBoot pins the flag that now decides whether a deploy
+// brings its own schema with it.
+//
+// The unparseable case fails to FALSE, which is the opposite direction from
+// COOKIE_SECURE right above — and the difference is the point, so it is
+// tested rather than assumed. A typo that silently turns cookie security ON
+// costs nothing; a typo that silently starts rewriting the schema costs a
+// migration nobody asked for.
+func TestLoad_MigrateOnBoot(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		raw  string
+		set  bool
+		want bool
+	}{
+		{name: "unset defaults to no", set: false, want: false},
+		{name: "empty is no", raw: "", set: true, want: false},
+		{name: "true", raw: "true", set: true, want: true},
+		{name: "1", raw: "1", set: true, want: true},
+		{name: "TRUE", raw: "TRUE", set: true, want: true},
+		{name: "false", raw: "false", set: true, want: false},
+		{name: "0", raw: "0", set: true, want: false},
+		{name: "typo fails closed to no", raw: "yes-please", set: true, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clearAPIEnv(t)
+			if tc.set {
+				t.Setenv("MIGRATE_ON_BOOT", tc.raw)
+			}
+			if got := Load().MigrateOnBoot; got != tc.want {
+				t.Fatalf("MIGRATE_ON_BOOT=%q (set=%v): want %v got %v", tc.raw, tc.set, tc.want, got)
+			}
+		})
+	}
+}
+
+// TestMigrationDSN pins the fallback. The separation exists for a real
+// hazard (session advisory locks over a transaction pooler), so "which URL do
+// migrations use" must not be answerable only by reading the deploy config.
+func TestMigrationDSN(t *testing.T) {
+	clearAPIEnv(t)
+	t.Setenv("DATABASE_URL", "postgres://pooled/db")
+
+	if got := Load().MigrationDSN(); got != "postgres://pooled/db" {
+		t.Fatalf("unset MIGRATE_DATABASE_URL: want the DATABASE_URL fallback, got %q", got)
+	}
+
+	t.Setenv("MIGRATE_DATABASE_URL", "postgres://direct/db")
+	if got := Load().MigrationDSN(); got != "postgres://direct/db" {
+		t.Fatalf("MIGRATE_DATABASE_URL set: want it to win, got %q", got)
 	}
 }
