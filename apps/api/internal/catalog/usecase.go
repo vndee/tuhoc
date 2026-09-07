@@ -150,13 +150,13 @@ type Widget struct {
 // below are thin: the interesting decisions on this path (what a 404 must
 // not distinguish, what content type an asset gets) are HTTP-shape
 // decisions and belong to handler.go, not to this file.
-func (u *Usecase) ListPublished(ctx context.Context, includePrivate bool) ([]PublicCourse, error) {
-	return u.repo.ListPublished(ctx, includePrivate)
+func (u *Usecase) ListPublished(ctx context.Context, v Viewer) ([]PublicCourse, error) {
+	return u.repo.ListPublished(ctx, v)
 }
 
 // GetPublished returns slug's live course, or ErrNotFound.
-func (u *Usecase) GetPublished(ctx context.Context, slug string, includePrivate bool) (PublicCourse, error) {
-	return u.repo.GetPublished(ctx, slug, includePrivate)
+func (u *Usecase) GetPublished(ctx context.Context, slug string, v Viewer) (PublicCourse, error) {
+	return u.repo.GetPublished(ctx, slug, v)
 }
 
 // GetChapter returns one chapter's HTML together with its widgets, each
@@ -180,8 +180,8 @@ func (u *Usecase) GetPublished(ctx context.Context, slug string, includePrivate 
 // that guarantee and reality (a hand-edited row, a migration that lets the
 // two drift) costs a reader one missing widget on an otherwise-good
 // chapter, not a 500 for a page that is mostly fine.
-func (u *Usecase) GetChapter(ctx context.Context, slug, chapterID string, includePrivate bool) (html string, widgets []Widget, version int, err error) {
-	ch, version, err := u.repo.GetPublishedChapter(ctx, slug, chapterID, includePrivate)
+func (u *Usecase) GetChapter(ctx context.Context, slug, chapterID string, v Viewer) (html string, widgets []Widget, version int, err error) {
+	ch, version, err := u.repo.GetPublishedChapter(ctx, slug, chapterID, v)
 	if err != nil {
 		return "", nil, 0, err
 	}
@@ -189,7 +189,7 @@ func (u *Usecase) GetChapter(ctx context.Context, slug, chapterID string, includ
 	// Same includePrivate, deliberately: the chapter read above already
 	// refused a private course, but a widget fetch that trusted that instead
 	// of asking again would break the moment anything else calls this.
-	byName, err := u.repo.GetPublishedWidgets(ctx, slug, ch.WidgetNames, includePrivate)
+	byName, err := u.repo.GetPublishedWidgets(ctx, slug, ch.WidgetNames, v)
 	if err != nil {
 		return "", nil, 0, err
 	}
@@ -212,8 +212,8 @@ func (u *Usecase) GetChapter(ctx context.Context, slug, chapterID string, includ
 
 // GetAsset returns one asset's bytes for slug, plus the course's current
 // publish-sequence version (handler.go's ETag input), or ErrNotFound.
-func (u *Usecase) GetAsset(ctx context.Context, slug, assetPath string, includePrivate bool) ([]byte, int, error) {
-	return u.repo.GetPublishedAsset(ctx, slug, assetPath, includePrivate)
+func (u *Usecase) GetAsset(ctx context.Context, slug, assetPath string, v Viewer) ([]byte, int, error) {
+	return u.repo.GetPublishedAsset(ctx, slug, assetPath, v)
 }
 
 // SetVisibility flips one live course between public and private. The value
@@ -224,4 +224,19 @@ func (u *Usecase) SetVisibility(ctx context.Context, who *uuid.UUID, slug, visib
 		return ErrInvalidVisibility
 	}
 	return u.repo.SetVisibility(ctx, who, slug, visibility)
+}
+
+// GrantAccess / RevokeAccess / ListAccess are thin on purpose — the rules
+// (course must exist, account must exist, granting twice is fine) belong to
+// the transaction that enforces them, not to a second copy up here.
+func (u *Usecase) GrantAccess(ctx context.Context, who *uuid.UUID, slug, email string) error {
+	return u.repo.GrantAccess(ctx, who, slug, email)
+}
+
+func (u *Usecase) RevokeAccess(ctx context.Context, who *uuid.UUID, slug, email string) error {
+	return u.repo.RevokeAccess(ctx, who, slug, email)
+}
+
+func (u *Usecase) ListAccess(ctx context.Context, slug string) ([]AccessRow, error) {
+	return u.repo.ListAccess(ctx, slug)
 }

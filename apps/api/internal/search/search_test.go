@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/vndee/tuhoc-api/internal/catalog"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -508,7 +509,7 @@ func TestSearchNegativeLimitDoesNotPanic(t *testing.T) {
 	})
 
 	uc := search.NewUsecase(search.NewRepo(pool))
-	res, err := uc.Search(context.Background(), "entropy", -1, false)
+	res, err := uc.Search(context.Background(), "entropy", -1, catalog.Viewer{})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
