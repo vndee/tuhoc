@@ -192,6 +192,18 @@ DEP_DIRS = apps/web packages/course-format tools/tuhoc-cli tools/registry
 deps:
 	@for d in $(DEP_DIRS); do printf '  %-28s ' "$$d"; (cd $$d && bun install --silent 2>&1 | tail -1) || exit 1; done
 
+# `deps-ci` — cùng DEP_DIRS, nhưng `--frozen-lockfile`: trên runner, một
+# bun.lock lệch package.json phải là lỗi đỏ chứ không phải một bản cài âm thầm
+# khác với bản của mọi người.
+#
+# Nó tồn tại để CI KHÔNG phải chép lại danh sách thư mục. Bản đầu của
+# .github/workflows/ci.yml chép tay, chép thiếu `packages/course-format`, và
+# đỏ ngay lần chạy đầu với đúng lỗi mà chú thích DEP_DIRS ngay trên đây đã ghi
+# sẵn: "thiếu packages/course-format -> test-web thoát 2, lỗi resolve parse5".
+# Một danh sách chép hai nơi thì sẽ lệch; đây là nơi duy nhất.
+deps-ci:
+	@for d in $(DEP_DIRS); do printf '  %-28s ' "$$d"; (cd $$d && bun install --frozen-lockfile --silent 2>&1 | tail -1) || exit 1; done
+
 courses: ; python3 scripts/course_workspace.py
 # `make check-publish` — cổng TIỀN-PUBLISH. Thoát 1 khi repo còn dấu vết course
 # riêng tư ở BẤT KỲ đâu; thoát 0 khi không còn. Đây là mục kiểm chạy được thay
