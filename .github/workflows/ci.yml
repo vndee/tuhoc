@@ -54,8 +54,12 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+      # `make deps-ci`, không phải `bun install --cwd apps/web`: `tsc -b` của
+      # apps/web đi xuống packages/course-format qua project reference, nên gói
+      # ấy cần node_modules CỦA CHÍNH NÓ (parse5, fflate). Bản đầu của tệp này
+      # chỉ cài apps/web và đỏ ngay lần chạy đầu vì đúng lý do đó.
       - name: install
-        run: bun install --frozen-lockfile --cwd apps/web
+        run: make deps-ci
       # `make test-web` depends on the `courses` target, which unpacks the two
       # sample packages this repo commits. On a runner there is no private
       # store, so it prints a line saying it skipped one and carries on — that
@@ -71,13 +75,10 @@ jobs:
         with:
           bun-version: latest
       # No npm workspaces and no root package.json (ruling S1-F1): every
-      # package installs its own.
+      # package installs its own. `make deps-ci` walks the Makefile's own
+      # DEP_DIRS so this list cannot drift away from the one humans run.
       - name: install
-        run: |
-          set -euo pipefail
-          bun install --frozen-lockfile --cwd packages/course-format
-          bun install --frozen-lockfile --cwd tools/tuhoc-cli
-          bun install --frozen-lockfile --cwd tools/registry
+        run: make deps-ci
       - run: make test-format
       - run: make test-cli
       - run: make test-registry
