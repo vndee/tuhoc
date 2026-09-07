@@ -149,7 +149,15 @@ class Report:
 def public_course_ids(repo: pathlib.Path) -> set[str]:
     """Id của các gói mẫu CÔNG KHAI mà chính repo này phát hành.
 
-    Nguồn duy nhất: `fixtures/courses/<dir>/manifest.json`.
+    HAI nguồn, hợp lại: `fixtures/courses/<dir>/manifest.json`, và danh sách
+    khai báo `scripts/public-course-ids.txt`.
+
+    Nguồn thứ hai thêm vào khi giáo trình ai-risk được publish công khai. Suy ra
+    "công khai" từ riêng thư mục fixtures là suy ra sai kể từ lúc ấy: năm gói
+    ai-risk không phải fixture, nên phép 5 xếp chúng vào loại riêng tư và đem
+    chính chúng ra đối chiếu — kết quả là ba tài liệu kế hoạch bị báo đỏ vĩnh
+    viễn vì trùng văn xuôi với các khoá mà chúng ĐÃ SINH RA. Một cổng đỏ vì lý
+    do không sửa được là một cổng người ta học cách phớt lờ.
 
     Từng là nguồn dùng chung với chốt lúc build trong
     `apps/web/vite-plugins/courseAssets.ts` — chốt ấy không còn (commit dafd4eb
@@ -157,7 +165,7 @@ def public_course_ids(repo: pathlib.Path) -> set[str]:
     MỘT người dùng: phép 5, để biết gói nào dưới `courses/` là gói riêng cần đem
     ra đối chiếu văn xuôi. Phép 3 thôi cần nó — xem `check_bundle`.
     """
-    ids: set[str] = set()
+    ids: set[str] = set(read_list_file(repo / "scripts" / "public-course-ids.txt"))
     fixtures = repo / "fixtures" / "courses"
     if not fixtures.is_dir():
         return ids
@@ -172,6 +180,24 @@ def public_course_ids(repo: pathlib.Path) -> set[str]:
         if isinstance(cid, str) and cid:
             ids.add(cid)
     return ids
+
+
+def markers_file(store: pathlib.Path) -> pathlib.Path:
+    """Danh sách tên riêng — **ngoài** cây git, cạnh chính các gói riêng.
+
+    Từng là `scripts/private-markers.txt`, được theo dõi. Nó phải rời đi khi
+    repo mở công khai, vì lý do nó tự nêu ở dòng đầu: tệp ấy **nêu tên course
+    riêng**. Giữ nó trong repo là publish đúng cái mà bốn phép đo còn lại đang
+    đi tìm — cổng sẽ xanh trong khi thứ nó bảo vệ nằm ngay trong tệp cấu hình
+    của chính nó.
+
+    Kho gói (`$TUHOC_COURSE_STORE`) là chỗ đúng: gói riêng đã ở đó rồi, nên tên
+    của nó không đi thêm được đâu cả. Hệ quả có chủ ý: người clone bản công khai
+    chạy cổng này sẽ thấy "KHÔNG đo được gì" và mã thoát 1. Đó là **fail-closed
+    đang làm đúng việc** — cổng là công cụ tiền-publish của tác giả, không phải
+    một bài test của repo, và `make test` không gọi nó.
+    """
+    return store / "private-markers.txt"
 
 
 def read_list_file(path: pathlib.Path) -> list[str]:
@@ -300,30 +326,55 @@ def check_bundle(repo: pathlib.Path, report: Report) -> None:
     )
 
 
-def check_names(repo: pathlib.Path, report: Report) -> None:
-    """Phép 4 — tên riêng trong tệp được theo dõi, ngoài danh sách cho phép."""
-    markers = read_list_file(repo / "scripts" / "private-markers.txt")
+def check_names(repo: pathlib.Path, store: pathlib.Path, report: Report) -> None:
+    """Phép 4 — tên riêng trong tệp được theo dõi, trên MỌI ref.
+
+    Từng chỉ chạy `git grep` trên cây làm việc, tức trên nhánh đang checkout —
+    **đúng cái mù mà phép 1 đã phải sửa** và có ghi lại ngay trong docstring
+    của nó. Nó tái diễn ở đây, và lần này thì đắt: phép 4 báo xanh trên nhánh
+    làm việc trong khi `main` — nhánh sẽ được publish — mang 9 tệp nêu tên
+    course riêng, 4 trong số đó là mã sống (`across-the-noise`, PR #11). Một
+    cổng đo sai nhánh không phải cổng yếu, nó là cổng sai.
+    """
+    markers = read_list_file(markers_file(store))
     allow = set(read_list_file(repo / "scripts" / "publish-allowlist.txt"))
-    findings: list[str] = []
     if not markers:
         report.add(
             "4. Tên course riêng trong tệp được theo dõi",
-            ["scripts/private-markers.txt trống hoặc không có — KHÔNG đo được gì"],
+            [f"{markers_file(store)} trống hoặc không có — KHÔNG đo được gì"],
             "Fail-closed có chủ ý: một cổng không có gì để tìm phải nói ra, không được cho xanh.",
         )
         return
-    args = ["grep", "-n", "-I", "--"]
+
+    findings: list[str] = []
+    grep = ["grep", "-n", "-I"]
     for m in markers:
-        args[3:3] = ["-e", m]
-    code, out = run(repo, *args)
-    # git grep: 0 = có khớp, 1 = không khớp, >1 = lỗi thật.
+        grep += ["-e", m]
+
+    # Cây làm việc trước (bắt cả thứ chưa commit), rồi từng ref một.
+    code, out = run(repo, *(grep + ["--"]))
     if code > 1:
-        findings.append(f"git grep thoát {code} — không đo được")
+        findings.append(f"git grep (cây làm việc) thoát {code} — không đo được")
     for line in out.splitlines():
         path = line.split(":", 1)[0]
-        if path in allow:
+        if path not in allow:
+            findings.append(f"(cây làm việc) {line[:150]}")
+
+    code, refs_out = run(repo, "for-each-ref", "--format=%(refname)", "refs/heads", "refs/tags")
+    if code != 0:
+        findings.append(f"git for-each-ref thoát {code} — không đo được")
+    for ref in refs_out.split():
+        code, out = run(repo, *(grep + [ref, "--"]))
+        if code > 1:
+            findings.append(f"git grep {ref} thoát {code} — không đo được")
             continue
-        findings.append(line[:160])
+        for line in out.splitlines():
+            # `refs/heads/main:đường/dẫn:12:văn bản` — tên ref có '/', không có ':'.
+            parts = line.split(":", 2)
+            if len(parts) < 3 or parts[1] in allow:
+                continue
+            findings.append(f"{parts[0]}: {parts[1]}:{parts[2][:110]}")
+
     report.add(
         "4. Tên course riêng trong tệp được theo dõi",
         findings,
@@ -450,7 +501,7 @@ def main() -> int:
     check_refs(repo, report)
     check_history(repo, report)
     check_bundle(repo, report)
-    check_names(repo, report)
+    check_names(repo, store, report)
     check_prose(repo, public, store, report)
 
     return report.emit()

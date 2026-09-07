@@ -714,7 +714,7 @@ const entry=resolveStoryEntry(slug,allowDrafts);
 ```
 
 - [ ] Test normal production mode ignores preview query and doesn't invoke draft loader. Preview is a local review convenience, not a secrecy/auth boundary: bundled draft assets are not private documents. Add visible VI/EN draft banner and `noindex` for draft pages with cleanup on route exit; public route/canonical slug stay stable.
-- [ ] Renderer outputs optional intro before cover and optional StoryCourseLink in coda, only when declared. Existing AI fixture without these fields must not need a QueryClient or change markup unexpectedly. CTA uses real catalog match `ly-thuyet-thong-tin`; loading/missing/error leads to `/courses`; present leads to `/c/ly-thuyet-thong-tin`. EN label never claims the course has an English edition.
+- [ ] Renderer outputs optional intro before cover and optional StoryCourseLink in coda, only when declared. Existing AI fixture without these fields must not need a QueryClient or change markup unexpectedly. CTA uses a real catalog match for the declared slug; loading/missing/error leads to `/courses`; present leads to `/c/<slug>`. *(CTA khoá đã được gỡ khỏi bản đặc biệt trước khi repo mở công khai — nó trỏ tới một khoá riêng tư, tức một liên kết chết với công chúng; xem `docs/publishing.md`.)* EN label never claims the course has an English edition.
 
 ```ts
 const catalog=useQuery({queryKey:catalogQueryKey(),queryFn:fetchCatalog,retry:false});

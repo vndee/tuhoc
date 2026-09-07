@@ -1,4 +1,4 @@
-import type { Localized, RichTextBlock, SceneId, StoryAct, StoryDefinition, StoryScene } from '../../types';
+import type { Localized, RichTextBlock, SceneId, StoryAct, StoryScene } from '../../types';
 
 interface IssueCopy {
   title: Localized;
@@ -8,7 +8,6 @@ interface IssueCopy {
   scenes: Record<SceneId, Pick<StoryScene, 'period' | 'title' | 'humanStory' | 'technicalHinge' | 'sourceIds' | 'openQuestion'>>;
   imageText: Record<'cover' | SceneId, { alt: Localized; caption: Localized }>;
   coda: Localized<RichTextBlock[]>;
-  courseAction: NonNullable<StoryDefinition['courseAction']>;
 }
 
 // Approved bilingual appendix; only scene 01/12 caption prefixes are normalized.
@@ -737,10 +736,5 @@ export const issueCopy: IssueCopy = {
         "text": "You can return to any experiment, change an assumption and see what follows. To explore probability, entropy and communication limits more deeply, continue into a structured course."
       }
     ]
-  },
-  "courseAction": {
-    "slug": "ly-thuyet-thong-tin",
-    "label": {"vi":"Học tiếp Lý thuyết Thông tin","en":"Continue with Information Theory"},
-    "fallbackLabel": {"vi":"Khám phá các khoá học","en":"Explore the courses"}
   }
 };
