@@ -67,8 +67,14 @@ recorded cases here of a green tick that measured nothing.
 - **Stage explicit paths — never `git add -A`.** Several agents and worktrees
   operate in this repository concurrently, and `-A` sweeps up other people's
   work-in-progress. This has happened; it is not hypothetical.
-- Write a commit message that says **why**, not what. The diff already says
-  what. If you changed an approach, say what the previous one got wrong.
+- **Commit messages are English, in [Conventional Commits](https://www.conventionalcommits.org)
+  form:** `type(scope): subject` — `feat`, `fix`, `docs`, `chore`, `refactor`,
+  `test`, `perf`, `ci`, `build`. Imperative mood, no trailing period.
+  Issues, pull requests and code comments may still be Vietnamese; commit
+  subjects are what tooling parses and what every reader sees in `git log`.
+- Write a body that says **why**, not what. The diff already says what. If you
+  changed an approach, say what the previous one got wrong. This repository's
+  history is unusually detailed on purpose — that is worth keeping.
 - One logical change per PR. If you find an unrelated bug on the way, say so in
   the PR and open a separate issue.
 - Keep the PR description honest about what you did and did not verify. "Tests

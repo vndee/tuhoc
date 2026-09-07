@@ -18,6 +18,7 @@
 
 ## Checklist
 
+- [ ] Commit messages are English, in Conventional Commits form (`feat:`, `fix:`, `docs:` …)
 - [ ] I staged explicit paths, not `git add -A`
 - [ ] This is one logical change; anything unrelated I found is in a separate issue
 - [ ] No course content was added to `courses/` (it belongs in a package — see CONTRIBUTING.md)
