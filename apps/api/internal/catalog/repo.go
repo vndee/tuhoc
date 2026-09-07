@@ -69,6 +69,13 @@ type PublicCourse struct {
 	Slug, Title, Lang, Description string
 	Version                        int
 
+	// Visibility is "public" or "private" (see VisibilityPublic /
+	// VisibilityPrivate). It is NOT serialized to readers: a public listing
+	// carries only public courses, so the field would be a constant there,
+	// and on an admin listing it is the admin UI that needs it. Handlers
+	// decide what to expose — see handler.go.
+	Visibility string
+
 	// ManifestJSON is nil on a result from ListPublished — see that
 	// method's own doc for why a listing must not carry it — and populated
 	// on a result from GetPublished, where it is manifest.json's content,
@@ -112,6 +119,20 @@ type AdminCourseRow struct {
 }
 
 // Repo is the storage interface the catalog usecase depends on.
+// Hai giá trị hợp lệ của published_courses.visibility. Cùng chuỗi với CHECK
+// trong migration 0013; đổi ở một nơi mà quên nơi kia thì cột từ chối ghi.
+const (
+	VisibilityPublic  = "public"
+	VisibilityPrivate = "private"
+)
+
+// ValidVisibility gác lối vào API: mọi giá trị khác hai chuỗi trên bị từ chối
+// TRƯỚC khi chạm tới Postgres, để lỗi là 400 có tên chứ không phải một lỗi
+// ràng buộc 500 mà người gọi phải đoán.
+func ValidVisibility(v string) bool {
+	return v == VisibilityPublic || v == VisibilityPrivate
+}
+
 type Repo interface {
 	// Publish performs the ENTIRE publish write — the new course_versions
 	// row, the wholesale replace of published_courses/_chapters/_assets/
@@ -123,6 +144,7 @@ type Repo interface {
 	// transaction. ErrNotFound if slug has no live row; course_versions is
 	// never touched.
 	Unpublish(ctx context.Context, who *uuid.UUID, slug string) error
+
 	// VersionZip returns the raw zip stored for (slug, version) at the time
 	// it was published — never a re-derivation, always the exact bytes
 	// course_versions.zip holds. ErrNotFound if no such row exists.
@@ -144,10 +166,10 @@ type Repo interface {
 	// listing must not drag every course's manifest into memory for a page
 	// that displays none of it (the same reasoning course.Repo's own,
 	// now-deleted ListForOwner applied to Blob).
-	ListPublished(ctx context.Context) ([]PublicCourse, error)
+	ListPublished(ctx context.Context, includePrivate bool) ([]PublicCourse, error)
 	// GetPublished returns slug's live course, manifest included, or
 	// ErrNotFound if slug names no currently-published course.
-	GetPublished(ctx context.Context, slug string) (PublicCourse, error)
+	GetPublished(ctx context.Context, slug string, includePrivate bool) (PublicCourse, error)
 	// GetPublishedChapter returns one chapter of slug's live course, plus
 	// the course's CURRENT version (handler.go's ETag input, joined here
 	// rather than in a second round trip — the same reason
@@ -156,17 +178,22 @@ type Repo interface {
 	// behind that distinction (every published course is public), but a
 	// response that told the two apart would still leak "this slug exists"
 	// for no reason a public catalog has any use for.
-	GetPublishedChapter(ctx context.Context, slug, chapterID string) (chapter PublicChapter, version int, err error)
+	GetPublishedChapter(ctx context.Context, slug, chapterID string, includePrivate bool) (chapter PublicChapter, version int, err error)
 	// GetPublishedWidgets returns the HTML of every widget named in names
 	// that slug's live course actually ships, keyed by name. A name with no
 	// matching row is simply absent from the result rather than an error —
 	// see Usecase.GetChapter for why a caller can lean on this without
 	// leaning on the guarantee that makes it true.
-	GetPublishedWidgets(ctx context.Context, slug string, names []string) (map[string]string, error)
+	GetPublishedWidgets(ctx context.Context, slug string, names []string, includePrivate bool) (map[string]string, error)
 	// GetPublishedAsset returns one asset's bytes for (slug, assetPath),
 	// plus the course's CURRENT publish-sequence version (the caller's ETag
 	// input — see handler.go), or ErrNotFound.
-	GetPublishedAsset(ctx context.Context, slug, assetPath string) (data []byte, version int, err error)
+	GetPublishedAsset(ctx context.Context, slug, assetPath string, includePrivate bool) (data []byte, version int, err error)
+	// SetVisibility flips slug's live row between "public" and "private"
+	// and records an admin_audit row. ErrNotFound if slug has no live row.
+	// The value is validated by the caller (ValidVisibility); the column's
+	// own CHECK is the second line of defence, not the first.
+	SetVisibility(ctx context.Context, who *uuid.UUID, slug, visibility string) error
 }
 
 // PostgresRepo is the Postgres-backed Repo.
@@ -238,6 +265,23 @@ func (r *PostgresRepo) Publish(ctx context.Context, who *uuid.UUID, in PublishIn
 		return 0, fmt.Errorf("catalog: insert course_versions (slug=%s): %w", in.Slug, err)
 	}
 
+	// Publish REPLACES the live row, so anything stored on it that does not
+	// come from the package must be read back first or it silently reverts to
+	// its column default. `visibility` is exactly that: it is set by a
+	// separate admin call, not by the zip, and its default is 'public'.
+	// Without this read, re-publishing a private course would quietly make it
+	// public again — the failure mode this whole column exists to prevent,
+	// reintroduced by the very act of updating the course.
+	var keepVisibility string
+	switch err := tx.QueryRow(ctx,
+		`SELECT visibility FROM published_courses WHERE slug = $1`, in.Slug,
+	).Scan(&keepVisibility); {
+	case errors.Is(err, pgx.ErrNoRows):
+		keepVisibility = VisibilityPublic // first publish
+	case err != nil:
+		return 0, fmt.Errorf("catalog: read visibility before republish (slug=%s): %w", in.Slug, err)
+	}
+
 	// Cascades into published_chapters/published_assets/published_widgets
 	// via their own ON DELETE CASCADE — a first publish finds no row here
 	// and this is simply a no-op delete.
@@ -246,9 +290,9 @@ func (r *PostgresRepo) Publish(ctx context.Context, who *uuid.UUID, in PublishIn
 	}
 
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO published_courses (slug, version, title, lang, description, manifest)
-		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		in.Slug, version, in.Title, in.Lang, in.Description, in.ManifestJSON,
+		`INSERT INTO published_courses (slug, version, title, lang, description, manifest, visibility)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		in.Slug, version, in.Title, in.Lang, in.Description, in.ManifestJSON, keepVisibility,
 	); err != nil {
 		return 0, fmt.Errorf("catalog: insert published_courses (slug=%s): %w", in.Slug, err)
 	}
@@ -440,10 +484,15 @@ func (r *PostgresRepo) AdminList(ctx context.Context) ([]AdminCourseRow, error) 
 // reason this is a distinct query from GetPublished rather than that method
 // called once per row: a catalog listing must stay cheap regardless of how
 // large any one course's manifest is.
-func (r *PostgresRepo) ListPublished(ctx context.Context) ([]PublicCourse, error) {
+func (r *PostgresRepo) ListPublished(ctx context.Context, includePrivate bool) ([]PublicCourse, error) {
+	// `$1 OR visibility = 'public'` rather than building the SQL string two
+	// ways: one query text, one plan, and no branch where a future edit can
+	// update the public arm and forget the admin one.
 	rows, err := r.pool.Query(ctx,
-		`SELECT slug, title, lang, description, version
-		 FROM published_courses ORDER BY slug`)
+		`SELECT slug, title, lang, description, version, visibility
+		 FROM published_courses
+		 WHERE $1 OR visibility = 'public'
+		 ORDER BY slug`, includePrivate)
 	if err != nil {
 		return nil, fmt.Errorf("catalog: list published courses: %w", err)
 	}
@@ -452,7 +501,7 @@ func (r *PostgresRepo) ListPublished(ctx context.Context) ([]PublicCourse, error
 	out := []PublicCourse{}
 	for rows.Next() {
 		var c PublicCourse
-		if err := rows.Scan(&c.Slug, &c.Title, &c.Lang, &c.Description, &c.Version); err != nil {
+		if err := rows.Scan(&c.Slug, &c.Title, &c.Lang, &c.Description, &c.Version, &c.Visibility); err != nil {
 			return nil, fmt.Errorf("catalog: scan published_courses row: %w", err)
 		}
 		out = append(out, c)
@@ -464,13 +513,17 @@ func (r *PostgresRepo) ListPublished(ctx context.Context) ([]PublicCourse, error
 }
 
 // GetPublished returns slug's live row in full, manifest included.
-func (r *PostgresRepo) GetPublished(ctx context.Context, slug string) (PublicCourse, error) {
+func (r *PostgresRepo) GetPublished(ctx context.Context, slug string, includePrivate bool) (PublicCourse, error) {
 	var c PublicCourse
+	// ErrNotFound, never a 403: to a reader without the right, a private
+	// course must be indistinguishable from one that does not exist. A
+	// distinct "forbidden" would confirm the slug to anyone who guesses it.
 	err := r.pool.QueryRow(ctx,
-		`SELECT slug, title, lang, description, version, manifest
-		 FROM published_courses WHERE slug = $1`,
-		slug,
-	).Scan(&c.Slug, &c.Title, &c.Lang, &c.Description, &c.Version, &c.ManifestJSON)
+		`SELECT slug, title, lang, description, version, manifest, visibility
+		 FROM published_courses
+		 WHERE slug = $1 AND ($2 OR visibility = 'public')`,
+		slug, includePrivate,
+	).Scan(&c.Slug, &c.Title, &c.Lang, &c.Description, &c.Version, &c.ManifestJSON, &c.Visibility)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PublicCourse{}, ErrNotFound
 	}
@@ -486,15 +539,19 @@ func (r *PostgresRepo) GetPublished(ctx context.Context, slug string) (PublicCou
 // to whichever version is currently live, full stop) — in one query rather
 // than two, the same choice GetPublishedAsset makes for the identical
 // reason.
-func (r *PostgresRepo) GetPublishedChapter(ctx context.Context, slug, chapterID string) (PublicChapter, int, error) {
+func (r *PostgresRepo) GetPublishedChapter(ctx context.Context, slug, chapterID string, includePrivate bool) (PublicChapter, int, error) {
 	var ch PublicChapter
 	var version int
+	// The join to published_courses was already here for the version; the
+	// visibility test rides on it. Filtering only the catalog and not this
+	// would hide a private course from the list while still serving its
+	// chapters to anyone who typed the URL.
 	err := r.pool.QueryRow(ctx,
 		`SELECT pch.html, pch.widget_names, pc.version
 		 FROM published_chapters pch
 		 JOIN published_courses pc ON pc.slug = pch.slug
-		 WHERE pch.slug = $1 AND pch.chapter_id = $2`,
-		slug, chapterID,
+		 WHERE pch.slug = $1 AND pch.chapter_id = $2 AND ($3 OR pc.visibility = 'public')`,
+		slug, chapterID, includePrivate,
 	).Scan(&ch.HTML, &ch.WidgetNames, &version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PublicChapter{}, 0, ErrNotFound
@@ -510,15 +567,22 @@ func (r *PostgresRepo) GetPublishedChapter(ctx context.Context, slug, chapterID 
 // references no widget — the ordinary case — is why this returns early on
 // len(names) == 0 rather than sending Postgres a query with an empty ANY($2)
 // array for no reason.
-func (r *PostgresRepo) GetPublishedWidgets(ctx context.Context, slug string, names []string) (map[string]string, error) {
+func (r *PostgresRepo) GetPublishedWidgets(ctx context.Context, slug string, names []string, includePrivate bool) (map[string]string, error) {
 	out := map[string]string{}
 	if len(names) == 0 {
 		return out, nil
 	}
 
+	// A widget is a whole embedded program authored as part of the chapter,
+	// so it carries the course's content and needs the same gate. This query
+	// gains a join purely for that — published_widgets has no visibility of
+	// its own, and inheriting the course's is the only correct reading.
 	rows, err := r.pool.Query(ctx,
-		`SELECT name, html FROM published_widgets WHERE slug = $1 AND name = ANY($2)`,
-		slug, names,
+		`SELECT pw.name, pw.html
+		 FROM published_widgets pw
+		 JOIN published_courses pc ON pc.slug = pw.slug
+		 WHERE pw.slug = $1 AND pw.name = ANY($2) AND ($3 OR pc.visibility = 'public')`,
+		slug, names, includePrivate,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("catalog: get published widgets (slug=%s): %w", slug, err)
@@ -551,15 +615,15 @@ func (r *PostgresRepo) GetPublishedWidgets(ctx context.Context, slug string, nam
 // condition would refuse them even if they somehow survived, since an
 // asset whose course is not (or no longer) live has no published_courses
 // row to join against.
-func (r *PostgresRepo) GetPublishedAsset(ctx context.Context, slug, assetPath string) ([]byte, int, error) {
+func (r *PostgresRepo) GetPublishedAsset(ctx context.Context, slug, assetPath string, includePrivate bool) ([]byte, int, error) {
 	var data []byte
 	var version int
 	err := r.pool.QueryRow(ctx,
 		`SELECT pa.bytes, pc.version
 		 FROM published_assets pa
 		 JOIN published_courses pc ON pc.slug = pa.slug
-		 WHERE pa.slug = $1 AND pa.path = $2`,
-		slug, assetPath,
+		 WHERE pa.slug = $1 AND pa.path = $2 AND ($3 OR pc.visibility = 'public')`,
+		slug, assetPath, includePrivate,
 	).Scan(&data, &version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, 0, ErrNotFound
@@ -621,4 +685,48 @@ func (r *PostgresRepo) BackfillPlainText(ctx context.Context) (int, error) {
 		n += int(tag.RowsAffected())
 	}
 	return n, nil
+}
+
+// SetVisibility is the only way a course becomes private. It is deliberately
+// NOT part of publishing: the package format is public and documented, and a
+// `visibility` field in manifest.json would mean a course's audience is
+// decided by whoever hands you a zip. It belongs to the operator of this
+// server, so it lives behind the same admin gate as publish and unpublish,
+// and lands in the same audit table.
+func (r *PostgresRepo) SetVisibility(ctx context.Context, who *uuid.UUID, slug, visibility string) error {
+	if !ValidVisibility(visibility) {
+		return fmt.Errorf("catalog: invalid visibility %q", visibility)
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("catalog: begin set-visibility transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	tag, err := tx.Exec(ctx,
+		`UPDATE published_courses SET visibility = $2 WHERE slug = $1`, slug, visibility)
+	if err != nil {
+		return fmt.Errorf("catalog: set visibility (slug=%s): %w", slug, err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+
+	// Same shape as Publish/Unpublish: `actor` is NOT NULL with a CHECK, and
+	// actorAndWho maps a nil uid to the shared-token path ('cli'). The value
+	// goes in `note`, which is what the column is for.
+	actor, whoParam := actorAndWho(who)
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO admin_audit (who, actor, action, target, note)
+		 VALUES ($1, $2, 'visibility', $3, $4)`,
+		whoParam, actor, slug, visibility,
+	); err != nil {
+		return fmt.Errorf("catalog: audit set visibility (slug=%s): %w", slug, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("catalog: commit set visibility (slug=%s): %w", slug, err)
+	}
+	return nil
 }

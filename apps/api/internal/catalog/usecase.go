@@ -25,6 +25,11 @@ import (
 // an empty findings array, not a finding code).
 var ErrSlugMismatch = errors.New("catalog: url slug does not match the manifest's id")
 
+// ErrInvalidVisibility is returned for any value that is neither "public"
+// nor "private". Its own error rather than a generic one so handler.go can
+// map it to 400 without string-matching.
+var ErrInvalidVisibility = errors.New("catalog: visibility must be \"public\" or \"private\"")
+
 // Usecase holds catalog's rules. It reaches storage only through Repo.
 type Usecase struct {
 	repo Repo
@@ -145,13 +150,13 @@ type Widget struct {
 // below are thin: the interesting decisions on this path (what a 404 must
 // not distinguish, what content type an asset gets) are HTTP-shape
 // decisions and belong to handler.go, not to this file.
-func (u *Usecase) ListPublished(ctx context.Context) ([]PublicCourse, error) {
-	return u.repo.ListPublished(ctx)
+func (u *Usecase) ListPublished(ctx context.Context, includePrivate bool) ([]PublicCourse, error) {
+	return u.repo.ListPublished(ctx, includePrivate)
 }
 
 // GetPublished returns slug's live course, or ErrNotFound.
-func (u *Usecase) GetPublished(ctx context.Context, slug string) (PublicCourse, error) {
-	return u.repo.GetPublished(ctx, slug)
+func (u *Usecase) GetPublished(ctx context.Context, slug string, includePrivate bool) (PublicCourse, error) {
+	return u.repo.GetPublished(ctx, slug, includePrivate)
 }
 
 // GetChapter returns one chapter's HTML together with its widgets, each
@@ -175,13 +180,16 @@ func (u *Usecase) GetPublished(ctx context.Context, slug string) (PublicCourse, 
 // that guarantee and reality (a hand-edited row, a migration that lets the
 // two drift) costs a reader one missing widget on an otherwise-good
 // chapter, not a 500 for a page that is mostly fine.
-func (u *Usecase) GetChapter(ctx context.Context, slug, chapterID string) (html string, widgets []Widget, version int, err error) {
-	ch, version, err := u.repo.GetPublishedChapter(ctx, slug, chapterID)
+func (u *Usecase) GetChapter(ctx context.Context, slug, chapterID string, includePrivate bool) (html string, widgets []Widget, version int, err error) {
+	ch, version, err := u.repo.GetPublishedChapter(ctx, slug, chapterID, includePrivate)
 	if err != nil {
 		return "", nil, 0, err
 	}
 
-	byName, err := u.repo.GetPublishedWidgets(ctx, slug, ch.WidgetNames)
+	// Same includePrivate, deliberately: the chapter read above already
+	// refused a private course, but a widget fetch that trusted that instead
+	// of asking again would break the moment anything else calls this.
+	byName, err := u.repo.GetPublishedWidgets(ctx, slug, ch.WidgetNames, includePrivate)
 	if err != nil {
 		return "", nil, 0, err
 	}
@@ -204,6 +212,16 @@ func (u *Usecase) GetChapter(ctx context.Context, slug, chapterID string) (html 
 
 // GetAsset returns one asset's bytes for slug, plus the course's current
 // publish-sequence version (handler.go's ETag input), or ErrNotFound.
-func (u *Usecase) GetAsset(ctx context.Context, slug, assetPath string) ([]byte, int, error) {
-	return u.repo.GetPublishedAsset(ctx, slug, assetPath)
+func (u *Usecase) GetAsset(ctx context.Context, slug, assetPath string, includePrivate bool) ([]byte, int, error) {
+	return u.repo.GetPublishedAsset(ctx, slug, assetPath, includePrivate)
+}
+
+// SetVisibility flips one live course between public and private. The value
+// is validated HERE, before the repo, so an invalid one is a named 400 from
+// the handler rather than a constraint violation surfacing as a 500.
+func (u *Usecase) SetVisibility(ctx context.Context, who *uuid.UUID, slug, visibility string) error {
+	if !ValidVisibility(visibility) {
+		return ErrInvalidVisibility
+	}
+	return u.repo.SetVisibility(ctx, who, slug, visibility)
 }

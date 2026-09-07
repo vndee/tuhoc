@@ -230,6 +230,43 @@ func (h *Handler) Unpublish(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"slug": slug})
 }
 
+// visibilityRequest is PUT .../visibility's body.
+type visibilityRequest struct {
+	Visibility string `json:"visibility"`
+}
+
+// SetVisibility handles PUT /admin/courses/:slug/visibility, body
+// {"visibility": "public"|"private"}. Mounted behind adminOrToken.
+//
+// A bad value is 400 with the two legal values named, not a 500 from the
+// column's CHECK: the caller mistyped, and the response should say what to
+// type instead.
+func (h *Handler) SetVisibility(c *fiber.Ctx) error {
+	slug, err := urlSlug(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "slug is not valid percent-encoding"})
+	}
+
+	var body visibilityRequest
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "body must be JSON"})
+	}
+
+	err = h.uc.SetVisibility(c.Context(), who(c), slug, body.Visibility)
+	switch {
+	case errors.Is(err, ErrInvalidVisibility):
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": `visibility must be "public" or "private"`,
+		})
+	case errors.Is(err, ErrNotFound):
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})
+	case err != nil:
+		apilog.Internal(c, "catalog.SetVisibility", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "set visibility failed"})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"slug": slug, "visibility": body.Visibility})
+}
+
 // rollbackRequest is POST .../rollback's body: the version to roll back
 // to. Named "version" (not "to" or "toVersion") to keep the wire vocabulary
 // to the one word this whole API already uses for the publish-sequence
@@ -448,7 +485,7 @@ type publicCourseSummary struct {
 
 // PublicList handles GET /courses: every currently-live published course.
 func (h *Handler) PublicList(c *fiber.Ctx) error {
-	items, err := h.uc.ListPublished(c.Context())
+	items, err := h.uc.ListPublished(c.Context(), auth.IsAdmin(c))
 	if err != nil {
 		apilog.Internal(c, "catalog.PublicList", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "catalog list failed"})
@@ -486,7 +523,7 @@ func (h *Handler) PublicManifest(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "slug is not valid percent-encoding"})
 	}
 
-	course, err := h.uc.GetPublished(c.Context(), slug)
+	course, err := h.uc.GetPublished(c.Context(), slug, auth.IsAdmin(c))
 	switch {
 	case errors.Is(err, ErrNotFound):
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})
@@ -538,7 +575,7 @@ func (h *Handler) PublicChapter(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "chapter id is not valid percent-encoding"})
 	}
 
-	html, widgets, version, err := h.uc.GetChapter(c.Context(), slug, chapterID)
+	html, widgets, version, err := h.uc.GetChapter(c.Context(), slug, chapterID, auth.IsAdmin(c))
 	switch {
 	case errors.Is(err, ErrNotFound):
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})
@@ -585,7 +622,7 @@ func (h *Handler) PublicAsset(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "asset path is not valid percent-encoding"})
 	}
 
-	data, version, err := h.uc.GetAsset(c.Context(), slug, assetPath)
+	data, version, err := h.uc.GetAsset(c.Context(), slug, assetPath, auth.IsAdmin(c))
 	switch {
 	case errors.Is(err, ErrNotFound):
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})

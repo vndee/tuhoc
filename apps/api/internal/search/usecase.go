@@ -208,7 +208,7 @@ func snippetAround(text string, re *regexp.Regexp) (before, match, after string,
 }
 
 // Search chạy cả hai chặng và trả về câu trả lời đã sắp.
-func (u *Usecase) Search(ctx context.Context, q string, limit int) (Results, error) {
+func (u *Usecase) Search(ctx context.Context, q string, limit int, includePrivate bool) (Results, error) {
 	// Kẹp lại Ở ĐÂY dù handler đã gọi ClampLimit. Không phải phòng thủ thừa:
 	// `kept[:limit]` phía dưới panic với limit âm, và thứ duy nhất chặn nó
 	// là một hàm nằm NGOÀI phương thức này. Hai gói hàng xóm (userdata,
@@ -232,7 +232,7 @@ func (u *Usecase) Search(ctx context.Context, q string, limit int) (Results, err
 		return Results{}, fmt.Errorf("search: compile query pattern: %w", err)
 	}
 
-	courses, err := u.repo.SearchCourses(ctx, q, limit+1)
+	courses, err := u.repo.SearchCourses(ctx, q, limit+1, includePrivate)
 	if err != nil {
 		return Results{}, err
 	}
@@ -241,7 +241,7 @@ func (u *Usecase) Search(ctx context.Context, q string, limit int) (Results, err
 		courses = courses[:limit]
 	}
 
-	candidates, err := u.repo.SearchChapters(ctx, q)
+	candidates, err := u.repo.SearchChapters(ctx, q, includePrivate)
 	if err != nil {
 		return Results{}, err
 	}

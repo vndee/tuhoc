@@ -3,6 +3,8 @@ package search
 import (
 	"errors"
 
+	"github.com/vndee/tuhoc-api/internal/auth"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/vndee/tuhoc-api/internal/apilog"
@@ -63,7 +65,7 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid query"})
 	}
 
-	res, err := h.uc.Search(c.Context(), q, ClampLimit(c.QueryInt("limit", 0)))
+	res, err := h.uc.Search(c.Context(), q, ClampLimit(c.QueryInt("limit", 0)), auth.IsAdmin(c))
 	if err != nil {
 		apilog.Internal(c, "search.Search", err)
 		return c.Status(fiber.StatusInternalServerError).
