@@ -500,3 +500,66 @@ describe('Login — ?from= redirect target (deferred-minor #17)', () => {
     expect(await screen.findByText('Chapter content')).toBeInTheDocument();
   });
 });
+
+/**
+ * Hai lỗi do một người đọc báo, 07/09/2026.
+ *
+ * Cả hai vô hình với bộ test cũ vì cùng một lý do: hai thẻ của trang này sống
+ * trên CÙNG một route và trông gần giống nhau, nên "mở đúng thẻ" không phải
+ * thứ điều hướng kiểm được, và `noValidate` khiến trình duyệt không kiểm gì
+ * mà cũng không báo gì.
+ */
+describe('lỗi người đọc báo', () => {
+  it('mở thẳng thẻ Tạo tài khoản khi Landing gửi intent=register', async () => {
+    renderLogin({ pathname: '/login', state: { intent: 'register' } });
+    expect(await screen.findByRole('heading', { name: t('vi', 'login.heading.register') })).toBeVisible();
+    // Và không phải chỉ đổi tiêu đề: đúng form kia phải hiện ra.
+    expect(screen.getByLabelText(t('vi', 'login.field.name'))).toBeVisible();
+  });
+
+  it('vẫn mở thẻ Đăng nhập khi không có intent', async () => {
+    renderLogin('/login');
+    expect(await screen.findByRole('heading', { name: t('vi', 'login.heading.login') })).toBeVisible();
+  });
+
+  it('từ chối email sai cú pháp TRƯỚC khi gọi máy chủ', async () => {
+    let calls = 0;
+    server.use(
+      http.post('/auth/register', () => {
+        calls += 1;
+        return HttpResponse.json({ id: 'u1', email: 'x@y.co', name: 'x' });
+      }),
+    );
+
+    renderLogin({ pathname: '/login', state: { intent: 'register' } });
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(t('vi', 'login.field.name')), 'Duy');
+    await user.type(screen.getByLabelText(t('vi', 'login.field.email')), 'abc');
+    await user.type(screen.getByLabelText(t('vi', 'login.field.password')), 'mat-khau-du-dai');
+    await user.click(screen.getByRole('button', { name: t('vi', 'login.submit.register') }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(t('vi', 'auth.error.emailInvalid'));
+    // Cái thực sự được đo: KHÔNG có round trip nào. Một test chỉ nhìn thông
+    // báo lỗi sẽ vẫn xanh nếu máy chủ mới là chỗ từ chối.
+    expect(calls).toBe(0);
+  });
+
+  it('nhận email hợp lệ và gọi máy chủ', async () => {
+    let calls = 0;
+    server.use(
+      http.post('/auth/register', () => {
+        calls += 1;
+        return HttpResponse.json({ id: 'u1', email: 'a@b.co', name: 'Duy' });
+      }),
+    );
+
+    renderLogin({ pathname: '/login', state: { intent: 'register' } });
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(t('vi', 'login.field.name')), 'Duy');
+    await user.type(screen.getByLabelText(t('vi', 'login.field.email')), 'a@b.co');
+    await user.type(screen.getByLabelText(t('vi', 'login.field.password')), 'mat-khau-du-dai');
+    await user.click(screen.getByRole('button', { name: t('vi', 'login.submit.register') }));
+
+    await waitFor(() => expect(calls).toBe(1));
+  });
+});

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -77,6 +78,41 @@ func toMeResponse(u User) meResponse {
 // Register handles POST /auth/register {email,password,name}. On success
 // it responds 200 with the new user and sets the session cookie (register
 // implies being logged in).
+// ValidEmail reports whether s is an address this platform will accept as a
+// login identifier. Registration accepted anything non-empty until now, so
+// "abc" was a valid account.
+//
+// Three deliberate limits, because over-strict email validation rejects real
+// people and is a well-worn way to lose users:
+//
+//   - `mail.ParseAddress` (RFC 5322) does the parsing. Hand-rolled regexes for
+//     this are famously wrong in both directions.
+//   - `addr.Address != s` rejects the display-name form: ParseAddress happily
+//     accepts `Duy <a@b.co>`, and storing that as the identifier would mean
+//     the account's email is not what the user typed.
+//   - The domain must contain an interior dot. `a@b` is legal RFC-wise
+//     (intranet hosts) but is a typo on a public site, not a mailbox. This is
+//     the one rule that trades a little correctness for a lot of typo
+//     catching, and it is the only one worth revisiting if someone is ever
+//     wrongly refused.
+//
+// Deliberately NOT checked: length caps, disposable-domain lists, MX lookups.
+// The first two refuse valid people; the third turns signup into a network
+// call that fails when someone else's DNS is unwell.
+func ValidEmail(s string) bool {
+	addr, err := mail.ParseAddress(s)
+	if err != nil || addr.Address != s {
+		return false
+	}
+	at := strings.LastIndex(s, "@")
+	if at < 1 {
+		return false
+	}
+	domain := s[at+1:]
+	dot := strings.Index(domain, ".")
+	return dot > 0 && dot < len(domain)-1
+}
+
 func (h *Handler) Register(c *fiber.Ctx) error {
 	var req registerRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -86,6 +122,9 @@ func (h *Handler) Register(c *fiber.Ctx) error {
 
 	if req.Email == "" || req.Password == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email and password are required"})
+	}
+	if !ValidEmail(req.Email) {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email is not a valid address"})
 	}
 
 	user, session, err := h.uc.Register(c.Context(), req.Email, req.Password, req.Name)

@@ -255,6 +255,27 @@
   #app.reading .rd-exit {
     padding: 0 2px;
   }
+
+  /* KHOẢNG TRẮNG CỦA THANH TRÊN, ở khổ máy nó ít có nhất.
+     Người đọc báo lại: "mobile view t thấy cái header hơi chật".
+
+     Ở 375px thanh này mang tám điều khiển. Riêng khoảng trắng đã ăn
+     16×2 + 7×10 = 102px — hơn một phần tư bề ngang — trước khi vẽ bất cứ nút
+     nào, và breadcrumb (thứ DUY NHẤT nói cho người đọc biết họ đang ở chương
+     nào) là thứ bị cắt trước vì nó là phần tử co được duy nhất: nó hiện thành
+     "0.2 Bộ khu…".
+
+     10px đệm và 6px khoảng cách trả lại ~40px cho breadcrumb mà KHÔNG bỏ đi
+     điều khiển nào. Đây cố ý là bản sửa nhỏ: bớt số nút trên thanh là một
+     quyết định thiết kế — nó lấy đi chức năng của ai đó — chứ không phải một
+     bản vá CSS, nên nó không nằm ở đây. */
+  #app.reading {
+    --topbar-pad-x: 10px;
+  }
+
+  #app.reading #topbar {
+    gap: 6px;
+  }
 }
 
 /* ============================================================
