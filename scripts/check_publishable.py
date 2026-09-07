@@ -259,7 +259,7 @@ def check_refs(repo: pathlib.Path, report: Report) -> None:
     )
 
 
-def check_history(repo: pathlib.Path, report: Report) -> None:
+def check_history(repo: pathlib.Path, store: pathlib.Path, report: Report) -> None:
     """Phép 2 — dấu vết course riêng còn lấy lại được từ lịch sử.
 
     HAI vế, và vế thứ hai là vế dễ quên:
@@ -279,14 +279,33 @@ def check_history(repo: pathlib.Path, report: Report) -> None:
     if code != 0:
         findings.append(f"git rev-list thoát {code} — không đo được")
     else:
-        objs = [line for line in out.splitlines() if line.strip()]
-        keep = [o for o in objs if not o.endswith("/.gitkeep") and not o.endswith(" courses")]
+        # `rev-list --objects -- courses/` in ra HAI loại dòng: object có đường
+        # dẫn (`<sha> courses/…`), và object KHÔNG có đường dẫn — commit được
+        # chọn, cùng cây gốc của nó. Bản trước lọc theo đuôi chuỗi, nên cây gốc
+        # (`<sha> ` — tên rỗng) lọt qua và bị đếm là một phát hiện.
+        #
+        # Hậu quả: `courses/.gitkeep` được theo dõi CÓ CHỦ Ý, nên luôn có commit
+        # chạm `courses/`, nên luôn có một cây gốc được in ra, nên phép 2(a)
+        # **không bao giờ về 0 được** — nó đỏ từ 28/08 và sẽ đỏ mãi. Một cổng
+        # không thể xanh là một cổng người ta học cách phớt lờ.
+        #
+        # Nay chỉ đếm object CÓ đường dẫn thật dưới `courses/`, trừ `.gitkeep`.
+        keep = []
+        for line in out.splitlines():
+            sha, _, path = line.partition(" ")
+            path = path.strip()
+            if not path or not path.startswith("courses/"):
+                continue
+            if path == "courses/.gitkeep" or path.endswith("/.gitkeep"):
+                continue
+            keep.append(path)
         if keep:
-            findings.append(f"(a) {len(keep)} object dưới courses/ vẫn lấy lại được bằng một lệnh")
+            findings.append(
+                f"(a) {len(keep)} object dưới courses/ vẫn lấy lại được bằng một lệnh (vd {keep[0]})")
 
-    markers = read_list_file(repo / "scripts" / "private-markers.txt")
+    markers = read_list_file(markers_file(store))
     if not markers:
-        findings.append("(b) scripts/private-markers.txt trống — KHÔNG đo được lịch sử ngoài courses/")
+        findings.append(f"(b) {markers_file(store)} trống hoặc không có — KHÔNG đo được lịch sử ngoài courses/")
     else:
         for m in markers:
             code, out = run(repo, "log", "-S", m, "--oneline", "--all",
@@ -524,7 +543,7 @@ def main() -> int:
     print()
 
     check_refs(repo, report)
-    check_history(repo, report)
+    check_history(repo, store, report)
     check_bundle(repo, report)
     check_names(repo, store, report)
     check_prose(repo, public, store, report)
