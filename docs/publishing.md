@@ -367,9 +367,7 @@ nằm trong pack.
 
 - **Bản sao đã phát tán.** Nếu repo đã từng được đẩy đi đâu, viết lại ở đây không
   chạm tới đó. Khi chạy thật (28/08/2026) repo **chưa có remote nào** — đó chính
-  là lý do thứ tự là viết-lại-trước-rồi-mới-`git remote add`. Từ nay điều kiện ấy
-  không còn đúng: một lần viết lại nữa sẽ phải force-push, và GitHub còn giữ
-  object mồ côi truy cập được bằng mã một thời gian sau đó.
+  là lý do thứ tự là viết-lại-trước-rồi-mới-`git remote add`.
 - **Bản dự phòng ở bước 0.** Nó có đầy đủ giáo trình. Đó là chủ đích — nhưng nó
   không được lẫn vào thứ gì sẽ publish.
 - **Cái ngoài git.** Bản nguồn v1 một-tệp mà `$TUHOC_V1_SOURCE` trỏ tới (bản
