@@ -156,7 +156,7 @@ pack: ; bun tools/tuhoc-cli/src/index.ts pack $(DIR)
 #      this repo and produced by `tuhoc pack`. These are the default test data,
 #      so a fresh clone is green on every gate without anyone handing it
 #      anything (task 13).
-#   2. A store OUTSIDE the git tree — `~/Documents/claude/tuhoc-courses` by
+#   2. A store OUTSIDE the git tree — `../tuhoc-courses`, beside this repo, by
 #      default, `TUHOC_COURSE_STORE` to point elsewhere. Task 11 moved the
 #      private textbook there: this repo gets published, and deleting it in a
 #      later commit rescues nothing because git keeps the history (spec §2B.1).

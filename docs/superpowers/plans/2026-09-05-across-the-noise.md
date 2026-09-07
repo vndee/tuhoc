@@ -36,9 +36,9 @@
 
 ## Working directory, execution and review boundaries
 
-Use `/Users/vndee/Documents/claude/tuhoc/.worktrees/dac-san`, branch `codex/across-the-noise-design`, based on production `1379d2d`, design commit `4ab8a88`. Preserve the root checkout and unrelated worktrees. Inspect current git status before editing; do not recreate or reset this worktree.
+Use `<repo>/.worktrees/dac-san`, branch `codex/across-the-noise-design`, based on production `1379d2d`, design commit `4ab8a88`. Preserve the root checkout and unrelated worktrees. Inspect current git status before editing; do not recreate or reset this worktree.
 
-All paths below are relative to that worktree. Shell commands for tests run from `apps/web`; git commands run from worktree root. Bun is `/Users/vndee/.bun/bin/bun`; use `./node_modules/.bin/playwright` for Playwright. Read repository instructions again at execution time; `AGENTS.md` references `RTK.md`, which was not present during planning. If it becomes available, read it before work.
+All paths below are relative to that worktree. Shell commands for tests run from `apps/web`; git commands run from worktree root. Bun is `bun`; use `./node_modules/.bin/playwright` for Playwright. Read repository instructions again at execution time; `AGENTS.md` references `RTK.md`, which was not present during planning. If it becomes available, read it before work.
 
 Use TDD and verification-before-completion skills during execution. Each numbered task is one reviewable deliverable; each checkbox is an action. Expand a longer algorithm into short edits following its numbered substeps, not a single unreviewed bulk rewrite. Commit only the explicit task paths after green checks. Do not mark planned tests as executed.
 
@@ -146,7 +146,7 @@ expect(validateStory(story)).toContainEqual(expect.objectContaining({
 }));
 ```
 
-- [ ] Run `/Users/vndee/.bun/bin/bun run test src/stories/validateStory.test.ts`; expect failure because optional fields are not validated yet.
+- [ ] Run `bun run test src/stories/validateStory.test.ts`; expect failure because optional fields are not validated yet.
 - [ ] Add the declarations and invoke existing localized text/block validators only when fields exist. Add `invalid-fallback-table` and `invalid-story-interaction` issue codes for structural failures; reject empty/invalid example input under Task02's validator when available, without validating via React.
 - [ ] Replace the AI story's global-registry equality assertion with exact set equality for its original twelve kinds AND membership in `REGISTERED_LAB_KINDS`. Keep scene counts, source coverage and word-count assertions.
 
@@ -807,15 +807,15 @@ for(const token of [sentinel,encodeURIComponent(sentinel)]) {
 
 ```bash
 # From apps/web; existing configured API must be reachable for catalog/reader smoke.
-/Users/vndee/.bun/bin/bun run typecheck
-/Users/vndee/.bun/bin/bun run lint
-/Users/vndee/.bun/bin/bun run test
-/Users/vndee/.bun/bin/bun run build
-/Users/vndee/.bun/bin/bun run check:stories-bundle
+bun run typecheck
+bun run lint
+bun run test
+bun run build
+bun run check:stories-bundle
 ./node_modules/.bin/playwright test e2e/stories.spec.ts
 ./node_modules/.bin/playwright test --config playwright.stories-draft.config.ts
-/Users/vndee/.bun/bin/bun run build
-/Users/vndee/.bun/bin/bun run check:stories-bundle
+bun run build
+bun run check:stories-bundle
 ./node_modules/.bin/playwright test e2e/stories-draft-exclusion.spec.ts
 ```
 

@@ -14,7 +14,7 @@
 > sửa lặng lẽ một tài liệu có ngày tháng là làm giả nó.
 
 **Ngày:** 2026-08-19 · **Trạng thái:** Đã duyệt thiết kế tổng thể, chờ review spec
-**Bối cảnh:** Xuất phát từ một giáo trình tương tác **riêng tư** của tác giả (single-file HTML 1.9MB, 45 chương, 59 mô phỏng canvas, 202 bài tập — đã tag `v1-single-file` tại repo `~/Documents/claude/Research`). Chủ nhân dùng để tự học trên nhiều thiết bị, sau này publish cho người khác dùng.
+**Bối cảnh:** Xuất phát từ một giáo trình tương tác **riêng tư** của tác giả (single-file HTML 1.9MB, 45 chương, 59 mô phỏng canvas, 202 bài tập — đã tag `v1-single-file` tại repo `<kho-nguồn-riêng>`). Chủ nhân dùng để tự học trên nhiều thiết bị, sau này publish cho người khác dùng.
 
 ## 1. Mục tiêu và phạm vi
 

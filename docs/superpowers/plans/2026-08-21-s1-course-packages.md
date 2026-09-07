@@ -620,7 +620,7 @@ it('sau khi áp dụng, ghi chú mất neo VẪN CÒN, chỉ là mồ côi', asy
 
 - [ ] **Step 1: Nâng manifest lên v2 TRƯỚC KHI bóc ra.** Thêm `tier: "interactive"` (nó có `viz.js`), `license`, `authors`, `generatedBy`. Chạy `tuhoc pack courses/«giáo-trình-riêng»` → phải thoát 0. **Nếu không pack được, DỪNG** — nghĩa là bộ luật Task 1 sai với dữ liệu thật, và đó là phát hiện quan trọng hơn task này.
 
-- [ ] **Step 2: Cất gói ra ngoài repo.** Chép `.zip` vừa pack sang một nơi **ngoài cây git** (ví dụ `~/Documents/claude/tuhoc-courses/`). **Xác nhận tệp tồn tại và mở được trước khi sang bước 3** — bước 3 là bước xoá.
+- [ ] **Step 2: Cất gói ra ngoài repo.** Chép `.zip` vừa pack sang một nơi **ngoài cây git** (ví dụ `../tuhoc-courses/`). **Xác nhận tệp tồn tại và mở được trước khi sang bước 3** — bước 3 là bước xoá.
 
 - [ ] **Step 3: Xoá khỏi cây làm việc và cập nhật mọi chỗ tham chiếu.**
 ```bash

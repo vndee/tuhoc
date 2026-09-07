@@ -1,0 +1,83 @@
+# The gates a pull request has to pass.
+#
+# ## Why the jobs are split the way they are
+#
+# One job per toolchain, not one job per package. The Go suite and the Bun
+# suites share nothing — no cache, no install step, no artifact — so running
+# them in one job only means a Go compile error hides every TypeScript result
+# until someone fixes it. Split, a contributor sees all of it at once.
+#
+# `make test-e2e` is deliberately NOT here. It builds containers, brings up a
+# real Postgres, and runs Playwright; on a hosted runner that is slow enough
+# and flaky enough that it would teach people to ignore a red tick — the exact
+# failure mode `docs/carried-forward.md` records for gates in this repository.
+# Run it locally before a release. See docs/testing.md.
+#
+# `make check-publish` is not here either, and cannot be: it is a maintainer
+# privacy gate whose marker list lives outside the repository on purpose. On a
+# runner it would fail closed, every time, correctly and uselessly.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A second push to the same PR makes the first run's answer irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: apps/api (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/api/go.mod
+          cache-dependency-path: apps/api/go.sum
+      # `make test-api` runs gofmt first and fails on unformatted files, so
+      # this covers formatting too — no separate lint job to drift out of sync.
+      - run: make test-api
+
+  web:
+    name: apps/web (React)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: install
+        run: bun install --frozen-lockfile --cwd apps/web
+      # `make test-web` depends on the `courses` target, which unpacks the two
+      # sample packages this repo commits. On a runner there is no private
+      # store, so it prints a line saying it skipped one and carries on — that
+      # is the fresh-clone path, and it is the path we want CI to exercise.
+      - run: make test-web
+
+  packages:
+    name: course-format · cli · registry
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      # No npm workspaces and no root package.json (ruling S1-F1): every
+      # package installs its own.
+      - name: install
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile --cwd packages/course-format
+          bun install --frozen-lockfile --cwd tools/tuhoc-cli
+          bun install --frozen-lockfile --cwd tools/registry
+      - run: make test-format
+      - run: make test-cli
+      - run: make test-registry

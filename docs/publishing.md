@@ -56,7 +56,7 @@ nó hỏng, nó hỏng ngay trên dữ liệu ta quan tâm nhất.
 
 ### 1.1 Kho gói
 
-Ngoài cây git. Mặc định `~/Documents/claude/tuhoc-courses/`, đổi bằng biến môi
+Ngoài cây git. Mặc định `../tuhoc-courses/`, đổi bằng biến môi
 trường `TUHOC_COURSE_STORE`. Trong đó là các tệp `.zip` do `tuhoc pack` ghi.
 
 **Kho này không được nằm trong bất kỳ repo nào sẽ publish.** Nó cũng không được
@@ -178,7 +178,7 @@ một script bóc chữ không có tư cách đoán hộ. Điền tay rồi pack
 
 ```bash
 bun tools/tuhoc-cli/src/index.ts pack courses/$RIENG \
-  -o ~/Documents/claude/tuhoc-courses/$RIENG-1.0.0.zip
+  -o ../tuhoc-courses/$RIENG-1.0.0.zip
 ```
 
 `license` **không phải** một giấy phép mở. Trường này là chuỗi tự do
@@ -242,7 +242,7 @@ Bảy chỗ, tại thời điểm task 11:
 Hai điều về bảng này:
 
 - **Dòng cuối không cần sửa.** `f782323` và tag `v1-single-file` thuộc repo
-  `~/Documents/claude/Research`, không bị đụng tới. Đưa vào bảng vì grep bắt nó,
+  `<kho-nguồn-riêng>`, không bị đụng tới. Đưa vào bảng vì grep bắt nó,
   và vì "sửa nhầm một mã đúng" cũng là một cách hỏng.
 - **Sáu dòng còn lại là chú thích, không phải mã chạy.** Không có test nào đỏ nếu
   chúng sai. Đó chính là lý do phải lập danh sách trước: sai ở đây **im lặng**.
@@ -303,7 +303,7 @@ truy cập được, đúng thứ nguy hiểm ở đây).
 
 ```bash
 # 0) Bản sao dự phòng, TRƯỚC KHI làm gì — đây là thao tác khó đảo ngược.
-cp -a ~/Documents/claude/tuhoc ~/Documents/claude/tuhoc-backup-$(date +%Y%m%d-%H%M%S)
+cp -a <repo> ../tuhoc-backup-$(date +%Y%m%d-%H%M%S)
 
 # 1) Mọi worktree agent phải gỡ trước: filter-repo từ chối chạy khi có worktree
 #    phụ, và nếu ép chạy thì các nhánh worktree sẽ trỏ vào lịch sử cũ.
@@ -342,7 +342,7 @@ Và một phép đo cuối, thô nhưng đúng loại: clone repo đã viết l�
 trống rồi tìm bất kỳ chương nào.
 
 ```bash
-git clone --mirror ~/Documents/claude/tuhoc /tmp/tuhoc-check.git
+git clone --mirror <repo> /tmp/tuhoc-check.git
 cd /tmp/tuhoc-check.git && git rev-list --objects --all | grep -c "$RIENG"   # phải là 0
 ```
 
