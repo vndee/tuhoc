@@ -228,14 +228,30 @@ a.nav-item.done .nav-num::after{content:"✓"; margin-left:3px; color:var(--good
    ============================================================ */
 .ch-eyebrow{font-family:var(--sans); font-size:11px; font-weight:700; letter-spacing:.11em;
   text-transform:uppercase; color:var(--accent); margin-bottom:8px}
-h1.ch-title{font-family:var(--sans); font-size:clamp(27px,3.6vw,37px); line-height:1.14; letter-spacing:-.025em;
+/* TIÊU ĐỀ CHƯƠNG DÙNG SERIF, cùng mặt chữ với thân bài.
+   Trước đây bốn cấp tiêu đề đều là `--sans`, và một mình thì đó là một cặp
+   hợp lệ (sans tiêu đề, serif thân — kiểu sách kỹ thuật). Cái sai chỉ lộ ra
+   khi đặt cạnh trang đặc san: ở đó nền thừa kế là sans nên tiêu đề bị ghi đè
+   thành serif — tức HAI THẾ GIỚI DÙNG ĐÚNG HAI MẶT CHỮ ẤY Ở HAI VAI NGƯỢC
+   NHAU, và người đọc đi từ chương sang đặc san thấy chữ lộn vai.
+   Luật nay thống nhất và khớp với điều `tokens.css` vẫn luôn nói: serif là
+   VĂN XUÔI (tiêu đề lẫn thân), sans chỉ đứng ở NHÃN và giao diện —
+   `.ch-eyebrow`, `.box-h`, `.fig-num`, nút, bảng, widget đều giữ nguyên sans.
+   Chọn bởi chủ dự án, 07/09/2026.
+
+   Hai chỉnh đi kèm, không phải trang trí: `letter-spacing` âm được nới lại
+   (số cũ căn cho sans hẹp; serif ở cỡ tiêu đề bị bóp sẽ dính chữ), và
+   `font-weight` chốt ở 700 thay vì 680/660 — Charis SIL là font tĩnh chỉ có
+   400 và 700, nên mọi giá trị ở giữa vốn đã bị làm tròn lên 700; ghi đúng số
+   thật để không ai tưởng có một nét trung gian. */
+h1.ch-title{font-family:var(--serif); font-size:clamp(27px,3.6vw,37px); line-height:1.14; letter-spacing:-.008em;
   font-weight:700; margin:0 0 10px}
 .ch-lede{font-size:19px; line-height:1.6; color:var(--ink-2); margin:0 0 30px; max-width:38rem}
-h2{font-family:var(--sans); font-size:23px; letter-spacing:-.018em; font-weight:680; line-height:1.25;
+h2{font-family:var(--serif); font-size:23px; letter-spacing:-.004em; font-weight:700; line-height:1.25;
   margin:52px 0 14px; padding-top:8px; scroll-margin-top:70px}
-h3{font-family:var(--sans); font-size:17.5px; letter-spacing:-.012em; font-weight:660;
+h3{font-family:var(--serif); font-size:17.5px; letter-spacing:0; font-weight:700;
   margin:34px 0 10px; scroll-margin-top:70px}
-h4{font-family:var(--sans); font-size:14.5px; font-weight:660; margin:24px 0 8px; color:var(--ink-2);
+h4{font-family:var(--serif); font-size:14.5px; font-weight:700; margin:24px 0 8px; color:var(--ink-2);
   letter-spacing:.005em}
 p{margin:0 0 17px}
 a{color:var(--accent); text-decoration:none; border-bottom:1px solid color-mix(in srgb, var(--accent) 32%, transparent)}

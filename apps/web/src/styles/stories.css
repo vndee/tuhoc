@@ -1,4 +1,16 @@
 .story-shell-theme-scope {
+  /* VĂN XUÔI CỦA ĐẶC SAN LÀ SERIF.
+     Trước đây nó là sans, và không phải do ai chọn: `.story-deck` và các đoạn
+     văn không khai font nào cả, nên chúng THỪA KẾ sans của vỏ app. Một mặt
+     chữ thân bài quyết định bởi thừa kế là mặt chữ sẽ lật bất cứ lúc nào ai
+     đó đổi vỏ — và nó trái đúng luật `tokens.css` tự đặt: "sans chỉ đứng ở lề
+     và đầu trang, không bao giờ là thân".
+     Khai tường minh ở đây, một lần, cho cả thế giới đặc san. Chrome của nó
+     lấy lại sans ngay bên dưới; mọi NHÃN (masthead, `.story-period`,
+     `.story-scene h3` in hoa, chữ trong SVG) vốn đã tự khai sans nên không
+     đổi. Chọn bởi chủ dự án, 07/09/2026. */
+  font-family: var(--font-serif);
+
   color-scheme: light;
   --story-paper: var(--story-light-paper);
   --story-ink: var(--story-light-ink);
@@ -34,6 +46,11 @@ html[data-theme='dark'] .story-shell-theme-scope {
 }
 
 .story-shell-header {
+  /* Thanh trên là GIAO DIỆN, không phải văn xuôi — nên nó lấy lại sans từ
+     nền serif vừa đặt ở `.story-shell-theme-scope`. Cần khai ở đây vì
+     `.story-shell-back` ("Trở lại các số đặc san") không tự khai font nào và
+     sẽ thừa kế serif nếu thiếu dòng này. */
+  font-family: var(--font-sans);
   align-items: center;
   background: color-mix(in srgb, var(--story-paper, var(--page)) 94%, transparent);
   border-bottom: var(--story-header-border) solid color-mix(in srgb, var(--story-ink, var(--ink)) 18%, transparent);
