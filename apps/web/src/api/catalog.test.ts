@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { NotJsonError } from './client';
 import { assetUrl, CourseFetchError, fetchCatalog, fetchChapter, fetchManifest } from './catalog';
 import type { Manifest } from '../course/types';
@@ -186,4 +186,42 @@ describe('assetUrl', () => {
     // test if assetUrl ever touched the network.
     expect(() => assetUrl('demo', 'x.png')).not.toThrow();
   });
+});
+
+/**
+ * Ba đường đọc của tệp này phải GỬI COOKIE.
+ *
+ * Chúng từng là công khai thuần, nên `fetch` trần là đúng và rẻ. Giả định ấy
+ * chết vào ngày khoá học có thể riêng tư — và cái chết ấy đã đo được trên sản
+ * xuất: một người đã đăng nhập, đã được cấp quyền, mở bảng điều khiển và thấy
+ * "Không tải được khoá học", vì `GET /courses/<slug>` trả 404 cho một request
+ * mà máy chủ chỉ có thể đọc là của người lạ.
+ *
+ * Đo bằng cách chặn `globalThis.fetch` chứ không qua msw: msw không phản chiếu
+ * `credentials` một cách đáng tin giữa các môi trường (xem chú thích trong
+ * `client.test.ts`), và một phép đo "mềm" ở đúng chỗ này thì vô dụng — nó sẽ
+ * xanh cả khi cookie không được gửi, tức xanh đúng lúc lỗi quay lại.
+ */
+describe('mọi request danh mục đều mang cookie phiên', () => {
+  const cases: Array<[string, () => Promise<unknown>]> = [
+    ['fetchCatalog', () => fetchCatalog()],
+    ['fetchManifest', () => fetchManifest('demo')],
+    ['fetchChapter', () => fetchChapter('demo', 'c1')],
+  ];
+
+  for (const [name, call] of cases) {
+    it(`${name} gửi credentials: "include"`, async () => {
+      const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+      );
+      try {
+        await call().catch(() => undefined);
+        expect(spy).toHaveBeenCalledTimes(1);
+        const init = spy.mock.calls[0][1] as RequestInit | undefined;
+        expect(init?.credentials, `${name} phải gửi cookie, nếu không khoá riêng luôn 404`).toBe('include');
+      } finally {
+        spy.mockRestore();
+      }
+    });
+  }
 });
