@@ -640,3 +640,60 @@
   font-size: 14px;
   font-weight: 400;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THANH CUỘN CỦA TRANG ĐỌC
+   ══════════════════════════════════════════════════════════════════════════
+
+   Trang đọc cuộn ở TẦNG TÀI LIỆU — `reader.css` cho `#scroller` một
+   `overflow:visible`, nên thứ chạy dọc mép phải là thanh cuộn của cửa sổ, vẽ
+   theo mặc định hệ điều hành: dày, rãnh sáng, và nằm sát cột chữ suốt thời
+   gian đọc.
+
+   ── Vì sao KHÔNG chép nguyên luật của `#nav` ──────────────────────────────
+
+   Mục lục hiện tay kéo khi `#nav:hover`. Cách ấy hợp lý cho một hộp: người
+   đọc phải rê chuột VÀO mục lục thì thanh cuộn mới xuất hiện.
+
+   Với thanh cuộn của tài liệu thì nó thoái hoá: `html:hover` gần như LUÔN
+   đúng — con trỏ ở bất cứ đâu trong khung nhìn cũng đang hover `html` — nên
+   "hiện khi chạm" biến thành "luôn hiện", và ta trả tiền cho một transition
+   không bao giờ chạy.
+
+   Nên ở đây dùng đúng lối `.ai-panel-thread` (`app-screens.css`) đã dùng:
+   luôn thấy nhưng IM — rãnh trong suốt, tay kéo mảnh màu `--rule-strong`, và
+   chỉ đậm lên khi rê vào CHÍNH TAY KÉO. Phần thật sự chữa được cái xấu trong
+   cả hai bản sửa là như nhau: bỏ cái rãnh sáng, không phải giấu tay kéo.
+
+   ── Phạm vi ───────────────────────────────────────────────────────────────
+
+   `html:has(#app.reading)` chứ không phải `html`: các màn khác của app không
+   nằm trong yêu cầu này, và đổi thanh cuộn của cả trang web là một quyết định
+   rộng hơn hẳn. Trình duyệt không hỗ trợ `:has()` thì luật không khớp và
+   người đọc thấy thanh cuộn mặc định — xấu như trước, không hỏng gì. */
+html:has(#app.reading) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule-strong) transparent;
+}
+
+html:has(#app.reading)::-webkit-scrollbar {
+  width: 10px;
+}
+
+html:has(#app.reading)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html:has(#app.reading)::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--rule-strong);
+  /* Viền trong suốt + `background-clip` là cách duy nhất cho con trượt một lề
+     mà không vẽ thêm một cái rãnh — cùng lý do `.ai-panel-thread` làm vậy. */
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+html:has(#app.reading)::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-3);
+  background-clip: content-box;
+}
