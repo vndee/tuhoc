@@ -162,4 +162,33 @@ describe('rewriteAssetUrls', () => {
 
     expect(container.querySelector('img')?.getAttribute('src')).toBe('/courses/demo/assets/v1.2/chart.png');
   });
+
+  /**
+   * ẢNH CỦA KHOÁ RIÊNG PHẢI MANG COOKIE.
+   *
+   * Khác với `fetch`, đây là request do TRÌNH DUYỆT tự phát khi nó gặp
+   * `<img src>` — và một ảnh cross-origin mặc định KHÔNG mang cookie. Thiếu
+   * `crossorigin="use-credentials"` thì một chương của khoá riêng hiện ra
+   * đầy đủ chữ mà mọi hình đều 404: hỏng nửa vời, khó đoán hơn hẳn hỏng cả
+   * trang, và không một test nào về đường dẫn bắt được.
+   */
+  it('đánh dấu crossorigin="use-credentials" trên mọi asset đã viết lại', () => {
+    const container = fragment('<img src="images/fig.png">');
+    rewriteAssetUrls(container, 'demo');
+
+    const img = container.querySelector('img');
+    expect(img?.getAttribute('src')).toBe('/courses/demo/assets/images/fig.png');
+    expect(img?.getAttribute('crossorigin')).toBe('use-credentials');
+  });
+
+  it('KHÔNG đánh dấu thứ nó không viết lại — một URL tuyệt đối vẫn để nguyên', () => {
+    // Ngược chiều, và nó quan trọng: gắn `crossorigin` lên một ảnh trỏ ra
+    // host khác sẽ biến một ảnh đang chạy thành một ảnh hỏng vì CORS.
+    const container = fragment('<img src="https://example.test/x.png">');
+    rewriteAssetUrls(container, 'demo');
+
+    const img = container.querySelector('img');
+    expect(img?.getAttribute('src')).toBe('https://example.test/x.png');
+    expect(img?.getAttribute('crossorigin')).toBeNull();
+  });
 });

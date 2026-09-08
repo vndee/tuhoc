@@ -107,6 +107,20 @@ export function rewriteAssetUrls(root: ParentNode, courseId: string): void {
       const value = el.getAttribute(attr);
       if (value === null || !isPackageRelative(value)) continue;
       el.setAttribute(attr, assetUrl(courseId, value));
+      // `crossorigin="use-credentials"` — nếu không, ảnh của một khoá RIÊNG
+      // hỏng ngay cả với người đã được cấp quyền.
+      //
+      // Khác với `fetch`, đây là request do TRÌNH DUYỆT tự phát khi nó gặp
+      // `<img src>`, và ảnh cross-origin mặc định KHÔNG mang cookie. Không có
+      // thuộc tính này thì chữ trong chương hiện ra còn hình thì 404 — một
+      // kiểu hỏng nửa vời khó đoán hơn hẳn hỏng cả trang.
+      //
+      // Đặt cho MỌI khoá, kể cả công khai, và điều đó an toàn: máy chủ trả
+      // `Access-Control-Allow-Credentials: true` với một Origin cụ thể, đúng
+      // cặp mà `use-credentials` đòi. Đặt có điều kiện theo "khoá này có
+      // riêng tư không" sẽ cần trình đọc biết một điều nó không cần biết, và
+      // sẽ sai đúng lúc một khoá đổi trạng thái.
+      el.setAttribute('crossorigin', 'use-credentials');
     }
   }
 }

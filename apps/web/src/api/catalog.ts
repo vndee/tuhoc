@@ -116,7 +116,23 @@ function absoluteUrl(path: string): string {
  */
 async function getJson<T>(path: string, options: { allowArray?: boolean } = {}): Promise<T> {
   const url = absoluteUrl(path);
-  const res = await fetch(url);
+  // `credentials: 'include'`, KHÔNG phải fetch trần.
+  //
+  // Ba đường đọc của tệp này — danh mục, manifest, chương — từng là công khai
+  // thuần, nên không gửi cookie là đúng và rẻ. Giả định ấy chết vào ngày khoá
+  // học có thể RIÊNG TƯ: từ đó máy chủ phải biết ai đang hỏi, và một request
+  // không mang cookie thì luôn là người lạ.
+  //
+  // Hậu quả đã đo trên sản xuất: một người đã đăng nhập, đã được cấp quyền,
+  // mở bảng điều khiển và thấy "Không tải được khoá học" — vì `GET
+  // /courses/<slug>` trả 404. Các route khác trên cùng trang (`/me`,
+  // `/enrollments`, `/progress`) vẫn chạy, vì chúng đi qua `api/client.ts`,
+  // vốn luôn gửi cookie. Chỉ tệp này gọi `fetch` trần.
+  //
+  // CORS chịu được: máy chủ trả `Access-Control-Allow-Credentials: true` và
+  // một Origin cụ thể (không phải `*`), đúng cặp mà request có credentials
+  // đòi hỏi.
+  const res = await fetch(url, { credentials: 'include' });
   if (!res.ok) throw new CourseFetchError(url, res.status);
 
   // Not a bare `res.json()`: that throws a raw, unhandled `SyntaxError` on
