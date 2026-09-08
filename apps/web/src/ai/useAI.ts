@@ -193,6 +193,8 @@ function describeFailure(code: ServerAIErrorCode, t: Translate): string {
       return t('ai.error.providerFailed');
     case 'ToolBudgetExhausted':
       return t('ai.error.toolBudgetExhausted');
+    case 'AnswerCutOff':
+      return t('ai.error.answerCutOff');
     case 'Unauthenticated':
       return t('ai.error.unauthenticated');
     case 'FieldTooLong':

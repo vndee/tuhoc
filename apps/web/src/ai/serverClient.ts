@@ -56,6 +56,7 @@ export type ServerAIErrorCode =
   | 'ProviderFailed'
   | 'Internal'
   | 'ToolBudgetExhausted'
+  | 'AnswerCutOff'
   | 'Network'
   | 'Aborted';
 
@@ -70,6 +71,7 @@ const KNOWN_SERVER_CODES: ReadonlySet<string> = new Set<ServerAIErrorCode>([
   'ProviderFailed',
   'Internal',
   'ToolBudgetExhausted',
+  'AnswerCutOff',
 ]);
 
 function isKnownServerCode(value: unknown): value is ServerAIErrorCode {

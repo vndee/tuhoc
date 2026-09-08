@@ -661,6 +661,9 @@ const DISTINCT_PRE_STREAM: readonly { code: string; status: number; key: Message
 const DISTINCT_MID_STREAM: readonly { code: string; key: MessageKey }[] = [
   { code: 'ProviderFailed', key: 'ai.error.providerFailed' },
   { code: 'ToolBudgetExhausted', key: 'ai.error.toolBudgetExhausted' },
+  // Hết TOKEN đầu ra khác hết VÒNG gọi tool: hai giới hạn khác nhau, hai
+  // cách chữa khác nhau, nên phải là hai câu khác nhau.
+  { code: 'AnswerCutOff', key: 'ai.error.answerCutOff' },
 ];
 
 describe('useAI — mã lỗi có nghĩa RIÊNG, không hiện "thử lại sau" cho người chỉ cần nạp credit', () => {
@@ -681,11 +684,18 @@ describe('useAI — mã lỗi có nghĩa RIÊNG, không hiện "thử lại sau"
 
   /**
    * BÀI CHỊU LỰC — thay cho cặp `NoCredit`/`ProviderFailed` cũ. Gộp BẤT KỲ
-   * hai trong sáu mã này lại (đột biến `describeFailure`) phải làm đúng một
+   * hai trong các mã này lại (đột biến `describeFailure`) phải làm đúng một
    * trong hai cặp trùng nhau xuất hiện, và `Set` bắt được bất kể là cặp nào —
    * không cần đoán trước đột biến sẽ gộp cặp nào.
+   *
+   * Số lượng lấy TỪ hai bảng ở trên chứ không viết cứng: thêm một mã có câu
+   * riêng thì bài này phải tự lớn theo. Bản trước ghim số 6, nên khi
+   * `AnswerCutOff` ra đời nó đỏ vì đếm sai — đúng lúc thứ nó canh vẫn nguyên
+   * vẹn. Một bài chịu lực hỏng vì lý do ngoài lề là một bài người ta học cách
+   * sửa cho qua.
    */
-  it('sáu mã trên tạo SÁU câu khác nhau đôi một — không cặp nào trùng, dù đột biến gộp cặp nào', async () => {
+  it('mỗi mã có câu RIÊNG tạo một câu khác nhau đôi một — không cặp nào trùng, dù đột biến gộp cặp nào', async () => {
+    const want = DISTINCT_PRE_STREAM.length + DISTINCT_MID_STREAM.length;
     const messages: string[] = [];
     for (const { code, status } of DISTINCT_PRE_STREAM) {
       messages.push((await askAndFailPreStream(code, status))!.message);
@@ -693,8 +703,8 @@ describe('useAI — mã lỗi có nghĩa RIÊNG, không hiện "thử lại sau"
     for (const { code } of DISTINCT_MID_STREAM) {
       messages.push((await askAndFailMidStream(code))!.message);
     }
-    expect(messages).toHaveLength(6);
-    expect(new Set(messages).size).toBe(6);
+    expect(messages).toHaveLength(want);
+    expect(new Set(messages).size).toBe(want);
   });
 
   /**

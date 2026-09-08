@@ -941,6 +941,7 @@ export const vi = {
   'ai.error.providerFailed': 'Nhà cung cấp AI không hoàn tất được lượt này. Thử lại sau một chút.',
   'ai.error.toolBudgetExhausted':
     'Câu hỏi này cần nhiều bước tra cứu hơn mức lượt này cho phép. Hãy hỏi cụ thể hơn, hoặc tắt bớt một công cụ.',
+  'ai.error.answerCutOff': 'Lượt này hết số token trước khi kịp viết câu trả lời. Hỏi ngắn gọn hơn, hoặc nâng trần token mỗi lượt trong cài đặt AI.',
   'ai.error.unauthenticated': 'Phiên đăng nhập đã hết hạn. Đăng nhập lại để tiếp tục hỏi.',
   // Câu RIÊNG, kéo RA khỏi xô gộp bên dưới (vòng review 1): khác
   // Internal/InvalidBody/…, người học (hoặc ngữ cảnh chương ngắn hơn) THẬT

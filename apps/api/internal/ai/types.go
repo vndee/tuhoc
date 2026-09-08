@@ -72,6 +72,22 @@ type Completion struct {
 	Message      Message
 	FinishReason string
 	Usage        Usage
+
+	// ReasoningChars đếm ký tự model phát ra ở `reasoning_content` — phần
+	// NGHĨ, không phải phần nói.
+	//
+	// Nó KHÔNG nằm trong Message, và đó là điều bắt buộc: Message là kiểu HAI
+	// CHIỀU, cũng dùng để gửi lịch sử hội thoại ngược lên nhà cung cấp. Thêm
+	// một trường có tag JSON vào đó là gửi trả `reasoning_content` trong mỗi
+	// request sau — một thứ giao thức không hỏi và ta không có quyền bịa.
+	//
+	// Chỉ đường STREAM điền được số này; `Complete` (không stream) đọc qua
+	// `Message`, nơi vừa nói là không thể thêm trường. Đó là lý do phép kiểm
+	// "bị cắt giữa chừng" ở agent dựa vào FinishReason, thứ CẢ HAI đường đều
+	// có, chứ không dựa vào con số này. Số này để CHẨN ĐOÁN: nó là thứ biến
+	// "model không trả lời gì" thành "model tiêu N ký tự để nghĩ rồi hết
+	// token trước khi kịp nói".
+	ReasoningChars int
 }
 
 // ToolChoice nói với DeepSeek lượt này model có được phép gọi tool hay
