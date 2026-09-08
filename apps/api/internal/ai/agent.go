@@ -405,6 +405,32 @@ func (a *Agent) enabledTools(enabled []string) []Tool {
 // PHÂN BIỆT ĐƯỢC thay vì im lặng trả (Result{Answer: ""}, nil). Dùng
 // errors.Is(err, ErrToolBudgetExhausted) để phân biệt case này khỏi một lỗi
 // mạng/HTTP bình thường từ Client.Complete.
+// finishReasonLength là giá trị DeepSeek trả khi model chạm trần token đầu
+// ra và bị CẮT giữa chừng — khác hẳn "stop", nghĩa là model tự kết thúc.
+const finishReasonLength = "length"
+
+// ErrAnswerCutOff: model hết token đầu ra TRƯỚC KHI viết được chữ nào.
+//
+// Với một model suy luận (deepseek-v4-pro) đây không phải trường hợp hiếm:
+// nó tiêu token cho `reasoning_content` — phần NGHĨ — rồi mới nói. Đo thật,
+// cùng một câu hỏi:
+//
+//	max_tokens=200  → 201 chunk reasoning_content, 0 chunk content
+//	max_tokens=2000 → 474 chunk reasoning_content, 292 chunk content
+//
+// Hàng đầu từng đi qua đây trong IM LẶNG: câu trả lời rỗng, không lỗi, và
+// người học nhận một ô trắng không giải thích gì.
+//
+// Nó KHÔNG gộp vào ErrToolBudgetExhausted (hết vòng gọi tool) và KHÔNG phải
+// một sự cố nhà cung cấp: không có gì hỏng cả, và thử lại NGUYÊN VĂN cùng
+// câu hỏi sẽ hỏng y hệt. Thứ giúp được là câu hỏi ngắn hơn, hoặc một trần
+// max_tokens_per_turn cao hơn — nên nó cần một mã riêng để nói đúng điều đó.
+//
+// Ranh giới với quyết định đã có ở dưới: một câu trả lời rỗng kèm
+// finish_reason "stop" là model CHỦ ĐỘNG im, và Run cố ý không coi đó là
+// lỗi. Chỉ "length" mới là bị cắt.
+var ErrAnswerCutOff = errors.New("ai: model ran out of output tokens before writing any answer")
+
 var ErrToolBudgetExhausted = errors.New("ai: model still requested tools at the final tool-budget round and returned no text answer")
 
 // Run thực thi một lượt hỏi-đáp hoàn chỉnh: gửi Turn cho model, chạy hết
@@ -556,6 +582,12 @@ func (a *Agent) Run(ctx context.Context, t Turn) (Result, error) {
 			// sách vòng) — Run không tự ý coi nó là lỗi.
 			if isLastRound && len(completion.Message.ToolCalls) > 0 && result.Answer == "" {
 				return result, fmt.Errorf("ai: agent round %d: %w", round, ErrToolBudgetExhausted)
+			}
+			// Đặt SAU phép kiểm trên, không phải trước: hết ngân sách VÒNG là
+			// chẩn đoán hẹp hơn, và nhánh trên đã return nên nhánh này chỉ
+			// chạy khi nhánh kia không khớp — hành vi cũ không đổi một chút nào.
+			if result.Answer == "" && completion.FinishReason == finishReasonLength {
+				return result, fmt.Errorf("ai: agent round %d: %w", round, ErrAnswerCutOff)
 			}
 			return result, nil
 		}

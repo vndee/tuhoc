@@ -302,9 +302,20 @@ const (
 	// spend credit on the same dead end. Rewording the question, or
 	// enabling fewer tools, is what actually helps.
 	CodeToolBudgetExhausted = "ToolBudgetExhausted"
+
+	// CodeAnswerCutOff is also NOT a provider failure. The model ran out of
+	// OUTPUT TOKENS (ai_settings.max_tokens_per_turn) before writing any
+	// answer — for a reasoning model, typically because it spent them on
+	// `reasoning_content` first. Nothing is broken; retrying the identical
+	// question hits the identical wall. A shorter question, or a higher
+	// max_tokens_per_turn, is what actually helps — which is why this is
+	// separate from CodeToolBudgetExhausted (round budget, a different
+	// limit with a different remedy) as well as from CodeProviderFailed.
+	CodeAnswerCutOff = "AnswerCutOff"
 )
 
-// providerFailureDetail and toolBudgetDetail are the ONLY two sentences an
+// providerFailureDetail, toolBudgetDetail and answerCutOffDetail are the ONLY
+// sentences an
 // "error" event ever carries.
 //
 // They are fixed strings, and the raw Go error is deliberately thrown away
@@ -325,6 +336,7 @@ const (
 const (
 	providerFailureDetail = "the AI provider could not complete this turn"
 	toolBudgetDetail      = "this turn used its whole tool budget without producing an answer"
+	answerCutOffDetail    = "this turn ran out of output tokens before writing an answer"
 )
 
 // NewProviderClient builds the DeepSeek client the AI routes run on.
@@ -881,6 +893,9 @@ func streamTurn(w *bufio.Writer, agent *Agent, turn Turn, credits *Service,
 func errorEnvelope(err error) sseEnvelope {
 	if errors.Is(err, ErrToolBudgetExhausted) {
 		return sseEnvelope{Code: CodeToolBudgetExhausted, Text: toolBudgetDetail}
+	}
+	if errors.Is(err, ErrAnswerCutOff) {
+		return sseEnvelope{Code: CodeAnswerCutOff, Text: answerCutOffDetail}
 	}
 	return sseEnvelope{Code: CodeProviderFailed, Text: providerFailureDetail}
 }

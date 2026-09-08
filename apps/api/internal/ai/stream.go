@@ -284,6 +284,15 @@ func (a *Agent) RunStream(ctx context.Context, t Turn, emit func(Event) error) (
 				_ = emit(Event{Kind: EventKindError, Text: budgetErr.Error()})
 				return result, budgetErr
 			}
+			// Xem ErrAnswerCutOff. ReasoningChars đi vào thông điệp vì nó là
+			// thứ biến "model không nói gì" thành một con số đọc được trong
+			// log: bao nhiêu ký tự đã tiêu cho phần nghĩ trước khi hết token.
+			if result.Answer == "" && completion.FinishReason == finishReasonLength {
+				cutErr := fmt.Errorf("ai: agent stream round %d (%d reasoning chars): %w",
+					round, completion.ReasoningChars, ErrAnswerCutOff)
+				_ = emit(Event{Kind: EventKindError, Text: cutErr.Error()})
+				return result, cutErr
+			}
 			if emitErr := emit(Event{Kind: EventKindDone}); emitErr != nil {
 				return result, emitErr
 			}
@@ -342,8 +351,19 @@ func (a *Agent) RunStream(ctx context.Context, t Turn, emit func(Event) error) (
 type wireStreamChunk struct {
 	Choices []struct {
 		Delta struct {
-			Content   string `json:"content"`
-			ToolCalls []struct {
+			Content string `json:"content"`
+			// `reasoning_content` là phần NGHĨ của model suy luận
+			// (deepseek-v4-pro). Trường này từng KHÔNG được khai, nên mọi
+			// chunk suy luận bị giải mã thành delta rỗng và biến mất.
+			//
+			// Đo thật, cùng một câu hỏi, hai ngân sách token:
+			//   max_tokens=200  → 201 chunk reasoning_content, 0 chunk content
+			//   max_tokens=2000 → 474 chunk reasoning_content, 292 chunk content
+			//
+			// Hàng đầu là hỏng thật mà app không thấy: người học nhận một ô
+			// trắng, không lỗi, không lời giải thích.
+			ReasoningContent string `json:"reasoning_content"`
+			ToolCalls        []struct {
 				Index    int    `json:"index"`
 				ID       string `json:"id"`
 				Type     string `json:"type"`
@@ -571,6 +591,7 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 
 	var (
 		contentBuilder strings.Builder
+		reasoningChars int
 		finishReason   string
 		usage          Usage
 		toolOrder      []int
@@ -608,7 +629,7 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 			// than discarding it just because THIS chunk failed to parse.
 			// See the longer note on this pattern at the truncation guard
 			// below (sawDone) — it applies identically here.
-			return Completion{Usage: usage, FinishReason: finishReason}, fmt.Errorf("ai: decode DeepSeek stream chunk: %w", err)
+			return Completion{Usage: usage, FinishReason: finishReason, ReasoningChars: reasoningChars}, fmt.Errorf("ai: decode DeepSeek stream chunk: %w", err)
 		}
 		if chunk.Usage != nil {
 			usage = *chunk.Usage
@@ -620,6 +641,7 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 		if choice.FinishReason != nil && *choice.FinishReason != "" {
 			finishReason = *choice.FinishReason
 		}
+		reasoningChars += len(choice.Delta.ReasoningContent)
 		if choice.Delta.Content != "" {
 			contentBuilder.WriteString(choice.Delta.Content)
 			if onDelta != nil {
@@ -630,7 +652,7 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 					// keep paying for tokens nobody can receive anymore.
 					// Usage/FinishReason preserved for the same reason as
 					// the decode-error branch just above.
-					return Completion{Usage: usage, FinishReason: finishReason}, err
+					return Completion{Usage: usage, FinishReason: finishReason, ReasoningChars: reasoningChars}, err
 				}
 			}
 		}
@@ -673,14 +695,14 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 			// the tab mid-answer" path, task-7-brief.md Step 2). Report
 			// ctx.Err(), not the raw scanner error, so the caller can tell
 			// this apart from an actual DeepSeek-side failure.
-			return Completion{Usage: usage, FinishReason: finishReason}, fmt.Errorf("ai: DeepSeek stream interrupted: %w", ctx.Err())
+			return Completion{Usage: usage, FinishReason: finishReason, ReasoningChars: reasoningChars}, fmt.Errorf("ai: DeepSeek stream interrupted: %w", ctx.Err())
 		}
 		if readCtx.Err() != nil {
 			// ctx (the caller's) is still fine — readCtx only ends on its
 			// own via streamIdleTimeout or streamTotalTimeout; say which.
-			return Completion{Usage: usage, FinishReason: finishReason}, streamReadCtxError(readCtx)
+			return Completion{Usage: usage, FinishReason: finishReason, ReasoningChars: reasoningChars}, streamReadCtxError(readCtx)
 		}
-		return Completion{Usage: usage, FinishReason: finishReason}, fmt.Errorf("ai: read DeepSeek stream: %w", err)
+		return Completion{Usage: usage, FinishReason: finishReason, ReasoningChars: reasoningChars}, fmt.Errorf("ai: read DeepSeek stream: %w", err)
 	}
 
 	// ROUND 1 REVIEW, I1 — Complete (client.go) refuses a 200 response with
@@ -714,7 +736,7 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 	// its own comment for why it is scoped to "a tool call was pending"
 	// and not every "length" finish.
 	if !sawDone {
-		return Completion{Usage: usage, FinishReason: finishReason}, fmt.Errorf("ai: DeepSeek stream ended without a terminating %q marker (finish_reason=%q) — the response may have been truncated", sseDoneMarker, truncateProviderMessage(finishReason))
+		return Completion{Usage: usage, FinishReason: finishReason, ReasoningChars: reasoningChars}, fmt.Errorf("ai: DeepSeek stream ended without a terminating %q marker (finish_reason=%q) — the response may have been truncated", sseDoneMarker, truncateProviderMessage(finishReason))
 	}
 
 	// ROUND 2 REVIEW, I3 (second half) — finish_reason "length" while
@@ -737,7 +759,7 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 	// distinguishable error instead of a completion that silently spent a
 	// tool round on JSON nobody could have used.
 	if finishReason == "length" && len(toolOrder) > 0 {
-		return Completion{Usage: usage, FinishReason: finishReason}, fmt.Errorf("ai: DeepSeek stream ended with finish_reason %q while a tool call was still being assembled — its arguments JSON is likely truncated", truncateProviderMessage(finishReason))
+		return Completion{Usage: usage, FinishReason: finishReason, ReasoningChars: reasoningChars}, fmt.Errorf("ai: DeepSeek stream ended with finish_reason %q while a tool call was still being assembled — its arguments JSON is likely truncated", truncateProviderMessage(finishReason))
 	}
 
 	var toolCalls []ToolCall
@@ -759,7 +781,8 @@ func (c *Client) CompleteStream(ctx context.Context, req Request, onDelta func(t
 			Content:   contentBuilder.String(),
 			ToolCalls: toolCalls,
 		},
-		FinishReason: finishReason,
-		Usage:        usage,
+		FinishReason:   finishReason,
+		Usage:          usage,
+		ReasoningChars: reasoningChars,
 	}, nil
 }

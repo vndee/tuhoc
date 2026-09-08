@@ -715,6 +715,7 @@ export const en: Messages = {
   'ai.error.providerFailed': 'The AI provider could not complete this turn. Try again in a moment.',
   'ai.error.toolBudgetExhausted':
     'This question needed more lookup steps than this turn allows. Try asking something more specific, or turn off a tool.',
+  'ai.error.answerCutOff': 'This turn ran out of tokens before it could write an answer. Try a shorter question, or raise the per-turn token limit in the AI settings.',
   'ai.error.unauthenticated': 'Your session has expired. Sign in again to keep asking.',
   // Own message, pulled OUT of the shared bucket below (review round 1):
   // unlike Internal/InvalidBody/etc., a learner (or a shorter chapter
