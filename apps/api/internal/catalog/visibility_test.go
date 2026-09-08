@@ -13,6 +13,14 @@ import (
 	"github.com/vndee/tuhoc-api/internal/store"
 )
 
+// anonViewer / adminViewer name the two viewers this file's assertions use.
+// Named rather than inline literals: `catalog.Viewer{}` at a call site reads
+// like a placeholder, and "anonymous" is the actual claim being tested.
+var (
+	anonViewer  = catalog.Viewer{}
+	adminViewer = catalog.Viewer{IsAdmin: true}
+)
+
 // publishAndHide publishes the standard fixture and marks it private,
 // returning a repo over the same pool. Every test below starts here, so a
 // failure to set up is a failure of the thing under test, not of the test.
@@ -44,7 +52,7 @@ func TestPrivateCourseIsHiddenFromEveryReadPath(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. the catalog listing
-	list, err := repo.ListPublished(ctx, false)
+	list, err := repo.ListPublished(ctx, anonViewer)
 	if err != nil {
 		t.Fatalf("ListPublished(anon): %v", err)
 	}
@@ -56,17 +64,17 @@ func TestPrivateCourseIsHiddenFromEveryReadPath(t *testing.T) {
 
 	// 2. the course itself, by slug — ErrNotFound, never a distinguishable
 	//    "forbidden": a different status would confirm the slug exists.
-	if _, err := repo.GetPublished(ctx, validCourseSlug, false); err != catalog.ErrNotFound {
+	if _, err := repo.GetPublished(ctx, validCourseSlug, anonViewer); err != catalog.ErrNotFound {
 		t.Errorf("GetPublished(anon): want ErrNotFound got %v", err)
 	}
 
 	// 3. a chapter
-	if _, _, err := repo.GetPublishedChapter(ctx, validCourseSlug, "c1", false); err != catalog.ErrNotFound {
+	if _, _, err := repo.GetPublishedChapter(ctx, validCourseSlug, "c1", anonViewer); err != catalog.ErrNotFound {
 		t.Errorf("GetPublishedChapter(anon): want ErrNotFound got %v", err)
 	}
 
 	// 4. a widget — a whole embedded program, so it carries content too
-	got, err := repo.GetPublishedWidgets(ctx, validCourseSlug, []string{"dem-so"}, false)
+	got, err := repo.GetPublishedWidgets(ctx, validCourseSlug, []string{"dem-so"}, anonViewer)
 	if err != nil {
 		t.Fatalf("GetPublishedWidgets(anon): %v", err)
 	}
@@ -75,13 +83,13 @@ func TestPrivateCourseIsHiddenFromEveryReadPath(t *testing.T) {
 	}
 
 	// 5. an asset
-	if _, _, err := repo.GetPublishedAsset(ctx, validCourseSlug, "assets/anh.png", false); err != catalog.ErrNotFound {
+	if _, _, err := repo.GetPublishedAsset(ctx, validCourseSlug, "assets/anh.png", anonViewer); err != catalog.ErrNotFound {
 		t.Errorf("GetPublishedAsset(anon): want ErrNotFound got %v", err)
 	}
 
 	// 6. the ADMIN still sees all of it — otherwise this is not a visibility
 	//    feature, it is an unpublish with extra steps.
-	adminList, err := repo.ListPublished(ctx, true)
+	adminList, err := repo.ListPublished(ctx, adminViewer)
 	if err != nil {
 		t.Fatalf("ListPublished(admin): %v", err)
 	}
@@ -97,7 +105,7 @@ func TestPrivateCourseIsHiddenFromEveryReadPath(t *testing.T) {
 	if !seen {
 		t.Errorf("ListPublished(admin): private course %s must still be visible to an admin", validCourseSlug)
 	}
-	if _, err := repo.GetPublished(ctx, validCourseSlug, true); err != nil {
+	if _, err := repo.GetPublished(ctx, validCourseSlug, adminViewer); err != nil {
 		t.Errorf("GetPublished(admin): want the course got %v", err)
 	}
 }
@@ -127,14 +135,14 @@ func TestRepublishKeepsVisibility(t *testing.T) {
 		t.Fatalf("publish 2: want 201 got %d body=%s", resp.StatusCode, raw)
 	}
 
-	c, err := repo.GetPublished(ctx, validCourseSlug, true)
+	c, err := repo.GetPublished(ctx, validCourseSlug, adminViewer)
 	if err != nil {
 		t.Fatalf("GetPublished after republish: %v", err)
 	}
 	if c.Visibility != catalog.VisibilityPrivate {
 		t.Fatalf("republish reset visibility to %q — a private course went public by being updated", c.Visibility)
 	}
-	if _, err := repo.GetPublished(ctx, validCourseSlug, false); err != catalog.ErrNotFound {
+	if _, err := repo.GetPublished(ctx, validCourseSlug, anonViewer); err != catalog.ErrNotFound {
 		t.Errorf("after republish the course is readable anonymously again: %v", err)
 	}
 }
@@ -174,7 +182,7 @@ func TestSetVisibilityRoute(t *testing.T) {
 	if resp, _ := put(t, validCourseSlug, `{"visibility":"private"}`, ""); resp.StatusCode == http.StatusOK {
 		t.Errorf("unauthenticated set-visibility: want refusal got 200")
 	}
-	if c, _ := repo.GetPublished(ctx, validCourseSlug, false); c.Slug == "" {
+	if c, _ := repo.GetPublished(ctx, validCourseSlug, anonViewer); c.Slug == "" {
 		t.Errorf("unauthenticated call changed state — course is no longer publicly readable")
 	}
 
@@ -188,7 +196,7 @@ func TestSetVisibilityRoute(t *testing.T) {
 	if resp, raw := put(t, validCourseSlug, `{"visibility":"private"}`, "Bearer "+adminToken); resp.StatusCode != http.StatusOK {
 		t.Fatalf("set private: want 200 got %d body=%s", resp.StatusCode, raw)
 	}
-	if _, err := repo.GetPublished(ctx, validCourseSlug, false); err != catalog.ErrNotFound {
+	if _, err := repo.GetPublished(ctx, validCourseSlug, anonViewer); err != catalog.ErrNotFound {
 		t.Errorf("after set private: still readable anonymously (%v)", err)
 	}
 
@@ -200,7 +208,7 @@ func TestSetVisibilityRoute(t *testing.T) {
 	if err := json.Unmarshal(raw, &body); err != nil || body.Visibility != catalog.VisibilityPublic {
 		t.Errorf("set public: body %s (err %v)", raw, err)
 	}
-	if _, err := repo.GetPublished(ctx, validCourseSlug, false); err != nil {
+	if _, err := repo.GetPublished(ctx, validCourseSlug, anonViewer); err != nil {
 		t.Errorf("after set public: should be readable anonymously again, got %v", err)
 	}
 

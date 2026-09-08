@@ -491,6 +491,11 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 	// reads the current value back so a republish cannot silently un-hide a
 	// course.
 	mountAdmin(fiber.MethodPut, "/admin/courses/:slug/visibility", catalogHandler.SetVisibility)
+	// Who, besides an admin, may read this course. Only meaningful for a
+	// private one — a grant on a public course is harmless and does nothing.
+	mountAdmin(fiber.MethodGet, "/admin/courses/:slug/access", catalogHandler.Access)
+	mountAdmin(fiber.MethodPost, "/admin/courses/:slug/access", catalogHandler.Access)
+	mountAdmin(fiber.MethodDelete, "/admin/courses/:slug/access", catalogHandler.Access)
 
 	// AI routes (Pha 2, Task 11): the server-side tutor. All three sit
 	// behind auth.Require like every other stateful route in this file, and
@@ -611,8 +616,8 @@ func New(cfg config.Config, deps Deps) *fiber.App {
 // therefore adds no read authority the learner did not already have; what it
 // adds is the model's ability to fetch them mid-answer.
 //
-// `includePrivate` is hard-wired FALSE, and that is a security boundary, not
-// a default worth relaxing casually. This type has no request and no user —
+// The viewer is the ZERO value — anonymous, no grants, not an admin — and
+// that is a security boundary, not a default worth relaxing casually. This type has no request and no user —
 // it is built once at wiring time — so it cannot tell whose question it is
 // serving. Passing true here would hand every private course to whoever asks
 // the model about it, which is precisely the authority a private course
@@ -624,7 +629,7 @@ type courseQuerier struct {
 }
 
 func (q courseQuerier) Manifest(ctx context.Context, slug string) ([]byte, error) {
-	course, err := q.uc.GetPublished(ctx, slug, false)
+	course, err := q.uc.GetPublished(ctx, slug, catalog.Viewer{})
 	if err != nil {
 		return nil, err
 	}
@@ -635,7 +640,7 @@ func (q courseQuerier) ChapterHTML(ctx context.Context, slug, chapterID string) 
 	// Widgets and the version are dropped deliberately: a widget is an
 	// interactive HTML island for a browser to render, and the model reads
 	// prose. courseTool strips tags from what it gets back anyway.
-	html, _, _, err := q.uc.GetChapter(ctx, slug, chapterID, false)
+	html, _, _, err := q.uc.GetChapter(ctx, slug, chapterID, catalog.Viewer{})
 	return html, err
 }
 

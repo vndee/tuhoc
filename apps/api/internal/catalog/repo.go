@@ -34,6 +34,11 @@ import (
 // (404) does not need two names for "there is nothing here".
 var ErrNotFound = errors.New("catalog: not found")
 
+// ErrUserNotFound separates "no such course" from "no such account" on the
+// access routes. Both are 404-shaped, but an admin who mistypes an email
+// should be told WHICH half was wrong — the two are fixed differently.
+var ErrUserNotFound = errors.New("catalog: no user with that email")
+
 // PublishInput is everything one Publish write needs, already validated:
 // pkgcheck.Validate has run, findings is empty, and every field below comes
 // straight out of the resulting *pkgcheck.Package (plus the raw zip, which
@@ -126,11 +131,51 @@ const (
 	VisibilityPrivate = "private"
 )
 
+// Viewer is who is asking. Every public read takes one, including anonymous
+// ones — where UID is uuid.Nil and IsAdmin is false, which matches no grant
+// row and no admin check, so the reader sees exactly the public catalogue.
+type Viewer struct {
+	UID     uuid.UUID
+	IsAdmin bool
+}
+
+// VisibilityPredicate is THE rule for who may read a course, as one SQL
+// fragment: it is public, OR you are an admin, OR someone granted you this
+// specific course.
+//
+// It is a function returning a string rather than six hand-written WHERE
+// clauses because there are six read paths — catalogue, course, chapter,
+// widget, asset, search — and a security predicate copied six times is the
+// arrangement where the seventh path gets four of the three conditions. One
+// definition means adding a path is a call, not a transcription.
+//
+// It is EXPORTED because internal/search is the sixth path and lives in
+// another package. Duplicating the fragment there to avoid one import would
+// reintroduce exactly the drift this function exists to prevent.
+//
+// `alias` is how published_courses is named in the caller's query;
+// `adminParam`/`uidParam` are the 1-based positions of Viewer.IsAdmin and
+// Viewer.UID in that query's argument list.
+func VisibilityPredicate(alias string, adminParam, uidParam int) string {
+	return fmt.Sprintf(
+		`(%[1]s.visibility = 'public' OR $%[2]d OR EXISTS (
+			SELECT 1 FROM course_access ca
+			 WHERE ca.slug = %[1]s.slug AND ca.user_id = $%[3]d))`,
+		alias, adminParam, uidParam)
+}
+
 // ValidVisibility gác lối vào API: mọi giá trị khác hai chuỗi trên bị từ chối
 // TRƯỚC khi chạm tới Postgres, để lỗi là 400 có tên chứ không phải một lỗi
 // ràng buộc 500 mà người gọi phải đoán.
 func ValidVisibility(v string) bool {
 	return v == VisibilityPublic || v == VisibilityPrivate
+}
+
+// AccessRow is one grant, as the admin listing shows it.
+type AccessRow struct {
+	Email     string
+	Name      string
+	GrantedAt time.Time
 }
 
 type Repo interface {
@@ -166,10 +211,10 @@ type Repo interface {
 	// listing must not drag every course's manifest into memory for a page
 	// that displays none of it (the same reasoning course.Repo's own,
 	// now-deleted ListForOwner applied to Blob).
-	ListPublished(ctx context.Context, includePrivate bool) ([]PublicCourse, error)
+	ListPublished(ctx context.Context, v Viewer) ([]PublicCourse, error)
 	// GetPublished returns slug's live course, manifest included, or
 	// ErrNotFound if slug names no currently-published course.
-	GetPublished(ctx context.Context, slug string, includePrivate bool) (PublicCourse, error)
+	GetPublished(ctx context.Context, slug string, v Viewer) (PublicCourse, error)
 	// GetPublishedChapter returns one chapter of slug's live course, plus
 	// the course's CURRENT version (handler.go's ETag input, joined here
 	// rather than in a second round trip — the same reason
@@ -178,22 +223,30 @@ type Repo interface {
 	// behind that distinction (every published course is public), but a
 	// response that told the two apart would still leak "this slug exists"
 	// for no reason a public catalog has any use for.
-	GetPublishedChapter(ctx context.Context, slug, chapterID string, includePrivate bool) (chapter PublicChapter, version int, err error)
+	GetPublishedChapter(ctx context.Context, slug, chapterID string, v Viewer) (chapter PublicChapter, version int, err error)
 	// GetPublishedWidgets returns the HTML of every widget named in names
 	// that slug's live course actually ships, keyed by name. A name with no
 	// matching row is simply absent from the result rather than an error —
 	// see Usecase.GetChapter for why a caller can lean on this without
 	// leaning on the guarantee that makes it true.
-	GetPublishedWidgets(ctx context.Context, slug string, names []string, includePrivate bool) (map[string]string, error)
+	GetPublishedWidgets(ctx context.Context, slug string, names []string, v Viewer) (map[string]string, error)
 	// GetPublishedAsset returns one asset's bytes for (slug, assetPath),
 	// plus the course's CURRENT publish-sequence version (the caller's ETag
 	// input — see handler.go), or ErrNotFound.
-	GetPublishedAsset(ctx context.Context, slug, assetPath string, includePrivate bool) (data []byte, version int, err error)
+	GetPublishedAsset(ctx context.Context, slug, assetPath string, v Viewer) (data []byte, version int, err error)
 	// SetVisibility flips slug's live row between "public" and "private"
 	// and records an admin_audit row. ErrNotFound if slug has no live row.
 	// The value is validated by the caller (ValidVisibility); the column's
 	// own CHECK is the second line of defence, not the first.
 	SetVisibility(ctx context.Context, who *uuid.UUID, slug, visibility string) error
+	// GrantAccess lets one account read one private course. ErrNotFound if
+	// the course has no live row, ErrUserNotFound if no account has that
+	// email. Granting twice is not an error.
+	GrantAccess(ctx context.Context, who *uuid.UUID, slug, email string) error
+	// RevokeAccess removes that grant. ErrNotFound if the pair has none.
+	RevokeAccess(ctx context.Context, who *uuid.UUID, slug, email string) error
+	// ListAccess returns everyone granted slug, newest grant first.
+	ListAccess(ctx context.Context, slug string) ([]AccessRow, error)
 }
 
 // PostgresRepo is the Postgres-backed Repo.
@@ -484,15 +537,12 @@ func (r *PostgresRepo) AdminList(ctx context.Context) ([]AdminCourseRow, error) 
 // reason this is a distinct query from GetPublished rather than that method
 // called once per row: a catalog listing must stay cheap regardless of how
 // large any one course's manifest is.
-func (r *PostgresRepo) ListPublished(ctx context.Context, includePrivate bool) ([]PublicCourse, error) {
-	// `$1 OR visibility = 'public'` rather than building the SQL string two
-	// ways: one query text, one plan, and no branch where a future edit can
-	// update the public arm and forget the admin one.
+func (r *PostgresRepo) ListPublished(ctx context.Context, v Viewer) ([]PublicCourse, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT slug, title, lang, description, version, visibility
-		 FROM published_courses
-		 WHERE $1 OR visibility = 'public'
-		 ORDER BY slug`, includePrivate)
+		`SELECT pc.slug, pc.title, pc.lang, pc.description, pc.version, pc.visibility
+		 FROM published_courses pc
+		 WHERE `+VisibilityPredicate("pc", 1, 2)+`
+		 ORDER BY pc.slug`, v.IsAdmin, v.UID)
 	if err != nil {
 		return nil, fmt.Errorf("catalog: list published courses: %w", err)
 	}
@@ -513,16 +563,16 @@ func (r *PostgresRepo) ListPublished(ctx context.Context, includePrivate bool) (
 }
 
 // GetPublished returns slug's live row in full, manifest included.
-func (r *PostgresRepo) GetPublished(ctx context.Context, slug string, includePrivate bool) (PublicCourse, error) {
+func (r *PostgresRepo) GetPublished(ctx context.Context, slug string, v Viewer) (PublicCourse, error) {
 	var c PublicCourse
 	// ErrNotFound, never a 403: to a reader without the right, a private
 	// course must be indistinguishable from one that does not exist. A
 	// distinct "forbidden" would confirm the slug to anyone who guesses it.
 	err := r.pool.QueryRow(ctx,
-		`SELECT slug, title, lang, description, version, manifest, visibility
-		 FROM published_courses
-		 WHERE slug = $1 AND ($2 OR visibility = 'public')`,
-		slug, includePrivate,
+		`SELECT pc.slug, pc.title, pc.lang, pc.description, pc.version, pc.manifest, pc.visibility
+		 FROM published_courses pc
+		 WHERE pc.slug = $1 AND `+VisibilityPredicate("pc", 2, 3),
+		slug, v.IsAdmin, v.UID,
 	).Scan(&c.Slug, &c.Title, &c.Lang, &c.Description, &c.Version, &c.ManifestJSON, &c.Visibility)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PublicCourse{}, ErrNotFound
@@ -539,7 +589,7 @@ func (r *PostgresRepo) GetPublished(ctx context.Context, slug string, includePri
 // to whichever version is currently live, full stop) — in one query rather
 // than two, the same choice GetPublishedAsset makes for the identical
 // reason.
-func (r *PostgresRepo) GetPublishedChapter(ctx context.Context, slug, chapterID string, includePrivate bool) (PublicChapter, int, error) {
+func (r *PostgresRepo) GetPublishedChapter(ctx context.Context, slug, chapterID string, v Viewer) (PublicChapter, int, error) {
 	var ch PublicChapter
 	var version int
 	// The join to published_courses was already here for the version; the
@@ -550,8 +600,8 @@ func (r *PostgresRepo) GetPublishedChapter(ctx context.Context, slug, chapterID 
 		`SELECT pch.html, pch.widget_names, pc.version
 		 FROM published_chapters pch
 		 JOIN published_courses pc ON pc.slug = pch.slug
-		 WHERE pch.slug = $1 AND pch.chapter_id = $2 AND ($3 OR pc.visibility = 'public')`,
-		slug, chapterID, includePrivate,
+		 WHERE pch.slug = $1 AND pch.chapter_id = $2 AND `+VisibilityPredicate("pc", 3, 4),
+		slug, chapterID, v.IsAdmin, v.UID,
 	).Scan(&ch.HTML, &ch.WidgetNames, &version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PublicChapter{}, 0, ErrNotFound
@@ -567,7 +617,7 @@ func (r *PostgresRepo) GetPublishedChapter(ctx context.Context, slug, chapterID 
 // references no widget — the ordinary case — is why this returns early on
 // len(names) == 0 rather than sending Postgres a query with an empty ANY($2)
 // array for no reason.
-func (r *PostgresRepo) GetPublishedWidgets(ctx context.Context, slug string, names []string, includePrivate bool) (map[string]string, error) {
+func (r *PostgresRepo) GetPublishedWidgets(ctx context.Context, slug string, names []string, v Viewer) (map[string]string, error) {
 	out := map[string]string{}
 	if len(names) == 0 {
 		return out, nil
@@ -581,8 +631,8 @@ func (r *PostgresRepo) GetPublishedWidgets(ctx context.Context, slug string, nam
 		`SELECT pw.name, pw.html
 		 FROM published_widgets pw
 		 JOIN published_courses pc ON pc.slug = pw.slug
-		 WHERE pw.slug = $1 AND pw.name = ANY($2) AND ($3 OR pc.visibility = 'public')`,
-		slug, names, includePrivate,
+		 WHERE pw.slug = $1 AND pw.name = ANY($2) AND `+VisibilityPredicate("pc", 3, 4),
+		slug, names, v.IsAdmin, v.UID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("catalog: get published widgets (slug=%s): %w", slug, err)
@@ -615,15 +665,15 @@ func (r *PostgresRepo) GetPublishedWidgets(ctx context.Context, slug string, nam
 // condition would refuse them even if they somehow survived, since an
 // asset whose course is not (or no longer) live has no published_courses
 // row to join against.
-func (r *PostgresRepo) GetPublishedAsset(ctx context.Context, slug, assetPath string, includePrivate bool) ([]byte, int, error) {
+func (r *PostgresRepo) GetPublishedAsset(ctx context.Context, slug, assetPath string, v Viewer) ([]byte, int, error) {
 	var data []byte
 	var version int
 	err := r.pool.QueryRow(ctx,
 		`SELECT pa.bytes, pc.version
 		 FROM published_assets pa
 		 JOIN published_courses pc ON pc.slug = pa.slug
-		 WHERE pa.slug = $1 AND pa.path = $2 AND ($3 OR pc.visibility = 'public')`,
-		slug, assetPath, includePrivate,
+		 WHERE pa.slug = $1 AND pa.path = $2 AND `+VisibilityPredicate("pc", 3, 4),
+		slug, assetPath, v.IsAdmin, v.UID,
 	).Scan(&data, &version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, 0, ErrNotFound
@@ -729,4 +779,118 @@ func (r *PostgresRepo) SetVisibility(ctx context.Context, who *uuid.UUID, slug, 
 		return fmt.Errorf("catalog: commit set visibility (slug=%s): %w", slug, err)
 	}
 	return nil
+}
+
+// GrantAccess gives one account read access to one course.
+//
+// The course must have a live row: granting on a slug that does not exist is
+// almost always a typo, and failing here is cheaper than a grant that appears
+// to work and silently opens nothing. That check is about the ADMIN'S typo,
+// not about the grant's lifetime — course_access has no foreign key to
+// published_courses on purpose, so a grant outlives an unpublish/republish
+// cycle (see migration 0014).
+//
+// Idempotent: granting twice is not an error, because the admin's intent
+// ("this person can read it") is already true, and making them care whether
+// they did it before is making them do the database's bookkeeping.
+func (r *PostgresRepo) GrantAccess(ctx context.Context, who *uuid.UUID, slug, email string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("catalog: begin grant transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var exists bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM published_courses WHERE slug = $1)`, slug,
+	).Scan(&exists); err != nil {
+		return fmt.Errorf("catalog: check course exists (slug=%s): %w", slug, err)
+	}
+	if !exists {
+		return ErrNotFound
+	}
+
+	// `email` is citext, so this comparison is case-insensitive at the column
+	// — no LOWER() here, which would also throw away the unique index.
+	var uid uuid.UUID
+	switch err := tx.QueryRow(ctx, `SELECT id FROM users WHERE email = $1`, email).Scan(&uid); {
+	case errors.Is(err, pgx.ErrNoRows):
+		return ErrUserNotFound
+	case err != nil:
+		return fmt.Errorf("catalog: look up grantee: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO course_access (slug, user_id, granted_by) VALUES ($1, $2, $3)
+		 ON CONFLICT (slug, user_id) DO NOTHING`,
+		slug, uid, who,
+	); err != nil {
+		return fmt.Errorf("catalog: insert course_access (slug=%s): %w", slug, err)
+	}
+
+	actor, whoParam := actorAndWho(who)
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO admin_audit (who, actor, action, target, note)
+		 VALUES ($1, $2, 'access.grant', $3, $4)`,
+		whoParam, actor, slug, email,
+	); err != nil {
+		return fmt.Errorf("catalog: audit grant (slug=%s): %w", slug, err)
+	}
+	return tx.Commit(ctx)
+}
+
+// RevokeAccess removes one grant. ErrNotFound when there was none — an admin
+// who thinks they are closing a hole deserves to hear that it was not open,
+// rather than a success that tells them nothing.
+func (r *PostgresRepo) RevokeAccess(ctx context.Context, who *uuid.UUID, slug, email string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("catalog: begin revoke transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	tag, err := tx.Exec(ctx,
+		`DELETE FROM course_access
+		  WHERE slug = $1 AND user_id = (SELECT id FROM users WHERE email = $2)`,
+		slug, email)
+	if err != nil {
+		return fmt.Errorf("catalog: delete course_access (slug=%s): %w", slug, err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+
+	actor, whoParam := actorAndWho(who)
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO admin_audit (who, actor, action, target, note)
+		 VALUES ($1, $2, 'access.revoke', $3, $4)`,
+		whoParam, actor, slug, email,
+	); err != nil {
+		return fmt.Errorf("catalog: audit revoke (slug=%s): %w", slug, err)
+	}
+	return tx.Commit(ctx)
+}
+
+// ListAccess returns everyone who may read slug beyond the admins.
+func (r *PostgresRepo) ListAccess(ctx context.Context, slug string) ([]AccessRow, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT u.email, u.name, ca.granted_at
+		   FROM course_access ca
+		   JOIN users u ON u.id = ca.user_id
+		  WHERE ca.slug = $1
+		  ORDER BY ca.granted_at DESC`, slug)
+	if err != nil {
+		return nil, fmt.Errorf("catalog: list course_access (slug=%s): %w", slug, err)
+	}
+	defer rows.Close()
+
+	out := []AccessRow{}
+	for rows.Next() {
+		var a AccessRow
+		if err := rows.Scan(&a.Email, &a.Name, &a.GrantedAt); err != nil {
+			return nil, fmt.Errorf("catalog: scan course_access row: %w", err)
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }

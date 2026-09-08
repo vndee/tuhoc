@@ -2,6 +2,7 @@ package search
 
 import (
 	"errors"
+	"github.com/vndee/tuhoc-api/internal/catalog"
 
 	"github.com/vndee/tuhoc-api/internal/auth"
 
@@ -65,7 +66,7 @@ func (h *Handler) Search(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid query"})
 	}
 
-	res, err := h.uc.Search(c.Context(), q, ClampLimit(c.QueryInt("limit", 0)), auth.IsAdmin(c))
+	res, err := h.uc.Search(c.Context(), q, ClampLimit(c.QueryInt("limit", 0)), catalog.Viewer{UID: auth.UID(c), IsAdmin: auth.IsAdmin(c)})
 	if err != nil {
 		apilog.Internal(c, "search.Search", err)
 		return c.Status(fiber.StatusInternalServerError).

@@ -230,6 +230,73 @@ func (h *Handler) Unpublish(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"slug": slug})
 }
 
+// viewer reads who is asking out of the request. Both halves come from
+// auth.OptionalAdmin, which every public read route is mounted behind; on a
+// route without it both are zero values, which is the anonymous viewer — the
+// safe direction, and the reason this returns a value rather than an error.
+func viewer(c *fiber.Ctx) Viewer {
+	return Viewer{UID: auth.UID(c), IsAdmin: auth.IsAdmin(c)}
+}
+
+// accessRequest is the body of both access routes: whose access changes.
+//
+// Email, not a user id: an admin knows who they are letting in by address,
+// and asking them to find a uuid first is asking them to do a database
+// lookup by hand.
+type accessRequest struct {
+	Email string `json:"email"`
+}
+
+// Access handles the three /admin/courses/:slug/access routes.
+//
+// One handler for GET/POST/DELETE rather than three, because the three differ
+// only in the verb and share every piece of setup — slug decoding, body
+// parsing, and the same four error cases mapped the same way.
+func (h *Handler) Access(c *fiber.Ctx) error {
+	slug, err := urlSlug(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "slug is not valid percent-encoding"})
+	}
+
+	if c.Method() == fiber.MethodGet {
+		rows, err := h.uc.ListAccess(c.Context(), slug)
+		if err != nil {
+			apilog.Internal(c, "catalog.ListAccess", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "list access failed"})
+		}
+		out := make([]fiber.Map, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, fiber.Map{"email": r.Email, "name": r.Name, "grantedAt": r.GrantedAt})
+		}
+		return c.JSON(out)
+	}
+
+	var body accessRequest
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "body must be JSON"})
+	}
+	body.Email = strings.TrimSpace(body.Email)
+	if body.Email == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "email is required"})
+	}
+
+	if c.Method() == fiber.MethodDelete {
+		err = h.uc.RevokeAccess(c.Context(), who(c), slug, body.Email)
+	} else {
+		err = h.uc.GrantAccess(c.Context(), who(c), slug, body.Email)
+	}
+	switch {
+	case errors.Is(err, ErrUserNotFound):
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "no account with that email"})
+	case errors.Is(err, ErrNotFound):
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})
+	case err != nil:
+		apilog.Internal(c, "catalog.Access", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "access change failed"})
+	}
+	return c.JSON(fiber.Map{"slug": slug, "email": body.Email})
+}
+
 // visibilityRequest is PUT .../visibility's body.
 type visibilityRequest struct {
 	Visibility string `json:"visibility"`
@@ -485,7 +552,7 @@ type publicCourseSummary struct {
 
 // PublicList handles GET /courses: every currently-live published course.
 func (h *Handler) PublicList(c *fiber.Ctx) error {
-	items, err := h.uc.ListPublished(c.Context(), auth.IsAdmin(c))
+	items, err := h.uc.ListPublished(c.Context(), viewer(c))
 	if err != nil {
 		apilog.Internal(c, "catalog.PublicList", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "catalog list failed"})
@@ -523,7 +590,7 @@ func (h *Handler) PublicManifest(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "slug is not valid percent-encoding"})
 	}
 
-	course, err := h.uc.GetPublished(c.Context(), slug, auth.IsAdmin(c))
+	course, err := h.uc.GetPublished(c.Context(), slug, viewer(c))
 	switch {
 	case errors.Is(err, ErrNotFound):
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})
@@ -575,7 +642,7 @@ func (h *Handler) PublicChapter(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "chapter id is not valid percent-encoding"})
 	}
 
-	html, widgets, version, err := h.uc.GetChapter(c.Context(), slug, chapterID, auth.IsAdmin(c))
+	html, widgets, version, err := h.uc.GetChapter(c.Context(), slug, chapterID, viewer(c))
 	switch {
 	case errors.Is(err, ErrNotFound):
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})
@@ -622,7 +689,7 @@ func (h *Handler) PublicAsset(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "asset path is not valid percent-encoding"})
 	}
 
-	data, version, err := h.uc.GetAsset(c.Context(), slug, assetPath, auth.IsAdmin(c))
+	data, version, err := h.uc.GetAsset(c.Context(), slug, assetPath, viewer(c))
 	switch {
 	case errors.Is(err, ErrNotFound):
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})
